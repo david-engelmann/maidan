@@ -75,6 +75,7 @@ func main() {
   `Subscribe` stay `maidan.Event` maps, since their shape follows `kind`.
 - `Threads.Transition(id, action)` takes the action string; `ClaimNextThread(cid, opts)`
   takes `*ClaimOptions` (`LeaseSecs`).
+- Usage (0.3.0): `NormalizeUsage(provider, body, UsageOptions{Model, Provider})` turns an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response body into a `NormalizedUsage` (the `model`, `tokens` and `evidence` of a `report_usage` body), and `USDMicros(tokens, price)` is the charge the server checks. A body it cannot read returns a `*UsageError`. `input` comes out uncached and cache writes split into 5-minute and 1-hour tiers, as the ledger counts them. See "Normalizing provider usage" in the repo's `docs/Integration.md`.
 - Surface (frozen v1): `Workspaces.{Create,Get,Import}`, `Channels.{List,Create}`,
   `Threads.{Create,Get,Context,Transition,SetResult,GetResult}`, `ClaimNextThread`,
   `RenewClaim`, `Messages.{List,Post}`, `Artifacts.{Upload,Get,Meta}`, `Subscribe`,

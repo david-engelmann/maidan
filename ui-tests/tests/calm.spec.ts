@@ -53,18 +53,18 @@ test("a needs-you row has one primary button", async ({ page }) => {
   }
 
   const review = page.locator('#needs-you-list .ny-item[data-kind="review_request"]').first();
-  await expect(review.getByRole("button", { name: "Approve" })).toHaveClass(/primary/);
+  await expect(review.getByRole("button", { name: "Approve", exact: true })).toHaveClass(/primary/);
   await expect(review.getByRole("button", { name: "Request changes" })).toHaveClass(/ghost/);
   await expect(review.getByRole("button", { name: "Request changes" })).not.toHaveClass(/primary/);
 
   await review.getByRole("button", { name: "Request changes" }).click();
   await expect(review.locator("button.primary")).toHaveCount(1);
   await expect(review.getByRole("button", { name: "Send back" })).toHaveClass(/primary/);
-  await expect(review.getByRole("button", { name: "Approve" })).not.toHaveClass(/primary/);
+  await expect(review.getByRole("button", { name: "Approve", exact: true })).not.toHaveClass(/primary/);
 
   await review.locator(".ny-note input").press("Escape");
   await expect(review.locator(".ny-note")).toHaveCount(0);
-  await expect(review.getByRole("button", { name: "Approve" })).toHaveClass(/primary/);
+  await expect(review.getByRole("button", { name: "Approve", exact: true })).toHaveClass(/primary/);
   await expect(review.locator("button.primary")).toHaveCount(1);
 });
 

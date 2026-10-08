@@ -92,7 +92,7 @@ pub enum DeliverTarget {
         #[serde(skip_serializing_if = "Option::is_none")]
         thread_ts: Option<String>,
     },
-    /// Commit a [`PI_CHANGE_RESULT_KIND`] diff to `branch` of `repo` and open a
+    /// Commit a [`CHANGE_RESULT_KIND`] diff to `branch` of `repo` and open a
     /// draft PR against `base` when none is open for the branch.
     GithubBranch {
         repo: String,
@@ -491,10 +491,10 @@ fn findings_contain_critical(value: &Value) -> bool {
         })
 }
 
-/// The producer shape for a coding result that becomes a commit: Pi's
-/// `pi.change.result/1`. Same rule as [`EXAMPLE_REVIEW_RESULT_KIND`]: compare
-/// the string, do not close the set.
-pub const PI_CHANGE_RESULT_KIND: &str = "pi.change.result/1";
+/// The producer shape for a coding result that becomes a commit:
+/// `pi.change.result/1`, a wire name producers already send. Same rule as
+/// [`EXAMPLE_REVIEW_RESULT_KIND`]: compare the string, do not close the set.
+pub const CHANGE_RESULT_KIND: &str = "pi.change.result/1";
 
 /// The only change status that writes to GitHub. `no_change`, `seat_error`
 /// and `content_blocked` are recorded and answered in Slack, never committed.
@@ -594,7 +594,7 @@ pub fn check_mark_ready_target(repo: &str, branch: &str, base: &str) -> Result<(
     }
 }
 
-/// The fields of a [`PI_CHANGE_RESULT_KIND`] envelope that a commit is built
+/// The fields of a [`CHANGE_RESULT_KIND`] envelope that a commit is built
 /// from. Read straight off the envelope, like `head_sha`: the base commit is
 /// the producer's, never one looked up from the thread or the branch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -619,11 +619,11 @@ impl ChangeResult {
 }
 
 /// Read a change result. `None` unless this is a waiter envelope whose
-/// `result_kind` is [`PI_CHANGE_RESULT_KIND`]; past that, every field is
+/// `result_kind` is [`CHANGE_RESULT_KIND`]; past that, every field is
 /// optional here and the delivery decides what it needs.
 pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
     let waiter = parse_waiter_result(value)?;
-    if waiter.result_kind != PI_CHANGE_RESULT_KIND {
+    if waiter.result_kind != CHANGE_RESULT_KIND {
         return None;
     }
     let obj = value.as_object()?;
@@ -1332,7 +1332,7 @@ mod tests {
     fn change_envelope(deliver_to: Value) -> Value {
         json!({
             "schema": WAITER_RESULT_SCHEMA,
-            "result_kind": PI_CHANGE_RESULT_KIND,
+            "result_kind": CHANGE_RESULT_KIND,
             "status": "changed",
             "base_sha": SHA,
             "branch": "feature/agent-fix-1a2b",
@@ -1346,7 +1346,7 @@ mod tests {
     #[test]
     fn a_github_branch_target_parses_and_projects_onto_its_own_surface() {
         let value = change_envelope(json!([
-            {"surface":"github_branch","repo":"beatgig/bgv3","branch":"feature/agent-fix-1a2b","base":"dev"},
+            {"surface":"github_branch","repo":"example-org/example-repo","branch":"feature/agent-fix-1a2b","base":"dev"},
             {"surface":"slack","channel":"C0123ABCDEF","thread_ts":"1699999999.001200"},
         ]));
         let parsed = parse_waiter_result(&value).expect("parses");
@@ -1354,7 +1354,7 @@ mod tests {
         assert_eq!(
             branch,
             &DeliverTarget::GithubBranch {
-                repo: "beatgig/bgv3".into(),
+                repo: "example-org/example-repo".into(),
                 branch: "feature/agent-fix-1a2b".into(),
                 base: "dev".into(),
             }
@@ -1362,9 +1362,9 @@ mod tests {
         let egress = branch.to_egress_target().expect("usable");
         assert_eq!(
             egress.to_string(),
-            "github_branch:beatgig/bgv3@feature/agent-fix-1a2b"
+            "github_branch:example-org/example-repo@feature/agent-fix-1a2b"
         );
-        assert_eq!(egress.allowlist_selector(), "beatgig/bgv3");
+        assert_eq!(egress.allowlist_selector(), "example-org/example-repo");
         assert_eq!(egress.surface().as_str(), "github_branch");
 
         let slack = parsed.deliver_to[1].to_egress_target().expect("usable");
@@ -1385,10 +1385,10 @@ mod tests {
     #[test]
     fn an_unusable_branch_or_thread_target_is_skipped_not_delivered() {
         for entry in [
-            json!({"surface":"github_branch","repo":"beatgig","branch":"feature/x","base":"dev"}),
-            json!({"surface":"github_branch","repo":"beatgig/bgv3","branch":"feature/../x","base":"dev"}),
-            json!({"surface":"github_branch","repo":"beatgig/bgv3","branch":"feature/x","base":"de v"}),
-            json!({"surface":"github_branch","repo":"beatgig/bgv3","branch":"x.lock","base":"dev"}),
+            json!({"surface":"github_branch","repo":"example-org","branch":"feature/x","base":"dev"}),
+            json!({"surface":"github_branch","repo":"example-org/example-repo","branch":"feature/../x","base":"dev"}),
+            json!({"surface":"github_branch","repo":"example-org/example-repo","branch":"feature/x","base":"de v"}),
+            json!({"surface":"github_branch","repo":"example-org/example-repo","branch":"x.lock","base":"dev"}),
             json!({"surface":"slack","channel":"C0123ABCDEF","thread_ts":"yesterday"}),
         ] {
             let target = parse_deliver_target(&entry).expect("recorded");
@@ -1398,7 +1398,9 @@ mod tests {
             );
         }
         assert_eq!(
-            parse_deliver_target(&json!({"surface":"github_branch","repo":"beatgig/bgv3"})),
+            parse_deliver_target(
+                &json!({"surface":"github_branch","repo":"example-org/example-repo"})
+            ),
             Some(DeliverTarget::Unknown("github_branch".into())),
             "a branch target missing its detail is still recorded"
         );
@@ -1447,24 +1449,19 @@ mod tests {
 
     #[test]
     fn the_mark_ready_base_map_names_its_repo_and_base() {
-        // Mapped repos flip only into their mapped base.
-        for (repo, base) in [
-            ("david-engelmann/bgv3", "dev"),
-            ("david-engelmann/relay", "dev"),
-            ("david-engelmann/dawn", "dev"),
-            ("david-engelmann/wax", "dev"),
-            ("david-engelmann/agent-skills", "main"),
-        ] {
+        // Mapped repos flip only into their mapped base, whatever the owner.
+        for (name, base) in MARK_READY_BASES {
+            let repo = format!("example-org/{name}");
             assert!(
-                check_mark_ready_target(repo, "feature/agent-x", base).is_ok(),
+                check_mark_ready_target(&repo, "feature/agent-x", base).is_ok(),
                 "{repo} -> {base}"
             );
         }
         // A mapped repo into any other base names the mapped base.
         for (repo, base, want) in [
-            ("david-engelmann/wax", "main", "dev"),
-            ("david-engelmann/bgv3", "staging", "dev"),
-            ("david-engelmann/agent-skills", "dev", "main"),
+            ("example-org/relay", "main", "dev"),
+            ("example-org/relay", "staging", "dev"),
+            ("example-org/agent-skills", "dev", "main"),
         ] {
             let err = check_mark_ready_target(repo, "feature/agent-x", base).unwrap_err();
             assert!(err.contains(want), "{repo} -> {base}: {err}");
@@ -1480,13 +1477,13 @@ mod tests {
     #[test]
     fn a_branch_target_is_blessed_with_its_base() {
         let target = DeliverTarget::GithubBranch {
-            repo: "beatgig/bgv3".into(),
+            repo: "example-org/example-repo".into(),
             branch: "feature/agent-x".into(),
             base: "dev".into(),
         };
         assert_eq!(
             target.allowlist_selector().as_deref(),
-            Some("beatgig/bgv3@dev")
+            Some("example-org/example-repo@dev")
         );
         let slack = DeliverTarget::Slack {
             channel: "C0123ABCDEF".into(),

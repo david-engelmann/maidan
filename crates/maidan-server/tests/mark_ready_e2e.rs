@@ -1,4 +1,4 @@
-//! `POST /operator/github/mark-ready`: Soundcheck asks Maidan to flip a draft
+//! `POST /operator/github/mark-ready`: the mark-ready app asks Maidan to flip a draft
 //! agent pull request to ready for review.
 //!
 //! The fake GitHub below speaks just enough for the flip: `GET
@@ -344,7 +344,7 @@ struct Harness {
     store: Arc<dyn Store>,
     fake: Shared,
     workspace_id: maidan_types::WorkspaceId,
-    soundcheck_bearer: String,
+    mark_ready_bearer: String,
     other_app_bearer: String,
     member_bearer: String,
 }
@@ -460,25 +460,25 @@ async fn spawn() -> Harness {
         .await
         .unwrap();
 
-    let soundcheck_install = install_app(&store, ws.id, bot.id, "soundcheck").await;
+    let mark_ready_install = install_app(&store, ws.id, bot.id, "mark-ready-app").await;
     // The operator designates the mark-ready app by id (MAIDAN_MARK_READY_APP_ID).
     state.mark_ready_app_id = Some(
         store
-            .get_app_installation(soundcheck_install)
+            .get_app_installation(mark_ready_install)
             .await
             .unwrap()
             .app_id,
     );
     let other_install = install_app(&store, ws.id, bot.id, "other-app").await;
-    let soundcheck_secret = TokenSecret::generate();
+    let mark_ready_secret = TokenSecret::generate();
     let other_secret = TokenSecret::generate();
     let member_secret = TokenSecret::generate();
-    let soundcheck_bearer = mint(
+    let mark_ready_bearer = mint(
         &store,
         ws.id,
         bot.id,
-        Some(soundcheck_install),
-        soundcheck_secret.as_str(),
+        Some(mark_ready_install),
+        mark_ready_secret.as_str(),
     )
     .await;
     let other_app_bearer = mint(
@@ -506,7 +506,7 @@ async fn spawn() -> Harness {
         store,
         fake,
         workspace_id: ws.id,
-        soundcheck_bearer,
+        mark_ready_bearer,
         other_app_bearer,
         member_bearer,
     }
@@ -543,7 +543,7 @@ async fn allow(h: &Harness, selector: &str) {
 }
 
 #[tokio::test]
-async fn only_the_soundcheck_app_may_mark_ready() {
+async fn only_the_mark_ready_app_may_mark_ready() {
     let h = spawn().await;
     allow(&h, "o/repo@dev").await;
 
@@ -572,12 +572,12 @@ async fn only_the_soundcheck_app_may_mark_ready() {
         .expect("the app-gate refusal is audited");
     assert_eq!(event.metadata["pull_number"], json!(7));
 
-    // Another app's token is not Soundcheck either.
+    // Another app's token is not the mark-ready app either.
     let (status, body) = post_mark_ready(&h, Some(&h.other_app_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 
-    // Soundcheck passes the gate.
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    // The mark-ready app passes the gate.
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["marked_ready"], json!(true));
     assert!(
@@ -591,7 +591,7 @@ async fn mark_ready_needs_the_allowlist() {
     let h = spawn().await;
 
     // No allowlist entry: refused, naming the selector.
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("o/repo@dev"), "{body}");
     assert!(
@@ -600,7 +600,7 @@ async fn mark_ready_needs_the_allowlist() {
     );
 
     allow(&h, "o/repo@dev").await;
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["marked_ready"], json!(true));
 }
@@ -617,7 +617,7 @@ async fn mark_ready_refuses_a_non_agent_head() {
         .pulls
         .insert(11, draft_pull(11, "feature/not-an-agent", "dev"));
 
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 11).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 11).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     let text = body.to_string();
     assert!(text.contains("does not match"), "{body}");
@@ -632,7 +632,7 @@ async fn mark_ready_refuses_a_non_agent_head() {
 }
 
 #[tokio::test]
-async fn a_look_alike_soundcheck_in_another_workspace_cannot_mark_ready() {
+async fn a_look_alike_app_in_another_workspace_cannot_mark_ready() {
     let h = spawn().await;
     allow(&h, "o/repo@dev").await;
     h.fake
@@ -641,7 +641,7 @@ async fn a_look_alike_soundcheck_in_another_workspace_cannot_mark_ready() {
         .pulls
         .insert(14, draft_pull(14, "feature/agent-x", "dev"));
 
-    // Workspace B builds its own app slugged `soundcheck` and blesses the same
+    // Workspace B builds its own app with the designated app's slug and blesses the same
     // repository and base in its own allowlist. Neither makes it the app the
     // operator designated.
     let ws_b = h
@@ -659,7 +659,7 @@ async fn a_look_alike_soundcheck_in_another_workspace_cannot_mark_ready() {
         })
         .await
         .unwrap();
-    let install_b = install_app(&h.store, ws_b.id, bot_b.id, "soundcheck").await;
+    let install_b = install_app(&h.store, ws_b.id, bot_b.id, "mark-ready-app").await;
     let secret_b = TokenSecret::generate();
     let bearer_b = mint(
         &h.store,
@@ -685,7 +685,7 @@ async fn a_look_alike_soundcheck_in_another_workspace_cannot_mark_ready() {
         "a look-alike app writes nothing"
     );
 
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 14).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 14).await;
     assert_eq!(
         status,
         StatusCode::OK,
@@ -701,7 +701,7 @@ async fn mark_ready_refuses_a_closed_pull() {
     pull.open = false;
     h.fake.lock().unwrap().pulls.insert(13, pull);
 
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 13).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 13).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("closed"), "{body}");
     assert!(
@@ -720,7 +720,7 @@ async fn mark_ready_refuses_a_pull_from_a_fork() {
     pull.head_repo = "stranger/repo".into();
     h.fake.lock().unwrap().pulls.insert(12, pull);
 
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 12).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 12).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("fork"), "{body}");
     assert!(
@@ -742,7 +742,7 @@ async fn mark_ready_checks_the_allowlist_against_the_fresh_base() {
         .pulls
         .insert(12, draft_pull(12, "feature/agent-x", "staging"));
 
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 12).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 12).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("o/repo@staging"), "{body}");
     assert!(
@@ -754,8 +754,9 @@ async fn mark_ready_checks_the_allowlist_against_the_fresh_base() {
 #[tokio::test]
 async fn mark_ready_enforces_the_per_repo_base_map() {
     let h = spawn().await;
-    // wax flips only into dev, even with the allowlist blessing main.
-    allow(&h, "david-engelmann/wax@main").await;
+    // relay is mapped to dev, so it flips only into dev, even with the
+    // allowlist blessing main.
+    allow(&h, "example-org/relay@main").await;
     h.fake
         .lock()
         .unwrap()
@@ -763,7 +764,7 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
         .insert(13, draft_pull(13, "feature/agent-x", "main"));
 
     let (status, body) =
-        post_mark_ready(&h, Some(&h.soundcheck_bearer), "david-engelmann/wax", 13).await;
+        post_mark_ready(&h, Some(&h.mark_ready_bearer), "example-org/relay", 13).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert!(body.to_string().contains("only into `dev`"), "{body}");
     assert!(
@@ -781,7 +782,7 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
 
     let (status, body) = post_mark_ready(
         &h,
-        Some(&h.soundcheck_bearer),
+        Some(&h.mark_ready_bearer),
         "david-engelmann/agent-skills",
         14,
     )
@@ -798,9 +799,9 @@ async fn mark_ready_enforces_the_per_repo_base_map() {
 async fn mark_ready_rejects_a_bad_request_and_audits_it() {
     let h = spawn().await;
 
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "", 7).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "", 7).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "empty repo");
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 0).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 0).await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "non-positive pull number");
 
     let events = h
@@ -828,13 +829,13 @@ async fn mark_ready_rejects_a_misshapen_repo_and_audits_it() {
         "o/",
         "o//repo",
     ] {
-        let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), bad, 7).await;
+        let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), bad, 7).await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "repo {bad:?}");
     }
 
     // A well-shaped repo passes validation and reaches the guards (here the
     // allowlist, which refuses it).
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(
         status,
         StatusCode::FORBIDDEN,
@@ -866,7 +867,7 @@ async fn mark_ready_404s_a_missing_pull_and_audits_the_failure() {
     let h = spawn().await;
     allow(&h, "o/repo@dev").await;
 
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 999).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 999).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
     let events = h
@@ -886,14 +887,14 @@ async fn mark_ready_audits_refusals_marks_and_retries() {
     let h = spawn().await;
 
     // Refused: no allowlist entry.
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
     // Marked, then already-ready on the retry.
     allow(&h, "o/repo@dev").await;
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK);
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["marked_ready"], json!(false));
 
@@ -917,7 +918,7 @@ async fn mark_ready_audits_every_call() {
     let h = spawn().await;
     allow(&h, "o/repo@dev").await;
 
-    let (status, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK);
 
     let events = h
@@ -937,14 +938,14 @@ async fn mark_ready_audits_every_call() {
 }
 
 #[tokio::test]
-async fn mark_ready_is_idempotent_for_soundcheck_retries() {
+async fn mark_ready_is_idempotent_for_retries_by_the_mark_ready_app() {
     let h = spawn().await;
     allow(&h, "o/repo@dev").await;
 
-    let (first, _) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (first, _) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(first, StatusCode::OK);
     // The fake flipped the draft on the first mutation; the retry finds it ready.
-    let (status, body) = post_mark_ready(&h, Some(&h.soundcheck_bearer), "o/repo", 7).await;
+    let (status, body) = post_mark_ready(&h, Some(&h.mark_ready_bearer), "o/repo", 7).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["marked_ready"], json!(false));
     assert_eq!(body["reason"], json!("already ready"));

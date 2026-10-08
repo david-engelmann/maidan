@@ -7,14 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### The change flow can mark a draft ready (Soundcheck only)
+### The change flow can mark a draft ready (mark-ready app only)
 
-- **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the Soundcheck app; the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; Soundcheck stays without `contents:write`.
+- **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
 
 ### The instance's GitHub token answers to the operator
 
 - **Writes go only to operator-named repositories.** `MAIDAN_GITHUB_WRITE_REPOS` lists the only repositories the instance's GitHub token may write to. The client refuses any other write before a request is made, whichever workspace asks, and with no list it writes nowhere. A workspace's egress allowlist narrows the list and can never widen it.
-- **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to the slug `soundcheck`, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+- **Mark-ready answers one app.** It is bound to an operator-designated app by id (`MAIDAN_MARK_READY_APP_ID`) rather than to an app slug, which any workspace could create. If unset, mark-ready is refused, and a non-UUID value refuses boot.
+
+### DMs are opened by picking people, not pasting ids
+
+- **Changed:** the console's DM and group DM forms take a searchable member picker instead of raw member UUIDs. It searches the workspace's members by display name or handle, marks each one Agent or Human, never offers the signed-in person, and works from the keyboard (arrows, Enter, Escape). A group DM collects its members as removable chips. It uses the existing member list; no route changed. Playwright covers both forms, and a second workspace's picker, DM lists and API calls see nothing of the first (Open Work Next 5).
 
 ### Agent self-reported status (`declare_status`)
 
@@ -25,6 +29,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `declare_status` and `get_thread_status` to the worker tool profile.
 
 Refs #1253
+
+### A board harness fails when the page writes
+
+- **Tests:** the seven inline Node harnesses in `crates/maidan-server/tests/ui_js_contract.rs` now start from one shared prelude that stubs `api` and `writeApi`. A write through `writeApi`, or a non-GET through `api`, is recorded and refused, and the harness exits non-zero naming each write, even when the page function catches the error and paints a sentence. Before, `writeApi` was undefined there, so a page function that wrote and caught its own failure passed. A contract test checks that every inline harness in the file runs with the prelude (Open Work, "Found reviewing #1273 to #1275").
+
+### An approval in the console can say why
+
+- **Added:** A Needs you review row has **Approve with note**. It opens the same note row as Request changes, with an optional note and an Approve button, and the note is recorded on the review. One-click Approve is unchanged, and an owner whose approval does not count sees neither.
 
 ### Approval gates are accepted by humans
 
@@ -144,6 +156,10 @@ Refs #1253
 
 - **Added:** a GitHub `pull_request` `closed` delivery with `merged: false`, for a PR linked to a thread, posts one message on that thread (`GitHub closed {repo}#{n} without merging`) and does not emit `ThreadLanded`. The message carries `metadata.github`, so egress does not copy it back onto the PR. An unlinked PR is still ignored. A merge is still a `ThreadLanded` fact and still does not move the thread's state.
 
+### Code, docs and tests use neutral names
+
+- **Changed:** the mark-ready caller is called the mark-ready app everywhere (the operator-designated client named by `MAIDAN_MARK_READY_APP_ID`), and tests and examples use `example-org/example-repo`. The capability map's mark-ready gate reads `app:mark-ready`. No route, field, header, environment variable or check changed.
+
 ### Slack channel links are indexed by thread
 
 - **Added:** `idx_slack_links_thread` on `maidan_slack_channel_links (thread_id)`, migration 0137 on both backends. Egress resolves a link by the Maidan thread, and the table was indexed on `workspace_id` only.
@@ -233,6 +249,10 @@ Refs #1253
   longer say the page is not ready to show, that it has no login, that
   `data-ui-version` versions it, or that captured screenshots of it exist.
   The Playwright suite does not replace the PR template's checklist.
+
+### SDK usage normalizers that agree with the ledger
+
+- **Added:** `normalizeUsage` (TypeScript), `normalize_usage` (Python, Rust) and `NormalizeUsage` (Go) turn an Anthropic, Bedrock Converse, OpenAI Responses or Chat Completions, Gemini, DeepSeek, Mistral, xAI or vLLM response into the `model`, `tokens` and `evidence` of a `report_usage` body, and `usdMicros` / `usd_micros` / `USDMicros` compute the charge in integers; all four SDKs and the ledger agree on the recorded responses in `sdk/usage-fixtures/`. **Fixed:** the ledger's GenAI reader (`POST /threads/{id}/usage/otel`) now reads Bedrock's `cacheReadInputTokens` and `cacheDetails` TTL split, OpenAI Responses' `input_tokens_details.cached_tokens` and `cache_write_tokens`, Gemini's `thoughtsTokenCount` as output, and xAI's `reasoning_tokens`, which its `completion_tokens` leave out.
 
 ### Program C: context economics
 
@@ -363,6 +383,10 @@ Refs #1253
   channel button no longer say they require a bearer token: a signed-in
   session can do both. A token the server accepts clears the rejection shown
   for the previous one.
+
+### A late channel lookup no longer undoes a channel picked since
+
+- **Fixed:** opening a task that is not on the board (a Needs you row, for one) looks up its channel first. If the person picked another channel or task before that answer came back, the late answer used to pull the board back to the task's channel. Now it is dropped. This was the intermittent `palette.spec.ts` failure (1 of 30 runs failed before the fix, none after), and a new spec holds the lookup to show it.
 
 ### One store delegation list (#1100)
 
@@ -497,6 +521,10 @@ Refs #1253
   detail. For example, a 403 names the missing capability: "Your token is not
   allowed to do this; it needs thread:transition. Mint a token with it in
   Tokens".
+
+### Needs you shows blocked tasks
+
+- **Fixed:** a task blocked until a person clears it (reason `human` or `gate`) now shows in Needs you for its owner, or for workspace admins when it has no owner, with its reason, note and an Unblock button. The waiting inbox already returned these items, but the page filtered them out, so the Unblock row never appeared. A row whose Unblock failed once now leaves when a later try succeeds, instead of staying up under the old error. `ui-tests/tests/needs-you-blocked.spec.ts` covers the row, Unblock, a refused and an unanswered Unblock, the refused and stale queue states, and a second workspace that sees and clears nothing of the first.
 
 ### Every HTTP operation says whether it reads or changes, and CI checks it does
 
@@ -719,6 +747,15 @@ Refs #1253
   the share route and thread context already refused one. All of them now
   answer `404` / `NotFound`.
 
+### The header names the credential, and errors use its words
+
+- **Added:** the `/ui` header shows which credential the page acts with
+  (`session`, `bearer token` or `delegated token`, read from `GET /me`) as a
+  muted word after the workspace name. A refusal names that credential: a
+  signed-in session is told about its session and how to paste a token, never
+  "your token", and a delegated token is told it holds only what its grant
+  lends (Open Work Next 4, first half).
+
 ### Decisions keep their history
 
 - **Added:** every review verdict and land-gate verdict is appended to a
@@ -805,6 +842,16 @@ Refs #1253
   at enqueue, so the relay, the search indexer and a webhook still sit in
   the caller's trace after the request has finished. It is not part of the
   event content hash.
+
+### The `/ui` has one feedback surface
+
+- **Changed:** `showError(message, severity)` replaces `setStatus` and the
+  `#status` line at the bottom of More tools. An error or a warning is an
+  alert toast, a success a polite status toast that leaves sooner, and a
+  refused tools-panel request now says the `humanError` sentence instead of
+  `HTTP 403`. `#toasts` and `#session-status` are polite live regions, and
+  `ui_feedback_contract` fails if `setStatus` or `#status` comes back (Open
+  Work Next 4, second half).
 
 ### The `/ui` reports mistakes in the page
 

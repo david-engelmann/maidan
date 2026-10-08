@@ -134,3 +134,32 @@ test("the palette opens the next review waiting on me", async ({ page }) => {
   await expect(page.locator("#thread-context")).toHaveText(title);
   await expect(page.locator("#needs-you-list .ny-item button.primary:focus")).toHaveCount(1);
 });
+
+// Opening a task that is not on the board looks its channel up first. A
+// channel picked before that answer arrives wins: the late answer must not
+// drag the board back to the task's channel.
+test("a late channel lookup for an opened task does not undo a channel picked since", async ({ page }) => {
+  let release = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  const lookup = new RegExp(`/threads/${fx.thread_id}$`);
+  await page.route(lookup, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await signIn(page);
+  // Any row on the #general thread will do: other specs add gates to it.
+  const row = page.locator(`#needs-you-list .ny-item[data-thread-id="${fx.thread_id}"] .ny-title`).first();
+  const label = ((await row.textContent()) || "").trim();
+  await row.click();
+  await expect(page.locator("#thread-context")).toHaveText(label);
+  await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
+  await expect(page.locator("#board-title")).toHaveText("# build");
+
+  const answered = page.waitForResponse(lookup);
+  release();
+  await (await answered).finished();
+  // One more page task, so the handler for that answer has run before the check.
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+  await expect(page.locator("#board-title")).toHaveText("# build");
+  await expect(page.locator("#channel-list li.selected")).toHaveAttribute("data-id", fx.board_channel_id);
+});

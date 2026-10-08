@@ -1,0 +1,41 @@
+{
+  "name": "openai-responses-cache-write",
+  "provider": "openai-responses",
+  "source": "https://developers.openai.com/api/docs/guides/prompt-caching",
+  "recorded": "verbatim",
+  "note": "The guide's second request: a 12,000-token prefix read from the cache and 3,000 new tokens written. The guide shows the usage object alone, with no output tokens, so the model is passed in and output is 0. Ordinary input is input_tokens - cached_tokens - cache_write_tokens, as the guide's cost function computes it. A GPT-5.6+ write has a 30-minute TTL; the ledger records an unsplit write on the 5-minute tier.",
+  "options": {
+    "model": "gpt-6-astra"
+  },
+  "response": {
+    "usage": {
+      "input_tokens": 15000,
+      "input_tokens_details": {
+        "cached_tokens": 12000,
+        "cache_write_tokens": 3000
+      }
+    }
+  },
+  "price_snapshot": {
+    "input_usd_micros_per_million": 10000000,
+    "output_usd_micros_per_million": 50000000,
+    "cache_read_usd_micros_per_million": 1000000,
+    "cache_write_5m_usd_micros_per_million": 12500000,
+    "cache_write_1h_usd_micros_per_million": 0
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "cache_read": 12000,
+      "cache_write_5m": 3000,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai"
+    },
+    "usd_micros": 49500
+  },
+  "retrieved": "2026-10-07"
+}

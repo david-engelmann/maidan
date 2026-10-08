@@ -2,8 +2,9 @@
 //!
 //! Opening a DM already says the refusal as a sentence. The list, the message
 //! pane, and Send still painted `HTTP 403` or `TypeError`. This runs those
-//! handlers from `static/ui/dm.js` with the page's `responseError` and
-//! `unreachable`, against a 403, a 500, and a fetch that throws.
+//! handlers from `static/ui/dm.js` with the page's `responseError`,
+//! `unreachable` and `showError`, against a 403, a 500, and a fetch that
+//! throws. A failed send is one error toast.
 
 use serde_json::Value;
 
@@ -110,6 +111,11 @@ fn dm_lists_panes_and_sends_hide_the_raw_error() {
         }
         if name.starts_with("send-") {
             assert_eq!(
+                case["severity"].as_str(),
+                Some("error"),
+                "{name} is one error toast"
+            );
+            assert_eq!(
                 case["draft"].as_str(),
                 Some("hello"),
                 "{name} cleared the draft after a failure"
@@ -152,7 +158,17 @@ function makeEl(tag, id) {
     className: "",
     textContent: "",
     value: "",
+    dataset: {},
   };
+  el.setAttribute = () => {};
+  el.append = (...nodes) => {
+    el.children.push(...nodes);
+  };
+  el.remove = () => {
+    const region = els.toasts;
+    region.children = region.children.filter((child) => child !== el);
+  };
+  Object.defineProperty(el, "firstElementChild", { get: () => el.children[0] || null });
   el.appendChild = (child) => {
     el.children.push(child);
     return child;
@@ -175,7 +191,7 @@ keep("ul", "dm-list");
 keep("ul", "gdm-list");
 keep("div", "dm-messages");
 keep("div", "gdm-messages");
-keep("div", "status");
+keep("div", "toasts");
 const dmBody = keep("input", "dm-body");
 const gdmBody = keep("input", "gdm-body");
 dmBody.value = "hello";
@@ -265,7 +281,7 @@ for (const name of ["loadDms", "loadGroupDms", "loadConversationMessages", "send
 }
 
 function reset() {
-  for (const id of ["dm-list", "gdm-list", "dm-messages", "gdm-messages", "status"]) {
+  for (const id of ["dm-list", "gdm-list", "dm-messages", "gdm-messages", "toasts"]) {
     els[id].children = [];
     els[id].textContent = "";
     els[id].className = "";
@@ -279,14 +295,17 @@ async function run(name, which, next) {
   scene = which;
   reset();
   await next();
-  const target = name.startsWith("send-")
-    ? "status"
-    : name.startsWith("messages-")
-      ? "dm-messages"
-      : name.startsWith("gdm-")
-        ? "gdm-list"
-        : "dm-list";
-  const row = { name: name, text: visible(els[target]) };
+  // A failed send is a toast: its words, not the Dismiss button.
+  const target = name.startsWith("messages-")
+    ? "dm-messages"
+    : name.startsWith("gdm-")
+      ? "gdm-list"
+      : "dm-list";
+  const text = name.startsWith("send-")
+    ? els.toasts.children.map((toast) => visible(toast.children[0])).join(" ")
+    : visible(els[target]);
+  const row = { name: name, text: text };
+  if (name.startsWith("send-")) row.severity = els.toasts.children.map((toast) => toast.dataset.severity).join(" ");
   if (name.startsWith("send-dm")) row.draft = dmBody.value;
   if (name.startsWith("send-gdm")) row.draft = gdmBody.value;
   cases.push(row);

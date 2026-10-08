@@ -73,7 +73,7 @@ pub struct RecipeParam {
 }
 
 /// A retry policy carried in the snapshot (not enforced by the room — a claimer
-/// or Pi reads it). `max_attempts` is advisory.
+/// or producer reads it). `max_attempts` is advisory.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecipeRetry {

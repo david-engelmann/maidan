@@ -35,7 +35,7 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     status, ChannelId, EgressSurface, EgressTarget, Event, ExternalRef, MemberId, MemberKind,
     NewChannel, NewEgressTarget, NewMember, NewMessage, NewThread, NewWorkspace, ResultDelivery,
-    ThreadId, WorkspaceId, PI_CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
+    ThreadId, WorkspaceId, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -382,7 +382,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     let member = store
         .create_member(NewMember {
             workspace_id: ws.id,
-            handle: "pi".into(),
+            handle: "coder".into(),
             display_name: None,
             kind: MemberKind::Agent,
         })
@@ -428,7 +428,7 @@ async fn harness() -> Harness {
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
     let dir = tempfile::tempdir().unwrap();
-    let a = tenant(store.as_ref(), "soundcheck").await;
+    let a = tenant(store.as_ref(), "change-flow").await;
     let b = tenant(store.as_ref(), "other").await;
 
     let fake: Shared = Arc::default();
@@ -568,7 +568,7 @@ fn change_into(
 ) -> Value {
     json!({
         "schema": WAITER_RESULT_SCHEMA,
-        "result_kind": PI_CHANGE_RESULT_KIND,
+        "result_kind": CHANGE_RESULT_KIND,
         "status": status,
         "base_sha": base_sha,
         "branch": result_branch,
@@ -1026,7 +1026,7 @@ async fn an_open_pull_request_into_prod_refuses_the_change_before_any_write() {
 
 #[tokio::test]
 async fn a_missing_title_or_summary_still_opens_the_draft_with_maidans_fallback() {
-    let instructions = "!change bgv3 make the booking confirmation email name the venue and the start time instead of the generic greeting";
+    let instructions = "!change example-repo make the booking confirmation email name the venue and the start time instead of the generic greeting";
     for (drop_title, drop_summary) in [(true, false), (false, true), (true, true)] {
         let h = harness().await;
         h.allow_change().await;

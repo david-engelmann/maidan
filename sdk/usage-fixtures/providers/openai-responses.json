@@ -1,0 +1,42 @@
+{
+  "name": "openai-responses",
+  "provider": "openai-responses",
+  "source": "https://developers.openai.com/api/reference/resources/responses/methods/create",
+  "recorded": "verbatim",
+  "note": "The reference's file-input example, with output, tools and request echo left out.",
+  "response": {
+    "id": "resp_686eef60237881a2bd1180bb8b13de430e34c516d176ff86",
+    "object": "response",
+    "created_at": 1752100704,
+    "status": "completed",
+    "model": "gpt-6-astra",
+    "service_tier": "default",
+    "usage": {
+      "input_tokens": 8438,
+      "input_tokens_details": {
+        "cached_tokens": 0,
+        "cache_write_tokens": 0
+      },
+      "output_tokens": 398,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 8836
+    }
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 8438,
+      "output": 398,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai",
+      "service_tier": "default"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

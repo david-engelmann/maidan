@@ -434,8 +434,8 @@ pub fn normalize_parent_run_id(raw: &str) -> Option<&str> {
 
 /// A thread's run lineage.
 ///
-/// `parent_run_id` is the **producer's** run identifier — the same string pi
-/// puts on the waiter envelope as `run_id`. Nested threads that share this
+/// `parent_run_id` is the **producer's** run identifier — the same string the
+/// producer puts on the waiter envelope as `run_id`. Nested threads that share this
 /// value are attributed together for occupancy. F7 thread mute is orthogonal: a
 /// mute never writes or clears this row.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

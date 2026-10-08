@@ -1,0 +1,48 @@
+{
+  "name": "bedrock-converse-ttl-split",
+  "provider": "bedrock-converse",
+  "source": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html",
+  "also": [
+    "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CacheDetail.html",
+    "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html"
+  ],
+  "recorded": "constructed",
+  "note": "Constructed, not a response: no published Converse response shows cacheDetails, so the numbers are chosen. The field names, the cacheDetails order (1h before 5m) and the ttl values are the API reference's. A Converse response names no model, so it is passed in.",
+  "options": {
+    "model": "anthropic.claude-sonnet-5-5"
+  },
+  "response": {
+    "stopReason": "end_turn",
+    "usage": {
+      "inputTokens": 120,
+      "outputTokens": 300,
+      "totalTokens": 5920,
+      "cacheReadInputTokens": 4000,
+      "cacheWriteInputTokens": 1500,
+      "cacheDetails": [
+        {
+          "ttl": "1h",
+          "inputTokens": 1000
+        },
+        {
+          "ttl": "5m",
+          "inputTokens": 500
+        }
+      ]
+    }
+  },
+  "expected": {
+    "model": "anthropic.claude-sonnet-5-5",
+    "tokens": {
+      "input": 120,
+      "output": 300,
+      "cache_read": 4000,
+      "cache_write_5m": 500,
+      "cache_write_1h": 1000
+    },
+    "evidence": {
+      "provider": "aws.bedrock"
+    }
+  },
+  "retrieved": "2026-10-04"
+}

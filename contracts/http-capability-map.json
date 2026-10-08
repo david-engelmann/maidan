@@ -1334,7 +1334,7 @@
   {
     "method": "POST",
     "path": "/operator/github/mark-ready",
-    "capability": "app:soundcheck",
+    "capability": "app:mark-ready",
     "surface": "http",
     "gate": "app-installation"
   },
