@@ -39,7 +39,10 @@ mod tests {
         let nonce = uuid::Uuid::now_v7();
         assert_eq!(token(b"secret", nonce), token(b"secret", nonce));
         assert_ne!(token(b"secret", nonce), token(b"other", nonce));
-        assert_ne!(token(b"secret", nonce), token(b"secret", uuid::Uuid::now_v7()));
+        assert_ne!(
+            token(b"secret", nonce),
+            token(b"secret", uuid::Uuid::now_v7())
+        );
     }
 
     #[test]

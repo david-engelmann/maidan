@@ -1,7 +1,9 @@
 //! Backend-neutral pieces of `approval_decide`'s store: the threshold a
 //! workspace with no row gets, and how a decision's record is read back.
 
-use maidan_types::{ApprovalConfirmation, ApprovalPolicy, ApprovalRisk, GateDecisionVia, WorkspaceId};
+use maidan_types::{
+    ApprovalConfirmation, ApprovalPolicy, ApprovalRisk, GateDecisionVia, WorkspaceId,
+};
 
 /// The threshold when a workspace has set none. `low` makes every accept
 /// through the tool need a person's confirmation, so a workspace has to opt

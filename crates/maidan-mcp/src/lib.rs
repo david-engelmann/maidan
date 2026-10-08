@@ -44,7 +44,8 @@ pub use profiles::Profile;
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 pub use server::{
     is_supported_protocol_version, negotiate_protocol_version, preferred_protocol_version,
-    ApprovalConfirmationKeys, McpServer, PresenceReader, DEFAULT_CONFIRMATION_TTL, INSTRUCTIONS, SESSION_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
+    ApprovalConfirmationKeys, McpServer, PresenceReader, DEFAULT_CONFIRMATION_TTL, INSTRUCTIONS,
+    SESSION_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use slash_dispatch::SlashDispatcher;
 pub use stdio::run_stdio;

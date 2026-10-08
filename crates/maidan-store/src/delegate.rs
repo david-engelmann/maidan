@@ -708,8 +708,15 @@ macro_rules! store_delegations {
                 now: chrono::DateTime<chrono::Utc>,
                 audit: crate::AuditFor<ApprovalGate>,
             ) -> Result<ConfirmOutcome, StoreError> {
-                approval_gates::confirm(self.pool(), token_hash, workspace_id, member_id, now, audit)
-                    .await
+                approval_gates::confirm(
+                    self.pool(),
+                    token_hash,
+                    workspace_id,
+                    member_id,
+                    now,
+                    audit,
+                )
+                .await
             }
         }
     };

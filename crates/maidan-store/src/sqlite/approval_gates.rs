@@ -264,11 +264,12 @@ async fn get_policy_on(
     conn: &mut sqlx::SqliteConnection,
     workspace_id: WorkspaceId,
 ) -> Result<ApprovalPolicy, StoreError> {
-    let at: Option<String> =
-        sqlx::query_scalar("SELECT confirm_at FROM maidan_approval_policies WHERE workspace_id = ?")
-            .bind(workspace_id.0)
-            .fetch_optional(&mut *conn)
-            .await?;
+    let at: Option<String> = sqlx::query_scalar(
+        "SELECT confirm_at FROM maidan_approval_policies WHERE workspace_id = ?",
+    )
+    .bind(workspace_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
     Ok(crate::approval_policy::policy(workspace_id, at.as_deref()))
 }
 

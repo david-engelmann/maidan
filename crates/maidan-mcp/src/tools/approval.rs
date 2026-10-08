@@ -150,7 +150,11 @@ pub(super) async fn approval_decide(
     call: &CallContext,
 ) -> Result<Value, McpError> {
     let a: ApprovalDecideArgs = crate::tools::parse_args(args)?;
-    let note = match a.note.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
+    let note = match a
+        .note
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+    {
         Some(n) if n.chars().count() > MAX_NOTE_CHARS => {
             return Err(McpError::InvalidParams(format!(
                 "note: at most {MAX_NOTE_CHARS} characters"
@@ -177,8 +181,16 @@ pub(super) async fn approval_decide(
         model_asked: true,
     };
     if a.decision == Decision::Decline {
-        return resolve(server, auth, &gate, ApprovalGateState::Declined, note, &via, "direct")
-            .await;
+        return resolve(
+            server,
+            auth,
+            &gate,
+            ApprovalGateState::Declined,
+            note,
+            &via,
+            "direct",
+        )
+        .await;
     }
     if !auth.bypass {
         let asked = [Some(gate.requested_by), gate.requested_actor_id];

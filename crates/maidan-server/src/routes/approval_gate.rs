@@ -14,10 +14,13 @@
 use axum::{extract::State, http::HeaderMap, Extension, Json};
 use hmac::{Hmac, Mac};
 use maidan_auth::{
-    capability::{APPROVAL_GRANT, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{APPROVAL_GRANT, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
-use maidan_types::{ApprovalGate, ApprovalGateId, ApprovalGateState, MemberKind, WorkspaceId};
+use maidan_types::{
+    ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalPolicy, AuditScope, ConfirmOutcome,
+    MemberKind, NewAuditEvent, WorkspaceId,
+};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
@@ -114,13 +117,28 @@ pub async fn list_approval_gates(
         .store
         .list_pending_approval_gates(workspace_id, 200)
         .await?;
+    let mut requests = state
+        .store
+        .list_live_approval_confirmations(workspace_id, chrono::Utc::now())
+        .await?;
     let views = gates
         .into_iter()
         .map(|gate| {
             let request_state = sign_request_state(gate.id, secret);
+            let model_request = requests
+                .iter()
+                .position(|c| c.gate_id == gate.id)
+                .map(|at| requests.swap_remove(at))
+                .map(|c| ModelRequestView {
+                    member_id: c.member_id,
+                    client_name: c.client_name,
+                    client_version: c.client_version,
+                    expires_at: c.expires_at,
+                });
             ApprovalGateView {
                 gate,
                 request_state,
+                model_request,
             }
         })
         .collect();
@@ -197,5 +215,149 @@ pub async fn answer_approval_gate(
         // The CAS found no pending row — already resolved. Silence and
         // double-answers cannot flip an outcome.
         None => Err(ApiError::Conflict("gate is already resolved".into())),
+    }
+}
+
+/// `PUT /workspaces/:id/approval-policy`: the lowest gate risk at which a
+/// model's accept through `approval_decide` needs a person to confirm it, or
+/// `null` for the default, `low` (every accept through the tool). It decides
+/// when a token may accept without a person, so it is `token:admin`, like the
+/// delegation policy. Audited in its own transaction.
+pub async fn set_approval_policy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetApprovalPolicy>,
+) -> ApiResult<Json<ApprovalPolicy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let actor = auth.actor_id;
+    let policy = state
+        .store
+        .set_approval_policy_audited(
+            workspace_id,
+            body.confirm_at,
+            Box::new(move |policy| NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(actor),
+                action: "approval_policy.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({
+                    "confirm_at": policy.confirm_at,
+                    "is_default": policy.is_default,
+                }),
+            }),
+        )
+        .await?;
+    Ok(Json(policy))
+}
+
+/// `GET /workspaces/:id/approval-policy`: the threshold in force.
+/// `workspace:read`: a member may know when a model's accept needs them.
+pub async fn get_approval_policy(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ApprovalPolicy>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    Ok(Json(state.store.get_approval_policy(workspace_id).await?))
+}
+
+/// Why a confirmation was refused before its link was looked at.
+const CONFIRM_NEEDS: &str = "confirming a model's approval request needs the signed-in console \
+     session of the person it was sent to, not a bearer token";
+
+/// `POST /ui/api/approval-confirmations/confirm`: a person confirms a model's
+/// request to accept a gate, from the link `approval_decide` gave them.
+///
+/// It takes the console session, not a token: the request has to carry the
+/// session cookie, come from the console page (the strict origin check), and
+/// pass [`acceptance_credential`] as a human member. It must be a session the
+/// person signed in to: one made from a token is refused, since the model
+/// holding that token could otherwise finish the confirmation itself. The link is
+/// bound to the member whose credential the model used, so only that person's
+/// session can spend it, and nobody confirms acceptance of their own request.
+/// The gate is recorded as decided via the client the model asked through.
+///
+/// A link that is unknown, someone else's, for another workspace, used or
+/// expired is one 404, so the route says nothing about any link but a live
+/// one of the caller's own.
+pub async fn confirm_approval_gate(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    session: Option<Extension<SessionContext>>,
+    headers: HeaderMap,
+    ApiJson(body): ApiJson<ConfirmApprovalGate>,
+) -> ApiResult<Json<ApprovalGate>> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    // Only a person's signed-in console session confirms. A session minted
+    // from a token carries that token's authority, so a model holding the
+    // token could otherwise exchange it and finish the confirmation itself,
+    // approval:grant or not.
+    let session = session
+        .map(|Extension(s)| s)
+        .filter(|s| s.token.is_none() && auth.token_id.is_none())
+        .ok_or_else(|| ApiError::Forbidden(CONFIRM_NEEDS.into()))?;
+    require_same_origin(&headers)?;
+    let token_hash = maidan_auth::approval_confirmation::token_hash(body.token.trim());
+    let confirmation = state
+        .store
+        .get_approval_confirmation_by_token(&token_hash)
+        .await?
+        .filter(|c| {
+            c.gate_id == body.gate_id
+                && c.workspace_id == auth.workspace_id
+                && c.member_id == auth.member_id
+        })
+        .ok_or(ApiError::NotFound)?;
+    let gate = state
+        .store
+        .get_approval_gate(confirmation.gate_id)
+        .await?
+        .filter(|g| g.workspace_id == auth.workspace_id)
+        .ok_or(ApiError::NotFound)?;
+    let asked = [Some(gate.requested_by), gate.requested_actor_id];
+    let answering = [auth.member_id, auth.actor_id];
+    if answering.iter().any(|m| asked.contains(&Some(*m))) {
+        return Err(ApiError::Forbidden(
+            "an approval cannot be granted by whoever requested it".into(),
+        ));
+    }
+    acceptance_credential(&state, &auth, Some(&session), &headers).await?;
+    let actor = auth.actor_id;
+    let outcome = state
+        .store
+        .confirm_approval_gate(
+            &token_hash,
+            auth.workspace_id,
+            auth.member_id,
+            chrono::Utc::now(),
+            Box::new(move |g: &ApprovalGate| NewAuditEvent {
+                scope: AuditScope::Workspace(g.workspace_id),
+                actor_id: Some(actor),
+                action: "approval_gate.decided".into(),
+                target_kind: Some("approval_gate".into()),
+                target_id: Some(g.id.0),
+                metadata: serde_json::json!({
+                    "surface": "console",
+                    "tool": "approval_decide",
+                    "decision": g.state,
+                    "path": "confirmation",
+                    "risk": g.risk,
+                    "client_name": g.decided_via.as_ref().and_then(|v| v.client_name.clone()),
+                    "client_version": g.decided_via.as_ref().and_then(|v| v.client_version.clone()),
+                    "model_asked": true,
+                }),
+            }),
+        )
+        .await?;
+    match outcome {
+        ConfirmOutcome::Accepted(gate) => Ok(Json(gate)),
+        ConfirmOutcome::NotFound => Err(ApiError::NotFound),
+        ConfirmOutcome::GateResolved => Err(ApiError::Conflict("gate is already resolved".into())),
     }
 }

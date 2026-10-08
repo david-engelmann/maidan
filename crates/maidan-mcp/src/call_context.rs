@@ -124,7 +124,8 @@ mod tests {
     #[test]
     fn a_long_client_name_is_bounded() {
         let long = "x".repeat(1000);
-        let call = CallContext::from_params(&json!({ "_meta": { META_CLIENT_INFO: { "name": long } } }));
+        let call =
+            CallContext::from_params(&json!({ "_meta": { META_CLIENT_INFO: { "name": long } } }));
         assert_eq!(call.client.name.map(|n| n.len()), Some(MAX_CLIENT_FIELD));
     }
 }

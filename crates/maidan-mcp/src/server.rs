@@ -103,9 +103,11 @@ pub const INSTRUCTIONS: &str = "Call `whoami` first. Then `claim_next_thread` or
 A claim is leased: `renew_claim` before `assignment_expires_at`, or the task returns to the queue. `acknowledge_claim`, `renew_claim`, and `release_claim` each send `claim_lease_id`, and you release on every exit you control. A claim that returns null has nothing ready; sleep and ask again, or call `wait_for_ready`. `request_approval` opens a gate and returns; poll `get_approval_gate`.\n\
 On `POST /mcp`, `tools/list` includes only tools your token can call. `POST /mcp/worker` and `POST /mcp/reviewer` each serve one fixed list, the same bytes for every caller. A tool your token cannot call is refused when you call it, on every endpoint.";
 
-/// Mark a result final. `2026-07-28` requires `resultType` on every result,
-/// and `"input_required"` is the multi-round-trip interim this server never
-/// sends. Earlier clients ignore the field, except in an empty result, which
+/// Mark a result final. `2026-07-28` requires `resultType` on every result.
+/// `"input_required"` is the multi-round-trip interim, which this server sends
+/// in one place: `approval_decide` asking a client that declared URL-mode
+/// elicitation to open a confirmation link, and that result keeps its own
+/// `resultType`. Earlier clients ignore the field, except in an empty result, which
 /// the official SDK reads strictly, so `ping` (gone from `2026-07-28`) is
 /// answered without it.
 fn complete(mut result: Value) -> Value {
@@ -924,14 +926,15 @@ impl McpServer {
         }
         let deadline = tools::deadline(name);
         let call = crate::call_context::CallContext::from_params(params);
-        let result = tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args, &call))
-            .await
-            .map_err(|_| {
-                McpError::Internal(format!(
-                    "tool {name} exceeded its {}s deadline",
-                    deadline.as_secs()
-                ))
-            })??;
+        let result =
+            tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args, &call))
+                .await
+                .map_err(|_| {
+                    McpError::Internal(format!(
+                        "tool {name} exceeded its {}s deadline",
+                        deadline.as_secs()
+                    ))
+                })??;
         self.queue_resource_updates(name, &args, &result, auth)
             .await;
         Ok(result)
