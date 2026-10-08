@@ -24,12 +24,13 @@ that way. See [Required protocol upgrades](#required-protocol-upgrades).
 the suite's frozen requirement sets for `2025-11-25` and `2026-07-28` against a
 dev instance. Every check that fails is listed with its reason in
 `scripts/mcp-conformance/`. Most are scenarios built on the suite's own fixture
-tools, or features Maidan does not declare. The rest are real `2026-07-28` gaps,
-tracked in Open Work. Per-request `_meta` is not validated (SEP-2575), and a
-method `2026-07-28` removed is still answered instead of 404 with -32601. A
-routing-header mismatch is not a JSON-RPC -32020 (SEP-2243). `tasks/*` is not
-answered -32021 (SEP-2663). So `2026-07-28` is negotiated and served, but not
-yet conformant in full. A request with no credential, the only kind a
+tools, or features Maidan does not declare. A `2026-07-28` request is told
+apart from an earlier one per request and held to that revision. Its `_meta`
+and routing headers are validated (SEP-2575, SEP-2243), and a method it removed
+answers 404 with -32601, so all of `server-stateless` and `http-header-validation`
+that does not need a fixture passes, while earlier clients keep their behaviour.
+Maidan does not implement the optional tasks extension (SEP-2663), so its checks
+stay listed with that reason. A request with no credential, the only kind a
 DNS-rebinding page could use, is refused when its `Host` or `Origin` names
 another site (see Production, "DNS rebinding").
 

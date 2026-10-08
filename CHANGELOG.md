@@ -96,6 +96,11 @@ Refs #1253
 - **Changed:** The Helm chart and `k8s/base` mount secrets as files under `/run/secrets/maidan` and name each in `<KEY>_FILE`, so no secret is in the pod's environment. An `existingSecret` is mounted with the keys in `secretFiles.existingSecretKeys`, and more Secrets go in `secretFiles.extra`. A key a Secret lacks stops the pod, and the render refuses a key the server cannot read from a file. `secretFiles.enabled: false` keeps envFrom. `maidan-stack` splits its datastores into a Secret, read as files, and a ConfigMap.
 - **Added:** `every_secret_the_server_reads_can_come_from_a_file` fails when a server variable whose name looks secret has no `_FILE` form, unless a reviewed list says why it is not a secret.
 
+### MCP `2026-07-28` requests are held to their revision
+
+- **Changed:** Each MCP request is placed in its revision. A `2026-07-28` request (that revision in `MCP-Protocol-Version`, or in `params._meta` with no header) must carry `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` in `_meta`, an `Mcp-Method` header, and an `Mcp-Name` header where the method names a target. A refusal is a JSON-RPC error with the request's id and HTTP 400: -32602 for missing `_meta` keys, -32020 for a missing or mismatched header, and -32022 with `requested` and `supported` for an unsupported revision. `initialize`, `ping`, `logging/setLevel`, `resources/subscribe` and `resources/unsubscribe` answer 404 with -32601 on that revision, as does an unknown method. Requests on earlier revisions are unchanged.
+- **Changed:** The official conformance suite passes 102 of 167 `2026-07-28` checks (from 78). The rest are fixture scenarios, features Maidan does not declare, and the optional tasks extension.
+
 ### `maidan mcp-stdio` speaks only JSON-RPC on stdout
 
 - **Fixed:** The `maidan` CLI wrote its log lines to stdout. For `mcp-stdio`, stdout is the protocol, so every stdio client got lines that were not JSON-RPC messages, one more per tool call since the request log. Logs now go to stderr for every `maidan` command, and `every_line_on_stdout_is_a_json_rpc_message` fails if one reaches stdout. Found running Maidan under a desktop MCP client.

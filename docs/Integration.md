@@ -779,10 +779,22 @@ two per kind (`effective`). `null` means not pruned.
 ### MCP streamable
 
 **`2026-07-28` (current, stateless):** send `MCP-Protocol-Version: 2026-07-28` on `POST /mcp/streamable`
-(or `POST /mcp`) — each request lands cold and returns a single JSON-RPC response; no `initialize`,
-no `Mcp-Session-Id`. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route
-without parsing the body; when present they must agree with the body, or the request is a `400`.
-Live-wait rides `GET /mcp/stream` / WS / the `wait_for_*` tools.
+(or `POST /mcp`). Each request lands cold and returns a single JSON-RPC response, with no `initialize`
+and no `Mcp-Session-Id`. On this revision every request also carries, as the revision requires:
+
+- `params._meta` with `io.modelcontextprotocol/protocolVersion` (equal to the header) and
+  `io.modelcontextprotocol/clientCapabilities`, and optionally `io.modelcontextprotocol/clientInfo`.
+- An `Mcp-Method` header equal to the body's method, and an `Mcp-Name` header equal to the tool or
+  prompt name, or the resource URI, on `tools/call`, `prompts/get` and `resources/read`.
+
+A request that breaks one of these gets a JSON-RPC error with its own id and HTTP `400`: -32602 for
+missing `_meta` keys, -32020 for a header that is missing or does not match, and -32022 (with
+`requested` and `supported`) for a revision this server does not speak. `initialize`, `ping`,
+`logging/setLevel`, `resources/subscribe` and `resources/unsubscribe` are not part of this revision
+and answer 404 with -32601, as does any method the server does not have. A request on an earlier
+revision (its revision in the header, or no header and no `_meta` revision) keeps that revision's
+behaviour, routing headers included, which are checked only when sent. Live-wait rides
+`GET /mcp/stream` / WS / the `wait_for_*` tools.
 
 `resources/subscribe` on a stateless request is heard on your own `GET /mcp/notifications` (or
 `GET /mcp/streamable` without a session id), on any replica: the subscription is kept in the
