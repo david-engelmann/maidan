@@ -261,10 +261,7 @@ async fn the_deploy_recipe_opens_and_reads_its_gate_over_mcp_2026_07_28() {
         stdout.contains(&format!("waiting on gate {gate_id}")),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("gate declined, not deploying"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("gate declined, not deploying"), "{stdout}");
     let result: Value = http
         .get(format!("{base}/threads/{}/result", thread.id.0))
         .bearer_auth(&person_token)
