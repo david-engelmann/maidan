@@ -54,6 +54,15 @@ CI ran.
 |---|---|---|---|
 | (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main`. On 2026-10-07 the local stack still ran `905a3c31` (#1272), before #1276 and #1279. After #1279 an instance with no `MAIDAN_GITHUB_WRITE_REPOS` refuses every GitHub write, and mark-ready answers only the app named by `MAIDAN_MARK_READY_APP_ID`, so the redeploy sets both. Then Soundcheck flips agent-skills#11 and one fresh open draft in bgv3, each re-read to confirm it is no longer a draft | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
+| #1303 | A late channel lookup does not undo a channel picked since (the palette spec flake) | In review | — |
+| #1292 | A board harness fails when the page script writes | In review | — |
+| #1295 | Needs you shows blocked items, with Unblock | In review | — |
+| #1293 | Code, docs and tests use neutral names for the mark-ready app and example repositories. No route, field, header or variable changes | In review | — |
+| #1297 | Usage normalizers in all four SDKs, from recorded provider responses (Next 18, PR 1 of 2) | In review | — |
+| #1299 | Boot-pack cache helpers, cache keys, gateway sessions and harness recipes (Next 18, PR 2 of 2, stacked on #1297) | In review | — |
+| #1291 | Pick DM and group DM members by name, not id (Next 5) | In review | — |
+| #1298 | The header names the credential, and errors use its words (Next 4, part 1 of 2) | In review | — |
+| #1301 | `showError` with a severity is the one feedback surface (Next 4, part 2 of 2) | In review | — |
 | #1305 | A member holds one verdict on a message and can take a vote back, with a `vote_retracted` event (Next 2, second part) | In review | — |
 | #1306 | Approve in the console can carry an optional note (Next 2, last part) | In review | — |
 | #1302 | Holds a `2026-07-28` request to its revision: `_meta` and routing headers validated, removed methods 404 with -32601, earlier revisions unchanged. The conformance suite passes 102 of 167 `2026-07-28` checks (Next 8) | In review | — |
