@@ -27,10 +27,15 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ArtifactKind, BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewArtifact, NewChannel,
-    NewMember, NewMessage, NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
+    NewMaidanSession, NewMember, NewMessage, NewThread, NewWebhookSubscription, NewWorkspace,
+    ReviewDecision,
 };
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
+
+/// Signs every browser session the harness serves: the token exchange's and
+/// the seeded signed-in session's.
+const UI_SESSION_SECRET: &[u8] = b"ui-test-session-secret-at-least-32-bytes";
 
 #[tokio::main]
 async fn main() {
@@ -1009,6 +1014,37 @@ async fn main() {
         .await
         .expect("quarantine");
 
+    // The operator signed in through the identity provider: the session row
+    // an OIDC callback writes, with no token behind it, so a spec can drive the
+    // console as a person rather than as a pasted token. Accepting a gate
+    // needs this (or approval:grant); the harness has no identity provider,
+    // so the row is written here and the spec sets its cookie.
+    let signed_in = store
+        .create_session(NewMaidanSession {
+            workspace_id: ws.id,
+            member_id: member.id,
+            api_token_id: None,
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(8),
+        })
+        .await
+        .expect("signed-in session");
+    let mut cookie_headers = axum::http::HeaderMap::new();
+    maidan_server::session::set_session_cookie(
+        &mut cookie_headers,
+        signed_in.id,
+        28_800,
+        false,
+        UI_SESSION_SECRET,
+    )
+    .expect("session cookie");
+    let session_cookie = cookie_headers
+        .get(axum::http::header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .and_then(|pair| pair.strip_prefix("maidan_session="))
+        .expect("session cookie value")
+        .to_string();
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -1029,7 +1065,7 @@ async fn main() {
     state.subscribe_resume_secret = Some(Arc::from(&b"ui-test-subscribe-resume-secret-32b"[..]));
     // A pasted token is exchanged for a browser session, as in production.
     state.sessions = Some(maidan_server::session::SessionSettings {
-        secret: Arc::from(&b"ui-test-session-secret-at-least-32-bytes"[..]),
+        secret: Arc::from(UI_SESSION_SECRET),
         ttl_secs: 3600,
         cookie_secure: false,
     });
@@ -1037,6 +1073,7 @@ async fn main() {
     let fixtures = serde_json::json!({
         "base_url": format!("http://127.0.0.1:{port}"),
         "token": secret.as_str(),
+        "session_cookie": session_cookie,
         "requester_token": requester_secret.as_str(),
         "live_token": live_secret.as_str(),
         "workspace_id": ws.id.0.to_string(),

@@ -283,6 +283,10 @@ describe("board page helpers", { concurrency: 1 }, () => {
       "Your token is not allowed to do this; it needs thread:write. Mint a token with it in Tokens",
     );
     assert.equal(
+      humanError(403, "missing capability: approval:grant. Accepting an approval gate needs a browser session"),
+      "Your token is not allowed to do this; it needs approval:grant. Accepting a gate needs you signed in through your identity provider, or a token an admin granted approval:grant. You can still decline or cancel it",
+    );
+    assert.equal(
       humanError(403, "forbidden"),
       "Your token is not allowed to do this. Mint one with the right capability in Tokens",
     );
