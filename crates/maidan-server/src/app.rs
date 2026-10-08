@@ -1365,6 +1365,11 @@ pub fn router(state: AppState) -> Router {
             state.clone(),
             room_lsn::middleware,
         ))
+        // Inside the rate limiter, so a refused rebinding attempt still counts.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::rebinding::middleware,
+        ))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit::middleware,

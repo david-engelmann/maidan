@@ -3673,7 +3673,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "search_messages",
-            "description": "Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets.",
+            "description": "Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets, each naming its channel (channel_name), thread (thread_title) and author (author_handle) beside their ids.",
             "annotations": {
                 "title": "Search messages",
                 "readOnlyHint": true,
