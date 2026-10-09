@@ -139,10 +139,15 @@ retries it.
   `userName` another member of the workspace holds is `409` with
   `scimType: uniqueness`. Deactivation (`active=false`, also Entra ID's string
   `"False"`) and delete revoke the member's API tokens; delete also removes the
-  user from every group. Both also revoke the delegation grants the member holds as delegate,
-  so a token exchanged under one stops working too, and delete removes the
-  member's browser sessions, since no SCIM link is left to say the person is
-  gone. `displayName` is set at creation and not changed
+  user from every group. Both also revoke the delegation grants the member
+  holds as delegate, so a token exchanged under one stops working too. A
+  deactivated member cannot sign in through OIDC (the callback answers `403`),
+  and a browser session they already hold is refused from its next request on.
+  That request also deletes the session, audited as `session.delete` with
+  reason `member_deactivated`. If the delete fails, the request is still
+  refused and the next one tries again. Delete removes the member's browser
+  sessions in the same transaction, since no SCIM link is left to say the
+  person is gone. `displayName` is set at creation and not changed
   afterwards.
 - **Groups.** A group is the IdP's named set of users it provisioned into the
   workspace. It records membership and grants nothing by itself: no channel
