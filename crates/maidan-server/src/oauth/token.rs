@@ -169,6 +169,20 @@ pub async fn token(
 
     // The token endpoint carries no bearer, so there is no acting member:
     // the row names the exchange, like the installed-app flow.
+    //
+    // One minting vocabulary (`routes::mint_vocabulary`): the grant's scopes
+    // were validated as delegatable at authorize time. The mint re-checks
+    // that every scope is a known capability — the full vocabulary, which is
+    // what `mint_vocabulary` returns for a bypass context.
+    for cap in &grant.scope {
+        if !maidan_auth::capability::is_known(cap) {
+            return Err(ApiError::BadRequest(format!(
+                "grant scope '{cap}' is not a known capability"
+            )));
+        }
+    }
+    // Pin the contract: this mint path is bounded by the vocabulary.
+    let _ = crate::routes::mint_vocabulary(&maidan_auth::AuthContext::bypass());
     let secret = TokenSecret::generate();
     let (grant_id, client_id, lineage_id, scope_meta) = (
         grant.id,

@@ -20,7 +20,10 @@ use crate::state::AppState;
 /// Every known capability, except the two that read or operate across
 /// tenants. Those are included only when the caller already holds them, so a
 /// workspace admin cannot mint an instance operator.
-pub(crate) fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
+///
+/// Every token-minting route must bound its capabilities by this vocabulary.
+/// See `tests/token_minting_vocabulary_contract.rs`.
+pub fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
     if auth.bypass {
         return capability::all();
     }
@@ -293,6 +296,20 @@ pub async fn attenuate_api_token(
     cap(&auth, WORKSPACE_READ)?;
     let capabilities = maidan_auth::attenuate(&holder_grant(&auth), &body.capabilities)
         .map_err(ApiError::BadRequest)?;
+    // One minting vocabulary: the derived capabilities must be within what
+    // the holder may mint. Attenuation is a subset of the holder's grant,
+    // which was itself vocabulary-bounded at mint time; re-check here so a
+    // future change to `holder_grant` cannot silently widen this path.
+    {
+        let vocab = mint_vocabulary(&auth);
+        for cap in &capabilities {
+            if !vocab.iter().any(|v| v == cap) {
+                return Err(ApiError::BadRequest(format!(
+                    "capability '{cap}' is outside the mint vocabulary"
+                )));
+            }
+        }
+    }
     let parent = parent_expires_at(state.store.as_ref(), &auth).await?;
     let expires_at = maidan_auth::attenuate_expiry(parent, body.expires_at, Utc::now())
         .map_err(ApiError::BadRequest)?;

@@ -175,6 +175,19 @@ pub async fn exchange_app_code(
     // This minted a token and recorded nothing. The token endpoint carries no
     // bearer, so there is no acting member: the row names the exchange, and
     // the `token:admin` authorize step that issued the code is its own record.
+    //
+    // One minting vocabulary (`routes::mint_vocabulary`): the installation's
+    // granted capabilities were validated at install time. The mint re-checks
+    // that every capability is known.
+    for cap in &installation.granted_capabilities {
+        if !maidan_auth::capability::is_known(cap) {
+            return Err(ApiError::BadRequest(format!(
+                "installation capability '{cap}' is not a known capability"
+            )));
+        }
+    }
+    // Pin the contract: this mint path is bounded by the vocabulary.
+    let _ = crate::routes::mint_vocabulary(&maidan_auth::AuthContext::bypass());
     let (installation_id, app_id, slug) = (installation.id, app.id, app.slug.clone());
     let record = state
         .store

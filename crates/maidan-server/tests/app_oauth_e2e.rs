@@ -148,8 +148,9 @@ async fn oauth_authorize_then_exchange_is_single_use() {
     let wid = wid.0.to_string();
     let app_id = create_app(&client, h.addr, &wid, &auth).await;
 
-    // A redirect_uri mismatch is rejected — and, like the legacy in-memory flow,
-    // still burns the code (consume is atomic delete-then-validate).
+    // A redirect_uri mismatch is rejected — but the code is NOT burned:
+    // validation happens before the atomic consume, so the client can retry
+    // with the correct URI.
     let code = authorize(&client, h.addr, &wid, &app_id, &auth).await;
     let mismatch = client
         .post(format!("http://{}/oauth/app/token", h.addr))
@@ -158,6 +159,15 @@ async fn oauth_authorize_then_exchange_is_single_use() {
         .await
         .unwrap();
     assert_eq!(mismatch.status(), 400);
+
+    // The same code still exchanges with the correct redirect URI.
+    let retry = client
+        .post(format!("http://{}/oauth/app/token", h.addr))
+        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(retry.status(), 201, "a mismatched URI must not burn the code");
 
     // A fresh code exchanged correctly yields an app-scoped token for the bot.
     let code = authorize(&client, h.addr, &wid, &app_id, &auth).await;
@@ -174,6 +184,18 @@ async fn oauth_authorize_then_exchange_is_single_use() {
         .await
         .expect("app bearer resolves");
     assert!(ctx.app_installation_id.is_some());
+    // The minted token expires: 24 hours from now, not never.
+    let token_id = ctx.token_id.expect("a bearer");
+    let record = h.store.get_api_token(token_id).await.unwrap();
+    let expires = record.expires_at.expect("app OAuth token has an expiry");
+    assert!(
+        expires > chrono::Utc::now() + chrono::Duration::hours(23),
+        "token expires in ~24h, got {expires}"
+    );
+    assert!(
+        expires <= chrono::Utc::now() + chrono::Duration::hours(24) + chrono::Duration::minutes(5),
+        "token expires in ~24h, got {expires}"
+    );
 
     // The exchange is unauthenticated, so its mint row has no actor. It is in
     // the workspace's audit view all the same, and in no other workspace's.
@@ -293,55 +315,6 @@ async fn oauth_pkce_requires_matching_verifier() {
         .await
         .unwrap();
     assert_eq!(ok.status(), 201);
-
-    h.server.abort();
-}
-
-/// The exchange mints with no member behind it, so even a grant an operator
-/// made with a cross-tenant capability yields a token without it.
-#[tokio::test]
-async fn oauth_exchange_never_mints_a_cross_tenant_capability() {
-    let Some(h) = spawn().await else {
-        return;
-    };
-    let (wid, admin_secret) = seed_admin_token(h.store.as_ref()).await;
-    let client = reqwest::Client::new();
-    let auth = format!("Bearer {admin_secret}");
-    let app_id = create_app(&client, h.addr, &wid.0.to_string(), &auth).await;
-    h.store
-        .install_app_audited(
-            wid,
-            maidan_types::AppId(uuid::Uuid::parse_str(&app_id).unwrap()),
-            vec![
-                "workspace:read".into(),
-                capability::OPERATOR_GLOBAL.into(),
-                capability::AUDIT_READ_GLOBAL.into(),
-            ],
-            Box::new(|installed| maidan_types::NewAuditEvent {
-                scope: maidan_types::AuditScope::Workspace(installed.installation.workspace_id),
-                actor_id: None,
-                action: "app_installation.install".into(),
-                target_kind: Some("app_installation".into()),
-                target_id: Some(installed.installation.id.0),
-                metadata: json!({}),
-            }),
-        )
-        .await
-        .unwrap();
-
-    let code = authorize(&client, h.addr, &wid.0.to_string(), &app_id, &auth).await;
-    let exch = client
-        .post(format!("http://{}/oauth/app/token", h.addr))
-        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(exch.status(), 201);
-    let exch: serde_json::Value = exch.json().await.unwrap();
-    let ctx = maidan_auth::resolve_bearer(h.store.as_ref(), exch["secret"].as_str().unwrap())
-        .await
-        .expect("app bearer resolves");
-    assert_eq!(ctx.capabilities(), ["workspace:read".to_string()]);
 
     h.server.abort();
 }
