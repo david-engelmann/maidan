@@ -85,6 +85,26 @@ test("an open thread under review has one filled Approve: the thread's", async (
   await expect(other).toHaveClass(/\bghost\b/);
 });
 
+test("dismissing a row's note while its thread is open leaves one filled Approve", async ({ page }) => {
+  await openChannel(page, fx.review_token, fx.desk_channel_id);
+  const row = page.locator(`#needs-you-list .ny-item[data-thread-id="${fx.desk_waiting_thread_id}"]`);
+  const rowApprove = row.locator(".ny-actions button", { hasText: /^Approve$/ });
+  await row.locator(".ny-actions button", { hasText: "Approve with note" }).click();
+  const note = row.locator(".ny-note input");
+  await expect(note).toBeFocused();
+  await note.fill("looks right");
+  // The note's send is the row's filled button now; Approve stepped back.
+  await expect(rowApprove).not.toHaveClass(/\bprimary\b/);
+  await page.locator(`#board .card[data-id="${fx.desk_waiting_thread_id}"]`).click();
+  await expect(page.locator("#thread-actions button", { hasText: "Approve" })).toHaveClass(/\bprimary\b/);
+  // Escape gives Approve its fill back, and the open thread takes it again.
+  await note.press("Escape");
+  await expect(row.locator(".ny-note")).toHaveCount(0);
+  await expect(rowApprove).toHaveClass(/\bghost\b/);
+  await expect(rowApprove).not.toHaveClass(/\bprimary\b/);
+  await expect(rowApprove).not.toHaveAttribute("data-restore-primary", /.*/);
+});
+
 test("Post is filled when the open thread has no decision for me", async ({ page }) => {
   await openChannel(page, fx.token, fx.board_channel_id);
   await page.locator(`#board .card[data-id="${fx.board_open_thread_id}"]`).click();

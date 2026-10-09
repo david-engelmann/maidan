@@ -1008,6 +1008,17 @@ import { answerGate, modelRequestLine } from "./tools.js";
         input.oninput = () => {
           send.disabled = changes && !input.value.trim();
         };
+        // Dismissing or sending the note gives Approve its fill back, then
+        // re-checks the screen: if this task's thread opened meanwhile, its
+        // Approve is the filled one and the row's steps back again.
+        const restorePrimary = () => {
+          li.querySelectorAll("[data-restore-primary]").forEach((el) => {
+            const b = /** @type {HTMLElement} */ (el);
+            b.classList.add("primary");
+            delete b.dataset.restorePrimary;
+          });
+          syncFilledButton();
+        };
         // The note is the decision for this row now, so Approve stops being the
         // filled button until the note is dismissed.
         li.querySelectorAll(".ny-actions button.primary").forEach((b) => {
@@ -1019,7 +1030,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
           const note = input.value.trim() || undefined;
           if (!changes) {
             row.remove();
-            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+            restorePrimary();
             return approveFromInbox(item, li, note);
           }
           const out = await submitReview(item.thread_id, "request_changes", note, send);
@@ -1034,7 +1045,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
           if (e.key === "Enter") go();
           if (e.key === "Escape") {
             row.remove();
-            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+            restorePrimary();
           }
         };
         row.append(input, send);
