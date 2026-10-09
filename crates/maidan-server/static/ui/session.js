@@ -440,8 +440,12 @@ import { tokenKey, wsResumeKey } from "./state.js";
       // to the chosen workspace, never a session minted from this one.
       /** @type {{workspace_id: string, name: string, member_id: string, handle: string, current: boolean}[]} */
       let switchable = [];
+      // A newer load or hide wins over an older load still in flight, so a
+      // late answer for an earlier session never reveals the switcher.
+      let switcherGen = 0;
 
       function hideWorkspaceSwitcher() {
+        switcherGen += 1;
         switchable = [];
         document.getElementById("ws-switch").hidden = true;
         closeWorkspaceSwitcher();
@@ -449,14 +453,22 @@ import { tokenKey, wsResumeKey } from "./state.js";
 
       async function loadWorkspaceSwitcher() {
         if (!sessionMemberId || tokenSession) return hideWorkspaceSwitcher();
+        const gen = ++switcherGen;
+        let listed = [];
         try {
           const res = await api(`${base()}/auth/session/workspaces`, { credentials: "include" });
+          if (gen !== switcherGen) return;
           if (!res.ok) return hideWorkspaceSwitcher();
           const body = await res.json();
-          switchable = Array.isArray(body.workspaces) ? body.workspaces : [];
+          listed = Array.isArray(body.workspaces) ? body.workspaces : [];
         } catch (_e) {
-          return hideWorkspaceSwitcher();
+          if (gen === switcherGen) hideWorkspaceSwitcher();
+          return;
         }
+        if (gen !== switcherGen) return;
+        // The session may have changed while the list was on its way.
+        if (!sessionMemberId || tokenSession) return hideWorkspaceSwitcher();
+        switchable = listed;
         document.getElementById("ws-switch").hidden = switchable.length < 2;
       }
 

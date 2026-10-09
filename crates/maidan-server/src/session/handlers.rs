@@ -312,5 +312,8 @@ pub async fn list_session_workspaces(
                 current: false,
             }),
     );
+    // The current workspace may have been fetched on its own, beside a full
+    // page of listed ones: the response still holds at most the limit.
+    workspaces.truncate(usize::try_from(SESSION_WORKSPACES_LIMIT).unwrap_or(usize::MAX));
     Ok(Json(SessionWorkspaces { workspaces }))
 }
