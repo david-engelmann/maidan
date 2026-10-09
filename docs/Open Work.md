@@ -54,7 +54,6 @@ CI ran.
 | PR | What it does | State (2026-10-09) | Merge after |
 |---|---|---|---|
 | #1324 | OAuth phase zero (Next 23): RFC 9728 resource metadata for `/mcp/streamable` and its `WWW-Authenticate` challenge, off until `MAIDAN_PUBLIC_ORIGIN` is set, and `docs/OAuth.md` as the plan | Merge loop | — |
-| #1328 | The approval card keeps its decider across a reload and says who linked each artifact (the two #1316 follow-ups) | Merge loop | — |
 | #1340 | Next 20: Kani proofs of capability containment and cursor arithmetic, run locally | Conflicts with `main` (grokbot) | — |
 | #1345 | The hosted-console design note, approved as Next 6's design | Review (grokbot) | — |
 | #1346 | A member deactivated through SCIM cannot sign in, and their session ends | Merge loop | — |
