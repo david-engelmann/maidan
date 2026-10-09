@@ -123,6 +123,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub anonymous pulls are rate-limited (429); use the GCR mirror.
+      - name: configure docker registry mirror
+        run: |
+          sudo mkdir -p /etc/docker
+          if [ -f /etc/docker/daemon.json ]; then
+            sudo jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json > /dev/null
+          else
+            echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+          fi
+          sudo systemctl restart docker || sudo service docker restart || true
       - uses: helm/kind-action@v1
         with:
           install_only: true
@@ -397,6 +407,16 @@ jobs:
         options: --privileged
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub anonymous pulls are rate-limited (429); use the GCR mirror.
+      - name: configure docker registry mirror
+        run: |
+          sudo mkdir -p /etc/docker
+          if [ -f /etc/docker/daemon.json ]; then
+            sudo jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json > /dev/null
+          else
+            echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+          fi
+          sudo systemctl restart docker || sudo service docker restart || true
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -460,6 +480,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub anonymous pulls are rate-limited (429); use the GCR mirror.
+      - name: configure docker registry mirror
+        run: |
+          sudo mkdir -p /etc/docker
+          if [ -f /etc/docker/daemon.json ]; then
+            sudo jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json > /dev/null
+          else
+            echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+          fi
+          sudo systemctl restart docker || sudo service docker restart || true
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -500,6 +530,16 @@ jobs:
         options: --privileged
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub anonymous pulls are rate-limited (429); use the GCR mirror.
+      - name: configure docker registry mirror
+        run: |
+          sudo mkdir -p /etc/docker
+          if [ -f /etc/docker/daemon.json ]; then
+            sudo jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json > /dev/null
+          else
+            echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+          fi
+          sudo systemctl restart docker || sudo service docker restart || true
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -550,6 +590,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub anonymous pulls are rate-limited (429); use the GCR mirror.
+      - name: configure docker registry mirror
+        run: |
+          sudo mkdir -p /etc/docker
+          if [ -f /etc/docker/daemon.json ]; then
+            sudo jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json > /dev/null
+          else
+            echo '{"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee /etc/docker/daemon.json > /dev/null
+          fi
+          sudo systemctl restart docker || sudo service docker restart || true
       - name: validate quickstart stack
         # No network/build: guards the one-command quickstart files from bit-rot
         # (compose validity + build-context/dockerfile resolution + script syntax).
