@@ -1,0 +1,129 @@
+{
+  "realm": "maidan-mcp-reference",
+  "displayName": "Maidan MCP reference authorization server (development only)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 300,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "clients": [
+    {
+      "clientId": "maidan-mcp",
+      "name": "Maidan MCP endpoint",
+      "description": "The protected resource. It has no flows of its own: it exists so that the resource-indicators feature knows the MCP endpoint's canonical URI.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "attributes": {
+        "resource_url": "http://127.0.0.1:8080/mcp"
+      }
+    },
+    {
+      "clientId": "mcp-dev-client",
+      "name": "Pre-registered development MCP client",
+      "description": "A public client with S256 PKCE and the code flow only, for the pre-registration path of the MCP authorization spec.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "consentRequired": true,
+      "redirectUris": ["http://127.0.0.1:33418/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience: maidan-mcp",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "maidan-mcp",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clientProfiles": {
+    "profiles": [
+      {
+        "name": "mcp-cimd-loopback-dev",
+        "description": "Client ID Metadata Documents served from this machine's loopback interface. Development only: production allows https and named domains only.",
+        "executors": [
+          {
+            "executor": "client-id-metadata-document",
+            "configuration": {
+              "cimd-allow-http-scheme": "true",
+              "cimd-allow-permitted-domains": ["127.0.0.1", "localhost"],
+              "cimd-restrict-same-domain": "false",
+              "only-allow-confidential-client": "false",
+              "accept-public-client-with-confidential-client-only-grant": "false",
+              "cimd-resource-indicator-allow-list": ["http://127.0.0.1:8080/mcp"]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "clientPolicies": {
+    "policies": [
+      {
+        "name": "mcp-cimd-loopback-dev",
+        "description": "A client_id that is a loopback URL is a Client ID Metadata Document.",
+        "enabled": true,
+        "conditions": [
+          {
+            "condition": "client-id-uri",
+            "configuration": {
+              "client-id-uri-scheme": ["http"],
+              "client-id-uri-allow-permitted-domains": ["127.0.0.1", "localhost"]
+            }
+          }
+        ],
+        "profiles": ["mcp-cimd-loopback-dev"]
+      }
+    ]
+  },
+  "components": {
+    "org.keycloak.services.clientregistration.policy.ClientRegistrationPolicy": [
+      {
+        "name": "Trusted Hosts",
+        "providerId": "trusted-hosts",
+        "subType": "anonymous",
+        "config": {
+          "trusted-hosts": ["127.0.0.1", "localhost"],
+          "host-sending-registration-request-must-match": ["true"],
+          "client-uris-must-match": ["true"]
+        }
+      },
+      {
+        "name": "Consent Required",
+        "providerId": "consent-required",
+        "subType": "anonymous",
+        "config": {}
+      },
+      {
+        "name": "Max Clients Limit",
+        "providerId": "max-clients",
+        "subType": "anonymous",
+        "config": {
+          "max-clients": ["200"]
+        }
+      }
+    ]
+  }
+}
