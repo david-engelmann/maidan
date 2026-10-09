@@ -547,8 +547,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # A cold image build of the server takes about 14 minutes on a loaded
-    # runner, so 15 cancelled passing runs (2026-10-09).
+    # A cold image build of the server took 14 m 12 s on a loaded runner on
+    # 2026-10-09, and two runs hit the old 15-minute limit mid-build.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -760,8 +760,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # A cold image build of the server takes about 14 minutes on a loaded
-    # runner, so 15 cancelled passing runs (2026-10-09).
+    # Builds the same server image; its last pass on 2026-10-09 took about
+    # 15 minutes, at the old limit.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
