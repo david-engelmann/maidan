@@ -1916,12 +1916,6 @@ Refs #1253
 
 - **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
 
-### OAuth authorization server, phase one: discovery and metadata
-
-### OAuth phase one: the MCP endpoint describes itself as a protected resource
-
-- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` (and the root form) serves the MCP endpoint's RFC 9728 metadata, and a 401 from an MCP route carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. Other 401s carry no challenge. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
-
 ### OAuth phase one: the MCP endpoint describes itself as a protected resource
 
 - **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` serves the MCP endpoint's RFC 9728 metadata, and a 401 from `/mcp/streamable` carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and there is no root-form document, since RFC 9728 has a client reject metadata whose `resource` is not the URL it asked. `MAIDAN_PUBLIC_ORIGIN` must be an `https` origin, or `http` on a loopback host, with no path, query or credentials, or boot refuses it. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
