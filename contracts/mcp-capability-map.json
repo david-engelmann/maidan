@@ -9,6 +9,7 @@
   "add_thread_dependency": "thread:transition",
   "add_thread_required_skill": "thread:transition",
   "advise_land_gate": "thread:transition",
+  "approval_decide": "workspace:write",
   "allow_secret_egress_host": "secret:admin",
   "assign_thread": "thread:transition",
   "attach_memory_block": "workspace:write",

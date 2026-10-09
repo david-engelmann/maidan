@@ -16,14 +16,21 @@ use maidan_types::{
 pub(crate) struct Author {
     pub member: MemberId,
     pub actor: Option<MemberId>,
+    /// Written before migration 0147 recorded who acted, by a member who has
+    /// delegated at some point: a delegate may have carried it, and which one
+    /// is not known.
+    pub actor_unknown: bool,
 }
 
 impl Author {
     /// A worker's evidence is the work's own account, whoever's token carried
     /// it: a delegate that worked the thread does not launder its evidence
-    /// through a member who did not.
+    /// through a member who did not. Evidence whose actor is unknown is not
+    /// shown to be independent, so it counts as the work's own.
     fn is_worker(&self, workers: &HashSet<MemberId>) -> bool {
-        workers.contains(&self.member) || self.actor.is_some_and(|a| workers.contains(&a))
+        self.actor_unknown
+            || workers.contains(&self.member)
+            || self.actor.is_some_and(|a| workers.contains(&a))
     }
 
     fn tier(&self, workers: &HashSet<MemberId>) -> AttestationTier {
@@ -148,7 +155,8 @@ mod tests {
     fn by(m: MemberId) -> Author {
         Author {
             member: m,
-            actor: None,
+            actor: Some(m),
+            actor_unknown: false,
         }
     }
 
@@ -197,6 +205,7 @@ mod tests {
         let borrowed = Author {
             member: reviewer,
             actor: Some(worker),
+            actor_unknown: false,
         };
         let a = "a".repeat(64);
         let tiers = attest(
@@ -210,6 +219,27 @@ mod tests {
             .iter()
             .all(|t| t.tier == AttestationTier::SelfReported));
         assert!(tiers.iter().all(|t| t.attested_by == reviewer));
+    }
+
+    #[test]
+    fn evidence_whose_actor_is_unknown_is_not_shown_to_be_independent() {
+        let (worker, owner) = (member(1), member(2));
+        let workers = HashSet::from([worker]);
+        let a = "a".repeat(64);
+        let unknown = Author {
+            member: owner,
+            actor: None,
+            actor_unknown: true,
+        };
+        let tiers = attest(
+            &manifest(None, &[&a]),
+            None,
+            &[(a.clone(), unknown)],
+            &workers,
+            &GateReading::Unarmed,
+        );
+        assert_eq!(tiers[0].tier, AttestationTier::SelfReported);
+        assert_eq!(tiers[0].attested_by, owner);
     }
 
     #[test]

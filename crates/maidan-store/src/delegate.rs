@@ -638,6 +638,86 @@ macro_rules! store_delegations {
             ) -> Result<Option<ApprovalGate>, StoreError> {
                 approval_gates::resolve(self.pool(), id, resolved_by, state, content).await
             }
+
+            async fn resolve_approval_gate_audited(
+                &self,
+                id: ApprovalGateId,
+                resolved_by: MemberId,
+                state: ApprovalGateState,
+                content: Option<&serde_json::Value>,
+                via: &GateDecisionVia,
+                audit: crate::AuditFor<ApprovalGate>,
+            ) -> Result<Option<ApprovalGate>, StoreError> {
+                approval_gates::resolve_audited(
+                    self.pool(),
+                    id,
+                    resolved_by,
+                    state,
+                    content,
+                    via,
+                    audit,
+                )
+                .await
+            }
+
+            async fn get_approval_policy(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<ApprovalPolicy, StoreError> {
+                approval_gates::get_policy(self.pool(), workspace_id).await
+            }
+
+            async fn set_approval_policy_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                confirm_at: Option<ApprovalRisk>,
+                audit: crate::AuditFor<ApprovalPolicy>,
+            ) -> Result<ApprovalPolicy, StoreError> {
+                approval_gates::set_policy_audited(self.pool(), workspace_id, confirm_at, audit)
+                    .await
+            }
+
+            async fn issue_approval_confirmation(
+                &self,
+                new: &NewApprovalConfirmation,
+                audit: crate::AuditFor<ApprovalConfirmation>,
+            ) -> Result<(ApprovalConfirmation, bool), StoreError> {
+                approval_gates::issue_confirmation(self.pool(), new, audit).await
+            }
+
+            async fn get_approval_confirmation_by_token(
+                &self,
+                token_hash: &str,
+            ) -> Result<Option<ApprovalConfirmation>, StoreError> {
+                approval_gates::get_confirmation_by_token(self.pool(), token_hash).await
+            }
+
+            async fn list_live_approval_confirmations(
+                &self,
+                workspace_id: WorkspaceId,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<Vec<ApprovalConfirmation>, StoreError> {
+                approval_gates::list_live_confirmations(self.pool(), workspace_id, now).await
+            }
+
+            async fn confirm_approval_gate(
+                &self,
+                token_hash: &str,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                now: chrono::DateTime<chrono::Utc>,
+                audit: crate::AuditFor<ApprovalGate>,
+            ) -> Result<ConfirmOutcome, StoreError> {
+                approval_gates::confirm(
+                    self.pool(),
+                    token_hash,
+                    workspace_id,
+                    member_id,
+                    now,
+                    audit,
+                )
+                .await
+            }
         }
     };
     ($store:ty, GlossaryStore) => {

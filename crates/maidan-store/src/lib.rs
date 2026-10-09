@@ -4,6 +4,7 @@
 //! and SQLite implementations backed by `sqlx`.
 
 pub mod a2a;
+pub mod approval_policy;
 pub mod attribution;
 
 /// The audit row an authority-changing store call writes in its own

@@ -296,3 +296,52 @@ async fn oauth_pkce_requires_matching_verifier() {
 
     h.server.abort();
 }
+
+/// The exchange mints with no member behind it, so even a grant an operator
+/// made with a cross-tenant capability yields a token without it.
+#[tokio::test]
+async fn oauth_exchange_never_mints_a_cross_tenant_capability() {
+    let Some(h) = spawn().await else {
+        return;
+    };
+    let (wid, admin_secret) = seed_admin_token(h.store.as_ref()).await;
+    let client = reqwest::Client::new();
+    let auth = format!("Bearer {admin_secret}");
+    let app_id = create_app(&client, h.addr, &wid.0.to_string(), &auth).await;
+    h.store
+        .install_app_audited(
+            wid,
+            maidan_types::AppId(uuid::Uuid::parse_str(&app_id).unwrap()),
+            vec![
+                "workspace:read".into(),
+                capability::OPERATOR_GLOBAL.into(),
+                capability::AUDIT_READ_GLOBAL.into(),
+            ],
+            Box::new(|installed| maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(installed.installation.workspace_id),
+                actor_id: None,
+                action: "app_installation.install".into(),
+                target_kind: Some("app_installation".into()),
+                target_id: Some(installed.installation.id.0),
+                metadata: json!({}),
+            }),
+        )
+        .await
+        .unwrap();
+
+    let code = authorize(&client, h.addr, &wid.0.to_string(), &app_id, &auth).await;
+    let exch = client
+        .post(format!("http://{}/oauth/app/token", h.addr))
+        .json(&json!({"code": code, "redirect_uri": "https://app.example/cb"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(exch.status(), 201);
+    let exch: serde_json::Value = exch.json().await.unwrap();
+    let ctx = maidan_auth::resolve_bearer(h.store.as_ref(), exch["secret"].as_str().unwrap())
+        .await
+        .expect("app bearer resolves");
+    assert_eq!(ctx.capabilities(), ["workspace:read".to_string()]);
+
+    h.server.abort();
+}

@@ -20,7 +20,7 @@ use crate::state::AppState;
 /// Every known capability, except the two that read or operate across
 /// tenants. Those are included only when the caller already holds them, so a
 /// workspace admin cannot mint an instance operator.
-fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
+pub(crate) fn mint_vocabulary(auth: &AuthContext) -> Vec<String> {
     if auth.bypass {
         return capability::all();
     }

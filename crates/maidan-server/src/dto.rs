@@ -6,12 +6,12 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
-    ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId, EgressSurface,
-    EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member,
-    MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision,
-    ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy,
-    TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ApprovalGateId, ApprovalRisk, ArtifactKind,
+    BlockedReason, ChannelId, ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId,
+    EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor,
+    LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
+    RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency,
+    ThreadId, TokenPolicy, TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -395,6 +395,41 @@ pub struct AnswerApprovalGate {
 pub struct ApprovalGateView {
     pub gate: ApprovalGate,
     pub request_state: String,
+    /// A model's live request, through `approval_decide`, for a person to
+    /// confirm accepting this gate. Absent when no model is waiting on one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_request: Option<ModelRequestView>,
+}
+
+/// Who a model asked through, and whose confirmation it is waiting for. The
+/// link itself is never listed: only the person it was issued to has it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelRequestView {
+    /// The member whose credential the model used, the one who can confirm.
+    pub member_id: MemberId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Body for `POST /auth/approval-confirmations/confirm`: the gate and the
+/// token from a confirmation link's fragment.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConfirmApprovalGate {
+    pub gate_id: ApprovalGateId,
+    pub token: String,
+}
+
+/// Body for `PUT /workspaces/:id/approval-policy`: the lowest gate risk at
+/// which a model's accept through `approval_decide` needs a person's
+/// confirmation; `null` restores the default, `low`.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetApprovalPolicy {
+    pub confirm_at: Option<ApprovalRisk>,
 }
 
 /// A task's dependency edges plus whether it is ready to run.
