@@ -85,8 +85,10 @@ change.
   credential since #1325: a browser session the person signed in to, sent
   from the console page, or `approval:grant`, and nobody accepts their own
   request, while a plain bearer, a delegate token or a session made from one can only
-  decline or cancel. A model asks through `approval_decide` (#1332), and a
-  person confirms in the console. Next are the ChatGPT card (Next 17) and
+  decline or cancel. A model asks through `approval_decide` (#1332), which
+  accepts directly only with `approval:grant` below the workspace's
+  confirmation threshold (by default, never) and otherwise sends a person a
+  console link to confirm. Next are the ChatGPT card (Next 17) and
   the OAuth authorization server (Next 23). The approval card shows each
   piece of evidence with its attestation tier (#1327). Program C's C1
   to C4 shipped (C4, the SDK usage normalizers, in #1297 and #1299), and its
