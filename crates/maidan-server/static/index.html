@@ -26,6 +26,7 @@
     </header>
     <p id="session-status" class="muted" role="status" aria-live="polite">Checking session…</p>
     <div id="ws-switcher" role="dialog" aria-label="Switch workspace" hidden>
+      <p id="ws-switch-note" hidden></p>
       <label>Find a workspace <input id="ws-switch-search" type="search" autocomplete="off" /></label>
       <ul id="ws-switch-list"></ul>
       <p class="muted">Switching signs you in to that workspace.</p>
@@ -133,8 +134,12 @@
         <section id="board-panel" aria-labelledby="board-title">
           <section class="onboard" id="first-run" aria-labelledby="first-run-title">
             <h3 id="first-run-title">Connect this browser</h3>
+            <div id="no-workspace" class="no-workspace" role="alert" hidden>
+              <strong>You're signed in, but not to a workspace.</strong>
+              <p>Your identity provider knows you, but that account isn't a member of any workspace on this server, so nothing was opened and nothing was created. Ask a workspace admin to add you, then sign in again. If you were given a workspace id or an invite link, use that instead.</p>
+            </div>
             <p>Say which server and workspace, then sign in. Once you are in, these fields fold into the header, behind Change.</p>
-            <p class="first-run-note">A workspace id is the id of one room on this server. <code>maidan init</code> prints it when that room is created, and an admin can copy it from the workspace.</p>
+            <p class="first-run-note">A workspace id is the id of one room on this server. <code>maidan init</code> prints it when that room is created, and an admin can copy it from the workspace. To sign in with your identity provider, you can leave it empty: you land in your most recent workspace and can pick another.</p>
             <div id="first-run-fields">
               <div id="conn-fields">
                 <label>API base <input id="base" /></label>
