@@ -1224,7 +1224,11 @@ pub struct ApprovalPolicy {
     /// The lowest gate risk at which a model's accept needs a person to
     /// confirm it in the console. `low` (the default) means every one does.
     pub confirm_at: ApprovalRisk,
-    /// `true` when the workspace has set nothing and the default applies.
+    /// How long a confirmation link `approval_decide` sends lives, in
+    /// seconds: from 60 to 3600, 600 (ten minutes) by default. A link keeps
+    /// the lifetime it was sent with.
+    pub confirm_link_ttl_seconds: u32,
+    /// `true` when the workspace has set nothing and the defaults apply.
     pub is_default: bool,
 }
 

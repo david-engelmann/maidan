@@ -242,7 +242,8 @@ pub async fn resolve_audited(
     Ok(gate)
 }
 
-/// The workspace's confirmation threshold; `low` when it has set none.
+/// The workspace's confirmation threshold and link lifetime; `low` and ten
+/// minutes when it has set none.
 pub async fn get_policy(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -255,42 +256,54 @@ async fn get_policy_on(
     conn: &mut sqlx::PgConnection,
     workspace_id: WorkspaceId,
 ) -> Result<ApprovalPolicy, StoreError> {
-    let at: Option<String> = sqlx::query_scalar(
-        "SELECT confirm_at FROM maidan_approval_policies WHERE workspace_id = $1",
+    let stored: Option<(String, i64)> = sqlx::query_as(
+        "SELECT confirm_at, CAST(confirm_link_ttl_seconds AS BIGINT)
+         FROM maidan_approval_policies WHERE workspace_id = $1",
     )
     .bind(workspace_id.0)
     .fetch_optional(&mut *conn)
     .await?;
-    Ok(crate::approval_policy::policy(workspace_id, at.as_deref()))
+    Ok(crate::approval_policy::policy(workspace_id, stored))
 }
 
-/// Set the threshold, or return to the default with `None`, with its audit
-/// row in the same transaction.
+/// Set the threshold and the link lifetime, each `None` for its default,
+/// with the audit row in the same transaction. Both `None` removes the row:
+/// the workspace is back on the defaults.
 pub async fn set_policy_audited(
     pool: &PgPool,
     workspace_id: WorkspaceId,
     confirm_at: Option<ApprovalRisk>,
+    confirm_link_ttl_seconds: Option<u32>,
     audit: crate::AuditFor<ApprovalPolicy>,
 ) -> Result<ApprovalPolicy, StoreError> {
     let mut tx = pool.begin().await?;
-    match confirm_at {
-        Some(at) => {
-            sqlx::query(
-                "INSERT INTO maidan_approval_policies (workspace_id, confirm_at, updated_at)
-                 VALUES ($1, $2, now())
-                 ON CONFLICT (workspace_id) DO UPDATE
-                 SET confirm_at = excluded.confirm_at, updated_at = excluded.updated_at",
-            )
-            .bind(workspace_id.0)
-            .bind(at.as_str())
-            .execute(&mut *tx)
-            .await?;
-        }
-        None => {
+    match (confirm_at, confirm_link_ttl_seconds) {
+        (None, None) => {
             sqlx::query("DELETE FROM maidan_approval_policies WHERE workspace_id = $1")
                 .bind(workspace_id.0)
                 .execute(&mut *tx)
                 .await?;
+        }
+        (at, ttl) => {
+            let at = at.unwrap_or(crate::approval_policy::DEFAULT_CONFIRM_AT);
+            let ttl = ttl.unwrap_or(crate::approval_policy::DEFAULT_CONFIRM_LINK_TTL_SECONDS);
+            let ttl = i32::try_from(ttl).map_err(|_| {
+                StoreError::InvalidInput("confirm_link_ttl_seconds is out of range".into())
+            })?;
+            sqlx::query(
+                "INSERT INTO maidan_approval_policies
+                     (workspace_id, confirm_at, confirm_link_ttl_seconds, updated_at)
+                 VALUES ($1, $2, $3, now())
+                 ON CONFLICT (workspace_id) DO UPDATE
+                 SET confirm_at = excluded.confirm_at,
+                     confirm_link_ttl_seconds = excluded.confirm_link_ttl_seconds,
+                     updated_at = excluded.updated_at",
+            )
+            .bind(workspace_id.0)
+            .bind(at.as_str())
+            .bind(ttl)
+            .execute(&mut *tx)
+            .await?;
         }
     }
     let policy = get_policy_on(&mut tx, workspace_id).await?;

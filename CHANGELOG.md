@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Local OAuth development provider (Keycloak)
+
+- **Added:** `scripts/oauth-dev-provider.sh` starts a local Keycloak 26.8 with Client ID Metadata Document support, for developing Maidan's MCP authorization against a real provider. `examples/oauth-dev/compose.yaml` and `examples/keycloak/maidan-mcp-reference-realm.json` hold the container and realm; `scripts/mcp-oauth-smoke.sh` exercises the flow. Development only.
+
 ### The change flow can mark a draft ready (mark-ready app only)
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
@@ -1911,6 +1915,18 @@ Refs #1253
 ### The board specs wait until the console has finished signing in
 
 - **Fixed:** `ui-tests/tests/board.spec.ts` opened the board by filling the token and clicking Refresh. Leaving the field already signs in and loads the channels, so Refresh started a second load, and the row click waited on neither request. On a busy full run "a refused subscribe shows the server's reason" timed out on the channel row; alone, it passed. The helper now waits for the page's first session read, signs in by leaving the token field, and clicks the row only after that sign-in's channel response.
+
+### Outbound GitHub calls can authenticate as a GitHub App
+
+- **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
+
+### A failed lease renewal stops the deploy recipe
+
+- **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
+
+### A workspace sets how long an approval confirmation link lives
+
+- **Added:** the workspace approval policy (`GET`/`PUT /workspaces/{id}/approval-policy`) has `confirm_link_ttl_seconds`, from 60 to 3600 and 600 by default. `approval_decide` mints its confirmation link with it. The confirm route refuses the link once that time has passed, because the store's expiry check reads the `expires_at` minted with it. Before this the lifetime was ten minutes, compiled in. A value outside the bounds is a 400 that changes nothing. Setting it takes `token:admin` and is audited as `approval_policy.set` with the new lifetime. A link keeps the lifetime it was sent with. The PUT replaces the policy, so a field left out is back on its default. Migration 0149 adds the column, with a CHECK, on SQLite and Postgres. `ApprovalConfirmationKeys::with_ttl` is gone from `maidan-mcp`: the lifetime is the workspace's now.
 
 ### An approval gate shows up as a card in the chat, and the record says how far to trust the client's name
 
