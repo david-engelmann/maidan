@@ -817,9 +817,19 @@ impl McpServer {
                 } else {
                     tools
                 };
-                if !crate::call_context::UiSupport::from_params(&request.params).offers_card() {
-                    crate::apps_card::strip_tool_links(&mut tools);
-                }
+                // A client that declared no MCP Apps gets the catalog without
+                // the card's link. Those bytes answer what the request
+                // declared, so no shared cache keeps them for anyone else.
+                let hint =
+                    if crate::call_context::UiSupport::from_params(&request.params).offers_card() {
+                        hint
+                    } else {
+                        crate::apps_card::strip_tool_links(&mut tools);
+                        caching::CacheHint {
+                            scope: caching::CacheScope::Private,
+                            ..hint
+                        }
+                    };
                 Ok(caching::with_hint(json!({ "tools": tools }), hint))
             }
             "tools/call" => self.tools_call(&request.params, auth, profile).await,

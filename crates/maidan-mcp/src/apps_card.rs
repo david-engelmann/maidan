@@ -206,7 +206,6 @@ mod tests {
             "src=",
             "href=",
             "@import",
-            "url(",
             "fetch(",
             "xmlhttprequest",
             "websocket",
@@ -227,6 +226,10 @@ mod tests {
                 "the card must not contain `{banned}`"
             );
         }
+        // No stylesheet fetches anything either. (`url(` alone would match
+        // the script's `new URL(url)` check.)
+        let style = between(APPROVAL_CARD_HTML, "<style>", "</style>");
+        assert!(!style.contains("url("), "the style must not load anything");
     }
 
     /// The card never claims an outcome the server did not report: the only
