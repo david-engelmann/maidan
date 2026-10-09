@@ -349,6 +349,33 @@ fn server(dir: &Path) -> Command {
     cmd
 }
 
+/// Run a server that should refuse to boot, bounded: one that boots anyway
+/// is killed after 30 s and reported as booting, not waited on forever.
+fn refused_boot(mut cmd: Command) -> (bool, String) {
+    let mut child = cmd
+        .env("MAIDAN_BIND", format!("127.0.0.1:{}", free_port()))
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let refused = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break !status.success();
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            break false;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let output = child.wait_with_output().unwrap();
+    (
+        refused,
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
 fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -360,16 +387,11 @@ fn free_port() -> u16 {
 #[test]
 fn a_partial_app_config_refuses_boot_naming_what_is_missing() {
     let dir = tempfile::tempdir().unwrap();
-    let output = server(dir.path())
-        .env("MAIDAN_GITHUB_APP_ID", APP_ID)
-        .env("MAIDAN_GITHUB_APP_PRIVATE_KEY", key())
-        .output()
-        .unwrap();
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        !output.status.success(),
-        "a partial app config must refuse boot"
-    );
+    let mut cmd = server(dir.path());
+    cmd.env("MAIDAN_GITHUB_APP_ID", APP_ID)
+        .env("MAIDAN_GITHUB_APP_PRIVATE_KEY", key());
+    let (refused, stderr) = refused_boot(cmd);
+    assert!(refused, "a partial app config must refuse boot:\n{stderr}");
     assert!(
         stderr.contains("MAIDAN_GITHUB_APP_INSTALLATION_ID unset"),
         "{stderr}"
@@ -380,8 +402,8 @@ fn a_partial_app_config_refuses_boot_naming_what_is_missing() {
 #[test]
 fn an_unusable_key_refuses_boot_without_printing_it() {
     let dir = tempfile::tempdir().unwrap();
-    let output = server(dir.path())
-        .env("MAIDAN_GITHUB_APP_ID", APP_ID)
+    let mut cmd = server(dir.path());
+    cmd.env("MAIDAN_GITHUB_APP_ID", APP_ID)
         .env(
             "MAIDAN_GITHUB_APP_INSTALLATION_ID",
             INSTALLATION.to_string(),
@@ -389,11 +411,9 @@ fn an_unusable_key_refuses_boot_without_printing_it() {
         .env(
             "MAIDAN_GITHUB_APP_PRIVATE_KEY",
             "not-a-key-but-secret-anyway",
-        )
-        .output()
-        .unwrap();
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success());
+        );
+    let (refused, stderr) = refused_boot(cmd);
+    assert!(refused, "an unusable key must refuse boot:\n{stderr}");
     assert!(
         stderr.contains("MAIDAN_GITHUB_APP_PRIVATE_KEY is not an RSA private key"),
         "{stderr}"
