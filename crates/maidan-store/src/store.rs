@@ -558,16 +558,21 @@ pub trait ApprovalGateStore: Send + Sync {
         via: &GateDecisionVia,
         audit: crate::AuditFor<ApprovalGate>,
     ) -> Result<Option<ApprovalGate>, StoreError>;
-    /// The workspace's `approval_decide` threshold; `low` when unset.
+    /// The workspace's `approval_decide` threshold and confirmation-link
+    /// lifetime; `low` and 600 seconds when unset.
     async fn get_approval_policy(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<ApprovalPolicy, StoreError>;
-    /// Set the threshold, or restore the default with `None`, audited.
+    /// Set the threshold and the link lifetime, each `None` for its
+    /// default, audited. Both `None` puts the workspace back on the defaults.
+    /// The caller bounds the lifetime; the column's CHECK refuses one outside
+    /// 60..=3600 too.
     async fn set_approval_policy_audited(
         &self,
         workspace_id: WorkspaceId,
         confirm_at: Option<ApprovalRisk>,
+        confirm_link_ttl_seconds: Option<u32>,
         audit: crate::AuditFor<ApprovalPolicy>,
     ) -> Result<ApprovalPolicy, StoreError>;
     /// Issue a confirmation for `new`'s gate and member, or return the live

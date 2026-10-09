@@ -671,10 +671,17 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
                 confirm_at: Option<ApprovalRisk>,
+                confirm_link_ttl_seconds: Option<u32>,
                 audit: crate::AuditFor<ApprovalPolicy>,
             ) -> Result<ApprovalPolicy, StoreError> {
-                approval_gates::set_policy_audited(self.pool(), workspace_id, confirm_at, audit)
-                    .await
+                approval_gates::set_policy_audited(
+                    self.pool(),
+                    workspace_id,
+                    confirm_at,
+                    confirm_link_ttl_seconds,
+                    audit,
+                )
+                .await
             }
 
             async fn issue_approval_confirmation(

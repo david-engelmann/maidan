@@ -423,13 +423,21 @@ pub struct ConfirmApprovalGate {
     pub token: String,
 }
 
-/// Body for `PUT /workspaces/:id/approval-policy`: the lowest gate risk at
-/// which a model's accept through `approval_decide` needs a person's
-/// confirmation; `null` restores the default, `low`.
+/// Body for `PUT /workspaces/:id/approval-policy`. It replaces the whole
+/// policy: a field left out or `null` is back on its default, and with both
+/// left out the workspace has no policy of its own.
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetApprovalPolicy {
+    /// The lowest gate risk at which a model's accept through
+    /// `approval_decide` needs a person's confirmation. Default `low`.
+    #[serde(default)]
     pub confirm_at: Option<ApprovalRisk>,
+    /// How long a confirmation link lives, in seconds: 60 to 3600. Default
+    /// 600. A link already sent keeps the lifetime it was minted with.
+    #[serde(default)]
+    #[schema(minimum = 60, maximum = 3600)]
+    pub confirm_link_ttl_seconds: Option<i64>,
 }
 
 /// A task's dependency edges plus whether it is ready to run.
