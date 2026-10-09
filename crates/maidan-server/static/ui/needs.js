@@ -591,6 +591,46 @@ import { answerGate, modelRequestLine } from "./tools.js";
         }
       }
 
+      // Who linked each artifact to the task and when, keyed by hash. Both
+      // trees serve it, behind the thread check the packet read has. null: the
+      // read failed, so nothing is known about the links and no row says one
+      // was dropped.
+      async function threadLinks(tid) {
+        try {
+          const res = await api(apiReadPath(`/threads/${tid}/artifacts`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return null;
+          const body = await res.json();
+          if (!Array.isArray(body)) return null;
+          const links = new Map();
+          for (const link of body) {
+            if (link && link.sha256) links.set(link.sha256, link);
+          }
+          return links;
+        } catch (_e) {
+          return null;
+        }
+      }
+
+      // The task's standing verdicts, so a page loaded after one was given
+      // still names who gave it. null: the read failed; the row shows only
+      // what this page saw.
+      async function threadReviews(tid) {
+        try {
+          const res = await api(apiReadPath(`/threads/${tid}/reviews`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok) return null;
+          const reviews = await res.json();
+          return Array.isArray(reviews) ? reviews : null;
+        } catch (_e) {
+          return null;
+        }
+      }
+
       // One artifact's metadata, or why it could not be read. Not cached: a
       // failed read is retried the next time the row is drawn.
       async function evidenceMeta(sha) {
@@ -627,8 +667,13 @@ import { answerGate, modelRequestLine } from "./tools.js";
         box.replaceChildren();
         box.dataset.state = "loading";
         box.setAttribute("aria-busy", "true");
-        const read = await readReviewPacket(tid);
+        // A verdict can land (the page's own decision, or a live frame) while
+        // this read is in flight. Anything recorded at or after this instant
+        // is newer than the snapshot and noteReviews keeps it.
+        const reviewsReadAt = Date.now();
+        const [read, reviews] = await Promise.all([readReviewPacket(tid), threadReviews(tid)]);
         box.removeAttribute("aria-busy");
+        if (reviews) noteReviews(tid, reviews, reviewsReadAt);
         if (read.why) {
           delete li.dataset.evidenceRoot;
           box.dataset.state = "error";
@@ -732,9 +777,9 @@ import { answerGate, modelRequestLine } from "./tools.js";
           appendTier(g, gate);
           list.appendChild(g);
         }
-        const metas = await Promise.all(shas.map(evidenceMeta));
+        const [links, metas] = await Promise.all([threadLinks(tid), Promise.all(shas.map(evidenceMeta))]);
         shas.forEach((sha, i) => {
-          renderEvidenceArtifact(rows[i], sha, metas[i]);
+          renderEvidenceArtifact(rows[i], sha, metas[i], links);
           appendTier(rows[i], artifactTiers.find((a) => a.sha256 === sha) || artifactTiers[i]);
         });
         renderDecider(li);
@@ -759,11 +804,11 @@ import { answerGate, modelRequestLine } from "./tools.js";
         row.appendChild(tier);
       }
 
-      // Who uploaded the bytes and when, from the workspace's own metadata.
-      // Who linked them to the task is on the bearer tree only: the session
-      // proxy serves no read of a thread's links, and every page read goes
-      // through it.
-      function renderEvidenceArtifact(row, sha, read) {
+      // Who linked the bytes to the task and when. A hash the packet pinned
+      // that the task no longer links is flagged: approving this packet is
+      // refused until it is handed over again. Without the links, who
+      // uploaded the bytes.
+      function renderEvidenceArtifact(row, sha, read, links) {
         row.removeAttribute("aria-busy");
         row.replaceChildren();
         if (read.why) {
@@ -785,29 +830,77 @@ import { answerGate, modelRequestLine } from "./tools.js";
         size.className = "ny-ev-size";
         size.textContent = formatBytes(Number(meta.size_bytes));
         row.append(kind, name, size, hashEl(sha, "ny-ev-hash"));
-        if (meta.uploaded_by) {
-          const by = document.createElement("span");
-          by.className = "ny-ev-by";
+        const link = links && links.get(sha);
+        const by = document.createElement("span");
+        by.className = "ny-ev-by";
+        if (link) {
+          by.append("linked by ", personEl(link.linked_by, { avatar: false, tag: true }), ` ${ago(link.linked_at)}`);
+        } else if (links) {
+          by.classList.add("ny-warn");
+          by.textContent = "no longer linked to the task";
+        } else if (meta.uploaded_by) {
           by.append("uploaded by ", personEl(meta.uploaded_by, { avatar: false, tag: true }), ` ${ago(meta.created_at)}`);
-          row.appendChild(by);
         }
+        if (by.childNodes.length) row.appendChild(by);
       }
 
-      // Who decided, for each task this page saw a verdict on: from the
-      // review a decision returned, or a review_submitted event on the
-      // socket. Keyed by task, then reviewer, since a task can need two. A
-      // page loaded later does not know, because no session route lists
-      // reviews.
+      // Who decided, for each task: from the task's reviews when its row
+      // loads, the review a decision returned, or a review_submitted event
+      // on the socket. Keyed by task, then reviewer, since a task can need
+      // two.
       const decisions = new Map();
+
+      // A server time as milliseconds, 0 when absent or unreadable.
+      function serverTime(value) {
+        const ms = value ? Date.parse(value) : NaN;
+        return Number.isFinite(ms) ? ms : 0;
+      }
+
+      // seenAt is this page's clock when the verdict reached it; at is the
+      // server's time for it (a review's updated_at, a frame's occurred_at).
+      function decisionOf(review, seenAt) {
+        return {
+          reviewer_id: review.reviewer_id,
+          actor_id: review.actor_id || null,
+          decision: review.decision,
+          evidence_root: review.evidence_root || null,
+          seenAt: seenAt || 0,
+          at: serverTime(review.updated_at || review.occurred_at || review.created_at),
+        };
+      }
+
+      // The reviews the server holds replace what this page knew of the task.
+      // A verdict that reached the page while the read was in flight
+      // (readAt) may be newer than the snapshot: it stays unless the snapshot
+      // holds a later row for that reviewer, a dismissal included. A
+      // dismissed review is no verdict.
+      function noteReviews(tid, reviews, readAt) {
+        const byReviewer = new Map();
+        const savedAt = new Map();
+        for (const review of reviews) {
+          if (!review || !review.reviewer_id) continue;
+          savedAt.set(
+            review.reviewer_id,
+            Math.max(serverTime(review.updated_at), serverTime(review.dismissed_at)),
+          );
+          if (review.dismissed_at) continue;
+          byReviewer.set(review.reviewer_id, decisionOf(review));
+        }
+        const prior = decisions.get(tid);
+        if (prior) {
+          for (const [id, known] of prior) {
+            if (known.seenAt < readAt) continue;
+            const saved = savedAt.get(id);
+            if (saved === undefined || !known.at || known.at > saved) byReviewer.set(id, known);
+          }
+        }
+        decisions.set(tid, byReviewer);
+      }
 
       function noteDecision(tid, review) {
         if (!tid || !review || !review.reviewer_id) return;
         const byReviewer = decisions.get(tid) || new Map();
-        byReviewer.set(review.reviewer_id, {
-          reviewer_id: review.reviewer_id,
-          actor_id: review.actor_id || null,
-          decision: review.decision,
-        });
+        byReviewer.set(review.reviewer_id, decisionOf(review, Date.now()));
         decisions.set(tid, byReviewer);
         for (const row of document.querySelectorAll("#needs-you-list .ny-item")) {
           if (row instanceof HTMLElement && row.dataset.threadId === tid) renderDecider(row);
@@ -825,7 +918,11 @@ import { answerGate, modelRequestLine } from "./tools.js";
         const byReviewer = decisions.get(li.dataset.threadId);
         if (!box || !byReviewer) return;
         box.querySelectorAll(".ny-ev-decider").forEach((el) => el.remove());
+        const shown = li.dataset.evidenceRoot;
         for (const d of byReviewer.values()) {
+          // An approval of an earlier hand-off counts no more, so it names
+          // no decider of the evidence shown.
+          if (d.decision === "approve" && shown && d.evidence_root && d.evidence_root !== shown) continue;
           const line = document.createElement("div");
           line.className = "ny-ev-decider";
           line.dataset.decision = d.decision || "";
