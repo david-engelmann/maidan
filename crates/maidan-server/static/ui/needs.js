@@ -175,6 +175,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
         document.getElementById("needs-you-head").hidden = empty;
         if (empty) box.removeAttribute("aria-labelledby");
         else box.setAttribute("aria-labelledby", "needs-you-title");
+        syncFilledButton();
         renderTeam([...threadsById.values()]);
       }
 
@@ -1080,6 +1081,39 @@ import { answerGate, modelRequestLine } from "./tools.js";
           };
           box.appendChild(close);
         }
+        syncFilledButton();
+      }
+
+      // One filled button on the screen. While the open thread's actions draw
+      // a filled Approve or Close task, that is the decision: Post is a ghost
+      // (UI Design, "Thread"), and the Needs you row for the same task steps
+      // back to a ghost, so the screen does not show two filled Approves for
+      // one review. Both come back when the thread's actions go.
+      function syncFilledButton() {
+        const box = document.getElementById("thread-actions");
+        const decided = Boolean(box && box.querySelector("button.primary"));
+        const post = document.getElementById("post-message");
+        if (post) {
+          post.classList.toggle("primary", !decided);
+          post.classList.toggle("ghost", decided);
+        }
+        const tid = decided ? selectedThreadId : null;
+        document.querySelectorAll("#needs-you-list .ny-item").forEach((li) => {
+          const item = /** @type {HTMLElement} */ (li);
+          const mine = Boolean(tid) && item.dataset.threadId === tid;
+          item.querySelectorAll(".ny-actions button").forEach((el) => {
+            const b = /** @type {HTMLElement} */ (el);
+            if (mine && b.classList.contains("primary")) {
+              b.classList.remove("primary");
+              b.classList.add("ghost");
+              b.dataset.threadPrimary = "1";
+            } else if (!mine && b.dataset.threadPrimary) {
+              b.classList.remove("ghost");
+              b.classList.add("primary");
+              delete b.dataset.threadPrimary;
+            }
+          });
+        });
       }
 
 
@@ -1089,4 +1123,4 @@ import { answerGate, modelRequestLine } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadEvidence, loadNeedsYou, needsYou, needsYouGen, needsYouRow, noteDecisionFrame, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadEvidence, loadNeedsYou, needsYou, needsYouGen, needsYouRow, noteDecisionFrame, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel, syncFilledButton };

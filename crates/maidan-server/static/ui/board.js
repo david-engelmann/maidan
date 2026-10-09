@@ -2,7 +2,7 @@
 import { api, apiReadPath, base, headers, persist, token, uiReadPath, wid } from "./api.js";
 import { escapeHtml } from "./artifacts.js";
 import { clearLoading, keyActivates, renderState, responseError, setLoading, unreachable } from "./feedback.js";
-import { loadNeedsYou, needsYou, renderThreadActions, syncCollabPanel } from "./needs.js";
+import { loadNeedsYou, needsYou, renderThreadActions, syncCollabPanel, syncFilledButton } from "./needs.js";
 import { openConnect } from "./palette.js";
 import { ago, authorId, avatarEl, leaseLeft, loadMembers, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
@@ -565,6 +565,7 @@ import { loadMessages } from "./thread.js";
         badgeBox.replaceChildren();
         facts.replaceChildren();
         document.getElementById("thread-actions").replaceChildren();
+        syncFilledButton();
         if (!th) return;
         const tid = th.id;
         badgeBox.textContent = th.closed_without_review
@@ -841,6 +842,7 @@ import { loadMessages } from "./thread.js";
               // Buttons of the previous task act on that task, so they go too,
               // and a header request still in flight for it must not paint.
               document.getElementById("thread-actions").replaceChildren();
+              syncFilledButton();
               headerGen++;
               document.querySelectorAll("#channel-list li").forEach((n) => {
                 n.classList.toggle("selected", n.dataset.id === ch.id);

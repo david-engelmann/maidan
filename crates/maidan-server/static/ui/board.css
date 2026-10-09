@@ -543,7 +543,8 @@
       .onboard ol { margin: 0 0 1rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--ink); display: grid; gap: 0.3rem; }
       .onboard code { font-size: 0.78rem; }
       .onboard.board-loading h3 { color: var(--muted); font-weight: 600; }
-      .onboard.board-error { border-style: solid; border-color: #fecaca; background: #fef2f2; }
+      /* Error is the word in --err, not a red panel (UI Design, "Could not load"). */
+      .onboard.board-error { border-style: solid; }
       .onboard.board-error h3 { color: var(--err); }
       .onboard.board-error p { color: var(--ink); }
       #board-summary .board-note { color: var(--err); }
