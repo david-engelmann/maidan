@@ -1235,6 +1235,16 @@ pub trait SessionStore: Send + Sync {
         identity_id: OidcIdentityId,
         limit: i64,
     ) -> Result<Vec<IdentityWorkspace>, StoreError>;
+    /// The workspaces the front door may sign `(issuer, subject)` in to:
+    /// every workspace where that issuer and subject have an identity row,
+    /// newest sign-in first, at most `limit`, leaving out one whose member is
+    /// SCIM-deactivated or frozen.
+    async fn list_subject_workspaces(
+        &self,
+        issuer: &str,
+        subject: &str,
+        limit: i64,
+    ) -> Result<Vec<IdentityWorkspace>, StoreError>;
     async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError>;
     async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError>;
 

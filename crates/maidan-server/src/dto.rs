@@ -1622,7 +1622,11 @@ pub struct MintShareTicketResponse {
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcLoginQuery {
-    pub workspace_id: uuid::Uuid,
+    /// The workspace to sign in to. Leave it out for the front door: the
+    /// callback signs in to the identity's most recently used workspace. An id
+    /// is not looked up before the redirect, so an unknown one redirects like a
+    /// real one and is refused at the callback.
+    pub workspace_id: Option<uuid::Uuid>,
     pub return_to: Option<String>,
 }
 

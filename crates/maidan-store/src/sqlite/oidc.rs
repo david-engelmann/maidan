@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     IdentityWorkspace, MemberId, NewOidcIdentity, NewOidcPendingAuth, OidcIdentity, OidcIdentityId,
-    OidcPendingAuth, WorkspaceId,
+    OidcPendingAuth, OidcPendingTarget, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -100,15 +100,58 @@ pub async fn list_identity_workspaces(
         .collect())
 }
 
+/// The workspaces the front door may sign `(issuer, subject)` in to: every
+/// workspace where that issuer and subject have an identity row, with the
+/// member each maps to, newest sign-in first, at most `limit`. A workspace
+/// whose member is SCIM-deactivated or frozen is left out, so the front door
+/// never lands anyone where they could not sign in. Nothing else is matched:
+/// not an email, not a handle.
+pub async fn list_subject_workspaces(
+    pool: &SqlitePool,
+    issuer: &str,
+    subject: &str,
+    limit: i64,
+) -> Result<Vec<IdentityWorkspace>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT o.workspace_id, w.name, o.member_id, m.handle, o.last_login_at
+         FROM maidan_oidc_identities o
+         JOIN maidan_workspaces w ON w.id = o.workspace_id
+         JOIN maidan_members m ON m.id = o.member_id AND m.workspace_id = o.workspace_id
+         WHERE o.issuer = ? AND o.subject = ?
+           AND NOT EXISTS (SELECT 1 FROM maidan_scim_users s
+                           WHERE s.member_id = o.member_id AND s.active = 0)
+           AND NOT EXISTS (SELECT 1 FROM maidan_member_freezes f
+                           WHERE f.member_id = o.member_id)
+         ORDER BY o.last_login_at DESC, o.workspace_id
+         LIMIT ?",
+    )
+    .bind(issuer)
+    .bind(subject)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| IdentityWorkspace {
+            workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+            workspace_name: row.get::<String, _>("name"),
+            member_id: MemberId(row.get::<Uuid, _>("member_id")),
+            handle: row.get::<String, _>("handle"),
+            last_login_at: row.get::<DateTime<Utc>, _>("last_login_at"),
+        })
+        .collect())
+}
+
 pub async fn insert_pending(pool: &SqlitePool, new: NewOidcPendingAuth) -> Result<(), StoreError> {
     let now = Utc::now();
     sqlx::query(
         "INSERT INTO maidan_oidc_pending
-            (state, workspace_id, nonce, pkce_verifier, return_to, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (state, kind, workspace_id, nonce, pkce_verifier, return_to, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&new.state)
-    .bind(new.workspace_id.0)
+    .bind(new.target.kind())
+    .bind(new.target.workspace_id().map(|w| w.0))
     .bind(&new.nonce)
     .bind(&new.pkce_verifier)
     .bind(new.return_to.as_deref())
@@ -124,7 +167,7 @@ pub async fn take_pending(pool: &SqlitePool, state: &str) -> Result<OidcPendingA
     let row = sqlx::query(
         "DELETE FROM maidan_oidc_pending
          WHERE state = ? AND expires_at > ?
-         RETURNING state, workspace_id, nonce, pkce_verifier, return_to, expires_at",
+         RETURNING state, kind, workspace_id, nonce, pkce_verifier, return_to, expires_at",
     )
     .bind(state)
     .bind(now)
@@ -133,12 +176,27 @@ pub async fn take_pending(pool: &SqlitePool, state: &str) -> Result<OidcPendingA
     .ok_or(StoreError::NotFound)?;
     Ok(OidcPendingAuth {
         state: row.get("state"),
-        workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+        target: pending_target(row.get("kind"), row.get::<Option<Uuid>, _>("workspace_id"))?,
         nonce: row.get("nonce"),
         pkce_verifier: row.get("pkce_verifier"),
         return_to: row.get("return_to"),
         expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
     })
+}
+
+/// A pending row's kind and workspace, as one target. The CHECK on the table
+/// allows only these two shapes; anything else is refused rather than guessed.
+fn pending_target(
+    kind: String,
+    workspace_id: Option<Uuid>,
+) -> Result<OidcPendingTarget, StoreError> {
+    match (kind.as_str(), workspace_id) {
+        ("sign_in", Some(id)) => Ok(OidcPendingTarget::Workspace(WorkspaceId(id))),
+        ("front_door", None) => Ok(OidcPendingTarget::FrontDoor),
+        _ => Err(StoreError::InvalidInput(format!(
+            "pending sign-in has kind {kind:?} and workspace {workspace_id:?}"
+        ))),
+    }
 }
 
 fn row_to_identity(row: &sqlx::sqlite::SqliteRow) -> Result<OidcIdentity, StoreError> {

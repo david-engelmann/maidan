@@ -5,7 +5,9 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use maidan_auth::TOKEN_ADMIN;
-use maidan_types::{AuditScope, NewAuditEvent, NewMaidanSession, NewOidcPendingAuth, WorkspaceId};
+use maidan_types::{
+    AuditScope, NewAuditEvent, NewMaidanSession, NewOidcPendingAuth, OidcPendingTarget, WorkspaceId,
+};
 use openidconnect::{
     core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
     PkceCodeChallenge, PkceCodeVerifier, PostLogoutRedirectUrl, Scope, TokenResponse,
@@ -15,7 +17,7 @@ use rand::RngCore;
 use crate::dto::{OidcCallbackQuery, OidcLoginQuery};
 use crate::error::ApiError;
 use crate::extract::ApiQuery;
-use crate::oidc::member::{resolve_member_for_login, touch_identity};
+use crate::oidc::member::{resolve_member_for_login, touch_identity, NOT_PROVISIONED};
 use crate::session::{clear_session_cookie, parse_session_cookie, set_session_cookie};
 use crate::state::AppState;
 
@@ -37,10 +39,21 @@ fn safe_return_to(return_to: Option<&str>) -> String {
     }
 }
 
-fn with_auto_mint_hint(location: String) -> String {
+fn with_hint(location: String, hint: &str) -> String {
     let sep = if location.contains('?') { '&' } else { '?' };
-    format!("{location}{sep}auto_mint=1")
+    format!("{location}{sep}{hint}")
 }
+
+fn with_auto_mint_hint(location: String) -> String {
+    with_hint(location, "auto_mint=1")
+}
+
+/// The console's hint, after a front-door sign-in, that the identity has more
+/// than one workspace, so it offers the chooser.
+pub const CHOOSE_WORKSPACE_HINT: &str = "choose_workspace=1";
+/// The console's hint that a front-door sign-in found no workspace for the
+/// identity. No session was created.
+pub const NO_WORKSPACE_HINT: &str = "no_workspace=1";
 
 pub async fn login(
     State(state): State<AppState>,
@@ -50,8 +63,14 @@ pub async fn login(
         .oidc
         .as_ref()
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
-    let workspace_id = WorkspaceId(q.workspace_id);
-    state.store.get_workspace(workspace_id).await?;
+    // No lookup here: a workspace id that doesn't exist redirects exactly
+    // like one that does, and the callback refuses it with the words a
+    // workspace the person isn't a member of gets (Hosted Console, open
+    // question 5). Without an id this is the front door.
+    let target = match q.workspace_id {
+        Some(id) => OidcPendingTarget::Workspace(WorkspaceId(id)),
+        None => OidcPendingTarget::FrontDoor,
+    };
 
     let state_token = random_token();
     let nonce = random_token();
@@ -63,7 +82,7 @@ pub async fn login(
         .store
         .insert_oidc_pending(NewOidcPendingAuth {
             state: state_token.clone(),
-            workspace_id,
+            target,
             nonce: nonce.clone(),
             pkce_verifier: pkce_secret.clone(),
             return_to: q.return_to.clone(),
@@ -166,21 +185,63 @@ pub async fn callback(
         (oidc.settings.issuer.clone(), sub, email, email_verified)
     };
 
+    // Which workspace this sign-in lands in, and whether the console should
+    // offer the chooser afterwards.
+    let (workspace_id, choose) = match pending.target {
+        OidcPendingTarget::Workspace(id) => {
+            // Login no longer checks the id, so this is where an unknown one is
+            // refused, in the same words as a workspace the person has no
+            // member in.
+            match state.store.get_workspace(id).await {
+                Ok(_) => {}
+                Err(maidan_store::StoreError::NotFound) => {
+                    return Err(ApiError::Forbidden(NOT_PROVISIONED.into()))
+                }
+                Err(err) => return Err(err.into()),
+            }
+            (id, false)
+        }
+        OidcPendingTarget::FrontDoor => {
+            // The identity's own workspaces only: those where this issuer and
+            // subject already have an identity row. Two rows are enough to know
+            // whether there is a choice to offer.
+            let listed = state
+                .store
+                .list_subject_workspaces(&issuer, &subject, 2)
+                .await?;
+            match listed.first() {
+                Some(latest) => (latest.workspace_id, listed.len() > 1),
+                None => {
+                    // Signed in at the provider, but a member nowhere here. No
+                    // session: the console says so.
+                    let location = with_hint(
+                        safe_return_to(pending.return_to.as_deref()),
+                        NO_WORKSPACE_HINT,
+                    );
+                    return Ok(Redirect::temporary(&location).into_response());
+                }
+            }
+        }
+    };
+    // A front-door sign-in never links by email and never provisions: it can
+    // only reach a workspace where the identity already has a row.
+    let front_door = pending.target == OidcPendingTarget::FrontDoor;
+
     let (member_id, how) = resolve_member_for_login(
         state.store.as_ref(),
-        pending.workspace_id,
+        workspace_id,
         &issuer,
         &subject,
         email.as_deref(),
         email_verified,
-        oidc.settings.auto_provision,
-        oidc.settings.link_email,
+        oidc.settings.auto_provision && !front_door,
+        oidc.settings.link_email && !front_door,
     )
     .await?;
 
     let identity = touch_identity(
         state.store.as_ref(),
-        pending.workspace_id,
+        workspace_id,
         &issuer,
         &subject,
         member_id,
@@ -194,7 +255,7 @@ pub async fn callback(
         .store
         .create_session_audited(
             NewMaidanSession {
-                workspace_id: pending.workspace_id,
+                workspace_id,
                 member_id,
                 api_token_id: None,
                 oidc_identity_id: Some(identity.id),
@@ -210,6 +271,7 @@ pub async fn callback(
                     "workspace_id": session.workspace_id.0,
                     "issuer": issuer,
                     "member": how.as_str(),
+                    "front_door": front_door,
                     "expires_at": session.expires_at,
                 }),
             }),
@@ -258,10 +320,13 @@ pub async fn callback(
     .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let mut location = safe_return_to(pending.return_to.as_deref());
+    if choose {
+        location = with_hint(location, CHOOSE_WORKSPACE_HINT);
+    }
     if oidc.settings.auto_mint {
         let has_admin = state
             .store
-            .workspace_has_active_capability(pending.workspace_id, TOKEN_ADMIN)
+            .workspace_has_active_capability(workspace_id, TOKEN_ADMIN)
             .await?;
         if !has_admin {
             location = with_auto_mint_hint(location);

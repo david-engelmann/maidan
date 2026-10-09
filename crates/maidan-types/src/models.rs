@@ -3173,10 +3173,42 @@ pub struct NewOidcIdentity {
     pub email: Option<String>,
 }
 
+/// Where a pending OIDC sign-in will land. Stored as the pending row's `kind`,
+/// and the database ties the kind to whether a workspace is named, so a
+/// front-door `state` can never complete a workspace sign-in or the other way
+/// round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OidcPendingTarget {
+    /// The workspace the person asked for (`kind = 'sign_in'`). Login does not
+    /// check that it exists; the callback does.
+    Workspace(WorkspaceId),
+    /// No workspace (`kind = 'front_door'`): the callback picks the identity's
+    /// most recently used workspace.
+    FrontDoor,
+}
+
+impl OidcPendingTarget {
+    /// The pending row's `kind`.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Self::Workspace(_) => "sign_in",
+            Self::FrontDoor => "front_door",
+        }
+    }
+
+    /// The workspace named, if any.
+    pub fn workspace_id(self) -> Option<WorkspaceId> {
+        match self {
+            Self::Workspace(id) => Some(id),
+            Self::FrontDoor => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OidcPendingAuth {
     pub state: String,
-    pub workspace_id: WorkspaceId,
+    pub target: OidcPendingTarget,
     pub nonce: String,
     pub pkce_verifier: String,
     pub return_to: Option<String>,
@@ -3186,7 +3218,7 @@ pub struct OidcPendingAuth {
 #[derive(Debug, Clone)]
 pub struct NewOidcPendingAuth {
     pub state: String,
-    pub workspace_id: WorkspaceId,
+    pub target: OidcPendingTarget,
     pub nonce: String,
     pub pkce_verifier: String,
     pub return_to: Option<String>,

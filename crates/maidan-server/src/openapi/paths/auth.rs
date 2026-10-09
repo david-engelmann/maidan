@@ -17,6 +17,14 @@ use maidan_types::{
 };
 
 /// Start an OIDC login
+///
+/// With `workspace_id`, signs in to that workspace. The id is not looked up
+/// before the redirect: an unknown id redirects like a real one and the
+/// callback refuses it with the same 403 as a workspace the person has no
+/// member in. Without it (the front door), the callback signs in to the
+/// identity's most recently used workspace, adds `choose_workspace=1` to the
+/// return path when there are more, and creates no session (adding
+/// `no_workspace=1`) when there are none.
 #[utoipa::path(
     get,
     path = "/auth/oidc/login",
@@ -25,8 +33,8 @@ use maidan_types::{
     security(()),
     responses(
         (status = 307, description = "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"),
+        (status = 400, response = BadRequest),
         (status = 403, description = "OIDC disabled", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 404, description = "Workspace not found", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn oidc_login() {}
