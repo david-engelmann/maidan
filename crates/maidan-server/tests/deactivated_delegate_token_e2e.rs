@@ -1,5 +1,5 @@
-//! Security finding (see #1253): a delegated token keeps working after its
-//! **delegate** is deactivated through SCIM.
+//! A delegated token stops working when its **delegate** is deactivated or
+//! deprovisioned through SCIM (found in #1253).
 //!
 //! Deactivating a member revokes the tokens that member holds
 //! (`maidan_api_tokens.member_id = member`). A delegated token belongs to the
@@ -9,9 +9,6 @@
 //!
 //! Two tenants: deactivating the delegate in workspace A must refuse A's
 //! delegated token, and workspace B's equivalent must keep working.
-//!
-//! This test is ignored until the fix lands. Run it with:
-//! `cargo test -p maidan-server --test deactivated_delegate_token_e2e -- --ignored`
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -226,7 +223,6 @@ fn mcp_accepted((status, body): &(StatusCode, Value)) -> bool {
 }
 
 #[tokio::test]
-#[ignore = "security finding: deactivated delegate's token still accepted; see #1253"]
 async fn a_deactivated_delegates_token_is_refused_only_in_its_workspace() {
     let env = spawn().await;
     let a = env.tenant("Alpha").await;
@@ -266,4 +262,56 @@ async fn a_deactivated_delegates_token_is_refused_only_in_its_workspace() {
         a_mcp.0,
         a_mcp.1
     );
+}
+
+/// Deprovisioning deletes the SCIM link rather than marking it inactive, so
+/// nothing left behind says the person is gone: the delegate's grants and its
+/// signed-in sessions have to end in the same transaction.
+#[tokio::test]
+async fn a_deprovisioned_delegate_loses_its_delegated_token_and_its_sessions() {
+    let env = spawn().await;
+    let a = env.tenant("Alpha").await;
+    let b = env.tenant("Bravo").await;
+    let session = env
+        .store
+        .create_session(maidan_types::NewMaidanSession {
+            workspace_id: a.ws,
+            member_id: a.delegate,
+            api_token_id: None,
+            expires_at: Utc::now() + ChronoDuration::hours(1),
+        })
+        .await
+        .unwrap();
+
+    assert!(env
+        .store
+        .scim_deprovision_audited(
+            a.ws,
+            a.delegate,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(a.ws),
+                actor_id: None,
+                action: "scim.user.delete".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(a.delegate.0),
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap());
+
+    assert!(refused(env.rest(&a, &a.delegated_secret).await));
+    assert!(mcp_refused(&env.mcp_call(&a.delegated_secret).await));
+    assert!(
+        env.store.get_session(session.id).await.is_err(),
+        "the deprovisioned delegate's session must be gone"
+    );
+    assert_eq!(env.rest(&b, &b.delegated_secret).await, StatusCode::OK);
+
+    let audit = env.store.list_audit(500).await.unwrap();
+    assert!(audit.iter().any(|r| r.action == "delegation_grant.revoke"
+        && r.metadata["delegate_id"] == json!(a.delegate.0)));
+    assert!(audit
+        .iter()
+        .any(|r| r.action == "session.delete" && r.target_id == Some(a.delegate.0)));
 }

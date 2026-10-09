@@ -1933,6 +1933,10 @@ Refs #1253
 - **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
 - **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
 
+### A delegate the identity provider removes loses what it was lent
+
+- **Security:** Deactivating or deprovisioning a member through SCIM revoked the tokens the member held, but not the delegated tokens it had exchanged under a delegation grant. Those belong to the grant's subject, so a removed delegate kept the subject's delegated authority on REST and MCP until the token or grant expired. Both now revoke the grants the member holds as delegate, in the same transaction and audited as `delegation_grant.revoke`, which ends every token exchanged or minted under them. Deprovisioning deletes the SCIM link, so it also deletes the member's browser sessions, audited as `session.delete`. Found by grokbot (#1253).
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
