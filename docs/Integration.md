@@ -826,7 +826,7 @@ Maidan issues no sampling or roots requests, and asks the client for input in on
 mid-loop" under the waiter loop below.
 
 **The inline approval card (MCP Apps).** A host that renders MCP Apps
-([SEP-1865](https://modelcontextprotocol.io/extensions/apps), stable
+([SEP-1865](https://modelcontextprotocol.io/extensions/apps/overview), stable
 `2026-01-26`; ChatGPT, Claude and VS Code among them) shows an approval gate as
 a card in the chat. `get_approval_gate` and `approval_decide` carry
 `_meta.ui.resourceUri: "ui://maidan/approval-card.html"` (visible to the model
