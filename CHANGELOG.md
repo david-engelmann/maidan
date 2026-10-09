@@ -1933,6 +1933,11 @@ Refs #1253
 - **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
 - **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
 
+### One filled button when the open thread decides, and no red error panel
+
+- **Fixed:** opening the card of a task under your review showed three filled buttons: the Needs you row's Approve, the thread's Approve, and Post. UI Design says a screen has one, and that Post is a ghost while the thread's actions draw Approve or Close task. Now the thread's button is the one filled button. Post is a ghost, and the Needs you row for that same task steps back to a ghost. Both get their fill back when the thread no longer draws the button, or when another thread is open. The swap skips the button's background transition, so no frame shows white text on a fading fill.
+- **Fixed:** a board that could not load drew its sentence in a pink panel with a pink border (`#fef2f2` on `#fecaca`). UI Design says "No red filled panel". The panel is now the plain onboarding box, and the heading keeps the error color.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

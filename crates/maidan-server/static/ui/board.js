@@ -842,8 +842,8 @@ import { loadMessages } from "./thread.js";
               // Buttons of the previous task act on that task, so they go too,
               // and a header request still in flight for it must not paint.
               document.getElementById("thread-actions").replaceChildren();
-              syncFilledButton();
               headerGen++;
+              syncFilledButton();
               document.querySelectorAll("#channel-list li").forEach((n) => {
                 n.classList.toggle("selected", n.dataset.id === ch.id);
               });
