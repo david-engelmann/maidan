@@ -1923,6 +1923,16 @@ Refs #1253
 ### A failed lease renewal stops the deploy recipe
 
 - **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
+### A design note for the hosted console
+
+- **Docs:** `docs/Hosted Console.md` sets out the hosted console's first version against the code as it stands. It covers:
+  - sign-up through the instance's existing OIDC provider, off by default;
+  - how one signed-in identity maps to a member in each of several workspaces, and what the session should carry;
+  - what the agent invite (#1144) and `POST /operator/workspaces` (#1208) do and don't allow;
+  - what stays self-hosted only;
+  - the design of the workspace switcher (Open Work Next 6): its listing route, switching by re-sign-in, its tenant-isolation rules and the two-tenant test it needs.
+
+  Each open question carries a recommended answer. The note is published in the book under Design.
 
 ### A workspace sets how long an approval confirmation link lives
 
@@ -1936,6 +1946,10 @@ Refs #1253
 ### A member the identity provider deactivates is signed out
 
 - **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
+
+### The palette's next-review spec waits until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/palette.spec.ts` "the palette opens the next review waiting on me" filled the token and clicked Refresh, the same double load #1338 removed from `board.spec.ts`, and it waited on neither the sign-in's nor the board's needs-you answer. Rebuilding the needs-you list detaches each row, and a detached row loses focus, so an answer that landed after Enter left no focused decision button. On a busy full run the last check failed once; alone, it passed. The spec now signs in by leaving the token field, waits for that sign-in's channel and needs-you answers, opens the board, and opens the palette only after the board's own needs-you answer has arrived and re-rendered the list. Test-only.
 
 ### A needs-you reload keeps a keyboard user on their decision button
 
