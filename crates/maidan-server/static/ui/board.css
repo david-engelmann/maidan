@@ -264,6 +264,10 @@
       #identity-pill[hidden] { display: none; }
       #identity-pill .person { color: inherit; font-weight: inherit; }
       #identity-pill .ws-name { color: inherit; }
+      #ws-switcher { position: absolute; right: 1rem; z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .75rem; min-width: 18rem; box-shadow: var(--shadow); }
+      #ws-switcher ul { list-style: none; margin: .5rem 0; padding: 0; max-height: 18rem; overflow-y: auto; }
+      #ws-switcher li button { width: 100%; text-align: left; }
+      #ws-switcher li[aria-current="true"] button { font-weight: 600; }
       /* The credential is a word after the workspace name, still type. */
       #identity-pill .identity-mode { color: inherit; font-size: 0.75rem; }
       #identity-pill .identity-mode::before { content: "· "; }
