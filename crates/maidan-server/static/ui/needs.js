@@ -1084,6 +1084,17 @@ import { answerGate, modelRequestLine } from "./tools.js";
         syncFilledButton();
       }
 
+      // Filled or ghost, at once. A button's background eases (board.css), and
+      // white text over a fading fill is unreadable for that moment.
+      /** @param {HTMLElement} b @param {boolean} filled */
+      function swapFill(b, filled) {
+        b.style.transition = "none";
+        b.classList.toggle("primary", filled);
+        b.classList.toggle("ghost", !filled);
+        void b.offsetWidth;
+        b.style.transition = "";
+      }
+
       // One filled button on the screen. While the open thread's actions draw
       // a filled Approve or Close task, that is the decision: Post is a ghost
       // (UI Design, "Thread"), and the Needs you row for the same task steps
@@ -1093,10 +1104,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
         const box = document.getElementById("thread-actions");
         const decided = Boolean(box && box.querySelector("button.primary"));
         const post = document.getElementById("post-message");
-        if (post) {
-          post.classList.toggle("primary", !decided);
-          post.classList.toggle("ghost", decided);
-        }
+        if (post && post.classList.contains("primary") === decided) swapFill(post, !decided);
         const tid = decided ? selectedThreadId : null;
         document.querySelectorAll("#needs-you-list .ny-item").forEach((li) => {
           const item = /** @type {HTMLElement} */ (li);
@@ -1104,12 +1112,10 @@ import { answerGate, modelRequestLine } from "./tools.js";
           item.querySelectorAll(".ny-actions button").forEach((el) => {
             const b = /** @type {HTMLElement} */ (el);
             if (mine && b.classList.contains("primary")) {
-              b.classList.remove("primary");
-              b.classList.add("ghost");
+              swapFill(b, false);
               b.dataset.threadPrimary = "1";
             } else if (!mine && b.dataset.threadPrimary) {
-              b.classList.remove("ghost");
-              b.classList.add("primary");
+              swapFill(b, true);
               delete b.dataset.threadPrimary;
             }
           });
