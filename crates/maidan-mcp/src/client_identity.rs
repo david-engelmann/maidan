@@ -1,5 +1,5 @@
 //! Which client a model decided a gate through, and how far that name can be
-//! trusted (Next 17, David's 2a, 2026-10-09).
+//! trusted.
 //!
 //! Strongest first:
 //!
