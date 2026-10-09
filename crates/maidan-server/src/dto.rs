@@ -1653,3 +1653,24 @@ pub struct SessionResponse {
     /// member has none. The id stays in `member_id`.
     pub display_name: Option<String>,
 }
+
+/// One workspace the signed-in person can switch to.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspace {
+    pub workspace_id: WorkspaceId,
+    /// The workspace's display name (a label, not an address).
+    pub name: String,
+    /// The person's member in that workspace.
+    pub member_id: MemberId,
+    pub handle: String,
+    /// `true` for the workspace this session is in.
+    pub current: bool,
+}
+
+/// `GET /auth/session/workspaces`: the session's own workspace first, then
+/// every other workspace the identity it signed in with is a member of,
+/// newest sign-in first, at most 200.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspaces {
+    pub workspaces: Vec<SessionWorkspace>,
+}

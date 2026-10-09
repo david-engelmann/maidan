@@ -15,7 +15,10 @@ use maidan_types::{MemberId, SessionId, WorkspaceId};
 use crate::config::ConfigError;
 use crate::error::ApiError;
 
-pub use handlers::{get_session, mint_first_admin_token, session_from_token};
+pub use handlers::{
+    get_session, list_session_workspaces, mint_first_admin_token, session_from_token,
+    SESSION_WORKSPACES_LIMIT,
+};
 pub use middleware::{load_session, require_middleware};
 
 pub const SESSION_COOKIE: &str = "maidan_session";

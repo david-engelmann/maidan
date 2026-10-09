@@ -1934,6 +1934,13 @@ Refs #1253
 
   Each open question carries a recommended answer. The note is published in the book under Design.
 
+### The console can switch between your workspaces
+
+- **Added:** `GET /auth/session/workspaces` lists the workspaces the signed-in person can switch to: the session's own first, then every other workspace where the identity they signed in with (the same issuer and subject) is a member, newest sign-in first, at most 200. A workspace whose member is SCIM-deactivated or frozen is left out. A session made from a token lists only its own workspace, and a bearer is refused.
+- **Added:** For a person in more than one workspace, the console header shows **Switch workspace**. It opens a list you can search by name. Choosing a workspace signs you in there again through the identity provider (`/auth/oidc/login`); the page never mints a session for another workspace. Open Work Next 6, designed in `docs/Hosted Console.md`.
+- **Changed:** An OIDC session records the identity row it signed in with (`maidan_sessions.oidc_identity_id`, migration 0161), so the list follows the identity and never the member, which can hold more than one linked subject. Sessions from before the migration list only their own workspace until the next sign-in.
+- **Changed:** Signing in ends this browser's previous session, as the token exchange already did. Before, a switch left the old session live until it expired. The end is audited as `session.delete` with reason `switched`.
+
 ### A workspace sets how long an approval confirmation link lives
 
 - **Added:** the workspace approval policy (`GET`/`PUT /workspaces/{id}/approval-policy`) has `confirm_link_ttl_seconds`, from 60 to 3600 and 600 by default. `approval_decide` mints its confirmation link with it. The confirm route refuses the link once that time has passed, because the store's expiry check reads the `expires_at` minted with it. Before this the lifetime was ten minutes, compiled in. A value outside the bounds is a 400 that changes nothing. Setting it takes `token:admin` and is audited as `approval_policy.set` with the new lifetime. A link keeps the lifetime it was sent with. The PUT replaces the policy, so a field left out is back on its default. Migration 0149 adds the column, with a CHECK, on SQLite and Postgres. `ApprovalConfirmationKeys::with_ttl` is gone from `maidan-mcp`: the lifetime is the workspace's now.
