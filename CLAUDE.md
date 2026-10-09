@@ -84,7 +84,8 @@ change.
 - **The queue is led by approvals.** Accepting a gate is a property of the
   credential since #1325: a browser session the person signed in to, sent
   from the console page, or `approval:grant`, and nobody accepts their own
-  request, while a plain bearer, a delegate token or a session made from one can only
+  request, (with auth on;
+  `AUTH_DISABLED` checks no identity) while a plain bearer, a delegate token or a session made from one can only
   decline or cancel. A model asks through `approval_decide` (#1332), which
   accepts directly only with `approval:grant` below the workspace's
   confirmation threshold (by default, never) and otherwise sends a person a
