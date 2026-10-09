@@ -547,7 +547,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A cold image build of the server takes about 14 minutes on a loaded
+    # runner, so 15 cancelled passing runs (2026-10-09).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: validate quickstart stack
@@ -758,7 +760,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A cold image build of the server takes about 14 minutes on a loaded
+    # runner, so 15 cancelled passing runs (2026-10-09).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: build images
