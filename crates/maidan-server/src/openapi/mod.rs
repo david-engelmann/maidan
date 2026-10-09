@@ -591,6 +591,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::set_workspace_handle,
         paths::well_known,
         paths::well_known_room,
+        paths::oauth_protected_resource_metadata,
         paths::ingest_events,
         paths::oidc_login,
         paths::oidc_callback,
@@ -631,6 +632,7 @@ fn requires_credential(op: &Operation) -> bool {
         // Every type a schema or operation names. utoipa 4 does not collect
         // these itself, and an unlisted one is a `$ref` that resolves to nothing
         // (`openapi_well_formed`).
+        crate::oauth::metadata::ProtectedResourceMetadata,
         maidan_types::ApiTokenId,
         maidan_types::ApprovalGateId,
         maidan_types::ApprovalGateState,

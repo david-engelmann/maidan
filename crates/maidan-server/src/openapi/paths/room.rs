@@ -22,6 +22,19 @@ use uuid::Uuid;
 )]
 pub fn well_known_room() {}
 
+/// The MCP endpoint's OAuth protected-resource metadata (RFC 9728)
+#[utoipa::path(
+    get,
+    path = "/.well-known/oauth-protected-resource/mcp/streamable",
+    tag = "auth",
+    security(()),
+    responses(
+        (status = 200, body = crate::oauth::metadata::ProtectedResourceMetadata),
+        (status = 404, description = "`MAIDAN_PUBLIC_ORIGIN` is not set", body = ProblemDetails),
+    )
+)]
+pub fn oauth_protected_resource_metadata() {}
+
 /// Get a workspace's room card
 #[utoipa::path(
     get,

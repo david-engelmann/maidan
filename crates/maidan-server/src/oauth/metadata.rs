@@ -71,10 +71,13 @@ pub fn public_origin_from(raw: Option<&str>) -> Result<Option<String>, String> {
 }
 
 /// RFC 9728 protected-resource metadata for the MCP endpoint.
-#[derive(Debug, Serialize)]
+///
+/// No `scopes_supported` yet: a client treats it as the set it may request,
+/// and until the token endpoint exists there is no set it will be granted.
+/// It arrives with the authorization server, naming what that server mints.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ProtectedResourceMetadata {
     resource: String,
-    scopes_supported: Vec<String>,
     bearer_methods_supported: Vec<String>,
     resource_name: String,
 }
@@ -82,8 +85,6 @@ pub struct ProtectedResourceMetadata {
 fn document(origin: &str) -> ProtectedResourceMetadata {
     ProtectedResourceMetadata {
         resource: format!("{origin}{MCP_RESOURCE_PATH}"),
-        // Capability names are the scope vocabulary (docs/Protocols.md).
-        scopes_supported: vec!["workspace:read".into(), "workspace:write".into()],
         bearer_methods_supported: vec!["header".into()],
         resource_name: "Maidan".into(),
     }
@@ -179,6 +180,10 @@ mod tests {
         assert_eq!(
             json["resource"],
             "https://maidan.example.com/mcp/streamable"
+        );
+        assert!(
+            json.get("scopes_supported").is_none(),
+            "no scope set is advertised before a server grants one"
         );
         assert!(
             json.get("authorization_servers").is_none(),

@@ -188,6 +188,7 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
     ("GET", "/openapi.json"),
     ("GET", "/.well-known/maidan.json"),
     ("GET", "/.well-known/maidan-room"),
+    ("GET", "/.well-known/oauth-protected-resource/mcp/streamable"),
     ("GET", "/auth/oidc/login"),
     ("GET", "/auth/oidc/callback"),
     ("POST", "/auth/logout"),

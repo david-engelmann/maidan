@@ -1867,11 +1867,6 @@ Refs #1253
 - **Changed:** Only an approval bound to the thread's latest packet counts toward a review requirement, in `review_status` and at close, and a close is refused while the evidence differs from what that packet pinned. A comment after an approval does not undo it, since the evidence root covers the result and linked artifacts, not messages. This is the third part of evidence-bound approvals (Open Work Next 3).
 - **Changed:** Needs you in the console approves the packet the row showed, so evidence that changed after the row was drawn is refused with a reason instead of approved.
 
-### OAuth phase one: the MCP endpoint describes itself as a protected resource
-
-- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` serves the MCP endpoint's RFC 9728 metadata, and a 401 from `/mcp/streamable` carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and there is no root-form document, since RFC 9728 has a client reject metadata whose `resource` is not the URL it asked. `MAIDAN_PUBLIC_ORIGIN` must be an `https` origin, or `http` on a loopback host, with no path, query or credentials, or boot refuses it. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
-- **Added:** `docs/OAuth.md`, the seven-phase plan (Open Work Next 23).
-
 ### A refused close reaches MCP subscribers, and an unpinned mark-ready app is named at boot
 
 - **Fixed:** A close refused over REST (`POST /threads/:id`, a review requirement not met or an unresolved `refutes`) now notifies the thread's MCP resource subscribers of the notice message it posts, as the MCP `transition_thread` refusal already did. Subscribers in another workspace hear nothing.
@@ -1926,6 +1921,10 @@ Refs #1253
 ### OAuth phase one: the MCP endpoint describes itself as a protected resource
 
 - **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` (and the root form) serves the MCP endpoint's RFC 9728 metadata, and a 401 from an MCP route carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. Other 401s carry no challenge. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
+
+### OAuth phase one: the MCP endpoint describes itself as a protected resource
+
+- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` serves the MCP endpoint's RFC 9728 metadata, and a 401 from `/mcp/streamable` carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and there is no root-form document, since RFC 9728 has a client reject metadata whose `resource` is not the URL it asked. `MAIDAN_PUBLIC_ORIGIN` must be an `https` origin, or `http` on a loopback host, with no path, query or credentials, or boot refuses it. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
 - **Added:** `docs/OAuth.md`, the seven-phase plan (Open Work Next 23).
 
 ## [412.0.0] — 2026-09-28

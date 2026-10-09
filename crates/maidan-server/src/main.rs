@@ -597,10 +597,18 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.allowed_hosts = maidan_server::rebinding::allowed_hosts_from(
         &std::env::var("MAIDAN_ALLOWED_HOSTS").unwrap_or_default(),
     );
-    state.public_origin = maidan_server::oauth::metadata::public_origin_from(
-        std::env::var("MAIDAN_PUBLIC_ORIGIN").ok().as_deref(),
-    )
-    .map_err(anyhow::Error::msg)?;
+    // Unset is unconfigured; a value that is not UTF-8 is a bad value, not an
+    // absent one, so it refuses boot like any other.
+    let public_origin = match std::env::var("MAIDAN_PUBLIC_ORIGIN") {
+        Ok(v) => Some(v),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(_)) => {
+            anyhow::bail!("MAIDAN_PUBLIC_ORIGIN is not valid UTF-8")
+        }
+    };
+    state.public_origin =
+        maidan_server::oauth::metadata::public_origin_from(public_origin.as_deref())
+            .map_err(anyhow::Error::msg)?;
     state.dev_anonymous_reader =
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {
