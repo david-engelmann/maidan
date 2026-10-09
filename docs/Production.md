@@ -1602,6 +1602,36 @@ counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
 | `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's rows in every one of these tables |
 | `MAIDAN_RETENTION_MESSAGES_DAYS` | Messages posted before the cutoff, erased the way a purge erases them (words, embeddings, references, content keys) in every workspace | Messages in a held workspace; a message newer than the cutoff. Off when unset |
 
+### Partitioned event log (Postgres)
+
+On Postgres the event log, `maidan_events`, is partitioned by calendar month
+(UTC) of `occurred_at` (migration 0162), as `maidan_events_pYYYYMM`. The server
+keeps the current month and three more ready, at boot and at the start of each
+retention sweep. A DEFAULT partition, `maidan_events_default`, takes any row no
+month covers: one dated more than three months ahead, or one older than the
+oldest month still kept. When a month is created, the rows DEFAULT holds for
+it move into it. The rows the table had before 0162 stay where they were, in
+one partition, `maidan_events_legacy`.
+
+With `MAIDAN_RETENTION_EVENTS_DAYS` set, a sweep drops a month whole when the
+month ends by the cutoff and nothing in it is above the delivery-cursor floor
+or in a held workspace. Other partitions are deleted from in batches, as
+before: a month that doesn't qualify, the month the cutoff falls in, `_legacy`
+and DEFAULT. A sweep waits up to five seconds for the table lock a drop needs,
+and deletes instead if it can't get it. Each partition has its own
+autovacuum settings (vacuum and insert-vacuum at 5%, analyze at 2%). Autovacuum
+never analyzes the partitioned parent itself, so after a large import run
+`ANALYZE maidan_events` by hand. To see the partitions:
+
+```sql
+SELECT inhrelid::regclass, pg_get_expr(c.relpartbound, c.oid)
+FROM pg_inherits JOIN pg_class c ON c.oid = inhrelid
+WHERE inhparent = 'maidan_events'::regclass;
+```
+
+A row in DEFAULT normally means maintenance hasn't run since its month came
+due. Check the sweep's logs for `retention: partition maintenance failed`.
+
 Audit rows belong to the workspace stamped on them when they were written. On
 upgrade, migration 0123 backfilled older rows from what they reference: a
 `workspace` target, `metadata.workspace_id`, the target's own row (token,
