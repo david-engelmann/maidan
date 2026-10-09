@@ -213,10 +213,13 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
       document.getElementById("login").onclick = () => {
         if (!oidcLoginPath) return;
-        if (!wid()) return showError("Enter the workspace ID first.");
         persist();
-        window.location.href =
-          `${base()}${oidcLoginPath}?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`;
+        // With no workspace id this is the front door: the server signs the
+        // identity in to its most recent workspace and this page offers the
+        // rest (docs/Hosted Console.md).
+        window.location.href = wid()
+          ? `${base()}${oidcLoginPath}?workspace_id=${encodeURIComponent(wid())}&return_to=/ui/`
+          : `${base()}${oidcLoginPath}?return_to=/ui/`;
       };
 
       document.getElementById("mint").onclick = async () => {
