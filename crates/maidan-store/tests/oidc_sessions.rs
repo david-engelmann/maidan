@@ -4,7 +4,7 @@ use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewMaidanSession, NewMember, NewOidcIdentity, NewOidcPendingAuth, NewWorkspace,
-    WorkspaceId,
+    OidcPendingTarget, WorkspaceId,
 };
 
 async fn seed_workspace(store: &SqliteStore) -> WorkspaceId {
@@ -81,7 +81,7 @@ async fn oidc_pending_is_single_use() {
     store
         .insert_oidc_pending(NewOidcPendingAuth {
             state: "state-abc".to_string(),
-            workspace_id,
+            target: OidcPendingTarget::Workspace(workspace_id),
             nonce: "nonce".to_string(),
             pkce_verifier: "verifier".to_string(),
             return_to: Some("/ui/".to_string()),
@@ -91,7 +91,7 @@ async fn oidc_pending_is_single_use() {
         .expect("insert");
 
     let pending = store.take_oidc_pending("state-abc").await.expect("take");
-    assert_eq!(pending.workspace_id, workspace_id);
+    assert_eq!(pending.target, OidcPendingTarget::Workspace(workspace_id));
 
     let err = store
         .take_oidc_pending("state-abc")
