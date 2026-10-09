@@ -132,6 +132,34 @@ pub fn session_from_token() {}
 )]
 pub fn oauth_token() {}
 
+/// Start an OAuth authorization request
+///
+/// The OAuth 2.1 authorization endpoint. Validates the request (client,
+/// redirect URI, PKCE challenge, resource indicator) and stores it pending
+/// the member's consent decision, then redirects to the consent page. Never
+/// issues a code on a GET.
+#[utoipa::path(
+    get,
+    path = "/oauth/authorize",
+    tag = "auth",
+    params(
+        ("client_id" = String, Query, description = "The client's id, or an HTTPS client metadata URL (CIMD)"),
+        ("redirect_uri" = String, Query, description = "Where the code goes; must match a registered URI exactly"),
+        ("code_challenge" = String, Query, description = "PKCE S256 challenge"),
+        ("code_challenge_method" = String, Query, description = "Must be S256"),
+        ("scope" = Option<String>, Query, description = "Space-delimited capabilities"),
+        ("state" = String, Query, description = "Opaque client state, echoed back"),
+        ("resource" = Option<String>, Query, description = "RFC 8707 resource indicator"),
+    ),
+    security(()),
+    responses(
+        (status = 302, description = "Redirect to the consent page, or to the client with an error"),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn oauth_authorize() {}
+
 /// List a workspace's events (console)
 #[utoipa::path(
     get,

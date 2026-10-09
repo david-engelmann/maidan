@@ -44,6 +44,12 @@ pub async fn load_preregistered_clients(state: &AppState) -> ApiResult<usize> {
         .map_err(|e| ApiError::Internal(format!("MAIDAN_OAUTH_CLIENTS is not valid JSON: {e}")))?;
     let mut inserted = 0;
     for c in clients {
+        validate_redirect_uris(&c.redirect_uris).map_err(|e| {
+            ApiError::Internal(format!(
+                "MAIDAN_OAUTH_CLIENTS: client {}: {:?}",
+                c.client_id, e
+            ))
+        })?;
         if state
             .store
             .get_oauth_client_by_client_id(&c.client_id)
@@ -74,6 +80,29 @@ struct ClientMetadataDocument {
     redirect_uris: Vec<String>,
     #[serde(default)]
     scope: Option<String>,
+}
+
+/// Every redirect URI must be HTTPS, or HTTP on loopback (development).
+/// Rejects cleartext URIs that would leak the authorization code in transit.
+fn validate_redirect_uris(uris: &[String]) -> ApiResult<()> {
+    for uri in uris {
+        let url = Url::parse(uri)
+            .map_err(|_| ApiError::BadRequest(format!("redirect URI is not a valid URL: {uri}")))?;
+        let is_loopback = url
+            .host_str()
+            .map(|h| h == "localhost" || h == "127.0.0.1" || h == "[::1]")
+            .unwrap_or(false);
+        match url.scheme() {
+            "https" => {}
+            "http" if is_loopback => {}
+            other => {
+                return Err(ApiError::BadRequest(format!(
+                    "redirect URI scheme must be https (or http on loopback), got {other}: {uri}"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Resolve a `client_id` to a client.
@@ -137,6 +166,7 @@ pub async fn resolve_client(
             "client metadata document has no redirect_uris".into(),
         ));
     }
+    validate_redirect_uris(&doc.redirect_uris)?;
 
     // Ephemeral client: not persisted. The caller validates redirect URI
     // and scopes against these.

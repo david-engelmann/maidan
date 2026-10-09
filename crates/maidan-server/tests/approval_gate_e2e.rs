@@ -987,9 +987,14 @@ async fn an_oauth_token_cannot_accept_a_gate() {
         .send()
         .await
         .unwrap();
-    assert_eq!(consent_resp.status(), StatusCode::OK);
-    let consent_body: Value = consent_resp.json().await.unwrap();
-    let redirect_to = consent_body["redirect_to"].as_str().unwrap();
+    assert_eq!(consent_resp.status(), StatusCode::SEE_OTHER);
+    let redirect_to = consent_resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     let code = redirect_to
         .split("code=")
         .nth(1)

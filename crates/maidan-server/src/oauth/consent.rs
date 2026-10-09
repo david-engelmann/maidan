@@ -13,7 +13,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse},
-    Extension, Json,
+    Extension,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
@@ -21,13 +21,14 @@ use maidan_types::{
     AuditScope, NewAuditEvent, NewOAuthAuthorizationCode, NewOAuthGrant, OAuthPendingRequestId,
 };
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::app::BOARD_UI_CSP;
 use crate::error::ApiError;
 use crate::extract::{ApiForm, ApiQuery};
+use crate::oauth::registry::resolve_client;
 use crate::session::{require_same_origin, SessionContext};
 use crate::state::AppState;
 
@@ -74,11 +75,9 @@ pub async fn consent_page(
             "this consent request belongs to another member".into(),
         ));
     }
-    let client = state
-        .store
-        .get_oauth_client_by_client_id(&pending.client_id)
-        .await?
-        .ok_or_else(|| ApiError::BadRequest("unknown client".into()))?;
+    let client = resolve_client(&state, pending.workspace_id, &pending.client_id)
+        .await
+        .map_err(|_| ApiError::BadRequest("unknown client".into()))?;
 
     let scopes: String = pending
         .scope
@@ -94,25 +93,11 @@ pub async fn consent_page(
 <h1>Authorize {client_name}?</h1>
 <p><strong>{client_name}</strong> wants access to your Maidan workspace with these capabilities:</p>
 <ul>{scopes}</ul>
-<form id="consent" method="post" action="/ui/api/oauth/consent">
+<form method="post" action="/ui/api/oauth/consent">
 <input type="hidden" name="request_id" value="{request_id}">
 <button type="submit" name="approved" value="true">Allow</button>
 <button type="submit" name="approved" value="false">Deny</button>
 </form>
-<script>
-document.getElementById('consent').addEventListener('submit', async (e) => {{
-    e.preventDefault();
-    const form = new FormData(e.target);
-    const approved = e.submitter.value === 'true';
-    const res = await fetch('/ui/api/oauth/consent', {{
-        method: 'POST',
-        headers: {{ 'Content-Type': 'application/json' }},
-        body: JSON.stringify({{ request_id: form.get('request_id'), approved }}),
-    }});
-    const data = await res.json();
-    if (data.redirect_to) window.location = data.redirect_to;
-}});
-</script>
 </body>
 </html>"#,
         client_name = html_escape(&client.name),
@@ -137,19 +122,15 @@ pub struct ConsentDecision {
     pub approved: bool,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ConsentResult {
-    pub redirect_to: String,
-}
-
 /// Decide a pending consent request. Same-origin POST on the signed-in
-/// session only. Consumes the pending request (single use).
+/// session only. Consumes the pending request (single use). Responds with a
+/// 303 redirect to the client's redirect URI (native form POST; no JS).
 pub async fn decide_consent(
     State(state): State<AppState>,
     Extension(session): Extension<SessionContext>,
     headers: HeaderMap,
     ApiForm(form): ApiForm<ConsentDecision>,
-) -> ApiResult<(StatusCode, Json<ConsentResult>)> {
+) -> ApiResult<impl IntoResponse> {
     if session.token.is_some() {
         return Err(ApiError::Forbidden(
             "consent needs a browser session the person signed in to".into(),
@@ -195,11 +176,16 @@ pub async fn decide_consent(
             separator,
             urlencoding::encode(&pending.state),
         );
-        return Ok((StatusCode::OK, Json(ConsentResult { redirect_to })));
+        return Ok((
+            StatusCode::SEE_OTHER,
+            [(axum::http::header::LOCATION, redirect_to)],
+        ));
     }
 
     // Approved: record the grant (reusing an identical one) and issue the
-    // single-use code, exactly as the old auto-approve path did.
+    // single-use code, exactly as the old auto-approve path did. The unique
+    // index on live grants makes this atomic: a concurrent approval for the
+    // same tuple gets a Conflict, which we treat as "already exists".
     let scope = pending.scope.clone();
     if state
         .store
@@ -218,7 +204,7 @@ pub async fn decide_consent(
             pending.workspace_id,
             pending.member_id,
         );
-        state
+        let result = state
             .store
             .create_oauth_grant_audited(
                 NewOAuthGrant {
@@ -242,7 +228,14 @@ pub async fn decide_consent(
                     }),
                 }),
             )
-            .await?;
+            .await;
+        // A concurrent consent for the same tuple won the race; the grant
+        // exists, so proceed. Any other error is real.
+        if let Err(e) = result {
+            if !matches!(e, maidan_store::StoreError::Conflict(_)) {
+                return Err(e.into());
+            }
+        }
     }
 
     let mut raw = [0u8; 32];
@@ -270,5 +263,8 @@ pub async fn decide_consent(
         urlencoding::encode(&code),
         urlencoding::encode(&pending.state),
     );
-    Ok((StatusCode::OK, Json(ConsentResult { redirect_to })))
+    Ok((
+        StatusCode::SEE_OTHER,
+        [(axum::http::header::LOCATION, redirect_to)],
+    ))
 }

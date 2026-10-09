@@ -8,7 +8,7 @@
 //! token carries the grant's scopes and lineage, and never `approval:grant`
 //! (stripped at mint, so an OAuth token can never accept an approval gate).
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
 use maidan_auth::token::hashes_equal;
@@ -50,10 +50,17 @@ pub struct OAuthTokenResponse {
 
 /// Exchange an authorization code for an access token (public; the client
 /// authenticates with its secret and the PKCE verifier).
+///
+/// Error contract: this endpoint uses the repository's RFC 9457 problem-details
+/// contract (`ApiError`), not OAuth-style `{"error": "invalid_grant"}` bodies.
+/// A bad code, expired code, or wrong verifier is a 401; a mismatched
+/// client_id, redirect_uri, or resource is a 400. Maidan's MCP clients speak
+/// this contract; the endpoint is not advertised as a generic OAuth token
+/// endpoint for third-party clients.
 pub async fn token(
     State(state): State<AppState>,
     ApiForm(form): ApiForm<OAuthTokenRequest>,
-) -> ApiResult<(StatusCode, Json<OAuthTokenResponse>)> {
+) -> ApiResult<impl IntoResponse> {
     if form.grant_type != "authorization_code" {
         return Err(ApiError::BadRequest(
             "grant_type must be authorization_code".into(),
@@ -201,6 +208,16 @@ pub async fn token(
 
     Ok((
         StatusCode::OK,
+        [
+            (
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            ),
+            (
+                axum::http::header::PRAGMA,
+                axum::http::HeaderValue::from_static("no-cache"),
+            ),
+        ],
         Json(OAuthTokenResponse {
             access_token: secret.as_str().to_string(),
             token_type: "Bearer".to_string(),

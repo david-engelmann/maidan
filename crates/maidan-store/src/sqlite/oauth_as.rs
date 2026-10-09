@@ -196,7 +196,15 @@ pub(crate) async fn insert_grant_on(
     .bind(new.lineage_id)
     .bind(Utc::now())
     .fetch_one(&mut *conn)
-    .await?;
+    .await
+    .map_err(|e| {
+        if let sqlx::Error::Database(ref db) = e {
+            if db.is_unique_violation() {
+                return StoreError::Conflict("oauth grant already exists".into());
+            }
+        }
+        StoreError::Database(e)
+    })?;
     row_to_grant(&row)
 }
 
