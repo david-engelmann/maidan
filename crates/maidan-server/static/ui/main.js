@@ -82,51 +82,78 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
         };
         try {
           let res;
+          let minted = null;
+          // One call creates the agent and its worker token together
+          // (POST /workspaces/{wid}/agents, token:admin). It is on every
+          // server image, so a hosted instance needs no bootstrap route.
           try {
-            // The outer guard owns the button for the whole create+mint action:
-            // passing null keeps writeApi from re-enabling it between the
-            // two requests, where another click could start an overlap.
-            res = await writeApi(null, `${base()}/workspaces/${wid()}/members`, {
+            res = await writeApi(null, `${base()}/workspaces/${wid()}/agents`, {
               method: "POST",
               headers: headers(true),
-              body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
+              body: JSON.stringify({ handle, display_name: display || null }),
             });
           } catch (e) {
-            status.textContent = unreachable(e);
+            // The request may have reached the server: the agent may exist.
+            status.textContent = `The server may have created ${handle} before the reply was lost. Check the member list before trying again. ${unreachable(e)}`;
             return;
           }
-          if (!res.ok) {
-            status.textContent = await responseError(res, "Could not create the member");
+          if (res.ok) {
+            const created = await res.json();
+            member = created.member;
+            minted = created.token;
+          } else if (res.status !== 404) {
+            // A refusal: nothing was created, member and token commit together.
+            status.textContent = await responseError(res, "Could not connect the agent");
             return;
+          } else {
+            // An older server without that route: create the member, then
+            // mint its token, the two calls this page made before.
+            try {
+              // The outer guard owns the button for the whole create+mint action:
+              // passing null keeps writeApi from re-enabling it between the
+              // two requests, where another click could start an overlap.
+              res = await writeApi(null, `${base()}/workspaces/${wid()}/members`, {
+                method: "POST",
+                headers: headers(true),
+                body: JSON.stringify({ handle, display_name: display || null, kind: "agent" }),
+              });
+            } catch (e) {
+              status.textContent = unreachable(e);
+              return;
+            }
+            if (!res.ok) {
+              status.textContent = await responseError(res, "Could not create the member");
+              return;
+            }
+            member = await res.json();
+            status.textContent = "Minting a worker token…";
+            try {
+              res = await writeApi(null, `${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
+                method: "POST",
+                headers: headers(true),
+                body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
+              });
+            } catch (e) {
+              // The request may have reached the server before the reply was
+              // lost, so a token may exist that this page never saw: the
+              // outcome is unknown, not a confirmed failure.
+              status.textContent = memberCreated(`the token request may have reached the server, so a token may exist that this page never saw. ${unreachable(e)}`);
+              return;
+            }
+            if (!res.ok) {
+              // mint_api_token can commit the token before the quota listing
+              // fails, so a 5xx leaves the outcome unknown: a token may exist
+              // that this page never saw. A 4xx is a refusal before anything
+              // was created.
+              const what =
+                res.status >= 500
+                  ? "the server failed while minting its token, so a token may exist that this page never saw."
+                  : `${await responseError(res, "the server refused to mint its token")}.`;
+              status.textContent = memberCreated(what);
+              return;
+            }
+            minted = await res.json();
           }
-          member = await res.json();
-          status.textContent = "Minting a worker token…";
-          try {
-            res = await writeApi(null, `${base()}/workspaces/${wid()}/members/${member.id}/tokens`, {
-              method: "POST",
-              headers: headers(true),
-              body: JSON.stringify({ label: handle, capability_set: WORKER_PRESET, capabilities: [] }),
-            });
-          } catch (e) {
-            // The request may have reached the server before the reply was
-            // lost, so a token may exist that this page never saw: the
-            // outcome is unknown, not a confirmed failure.
-            status.textContent = memberCreated(`the token request may have reached the server, so a token may exist that this page never saw. ${unreachable(e)}`);
-            return;
-          }
-          if (!res.ok) {
-            // mint_api_token can commit the token before the quota listing
-            // fails, so a 5xx leaves the outcome unknown: a token may exist
-            // that this page never saw. A 4xx is a refusal before anything
-            // was created.
-            const what =
-              res.status >= 500
-                ? "the server failed while minting its token, so a token may exist that this page never saw."
-                : `${await responseError(res, "the server refused to mint its token")}.`;
-            status.textContent = memberCreated(what);
-            return;
-          }
-          const minted = await res.json();
           secretBox.hidden = false;
           secretBox.replaceChildren();
           document.getElementById("token-member").value = member.id;

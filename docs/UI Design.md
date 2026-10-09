@@ -95,7 +95,7 @@ Primary action: **Create member and mint token** (`#cx-create-agent`). Copy, Add
 
 Selectors: `#connect-dialog`, `#connect-title`, `#cx-claude`, `#cx-json`, `#cx-prompt`, `#cx-create`, `#cx-name`, `#cx-handle`, `#cx-create-agent`, `#cx-secret`, `#cx-cursor`, `#cx-status`.
 
-Creating the member and minting `maidan.agent.worker` is already on main. Do not rebuild it. The secret is shown once, in `#cx-secret`, as text the person can copy. It is not written into the snippets.
+Creating the member and minting `maidan.agent.worker` is already on main. Do not rebuild it. It is one call, `POST /workspaces/{wid}/agents`, which exists on the production image. Only a server that answers that route with 404 (one older than the route) gets the two bootstrap-era calls: create the member, then mint its token. The secret is shown once, in `#cx-secret`, as text the person can copy. It is not written into the snippets.
 
 ### Empty and error
 

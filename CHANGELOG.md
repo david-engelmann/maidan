@@ -1928,6 +1928,11 @@ Refs #1253
 
 - **Added:** the workspace approval policy (`GET`/`PUT /workspaces/{id}/approval-policy`) has `confirm_link_ttl_seconds`, from 60 to 3600 and 600 by default. `approval_decide` mints its confirmation link with it. The confirm route refuses the link once that time has passed, because the store's expiry check reads the `expires_at` minted with it. Before this the lifetime was ten minutes, compiled in. A value outside the bounds is a 400 that changes nothing. Setting it takes `token:admin` and is audited as `approval_policy.set` with the new lifetime. A link keeps the lifetime it was sent with. The PUT replaces the policy, so a field left out is back on its default. Migration 0149 adds the column, with a CHECK, on SQLite and Postgres. `ApprovalConfirmationKeys::with_ttl` is gone from `maidan-mcp`: the lifetime is the workspace's now.
 
+### An admin connects an agent on the production image
+
+- **Added:** `POST /workspaces/{wid}/agents` (`token:admin`). One call creates an agent member and its `maidan.agent.worker` token, and returns the secret once. The member, the token and both audit rows (`member.create`, `token.mint`, each marked `source: agent-invite`) commit in one transaction on SQLite and Postgres, so a failure leaves none of them. The route never creates a human and takes no capability list or `kind` (an unknown field is a 400), and the worker set is granted through the same mint vocabulary as `POST /workspaces/{wid}/members/{mid}/tokens`. A taken handle is a 409. It is mounted on the production image, which has no bootstrap routes, so the agent invite (#1144) works on a hosted instance with no `MAIDAN_BOOTSTRAP`. Another workspace's admin is refused.
+- **Changed:** the console's Connect an agent calls the new route. Only a server that answers it with 404 (one older than the route) gets the two earlier calls, create the member then mint its token. A refusal from the new route says nothing was created and does not fall back.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
