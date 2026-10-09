@@ -211,4 +211,10 @@ test("Accept that needs confirmation shows the console link and never says it wa
   expect(JSON.parse(after.content[0].text).state).toBe("pending");
   const calls = (await requests(page)).filter((r) => r.method === "tools/call");
   expect(calls.map((c) => [c.params.name, c.params.arguments.decision])).toContainEqual(["approval_decide", "accept"]);
+
+  // Leave no pending gate behind for the specs that read Needs you.
+  await mcp(request, fx.token, "tools/call", {
+    name: "approval_decide",
+    arguments: { gate_id: gateId, decision: "decline" },
+  });
 });
