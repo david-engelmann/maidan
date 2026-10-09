@@ -84,3 +84,30 @@ test("when the focused item leaves the queue, focus moves to its neighbour and s
   expect(await neighbour.evaluate((li) => li.contains(document.activeElement))).toBe(true);
   await expect(page.locator("#toasts")).toContainText("Focus moved to the next one");
 });
+
+// A row marked leaving can be redrawn before it is removed, while the server
+// still lists its item. The redrawn review row starts with its approve
+// buttons disabled until its packet loads, and the focused control (here a
+// Close task button, which only the old row had) has no twin. Focus must land
+// on an enabled control of that row, not on a disabled one, which would leave
+// it on <body>.
+test("a redrawn row never hands focus to a disabled control", async ({ page }) => {
+  await openDesk(page);
+  const target = row(page, fx.desk_waiting_thread_id);
+  // Keep every redrawn row's packet loading, so its approve buttons stay off.
+  await page.route(/\/threads\/[^/]+\/review-packet$/, () => new Promise(() => {}));
+  // The control that only the old row has, in the slot where the redrawn
+  // row's disabled Approve sits.
+  await target.getByRole("button", { name: "Approve", exact: true }).evaluate((b: HTMLButtonElement) => {
+    b.disabled = false;
+    b.textContent = "Close task";
+    b.focus();
+  });
+  await target.evaluate((li) => li.classList.add("leaving"));
+  await callUiExport(page, "needs.js", "loadNeedsYou");
+
+  const redrawn = row(page, fx.desk_waiting_thread_id);
+  await expect(redrawn.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
+  expect(await redrawn.evaluate((li) => li.contains(document.activeElement))).toBe(true);
+  expect(await page.evaluate(() => (document.activeElement as HTMLButtonElement).disabled === true)).toBe(false);
+});

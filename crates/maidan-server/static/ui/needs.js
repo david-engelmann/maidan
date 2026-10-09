@@ -220,14 +220,16 @@ import { answerGate, modelRequestLine } from "./tools.js";
         const rows = [...list.querySelectorAll(".ny-item")];
         const same = rows.find((r) => r.dataset.key === focus.key);
         if (same) {
-          const controls = nyControls(same);
+          // Only an enabled control can take focus: a redrawn review row
+          // starts with its approve buttons disabled until its packet loads.
+          const usable = nyControls(same).filter((c) => !c.disabled);
           const target =
-            controls.find((c) => nyControlLabel(c) === focus.label && !c.disabled) ||
-            controls[focus.slot] ||
-            controls.find((c) => !c.disabled);
+            usable.find((c) => nyControlLabel(c) === focus.label) ||
+            usable[Math.min(focus.slot, usable.length - 1)] ||
+            usable[0];
           if (target) {
             target.focus({ preventScroll: true });
-            return;
+            if (document.activeElement === target) return;
           }
         }
         // The item has left the queue. Its neighbour takes focus, the one
