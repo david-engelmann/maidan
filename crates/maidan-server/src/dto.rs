@@ -6,12 +6,12 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ArtifactKind, BlockedReason, ChannelId,
-    ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId, EgressSurface,
-    EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor, LandGateStatus, Member,
-    MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide, RelationKind, ReviewDecision,
-    ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency, ThreadId, TokenPolicy,
-    TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
+    ApiTokenId, AppId, AppInstallationId, ApprovalGate, ApprovalGateId, ApprovalRisk, ArtifactKind,
+    BlockedReason, ChannelId, ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId,
+    EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor,
+    LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
+    RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency,
+    ThreadId, TokenPolicy, TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -395,6 +395,49 @@ pub struct AnswerApprovalGate {
 pub struct ApprovalGateView {
     pub gate: ApprovalGate,
     pub request_state: String,
+    /// A model's live request, through `approval_decide`, for a person to
+    /// confirm accepting this gate. Absent when no model is waiting on one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_request: Option<ModelRequestView>,
+}
+
+/// Who a model asked through, and whose confirmation it is waiting for. The
+/// link itself is never listed: only the person it was issued to has it.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelRequestView {
+    /// The member whose credential the model used, the one who can confirm.
+    pub member_id: MemberId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// Body for `POST /auth/approval-confirmations/confirm`: the gate and the
+/// token from a confirmation link's fragment.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConfirmApprovalGate {
+    pub gate_id: ApprovalGateId,
+    pub token: String,
+}
+
+/// Body for `PUT /workspaces/:id/approval-policy`. It replaces the whole
+/// policy: a field left out or `null` is back on its default, and with both
+/// left out the workspace has no policy of its own.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SetApprovalPolicy {
+    /// The lowest gate risk at which a model's accept through
+    /// `approval_decide` needs a person's confirmation. Default `low`.
+    #[serde(default)]
+    pub confirm_at: Option<ApprovalRisk>,
+    /// How long a confirmation link lives, in seconds: 60 to 3600. Default
+    /// 600. A link already sent keeps the lifetime it was minted with.
+    #[serde(default)]
+    #[schema(minimum = 60, maximum = 3600)]
+    pub confirm_link_ttl_seconds: Option<i64>,
 }
 
 /// A task's dependency edges plus whether it is ready to run.
@@ -1603,4 +1646,25 @@ pub struct SessionResponse {
     /// Display name of the signed-in member, when one is set. `null` when the
     /// member has none. The id stays in `member_id`.
     pub display_name: Option<String>,
+}
+
+/// One workspace the signed-in person can switch to.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspace {
+    pub workspace_id: WorkspaceId,
+    /// The workspace's display name (a label, not an address).
+    pub name: String,
+    /// The person's member in that workspace.
+    pub member_id: MemberId,
+    pub handle: String,
+    /// `true` for the workspace this session is in.
+    pub current: bool,
+}
+
+/// `GET /auth/session/workspaces`: the session's own workspace first, then
+/// every other workspace the identity it signed in with is a member of,
+/// newest sign-in first, at most 200.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspaces {
+    pub workspaces: Vec<SessionWorkspace>,
 }

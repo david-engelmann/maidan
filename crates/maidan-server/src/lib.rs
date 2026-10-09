@@ -46,6 +46,7 @@ pub mod federation_worker;
 pub mod fsm_hook_worker;
 pub mod fsm_hooks;
 pub mod github;
+pub mod github_app;
 pub mod group_dm;
 pub mod health;
 pub mod idempotency;

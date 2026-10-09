@@ -6,8 +6,10 @@ const fx = fixtures();
 
 // A review row in Needs you shows the evidence it approves: the review
 // packet's root, the result's hash and who produced it, then each linked
-// artifact. Approve sends the root the row showed, and the row names who
-// decided. Attestation tiers are not here: nothing on the server defines one.
+// artifact, with who linked it to the task and when. Approve sends the root
+// the row showed, and the row names who decided, on a page loaded after the
+// verdict too. Attestation tiers and the self-reported warning are in
+// approval-tiers.spec.ts.
 
 // The decide spec approves a seeded task, so a retry would find it decided.
 test.describe.configure({ retries: 0 });
@@ -47,7 +49,7 @@ test("a review row lists the packet's evidence: the result, then each artifact",
   await expect(shot.locator(".ny-ev-kind")).toHaveText("screenshot");
   await expect(shot.locator(".ny-ev-name")).toHaveText("login-after.png");
   await expect(shot.locator(".ny-ev-size")).toHaveText("2.0 KB");
-  await expect(shot.locator(".ny-ev-by")).toContainText("uploaded by");
+  await expect(shot.locator(".ny-ev-by")).toContainText("linked by");
   await expect(shot.locator(".ny-ev-by .person .name")).toHaveText("Deployer");
   await expect(shot.locator(".ny-ev-by")).toContainText(/(just now|\d+[mhd] ago)$/);
   const log = evidence.locator(`.ny-ev-item[data-sha="${fx.proof_transcript_sha}"]`);
@@ -56,6 +58,206 @@ test("a review row lists the packet's evidence: the result, then each artifact",
   await expect(log.locator(".ny-ev-size")).toHaveText("21 B");
   await expect(evidence.locator(".ny-ev-err")).toHaveCount(0);
   await expect(evidence.locator(".ny-ev-decider")).toHaveCount(0);
+});
+
+// The operator signed in as a person: the session cookie an identity
+// provider's sign-in sets, with no token behind it, so every read the row
+// makes goes through /ui/api.
+async function signInAsPerson(page: Page) {
+  await page.context().addCookies([
+    { name: "maidan_session", value: fx.session_cookie, url: fx.base_url, httpOnly: true, sameSite: "Lax" },
+  ]);
+  await page.goto("/ui/");
+  await expect(page.locator("#identity-mode")).toHaveText("session");
+}
+
+test("a verdict given before the page loaded names its reviewer, and a reload keeps it", async ({ page }) => {
+  const reads: string[] = [];
+  page.on("request", (req) => {
+    if (req.method() === "GET" && /\/threads\/[^/]+\/(reviews|artifacts)$/.test(req.url())) {
+      reads.push(new URL(req.url()).pathname);
+    }
+  });
+  await signInAsPerson(page);
+  const r = row(page, fx.proof_decided_thread_id);
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  const decider = r.locator(".ny-ev-decider");
+  await expect(decider).toHaveCount(1);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+  await expect(decider).toHaveAttribute("data-reviewer", fx.rae_member_id);
+  await expect(decider).toHaveAttribute("data-decision", "approve");
+  // The operator still owes a verdict, so the row and its buttons stay.
+  await expect(r.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+
+  await page.reload();
+  await expect(page.locator("#identity-mode")).toHaveText("session");
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  await expect(decider).toHaveCount(1);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+
+  // Both reads went through the session proxy, never the bearer tree.
+  expect(reads).toContain(`/ui/api/threads/${fx.proof_decided_thread_id}/reviews`);
+  expect(reads).toContain(`/ui/api/threads/${fx.proof_decided_thread_id}/artifacts`);
+  expect(reads.filter((p) => !p.startsWith("/ui/api/"))).toEqual([]);
+});
+
+test("each artifact says who linked it and when, and one the task dropped is flagged", async ({ page }) => {
+  await signInAsPerson(page);
+  const evidence = row(page, fx.proof_unlinked_thread_id).locator(".ny-evidence");
+  await expect(evidence).toHaveAttribute("data-state", "ready");
+  await expect(evidence.locator('.ny-ev-item[data-ev="artifact"]')).toHaveCount(2);
+
+  // Deployer uploaded the log; Rae linked it to the task.
+  const log = evidence.locator(`.ny-ev-item[data-sha="${fx.proof_transcript_sha}"] .ny-ev-by`);
+  await expect(log).toContainText("linked by");
+  await expect(log.locator(".person .name")).toHaveText("Rae Reviewer");
+  await expect(log).toContainText(/(just now|\d+[mhd] ago)$/);
+  await expect(log).not.toHaveClass(/ny-warn/);
+
+  // The packet pinned the screenshot; the task no longer links it.
+  const shot = evidence.locator(`.ny-ev-item[data-sha="${fx.proof_screenshot_sha}"] .ny-ev-by`);
+  await expect(shot).toHaveClass(/ny-warn/);
+  await expect(shot).toHaveText("no longer linked to the task");
+  await expect(evidence.locator(".ny-warn")).toHaveCount(1);
+});
+
+test("a failed read of the links flags nothing and says who uploaded the bytes", async ({ page }) => {
+  await page.route(`**/threads/${fx.proof_unlinked_thread_id}/artifacts`, (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"boom"}' }),
+  );
+  await signInAsPerson(page);
+  const evidence = row(page, fx.proof_unlinked_thread_id).locator(".ny-evidence");
+  await expect(evidence).toHaveAttribute("data-state", "ready");
+  await expect(evidence.locator(".ny-warn")).toHaveCount(0);
+  for (const sha of [fx.proof_screenshot_sha, fx.proof_transcript_sha]) {
+    const by = evidence.locator(`.ny-ev-item[data-sha="${sha}"] .ny-ev-by`);
+    await expect(by).toContainText("uploaded by");
+    await expect(by.locator(".person .name")).toHaveText("Deployer");
+  }
+});
+
+test("an approval of an earlier hand-off, or a dismissed one, names no decider", async ({ page }) => {
+  await page.route(`**/threads/${fx.proof_decided_thread_id}/reviews`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          thread_id: fx.proof_decided_thread_id,
+          reviewer_id: fx.rae_member_id,
+          decision: "approve",
+          evidence_root: "0".repeat(64),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          thread_id: fx.proof_decided_thread_id,
+          reviewer_id: fx.member_id,
+          decision: "approve",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          dismissed_at: new Date().toISOString(),
+        },
+      ]),
+    }),
+  );
+  await signInAsPerson(page);
+  const r = row(page, fx.proof_decided_thread_id);
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  await expect(r.locator(".ny-ev-decider")).toHaveCount(0);
+});
+
+test("a verdict that arrives while the reviews read is in flight is not dropped", async ({ page, request }) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/threads/${fx.proof_decided_thread_id}/reviews`, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await held;
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await signIn(page, fx.workspace_id, fx.live_token);
+  const r = row(page, fx.proof_decided_thread_id);
+  if ((await page.locator("#ws-status").textContent()) !== "connected") await page.click("#ws-connect");
+  await expect(page.locator("#ws-status")).toHaveText("connected");
+
+  const handed = await packet(request, fx.proof_decided_thread_id);
+  const res = await request.post(`/threads/${fx.proof_decided_thread_id}/reviews`, {
+    headers: bearer(fx.rae_token),
+    data: { decision: "approve", evidence_root: handed.evidence_root },
+  });
+  expect(res.ok()).toBeTruthy();
+  const decider = r.locator(`.ny-ev-decider[data-reviewer="${fx.rae_member_id}"]`);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+
+  // Rae approved this task in the seed and approves it again here. The held
+  // snapshot comes back empty, standing in for one taken before her verdict:
+  // the row keeps the verdict it already saw.
+  release();
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  // The deciders are redrawn once the artifact lines are drawn, after the
+  // links and details come back.
+  await expect(r.locator('.ny-ev-item[data-ev="artifact"]')).toHaveCount(2);
+  await expect(r.locator(".ny-ev-item[aria-busy]")).toHaveCount(0);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+});
+
+test("a dismissal saved after a live verdict wins over it", async ({ page, request }) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**/threads/${fx.proof_decided_thread_id}/reviews`, async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await held;
+    // Rae's review as saved after her verdict below: dismissed later.
+    const later = new Date(Date.now() + 60_000).toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          thread_id: fx.proof_decided_thread_id,
+          reviewer_id: fx.rae_member_id,
+          decision: "approve",
+          created_at: later,
+          updated_at: later,
+          dismissed_at: later,
+        },
+      ]),
+    });
+  });
+  await signIn(page, fx.workspace_id, fx.live_token);
+  const r = row(page, fx.proof_decided_thread_id);
+  if ((await page.locator("#ws-status").textContent()) !== "connected") await page.click("#ws-connect");
+  await expect(page.locator("#ws-status")).toHaveText("connected");
+
+  const handed = await packet(request, fx.proof_decided_thread_id);
+  const res = await request.post(`/threads/${fx.proof_decided_thread_id}/reviews`, {
+    headers: bearer(fx.rae_token),
+    data: { decision: "approve", evidence_root: handed.evidence_root },
+  });
+  expect(res.ok()).toBeTruthy();
+  const decider = r.locator(`.ny-ev-decider[data-reviewer="${fx.rae_member_id}"]`);
+  await expect(decider).toHaveText("Rae Reviewer approved");
+
+  release();
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  await expect(r.locator(".ny-ev-item[aria-busy]")).toHaveCount(0);
+  await expect(decider).toHaveCount(0);
+});
+
+test("a links answer that is not a list flags nothing", async ({ page }) => {
+  await page.route(`**/threads/${fx.proof_unlinked_thread_id}/artifacts`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: '"not a list"' }),
+  );
+  await signInAsPerson(page);
+  const evidence = row(page, fx.proof_unlinked_thread_id).locator(".ny-evidence");
+  await expect(evidence).toHaveAttribute("data-state", "ready");
+  await expect(evidence.locator(".ny-warn")).toHaveCount(0);
+  const by = evidence.locator(`.ny-ev-item[data-sha="${fx.proof_screenshot_sha}"] .ny-ev-by`);
+  await expect(by).toContainText("uploaded by");
 });
 
 test("a packet with no result and no artifact says nothing was handed over", async ({ page }) => {
@@ -172,6 +374,11 @@ test("another reviewer's verdict on the socket names them on the row", async ({ 
   await expect(decider).toHaveText("Rae Reviewer approved");
   // The operator still owes a verdict, so the row and its buttons stay.
   await expect(r.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
+
+  // A reload has no frame to go on; the task's reviews still name her.
+  await page.reload();
+  await expect(r.locator(".ny-evidence")).toHaveAttribute("data-state", "ready");
+  await expect(decider).toHaveText("Rae Reviewer approved");
 });
 
 test("workspace B's console cannot load workspace A's packet or artifact details", async ({ page, request }) => {
@@ -183,7 +390,14 @@ test("workspace B's console cannot load workspace A's packet or artifact details
   await expect(page.locator("#needs-you")).toBeVisible();
   // B's queue holds its own blocked task and none of A's evidence rows.
   await expect(page.locator(`#needs-you-list .ny-item[data-thread-id="${fx.second_thread_id}"]`)).toBeVisible();
-  for (const id of [fx.proof_view_thread_id, fx.proof_decide_thread_id, fx.proof_live_thread_id, fx.proof_empty_thread_id]) {
+  for (const id of [
+    fx.proof_view_thread_id,
+    fx.proof_decide_thread_id,
+    fx.proof_live_thread_id,
+    fx.proof_empty_thread_id,
+    fx.proof_decided_thread_id,
+    fx.proof_unlinked_thread_id,
+  ]) {
     await expect(row(page, id)).toHaveCount(0);
   }
   await expect(page.locator("#needs-you-list .ny-evidence")).toHaveCount(0);
@@ -214,6 +428,35 @@ test("workspace B's console cannot load workspace A's packet or artifact details
     expect(body, path).not.toContain("login-after.png");
   }
 
+  // Who decided A's task and who linked its evidence: A reads both, B's
+  // session gets the refusal the packet read gets, on both trees.
+  const tid = fx.proof_decided_thread_id;
+  for (const suffix of ["reviews", "artifacts"]) {
+    const own = await request.get(`/threads/${tid}/${suffix}`, { headers: bearer(fx.review_token) });
+    expect(own.ok(), suffix).toBeTruthy();
+    expect(await own.text(), suffix).toContain(fx.rae_member_id);
+  }
+  const theirs = await page.evaluate(async (tid) => {
+    const out: { path: string; status: number; body: string; packet: number }[] = [];
+    for (const prefix of ["", "/ui/api"]) {
+      const packet = (await fetch(`${prefix}/threads/${tid}/review-packet`, { credentials: "include" })).status;
+      for (const suffix of ["reviews", "artifacts"]) {
+        const path = `${prefix}/threads/${tid}/${suffix}`;
+        const res = await fetch(path, { credentials: "include" });
+        out.push({ path, status: res.status, body: await res.text(), packet });
+      }
+    }
+    return out;
+  }, tid);
+  expect(theirs).toHaveLength(4);
+  for (const { path, status, body, packet: packetStatus } of theirs) {
+    expect([403, 404], path).toContain(status);
+    expect(status, path).toBe(packetStatus);
+    expect(body, path).not.toContain(fx.rae_member_id);
+    expect(body, path).not.toContain(fx.requester_id);
+    expect(body, path).not.toContain(fx.proof_screenshot_sha);
+  }
+
   // The page's own packet reader comes back empty-handed for A's task.
   const fromPage = await page.evaluate(async (tid) => {
     const importer = new Function("href", "return import(href)") as (href: string) => Promise<Record<string, unknown>>;
@@ -223,7 +466,12 @@ test("workspace B's console cannot load workspace A's packet or artifact details
   expect(fromPage).toBeNull();
 
   // And B's token, straight at the API.
-  for (const path of [`/threads/${fx.proof_view_thread_id}/review-packet`, `/artifacts/${fx.proof_screenshot_sha}/meta`]) {
+  for (const path of [
+    `/threads/${fx.proof_view_thread_id}/review-packet`,
+    `/artifacts/${fx.proof_screenshot_sha}/meta`,
+    `/threads/${fx.proof_decided_thread_id}/reviews`,
+    `/threads/${fx.proof_decided_thread_id}/artifacts`,
+  ]) {
     const res = await request.get(path, { headers: bearer(fx.second_token) });
     expect([403, 404], path).toContain(res.status());
     expect(await res.text(), path).not.toContain(handed.evidence_root);

@@ -128,6 +128,10 @@ export { setIdentityMode };
         const lead = cap ? `${who} is not allowed to do this; it needs ${cap}.` : `${who} is not allowed to do this.`;
         if (cap === "token:admin")
           return `${lead} Ask a workspace admin for a token (maidan init prints the first admin token)`;
+        // A pasted token, and the session made from one, is what a person
+        // hands an agent, so it cannot accept a gate. Say the way that can.
+        if (cap === "approval:grant")
+          return `${lead} Accepting a gate needs you signed in through your identity provider, or a token an admin granted approval:grant. You can still decline or cancel it`;
         if (mode === "session")
           return cap
             ? `${lead} A session cannot mint tokens, so use Change to paste a token that has it`

@@ -47,9 +47,13 @@ period is cut, and clients retry.
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite.                    |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
-| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
+| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_APP_PRIVATE_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
+| `MAIDAN_GITHUB_APP_ID` | with a GitHub App | The GitHub App's id (a number) or client id (`Iv23…`), the issuer of the JWT Maidan signs. With the two below, every outbound GitHub call authenticates as the app instead of with `MAIDAN_GITHUB_TOKEN` (see [Result delivery to GitHub and Slack](#result-delivery-to-github-and-slack)). Setting some of the three but not all refuses boot, naming what is missing. |
+| `MAIDAN_GITHUB_APP_INSTALLATION_ID` | with a GitHub App | The installation the app exchanges its JWT for a token on (the number at the end of the installation's settings URL). A value that is not a positive integer refuses boot. |
+| `MAIDAN_GITHUB_APP_PRIVATE_KEY` | with a GitHub App | The app's private key, PEM, as GitHub downloads it (`RSA PRIVATE KEY`) or PKCS#8 (`PRIVATE KEY`). Newlines written as `\n` are accepted. Prefer `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`. A key that does not parse, or is shorter than 2048 bits, refuses boot; the error names the variable, never the key. |
 | `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready`: the **mark-ready app**, the client in the change flow that asks Maidan to flip its draft pull requests to ready. An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
+| `MAIDAN_MARK_READY_BASES` | no | Comma-separated `owner/name=branch` pairs: the only base each listed repository's agent pull requests may be marked ready into, for example `example-org/example-repo=dev,example-org/example-skills=main`. Repository names compare case-insensitively, as in `MAIDAN_GITHUB_WRITE_REPOS`. A repository not listed is pinned to no base; the workspace egress allowlist (`owner/name@base`) decides its flips alone. Blank entries are skipped. An entry that is not `owner/name=branch`, a branch name git would refuse, `prod`, or a repository listed twice refuses boot. With `MAIDAN_MARK_READY_APP_ID` set and no pins, boot logs a warning. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
 | `MAIDAN_ALLOWED_HOSTS` | no | Comma-separated host names, without ports, that a request with no credential may name under `AUTH_DISABLED` or the anonymous MCP reader, besides loopback names and IP addresses. A public dev instance lists its own name. See "DNS rebinding". |
 | `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | no | Dev only. A workspace id whose name begins `synthetic-`, read by an MCP `POST` with no credential (read-only tools). Refused under `MAIDAN_ENV=production` and beside `AUTH_DISABLED`. See Integration, "Anonymous reading on a dev instance". |
@@ -135,7 +139,11 @@ retries it.
   `userName` another member of the workspace holds is `409` with
   `scimType: uniqueness`. Deactivation (`active=false`, also Entra ID's string
   `"False"`) and delete revoke the member's API tokens; delete also removes the
-  user from every group. `displayName` is set at creation and not changed
+  user from every group. A deactivated member cannot sign in through OIDC (the
+  callback answers `403`), and a browser session they already hold is refused
+  from its next request on. That request also deletes the session, audited as
+  `session.delete` with reason `member_deactivated`. If the delete fails, the
+  request is still refused and the next one tries again. `displayName` is set at creation and not changed
   afterwards.
 - **Groups.** A group is the IdP's named set of users it provisioned into the
   workspace. It records membership and grants nothing by itself: no channel
@@ -292,6 +300,7 @@ detail. Summary:
 | `MAIDAN_OIDC_CLIENT_ID` | yes (non-mock) | OAuth client id. |
 | `MAIDAN_OIDC_CLIENT_SECRET` | confidential clients | Code exchange secret. |
 | `MAIDAN_OIDC_REDIRECT_URI` | yes | Registered callback (e.g. `https://host/auth/oidc/callback`). |
+| `MAIDAN_CONSOLE_ORIGIN` | no | Absolute origin of the console (e.g. `https://host`), used in the one-time links `approval_decide` gives a person. Falls back to the origin of `MAIDAN_OIDC_REDIRECT_URI`; with neither, the links are host-relative and no URL elicitation is offered. |
 | `MAIDAN_OIDC_MOCK` | no | `1` for deterministic dev/CI only; forbidden when `MAIDAN_ENV=production`. |
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on: session may mint the first `token:admin` per workspace via `POST /auth/session/mint`. Set `0` to disable. |
 | `MAIDAN_COOKIE_SECURE` | no | Set `1` in production for `Secure` session cookies. |
@@ -340,7 +349,11 @@ Signing out (`POST /auth/logout`) deletes the row. CSRF is handled by
 `SameSite=Lax`, JSON request bodies, and refusing an unsafe session request or a
 session WebSocket from another origin; the session keeps no CSRF secret. Behind
 a proxy that rewrites `Host`, browsers still send `Sec-Fetch-Site`, which the
-check prefers. Creating a session writes an audit row in the same transaction
+check prefers. Accepting an approval gate takes the strict form of the check: a
+request that names no origin is refused, and only a session signed in through
+the identity provider (not one made from a token) accepts without
+`approval:grant`. Signing in to the console with a pasted token still declines
+and cancels gates. Creating a session writes an audit row in the same transaction
 (`session.from_token`, or `session.create` for an OIDC login).
 Remove `MAIDAN_BOOTSTRAP` once the first human has `token:admin`.
 
@@ -422,7 +435,10 @@ to in `MAIDAN_GITHUB_WRITE_REPOS`, for example
 `MAIDAN_GITHUB_WRITE_REPOS=example/app,example/skills`. A write to any other
 repository is refused before a request is made, whichever workspace asks. To
 let the mark-ready app mark agent pull requests ready, set `MAIDAN_MARK_READY_APP_ID`
-to the id of that app (`GET /workspaces/{wid}/apps` lists it).
+to the id of that app (`GET /workspaces/{wid}/apps` lists it). To pin a
+repository's flips to one base whatever its allowlist blesses, list it in
+`MAIDAN_MARK_READY_BASES`, for example
+`MAIDAN_MARK_READY_BASES=example/app=dev,example/skills=main`.
 
 **4. The services.** Auth is on: nothing sets `AUTH_DISABLED`, and
 `MAIDAN_ENV=production` refuses it and the development KEK outright. With
@@ -467,6 +483,7 @@ services:
       MAIDAN_GITHUB_TOKEN_FILE: /run/secrets/github_token
       MAIDAN_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/github_webhook_secret
       MAIDAN_GITHUB_WRITE_REPOS: example/app,example/skills
+      MAIDAN_MARK_READY_BASES: example/app=dev,example/skills=main
       MAIDAN_SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       MAIDAN_SLACK_SIGNING_SECRET_FILE: /run/secrets/slack_signing_secret
     secrets:
@@ -930,9 +947,11 @@ take N times the rate, and a restart starts every host's budget full.
 
 ### Result delivery to GitHub and Slack
 
-Result delivery and the GitHub projector post with `MAIDAN_GITHUB_TOKEN`, and
+Result delivery and the GitHub projector post with `MAIDAN_GITHUB_TOKEN`, or
+as a GitHub App (below), and
 the egress worker runs only when a Slack or GitHub sender is configured: the
-GitHub sender needs `MAIDAN_GITHUB_WEBHOOK_SECRET` and `MAIDAN_GITHUB_TOKEN`,
+GitHub sender needs `MAIDAN_GITHUB_WEBHOOK_SECRET` and either
+`MAIDAN_GITHUB_TOKEN` or the three `MAIDAN_GITHUB_APP_*` variables,
 the Slack sender its bot token. They are read from the server's environment,
 or from the files `MAIDAN_GITHUB_TOKEN_FILE` and the rest name (see
 [Environment](#environment)); set them through your platform's secret
@@ -951,6 +970,36 @@ owner cannot approve their own pull request), and the producer marks the pull
 request ready. The comment and check-run paths use the same token; a check run
 needs `checks:write`, which a personal access token does not carry, so the
 check run fails and the comment still posts.
+
+**Authenticating as a GitHub App.** Set `MAIDAN_GITHUB_APP_ID`,
+`MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` (or
+`MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), and every outbound GitHub call, the
+change flow, comments, reviews and check runs alike, authenticates as the app
+instead of with `MAIDAN_GITHUB_TOKEN`:
+
+- Maidan signs a JWT with the app's key (RS256, nine minutes long) and
+  exchanges it at `POST /app/installations/{id}/access_tokens` for an
+  installation token. That token reaches only the repositories the
+  installation was granted, with only the app's permissions, and lasts an hour.
+- The token is kept until five minutes before it expires, then exchanged
+  again. One exchange runs at a time, so a burst of deliveries makes one call.
+- Commits, pull requests and comments are authored by the app's bot account,
+  not a person, and a check run works once the app is granted
+  `checks:write`. Grant the app **Contents**, **Pull requests**, **Issues**
+  and **Checks** (read and write) on the repositories the change flow may
+  write to, and nothing else.
+- `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write, before a token is
+  fetched. A refused write costs no exchange.
+- With the app configured, `MAIDAN_GITHUB_TOKEN` is unused, and boot logs a
+  warning if it is also set. A partial app config, an installation id that is
+  not a number, or a key that does not parse refuses boot rather than falling
+  back to the token. A refused exchange (a wrong key, a removed installation)
+  is a misconfiguration, like a revoked token: the delivery is not retried.
+  A rate-limited or failing exchange (429, 5xx) is retried like any other
+  GitHub call.
+
+The app key is a secret: mount it as a file. Maidan never logs it, and cuts
+the installation token out of any error text it records.
 
 **Guards in Maidan's code, whatever the token can do.** The token may be able
 to push anywhere in those repositories, so the limits are enforced by Maidan,

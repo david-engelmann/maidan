@@ -950,6 +950,147 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
       }
 
 
+      // A model's live request to accept a gate, as the card says it.
+      function modelRequestLine(request) {
+        if (!request) return null;
+        const who = request.client_name
+          ? `a model asked via ${request.client_name}${request.client_version ? " " + request.client_version : ""}`
+          : "a model asked via an unidentified MCP client";
+        return `${who}, waiting for you to confirm`;
+      }
+
+      // How a decided gate says who decided it.
+      function decidedViaLine(gate) {
+        const via = gate.decided_via;
+        if (!via || !via.model_asked) return null;
+        const who = via.client_name
+          ? `decided via ${via.client_name}${via.client_version ? " " + via.client_version : ""}`
+          : "decided via an unidentified MCP client";
+        return `${who}, requested by a model`;
+      }
+
+      // The link approval_decide gave a person: #confirm-approval=<gate id>.<token>.
+      // The token stays in the fragment, so it never reaches a server log.
+      function confirmationFromHash() {
+        if (typeof location === "undefined") return null;
+        const hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+        const value = hash.startsWith("confirm-approval=") ? hash.slice("confirm-approval=".length) : null;
+        if (!value) return null;
+        const dot = value.indexOf(".");
+        if (dot < 1) return null;
+        return { gateId: value.slice(0, dot), token: value.slice(dot + 1) };
+      }
+
+      // The confirmation page: the gate, who asked, and one Confirm button.
+      // Nothing here can be done by the model that holds the token; the
+      // request goes out on the signed-in session, from this page.
+      async function openConfirmation() {
+        const link = confirmationFromHash();
+        if (!link) return;
+        history.replaceState(null, "", location.pathname + location.search);
+        const list = document.getElementById("approval-list");
+        if (list.querySelector(`li.confirmation[data-gate-id="${link.gateId}"]`)) return;
+        const panel = document.createElement("li");
+        panel.className = "approval-row confirmation";
+        panel.dataset.gateId = link.gateId;
+        panel.textContent = "Loading the approval a model asked you to confirm…";
+        list.prepend(panel);
+        const ws = document.getElementById("workspace").value.trim();
+        let view = null;
+        let failed = false;
+        if (ws) {
+          try {
+            const res = await api(uiReadPath(`/workspaces/${ws}/approval-gates`), {
+              headers: headers(),
+              credentials: "include",
+            });
+            if (res.ok) {
+              const views = await res.json();
+              view = views.find((v) => v.gate && v.gate.id === link.gateId) || null;
+            } else {
+              failed = true;
+            }
+          } catch (e) {
+            failed = true;
+          }
+        }
+        panel.textContent = "";
+        const heading = document.createElement("span");
+        // No Confirm until the gate's own prompt is on the panel. A link
+        // whose gate is gone, or whose details did not load, is not a blind
+        // accept.
+        if (!view) {
+          heading.textContent = failed
+            ? "Could not load this approval. Nothing was confirmed."
+            : ws
+              ? "This approval is no longer pending, or it is not one you can confirm."
+              : "Sign in so this page can show the approval before you confirm it.";
+          panel.appendChild(heading);
+          if (failed) {
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.textContent = "Retry";
+            retry.onclick = () => {
+              panel.remove();
+              location.hash = `confirm-approval=${link.gateId}.${link.token}`;
+            };
+            panel.appendChild(retry);
+          }
+          return;
+        }
+        heading.textContent = view.gate.prompt;
+        panel.appendChild(heading);
+        if (view.model_request) {
+          const asked = document.createElement("span");
+          asked.className = "model-request";
+          asked.textContent = modelRequestLine(view.model_request);
+          panel.appendChild(asked);
+        }
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.className = "primary gate-confirm";
+        confirm.textContent = "Confirm";
+        confirm.onclick = async () => {
+          let res;
+          try {
+            // The session cookie alone: a bearer here would be the very
+            // credential the model holds, and the server refuses it.
+            res = await writeApi(confirm, `${base()}/auth/approval-confirmations/confirm`, {
+              method: "POST",
+              headers: { Accept: "application/json", "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ gate_id: link.gateId, token: link.token }),
+            });
+          } catch (e) {
+            showError(unreachable(e));
+            return;
+          }
+          if (!res.ok) {
+            showError(await responseError(res, "Could not confirm the approval"));
+            return;
+          }
+          const gate = await res.json();
+          // Drop the request panel before the redraw, or the refresh keeps
+          // it beside the outcome.
+          panel.remove();
+          await loadApprovals(false);
+          const done = document.createElement("li");
+          done.className = "approval-row confirmation";
+          const said = document.createElement("span");
+          said.textContent = `Confirmed: ${gate.prompt || "the approval"} was accepted.`;
+          done.appendChild(said);
+          const how = decidedViaLine(gate);
+          if (how) {
+            const via = document.createElement("span");
+            via.className = "model-request";
+            via.textContent = how;
+            done.appendChild(via);
+          }
+          document.getElementById("approval-list").prepend(done);
+        };
+        panel.appendChild(confirm);
+      }
+
       async function loadApprovals(showLoading = true) {
         const list = document.getElementById("approval-list");
         const ws = document.getElementById("workspace").value.trim();
@@ -982,9 +1123,13 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
 
       function renderApprovals(views) {
         const list = document.getElementById("approval-list");
+        // A confirmation link's panel is not a pending gate. The refresh that
+        // keeps this list current must not throw it away.
+        const kept = Array.from(list.querySelectorAll(":scope > li.confirmation"));
         list.innerHTML = "";
+        for (const node of kept) list.appendChild(node);
         if (!views.length) {
-          renderState(list, "You're caught up — no pending approval gates.");
+          if (!kept.length) renderState(list, "You're caught up — no pending approval gates.");
           return;
         }
         list.classList.remove("muted");
@@ -996,6 +1141,13 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
           const prompt = document.createElement("span");
           prompt.textContent = gate.prompt;
           li.appendChild(prompt);
+          const asked = modelRequestLine(v.model_request);
+          if (asked) {
+            const note = document.createElement("span");
+            note.className = "model-request";
+            note.textContent = asked;
+            li.appendChild(note);
+          }
           for (const action of ["accept", "decline", "cancel"]) {
             const btn = document.createElement("button");
             btn.type = "button";
@@ -1300,4 +1452,4 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
         });
       }
 
-export { answerGate, approvalsLoading, capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadPrefsFollows, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkChannels, loadWorkDepth, loadWorkSchedules, loadWorkThreads, markAllNotificationsRead, markNotificationRead, myCapabilities, parseCaps, pollReindex, prefsWrite, registerSlashCommand, renderApprovals, renderCapList, renderDeliveries, renderNotifications, renderReindexJob, renderSession, replayDelivery, revokeSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, showWorkThread, startReindex, unfollowTarget };
+export { answerGate, approvalsLoading, decidedViaLine, modelRequestLine, openConfirmation, capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadPrefsFollows, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkChannels, loadWorkDepth, loadWorkSchedules, loadWorkThreads, markAllNotificationsRead, markNotificationRead, myCapabilities, parseCaps, pollReindex, prefsWrite, registerSlashCommand, renderApprovals, renderCapList, renderDeliveries, renderNotifications, renderReindexJob, renderSession, replayDelivery, revokeSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, showWorkThread, startReindex, unfollowTarget };

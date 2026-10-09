@@ -4,6 +4,11 @@
 //! `request_state` has a configured secret. Covers the CAS no-op on a
 //! double-answer (silence is not consent), a tampered `request_state` (403),
 //! and an unknown action (400).
+//!
+//! Accepting is a property of the credential (Next 17): a browser session a
+//! person signed in to, sent from the console page, or a token holding
+//! `approval:grant`. A plain human bearer token, or a session made from one,
+//! declines and cancels but does not accept.
 
 use std::{
     net::SocketAddr,
@@ -15,8 +20,8 @@ use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ApprovalGateState, MemberId, MemberKind, NewApiToken, NewApprovalGate, NewMember, NewWorkspace,
-    WorkspaceId,
+    ApprovalGate, ApprovalGateState, MemberId, MemberKind, NewApiToken, NewApprovalGate,
+    NewMaidanSession, NewMember, NewWorkspace, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -38,6 +43,8 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<St
         .unwrap();
     secret.as_str().to_string()
 }
+
+const SESSION_SECRET: &[u8] = b"approval-gate-e2e-session-secret-32b";
 
 async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     let pool = SqlitePoolOptions::new()
@@ -69,6 +76,12 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     );
     // The `request_state` HMAC is keyed on the server secret.
     state.subscribe_resume_secret = Some(Arc::from(&b"approval-gate-e2e-secret-key-0001!"[..]));
+    // Browser sessions, as in production: the token exchange and the cookie.
+    state.sessions = Some(maidan_server::session::SessionSettings {
+        secret: Arc::from(SESSION_SECRET),
+        ttl_secs: 3600,
+        cookie_secure: false,
+    });
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -105,6 +118,19 @@ async fn list_and_answer_an_approval_gate() {
         ],
     )
     .await;
+    // Accepting needs approval:grant on a token (or a signed-in session); the
+    // plain token above lists, declines and cancels.
+    let grant_token = mint(
+        store.as_ref(),
+        ws.id,
+        human.id,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+            capability::APPROVAL_GRANT.into(),
+        ],
+    )
+    .await;
 
     // An agent opened a gate (seeded via the store — the MCP request_approval
     // path is covered by the maidan-mcp inline test). Not the human answering
@@ -125,6 +151,7 @@ async fn list_and_answer_an_approval_gate() {
             requested_by: agent.id,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();
@@ -168,7 +195,7 @@ async fn list_and_answer_an_approval_gate() {
     let answered: Value = {
         let resp = client
             .post(format!("{base}/approval-gates/{}/answer", gate.id))
-            .bearer_auth(&write_token)
+            .bearer_auth(&grant_token)
             .json(&json!({
                 "request_state": request_state,
                 "action": "accept",
@@ -211,8 +238,8 @@ async fn list_and_answer_an_approval_gate() {
 /// An approval gate is human-control state. A worker agent holds
 /// `workspace:write`, which is all the answer route asks for, so without this
 /// rule agent B could accept agent A's gate and no human would ever see it.
-/// Declining stays open to any writer; accepting needs a human member, or a
-/// token an admin granted `approval:grant`.
+/// Declining stays open to any writer; accepting needs a signed-in browser
+/// session or a token an admin granted `approval:grant`.
 #[tokio::test]
 async fn an_agent_cannot_accept_another_agents_gate_without_approval_grant() {
     let (addr, client, store) = spawn().await;
@@ -259,6 +286,7 @@ async fn an_agent_cannot_accept_another_agents_gate_without_approval_grant() {
                     requested_by: requester.id,
                     prompt: prompt.into(),
                     schema: None,
+                    risk: Default::default(),
                 })
                 .await
                 .unwrap()
@@ -313,8 +341,9 @@ async fn an_agent_cannot_accept_another_agents_gate_without_approval_grant() {
     assert_eq!(refused.status(), StatusCode::FORBIDDEN);
     let body: Value = refused.json().await.unwrap();
     assert!(
-        body.to_string().contains("human member"),
-        "the refusal says who may accept: {body}"
+        body.to_string()
+            .contains("missing capability: approval:grant"),
+        "the refusal names what accepting needs: {body}"
     );
     let still = store.get_approval_gate(first.id).await.unwrap().unwrap();
     assert_eq!(
@@ -334,4 +363,529 @@ async fn an_agent_cannot_accept_another_agents_gate_without_approval_grant() {
     let body: Value = accepted.json().await.unwrap();
     assert_eq!(body["state"], json!("accepted"));
     assert_eq!(body["resolved_by"], json!(approver.id.0.to_string()));
+}
+
+const WORK: &[&str] = &[capability::WORKSPACE_READ, capability::WORKSPACE_WRITE];
+
+fn caps(extra: &[&str]) -> Vec<String> {
+    WORK.iter().chain(extra).map(|c| c.to_string()).collect()
+}
+
+async fn member(store: &dyn Store, ws: WorkspaceId, handle: &str, kind: MemberKind) -> MemberId {
+    store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+async fn open_gate(store: &dyn Store, ws: WorkspaceId, requested_by: MemberId) -> ApprovalGate {
+    store
+        .create_approval_gate(&NewApprovalGate {
+            workspace_id: ws,
+            thread_id: None,
+            requested_by,
+            prompt: "Deploy v9 to prod?".into(),
+            schema: None,
+            risk: Default::default(),
+        })
+        .await
+        .unwrap()
+}
+
+/// The cookie of a browser session a person signed in to: the row the OIDC
+/// callback writes (no token behind it), signed as the callback signs it.
+async fn signed_in(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
+    let session = store
+        .create_session(NewMaidanSession {
+            workspace_id: ws,
+            member_id: member,
+            api_token_id: None,
+            oidc_identity_id: None,
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        })
+        .await
+        .unwrap();
+    let mut headers = axum::http::HeaderMap::new();
+    maidan_server::session::set_session_cookie(
+        &mut headers,
+        session.id,
+        3600,
+        false,
+        SESSION_SECRET,
+    )
+    .unwrap();
+    cookie_pair(headers.get(axum::http::header::SET_COOKIE).unwrap())
+}
+
+fn cookie_pair(set_cookie: &axum::http::HeaderValue) -> String {
+    set_cookie
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+/// A session made from `token` through the exchange the console uses.
+async fn token_session(client: &reqwest::Client, base: &str, token: &str) -> String {
+    let resp = client
+        .post(format!("{base}/auth/session/from-token"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let set_cookie = resp
+        .headers()
+        .get(reqwest::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    set_cookie.split(';').next().unwrap().to_string()
+}
+
+/// What a session request says about where it came from.
+#[derive(Clone, Copy)]
+enum Sent {
+    /// What a browser sends for a fetch from the console page.
+    FromConsole,
+    /// A same-origin `Origin` and no `Sec-Fetch-Site` (an older browser).
+    WithOriginOnly,
+    /// Neither header: curl holding the cookie.
+    Bare,
+    /// `Sec-Fetch-Site: none`, which a request typed into the address bar sends.
+    Typed,
+}
+
+enum Cred<'a> {
+    Bearer(&'a str),
+    Cookie(&'a str, Sent),
+}
+
+struct Api {
+    base: String,
+    client: reqwest::Client,
+}
+
+impl Api {
+    fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        cred: &Cred<'_>,
+    ) -> reqwest::RequestBuilder {
+        let b = self.client.request(method, format!("{}{path}", self.base));
+        match cred {
+            Cred::Bearer(token) => b.bearer_auth(token),
+            Cred::Cookie(cookie, sent) => {
+                let b = b.header(reqwest::header::COOKIE, *cookie);
+                match sent {
+                    Sent::FromConsole => b
+                        .header("sec-fetch-site", "same-origin")
+                        .header(reqwest::header::ORIGIN, self.base.clone()),
+                    // reqwest sends the URL's authority as Host, which is
+                    // what the Origin names.
+                    Sent::WithOriginOnly => b.header(reqwest::header::ORIGIN, self.base.clone()),
+                    Sent::Bare => b,
+                    Sent::Typed => b.header("sec-fetch-site", "none"),
+                }
+            }
+        }
+    }
+
+    /// The list route the credential is used on: the bearer tree for a
+    /// token, the session proxy for a cookie.
+    fn prefix(cred: &Cred<'_>) -> &'static str {
+        match cred {
+            Cred::Bearer(_) => "",
+            Cred::Cookie(..) => "/ui/api",
+        }
+    }
+
+    async fn list(&self, ws: WorkspaceId, cred: &Cred<'_>) -> reqwest::Response {
+        let path = format!("{}/workspaces/{}/approval-gates", Self::prefix(cred), ws);
+        self.request(reqwest::Method::GET, &path, cred)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn request_state(&self, ws: WorkspaceId, gate: &ApprovalGate, cred: &Cred<'_>) -> String {
+        let resp = self.list(ws, cred).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let list: Vec<Value> = resp.json().await.unwrap();
+        list.iter()
+            .find(|g| g["gate"]["id"] == json!(gate.id.0.to_string()))
+            .and_then(|g| g["request_state"].as_str())
+            .unwrap()
+            .to_string()
+    }
+
+    async fn answer_at(
+        &self,
+        prefix: &str,
+        gate: &ApprovalGate,
+        state: &str,
+        action: &str,
+        cred: &Cred<'_>,
+    ) -> reqwest::Response {
+        let path = format!("{prefix}/approval-gates/{}/answer", gate.id);
+        self.request(reqwest::Method::POST, &path, cred)
+            .json(&json!({ "request_state": state, "action": action }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn answer(
+        &self,
+        gate: &ApprovalGate,
+        state: &str,
+        action: &str,
+        cred: &Cred<'_>,
+    ) -> reqwest::Response {
+        self.answer_at(Self::prefix(cred), gate, state, action, cred)
+            .await
+    }
+}
+
+async fn assert_refused_with(resp: reqwest::Response, needle: &str) {
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body["detail"].as_str().unwrap_or_default().contains(needle),
+        "the refusal says {needle:?}: {body}"
+    );
+}
+
+async fn assert_pending(store: &dyn Store, gate: &ApprovalGate) {
+    let now = store.get_approval_gate(gate.id).await.unwrap().unwrap();
+    assert_eq!(
+        now.state,
+        ApprovalGateState::Pending,
+        "the gate is untouched"
+    );
+}
+
+/// The token a person hands an agent is a plain human bearer token. The
+/// member it names is human, which used to be enough to accept, so an agent
+/// holding it could accept any gate with curl. It still declines and cancels.
+#[tokio::test]
+async fn a_plain_human_bearer_token_cannot_accept_a_gate() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "held".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "oncall", MemberKind::Human).await;
+    let agent = member(store.as_ref(), ws.id, "deployer", MemberKind::Agent).await;
+    let token = mint(store.as_ref(), ws.id, human, caps(&[])).await;
+    let bearer = Cred::Bearer(&token);
+
+    let gate = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &gate, &bearer).await;
+    assert_refused_with(
+        api.answer(&gate, &state, "accept", &bearer).await,
+        "missing capability: approval:grant",
+    )
+    .await;
+    // The same refusal on the session proxy, where the console's bearer goes.
+    assert_refused_with(
+        api.answer_at("/ui/api", &gate, &state, "accept", &bearer)
+            .await,
+        "missing capability: approval:grant",
+    )
+    .await;
+    assert_pending(store.as_ref(), &gate).await;
+
+    // Declining and cancelling are not accepting, and are unchanged.
+    let declined = api.answer(&gate, &state, "decline", &bearer).await;
+    assert_eq!(declined.status(), StatusCode::OK);
+    let declined: Value = declined.json().await.unwrap();
+    assert_eq!(declined["state"], json!("declined"));
+    let other = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &other, &bearer).await;
+    let cancelled = api.answer(&other, &state, "cancel", &bearer).await;
+    assert_eq!(cancelled.status(), StatusCode::OK);
+}
+
+/// Whoever holds a person's token can trade it for a session cookie, so a
+/// session made from a token proves no more than the token: it accepts only
+/// when that token holds `approval:grant`.
+#[tokio::test]
+async fn a_session_made_from_a_token_accepts_only_with_the_tokens_approval_grant() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let api = Api {
+        base: base.clone(),
+        client: client.clone(),
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "held".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "oncall", MemberKind::Human).await;
+    let agent = member(store.as_ref(), ws.id, "deployer", MemberKind::Agent).await;
+    let plain = mint(store.as_ref(), ws.id, human, caps(&[])).await;
+    let granted = mint(
+        store.as_ref(),
+        ws.id,
+        human,
+        caps(&[capability::APPROVAL_GRANT]),
+    )
+    .await;
+
+    let plain_cookie = token_session(&client, &base, &plain).await;
+    let from_plain = Cred::Cookie(&plain_cookie, Sent::FromConsole);
+    let gate = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &gate, &from_plain).await;
+    assert_refused_with(
+        api.answer(&gate, &state, "accept", &from_plain).await,
+        "missing capability: approval:grant",
+    )
+    .await;
+    // The bearer tree takes a token's session too, and refuses it the same way.
+    assert_refused_with(
+        api.answer_at("", &gate, &state, "accept", &from_plain)
+            .await,
+        "missing capability: approval:grant",
+    )
+    .await;
+    assert_pending(store.as_ref(), &gate).await;
+
+    let granted_cookie = token_session(&client, &base, &granted).await;
+    let from_granted = Cred::Cookie(&granted_cookie, Sent::FromConsole);
+    let accepted = api.answer(&gate, &state, "accept", &from_granted).await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let accepted: Value = accepted.json().await.unwrap();
+    assert_eq!(accepted["state"], json!("accepted"));
+    assert_eq!(accepted["resolved_by"], json!(human.0.to_string()));
+}
+
+/// The console's own path: a person signed in through the identity provider,
+/// answering from the console page. The origin check is the strict one, so the
+/// cookie without a page behind it (curl, or a typed URL) does not accept, but
+/// still declines.
+#[tokio::test]
+async fn a_signed_in_session_accepts_from_the_console_page_and_not_without_it() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "held".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "oncall", MemberKind::Human).await;
+    let agent = member(store.as_ref(), ws.id, "deployer", MemberKind::Agent).await;
+    let cookie = signed_in(store.as_ref(), ws.id, human).await;
+    let page = Cred::Cookie(&cookie, Sent::FromConsole);
+
+    let gate = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &gate, &page).await;
+    for sent in [Sent::Bare, Sent::Typed] {
+        assert_refused_with(
+            api.answer(&gate, &state, "accept", &Cred::Cookie(&cookie, sent))
+                .await,
+            "from the console page",
+        )
+        .await;
+    }
+    assert_pending(store.as_ref(), &gate).await;
+
+    let accepted = api.answer(&gate, &state, "accept", &page).await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let accepted: Value = accepted.json().await.unwrap();
+    assert_eq!(accepted["state"], json!("accepted"));
+    assert_eq!(accepted["resolved_by"], json!(human.0.to_string()));
+
+    // An older browser that sends only a matching Origin is the page too.
+    let second = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &second, &page).await;
+    let accepted = api
+        .answer(
+            &second,
+            &state,
+            "accept",
+            &Cred::Cookie(&cookie, Sent::WithOriginOnly),
+        )
+        .await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+
+    // Declining keeps the session's ordinary origin check.
+    let third = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &third, &page).await;
+    let declined = api
+        .answer(
+            &third,
+            &state,
+            "decline",
+            &Cred::Cookie(&cookie, Sent::Bare),
+        )
+        .await;
+    assert_eq!(declined.status(), StatusCode::OK);
+}
+
+/// Nobody accepts their own request, whatever the credential: not with a
+/// signed-in session, not with `approval:grant`.
+#[tokio::test]
+async fn no_credential_lets_the_requester_accept_its_own_gate() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "held".into(),
+        })
+        .await
+        .unwrap();
+    let asker = member(store.as_ref(), ws.id, "asker", MemberKind::Human).await;
+    let granted = mint(
+        store.as_ref(),
+        ws.id,
+        asker,
+        caps(&[capability::APPROVAL_GRANT]),
+    )
+    .await;
+    let cookie = signed_in(store.as_ref(), ws.id, asker).await;
+
+    let gate = open_gate(store.as_ref(), ws.id, asker).await;
+    for cred in [
+        Cred::Bearer(&granted),
+        Cred::Cookie(&cookie, Sent::FromConsole),
+    ] {
+        let state = api.request_state(ws.id, &gate, &cred).await;
+        assert_refused_with(
+            api.answer(&gate, &state, "accept", &cred).await,
+            "whoever requested it",
+        )
+        .await;
+    }
+    assert_pending(store.as_ref(), &gate).await;
+}
+
+/// A signed-in session whose member is not a human does not accept: the
+/// session proves a sign-in, and the gate is still human-control state.
+#[tokio::test]
+async fn a_signed_in_session_for_an_agent_member_cannot_accept() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "held".into(),
+        })
+        .await
+        .unwrap();
+    let bot = member(store.as_ref(), ws.id, "bot", MemberKind::Agent).await;
+    let agent = member(store.as_ref(), ws.id, "deployer", MemberKind::Agent).await;
+    let cookie = signed_in(store.as_ref(), ws.id, bot).await;
+    let page = Cred::Cookie(&cookie, Sent::FromConsole);
+    let gate = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &gate, &page).await;
+    assert_refused_with(
+        api.answer(&gate, &state, "accept", &page).await,
+        "human member",
+    )
+    .await;
+    assert_pending(store.as_ref(), &gate).await;
+}
+
+/// Workspace B's credentials that do accept in B, a signed-in session and an
+/// `approval:grant` token, can neither see workspace A's gates nor accept one,
+/// even holding A's valid `request_state`.
+#[tokio::test]
+async fn another_workspaces_session_or_approval_grant_cannot_see_or_accept_a_gate() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws_a = store
+        .create_workspace(NewWorkspace { name: "a".into() })
+        .await
+        .unwrap();
+    let ws_b = store
+        .create_workspace(NewWorkspace { name: "b".into() })
+        .await
+        .unwrap();
+    let owner_a = member(store.as_ref(), ws_a.id, "owner-a", MemberKind::Human).await;
+    let agent_a = member(store.as_ref(), ws_a.id, "deployer-a", MemberKind::Agent).await;
+    let human_b = member(store.as_ref(), ws_b.id, "owner-b", MemberKind::Human).await;
+    let agent_b = member(store.as_ref(), ws_b.id, "deployer-b", MemberKind::Agent).await;
+    let token_a = mint(store.as_ref(), ws_a.id, owner_a, caps(&[])).await;
+    let grant_b = mint(
+        store.as_ref(),
+        ws_b.id,
+        human_b,
+        caps(&[capability::APPROVAL_GRANT]),
+    )
+    .await;
+    let cookie_b = signed_in(store.as_ref(), ws_b.id, human_b).await;
+
+    let gate_a = open_gate(store.as_ref(), ws_a.id, agent_a).await;
+    let state_a = api
+        .request_state(ws_a.id, &gate_a, &Cred::Bearer(&token_a))
+        .await;
+
+    for cred in [
+        Cred::Bearer(&grant_b),
+        Cred::Cookie(&cookie_b, Sent::FromConsole),
+    ] {
+        let listed = api.list(ws_a.id, &cred).await;
+        assert!(
+            !listed.status().is_success(),
+            "B cannot list A's gates: {}",
+            listed.status()
+        );
+        let body = listed.text().await.unwrap();
+        assert!(!body.contains(&gate_a.id.0.to_string()), "{body}");
+
+        let answered = api.answer(&gate_a, &state_a, "accept", &cred).await;
+        assert_eq!(
+            answered.status(),
+            StatusCode::NOT_FOUND,
+            "A's gate does not exist for B"
+        );
+        assert_pending(store.as_ref(), &gate_a).await;
+    }
+
+    // The same credentials do accept in their own workspace, so the refusal
+    // above is the tenant boundary, not a broken credential.
+    let gate_b = open_gate(store.as_ref(), ws_b.id, agent_b).await;
+    let page_b = Cred::Cookie(&cookie_b, Sent::FromConsole);
+    let state_b = api.request_state(ws_b.id, &gate_b, &page_b).await;
+    let accepted = api.answer(&gate_b, &state_b, "accept", &page_b).await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let gate_b2 = open_gate(store.as_ref(), ws_b.id, agent_b).await;
+    let state_b2 = api
+        .request_state(ws_b.id, &gate_b2, &Cred::Bearer(&grant_b))
+        .await;
+    let accepted = api
+        .answer(&gate_b2, &state_b2, "accept", &Cred::Bearer(&grant_b))
+        .await;
+    assert_eq!(accepted.status(), StatusCode::OK);
 }

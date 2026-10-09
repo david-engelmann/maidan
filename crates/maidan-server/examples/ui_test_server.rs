@@ -27,10 +27,15 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ArtifactKind, BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewArtifact, NewChannel,
-    NewMember, NewMessage, NewThread, NewWebhookSubscription, NewWorkspace, ReviewDecision,
+    NewMaidanSession, NewMember, NewMessage, NewOidcIdentity, NewThread, NewWebhookSubscription,
+    NewWorkspace, ReviewDecision,
 };
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
+
+/// Signs every browser session the harness serves: the token exchange's and
+/// the seeded signed-in session's.
+const UI_SESSION_SECRET: &[u8] = b"ui-test-session-secret-at-least-32-bytes";
 
 #[tokio::main]
 async fn main() {
@@ -106,6 +111,7 @@ async fn main() {
             requested_by: requester.id,
             prompt: "Deploy v9 to prod?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("gate");
@@ -539,6 +545,7 @@ async fn main() {
             requested_by: mallory.id,
             prompt: format!("Prompt {XSS}"),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("lab gate");
@@ -656,6 +663,78 @@ async fn main() {
         }
         proof_threads.push(t);
     }
+    // `decided` needs the operator and Rae, and Rae approved it before the
+    // page loaded: the row names her from the task's reviews. `unlinked` had
+    // the screenshot dropped after the hand-off, and Rae linked the log, so
+    // the row says who linked what and flags the hash the task lost.
+    for title in [
+        "Evidence: Rae approved before you looked",
+        "Evidence: a screenshot dropped after the hand-off",
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: proof.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+            })
+            .await
+            .expect("proof thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        store
+            .set_thread_result(
+                t.id,
+                requester.id,
+                &serde_json::json!({ "status": "fixed" }),
+            )
+            .await
+            .expect("proof result");
+        store
+            .link_thread_artifact(t.id, &screenshot, requester.id)
+            .await
+            .expect("link screenshot");
+        store
+            .link_thread_artifact(t.id, &transcript, rae.id)
+            .await
+            .expect("link log");
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("proof review");
+        let decided = proof_threads.len() == 4;
+        store
+            .set_review_requirement(t.id, if decided { 2 } else { 1 })
+            .await
+            .expect("requirement");
+        store.add_reviewer(t.id, member.id).await.expect("reviewer");
+        if decided {
+            store
+                .add_reviewer(t.id, rae.id)
+                .await
+                .expect("second reviewer");
+            let packet = store
+                .latest_review_packet(t.id)
+                .await
+                .expect("packet read")
+                .expect("packet");
+            store
+                .submit_review(
+                    t.id,
+                    rae.id,
+                    ReviewDecision::Approve,
+                    None,
+                    Some(&packet.evidence_root),
+                )
+                .await
+                .expect("rae approves");
+        } else {
+            store
+                .unlink_thread_artifact(t.id, &screenshot)
+                .await
+                .expect("unlink screenshot");
+        }
+        proof_threads.push(t);
+    }
     let rae_secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
@@ -717,6 +796,161 @@ async fn main() {
         })
         .await
         .expect("neighbour token");
+
+    // A tier desk: tasks handed to review whose evidence the server tiers
+    // differently, each naming the operator as a reviewer. `attached` has a
+    // link from Rae, who never worked it. `verified` carries a land-gate pass
+    // from the Verifier, recorded before the hand-off. `self` is only the
+    // deployer's own result and link, so its card warns. Its own channel, and
+    // only looked at, so no other spec's row moves.
+    let verifier = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "verifier".into(),
+            display_name: Some("Verifier".into()),
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("verifier");
+    store
+        .add_member_skill(verifier.id, maidan_types::LAND_GATE_SKILL)
+        .await
+        .expect("land-gate skill");
+    let tiers = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "tiers".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("tiers channel");
+    let mut tier_threads = Vec::new();
+    for title in [
+        "Tiers: a link from someone who never worked it",
+        "Tiers: a land-gate pass at the hand-off",
+        "Tiers: only the worker's own account",
+    ] {
+        let t = store
+            .create_thread(NewThread {
+                channel_id: tiers.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+            })
+            .await
+            .expect("tier thread");
+        store.claim_thread(t.id, requester.id).await.expect("claim");
+        store
+            .set_thread_result(
+                t.id,
+                requester.id,
+                &serde_json::json!({ "status": "fixed" }),
+            )
+            .await
+            .expect("tier result");
+        tier_threads.push(t);
+    }
+    store
+        .link_thread_artifact(tier_threads[0].id, &screenshot, rae.id)
+        .await
+        .expect("rae links");
+    store
+        .require_land_gate(tier_threads[1].id)
+        .await
+        .expect("arm the land gate");
+    store
+        .set_land_gate_pointer(
+            tier_threads[1].id,
+            verifier.id,
+            maidan_types::LandGateStatus::Pass,
+            Some(&transcript),
+            None,
+        )
+        .await
+        .expect("verifier passes");
+    store
+        .link_thread_artifact(tier_threads[2].id, &transcript, requester.id)
+        .await
+        .expect("deployer links");
+    for t in &tier_threads {
+        store
+            .transition_thread(t.id, requester.id, ThreadAction::StartReview)
+            .await
+            .expect("tier review");
+        store
+            .set_review_requirement(t.id, 1)
+            .await
+            .expect("requirement");
+        store.add_reviewer(t.id, member.id).await.expect("reviewer");
+    }
+
+    // The neighbour's own tiered hand-off: the Outsider's result and link,
+    // with the Visitor as reviewer. Its card warns in its own console, and
+    // the first workspace sees none of it.
+    let yard = store
+        .create_channel(NewChannel {
+            workspace_id: other_ws.id,
+            name: "yard".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("yard channel");
+    let yard_thread = store
+        .create_thread(NewThread {
+            channel_id: yard.id,
+            parent_thread_id: None,
+            title: Some("Neighbour: the outsider's own account".into()),
+            description: None,
+        })
+        .await
+        .expect("yard thread");
+    let yard_body = b"neighbour evidence\n";
+    let yard_sha = store
+        .upsert_artifact_with_event(
+            NewArtifact {
+                sha256: hex::encode(Sha256::digest(yard_body)),
+                size_bytes: i64::try_from(yard_body.len()).expect("size"),
+                mime_type: Some("text/plain".into()),
+                filename: Some("yard.log".into()),
+                kind: ArtifactKind::Transcript,
+                uploaded_by: Some(outsider.id),
+            },
+            Some(other_ws.id),
+        )
+        .await
+        .expect("yard artifact")
+        .0
+        .sha256;
+    store
+        .claim_thread(yard_thread.id, outsider.id)
+        .await
+        .expect("outsider claims");
+    store
+        .set_thread_result(
+            yard_thread.id,
+            outsider.id,
+            &serde_json::json!({ "status": "done" }),
+        )
+        .await
+        .expect("yard result");
+    store
+        .link_thread_artifact(yard_thread.id, &yard_sha, outsider.id)
+        .await
+        .expect("outsider links");
+    store
+        .transition_thread(yard_thread.id, outsider.id, ThreadAction::StartReview)
+        .await
+        .expect("yard review");
+    store
+        .set_review_requirement(yard_thread.id, 1)
+        .await
+        .expect("yard requirement");
+    store
+        .add_reviewer(yard_thread.id, visitor.id)
+        .await
+        .expect("yard reviewer");
 
     let secret = TokenSecret::generate();
     store
@@ -854,6 +1088,103 @@ async fn main() {
         .await
         .expect("quarantine");
 
+    // The operator signed in through the identity provider: the session row
+    // an OIDC callback writes, with no token behind it, so a spec can drive the
+    // console as a person rather than as a pasted token. Accepting a gate
+    // needs this (or approval:grant); the harness has no identity provider,
+    // so the row is written here and the spec sets its cookie.
+    //
+    // The same person is a member of a second workspace, signed in with the
+    // same identity, so the workspace switcher has somewhere to go. A third
+    // workspace belongs to someone else's identity and must never be listed.
+    const UI_ISSUER: &str = "https://idp.ui-test.local";
+    let identity = store
+        .upsert_oidc_identity(NewOidcIdentity {
+            workspace_id: ws.id,
+            issuer: UI_ISSUER.into(),
+            subject: "operator-sub".into(),
+            member_id: member.id,
+            email: None,
+        })
+        .await
+        .expect("operator identity");
+    let switch_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Second desk".into(),
+        })
+        .await
+        .expect("second workspace");
+    let switch_member = store
+        .create_member(NewMember {
+            workspace_id: switch_ws.id,
+            handle: "operator".into(),
+            display_name: Some("Operator".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("second member");
+    store
+        .upsert_oidc_identity(NewOidcIdentity {
+            workspace_id: switch_ws.id,
+            issuer: UI_ISSUER.into(),
+            subject: "operator-sub".into(),
+            member_id: switch_member.id,
+            email: None,
+        })
+        .await
+        .expect("second identity");
+    let foreign_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Someone else's desk".into(),
+        })
+        .await
+        .expect("other workspace");
+    let foreign_member = store
+        .create_member(NewMember {
+            workspace_id: foreign_ws.id,
+            handle: "stranger".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("other member");
+    store
+        .upsert_oidc_identity(NewOidcIdentity {
+            workspace_id: foreign_ws.id,
+            issuer: UI_ISSUER.into(),
+            subject: "stranger-sub".into(),
+            member_id: foreign_member.id,
+            email: None,
+        })
+        .await
+        .expect("other identity");
+    let signed_in = store
+        .create_session(NewMaidanSession {
+            workspace_id: ws.id,
+            member_id: member.id,
+            api_token_id: None,
+            oidc_identity_id: Some(identity.id),
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(8),
+        })
+        .await
+        .expect("signed-in session");
+    let mut cookie_headers = axum::http::HeaderMap::new();
+    maidan_server::session::set_session_cookie(
+        &mut cookie_headers,
+        signed_in.id,
+        28_800,
+        false,
+        UI_SESSION_SECRET,
+    )
+    .expect("session cookie");
+    let session_cookie = cookie_headers
+        .get(axum::http::header::SET_COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .and_then(|pair| pair.strip_prefix("maidan_session="))
+        .expect("session cookie value")
+        .to_string();
+
     let art_dir = std::env::temp_dir().join(format!("maidan-ui-test-{}", std::process::id()));
     std::fs::create_dir_all(&art_dir).expect("art dir");
     let artifacts = Arc::new(LocalFsStore::new(&art_dir));
@@ -872,9 +1203,10 @@ async fn main() {
     );
     // The approval-gate `request_state` HMAC + subscribe-resume are secret-keyed.
     state.subscribe_resume_secret = Some(Arc::from(&b"ui-test-subscribe-resume-secret-32b"[..]));
+    state.console_origin = Some(format!("http://127.0.0.1:{port}"));
     // A pasted token is exchanged for a browser session, as in production.
     state.sessions = Some(maidan_server::session::SessionSettings {
-        secret: Arc::from(&b"ui-test-session-secret-at-least-32-bytes"[..]),
+        secret: Arc::from(UI_SESSION_SECRET),
         ttl_secs: 3600,
         cookie_secure: false,
     });
@@ -882,9 +1214,12 @@ async fn main() {
     let fixtures = serde_json::json!({
         "base_url": format!("http://127.0.0.1:{port}"),
         "token": secret.as_str(),
+        "session_cookie": session_cookie,
         "requester_token": requester_secret.as_str(),
         "live_token": live_secret.as_str(),
         "workspace_id": ws.id.0.to_string(),
+        "switch_workspace_id": switch_ws.id.0.to_string(),
+        "foreign_workspace_id": foreign_ws.id.0.to_string(),
         "member_id": member.id.0.to_string(),
         "channel_id": channel.id.0.to_string(),
         "thread_id": thread.id.0.to_string(),
@@ -927,12 +1262,20 @@ async fn main() {
         "proof_decide_thread_id": proof_threads[1].id.0.to_string(),
         "proof_live_thread_id": proof_threads[2].id.0.to_string(),
         "proof_empty_thread_id": proof_threads[3].id.0.to_string(),
+        "proof_decided_thread_id": proof_threads[4].id.0.to_string(),
+        "proof_unlinked_thread_id": proof_threads[5].id.0.to_string(),
         "proof_screenshot_sha": screenshot,
         "proof_transcript_sha": transcript,
         "other_workspace_id": other_ws.id.0.to_string(),
         "other_member_id": visitor.id.0.to_string(),
         "outsider_member_id": outsider.id.0.to_string(),
         "other_token": other_secret.as_str(),
+        "tiers_channel_id": tiers.id.0.to_string(),
+        "tiers_attached_thread_id": tier_threads[0].id.0.to_string(),
+        "tiers_verified_thread_id": tier_threads[1].id.0.to_string(),
+        "tiers_self_thread_id": tier_threads[2].id.0.to_string(),
+        "verifier_member_id": verifier.id.0.to_string(),
+        "other_tiers_thread_id": yard_thread.id.0.to_string(),
         "admin_token": admin_secret.as_str(),
         "delivery_id": delivery_id,
         "delivery_url": "https://hooks.example.test/maidan",

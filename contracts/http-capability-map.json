@@ -937,6 +937,18 @@
   },
   {
     "method": "GET",
+    "path": "/ui/api/threads/{tid}/reviews",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/ui/api/threads/{tid}/artifacts",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/ui/api/workspaces/{wid}/audit",
     "capability": "workspace:read",
     "surface": "http"
@@ -1166,6 +1178,18 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/wip-limit",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/approval-policy",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/approval-policy",
     "capability": "workspace:read",
     "surface": "http"
   },

@@ -570,6 +570,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.sessions = maidan_server::session::SessionSettings::from_env()?;
     state.subscribe_resume_secret = subscribe_resume_secret;
     state.subscribe_resume_ttl_secs = subscribe_resume_ttl_secs;
+    state.console_origin = maidan_server::state::console_origin_from_env();
     state.webhooks = maidan_server::WebhookRuntime::new(federation_encryption_key.clone());
     state.slash = maidan_server::SlashRuntime::new(federation_encryption_key.clone());
     state.fsm_hooks = maidan_server::FsmHookRuntime::new(federation_encryption_key);
@@ -715,13 +716,36 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
     // `/integrations/github/events` stays disabled (404). A projector, not a
     // bot.
+    //
+    // A GitHub App, when named, authenticates the egress instead of
+    // `MAIDAN_GITHUB_TOKEN`. A partial app config or a key that does not parse
+    // refuses boot rather than falling back to the token without a word.
+    let github_app = maidan_server::github_app::GithubAppAuth::from_env()
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map(std::sync::Arc::new);
     if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
-        // Egress needs a token for issue-comment posts; ingress works without
-        // one. The egress runs on the notification-router bus consumer.
-        if let Some(token) = github_cfg.api_token.clone() {
+        // Egress needs a credential for issue-comment posts; ingress works
+        // without one. The egress runs on the notification-router bus consumer.
+        let client = match (github_app.clone(), github_cfg.api_token.clone()) {
+            (Some(app), token) => {
+                if token.is_some() {
+                    tracing::warn!(
+                        "MAIDAN_GITHUB_TOKEN is set but a GitHub App is configured: \
+                         GitHub calls authenticate as the app and the token is unused"
+                    );
+                }
+                tracing::info!(
+                    installation_id = app.installation_id(),
+                    "github egress authenticates as a GitHub App"
+                );
+                Some(maidan_server::github::GithubApiClient::with_app(app))
+            }
+            (None, Some(token)) => Some(maidan_server::github::GithubApiClient::new(token)),
+            (None, None) => None,
+        };
+        if let Some(client) = client {
             state.attach_github_sender(std::sync::Arc::new(
-                maidan_server::github::GithubApiClient::new(token)
-                    .with_write_repos(github_cfg.write_repos.clone()),
+                client.with_write_repos(github_cfg.write_repos.clone()),
             ));
             if github_cfg.write_repos.is_empty() {
                 tracing::warn!(
@@ -733,6 +757,11 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         }
         state.attach_github(std::sync::Arc::new(github_cfg));
         tracing::info!("github projector ingress configured");
+    } else if github_app.is_some() {
+        tracing::warn!(
+            "a GitHub App is configured but MAIDAN_GITHUB_WEBHOOK_SECRET is unset: \
+             the GitHub projector is off and the app is unused"
+        );
     }
 
     // The one app whose installations may mark agent pull requests ready.
@@ -745,6 +774,33 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("MAIDAN_MARK_READY_APP_ID is not an app id: {e}"))?;
             state.mark_ready_app_id = Some(maidan_types::AppId(id));
             tracing::info!(app_id = %id, "mark-ready app designated");
+        }
+    }
+
+    // The bases mark-ready may flip each listed repository's agent pull
+    // requests into. A malformed value refuses boot: a typo that dropped a
+    // repository's pin would let its flips follow the allowlist alone.
+    if let Ok(raw) = std::env::var(maidan_types::MARK_READY_BASES_ENV) {
+        state.mark_ready_bases = maidan_types::MarkReadyBases::parse(&raw)?;
+        if !state.mark_ready_bases.is_empty() {
+            let bases: Vec<String> = state
+                .mark_ready_bases
+                .iter()
+                .map(|(repo, base)| format!("{repo}={base}"))
+                .collect();
+            tracing::info!(?bases, "mark-ready base pins configured");
+        }
+    }
+    // Not a boot refusal: no pins is a valid setup. But a deploy that names the
+    // mark-ready app and drops the bases (they were built in until #1315) lets
+    // every flip follow the workspace allowlist alone, and nothing says so.
+    if let Some(app_id) = &state.mark_ready_app_id {
+        if state.mark_ready_bases.is_empty() {
+            tracing::warn!(
+                app_id = %app_id.0,
+                "MAIDAN_MARK_READY_APP_ID is set but MAIDAN_MARK_READY_BASES pins no base: \
+                 mark-ready flips follow the workspace egress allowlist alone"
+            );
         }
     }
 

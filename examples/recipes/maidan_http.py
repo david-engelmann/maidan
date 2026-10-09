@@ -15,6 +15,7 @@ import urllib.request
 from typing import Any
 
 MCP_PROTOCOL_VERSION = "2026-07-28"
+CLIENT_INFO = {"name": "maidan-recipes", "version": "1"}
 
 
 class MaidanError(RuntimeError):
@@ -62,18 +63,38 @@ class Maidan:
         return json.loads(payload) if payload else None
 
     def tool(self, name: str, arguments: dict[str, Any]) -> Any:
-        """Call one MCP tool. `2026-07-28` is stateless: no initialize, no session."""
+        """Call one MCP tool on `2026-07-28`: stateless, no initialize, no session.
+
+        That revision states itself on every request, and the server refuses a
+        request that leaves any of it out (docs/Integration.md, "MCP
+        streamable"): the `MCP-Protocol-Version` header, the same version in
+        `params._meta` beside the client's capabilities, and `Mcp-Method` and
+        `Mcp-Name` headers naming the method and the tool.
+        """
         self._mcp_id += 1
+        method = "tools/call"
         reply = self.call(
             "POST",
             "/mcp/streamable",
             {
                 "jsonrpc": "2.0",
                 "id": self._mcp_id,
-                "method": "tools/call",
-                "params": {"name": name, "arguments": arguments},
+                "method": method,
+                "params": {
+                    "name": name,
+                    "arguments": arguments,
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": MCP_PROTOCOL_VERSION,
+                        "io.modelcontextprotocol/clientCapabilities": {},
+                        "io.modelcontextprotocol/clientInfo": CLIENT_INFO,
+                    },
+                },
             },
-            headers={"mcp-protocol-version": MCP_PROTOCOL_VERSION},
+            headers={
+                "mcp-protocol-version": MCP_PROTOCOL_VERSION,
+                "mcp-method": method,
+                "mcp-name": name,
+            },
         )
         if "error" in reply:
             raise RuntimeError(f"{name}: {reply['error']}")
@@ -89,7 +110,9 @@ class Claim:
 
     A task claimed without a lease that is then never released stays assigned
     to a dead agent, so the lease is kept alive from a background thread for as
-    long as the work takes, and released however the work ends.
+    long as the work takes, and released however the work ends. A failed
+    renewal is remembered (`renewal_error`) so the caller can stop; if release
+    is then refused, the lease is left to lapse.
     """
 
     def __init__(self, maidan: Maidan, thread: dict[str, Any], lease_secs: int) -> None:
@@ -99,6 +122,9 @@ class Claim:
         self.lease_secs = lease_secs
         self._stop = threading.Event()
         self._renewer = threading.Thread(target=self._renew, daemon=True)
+        self._lock = threading.Lock()
+        # Set from the renewer thread. The caller reads it and stops work.
+        self._renewal_error: str | None = None
 
     def __enter__(self) -> "Claim":
         self.maidan.call(
@@ -109,22 +135,42 @@ class Claim:
         self._renewer.start()
         return self
 
+    def renewal_error(self) -> str | None:
+        """Why the last renewal failed, if one has. `None` means the lease is held."""
+        with self._lock:
+            return self._renewal_error
+
     def _renew(self) -> None:
         while not self._stop.wait(self.lease_secs / 3):
-            self.maidan.call(
-                "POST",
-                f"/threads/{self.thread_id}/claim/renew",
-                {"claim_lease_id": self.lease_id, "lease_secs": self.lease_secs},
-            )
+            try:
+                self.maidan.call(
+                    "POST",
+                    f"/threads/{self.thread_id}/claim/renew",
+                    {"claim_lease_id": self.lease_id, "lease_secs": self.lease_secs},
+                )
+            except MaidanError as error:
+                # One failure is enough: the caller must stop. The lease then
+                # either releases on the way out, or lapses if release is refused.
+                with self._lock:
+                    self._renewal_error = str(error)
+                return
 
     def __exit__(self, *_exc: object) -> None:
         self._stop.set()
         self._renewer.join()
-        self.maidan.call(
-            "POST",
-            f"/threads/{self.thread_id}/claim/release",
-            {"claim_lease_id": self.lease_id},
-        )
+        try:
+            self.maidan.call(
+                "POST",
+                f"/threads/{self.thread_id}/claim/release",
+                {"claim_lease_id": self.lease_id},
+            )
+        except MaidanError:
+            # Release was refused, usually because the lease is already gone.
+            # Letting it lapse is the other ending the recipes allow. A renewal
+            # failure is reported by the caller; a release failure on its own
+            # still propagates.
+            if self.renewal_error() is None:
+                raise
 
     def task(self) -> str:
         """The thread's opening message: what was asked.

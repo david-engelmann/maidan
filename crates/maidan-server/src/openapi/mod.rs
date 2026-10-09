@@ -269,7 +269,7 @@ fn requires_credential(op: &Operation) -> bool {
             MCP SSE GET /mcp/notifications: JSON-RPC notifications (e.g. notifications/resources/updated); requires workspace:read.\n\
             MCP JSON-RPC POST /mcp: one request or a top-level array as a batch; a notification (no `id`) is executed for effect and answered `202 Accepted` with no body. No session, ever. `POST /mcp/worker` and `POST /mcp/reviewer` serve a fixed tool profile, the same bytes for every caller; a tool the token cannot call is refused at `tools/call`.\n\
             MCP streamable HTTP POST /mcp/streamable: send `MCP-Protocol-Version: 2026-07-28` (the revision `initialize` negotiates by default) and the request lands cold and returns a single JSON-RPC response — no `Mcp-Session-Id` is minted or required. Optional SEP-2243 `Mcp-Method` / `Mcp-Name` routing headers let a gateway route without parsing the body; when present they must agree with the body, else 400. One request per call here — batches go to POST /mcp. Omitting the version header falls back to `2024-11-05`, which is still fully supported and keeps the session model: an SSE-accepting POST opens the stream and returns `Mcp-Session-Id`, follow-up POSTs on that id return `202 Accepted` and multiplex their JSON-RPC results on the stream, frames carry an `id:` so GET /mcp/streamable with `Last-Event-ID` replays retained frames, and DELETE /mcp/streamable closes it. On either revision, `Accept: application/json` (no `text/event-stream`) gets a single JSON body. An unsupported `MCP-Protocol-Version` is a 400.\n\
-            The server never issues requests to the client: there is no sampling, roots, or elicitation back-channel. Human approval is a durable gate instead — the MCP `request_approval` tool returns `input_required` with a `gate_id` immediately, a human answers over POST /approval-gates/:id/answer or the `/ui`, and the agent polls `get_approval_gate`. Live waits ride GET /mcp/stream, the WebSocket, or the `wait_for_*` tools.\n\n\
+            The server issues no sampling or roots requests, and asks for input in one place only: `approval_decide`, when a model asks to accept a gate that needs a person, returns a URL-mode elicitation (as an `input_required` result) to a `2026-07-28` client that declared `elicitation.url`, pointing at a one-time console link, and the link in its result to any other client. It never asks for form input. Human approval is a durable gate — the MCP `request_approval` tool returns `input_required` with a `gate_id` immediately, a human answers over POST /approval-gates/:id/answer or the `/ui`, and the agent polls `get_approval_gate`. Live waits ride GET /mcp/stream, the WebSocket, or the `wait_for_*` tools.\n\n\
             GET /metrics: Prometheus exposition (HTTP latency + maidan_bus_lag_total, maidan_subscribe_replay_total, maidan_indexer_last_event_age_seconds, maidan_bus_listener_ok, maidan_bus_notify_hydrate_total, maidan_outbox_pending, maidan_outbox_quarantined, maidan_outbox_oldest_pending_seconds, maidan_outbox_relay_total{result} on Postgres). Fixed label cardinality only.",
         license(name = "MIT OR Apache-2.0", url = "https://github.com/david-engelmann/maidan")
     ),
@@ -302,6 +302,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::operator_status,
         paths::set_wip_limit,
         paths::get_wip_limit,
+        paths::set_approval_policy,
+        paths::get_approval_policy,
         paths::set_delegation_policy,
         paths::get_delegation_policy,
         paths::set_retention_policy,
@@ -594,7 +596,9 @@ fn requires_credential(op: &Operation) -> bool {
         paths::oidc_callback,
         paths::oidc_logout,
         paths::get_auth_session,
+        paths::list_auth_session_workspaces,
         paths::mint_auth_session_token,
+        paths::confirm_approval,
         paths::session_from_token,
         paths::ui_list_events,
         paths::ui_list_channels,
@@ -604,6 +608,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::ui_post_message,
         paths::ui_list_threads,
         paths::ui_list_messages,
+        paths::ui_list_reviews,
+        paths::ui_list_thread_artifacts,
         paths::ui_search_messages,
         paths::ui_list_audit,
         paths::ui_list_peers,
@@ -696,6 +702,11 @@ fn requires_credential(op: &Operation) -> bool {
         WipLimitView,
         SetDelegationPolicy,
         DelegationPolicy,
+        SetApprovalPolicy,
+        ApprovalPolicy,
+        ApprovalRisk,
+        GateDecisionVia,
+        ModelRequestView,
         RetentionDays,
         RetentionPolicy,
         MemberWipView,
@@ -782,6 +793,9 @@ fn requires_credential(op: &Operation) -> bool {
         ReviewPacket,
         EvidenceManifest,
         ResultEvidence,
+        EvidenceAttestation,
+        AttestationTier,
+        EvidenceKind,
         ThreadArtifact,
         SetThreadBlock,
         maidan_types::ThreadWait,
@@ -941,6 +955,8 @@ fn requires_credential(op: &Operation) -> bool {
         WellKnownAuth,
         IngestSummary,
         SessionResponse,
+        SessionWorkspace,
+        SessionWorkspaces,
     )),
     modifiers(
         &SecurityAddon,

@@ -1065,7 +1065,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_review_packet",
-            "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Null before any review. Requires workspace:read.",
+            "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Each item carries an attestation tier judged at the hand-off: verified (a land-gate pass the close gate accepts), attached (linked by a member who never worked the thread) or self_reported (a worker's own result or link). self_reported_only is true when every item is self-reported. Null before any review. Requires workspace:read.",
             "annotations": {
                 "title": "Get review packet",
                 "readOnlyHint": true,
@@ -3998,7 +3998,8 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "prompt": {"type": "string", "description": "what the human is being asked to approve"},
                     "schema": {"type": "object", "description": "optional JSON Schema for structured detail the human may supply alongside their decision"},
-                    "thread_id": {"type": "string", "format": "uuid", "description": "optional thread to gate: while pending, claim_next skips this thread (a required-human claim gate)"}
+                    "thread_id": {"type": "string", "format": "uuid", "description": "optional thread to gate: while pending, claim_next skips this thread (a required-human claim gate)"},
+                    "risk": {"type": "string", "enum": ["low", "medium", "high"], "description": "how much a wrong accept would cost; omitted means high. The workspace's approval policy decides from it whether a model's accept through approval_decide needs a person to confirm it in the console"}
                 },
                 "required": ["prompt"]
             }
@@ -4019,6 +4020,26 @@ pub fn catalog() -> Vec<Value> {
                     "gate_id": {"type": "string", "description": "the gate id returned by request_approval"}
                 },
                 "required": ["gate_id"]
+            }
+        }),
+        json!({
+            "name": "approval_decide",
+            "description": "Decide a pending approval gate: accept or decline, with an optional note. Decline takes effect at once. Accept takes effect at once only for a token holding approval:grant, on a gate below the workspace's confirmation threshold (by default every gate is at or above it). Otherwise you get {status: confirmation_required, confirmation_url}: a one-time link the person opens in the Maidan console and confirms, signed in as themselves. Clients that declare URL-mode elicitation are shown the same link through elicitation. You cannot confirm for the person; do not retry, poll get_approval_gate. Nobody accepts a gate they requested. The decision records which client you used and that a model asked.",
+            "annotations": {
+                "title": "Decide an approval gate",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "gate_id": {"type": "string", "format": "uuid", "description": "the pending gate to decide"},
+                    "decision": {"type": "string", "enum": ["accept", "decline"], "description": "accept or decline; cancelling stays with whoever opened the gate"},
+                    "note": {"type": "string", "description": "optional note kept on the gate with the decision, at most 2000 characters"}
+                },
+                "required": ["gate_id", "decision"]
             }
         }),
         json!({

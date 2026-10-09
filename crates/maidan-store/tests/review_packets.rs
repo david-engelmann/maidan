@@ -108,7 +108,25 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
                 produced_by: worker,
             }),
             artifacts: vec![HELD.to_string()],
+            attestations: vec![
+                EvidenceAttestation {
+                    kind: EvidenceKind::Result,
+                    sha256: Some(result_sha256(&result).expect("hash")),
+                    tier: AttestationTier::SelfReported,
+                    attested_by: worker,
+                },
+                EvidenceAttestation {
+                    kind: EvidenceKind::Artifact,
+                    sha256: Some(HELD.to_string()),
+                    tier: AttestationTier::SelfReported,
+                    attested_by: worker,
+                },
+            ],
         }
+    );
+    assert!(
+        first.self_reported_only,
+        "the worker's own result and link are all it was handed"
     );
     assert_eq!(
         first.evidence_root,

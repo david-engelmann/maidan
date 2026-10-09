@@ -177,7 +177,16 @@ pub async fn exchange_app_code(
                 app_installation_id: Some(installation.id),
                 token_hash: hash_secret(secret.as_str()),
                 label: Some(format!("oauth:{}", app.slug)),
-                capabilities: installation.granted_capabilities.clone(),
+                // No member stands behind this mint, so it never carries a
+                // capability that reaches across tenants, whatever the grant says.
+                capabilities: installation
+                    .granted_capabilities
+                    .iter()
+                    .filter(|c| {
+                        *c != capability::OPERATOR_GLOBAL && *c != capability::AUDIT_READ_GLOBAL
+                    })
+                    .cloned()
+                    .collect(),
                 expires_at: None,
             },
             Box::new(move |record| maidan_types::NewAuditEvent {

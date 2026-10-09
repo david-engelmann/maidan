@@ -476,17 +476,15 @@ whose behalf, and under which grant — for refusals as well as successes.
 
 **Approvals can be borrowed, but never used on your own work.** A delegate
 holding a reviewer's grant can submit that reviewer's review, record a land-gate
-pass (the reviewer needs the `land_gate` skill), or answer an approval gate. But
-the gates judge the delegate as well as the member it acts as. A review or pass
-does not count if the delegate owns, holds or has ever worked the thread — and
-claiming a thread for a member counts as working it. Nobody can accept an
-approval gate they requested, directly or through a delegate (403). Declining or
-cancelling your own request is allowed. Accepting needs a human member or a
-deliberate grant. Either the member the token acts as is a human (a delegate
-acting for a human passes), or the token holds `approval:grant`, which an admin
-grants to a trusted automated approver. An agent without that grant can decline
-another agent's gate but never accept it (403), even though its
-`workspace:write` covers declining. Reviews and approval gates report the
+pass (the reviewer needs the `land_gate` skill), or decline or cancel an
+approval gate. But the gates judge the delegate as well as the member it acts
+as. A review or pass does not count if the delegate owns, holds or has ever
+worked the thread — and claiming a thread for a member counts as working it.
+Nobody can accept an approval gate they requested, directly or through a
+delegate (403). Declining or cancelling your own request is allowed. Accepting
+a gate is a property of the credential, not of the member (see [Asking a human
+mid-loop](#asking-a-human-mid-loop)), so a delegated token does not accept one:
+`approval:grant` is never delegatable. Reviews and approval gates report the
 delegate that actually acted as `actor_id`, `requested_actor_id` and
 `resolved_actor_id`; these are absent when the member acted for itself.
 
@@ -824,8 +822,7 @@ object, including a positional array such as `["2.0", 1, "tools/list"]`, an obje
 a `null` id (MCP forbids one) or a non-object item inside a batch, is an invalid request (`-32600`).
 Both are answered with a `null` id; in a batch, a bad item gets its own error and the rest run.
 
-Maidan never issues requests *to* your client: there is no sampling, roots, or elicitation
-back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human
+Maidan issues no sampling or roots requests, and asks the client for input in one place only: `approval_decide` returns a URL-mode elicitation (an `input_required` result, never a form) to a `2026-07-28` client that declared `elicitation.url`, and the same one-time console link in its result to any other client. The person confirms in the console; the model cannot. When an agent needs a human, it opens a durable approval gate — see "Asking a human
 mid-loop" under the waiter loop below.
 
 **Anonymous reading on a dev instance.** A dev instance started with
@@ -1411,6 +1408,18 @@ conversation around the evidence, so they move the version but not the root.
 `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest.
 A packet is never changed. A later hand-off writes a new one.
 
+The manifest also records an attestation tier for each piece of evidence,
+judged once at the hand-off. `verified` is a land-gate pass the close gate
+would accept, recorded as its own `land_gate` item with the pass's
+`artifact_sha` and its recorder. `attached` is an artifact or result from a
+member who never worked the thread. `self_reported` is a worker's own result
+or link, including one a delegate that worked the thread wrote with someone
+else's token. The packet's `self_reported_only` is true when it holds evidence
+and every item is self-reported, and the console warns on it. The tiers are
+inside the root, so the same evidence handed over again under different tiers
+is a new root, and an approval names the tiers it was shown. Nothing after the
+hand-off moves them: a pass recorded later appears at the next `start_review`.
+
 **An approval names the evidence it approves.** `submit_review` with
 `decision: "approve"` needs `evidence_root`, the root from the packet you were
 shown (REST 400 or MCP -32602 without it). It is refused with 409 when the
@@ -1668,9 +1677,81 @@ way to send work back.
 `request_approval {prompt, schema?, thread_id?}` opens a durable gate and returns
 `{status: "input_required", gate_id}` immediately. It does not block, and the
 server never calls back into your client — poll `get_approval_gate {gate_id}` for
-the answer. A human resolves the gate as accepted, declined, or cancelled over the
-`/ui` or `POST /approval-gates/:id/answer`; silence is never consent, so an
-unanswered gate stays `pending` indefinitely.
+the answer. A human resolves the gate as accepted, declined, or cancelled in the
+`/ui` console or with `POST /approval-gates/:id/answer`; silence is never
+consent, so an unanswered gate stays `pending` indefinitely.
+
+Accepting is a property of the credential. The token a person gives an agent
+names that person, so a human member behind the token proves nothing about who
+decided. Accepting needs one of:
+
+| Credential | How it is checked |
+|---|---|
+| A browser session the person signed in to through the identity provider | The `HttpOnly` `maidan_session` cookie of an OIDC sign-in, on `POST /ui/api/approval-gates/:id/answer`, with the strict origin check: `Sec-Fetch-Site: same-origin`, or with no `Sec-Fetch-Site` an `Origin` naming this host. A request that names no origin is refused, though the same cookie can still decline. The member must be human |
+| A token holding `approval:grant` | On either answer route, or a session made from that token. An admin grants it deliberately to an automated approver the workspace trusts; it is in no preset and never delegatable. The admin token `maidan init` prints holds every capability, this one included, so it accepts: keep it away from agents |
+
+A plain bearer token, a delegated token, and a session made from a token with
+`POST /auth/session/from-token` (anyone holding the token can make one) decline
+and cancel but do not accept. They get `403` with the detail
+`missing capability: approval:grant. Accepting an approval gate needs a browser
+session a person signed in to, or a token holding approval:grant. …`. Nobody
+accepts their own request, whatever the credential. A fresh confirmation the
+person gives outside the model, as a link, is planned with the model-callable
+`approval_decide` tool; until then those two are the only ways to accept.
+
+### A model deciding a gate: `approval_decide`
+
+`approval_decide {gate_id, decision, note?}` is how a model accepts or declines
+a gate over MCP. `decision` is `accept` or `decline`.
+
+- **Decline** works on any member credential that can decline over REST, and the
+  note is recorded on the gate.
+- **Accept** happens directly only for a token holding `approval:grant`, and
+  only when the gate's risk is below the workspace's confirmation threshold.
+  Everything else gets a `confirmation_required` *result*, not an error: a plain
+  human bearer, any token without `approval:grant`, and a gate at or above the
+  threshold even with `approval:grant`. Nobody accepts their own request.
+- **The confirmation** is a one-time link,
+  `{console origin}/ui/#confirm-approval={gate_id}.{token}`. The token is in the
+  URL fragment, so it never reaches a log. It is bound to the workspace, the
+  gate and the member whose credential the model used, stored only as a hash,
+  and it expires after the workspace's link lifetime, ten minutes unless an
+  admin set another. A repeat call while it is live returns the same link. It is refused after use, after expiry, and once the
+  gate resolves, and another workspace's caller cannot tell it from no link.
+  The signed-in person confirms at `POST /auth/approval-confirmations/confirm`
+  with the session cookie, from the console page: the strict origin check, a
+  human member, and a session the person signed in to. A bearer, and a session
+  made from a token, are refused, so the model cannot finish it.
+- **Where the client declared it**, a `2026-07-28` call whose
+  `clientCapabilities` include `elicitation.url` gets the link as a URL-mode
+  elicitation (`resultType: "input_required"`, `elicitation/create` with
+  `mode: "url"`) instead of in the result. A retry that carries `inputResponses`
+  gets the plain result. Form mode is never used: a form's answer comes back
+  through the client, which the model could fill in.
+- **The record** names the client. A `2026-07-28` call may carry `clientInfo` in
+  `params._meta`; earlier revisions said it once in `initialize`, which on a
+  stateless transport says nothing about the call, so those are recorded as an
+  unidentified MCP client. The gate's `decided_via` and the audit row
+  (`approval_gate.decided`, `approval_gate.confirmation_requested`) carry the
+  client name and version and `model_asked: true`, and the console card says
+  "decided via <client>, requested by a model".
+
+A gate has a risk, `low`, `medium` or `high`, defaulting to `high`, set when
+`request_approval` opens it (`risk?`). The workspace sets the threshold and the link lifetime with
+`PUT /workspaces/{id}/approval-policy {"confirm_at": "low"|"medium"|"high", "confirm_link_ttl_seconds": 60..3600}`
+(`token:admin`, audited as `approval_policy.set`) and reads them with `GET`
+(`workspace:read`). The PUT replaces the policy: a field left out or `null` is
+back on its default, and `{}` restores both. The default threshold is `low`, so
+every acceptance a model asks for needs a person until an admin raises it. A
+gate at or above the threshold needs the confirmation even from
+`approval:grant`; `high` always does. The default lifetime is 600 seconds; a
+value under 60 or over 3600 is a 400. A link keeps the lifetime it was sent
+with, so a change applies to the next link, not to one already live.
+
+The link's origin is `MAIDAN_CONSOLE_ORIGIN`. When that is unset it is the
+origin of `MAIDAN_OIDC_REDIRECT_URI`, and with neither the link is host-relative
+and no elicitation is offered (a URL elicitation needs an absolute URL).
+
 
 Pass `thread_id` to make it a claim gate: while that gate is pending,
 `claim_next_thread` hands the thread to nobody. That protects the task but not

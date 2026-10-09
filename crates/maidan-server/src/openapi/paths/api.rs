@@ -1493,7 +1493,7 @@ pub fn get_thread_version() {}
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "What the thread's current review was handed, by content hash", body = ReviewPacket),
+        (status = 200, description = "What the thread's current review was handed, by content hash, each item with the attestation tier judged at the hand-off, and self_reported_only when every item is the work's own account", body = ReviewPacket),
         (status = 403, response = Forbidden),
         (status = 404, description = "No such thread, or it has not gone to review", body = ProblemDetails, content_type = "application/problem+json"),
     ))]

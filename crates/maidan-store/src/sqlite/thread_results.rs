@@ -21,13 +21,15 @@ pub async fn set(
     let result_kind = result_kind_from_payload(result);
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(
-        "INSERT INTO maidan_thread_results (thread_id, result, produced_by, produced_at, result_kind)
-         VALUES (?, ?, ?, ?, ?)
+        "INSERT INTO maidan_thread_results
+             (thread_id, result, produced_by, produced_at, result_kind, produced_actor_id)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (thread_id) DO UPDATE SET
              result = excluded.result,
              produced_by = excluded.produced_by,
              produced_at = excluded.produced_at,
-             result_kind = excluded.result_kind
+             result_kind = excluded.result_kind,
+             produced_actor_id = excluded.produced_actor_id
          RETURNING thread_id, result, produced_by, produced_at",
     )
     .bind(thread_id.0)
@@ -35,6 +37,13 @@ pub async fn set(
     .bind(produced_by.0)
     .bind(&now)
     .bind(result_kind)
+    // The delegate that carried a borrowed token, so a hand-off can tell a
+    // worker's result from one a non-worker produced.
+    .bind(
+        crate::attribution::delegate_acting_for(produced_by)
+            .unwrap_or(produced_by)
+            .0,
+    )
     .fetch_one(pool)
     .await?;
     row_to_result(&row)

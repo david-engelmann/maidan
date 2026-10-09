@@ -374,7 +374,10 @@ change left: it commits on top and finds the pull request already open.
 **Credentials.** The commit and the pull request are made with
 `MAIDAN_GITHUB_TOKEN` (see [Production](Production.md#result-delivery-to-github-and-slack)),
 so they are authored by that token's owner. The token needs `contents:write`
-and `pull_requests:write` on each repository.
+and `pull_requests:write` on each repository. With a GitHub App configured
+(`MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and
+`MAIDAN_GITHUB_APP_PRIVATE_KEY`), they are made with the app's installation
+token instead and authored by the app's bot account.
 
 ---
 

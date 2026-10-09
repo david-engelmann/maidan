@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    MemberId, NewOidcIdentity, NewOidcPendingAuth, OidcIdentity, OidcIdentityId, OidcPendingAuth,
-    WorkspaceId,
+    IdentityWorkspace, MemberId, NewOidcIdentity, NewOidcPendingAuth, OidcIdentity, OidcIdentityId,
+    OidcPendingAuth, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -56,6 +56,48 @@ pub async fn get_identity(
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_identity(&row)
+}
+
+/// The workspaces the identity `identity_id` can switch to: every workspace
+/// where the same issuer and subject have an identity row, with the member each
+/// maps to, newest sign-in first, at most `limit`. The identity's own workspace
+/// is always listed. Another is left out when its member is SCIM-deactivated or
+/// frozen. An unknown id lists nothing.
+pub async fn list_identity_workspaces(
+    pool: &SqlitePool,
+    identity_id: OidcIdentityId,
+    limit: i64,
+) -> Result<Vec<IdentityWorkspace>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT o.workspace_id, w.name, o.member_id, m.handle, o.last_login_at
+         FROM maidan_oidc_identities me
+         JOIN maidan_oidc_identities o
+           ON o.issuer = me.issuer AND o.subject = me.subject
+         JOIN maidan_workspaces w ON w.id = o.workspace_id
+         JOIN maidan_members m ON m.id = o.member_id AND m.workspace_id = o.workspace_id
+         WHERE me.id = ?
+           AND (o.id = me.id OR (
+                NOT EXISTS (SELECT 1 FROM maidan_scim_users s
+                            WHERE s.member_id = o.member_id AND s.active = 0)
+            AND NOT EXISTS (SELECT 1 FROM maidan_member_freezes f
+                            WHERE f.member_id = o.member_id)))
+         ORDER BY o.last_login_at DESC, o.workspace_id
+         LIMIT ?",
+    )
+    .bind(identity_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| IdentityWorkspace {
+            workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
+            workspace_name: row.get::<String, _>("name"),
+            member_id: MemberId(row.get::<Uuid, _>("member_id")),
+            handle: row.get::<String, _>("handle"),
+            last_login_at: row.get::<DateTime<Utc>, _>("last_login_at"),
+        })
+        .collect())
 }
 
 pub async fn insert_pending(pool: &SqlitePool, new: NewOidcPendingAuth) -> Result<(), StoreError> {

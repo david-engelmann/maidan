@@ -546,6 +546,64 @@ pub trait ApprovalGateStore: Send + Sync {
         state: ApprovalGateState,
         content: Option<&serde_json::Value>,
     ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// [`Self::resolve_approval_gate`] for a decision a model made through
+    /// `approval_decide`: records the client it came through and that a model
+    /// asked, with `audit` in the same transaction when the gate resolved.
+    async fn resolve_approval_gate_audited(
+        &self,
+        id: ApprovalGateId,
+        resolved_by: MemberId,
+        state: ApprovalGateState,
+        content: Option<&serde_json::Value>,
+        via: &GateDecisionVia,
+        audit: crate::AuditFor<ApprovalGate>,
+    ) -> Result<Option<ApprovalGate>, StoreError>;
+    /// The workspace's `approval_decide` threshold and confirmation-link
+    /// lifetime; `low` and 600 seconds when unset.
+    async fn get_approval_policy(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<ApprovalPolicy, StoreError>;
+    /// Set the threshold and the link lifetime, each `None` for its
+    /// default, audited. Both `None` puts the workspace back on the defaults.
+    /// The caller bounds the lifetime; the column's CHECK refuses one outside
+    /// 60..=3600 too.
+    async fn set_approval_policy_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        confirm_at: Option<ApprovalRisk>,
+        confirm_link_ttl_seconds: Option<u32>,
+        audit: crate::AuditFor<ApprovalPolicy>,
+    ) -> Result<ApprovalPolicy, StoreError>;
+    /// Issue a confirmation for `new`'s gate and member, or return the live
+    /// one (`false`): one live link per gate and member, whatever a model
+    /// does. `audit` is written only for a new one.
+    async fn issue_approval_confirmation(
+        &self,
+        new: &NewApprovalConfirmation,
+        audit: crate::AuditFor<ApprovalConfirmation>,
+    ) -> Result<(ApprovalConfirmation, bool), StoreError>;
+    /// The confirmation whose token hashes to `token_hash`, live or not.
+    async fn get_approval_confirmation_by_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<ApprovalConfirmation>, StoreError>;
+    /// The workspace's unused, unexpired confirmations at `now`.
+    async fn list_live_approval_confirmations(
+        &self,
+        workspace_id: WorkspaceId,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<ApprovalConfirmation>, StoreError>;
+    /// Spend a live confirmation bound to `workspace_id` and `member_id` and
+    /// accept its gate atomically, with `audit` when it accepted.
+    async fn confirm_approval_gate(
+        &self,
+        token_hash: &str,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+        now: DateTime<Utc>,
+        audit: crate::AuditFor<ApprovalGate>,
+    ) -> Result<ConfirmOutcome, StoreError>;
 }
 
 #[async_trait]
@@ -1167,6 +1225,16 @@ pub trait SessionStore: Send + Sync {
         issuer: &str,
         subject: &str,
     ) -> Result<OidcIdentity, StoreError>;
+    /// The workspaces a signed-in identity can switch to (the workspace
+    /// switcher): every workspace where the same issuer and subject have an
+    /// identity row, newest sign-in first, at most `limit`. Its own workspace
+    /// is always listed; another is left out when its member is
+    /// SCIM-deactivated or frozen.
+    async fn list_identity_workspaces(
+        &self,
+        identity_id: OidcIdentityId,
+        limit: i64,
+    ) -> Result<Vec<IdentityWorkspace>, StoreError>;
     async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError>;
     async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError>;
 

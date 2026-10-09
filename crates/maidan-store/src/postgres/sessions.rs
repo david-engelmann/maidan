@@ -1,11 +1,14 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{ApiTokenId, MaidanSession, MemberId, NewMaidanSession, SessionId, WorkspaceId};
+use maidan_types::{
+    ApiTokenId, MaidanSession, MemberId, NewMaidanSession, OidcIdentityId, SessionId, WorkspaceId,
+};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const SESSION_COLUMNS: &str = "id, workspace_id, member_id, api_token_id, created_at, expires_at";
+const SESSION_COLUMNS: &str =
+    "id, workspace_id, member_id, api_token_id, oidc_identity_id, created_at, expires_at";
 
 pub async fn create(pool: &PgPool, new: NewMaidanSession) -> Result<MaidanSession, StoreError> {
     let mut conn = pool.acquire().await?;
@@ -20,14 +23,15 @@ async fn create_on(
     let id = Uuid::new_v4();
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_sessions
-            (id, workspace_id, member_id, api_token_id, expires_at)
-         VALUES ($1, $2, $3, $4, $5)
+            (id, workspace_id, member_id, api_token_id, oidc_identity_id, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING {SESSION_COLUMNS}"
     ))
     .bind(id)
     .bind(new.workspace_id.0)
     .bind(new.member_id.0)
     .bind(new.api_token_id.map(|t| t.0))
+    .bind(new.oidc_identity_id.map(|i| i.0))
     .bind(new.expires_at)
     .fetch_one(conn)
     .await?;
@@ -109,6 +113,9 @@ fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<MaidanSession, StoreErr
         workspace_id: WorkspaceId(row.get::<Uuid, _>("workspace_id")),
         member_id: MemberId(row.get::<Uuid, _>("member_id")),
         api_token_id: row.get::<Option<Uuid>, _>("api_token_id").map(ApiTokenId),
+        oidc_identity_id: row
+            .get::<Option<Uuid>, _>("oidc_identity_id")
+            .map(OidcIdentityId),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
     })

@@ -85,6 +85,7 @@ async fn run_suite(store: &dyn Store) {
             requested_by: requester.id,
             prompt: "Deploy to prod?".into(),
             schema: Some(schema.clone()),
+            risk: Default::default(),
         })
         .await
         .expect("create");
@@ -170,6 +171,7 @@ async fn run_suite(store: &dyn Store) {
             requested_by: requester.id,
             prompt: "Merge?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("create declined");
@@ -188,6 +190,7 @@ async fn run_suite(store: &dyn Store) {
             requested_by: requester.id,
             prompt: "Roll back?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("create cancelled");
@@ -269,6 +272,7 @@ async fn run_paging_suite(store: &dyn Store) {
                     requested_by: requester.id,
                     prompt: "ok?".into(),
                     schema: None,
+                    risk: Default::default(),
                 })
                 .await
                 .expect("gate"),
@@ -426,6 +430,7 @@ async fn gate_timestamps_migrate_to_whole_milliseconds_sqlite() {
                 requested_by: requester.id,
                 prompt: "ok?".into(),
                 schema: None,
+                risk: Default::default(),
             })
             .await
             .expect("gate");

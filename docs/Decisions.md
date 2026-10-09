@@ -2140,6 +2140,7 @@ On 2026-10-04 the maintainer added three rulings.
 - `MAIDAN_GITHUB_WRITE_REPOS` names the only repositories the token may write to. The GitHub client builds every request in one place, which refuses anything but a read to an unlisted repository, and a test fails if any other code in the client sends a request. A write method added later is checked without a guard of its own. Each existing write method also checks first, so a refused write sends nothing.
 - A client writes nowhere until it is given that list. Production builds it from the variable; with the variable unset, every GitHub write is refused and a boot warning says so. Reads still work.
 - Mark-ready is bound to `MAIDAN_MARK_READY_APP_ID`. App ids are unique across the instance, while app slugs are unique only within a workspace.
+- Mark-ready's per-repository base pins are `MAIDAN_MARK_READY_BASES` (`owner/name=branch`, comma-separated), moved out of a table compiled into `maidan-types` on 2026-10-08. The pins are the operator's, read once at boot, for the same reason as the write list: no workspace may move them. A repository not listed is held to no base there, and the workspace allowlist decides its flips. A malformed value refuses boot rather than dropping a pin.
 
 **Why.** The mark-ready review of 2026-10-07 found that any workspace admin could create an app with the designated app's slug and allowlist any repository the token reached. That is harmless on a single-tenant stack and an escalation on any shared or demo instance. Failing closed when unset means a new deployment cannot inherit the hole by omission.
 
@@ -2184,3 +2185,53 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Integration "Linking evidence to a thread".
 
+
+### An approval may be decided by a model, and the credential carries the proof (2026-10-08)
+
+**Decision.** The maintainer chose on 2026-10-08 to add a model-callable `approval_decide` tool and a ChatGPT inline approve card, reversing the earlier direction that kept every approval in Maidan's console. On the same day he approved the rule that makes it safe: accepting a gate is a property of the credential, not of the tool. A gate is accepted by a browser session (an `HttpOnly` cookie with the CSRF check), by a token holding `approval:grant`, or with a fresh confirmation the person gives outside the model. A token minted for an MCP client cannot accept a gate on its own. A delegate's token is a token too: it declines or cancels, and accepts only with `approval:grant`. This narrows the 2026-09-23 rule that approvals may be borrowed for gates only. A review verdict (`submit_review`) is still borrowable, and still never by the actor who did or owns the work. `approval_decide` uses the same rule: for any gate above a risk level the workspace sets, it returns a confirmation link or asks through elicitation, and the audit row and the approval card record which client decided and that a model asked.
+
+**Alternative.** Keep every approval in the console, with platform widgets and elicitation only showing the approval and linking there.
+
+**Why.** Agents need to be able to handle everything on their own, and a console-only flow puts a human in the loop on every gate. But the 2026-10-08 audit found that console-only was never enforced by the server. `POST /approval-gates/{id}/answer` accepts any bearer token whose member is a human, and the token a person gives Claude Code or a ChatGPT connector is exactly that. An agent with a shell could already accept a gate with curl, and the gate's own prompt, written by the requesting agent, could steer it. "Only a human member or `approval:grant` accepts" does not stop a model acting on a person's token, because that model is the human member. Proof of human intent has to come from the credential or a confirmation the model cannot give itself.
+
+**Held by.** To be built before `approval_decide`: a contract that a token minted for an MCP client is refused on the answer route, beside the existing `an_agent_cannot_accept_another_agents_gate_without_approval_grant` and the rule that nobody accepts their own request.
+
+**Record.** Open Work Next 17 and Known risks.
+
+### OAuth authorization server: build, full scope (2026-10-08)
+
+**Decision.** The maintainer chose on 2026-10-08 to build the OAuth authorization server rather than adopt a crate, at full OAuth 2.1 scope in seven phases, with the first two (discovery and metadata) landing first as a reviewable milestone. Consent happens in the `/ui` console. Public and confidential clients are both supported from the start. Maidan skips dynamic client registration by choice and registers clients through client metadata documents and pre-registration.
+
+**Alternative.** Adopt `oxide-auth` or another crate, or build discovery only and defer the flows.
+
+**Why.** The ChatGPT and Claude directories need working flows for an authenticated service, not discovery alone. What exists is the installed-app one-time code exchange with optional PKCE (see Claims), and tokens are already capability-scoped, which a generic crate does not model.
+
+**Held to.** Client metadata documents are fetched only through the egress guard. PKCE is S256 only. Redirect URIs match exactly. Refresh tokens rotate, and a reused one revokes its family. Tokens are bound to the MCP resource (RFC 8707). Responses carry `iss` (RFC 9207). The consent page cannot be framed. A grant never exceeds the member's capabilities. The first milestone advertises no flow that is not built.
+
+**Record.** Open Work Next 23. The research behind it is to be committed under `docs/archive/` before the first phase starts.
+
+### The cost-per-success pilot runs under an enforced cap (2026-10-08)
+
+**Decision.** The maintainer chose on 2026-10-08 to run the pilot (a few tasks, every arm, three repetitions) on a subscription he provides, under a fixed cap the runner enforces and stops at, not one kept by intent. Any number published from it states the cap and the variance.
+
+**Alternative.** No runs, and publish the protocol only.
+
+**Why.** Without a measured number, Program C's public claim stays at what the code can show. A cap the runner does not enforce is a cap in name only.
+
+**Record.** Open Work Later C.
+
+### Attestation tiers for approval evidence (2026-10-08)
+
+**Decision.** Evidence on an approval card carries one of three tiers, by how it came to be. Verified: a check passed, such as a land-gate pass recorded by a member with the land-gate skill. Attached: an artifact linked by a member other than the thread's workers. Self-reported: the worker's own result, or an artifact a worker linked. The card warns when an approval rests on self-reported evidence only, and the review packet records each item's tier so the warning is computed on the server.
+
+**Why.** A reviewer approving a worker's own description of its work should know that is what they are approving. Tiers keyed on who produced the evidence reuse facts the store already records: the land-gate verdicts, the thread's workers, and who linked each artifact.
+
+**Record.** Open Work Next 3.
+
+### The mark-ready live check runs on a scratch GitHub repository (2026-10-08)
+
+**Decision.** The live check of mark-ready runs against a scratch GitHub repository the maintainer owns, not Gitea.
+
+**Why.** Mark-ready flips a draft with GitHub's GraphQL `markPullRequestReadyForReview`. Gitea has no GraphQL and marks drafts with a `WIP:` title prefix, so a Gitea run would test a different path. The CI tests already cover the request shapes against a mock base URL.
+
+**Record.** Open Work Now.

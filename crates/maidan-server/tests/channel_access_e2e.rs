@@ -494,6 +494,24 @@ async fn channel_admin_api_manages_membership_end_to_end() {
     // Answered as a member that does not exist, so the answer does not say
     // the id is a member of another workspace.
     assert_eq!(foreign.status(), StatusCode::NOT_FOUND);
+    // Removing them is answered the same way, and leaves no audit row naming them.
+    let foreign_removal = ctx
+        .client
+        .delete(format!("{base}/channels/{cid}/members/{}", outsider.id.0))
+        .header("Authorization", auth(&alice_tok))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(foreign_removal.status(), StatusCode::NOT_FOUND);
+    let outsider_id = outsider.id.0.to_string();
+    assert!(!ctx
+        .store
+        .list_audit(500)
+        .await
+        .unwrap()
+        .iter()
+        .any(|row| row.action == "channel_member.remove"
+            && row.metadata["subject_member_id"].as_str() == Some(outsider_id.as_str())));
 
     // Remove Bob → denied again.
     let del = ctx

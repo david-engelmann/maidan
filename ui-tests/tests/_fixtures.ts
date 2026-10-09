@@ -5,6 +5,11 @@ import { resolve } from "path";
 export interface Fixtures {
   base_url: string;
   token: string;
+  /**
+   * The `maidan_session` cookie value of the operator's signed-in session (a
+   * person's sign-in, with no token behind it). Accepting a gate needs it.
+   */
+  session_cookie: string;
   /** A second member's token, for opening a gate the operator then answers. */
   requester_token: string;
   /** The operator with workspace:read + event:subscribe, for the Live bar. */
@@ -77,13 +82,32 @@ export interface Fixtures {
   proof_live_thread_id: string;
   /** Handed over with no result and no artifact. */
   proof_empty_thread_id: string;
+  /** Needs the operator and Rae; Rae approved it in the seed, before any page loaded. */
+  proof_decided_thread_id: string;
+  /** Rae linked the log; the screenshot was unlinked after the hand-off. */
+  proof_unlinked_thread_id: string;
   proof_screenshot_sha: string;
   proof_transcript_sha: string;
   /** A second workspace: its Visitor (human), Outsider (agent) and the Visitor's token. */
   other_workspace_id: string;
+  /** The workspace switcher: the signed-in operator's second workspace (same identity), and one that belongs to another identity. */
+  switch_workspace_id: string;
+  foreign_workspace_id: string;
   other_member_id: string;
   outsider_member_id: string;
   other_token: string;
+  /** The `tiers` channel: hand-offs whose evidence the server tiers differently, for the approval card. */
+  tiers_channel_id: string;
+  /** The deployer's result plus a screenshot Rae linked: self-reported, then attached. */
+  tiers_attached_thread_id: string;
+  /** The deployer's result plus the Verifier's land-gate pass naming the transcript: verified. */
+  tiers_verified_thread_id: string;
+  /** Only the deployer's own result and link: every item self-reported, so the card warns. */
+  tiers_self_thread_id: string;
+  /** The Verifier, an agent with the land_gate skill who never worked a tier task. */
+  verifier_member_id: string;
+  /** The neighbour's own hand-off, the Outsider's result and link, the Visitor reviewing. */
+  other_tiers_thread_id: string;
   /** Admin grant (token:admin and the worker preset). Connect an agent uses it. */
   admin_token: string;
   /** A dead-lettered webhook delivery the Operator tab can replay. */
