@@ -1924,6 +1924,10 @@ Refs #1253
 
 - **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
 
+### A workspace sets how long an approval confirmation link lives
+
+- **Added:** the workspace approval policy (`GET`/`PUT /workspaces/{id}/approval-policy`) has `confirm_link_ttl_seconds`, from 60 to 3600 and 600 by default. `approval_decide` mints its confirmation link with it. The confirm route refuses the link once that time has passed, because the store's expiry check reads the `expires_at` minted with it. Before this the lifetime was ten minutes, compiled in. A value outside the bounds is a 400 that changes nothing. Setting it takes `token:admin` and is audited as `approval_policy.set` with the new lifetime. A link keeps the lifetime it was sent with. The PUT replaces the policy, so a field left out is back on its default. Migration 0149 adds the column, with a CHECK, on SQLite and Postgres. `ApprovalConfirmationKeys::with_ttl` is gone from `maidan-mcp`: the lifetime is the workspace's now.
+
 ### The palette's next-review spec waits until the console has finished signing in
 
 - **Fixed:** `ui-tests/tests/palette.spec.ts` "the palette opens the next review waiting on me" filled the token and clicked Refresh, the same double load #1338 removed from `board.spec.ts`, and it waited on neither the sign-in's nor the board's needs-you answer. Rebuilding the needs-you list detaches each row, and a detached row loses focus, so an answer that landed after Enter left no focused decision button. On a busy full run the last check failed once; alone, it passed. The spec now signs in by leaving the token field, waits for that sign-in's channel and needs-you answers, opens the board, and opens the palette only after the board's own needs-you answer. Test-only.
