@@ -17,6 +17,7 @@ use maidan_auth::{
     capability::{APPROVAL_GRANT, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     AuthContext,
 };
+use maidan_store::approval_policy::CONFIRM_LINK_TTL_SECONDS_RANGE;
 use maidan_types::{
     ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalPolicy, AuditScope, ConfirmOutcome,
     MemberKind, NewAuditEvent, WorkspaceId,
@@ -220,9 +221,10 @@ pub async fn answer_approval_gate(
 
 /// `PUT /workspaces/:id/approval-policy`: the lowest gate risk at which a
 /// model's accept through `approval_decide` needs a person to confirm it, or
-/// `null` for the default, `low` (every accept through the tool). It decides
-/// when a token may accept without a person, so it is `token:admin`, like the
-/// delegation policy. Audited in its own transaction.
+/// `null` for the default, `low` (every accept through the tool), and how
+/// long the confirmation link lives, 60 to 3600 seconds, or `null` for 600.
+/// It decides when a token may accept without a person, so it is
+/// `token:admin`, like the delegation policy. Audited in its own transaction.
 pub async fn set_approval_policy(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -232,12 +234,28 @@ pub async fn set_approval_policy(
     let workspace_id = WorkspaceId(id);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
+    let ttl = body
+        .confirm_link_ttl_seconds
+        .map(|ttl| {
+            u32::try_from(ttl)
+                .ok()
+                .filter(|t| CONFIRM_LINK_TTL_SECONDS_RANGE.contains(t))
+                .ok_or_else(|| {
+                    ApiError::BadRequest(format!(
+                        "confirm_link_ttl_seconds must be from {} to {}",
+                        CONFIRM_LINK_TTL_SECONDS_RANGE.start(),
+                        CONFIRM_LINK_TTL_SECONDS_RANGE.end()
+                    ))
+                })
+        })
+        .transpose()?;
     let actor = auth.actor_id;
     let policy = state
         .store
         .set_approval_policy_audited(
             workspace_id,
             body.confirm_at,
+            ttl,
             Box::new(move |policy| NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(actor),
@@ -246,6 +264,7 @@ pub async fn set_approval_policy(
                 target_id: Some(workspace_id.0),
                 metadata: serde_json::json!({
                     "confirm_at": policy.confirm_at,
+                    "confirm_link_ttl_seconds": policy.confirm_link_ttl_seconds,
                     "is_default": policy.is_default,
                 }),
             }),
@@ -254,7 +273,8 @@ pub async fn set_approval_policy(
     Ok(Json(policy))
 }
 
-/// `GET /workspaces/:id/approval-policy`: the threshold in force.
+/// `GET /workspaces/:id/approval-policy`: the threshold and link lifetime in
+/// force.
 /// `workspace:read`: a member may know when a model's accept needs them.
 pub async fn get_approval_policy(
     State(state): State<AppState>,
