@@ -1926,7 +1926,7 @@ Refs #1253
 
 ### A member the identity provider deactivates is signed out
 
-- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is ended and refused, and the end is audited as `session.delete` with reason `member_deactivated`. Found by the hosted-console design note (#1345).
+- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
 
 ## [412.0.0] — 2026-09-28
 
