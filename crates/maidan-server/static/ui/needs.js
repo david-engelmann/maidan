@@ -129,6 +129,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
         // about to close) survives a reload, even if its request has left the
         // inbox: rebuilding it would drop the note or the Close task button.
         const keep = new Map();
+        const focus = rememberNyFocus(list);
         for (const li of list.children) {
           const note = li.querySelector(".ny-note input");
           const inUse = li.classList.contains("in-use") || li.contains(document.activeElement) || (note && note.value.trim());
@@ -175,7 +176,76 @@ import { answerGate, modelRequestLine } from "./tools.js";
         document.getElementById("needs-you-head").hidden = empty;
         if (empty) box.removeAttribute("aria-labelledby");
         else box.setAttribute("aria-labelledby", "needs-you-title");
+        restoreNyFocus(list, focus);
         renderTeam([...threadsById.values()]);
+      }
+
+      // Rebuilding the list detaches every row, even one that is kept, and a
+      // detached element loses focus: a keyboard user on a decision button
+      // landed on <body> whenever the queue reloaded (a realtime frame, the
+      // live-poll fallback, a board refresh). So the render notes the focused
+      // control by its row's key and its label, and puts focus back after.
+      function nyControlLabel(el) {
+        return (el.getAttribute("aria-label") || el.textContent || "").trim();
+      }
+
+      function nyControls(row) {
+        return [...row.querySelectorAll("button, input, select, textarea, [tabindex]")].filter((el) => el.tabIndex >= 0);
+      }
+
+      function rememberNyFocus(list) {
+        const el = document.activeElement;
+        if (!el || el === list || !list.contains(el)) return null;
+        const row = el.closest(".ny-item");
+        if (!row) return null;
+        const rows = [...list.querySelectorAll(".ny-item")];
+        return {
+          el,
+          key: row.dataset.key,
+          label: nyControlLabel(el),
+          slot: nyControls(row).indexOf(el),
+          index: rows.indexOf(row),
+        };
+      }
+
+      function restoreNyFocus(list, focus) {
+        if (!focus) return;
+        // Something else took focus during the render: leave it there.
+        const active = document.activeElement;
+        if (active && active !== document.body && active !== focus.el) return;
+        if (focus.el.isConnected && list.contains(focus.el)) {
+          if (active !== focus.el) focus.el.focus({ preventScroll: true });
+          return;
+        }
+        const rows = [...list.querySelectorAll(".ny-item")];
+        const same = rows.find((r) => r.dataset.key === focus.key);
+        if (same) {
+          const controls = nyControls(same);
+          const target =
+            controls.find((c) => nyControlLabel(c) === focus.label && !c.disabled) ||
+            controls[focus.slot] ||
+            controls.find((c) => !c.disabled);
+          if (target) {
+            target.focus({ preventScroll: true });
+            return;
+          }
+        }
+        // The item has left the queue. Its neighbour takes focus, the one
+        // that moved into its place first, else the heading, and the change is
+        // said, since focus moved without the person moving it.
+        const neighbour = rows[Math.min(focus.index, rows.length - 1)];
+        const next = neighbour && (neighbour.querySelector("button.primary:not(:disabled)") || nyControls(neighbour).find((c) => !c.disabled));
+        if (next) {
+          next.focus({ preventScroll: true });
+          showError("That item is no longer waiting on you. Focus moved to the next one.", "success");
+          return;
+        }
+        const heading = document.getElementById(rows.length ? "needs-you-title" : "needs-you-quiet");
+        if (heading) {
+          heading.tabIndex = -1;
+          heading.focus({ preventScroll: true });
+          showError(rows.length ? "That item is no longer waiting on you." : "Nothing is waiting on you now.", "success");
+        }
       }
 
       const NY_GROUPS = {
