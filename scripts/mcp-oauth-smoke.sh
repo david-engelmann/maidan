@@ -38,7 +38,7 @@ redirect_uri="http://127.0.0.1:33418/callback"
 work="$(mktemp -d)"
 cimd_pid=""
 cleanup() {
-  [ -n "$cimd_pid" ] && kill "$cimd_pid" 2>/dev/null
+  if [ -n "$cimd_pid" ]; then kill "$cimd_pid" 2>/dev/null || true; fi
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -346,44 +346,49 @@ if [ -n "$client_id" ] && full_flow "DCR client" "$client_id"; then
   else
     fail "a foreign resource indicator was not refused: ${location:-see the returned page}"
   fi
-  # 8. Refresh tokens rotate, and a used one is refused.
+  # 8. Refresh tokens rotate, and a used one is refused. This runs on its
+  #    own chain: rotation then immediate reuse, with no revocation in
+  #    between, so the invalid_grant is from reuse detection alone.
   if [ -n "$refresh" ]; then
     curl -sS -o "$work/r1.json" "$token" --data-urlencode grant_type=refresh_token \
       --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id" \
       --data-urlencode "resource=$resource"
     rotated="$(json "$work/r1.json" 'd.get("refresh_token")')"
-    # 9. Revocation (RFC 7009) ends the grant. This runs before the reuse
-    #    check below: reuse detection revokes the whole token family, which
-    #    would make a revocation test on $rotated meaningless.
-    if [ -n "$revoke" ] && [ -n "$rotated" ] && [ "$rotated" != "$refresh" ]; then
-      curl -sS -o /dev/null "$revoke" --data-urlencode "token=$rotated" \
-        --data-urlencode token_type_hint=refresh_token --data-urlencode "client_id=$client_id"
-      curl -sS -o "$work/r3.json" "$token" --data-urlencode grant_type=refresh_token \
-        --data-urlencode "refresh_token=$rotated" --data-urlencode "client_id=$client_id"
-      if [ "$(json "$work/r3.json" 'd.get("error")')" = "invalid_grant" ]; then
-        pass "a revoked refresh token is refused (invalid_grant)"
-      else
-        fail "a revoked refresh token answered $(cat "$work/r3.json")"
-      fi
-      # Re-rotate for the reuse check: the revoked $rotated is dead, so
-      # rotate from the original $refresh. If revocation ended the family,
-      # this yields nothing and the reuse check is skipped with a note.
-      curl -sS -o "$work/r1b.json" "$token" --data-urlencode grant_type=refresh_token \
-        --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id" \
-        --data-urlencode "resource=$resource"
-      rotated="$(json "$work/r1b.json" 'd.get("refresh_token")')"
-    fi
     curl -sS -o "$work/r2.json" "$token" --data-urlencode grant_type=refresh_token \
       --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id"
     if [ -n "$rotated" ] && [ "$rotated" != "$refresh" ] && [ "$(json "$work/r2.json" 'd.get("error")')" = "invalid_grant" ]; then
       pass "the refresh token rotated and the used one is refused (invalid_grant)"
-    elif [ -z "$rotated" ]; then
-      note "revocation ended the family; reuse check skipped"
     else
       fail "refresh rotation: new=$(json "$work/r1.json" 'd.get("error") or "issued"'), reuse=$(cat "$work/r2.json")"
     fi
   else
     note "no refresh token issued"
+  fi
+  # 9. Revocation (RFC 7009) ends the grant. A separate chain from step 8:
+  #    a fresh full flow, then rotate, revoke the rotated token, and require
+  #    invalid_grant. Revocation never touches step 8's chain.
+  if [ -n "$revoke" ] && full_flow "revocation chain" "$client_id"; then
+    if [ -n "$refresh" ]; then
+      curl -sS -o "$work/rv1.json" "$token" --data-urlencode grant_type=refresh_token \
+        --data-urlencode "refresh_token=$refresh" --data-urlencode "client_id=$client_id" \
+        --data-urlencode "resource=$resource"
+      to_revoke="$(json "$work/rv1.json" 'd.get("refresh_token")')"
+      if [ -n "$to_revoke" ] && [ "$to_revoke" != "$refresh" ]; then
+        curl -sS -o /dev/null "$revoke" --data-urlencode "token=$to_revoke" \
+          --data-urlencode token_type_hint=refresh_token --data-urlencode "client_id=$client_id"
+        curl -sS -o "$work/rv2.json" "$token" --data-urlencode grant_type=refresh_token \
+          --data-urlencode "refresh_token=$to_revoke" --data-urlencode "client_id=$client_id"
+        if [ "$(json "$work/rv2.json" 'd.get("error")')" = "invalid_grant" ]; then
+          pass "a revoked refresh token is refused (invalid_grant)"
+        else
+          fail "a revoked refresh token answered $(cat "$work/rv2.json")"
+        fi
+      else
+        fail "revocation chain did not rotate"
+      fi
+    else
+      note "revocation chain issued no refresh token"
+    fi
   fi
 fi
 

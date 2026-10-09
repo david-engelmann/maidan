@@ -128,10 +128,14 @@ import_realms_and_user() {
   printf 'authorization: Bearer %s\n' "$token" >"$auth"
   for file in "$state"/import/*.json; do
     name="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["realm"])' "$file")"
-    if [ "$(curl -sS -o /dev/null -w '%{http_code}' -H @"$auth" "$kc_url/admin/realms/$name")" = "404" ]; then
+    code="$(curl -sS -o /dev/null -w '%{http_code}' -H @"$auth" "$kc_url/admin/realms/$name")"
+    if [ "$code" = "404" ]; then
       curl -sS -f -o /dev/null -H @"$auth" -H 'content-type: application/json' \
         -X POST "$kc_url/admin/realms" --data-binary @"$file"
       echo "Imported realm $name"
+    elif [ "$code" != "200" ]; then
+      echo "FAIL: checking realm $name returned HTTP $code" >&2
+      exit 1
     fi
   done
   ensure_audience_scope "$auth"
