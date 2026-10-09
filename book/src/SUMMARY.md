@@ -41,11 +41,8 @@
 - [Dependencies](docs/Dependencies.md)
 - [Open Work](docs/Open-Work.md)
 - [Roadmap](docs/Roadmap.md)
-<<<<<<< HEAD
 - [OAuth authorization server plan](docs/OAuth.md)
-=======
 - [Hosted console (design)](docs/Hosted-Console.md)
->>>>>>> origin/main
 
 # Historical (optional)
 
