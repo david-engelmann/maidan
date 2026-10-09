@@ -5,7 +5,7 @@
 //! further requests, so on its own it would outlive the credential. Every SSE
 //! route wraps its stream in [`guard`] (A2A's gRPC `SubscribeToTask` uses
 //! [`guard_ending`], which ends with `UNAUTHENTICATED` instead). The wrapper checks the credential again
-//! before a frame goes out (at most once per [`RECHECK_GAP`]) and every
+//! before a frame goes out (the first, then at most once per [`RECHECK_GAP`]) and every
 //! [`RECHECK_TICK`] while the stream is idle. When the check fails it sends one
 //! last `stream_ended` event that gives the reason, then ends the stream.
 
