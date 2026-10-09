@@ -1104,6 +1104,13 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/threads/{tid}/review-packet",
             get(routes::get_review_packet),
         )
+        // The approval card's decider after a reload, and who linked each
+        // artifact: the bearer tree's reads, behind the same thread check.
+        .route("/ui/api/threads/{tid}/reviews", get(routes::list_reviews))
+        .route(
+            "/ui/api/threads/{tid}/artifacts",
+            get(routes::list_thread_artifacts),
+        )
         .route("/ui/api/workspaces/{wid}", get(routes::get_workspace))
         .route(
             "/ui/api/workspaces/{wid}/search",

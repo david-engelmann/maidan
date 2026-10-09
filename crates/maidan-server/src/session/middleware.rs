@@ -18,6 +18,9 @@ use crate::state::AppState;
 /// was made from resolved again now. A session whose token is no longer live
 /// (revoked, rotated, expired, its grant or app installation gone) is deleted
 /// and refused, so it ends when the token does rather than at its own expiry.
+/// So is a session whose member the identity provider has deactivated through
+/// SCIM: deactivation revokes the member's tokens, and a session the person
+/// signed in to has no token to lose, so it is ended here instead.
 pub async fn load_session(
     state: &AppState,
     headers: &axum::http::HeaderMap,
@@ -33,6 +36,31 @@ pub async fn load_session(
     if session.expires_at < Utc::now() {
         let _ = state.store.delete_expired_session(session.id).await;
         return Err(ApiError::Unauthorized);
+    }
+    match state.store.get_scim_user(session.member_id).await {
+        Ok(Some(user)) if !user.active => {
+            let _ = state
+                .store
+                .delete_session_audited(
+                    session.id,
+                    Box::new(|ended| NewAuditEvent {
+                        scope: AuditScope::Workspace(ended.workspace_id),
+                        actor_id: Some(ended.member_id),
+                        action: "session.delete".into(),
+                        target_kind: Some("member".into()),
+                        target_id: Some(ended.member_id.0),
+                        metadata: serde_json::json!({
+                            "workspace_id": ended.workspace_id.0,
+                            "reason": "member_deactivated",
+                        }),
+                    }),
+                )
+                .await;
+            return Err(ApiError::Unauthorized);
+        }
+        Ok(_) => {}
+        // A failed lookup cannot show the member is active.
+        Err(_) => return Err(ApiError::Unauthorized),
     }
     let token = match session.api_token_id {
         None => None,
