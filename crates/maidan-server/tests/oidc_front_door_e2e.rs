@@ -483,3 +483,29 @@ async fn a_workspace_sign_in_still_works() {
     let x = session_cookie(&res).expect("a session");
     assert_eq!(env.whoami(&x).await, (a, xa));
 }
+
+#[tokio::test]
+async fn an_unknown_workspace_id_is_refused_even_where_sign_in_provisions() {
+    // Login no longer checks the id, so the callback must: with
+    // auto-provisioning on it would otherwise try to create a member in a
+    // workspace that doesn't exist.
+    let env = spawn_with(true, true).await;
+    tenants(&env).await;
+    let members = env.total("SELECT COUNT(*) FROM maidan_members").await;
+    let res = env
+        .sign_in_raw(WorkspaceId(uuid::Uuid::new_v4()), "x", None)
+        .await;
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    assert!(session_cookie(&res).is_none());
+    let body: Value = res.json().await.unwrap();
+    assert!(
+        body.to_string()
+            .contains("not provisioned in this workspace"),
+        "{body}"
+    );
+    assert_eq!(
+        env.total("SELECT COUNT(*) FROM maidan_members").await,
+        members
+    );
+    assert_eq!(env.total("SELECT COUNT(*) FROM maidan_sessions").await, 0);
+}
