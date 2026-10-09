@@ -1926,7 +1926,7 @@ Refs #1253
 
 ### OAuth phase one: the MCP endpoint describes itself as a protected resource
 
-- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` serves the MCP endpoint's RFC 9728 metadata, and a 401 from `/mcp/streamable` carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and there is no root-form document, since RFC 9728 has a client reject metadata whose `resource` is not the URL it asked. `MAIDAN_PUBLIC_ORIGIN` must be an `https` origin, or `http` on a loopback host, with no path, query or credentials, or boot refuses it. Unset, neither is served. The authorization-server document arrives with the token endpoint (phase three).
+- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` serves the MCP endpoint's RFC 9728 metadata, and a 401 from `/mcp/streamable` carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and there is no root-form document, since RFC 9728 has a client reject metadata whose `resource` is not the URL it asked. `MAIDAN_PUBLIC_ORIGIN` must be an `https` origin, or `http` on a loopback host, with no path, query or credentials; any other non-empty value, or one that is not UTF-8, refuses boot. Unset, blank or whitespace-only, it is off, and neither is served. The authorization-server document arrives with the token endpoint (phase three).
 - **Added:** `docs/OAuth.md`, the seven-phase plan (Open Work Next 23).
 
 ## [412.0.0] — 2026-09-28
