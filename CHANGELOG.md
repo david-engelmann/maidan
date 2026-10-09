@@ -1903,6 +1903,15 @@ Refs #1253
 
 - **Fixed:** `DELETE /channels/:cid/members/:mid` and the MCP `remove_channel_member` answer an id that is no member of the channel's workspace, unknown or another workspace's, as not found. They used to answer success and write a `channel_member.remove` audit row naming the id.
 
+### An evidence tier comes from the same read as the evidence, and an unrecorded actor is not shown independent
+
+- **Fixed:** A hand-off read each result and linked artifact twice, once for the review packet's manifest and once for who put it there. A concurrent write between the two reads could pair one version's hash with another version's author and tier. Each row is now read once, and the manifest and its tiers are built from that one read.
+- **Fixed:** Evidence written before migration 0147 has no recorded actor, so evidence a delegate wrote with another member's token could read as `attached`. Every write now records who acted (the delegate, or the member itself). At a hand-off, a row with no actor from a member who never delegated counts as the member's own act. A row from a member who has delegated counts as `self_reported`, because its independence cannot be shown. This addresses CodeRabbit's two concerns on #1327.
+
+### The board specs wait until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/board.spec.ts` opened the board by filling the token and clicking Refresh. Leaving the field already signs in and loads the channels, so Refresh started a second load, and the row click waited on neither request. On a busy full run "a refused subscribe shows the server's reason" timed out on the channel row; alone, it passed. The helper now waits for the page's first session read, signs in by leaving the token field, and clicks the row only after that sign-in's channel response.
+
 ### The approval card names who decided after a reload, and who linked each artifact
 
 - **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
