@@ -139,18 +139,20 @@ fn server_capabilities(protocol_version: &str) -> Value {
     })
 }
 
-/// How long a confirmation link lives when the server sets no other.
-pub const DEFAULT_CONFIRMATION_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// How long a confirmation link lives when the workspace sets no other on its
+/// approval policy (`confirm_link_ttl_seconds`).
+pub const DEFAULT_CONFIRMATION_TTL: std::time::Duration = std::time::Duration::from_secs(
+    maidan_store::approval_policy::DEFAULT_CONFIRM_LINK_TTL_SECONDS as u64,
+);
 
 /// What `approval_decide` needs to send a person a confirmation link: the
-/// secret its tokens are derived with, the console's public origin, and how
-/// long a link lives. Unset, the tool's confirmation path refuses rather than
+/// secret its tokens are derived with and the console's public origin. How
+/// long a link lives is the workspace's approval policy. Unset, the tool's confirmation path refuses rather than
 /// send a link nobody could use.
 #[derive(Clone)]
 pub struct ApprovalConfirmationKeys {
     pub(crate) secret: Arc<[u8]>,
     pub(crate) console_origin: Option<String>,
-    pub(crate) ttl: std::time::Duration,
 }
 
 impl ApprovalConfirmationKeys {
@@ -160,14 +162,7 @@ impl ApprovalConfirmationKeys {
             console_origin: console_origin
                 .map(|o| o.trim().trim_end_matches('/').to_string())
                 .filter(|o| !o.is_empty()),
-            ttl: DEFAULT_CONFIRMATION_TTL,
         }
-    }
-
-    #[must_use]
-    pub fn with_ttl(mut self, ttl: std::time::Duration) -> Self {
-        self.ttl = ttl;
-        self
     }
 
     /// The console link for a gate's confirmation. The token rides in the

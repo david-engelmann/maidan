@@ -1,5 +1,6 @@
-//! Backend-neutral pieces of `approval_decide`'s store: the threshold a
-//! workspace with no row gets, and how a decision's record is read back.
+//! Backend-neutral pieces of `approval_decide`'s store: the threshold and
+//! link lifetime a workspace with no row gets, and how a decision's record is
+//! read back.
 
 use maidan_types::{
     ApprovalConfirmation, ApprovalPolicy, ApprovalRisk, GateDecisionVia, WorkspaceId,
@@ -10,21 +11,35 @@ use maidan_types::{
 /// in to any direct accept.
 pub const DEFAULT_CONFIRM_AT: ApprovalRisk = ApprovalRisk::Low;
 
-/// The policy for a stored `confirm_at`, or the default for none. A value the
-/// CHECK constraint would refuse cannot be read back, and if one were it
-/// reads as the default, which is the strictest.
-pub(crate) fn policy(workspace_id: WorkspaceId, stored: Option<&str>) -> ApprovalPolicy {
-    match stored.and_then(ApprovalRisk::parse) {
-        Some(confirm_at) => ApprovalPolicy {
-            workspace_id,
-            confirm_at,
-            is_default: false,
-        },
-        None => ApprovalPolicy {
+/// How long a confirmation link lives when the workspace has set nothing:
+/// ten minutes.
+pub const DEFAULT_CONFIRM_LINK_TTL_SECONDS: u32 = 600;
+
+/// The shortest and longest lifetime a workspace may set, which the
+/// column's CHECK constraint (migration 0149) also holds.
+pub const CONFIRM_LINK_TTL_SECONDS_RANGE: std::ops::RangeInclusive<u32> = 60..=3600;
+
+/// The policy for a stored row, or the defaults for none. A value the CHECK
+/// constraints would refuse cannot be read back. If a threshold were, it
+/// reads as the default, which is the strictest; a lifetime outside the
+/// range reads as the default too.
+pub(crate) fn policy(workspace_id: WorkspaceId, stored: Option<(String, i64)>) -> ApprovalPolicy {
+    let Some((confirm_at, ttl)) = stored else {
+        return ApprovalPolicy {
             workspace_id,
             confirm_at: DEFAULT_CONFIRM_AT,
+            confirm_link_ttl_seconds: DEFAULT_CONFIRM_LINK_TTL_SECONDS,
             is_default: true,
-        },
+        };
+    };
+    ApprovalPolicy {
+        workspace_id,
+        confirm_at: ApprovalRisk::parse(&confirm_at).unwrap_or(DEFAULT_CONFIRM_AT),
+        confirm_link_ttl_seconds: u32::try_from(ttl)
+            .ok()
+            .filter(|t| CONFIRM_LINK_TTL_SECONDS_RANGE.contains(t))
+            .unwrap_or(DEFAULT_CONFIRM_LINK_TTL_SECONDS),
+        is_default: false,
     }
 }
 
