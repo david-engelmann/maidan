@@ -121,8 +121,8 @@ test("connect an agent gives copyable MCP config for this server", async ({ page
 // after Enter. Rebuilding the list detaches the focused row, which drops its
 // focus, and the last check saw no focused button. Same double load #1338
 // fixed in board.spec: sign in by leaving the field, wait for that sign-in's
-// channels and needs-you answers, then for the board's own needs-you answer,
-// and only then open the palette.
+// channels and needs-you answers, then for the board's own needs-you answer
+// and the render it causes, and only then open the palette.
 test("the palette opens the next review waiting on me", async ({ page }) => {
   const get = (match: (url: string) => boolean) =>
     page.waitForResponse((r) => r.request().method() === "GET" && match(r.url()) && r.ok());
@@ -140,14 +140,28 @@ test("the palette opens the next review waiting on me", async ({ page }) => {
   await page.locator("#token").blur();
   await channels;
   await (await signedIn).finished();
+  // The sign-in's rows are on screen, so its render is done.
+  await expect(page.locator("#needs-you-list .ny-item").first()).toBeVisible();
 
+  // An answer arriving is not its render: the handler can still be parsing
+  // or fetching gate views. Watch the list itself, from before the click, so
+  // only a render the board started can resolve this.
+  await page.evaluate(() => {
+    const list = document.getElementById("needs-you-list")!;
+    (window as unknown as { boardQueueRendered: Promise<void> }).boardQueueRendered = new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        observer.disconnect();
+        resolve();
+      });
+      observer.observe(list, { childList: true });
+    });
+  });
   const board = get((url) => url.includes(`/channels/${fx.board_channel_id}/threads`));
   await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
   await board;
   // The board asks for the needs-you queue only after its threads and gates.
   await (await get(waiting)).finished();
-  // One more page task, so the handler for that answer has rendered.
-  await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+  await page.evaluate(() => (window as unknown as { boardQueueRendered: Promise<void> }).boardQueueRendered);
   await expect(page.locator("#needs-you-list .ny-item").first()).toBeVisible();
 
   await page.locator("#board-title").click();
