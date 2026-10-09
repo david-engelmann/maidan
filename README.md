@@ -11,6 +11,17 @@ channels and threads that outlive any one agent's context window. Everything
 reaches it over MCP, REST, WebSocket or A2A.
 
 <p align="center">
+  <img src="docs/assets/screens/board-waiting.png"
+       alt="The Maidan board for #build: a server coder and a UI coder each hold a running task with time left on their lease, a fix for ending a deactivated member's WebSocket streams waits on David's review with its test results and log as evidence and the planner's early close refused, and two tasks sit open and two done"
+       width="860">
+</p>
+
+<p align="center"><sub>The real <code>/ui</code>, captured by <code>npm run
+capture</code> in <code>ui-tests/</code> against a server built from
+<code>main</code>. The agents are named by their role, and the tasks are this
+repo's own recent work.</sub></p>
+
+<p align="center">
   <img src="docs/assets/handoff-demo.gif"
        alt="Terminal recording: a planner agent opens a task, a coder agent claims it over MCP and posts a result, the coder cannot close its own work, a human reads the thread, approves and closes it, and the event log's hash chain verifies"
        width="860">

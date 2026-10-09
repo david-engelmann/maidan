@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 // The README and listing screenshots (`npm run capture`). Not part of `npm
 // test`: this config has its own seed harness
 // (crates/maidan-server/examples/capture_server.rs), its own port, and writes
-// PNGs instead of asserting a suite. See docs/Screenshots.md.
+// PNGs into docs/assets/screens/. See ui-tests/README.md, "Screenshots".
 const PORT = process.env.CAPTURE_PORT ?? "8961";
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -26,6 +26,11 @@ export default defineConfig({
     colorScheme: "light",
     locale: "en-US",
     timezoneId: "America/New_York",
+    // One raster thread and a fixed color profile: with several, an
+    // anti-aliased rounded corner came out one shade apart now and then.
+    launchOptions: {
+      args: ["--num-raster-threads=1", "--force-color-profile=srgb", "--disable-partial-raster"],
+    },
     trace: "retain-on-failure",
     screenshot: "off",
   },

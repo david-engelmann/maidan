@@ -15,7 +15,9 @@
 //! that has lapsed by the wall clock still reads as held.
 //!
 //! Env: `CAPTURE_PORT` (default 8961), `CAPTURE_FIXTURES` (default
-//! `ui-tests/.capture.json`). Run via `cargo run --example capture_server`.
+//! `ui-tests/.capture.json`), and `CAPTURE_DEBUG` to print every timestamp
+//! the seed left within two minutes of the capture clock. Run via `cargo run
+//! --example capture_server`.
 
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicI64;
@@ -28,9 +30,8 @@ use maidan_fsm::ThreadAction;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ArtifactKind, ChannelId, MemberId, MemberKind, NewApiToken, NewArtifact, NewChannel,
-    NewMember, NewMessage, NewThread, NewWorkspace, ReviewDecision, ThreadId,
-    WorkspaceId,
+    ArtifactKind, ChannelId, MemberId, MemberKind, NewApiToken, NewArtifact, NewChannel, NewMember,
+    NewMessage, NewThread, NewWorkspace, ReviewDecision, ThreadId, WorkspaceId,
 };
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -99,6 +100,48 @@ enum Variant {
     Empty,
 }
 
+/// Give a row just created a fixed id: every `id` and `*_id` column holding
+/// `old` takes `new`, with foreign keys off for the swap. Run before anything
+/// else refers to the row, so the only references are the ones its own
+/// create wrote.
+async fn repin(pool: &SqlitePool, old: uuid::Uuid, new: uuid::Uuid) {
+    let mut conn = pool.acquire().await.expect("connection");
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await
+        .expect("foreign keys off");
+    let tables: Vec<String> =
+        sqlx::query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'maidan_%'")
+            .fetch_all(&mut *conn)
+            .await
+            .expect("tables")
+            .iter()
+            .map(|r| r.get::<String, _>(0))
+            .collect();
+    for table in tables {
+        let cols: Vec<String> = sqlx::query(&format!("PRAGMA table_info({table})"))
+            .fetch_all(&mut *conn)
+            .await
+            .expect("columns")
+            .iter()
+            .map(|r| r.get::<String, _>("name"))
+            .filter(|c| c == "id" || c.ends_with("_id"))
+            .collect();
+        for col in cols {
+            sqlx::query(&format!("UPDATE {table} SET {col} = ? WHERE {col} = ?"))
+                .bind(new)
+                .bind(old)
+                .execute(&mut *conn)
+                .await
+                .expect("repin id");
+        }
+    }
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *conn)
+        .await
+        .expect("foreign keys on");
+}
+
 async fn member(
     store: &Arc<dyn Store>,
     pool: &SqlitePool,
@@ -117,20 +160,17 @@ async fn member(
         })
         .await
         .expect("member");
-    // Nothing references the member yet, so its id can still move.
     let id = fixed_id(n);
-    sqlx::query("UPDATE maidan_members SET id = ? WHERE id = ?")
-        .bind(id)
-        .bind(m.id.0)
-        .execute(pool)
-        .await
-        .expect("pin member id");
+    repin(pool, m.id.0, id).await;
     MemberId(id)
 }
 
 /// A task the planner files and owns, with its brief as the first message.
+#[allow(clippy::too_many_arguments)]
 async fn file_task(
     store: &Arc<dyn Store>,
+    pool: &SqlitePool,
+    n: u128,
     channel: ChannelId,
     planner: MemberId,
     pins: &mut Vec<Pin>,
@@ -147,13 +187,17 @@ async fn file_task(
         })
         .await
         .expect("thread");
+    // The thread id is in the review packet's evidence root, which the card
+    // prints, so it is fixed too.
+    let id = ThreadId(fixed_id(n));
+    repin(pool, t.id.0, id.0).await;
     store
-        .set_thread_owner(t.id, Some(planner))
+        .set_thread_owner(id, Some(planner))
         .await
         .expect("owner");
     let m = store
         .post_message(NewMessage {
-            thread_id: t.id,
+            thread_id: id,
             author_id: planner,
             body: brief.into(),
             metadata: serde_json::json!({}),
@@ -165,7 +209,7 @@ async fn file_task(
         key: "id",
         table: "maidan_threads",
         column: "created_at",
-        id: t.id.0,
+        id: id.0,
         at: mins(filed),
     });
     pins.push(Pin {
@@ -175,7 +219,7 @@ async fn file_task(
         id: m.id.0,
         at: mins(filed),
     });
-    t.id
+    id
 }
 
 #[allow(clippy::too_many_lines)]
@@ -193,25 +237,54 @@ async fn seed_board(
         })
         .await
         .expect("workspace");
+    // The Connect sheet prints the workspace and channel ids.
+    let ws_id = WorkspaceId(fixed_id(base));
+    repin(pool, ws.id.0, ws_id.0).await;
     let cast = Cast {
-        david: member(store, pool, ws.id, base + 1, "david", "David", MemberKind::Human).await,
-        planner: member(store, pool, ws.id, base + 2, "planner", "Planner", MemberKind::Agent)
-            .await,
+        david: member(
+            store,
+            pool,
+            ws_id,
+            base + 1,
+            "david",
+            "David",
+            MemberKind::Human,
+        )
+        .await,
+        planner: member(
+            store,
+            pool,
+            ws_id,
+            base + 2,
+            "planner",
+            "Planner",
+            MemberKind::Agent,
+        )
+        .await,
         server: member(
             store,
             pool,
-            ws.id,
+            ws_id,
             base + 3,
             "server-coder",
             "Server coder",
             MemberKind::Agent,
         )
         .await,
-        ui: member(store, pool, ws.id, base + 4, "ui-coder", "UI coder", MemberKind::Agent).await,
+        ui: member(
+            store,
+            pool,
+            ws_id,
+            base + 4,
+            "ui-coder",
+            "UI coder",
+            MemberKind::Agent,
+        )
+        .await,
         tester: member(
             store,
             pool,
-            ws.id,
+            ws_id,
             base + 5,
             "test-runner",
             "Test runner",
@@ -221,19 +294,21 @@ async fn seed_board(
     };
     let channel = store
         .create_channel(NewChannel {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             name: "build".into(),
             topic: None,
             private: false,
         })
         .await
         .expect("channel");
+    let channel_id = ChannelId(fixed_id(base + 0xc));
+    repin(pool, channel.id.0, channel_id.0).await;
     // What a person pastes into /ui (the quickstart's path). The page trades
     // it for a browser session, and the board's refusal and Live reads use it.
     let david_secret = TokenSecret::generate();
     store
         .create_api_token(NewApiToken {
-            workspace_id: ws.id,
+            workspace_id: ws_id,
             member_id: cast.david,
             app_installation_id: None,
             token_hash: hash_secret(david_secret.as_str()),
@@ -252,8 +327,8 @@ async fn seed_board(
     let david_token = david_secret.as_str().to_string();
     if variant == Variant::Empty {
         return Board {
-            workspace: ws.id,
-            channel: channel.id,
+            workspace: ws_id,
+            channel: channel_id,
             cast,
             review: None,
             david_token,
@@ -261,10 +336,23 @@ async fn seed_board(
         };
     }
 
+    let mut next = base + 0x10;
     macro_rules! file {
-        ($title:expr, $brief:expr, $filed:expr) => {
-            file_task(store, channel.id, cast.planner, pins, $title, $brief, $filed).await
-        };
+        ($title:expr, $brief:expr, $filed:expr) => {{
+            next += 1;
+            file_task(
+                store,
+                pool,
+                next,
+                channel_id,
+                cast.planner,
+                pins,
+                $title,
+                $brief,
+                $filed,
+            )
+            .await
+        }};
     }
     let say = |thread: ThreadId, who: MemberId, body: &'static str| {
         let store = store.clone();
@@ -393,7 +481,7 @@ async fn seed_board(
                     kind: ArtifactKind::Transcript,
                     uploaded_by: Some(cast.server),
                 },
-                Some(ws.id),
+                Some(ws_id),
             )
             .await
             .expect("artifact")
@@ -413,7 +501,7 @@ async fn seed_board(
             key: "workspace_id",
             table: "maidan_artifact_refs",
             column: "created_at",
-            id: ws.id.0,
+            id: ws_id.0,
             at: mins(42),
         });
     }
@@ -505,7 +593,7 @@ async fn seed_board(
         let secret = TokenSecret::generate();
         store
             .create_api_token(NewApiToken {
-                workspace_id: ws.id,
+                workspace_id: ws_id,
                 member_id: cast.planner,
                 app_installation_id: None,
                 token_hash: hash_secret(secret.as_str()),
@@ -526,8 +614,8 @@ async fn seed_board(
     };
 
     Board {
-        workspace: ws.id,
-        channel: channel.id,
+        workspace: ws_id,
+        channel: channel_id,
         cast,
         review: Some(review),
         david_token,
@@ -652,8 +740,14 @@ async fn pin_clock(
                 continue;
             };
             for col in cols {
-                shift_rows(pool, table, col, Some((key, *thread)), -Duration::minutes(*minutes))
-                    .await;
+                shift_rows(
+                    pool,
+                    table,
+                    col,
+                    Some((key, *thread)),
+                    -Duration::minutes(*minutes),
+                )
+                .await;
             }
         }
     }
