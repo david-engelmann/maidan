@@ -426,3 +426,28 @@ pub async fn delete_pending_request(
         .await?;
     Ok(())
 }
+
+/// Atomically consume a pending request: delete it only if it exists, is
+/// unexpired, and belongs to the given member and workspace. Returns the
+/// row if consumed, `None` otherwise. Two concurrent consumes for one
+/// request yield exactly one row.
+pub async fn consume_pending_request(
+    pool: &SqlitePool,
+    id: OAuthPendingRequestId,
+    member_id: maidan_types::MemberId,
+    workspace_id: maidan_types::WorkspaceId,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<Option<OAuthPendingRequest>, StoreError> {
+    let row = sqlx::query(&format!(
+        "DELETE FROM oauth_pending_requests
+         WHERE id = ? AND member_id = ? AND workspace_id = ? AND expires_at > ?
+         RETURNING {PENDING_COLUMNS}"
+    ))
+    .bind(id.0.to_string())
+    .bind(member_id.0.to_string())
+    .bind(workspace_id.0.to_string())
+    .bind(now)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|r| row_to_pending(&r)).transpose()
+}

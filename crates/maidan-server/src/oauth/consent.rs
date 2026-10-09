@@ -143,26 +143,14 @@ pub async fn decide_consent(
         .parse::<Uuid>()
         .map(OAuthPendingRequestId)
         .map_err(|_| ApiError::BadRequest("bad request id".into()))?;
+    // Atomic consume: the row is deleted only if it is unexpired and belongs
+    // to this member and workspace. Two concurrent POSTs yield exactly one
+    // row; anything else (unknown, expired, another member's) is one 404.
     let pending = state
         .store
-        .get_oauth_pending_request(request_id)
+        .consume_oauth_pending_request(request_id, session.member_id, session.workspace_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    // Single use: consume first, then decide. A replayed POST finds nothing.
-    state.store.delete_oauth_pending_request(request_id).await?;
-    if pending.expires_at <= Utc::now() {
-        return Err(ApiError::BadRequest("consent request expired".into()));
-    }
-    if pending.member_id != session.member_id {
-        return Err(ApiError::Forbidden(
-            "this consent request belongs to another member".into(),
-        ));
-    }
-    if pending.workspace_id != session.workspace_id {
-        return Err(ApiError::Forbidden(
-            "this consent request belongs to another workspace".into(),
-        ));
-    }
 
     let separator = if pending.redirect_uri.contains('?') {
         '&'
@@ -178,7 +166,13 @@ pub async fn decide_consent(
         );
         return Ok((
             StatusCode::SEE_OTHER,
-            [(axum::http::header::LOCATION, redirect_to)],
+            [
+                (axum::http::header::LOCATION, redirect_to.clone()),
+                (
+                    axum::http::header::CONTENT_SECURITY_POLICY,
+                    consent_redirect_csp(&redirect_to),
+                ),
+            ],
         ));
     }
 
@@ -265,6 +259,27 @@ pub async fn decide_consent(
     );
     Ok((
         StatusCode::SEE_OTHER,
-        [(axum::http::header::LOCATION, redirect_to)],
+        [
+            (axum::http::header::LOCATION, redirect_to.clone()),
+            (
+                axum::http::header::CONTENT_SECURITY_POLICY,
+                consent_redirect_csp(&redirect_to),
+            ),
+        ],
     ))
+}
+
+/// CSP for the consent 303 response. `form-action 'self'` (from
+/// `BOARD_UI_CSP`) would block the browser's navigation to the client's
+/// registered redirect URI, since a form POST's redirect is a form
+/// navigation. Allow the redirect target's origin explicitly.
+fn consent_redirect_csp(redirect_to: &str) -> String {
+    let origin = redirect_to
+        .split_once("://")
+        .map(|(scheme, rest)| {
+            let host = rest.split('/').next().unwrap_or("");
+            format!("{scheme}://{host}")
+        })
+        .unwrap_or_else(|| "'self'".to_string());
+    format!("form-action 'self' {origin}")
 }

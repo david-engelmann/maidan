@@ -153,7 +153,7 @@ pub fn oauth_token() {}
     ),
     security(()),
     responses(
-        (status = 302, description = "Redirect to the consent page, or to the client with an error"),
+        (status = 307, description = "Redirect to the consent page, or to the client with an error"),
         (status = 400, response = BadRequest),
         (status = 401, response = Unauthorized),
     )

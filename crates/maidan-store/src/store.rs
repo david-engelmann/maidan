@@ -2907,6 +2907,17 @@ pub trait OAuthAsStore: Send + Sync {
         &self,
         id: OAuthPendingRequestId,
     ) -> Result<(), StoreError>;
+
+    /// Atomically consume a pending request for the consent decision: the
+    /// row is deleted only if it is unexpired and belongs to the given
+    /// member and workspace. Returns the row on success, `None` if there
+    /// is nothing to consume (unknown, expired, or another member's).
+    async fn consume_oauth_pending_request(
+        &self,
+        id: OAuthPendingRequestId,
+        member_id: MemberId,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<OAuthPendingRequest>, StoreError>;
 }
 
 #[async_trait]

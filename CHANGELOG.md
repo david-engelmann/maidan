@@ -7,12 +7,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### OAuth authorization server, phase two: authorization-code flow
-
-- **Added:** `GET /oauth/authorize` and `POST /oauth/token` implement the OAuth 2.1 authorization-code flow with PKCE S256 only. Clients are pre-registered (no dynamic registration); redirect URIs match exactly; codes are single-use with a ten-minute expiry and are consumed atomically. Scopes are delegatable capabilities, never wider than the member's own.
-- **Security:** A token issued through OAuth never carries `approval:grant` (stripped at mint), so it can never accept an approval gate — only a signed-in browser session or a token holding `approval:grant` can (#1325). Covered by `an_oauth_token_cannot_accept_a_gate` in `approval_gate_e2e.rs`.
-- New tables: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants` (migration 0150); `maidan_api_tokens.oauth_grant_id` ties a token to its grant.
-
 ### The change flow can mark a draft ready (mark-ready app only)
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
@@ -1900,6 +1894,13 @@ Refs #1253
 ### One minting vocabulary
 
 - **Added:** Every token-minting route is bounded by `routes::mint_vocabulary`. `mint_vocabulary` is now public. The direct mint, attenuation, app token mint, OAuth token endpoint, and app OAuth exchange each verify their minted capabilities against the vocabulary. A structural contract test (`token_minting_vocabulary_contract.rs`) fails if a new mint path skips the bound.
+
+
+### OAuth authorization server, phase two: authorization-code flow
+
+- **Added:** `GET /oauth/authorize` and `POST /oauth/token` implement the OAuth 2.1 authorization-code flow with PKCE S256 only. Clients are pre-registered (no dynamic registration); redirect URIs match exactly; codes are single-use with a ten-minute expiry and are consumed atomically. Scopes are delegatable capabilities, never wider than the member's own.
+- **Security:** A token issued through OAuth never carries `approval:grant` (stripped at mint), so it can never accept an approval gate — only a signed-in browser session or a token holding `approval:grant` can (#1325). Covered by `an_oauth_token_cannot_accept_a_gate` in `approval_gate_e2e.rs`.
+- New tables: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants` (migration 0150); `maidan_api_tokens.oauth_grant_id` ties a token to its grant.
 
 ## [412.0.0] — 2026-09-28
 

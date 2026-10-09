@@ -198,7 +198,18 @@ pub async fn exchange_app_code(
                 app_installation_id: Some(installation.id),
                 token_hash: hash_secret(secret.as_str()),
                 label: Some(format!("oauth:{}", app.slug)),
-                capabilities: installation.granted_capabilities.clone(),
+                // Strip cross-tenant capabilities: an installed app never
+                // operates or reads across workspaces, even if its grant
+                // lists them.
+                capabilities: installation
+                    .granted_capabilities
+                    .iter()
+                    .filter(|c| {
+                        *c != maidan_auth::capability::OPERATOR_GLOBAL
+                            && *c != maidan_auth::capability::AUDIT_READ_GLOBAL
+                    })
+                    .cloned()
+                    .collect(),
                 // App tokens expire after 24 hours; the app re-exchanges.
                 expires_at: Some(Utc::now() + chrono::Duration::hours(24)),
             },

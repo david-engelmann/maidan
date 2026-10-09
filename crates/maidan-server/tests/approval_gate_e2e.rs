@@ -950,7 +950,7 @@ async fn an_oauth_token_cannot_accept_a_gate() {
         .build()
         .unwrap();
     let auth_url = format!(
-        "{}/oauth/authorize?client_id=test-mcp-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz",
+        "{}/oauth/authorize?response_type=code&client_id=test-mcp-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz",
         api.base,
         urlencoding::encode("https://client.example/callback"),
         challenge,
@@ -1039,4 +1039,189 @@ async fn an_oauth_token_cannot_accept_a_gate() {
     // Declining and cancelling are not accepting, and are unchanged.
     let declined = api.answer(&gate, &state, "decline", &oauth_bearer).await;
     assert_eq!(declined.status(), StatusCode::OK);
+}
+
+/// Two concurrent "Allow" POSTs for one consent request issue exactly one
+/// code. The atomic consume (DELETE ... RETURNING) lets one win; the other
+/// gets 404.
+#[tokio::test]
+async fn concurrent_consent_allow_issues_one_code() {
+    let (addr, _client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace { name: "oauth-race".into() })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
+    let human_token = mint(store.as_ref(), ws.id, human, caps(&["workspace:read"])).await;
+
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "race-client".into(),
+            name: "Race client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .unwrap();
+
+    // PKCE challenge.
+    let verifier: String = {
+        use base64::Engine;
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw)
+    };
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+    };
+
+    // Authorize to create the pending request.
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{base}/oauth/authorize?response_type=code&client_id=race-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {human_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = resp.headers().get("location").unwrap().to_str().unwrap().to_string();
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+
+    let cookie = signed_in(store.as_ref(), ws.id, human).await;
+    let url = format!("{base}/ui/api/oauth/consent");
+
+    // Two concurrent Allow POSTs.
+    let (r1, r2) = tokio::join!(
+        no_redirect
+            .post(&url)
+            .header("Cookie", &cookie)
+            .header("Sec-Fetch-Site", "same-origin")
+            .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+            .send(),
+        no_redirect
+            .post(&url)
+            .header("Cookie", &cookie)
+            .header("Sec-Fetch-Site", "same-origin")
+            .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+            .send()
+    );
+    let r1 = r1.unwrap();
+    let r2 = r2.unwrap();
+
+    // Exactly one wins with 303; the other gets 404.
+    let statuses = [r1.status(), r2.status()];
+    assert!(
+        statuses.contains(&StatusCode::SEE_OTHER) && statuses.contains(&StatusCode::NOT_FOUND),
+        "one Allow wins (303), one loses (404), got {statuses:?}"
+    );
+}
+
+/// Another member's consent POST leaves the request usable by its owner.
+/// The atomic consume matches on member_id, so a foreign POST gets 404 and
+/// the row stays for the owner.
+#[tokio::test]
+async fn foreign_consent_post_leaves_request_usable() {
+    let (addr, _client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace { name: "oauth-foreign".into() })
+        .await
+        .unwrap();
+    let owner = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
+    let intruder = member(store.as_ref(), ws.id, "intruder", MemberKind::Human).await;
+    let owner_token = mint(store.as_ref(), ws.id, owner, caps(&["workspace:read"])).await;
+
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "foreign-client".into(),
+            name: "Foreign client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .unwrap();
+
+    let verifier: String = {
+        use base64::Engine;
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw)
+    };
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+    };
+
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{base}/oauth/authorize?response_type=code&client_id=foreign-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {owner_token}"))
+        .send()
+        .await
+        .unwrap();
+    let location = resp.headers().get("location").unwrap().to_str().unwrap().to_string();
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+
+    let owner_cookie = signed_in(store.as_ref(), ws.id, owner).await;
+    let intruder_cookie = signed_in(store.as_ref(), ws.id, intruder).await;
+    let url = format!("{base}/ui/api/oauth/consent");
+
+    // Intruder's POST gets 404 and does not consume the request.
+    let intruder_resp = no_redirect
+        .post(&url)
+        .header("Cookie", &intruder_cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(intruder_resp.status(), StatusCode::NOT_FOUND);
+
+    // Owner's POST still works.
+    let owner_resp = no_redirect
+        .post(&url)
+        .header("Cookie", &owner_cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(owner_resp.status(), StatusCode::SEE_OTHER);
+
+    // The 303's CSP allows form navigation to the client's redirect origin.
+    // Without it, `form-action 'self'` would block the browser's redirect.
+    let csp = owner_resp
+        .headers()
+        .get("content-security-policy")
+        .expect("303 carries a CSP")
+        .to_str()
+        .unwrap();
+    assert!(
+        csp.contains("form-action") && csp.contains("https://client.example"),
+        "CSP allows the redirect origin, got: {csp}"
+    );
 }

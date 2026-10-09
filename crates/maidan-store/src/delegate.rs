@@ -3527,6 +3527,22 @@ macro_rules! store_delegations {
             ) -> Result<(), StoreError> {
                 oauth_as::delete_pending_request(self.pool(), id).await
             }
+
+            async fn consume_oauth_pending_request(
+                &self,
+                id: OAuthPendingRequestId,
+                member_id: MemberId,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<OAuthPendingRequest>, StoreError> {
+                oauth_as::consume_pending_request(
+                    self.pool(),
+                    id,
+                    member_id,
+                    workspace_id,
+                    chrono::Utc::now(),
+                )
+                .await
+            }
         }
     };
     ($store:ty, ReindexStore) => {

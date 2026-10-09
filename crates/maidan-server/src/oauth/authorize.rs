@@ -41,6 +41,8 @@ pub struct AuthorizeQuery {
     pub state: String,
     /// RFC 8707 resource indicator the grant is bound to.
     pub resource: Option<String>,
+    /// OAuth 2.1 requires `response_type=code`.
+    pub response_type: String,
 }
 
 /// Validate the authorization request, store it pending the member's
@@ -50,6 +52,13 @@ pub async fn authorize(
     Extension(auth): Extension<AuthContext>,
     ApiQuery(query): ApiQuery<AuthorizeQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // OAuth 2.1 requires response_type=code.
+    if query.response_type != "code" {
+        return Err(ApiError::BadRequest(
+            "response_type must be code".into(),
+        ));
+    }
+
     // P1: pre-registered clients first, then CIMD via the egress guard.
     let client =
         super::registry::resolve_client(&state, auth.workspace_id, &query.client_id).await?;
