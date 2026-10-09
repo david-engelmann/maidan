@@ -649,6 +649,16 @@ substituted like a webhook's (see *Secret substitution on egress*).
 Real-time subscribers use **`GET /ws/subscribe`** (WebSocket) or **`GET /mcp/stream`**
 (SSE). Both share the same control frames and event envelope shape.
 
+An open SSE stream keeps checking the credential it opened with. It does this before a frame
+goes out (at most once a second) and every 10 seconds while idle. A revoked or expired
+token, or a member deactivated through SCIM, ends the stream. Every SSE stream sends one last
+`event: stream_ended` with `data: {"reason": "..."}` and closes. The reason is
+`token no longer valid`, `member deactivated` or `credential check failed`. The SSE
+streams are `/mcp/stream`, `/agui/stream`, `/mcp/notifications`, both `/mcp/streamable`
+streams and A2A `SubscribeToTask`. A2A's gRPC `SubscribeToTask` ends with
+`UNAUTHENTICATED` instead. A client that reconnects goes through the normal
+authorization again.
+
 MCP resource subscription notifications use **`GET /mcp/notifications`** (SSE JSON-RPC
 lines) with **`POST /mcp`** for `resources/subscribe` / `tools/call` — requires
 `workspace:read` (same as resource read). Distinct from `/mcp/stream` workspace events.
