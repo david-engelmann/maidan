@@ -18,11 +18,14 @@ use std::path::{Path, PathBuf};
 ///   columns are a *separate* migration on Postgres (`0014_outbox_quarantine`)
 ///   but are folded into the base `0013_outbox` migration on SQLite. Same
 ///   feature, different migration granularity — both backends have quarantine.
+/// - `partition_event_log` (Postgres only): range-partitions `maidan_events` by
+///   month (0162) so retention can drop a month instead of deleting its rows.
+///   SQLite has no table partitioning; its event log stays one table.
 /// - `share_ticket_expiry_precision` (SQLite only): rebuilds the share-ticket
 ///   table so its expiry CHECK compares `julianday()` instead of whole-second
 ///   `datetime()`. Postgres compares `timestamptz` values at full precision
 ///   already, so it has nothing to change.
-const POSTGRES_ONLY_MIGRATIONS: &[&str] = &["outbox_quarantine"];
+const POSTGRES_ONLY_MIGRATIONS: &[&str] = &["outbox_quarantine", "partition_event_log"];
 const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 
 /// Store modules that legitimately exist for only one backend.
@@ -32,7 +35,10 @@ const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 /// - `replication` (Postgres only): WAL-LSN helpers for streaming-replica routing
 ///   (`pg_current_wal_lsn`/`pg_last_wal_replay_lsn`). SQLite has no
 ///   streaming replication, so there is no counterpart.
-const POSTGRES_ONLY_MODULES: &[&str] = &["replication"];
+/// - `partitions` (Postgres only): creates and lists the monthly partitions of
+///   the partitioned tables (0162 onward) and drops one for retention. SQLite
+///   has no table partitioning; its `maintain_partitions` does nothing.
+const POSTGRES_ONLY_MODULES: &[&str] = &["partitions", "replication"];
 const SQLITE_ONLY_MODULES: &[&str] = &["pragmas"];
 
 fn repo_root() -> PathBuf {

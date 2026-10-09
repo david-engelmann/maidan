@@ -16,6 +16,12 @@
 //! the store's per-workspace prunes check the hold in the deleting statement
 //! or transaction.
 //!
+//! **Partitions.** On Postgres the event log is partitioned by month
+//! (migration 0162). Each sweep first keeps the coming months' partitions
+//! ready, and the event prune drops a month whole when every row in it is
+//! one the batched delete would remove, deleting inside the partition
+//! otherwise.
+//!
 //! **Event-log safety.** Events are pruned only up to `min_delivery_cursor` —
 //! the lowest watermark across all at-least-once consumers — so a lagging
 //! durable consumer never loses an undelivered event. The age cutoff (days) is
@@ -100,6 +106,15 @@ fn cutoff(now: chrono::DateTime<chrono::Utc>, days: u32) -> chrono::DateTime<chr
 /// logged and do not abort the others.
 pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
     let now = chrono::Utc::now();
+
+    // Postgres keeps the partitioned tables' coming months ready (boot does
+    // it too); a failure here only means rows wait in DEFAULT, so it is
+    // logged and the sweep goes on.
+    match store.maintain_partitions(now).await {
+        Ok(0) => {}
+        Ok(created) => tracing::info!(created, "retention: created partitions"),
+        Err(err) => tracing::warn!(error = %err, "retention: partition maintenance failed"),
+    }
 
     if let Some(days) = cfg.events_days {
         // Floor at the lowest watermark among durable consumers still

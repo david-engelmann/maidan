@@ -3157,12 +3157,23 @@ pub trait DeliveryCursorStore: Send + Sync {
     /// `occurred_at < cutoff`. The `max_id` floor (see
     /// [`Store::min_delivery_cursor`]) keeps events a lagging at-least-once
     /// consumer still needs. Returns the row count deleted; the caller loops
-    /// until it is below `limit`.
+    /// until it is below `limit`. On Postgres a month whose every row
+    /// qualifies is dropped whole, and its rows count on top of `limit`.
     async fn prune_events(
         &self,
         cutoff: chrono::DateTime<chrono::Utc>,
         max_id: i64,
         limit: i64,
+    ) -> Result<u64, StoreError>;
+
+    /// Keep the partitioned tables ready for the months ahead of `now`
+    /// (Postgres: the current month plus three, each with its autovacuum
+    /// settings; rows already in DEFAULT for a new month move into it).
+    /// SQLite has no partitions and does nothing. Returns how many partitions
+    /// were created. Runs at boot and at the start of every retention sweep.
+    async fn maintain_partitions(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
     ) -> Result<u64, StoreError>;
 
     /// Delete up to `limit` oldest audit rows with `occurred_at < cutoff`. A

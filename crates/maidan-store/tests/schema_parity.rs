@@ -1,7 +1,8 @@
 //! Schema parity: after every migration, Postgres and SQLite have the same
 //! tables, the same columns, the same nullability, the same unique keys and
 //! the same foreign keys, apart from the differences listed below with their
-//! reasons.
+//! reasons. A Postgres partition is not compared as a table of its own: its
+//! partitioned parent is.
 //!
 //! `backend_parity` checks that each migration and module exists for both
 //! backends. This checks what the migrations actually built, so a column added
@@ -40,8 +41,16 @@ const ALLOWED: &[(&str, &str)] = &[
         "the other half of the entry above",
     ),
     (
-        "fk pg_only maidan_federated_ingest.local_event_id -> maidan_events",
-        "SQLite 0009 declared no FK. Event ids are AUTOINCREMENT, so an orphaned ingest row can never match a new event",
+        "unique pg_only maidan_events(id,occurred_at)",
+        "Postgres partitions the event log by occurred_at (0162), and a partitioned table's key must include the partition key. Ids still come from one sequence, so id alone stays unique; SQLite keys on id",
+    ),
+    (
+        "unique sqlite_only maidan_events(id)",
+        "the other half of the entry above",
+    ),
+    (
+        "fk sqlite_only maidan_outbox.log_id -> maidan_events",
+        "Postgres 0162: a foreign key cannot reference id alone on the partitioned event log. A delete trigger on maidan_events, and retention before it drops a month, delete the outbox rows the ON DELETE CASCADE did",
     ),
     (
         "fk pg_only maidan_task_schedules.recipe_id -> maidan_recipes",
@@ -67,7 +76,12 @@ async fn postgres_schema(pool: &PgPool) -> Schema {
          FROM information_schema.columns c
          JOIN information_schema.tables t
            ON t.table_name = c.table_name AND t.table_schema = c.table_schema
-         WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'",
+         WHERE c.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_class pc
+               JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+               WHERE pn.nspname = c.table_schema AND pc.relname = c.table_name
+                 AND pc.relispartition)",
     )
     .fetch_all(pool)
     .await
@@ -91,7 +105,8 @@ async fn postgres_schema(pool: &PgPool) -> Schema {
          JOIN pg_class t ON t.oid = i.indrelid
          JOIN pg_namespace n ON n.oid = t.relnamespace
          WHERE n.nspname = 'public' AND i.indisunique
-           AND i.indpred IS NULL AND i.indexprs IS NULL",
+           AND i.indpred IS NULL AND i.indexprs IS NULL
+           AND NOT t.relispartition",
     )
     .fetch_all(pool)
     .await
@@ -108,7 +123,12 @@ async fn postgres_schema(pool: &PgPool) -> Schema {
            ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
          JOIN information_schema.constraint_column_usage ccu
            ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'",
+         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_class pc
+               JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+               WHERE pn.nspname = tc.table_schema AND pc.relname = tc.table_name
+                 AND pc.relispartition)",
     )
     .fetch_all(pool)
     .await

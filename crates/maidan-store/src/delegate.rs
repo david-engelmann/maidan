@@ -3901,6 +3901,13 @@ macro_rules! store_delegations {
                 retention::prune_events(self.pool(), cutoff, max_id, limit).await
             }
 
+            async fn maintain_partitions(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<u64, StoreError> {
+                retention::maintain_partitions(self.pool(), now).await
+            }
+
             async fn prune_audit(
                 &self,
                 cutoff: chrono::DateTime<chrono::Utc>,

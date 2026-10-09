@@ -1,11 +1,14 @@
 //! Postgres data-retention pruning. Batched deletes (subquery `LIMIT`) so a
-//! first sweep over a long-unpruned table doesn't lock it.
+//! first sweep over a long-unpruned table doesn't lock it. The event log is
+//! partitioned by month, so its old months are dropped whole when they can
+//! be; see [`prune_events`].
 
 use chrono::{DateTime, Utc};
 use maidan_types::{MessageId, WorkspaceId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use super::partitions;
 use crate::error::StoreError;
 
 pub async fn min_delivery_cursor(
@@ -21,31 +24,121 @@ pub async fn min_delivery_cursor(
     Ok(row.0)
 }
 
+/// How long a sweep waits for the event log's lock to drop a partition before
+/// it falls back to deleting that partition's rows.
+const DROP_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Prune the event log: rows with `id <= max_id` and `occurred_at < cutoff`,
+/// outside held workspaces (system events, with no workspace, are never held).
+///
+/// The log is partitioned by month of `occurred_at` (migration 0162). A month
+/// that ends by the cutoff is dropped whole when every row in it would be
+/// deleted: nothing above the delivery floor, and nothing of a held
+/// workspace. Every other partition that may hold a row before the cutoff (a
+/// kept month, the month the cutoff falls in, the pre-partitioning partition
+/// and DEFAULT) gets the batched delete, inside that partition only, up to
+/// `limit` rows in all. A loop over this ends with exactly the rows the
+/// batched delete alone would have left.
+///
+/// Returns the rows removed, dropped ones included, so the caller's loop runs
+/// again after a drop and stops once a call removes fewer than `limit`.
 pub async fn prune_events(
     pool: &PgPool,
     cutoff: DateTime<Utc>,
     max_id: i64,
     limit: i64,
 ) -> Result<u64, StoreError> {
-    let res = sqlx::query(
-        // Held workspaces' events are exempt (system events with NULL
-        // workspace_id are never under a tenant hold, so they still prune).
-        "DELETE FROM maidan_events
-         WHERE id IN (
-             SELECT id FROM maidan_events
-             WHERE id <= $1 AND occurred_at < $2
-               AND (workspace_id IS NULL
-                    OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
-             ORDER BY id ASC
-             LIMIT $3
-         )",
-    )
+    let table = &partitions::EVENTS;
+    let mut total = 0u64;
+    for part in partitions::list(pool, table).await? {
+        if part.ends_by(cutoff) {
+            total += drop_events_partition(pool, &part, max_id).await?;
+        }
+    }
+    let mut left = limit;
+    for part in partitions::list(pool, table).await? {
+        if left <= 0 {
+            break;
+        }
+        if !part.starts_before(cutoff) {
+            continue;
+        }
+        let name = &part.name;
+        let res = sqlx::query(&format!(
+            "DELETE FROM {name}
+             WHERE id IN (
+                 SELECT id FROM {name}
+                 WHERE id <= $1 AND occurred_at < $2
+                   AND (workspace_id IS NULL
+                        OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
+                 ORDER BY id ASC
+                 LIMIT $3
+             )"
+        ))
+        .bind(max_id)
+        .bind(cutoff)
+        .bind(left)
+        .execute(pool)
+        .await?;
+        let n = res.rows_affected();
+        total += n;
+        left = left.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+    }
+    Ok(total)
+}
+
+/// Drop one event-log month that ends by the cutoff, when no row in it is
+/// above `max_id` or in a held workspace. Returns the rows it held, or 0 when
+/// it is kept (the delete pass then takes its eligible rows) or the table was
+/// too busy to lock.
+async fn drop_events_partition(
+    pool: &PgPool,
+    part: &partitions::Partition,
+    max_id: i64,
+) -> Result<u64, StoreError> {
+    let name = &part.name;
+    // Counted before the lock, so the lock is held only for the checks, the
+    // cascade and the drop. A row added in between is still checked below.
+    let rows: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {name}"))
+        .fetch_one(pool)
+        .await?;
+    let Some(mut tx) = partitions::begin_drop(pool, &partitions::EVENTS, DROP_LOCK_WAIT).await?
+    else {
+        return Ok(0);
+    };
+    let keeps: bool = sqlx::query_scalar(&format!(
+        "SELECT COALESCE((SELECT max(id) FROM {name}) > $1, FALSE)
+             OR EXISTS (SELECT 1 FROM maidan_legal_holds h
+                        WHERE EXISTS (SELECT 1 FROM {name} e WHERE e.workspace_id = h.workspace_id))"
+    ))
     .bind(max_id)
-    .bind(cutoff)
-    .bind(limit)
-    .execute(pool)
+    .fetch_one(&mut *tx)
     .await?;
-    Ok(res.rows_affected())
+    if keeps {
+        tx.rollback().await?;
+        return Ok(0);
+    }
+    // What the foreign keys' ON DELETE CASCADE did before 0162; a drop fires
+    // no delete trigger.
+    sqlx::query(&format!(
+        "DELETE FROM maidan_outbox WHERE log_id IN (SELECT id FROM {name})"
+    ))
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(&format!(
+        "DELETE FROM maidan_federated_ingest WHERE local_event_id IN (SELECT id FROM {name})"
+    ))
+    .execute(&mut *tx)
+    .await?;
+    partitions::drop_partition(&mut tx, part).await?;
+    tx.commit().await?;
+    tracing::info!(partition = %name, rows, "retention: dropped event-log partition");
+    Ok(u64::try_from(rows).unwrap_or(0))
+}
+
+/// Create the partitions the next months need; see [`partitions::maintain`].
+pub async fn maintain_partitions(pool: &PgPool, now: DateTime<Utc>) -> Result<u64, StoreError> {
+    partitions::maintain(pool, now).await
 }
 
 pub async fn prune_audit(
@@ -218,9 +311,11 @@ pub async fn prune_workspace_events(
     limit: i64,
 ) -> Result<u64, StoreError> {
     let res = sqlx::query(
+        // The outer `occurred_at` test lets Postgres skip the months after
+        // the cutoff; `id` alone would probe every partition's key.
         "DELETE FROM maidan_events
-         WHERE id IN (
-             SELECT id FROM maidan_events
+         WHERE occurred_at < $2 AND (id, occurred_at) IN (
+             SELECT id, occurred_at FROM maidan_events
              WHERE workspace_id = $1 AND occurred_at < $2
                AND id <= COALESCE(
                    (SELECT MIN(last_delivered_log_id) FROM maidan_delivery_cursor
