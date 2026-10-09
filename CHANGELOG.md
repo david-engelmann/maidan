@@ -1924,6 +1924,19 @@ Refs #1253
 
 - **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
 
+### A workspace sets how long an approval confirmation link lives
+
+- **Added:** the workspace approval policy (`GET`/`PUT /workspaces/{id}/approval-policy`) has `confirm_link_ttl_seconds`, from 60 to 3600 and 600 by default. `approval_decide` mints its confirmation link with it. The confirm route refuses the link once that time has passed, because the store's expiry check reads the `expires_at` minted with it. Before this the lifetime was ten minutes, compiled in. A value outside the bounds is a 400 that changes nothing. Setting it takes `token:admin` and is audited as `approval_policy.set` with the new lifetime. A link keeps the lifetime it was sent with. The PUT replaces the policy, so a field left out is back on its default. Migration 0149 adds the column, with a CHECK, on SQLite and Postgres. `ApprovalConfirmationKeys::with_ttl` is gone from `maidan-mcp`: the lifetime is the workspace's now.
+
+### The approval card names who decided after a reload, and who linked each artifact
+
+- **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
+- **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
+
+### A member the identity provider deactivates is signed out
+
+- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
+
 ### An open WebSocket stream ends when its member is deactivated
 
 - **Security:** `/ws/subscribe` checked its credential only when the stream opened. Deactivating a member through SCIM revokes their tokens, and #1346 ends their browser sessions at the next request, but an open stream makes no further requests. It kept delivering the workspace's events and kept relaying the member's presence and typing until the client disconnected. Now a stream checks again the credential that opened it, whether a token or a session cookie. It does this before a frame goes out or a client frame is acted on (at most once a second), and at every ping. A revoked or expired token, an ended session, or a member whose SCIM link is inactive closes the stream with `1008`, and the reason says which. A failed lookup closes it too, so the client reconnects and is checked afresh. Follow-up to #1346.

@@ -1715,8 +1715,8 @@ a gate over MCP. `decision` is `accept` or `decline`.
   `{console origin}/ui/#confirm-approval={gate_id}.{token}`. The token is in the
   URL fragment, so it never reaches a log. It is bound to the workspace, the
   gate and the member whose credential the model used, stored only as a hash,
-  and it expires after ten minutes. A repeat call while it is live
-  returns the same link. It is refused after use, after expiry, and once the
+  and it expires after the workspace's link lifetime, ten minutes unless an
+  admin set another. A repeat call while it is live returns the same link. It is refused after use, after expiry, and once the
   gate resolves, and another workspace's caller cannot tell it from no link.
   The signed-in person confirms at `POST /auth/approval-confirmations/confirm`
   with the session cookie, from the console page: the strict origin check, a
@@ -1737,12 +1737,16 @@ a gate over MCP. `decision` is `accept` or `decline`.
   "decided via <client>, requested by a model".
 
 A gate has a risk, `low`, `medium` or `high`, defaulting to `high`, set when
-`request_approval` opens it (`risk?`). The workspace sets the threshold with
-`PUT /workspaces/{id}/approval-policy {"confirm_at": "low"|"medium"|"high"}`
-(`token:admin`, audited as `approval_policy.set`) and reads it with `GET`
-(`workspace:read`). The default is `low`, so every acceptance a model asks for
-needs a person until an admin raises it. A gate at or above the threshold needs
-the confirmation even from `approval:grant`; `high` always does.
+`request_approval` opens it (`risk?`). The workspace sets the threshold and the link lifetime with
+`PUT /workspaces/{id}/approval-policy {"confirm_at": "low"|"medium"|"high", "confirm_link_ttl_seconds": 60..3600}`
+(`token:admin`, audited as `approval_policy.set`) and reads them with `GET`
+(`workspace:read`). The PUT replaces the policy: a field left out or `null` is
+back on its default, and `{}` restores both. The default threshold is `low`, so
+every acceptance a model asks for needs a person until an admin raises it. A
+gate at or above the threshold needs the confirmation even from
+`approval:grant`; `high` always does. The default lifetime is 600 seconds; a
+value under 60 or over 3600 is a 400. A link keeps the lifetime it was sent
+with, so a change applies to the next link, not to one already live.
 
 The link's origin is `MAIDAN_CONSOLE_ORIGIN`. When that is unset it is the
 origin of `MAIDAN_OIDC_REDIRECT_URI`, and with neither the link is host-relative
