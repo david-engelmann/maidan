@@ -58,6 +58,11 @@ CAPTURE_OUT=/some/dir npm run capture    # writes somewhere else
   and token), checks what the bar says each screen must show, then saves the
   PNG. A screen that does not render that way fails the run, and its PNG is
   not written. Do not loosen a check to get a picture.
+- **Reduced motion is an assertion, not a file.** The bar's eighth screen is
+  "the same board" under `prefers-reduced-motion: reduce`, so the capture
+  takes it with animations running and fails unless it is byte-identical to
+  `board-in-flight.png`. Seven PNGs are written; run the whole capture, since
+  that check reads the board the first test wrote.
 - **Deterministic.** The harness fixes member, workspace, channel and thread
   ids (an avatar's color comes from its id, and the Connect sheet and the
   evidence root print ids) and moves every timestamp onto a fixed clock,

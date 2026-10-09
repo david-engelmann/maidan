@@ -1,4 +1,4 @@
-import { readFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import { test, expect, type Locator, type Page } from "@playwright/test";
 
@@ -71,10 +71,10 @@ async function filled(page: Page): Promise<Locator> {
 
 async function shoot(
   page: Page,
-  name: string,
+  name: string | null,
   target?: Locator,
   animations: "disabled" | "allow" = "disabled",
-) {
+): Promise<Buffer> {
   // Settle: the live status, web fonts, and two frames after the last paint.
   await expect(page.locator("#ws-status")).toHaveText("connected");
   await page.evaluate(async () => {
@@ -82,9 +82,14 @@ async function shoot(
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   });
   await page.mouse.move(0, 0);
-  const opts = { path: resolve(OUT, `${name}.png`), animations, caret: "hide" as const, scale: "css" as const };
-  if (target) await target.screenshot(opts);
-  else await page.screenshot(opts);
+  // A null name returns the PNG without writing it.
+  const opts = {
+    path: name === null ? undefined : resolve(OUT, `${name}.png`),
+    animations,
+    caret: "hide" as const,
+    scale: "css" as const,
+  };
+  return target ? target.screenshot(opts) : page.screenshot(opts);
 }
 
 test("board, work in flight", async ({ page }) => {
@@ -172,7 +177,13 @@ test("reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openBoard(page, fx.flight, 7);
   await calmFirstScreen(page);
-  // Captured with animations allowed: under reduced motion nothing moves, so
-  // the cards are already in their lanes.
-  await shoot(page, "reduced-motion", undefined, "allow");
+  // The bar's reduced-motion screen is "the same board", so it is not a file
+  // of its own: it is captured with animations allowed (under reduced motion
+  // nothing moves, so nothing can be mid-glide) and must be byte-identical to
+  // board-in-flight.png, which the first test wrote to the same place. Any
+  // difference is motion the guard let through. Run the whole capture.
+  const shot = await shoot(page, null, undefined, "allow");
+  const flight = resolve(OUT, "board-in-flight.png");
+  if (!existsSync(flight)) throw new Error(`${flight} is missing: run the whole capture, not one test`);
+  expect(shot.equals(readFileSync(flight)), "reduced motion must match board-in-flight.png").toBe(true);
 });
