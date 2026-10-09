@@ -114,13 +114,40 @@ test("connect an agent gives copyable MCP config for this server", async ({ page
 
 // "Open next review" opens the oldest review waiting on me, even from another
 // channel, and puts focus on its Approve button.
+// Leaving the token field signs in, and sign-in ends by loading what is
+// waiting on me. Clicking Refresh as well started a second channel load, and
+// the board load after the row click starts another needs-you load. The test
+// waited on none of them, so on a busy full run a needs-you answer could land
+// after Enter. Rebuilding the list detaches the focused row, which drops its
+// focus, and the last check saw no focused button. Same double load #1338
+// fixed in board.spec: sign in by leaving the field, wait for that sign-in's
+// channels and needs-you answers, then for the board's own needs-you answer,
+// and only then open the palette.
 test("the palette opens the next review waiting on me", async ({ page }) => {
+  const get = (match: (url: string) => boolean) =>
+    page.waitForResponse((r) => r.request().method() === "GET" && match(r.url()) && r.ok());
+  const waiting = (url: string) => /\/members\/[^/]+\/waiting(\?|$)/.test(url);
+  // No session yet, so this read answers 401. Any answer will do.
+  const session = page.waitForResponse(
+    (r) => r.request().method() === "GET" && r.url().endsWith("/auth/session"),
+  );
   await page.goto("/ui/");
+  await session;
   await page.fill("#workspace", fx.workspace_id);
+  const channels = get((url) => url.includes(`/workspaces/${fx.workspace_id}/channels`));
+  const signedIn = get(waiting);
   await page.fill("#token", fx.review_token);
-  await page.locator("#token").dispatchEvent("change");
-  await page.click("#refresh-channels");
+  await page.locator("#token").blur();
+  await channels;
+  await (await signedIn).finished();
+
+  const board = get((url) => url.includes(`/channels/${fx.board_channel_id}/threads`));
   await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
+  await board;
+  // The board asks for the needs-you queue only after its threads and gates.
+  await (await get(waiting)).finished();
+  // One more page task, so the handler for that answer has rendered.
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
   await expect(page.locator("#needs-you-list .ny-item").first()).toBeVisible();
 
   await page.locator("#board-title").click();
