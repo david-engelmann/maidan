@@ -58,9 +58,9 @@ CI ran.
 | #1339 | A failed claim renewal stops the deploy recipe before it deploys | Merge loop | — |
 | #1340 | Next 20: Kani proofs of capability containment and cursor arithmetic, run locally | Conflicts with `main` (grokbot) | — |
 | #1342 | A local Keycloak provider and an MCP OAuth smoke test for developing Next 23, replacing #1329 | Review (Muse) | #1324 |
-| #1343 | Next 17: the approval gate as an MCP Apps inline card, and the decider's client recorded from the credential first | Draft. Moves its migration from 0149 to 0151 (Muse) | #1344 |
+| #1343 | Next 17: the approval gate as an MCP Apps inline card, and the decider's client recorded from the credential first | Draft. Moves its migration from 0149 to 0160 (grokbot) | #1344 |
 | #1344 | The confirmation link's lifetime as a workspace setting (default 600 s, 60 to 3600), split out of Next 17 | Merge loop | — |
-| #1337 | Next 23 P2: the authorization-code flow with PKCE S256 | Held: needs the consent page, the P1 client registry, and a rebase onto #1324 (Muse) | #1324 |
+| #1337 | Next 23 P2: the authorization-code flow with PKCE S256 | Held: the consent page and the P1 client registry in progress (migrations 0150 to 0152), then a rebase onto #1324 (Muse) | #1324 |
 | (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` with `MAIDAN_GITHUB_WRITE_REPOS`, `MAIDAN_MARK_READY_APP_ID` and `MAIDAN_MARK_READY_BASES` set. The check runs on a scratch GitHub repository the maintainer owns, not Gitea, because mark-ready flips drafts through GitHub's GraphQL (decided 2026-10-08) | — |
 | (design) | Hosted console v1 still needs a design note, sign-up through the existing OIDC provider, and an agent invite (#1144 builds the invite's member and worker token). The authorization change, a second workspace without `MAIDAN_BOOTSTRAP`, landed in #1208 | Design (another agent) | — |
 
