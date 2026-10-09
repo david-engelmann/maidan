@@ -64,10 +64,14 @@ CAPTURE_OUT=/some/dir npm run capture    # writes somewhere else
   2026-10-06 14:40 New York, which the browser clock is set to. The viewport
   (1440 x 900), scale (1), locale, timezone and color scheme are fixed in the
   config, and animations are finished before each shot. Two runs on one
-  machine write byte-identical files; check with
-  `CAPTURE_OUT=/tmp/a npm run capture && CAPTURE_OUT=/tmp/b npm run capture && cmp`
-  over the eight files. The port is in two screens, so a different
-  `CAPTURE_PORT` changes them.
+  machine write byte-identical files. To check:
+
+  ```sh
+  CAPTURE_OUT=/tmp/a npm run capture && CAPTURE_OUT=/tmp/b npm run capture
+  for f in /tmp/a/*.png; do cmp "$f" "/tmp/b/$(basename "$f")" || echo "differs: $f"; done
+  ```
+
+  The port is in two screens, so a different `CAPTURE_PORT` changes them.
 - **Fonts come from the OS** (the board uses `system-ui`), so a retake on
   another OS changes every pixel of text. Retake on Linux, with the browser
   `npx playwright install --with-deps chromium` installs.

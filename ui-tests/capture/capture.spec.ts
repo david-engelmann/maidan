@@ -74,7 +74,6 @@ async function shoot(
   name: string,
   target?: Locator,
   animations: "disabled" | "allow" = "disabled",
-  fullPage = false,
 ) {
   // Settle: the live status, web fonts, and two frames after the last paint.
   await expect(page.locator("#ws-status")).toHaveText("connected");
@@ -85,7 +84,7 @@ async function shoot(
   await page.mouse.move(0, 0);
   const opts = { path: resolve(OUT, `${name}.png`), animations, caret: "hide" as const, scale: "css" as const };
   if (target) await target.screenshot(opts);
-  else await page.screenshot({ ...opts, fullPage });
+  else await page.screenshot(opts);
 }
 
 test("board, work in flight", async ({ page }) => {
@@ -130,8 +129,10 @@ test("thread", async ({ page }) => {
   await expect(page.locator("#message-list")).toContainText("re-checks the token or session");
   await expect(page.locator("#message-list")).not.toContainText("{");
   await expect(await filled(page)).toHaveCount(1);
-  await panel.scrollIntoViewIfNeeded();
-  await shoot(page, "thread", undefined, "disabled", true);
+  // Every shot is the 1440 x 900 viewport. The panel's foot sits at the
+  // bottom of it, so the card it was opened from shows above the thread.
+  await panel.evaluate((el) => el.scrollIntoView({ block: "end" }));
+  await shoot(page, "thread");
 });
 
 test("connect an agent", async ({ page }) => {
