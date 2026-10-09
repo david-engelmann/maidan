@@ -350,7 +350,7 @@ async fn idle_streams_of_every_kind_end_within_the_recheck_tick() {
     let (_bob, bob_token) = env.member(b, "bob").await;
 
     let agui = format!("/agui/stream?workspace_id={}", a.0);
-    let mut alice_streams = vec![
+    let mut alice_streams = [
         ("/agui/stream", env.get_sse(&agui, &alice_token).await),
         (
             "/mcp/notifications",
@@ -365,11 +365,11 @@ async fn idle_streams_of_every_kind_end_within_the_recheck_tick() {
             env.streamable_session(&alice_token).await,
         ),
     ];
-    let mut carol_streams = vec![
+    let mut carol_streams = [
         env.get_sse(&agui, &carol_token).await,
         env.get_sse("/mcp/notifications", &carol_token).await,
     ];
-    let mut bob_streams = vec![
+    let mut bob_streams = [
         env.get_sse(&format!("/agui/stream?workspace_id={}", b.0), &bob_token)
             .await,
         env.get_sse("/mcp/notifications", &bob_token).await,

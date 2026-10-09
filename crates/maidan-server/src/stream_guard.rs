@@ -107,7 +107,10 @@ struct Guard<T, E> {
     store: Arc<dyn Store>,
     credential: StreamCredential,
     end_with: E,
-    last_check: Instant,
+    /// When the credential was last checked; `None` until the first frame,
+    /// which is always checked, so a reconnect on an ended credential does
+    /// not get a second's worth of frames first.
+    last_check: Option<Instant>,
     tick: Interval,
     ended: bool,
 }
@@ -115,7 +118,7 @@ struct Guard<T, E> {
 impl<T, E: Fn(&'static str) -> T> Guard<T, E> {
     /// Check now. On failure, mark the stream ended and return its last item.
     async fn check(&mut self) -> Option<T> {
-        self.last_check = Instant::now();
+        self.last_check = Some(Instant::now());
         match self.credential.recheck(self.store.as_ref()).await {
             Ok(()) => None,
             Err(reason) => {
@@ -180,7 +183,7 @@ where
         store,
         credential,
         end_with,
-        last_check: Instant::now(),
+        last_check: None,
         tick,
         ended: false,
     };
@@ -196,7 +199,7 @@ where
             tokio::select! {
                 next = g.inner.next() => {
                     let item = next?;
-                    if g.last_check.elapsed() >= RECHECK_GAP {
+                    if g.last_check.is_none_or(|at| at.elapsed() >= RECHECK_GAP) {
                         if let Some(last) = g.check().await {
                             return Some((last, g));
                         }
