@@ -55,9 +55,15 @@ CI ran.
 |---|---|---|---|
 | #1324 | OAuth phase zero (Next 23): RFC 9728 resource metadata for `/mcp/streamable` and its `WWW-Authenticate` challenge, off until `MAIDAN_PUBLIC_ORIGIN` is set, and `docs/OAuth.md` as the plan | Merge loop | — |
 | #1340 | Next 20: Kani proofs of capability containment and cursor arithmetic, run locally | Conflicts with `main` (grokbot) | — |
-| #1345 | The hosted-console design note, approved as Next 6's design | Review (grokbot) | — |
 | #1346 | A member deactivated through SCIM cannot sign in, and their session ends | Merge loop | — |
 | #1347 | Next 6: the workspace switcher, built to #1345 (`GET /auth/session/workspaces`, the identity on the session, migration 0161) | Merge loop | — |
+| #1350 | A deactivated member's open WebSocket streams end at the next frame | Merge loop | — |
+| #1351 | A needs-you reload keeps a keyboard user's focus | Merge loop | — |
+| #1352 | A deactivated member's SSE and A2A streams end at the next frame | Merge loop | — |
+| #1353 | Next 19: the screenshot capture and the board as the README hero | Merge loop | — |
+| #1354 | `POST /workspaces/{wid}/agents` connects an agent on the production image, without the bootstrap routes | Merge loop | — |
+| #1355 | One filled button when the open thread decides, and the design bar's load-error panel | Merge loop | — |
+| #1356 | A delegate removed through SCIM loses its grants, and deprovision ends its sessions | Merge loop | — |
 | #1343 | Next 17: the approval gate as an MCP Apps inline card, and the decider's client recorded from the credential first | Draft on migration 0160, unblocked now that #1344 merged (grokbot) | — |
 | #1337 | Next 23 P2: the authorization-code flow with PKCE S256, the P1 client registry and the consent page | The atomic consent consume is in. The consent page's own CSP must allow the redirect origin, with a browser test. Then a merge with #1324 (Muse) | #1324 |
 | (live check) | Mark-ready has never run against GitHub. agent-skills#11 was still a draft on 2026-10-07, and bgv3#5847 is closed, so it cannot be the second test | Blocked on pi-ff redeploying the dev-tools stack from `main` with `MAIDAN_GITHUB_WRITE_REPOS`, `MAIDAN_MARK_READY_APP_ID` and `MAIDAN_MARK_READY_BASES` set. The check runs on a scratch GitHub repository the maintainer owns, not Gitea, because mark-ready flips drafts through GitHub's GraphQL (decided 2026-10-08) | — |
