@@ -104,8 +104,8 @@ then:
 A front-door sign-in never links by email and never auto-provisions: there is
 no workspace to do it in, and matching an email across workspaces is the
 "automatic cross-workspace identity" rule 3 below rules out. A person reaches a
-new workspace the first time through its own id or invite link. Sign-up
-(`MAIDAN_SIGNUP`, proposed in the hosted console design note) is not built.
+new workspace the first time through its own id or invite link. Sign-up,
+proposed in the hosted console design note, is not built.
 
 ### No existence oracle before sign-in
 
