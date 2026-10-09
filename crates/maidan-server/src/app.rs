@@ -240,6 +240,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{wid}/search", get(routes::search_messages))
         .route("/workspaces/{wid}/members", get(routes::list_members))
+        .route("/workspaces/{wid}/agents", post(routes::create_agent))
         .route(
             "/workspaces/{wid}/members/{mid}/tokens",
             post(routes::mint_api_token).merge(get(routes::list_api_tokens)),

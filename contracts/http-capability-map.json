@@ -1483,6 +1483,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/workspaces/{wid}/agents",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{wid}/outbox/quarantined",
     "capability": "workspace:read",

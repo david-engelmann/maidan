@@ -339,6 +339,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::catch_up_events,
         paths::search_messages,
         paths::list_members,
+        paths::create_agent,
         paths::mint_api_token,
         paths::list_api_tokens,
         paths::create_delegation_grant,
