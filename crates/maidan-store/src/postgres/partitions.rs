@@ -181,6 +181,17 @@ pub async fn ensure_months(
 ) -> Result<u64, StoreError> {
     let mut tx = pool.begin().await?;
     lock_table(&mut tx, table).await?;
+    // A table whose partitioning migration has not run (a database migrated
+    // only partway, as a migration test does) has nothing to keep.
+    let partitioned: bool = sqlx::query_scalar(
+        "SELECT COALESCE((SELECT relkind = 'p' FROM pg_class WHERE oid = to_regclass($1)), FALSE)",
+    )
+    .bind(table.parent)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !partitioned {
+        return Ok(0);
+    }
     let parts = list(&mut *tx, table).await?;
     let default = match parts.iter().find(|p| p.is_default) {
         Some(p) => p.name.clone(),
