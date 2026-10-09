@@ -976,10 +976,11 @@ async fn an_oauth_token_cannot_accept_a_gate() {
     let request_id = location.split("request=").nth(1).unwrap().to_string();
 
     // Consent: the human approves on their signed-in session (a cookie, not
-    // a bearer), via same-origin POST as the console page sends it.
+    // a bearer), via same-origin POST as the consent page sends it. The
+    // handler 303-redirects to the client's redirect URI; we read the
+    // Location ourselves instead of following it.
     let cookie = signed_in(store.as_ref(), ws.id, human).await;
-    let consent_resp = api
-        .client
+    let consent_resp = no_redirect
         .post(format!("{}/ui/api/oauth/consent", api.base))
         .header("Cookie", &cookie)
         .header("Sec-Fetch-Site", "same-origin")
