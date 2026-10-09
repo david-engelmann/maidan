@@ -14,6 +14,11 @@
 //! nothing remote, and declares no CSP domains in `_meta.ui.csp`, so a host
 //! that applies the spec default (`connect-src 'none'`, no external origins)
 //! gives it nothing more.
+//!
+//! Editing the script or the style changes its hash: update the two
+//! `'sha256-…'` sources in the HTML's meta CSP to the values
+//! `the_card_pins_its_own_script_and_style_by_hash` prints, or the browser
+//! refuses to run the card.
 
 use serde_json::{json, Value};
 

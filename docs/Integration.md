@@ -825,6 +825,48 @@ Both are answered with a `null` id; in a batch, a bad item gets its own error an
 Maidan issues no sampling or roots requests, and asks the client for input in one place only: `approval_decide` returns a URL-mode elicitation (an `input_required` result, never a form) to a `2026-07-28` client that declared `elicitation.url`, and the same one-time console link in its result to any other client. The person confirms in the console; the model cannot. When an agent needs a human, it opens a durable approval gate — see "Asking a human
 mid-loop" under the waiter loop below.
 
+**The inline approval card (MCP Apps).** A host that renders MCP Apps
+([SEP-1865](https://modelcontextprotocol.io/extensions/apps), stable
+`2026-01-26`; ChatGPT, Claude and VS Code among them) shows an approval gate as
+a card in the chat. `get_approval_gate` and `approval_decide` carry
+`_meta.ui.resourceUri: "ui://maidan/approval-card.html"` (visible to the model
+and the app). The host reads that resource (`text/html;profile=mcp-app`): one
+static page with no gate data, its inline script and style pinned by hash in a
+meta CSP, nothing loaded from anywhere, and no CSP domains in `_meta.ui.csp`.
+Both tools return `structuredContent` beside the unchanged text:
+`get_approval_gate` gives `{kind: "maidan.approval_gate", gate, requester,
+review}`, where `review` is the thread's latest review packet as the caller may
+read it (each attestation with its tier, and `self_reported_only`), and
+`approval_decide` mirrors its answer as `{kind: "maidan.approval_decision",
+status, ...}`.
+
+The card's buttons call `approval_decide` through the host's `tools/call`,
+under the same credential the model uses, so they meet the same rules. Decline
+takes effect, with an optional note. Accept gets whatever the server answers:
+on `confirmation_required` the card shows the console link and opens it with
+`ui/open-link`, and the gate stays pending until the person confirms in the
+console. A click in the card never confirms anything, and a plain bearer or
+OAuth token never accepts on its own.
+
+A client that declares its capabilities without the extension
+(`capabilities.extensions["io.modelcontextprotocol/ui"].mimeTypes` lacking
+`text/html;profile=mcp-app`, in `initialize` or in a `2026-07-28` request's
+`_meta`) sees none of it: no link, no listed card, no `structuredContent`. A
+client that declares it gets the extension back in `initialize` and
+`server/discover`. A request that declares nothing, as on a stateless 2025
+`tools/list`, gets the link and `structuredContent`; a host without MCP Apps
+ignores both.
+
+**Which client decided.** A gate a model decided records the client and how
+far its name can be trusted, in `decided_via.client_source`: `credential`
+when the token was issued to a registered client (on today's server, an
+installed app's token, with the app's registered name and its id in
+`client_id`), `self_reported` when the name came from the request's
+`clientInfo`, and `none` when nothing named one. The console shows a
+credential client by name, a self-reported one with "(self-reported)", and
+otherwise "an unidentified MCP client". The audit row and a pending
+confirmation carry the same pair.
+
 **Anonymous reading on a dev instance.** A dev instance started with
 `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` set to a workspace whose name begins `synthetic-` answers an
 MCP `POST` that carries no credential, so a client that installs with no sign-in can discover and

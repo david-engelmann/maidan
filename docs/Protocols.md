@@ -79,6 +79,20 @@ MCP tool count is **247**. There is **no** MCP create workspace or member. An ag
 
 Every tool in `tools/list` carries `annotations`: a `title` and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, the same on `/mcp`, `/mcp/streamable`, `/mcp/worker` and `/mcp/reviewer`. `openWorldHint` is true only for a tool that itself reaches outside Maidan, such as `post_message` running a slash command's HTTP receiver or `search_messages` calling a remote embedding provider. The reason for each value is in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`, and `tool_annotations_contract` fails when a tool lacks a hint or disagrees with that table.
 
+**MCP Apps (`io.modelcontextprotocol/ui`, SEP-1865 stable `2026-01-26`).** One View: the inline
+approval card at `ui://maidan/approval-card.html` (`text/html;profile=mcp-app`), linked from
+`get_approval_gate` and `approval_decide` with `_meta.ui.resourceUri` (visibility `model` and `app`)
+and fed from their `structuredContent`. ChatGPT reads the standard `_meta.ui.resourceUri`, so
+there is no `openai/outputTemplate` alias. The card is static and holds nothing of any workspace: it
+calls the tools back through the host's `tools/call` and opens a confirmation link with
+`ui/open-link`. Negotiation follows the spec's server behaviour: a client that declares
+capabilities without the extension gets the catalog, resource list and results it got before; a
+client that declares it hears `capabilities.extensions["io.modelcontextprotocol/ui"]` back from
+`initialize` and `server/discover` (that discover result is `cacheScope: "private"`, since it
+answers what the request declared). A stateless 2025 request declares nothing, so it is offered the
+link and `structuredContent`, which a host without MCP Apps ignores. The details, and how the card
+answers a gate, are in [Integration](Integration.md#mcp-streamable).
+
 ## MCP discovery and cache hints
 
 `server/discover` answers with no handshake before it: the revisions Maidan
