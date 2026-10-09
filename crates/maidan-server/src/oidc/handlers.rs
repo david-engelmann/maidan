@@ -176,6 +176,18 @@ pub async fn callback(
         oidc.settings.link_email,
     )
     .await?;
+    // The provider still answers for a member it deactivated through SCIM,
+    // so the deactivation is enforced here, before a session exists.
+    if state
+        .store
+        .get_scim_user(member_id)
+        .await?
+        .is_some_and(|user| !user.active)
+    {
+        return Err(ApiError::Forbidden(
+            "this member has been deactivated in this workspace".into(),
+        ));
+    }
 
     touch_identity(
         state.store.as_ref(),

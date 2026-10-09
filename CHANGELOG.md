@@ -1933,6 +1933,10 @@ Refs #1253
 - **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
 - **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
 
+### A member the identity provider deactivates is signed out
+
+- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
+
 ### Kani proofs of cursor arithmetic
 
 - **Added:** Bounded Kani proofs, compiled only with `cfg(kani)`, of the subscribe cursor's gap rule (every `i64`, including a cursor at `i64::MAX`), of catch-up using that same rule, of a too-old body always saying to refetch, and of the room high-water never being negative. `scripts/kani-proofs.sh` runs them locally. They are not a CI job.
