@@ -14,12 +14,13 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::content_json;
-use crate::call_context::CallContext;
+use crate::apps_card::with_structured;
+use crate::call_context::{CallContext, UiSupport};
 use crate::error::McpError;
 use maidan_auth::{capability::APPROVAL_GRANT, AuthContext};
 use maidan_types::{
     ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalRisk, AuditScope, GateDecisionVia,
-    MemberKind, NewApprovalConfirmation, NewApprovalGate, NewAuditEvent,
+    MemberKind, NewApprovalConfirmation, NewApprovalGate, NewAuditEvent, ReviewPacket,
 };
 
 /// Unknown fields are rejected.
@@ -94,10 +95,16 @@ struct GetApprovalGateArgs {
 /// `pending` until a human answers, then `accepted`/`declined`/ `cancelled`
 /// with any `content` they supplied. `null` if no such gate exists in the
 /// caller's workspace. Requires `workspace:read`.
+///
+/// Where the inline card is offered, the result also carries what the card
+/// renders as `structuredContent`: the gate, who requested it, and the
+/// thread's latest review evidence with its attestation tiers and the
+/// server's self-reported-only warning. The text content is unchanged.
 pub(super) async fn get_approval_gate(
     server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
+    call: &CallContext,
 ) -> Result<Value, McpError> {
     let a: GetApprovalGateArgs = crate::tools::parse_args(args)?;
     let gate = server.store.get_approval_gate(a.gate_id).await?;
@@ -105,10 +112,85 @@ pub(super) async fn get_approval_gate(
         // Scope to the caller's workspace (bypass sees all); an out-of-workspace
         // id reads as "not found" — no cross-tenant existence oracle.
         Some(g) if auth.bypass || g.workspace_id == auth.workspace_id => {
-            Ok(content_json(&serde_json::to_value(g)?))
+            let result = content_json(&serde_json::to_value(&g)?);
+            if !call.ui.offers_card() {
+                return Ok(result);
+            }
+            let structured = card_view(server, auth, &g).await?;
+            Ok(with_structured(result, call.ui, structured))
         }
-        _ => Ok(content_json(&Value::Null)),
+        _ => Ok(with_structured(
+            content_json(&Value::Null),
+            call.ui,
+            json!({ "kind": CARD_GATE_KIND, "gate": null }),
+        )),
     }
+}
+
+/// The `structuredContent` kind the card renders as a gate.
+const CARD_GATE_KIND: &str = "maidan.approval_gate";
+/// The `structuredContent` kind for an `approval_decide` answer.
+const CARD_DECISION_KIND: &str = "maidan.approval_decision";
+
+/// What the card shows for a gate the caller may read. The requester is read
+/// within the gate's workspace, and the review evidence only from a thread
+/// the caller can access: the card never shows more than the caller's own
+/// tools would.
+async fn card_view(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    gate: &ApprovalGate,
+) -> Result<Value, McpError> {
+    let requester = match server
+        .store
+        .get_member_in(gate.workspace_id, gate.requested_by)
+        .await
+    {
+        Ok(m) => json!({
+            "id": m.id,
+            "handle": m.handle,
+            "display_name": m.display_name,
+            "kind": m.kind,
+        }),
+        Err(maidan_store::StoreError::NotFound) => json!({ "id": gate.requested_by }),
+        Err(err) => return Err(err.into()),
+    };
+    let review = match gate.thread_id {
+        Some(thread_id)
+            if maidan_auth::can_access_thread(server.store.as_ref(), auth, thread_id).await? =>
+        {
+            server.store.latest_review_packet(thread_id).await?
+        }
+        _ => None,
+    };
+    Ok(json!({
+        "kind": CARD_GATE_KIND,
+        "gate": gate,
+        "requester": requester,
+        "review": review.as_ref().map(review_view),
+    }))
+}
+
+/// The evidence a reviewer is shown: each item with its attestation tier, and
+/// the server's own warning when nothing was checked.
+fn review_view(packet: &ReviewPacket) -> Value {
+    json!({
+        "packet_id": packet.id,
+        "thread_id": packet.thread_id,
+        "evidence_root": packet.evidence_root,
+        "self_reported_only": packet.self_reported_only,
+        "attestations": packet.manifest.attestations,
+    })
+}
+
+/// An `approval_decide` answer with its `structuredContent` twin, so the card
+/// renders exactly what the server said.
+fn decision_result(body: Value, ui: UiSupport) -> Value {
+    let mut structured = body.clone();
+    if let Some(object) = structured.as_object_mut() {
+        object.insert("kind".into(), CARD_DECISION_KIND.into());
+    }
+    with_structured(content_json(&body), ui, structured)
 }
 
 /// The longest decision note kept on a gate.
@@ -173,13 +255,9 @@ pub(super) async fn approval_decide(
             McpError::InvalidParams("gate_id: no such approval gate in your workspace".into())
         })?;
     if gate.state.is_resolved() {
-        return Ok(already_resolved(&gate));
+        return Ok(already_resolved(&gate, call.ui));
     }
-    let via = GateDecisionVia {
-        client_name: call.client.name.clone(),
-        client_version: call.client.version.clone(),
-        model_asked: true,
-    };
+    let via = crate::client_identity::decided_via(server, auth, call).await?;
     if a.decision == Decision::Decline {
         return resolve(
             server,
@@ -189,6 +267,7 @@ pub(super) async fn approval_decide(
             note,
             &via,
             "direct",
+            call.ui,
         )
         .await;
     }
@@ -214,20 +293,24 @@ pub(super) async fn approval_decide(
             note,
             &via,
             "approval:grant",
+            call.ui,
         )
         .await;
     }
-    confirmation(server, auth, &gate, note, call, needs_confirmation).await
+    confirmation(server, auth, &gate, note, call, &via, needs_confirmation).await
 }
 
 /// A gate that is no longer pending, said as a result rather than an error:
 /// a model that retries after the person confirmed reads the outcome here.
-fn already_resolved(gate: &ApprovalGate) -> Value {
-    content_json(&json!({
-        "status": "already_resolved",
-        "state": gate.state,
-        "gate": gate,
-    }))
+fn already_resolved(gate: &ApprovalGate, ui: UiSupport) -> Value {
+    decision_result(
+        json!({
+            "status": "already_resolved",
+            "state": gate.state,
+            "gate": gate,
+        }),
+        ui,
+    )
 }
 
 async fn resolve(
@@ -238,6 +321,7 @@ async fn resolve(
     note: Option<String>,
     via: &GateDecisionVia,
     path: &'static str,
+    ui: UiSupport,
 ) -> Result<Value, McpError> {
     let content = maidan_store::approval_policy::note_content(note.as_deref());
     let actor = auth.actor_id;
@@ -264,16 +348,18 @@ async fn resolve(
                     "risk": g.risk,
                     "client_name": audit_via.client_name,
                     "client_version": audit_via.client_version,
+                    "client_id": audit_via.client_id,
+                    "client_source": audit_via.client_source,
                     "model_asked": audit_via.model_asked,
                 }),
             }),
         )
         .await?;
     match resolved {
-        Some(g) => Ok(content_json(&json!({ "status": g.state, "gate": g }))),
+        Some(g) => Ok(decision_result(json!({ "status": g.state, "gate": g }), ui)),
         // Someone answered between the read and the compare-and-set.
         None => match server.store.get_approval_gate(gate.id).await? {
-            Some(g) => Ok(already_resolved(&g)),
+            Some(g) => Ok(already_resolved(&g, ui)),
             None => Err(McpError::NotFound),
         },
     }
@@ -287,6 +373,7 @@ async fn confirmation(
     gate: &ApprovalGate,
     note: Option<String>,
     call: &CallContext,
+    via: &GateDecisionVia,
     needs_confirmation: bool,
 ) -> Result<Value, McpError> {
     // A link is for the person whose credential this is. An agent member
@@ -319,8 +406,10 @@ async fn confirmation(
         actor_id: (auth.actor_id != auth.member_id).then_some(auth.actor_id),
         nonce,
         token_hash: maidan_auth::approval_confirmation::token_hash(&token),
-        client_name: call.client.name.clone(),
-        client_version: call.client.version.clone(),
+        client_name: via.client_name.clone(),
+        client_version: via.client_version.clone(),
+        client_id: via.client_id.clone(),
+        client_source: via.client_source,
         note,
         now,
         expires_at: now + ttl,
@@ -343,6 +432,8 @@ async fn confirmation(
                     "risk": risk,
                     "client_name": c.client_name,
                     "client_version": c.client_version,
+                    "client_id": c.client_id,
+                    "client_source": c.client_source,
                     "model_asked": true,
                     "expires_at": c.expires_at,
                 }),
@@ -387,7 +478,8 @@ async fn confirmation(
             }
         }));
     }
-    Ok(content_json(&json!({
+    Ok(decision_result(
+        json!({
         "status": "confirmation_required",
         "gate_id": gate.id,
         "confirmation_url": url,
@@ -397,7 +489,9 @@ async fn confirmation(
         "next": "Give the person this link. They confirm in the console, signed in as \
                  themselves; you cannot confirm for them. Do not call approval_decide again \
                  for this gate: poll get_approval_gate for the outcome.",
-    })))
+        }),
+        call.ui,
+    ))
 }
 
 fn truncate(s: &str, max: usize) -> String {

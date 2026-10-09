@@ -139,6 +139,25 @@ fn server_capabilities(protocol_version: &str) -> Value {
     })
 }
 
+/// The MCP Apps extension (SEP-1724's `capabilities.extensions`), said back
+/// only to a client that declared it, so every other client's handshake is
+/// unchanged.
+fn with_ui_extension(mut capabilities: Value, ui: crate::call_context::UiSupport) -> Value {
+    if ui == crate::call_context::UiSupport::Declared {
+        if let Some(object) = capabilities.as_object_mut() {
+            object.insert(
+                "extensions".into(),
+                json!({
+                    crate::call_context::UI_EXTENSION: {
+                        "mimeTypes": [crate::call_context::UI_MIME_TYPE]
+                    }
+                }),
+            );
+        }
+    }
+    capabilities
+}
+
 /// How long a confirmation link lives when the server sets no other.
 pub const DEFAULT_CONFIRMATION_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
@@ -769,7 +788,20 @@ impl McpServer {
         }
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
-            "server/discover" => Ok(caching::with_hint(self.discover(), caching::DISCOVER)),
+            "server/discover" => {
+                let ui = crate::call_context::UiSupport::from_params(&request.params);
+                // A card-declaring client gets the extension back; that answer
+                // varies by request, so no shared cache keeps it.
+                let hint = if ui == crate::call_context::UiSupport::Declared {
+                    caching::CacheHint {
+                        scope: caching::CacheScope::Private,
+                        ..caching::DISCOVER
+                    }
+                } else {
+                    caching::DISCOVER
+                };
+                Ok(caching::with_hint(self.discover(ui), hint))
+            }
             // The client's post-initialize handshake notification is accepted
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
@@ -780,18 +812,27 @@ impl McpServer {
                     Some(profile) => (profile.catalog(), caching::PROFILE_TOOLS_LIST),
                     None => (tools::catalog_for(auth), caching::TOOLS_LIST),
                 };
-                let tools = if auth.is_anonymous() {
+                let mut tools = if auth.is_anonymous() {
                     anonymous_catalog(tools)
                 } else {
                     tools
                 };
+                if !crate::call_context::UiSupport::from_params(&request.params).offers_card() {
+                    crate::apps_card::strip_tool_links(&mut tools);
+                }
                 Ok(caching::with_hint(json!({ "tools": tools }), hint))
             }
             "tools/call" => self.tools_call(&request.params, auth, profile).await,
-            "resources/list" => Ok(caching::with_hint(
-                json!({ "resources": resources::listed(auth) }),
-                caching::RESOURCES_LIST,
-            )),
+            "resources/list" => {
+                let mut listed = resources::listed(auth);
+                listed.extend(crate::apps_card::listed(
+                    crate::call_context::UiSupport::from_params(&request.params),
+                ));
+                Ok(caching::with_hint(
+                    json!({ "resources": listed }),
+                    caching::RESOURCES_LIST,
+                ))
+            }
             "resources/templates/list" => Ok(caching::with_hint(
                 json!({ "resourceTemplates": resources::templates() }),
                 caching::RESOURCE_TEMPLATES_LIST,
@@ -817,9 +858,10 @@ impl McpServer {
     async fn initialize(&self, params: &Value) -> Result<Value, McpError> {
         let requested = params.get("protocolVersion").and_then(|v| v.as_str());
         let protocol_version = negotiate_protocol_version(requested);
+        let ui = crate::call_context::UiSupport::from_params(params);
         Ok(json!({
             "protocolVersion": protocol_version,
-            "capabilities": server_capabilities(protocol_version),
+            "capabilities": with_ui_extension(server_capabilities(protocol_version), ui),
             "serverInfo": self.server_info(),
             "instructions": INSTRUCTIONS,
         }))
@@ -829,10 +871,10 @@ impl McpServer {
     /// told the versions, capabilities and instructions: that revision has no
     /// `initialize`, so a client speaking only it never sees what `initialize`
     /// says.
-    fn discover(&self) -> Value {
+    fn discover(&self, ui: crate::call_context::UiSupport) -> Value {
         json!({
             "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
-            "capabilities": server_capabilities("2026-07-28"),
+            "capabilities": with_ui_extension(server_capabilities("2026-07-28"), ui),
             "instructions": INSTRUCTIONS,
             "_meta": { "io.modelcontextprotocol/serverInfo": self.server_info() },
         })
@@ -1025,6 +1067,14 @@ impl McpServer {
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
+        // The card is static and the same for every caller: it carries no
+        // workspace's data, so reading it needs no more than workspace:read.
+        if crate::apps_card::is_ui_uri(uri) {
+            return Ok(caching::with_hint(
+                crate::apps_card::read(uri)?,
+                caching::resource_read(uri),
+            ));
+        }
         self.authorize_resource(uri, auth).await?;
         let read = resources::read(
             &self.store,

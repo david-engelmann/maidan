@@ -133,6 +133,8 @@ pub async fn list_approval_gates(
                     member_id: c.member_id,
                     client_name: c.client_name,
                     client_version: c.client_version,
+                    client_id: c.client_id,
+                    client_source: c.client_source,
                     expires_at: c.expires_at,
                 });
             ApprovalGateView {
@@ -353,6 +355,8 @@ pub async fn confirm_approval_gate(
                     "risk": g.risk,
                     "client_name": g.decided_via.as_ref().and_then(|v| v.client_name.clone()),
                     "client_version": g.decided_via.as_ref().and_then(|v| v.client_version.clone()),
+                    "client_id": g.decided_via.as_ref().and_then(|v| v.client_id.clone()),
+                    "client_source": g.decided_via.as_ref().map(|v| v.client_source),
                     "model_asked": true,
                 }),
             }),

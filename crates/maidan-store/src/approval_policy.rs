@@ -2,7 +2,8 @@
 //! workspace with no row gets, and how a decision's record is read back.
 
 use maidan_types::{
-    ApprovalConfirmation, ApprovalPolicy, ApprovalRisk, GateDecisionVia, WorkspaceId,
+    ApprovalConfirmation, ApprovalPolicy, ApprovalRisk, ClientIdentitySource, GateDecisionVia,
+    WorkspaceId,
 };
 
 /// The threshold when a workspace has set none. `low` makes every accept
@@ -28,15 +29,28 @@ pub(crate) fn policy(workspace_id: WorkspaceId, stored: Option<&str>) -> Approva
     }
 }
 
+/// A stored client source. Anything the CHECK would refuse, or none at all,
+/// reads as `none`: the weakest claim, never a stronger one.
+pub(crate) fn source(stored: Option<String>) -> ClientIdentitySource {
+    stored
+        .as_deref()
+        .and_then(ClientIdentitySource::parse)
+        .unwrap_or_default()
+}
+
 /// A gate's decision record, present only when a model asked.
 pub(crate) fn decided_via(
     client_name: Option<String>,
     client_version: Option<String>,
+    client_id: Option<String>,
+    client_source: Option<String>,
     model_asked: bool,
 ) -> Option<GateDecisionVia> {
-    model_asked.then_some(GateDecisionVia {
+    model_asked.then(|| GateDecisionVia {
         client_name,
         client_version,
+        client_id,
+        client_source: source(client_source),
         model_asked,
     })
 }
@@ -47,6 +61,8 @@ pub(crate) fn via(confirmation: &ApprovalConfirmation) -> GateDecisionVia {
     GateDecisionVia {
         client_name: confirmation.client_name.clone(),
         client_version: confirmation.client_version.clone(),
+        client_id: confirmation.client_id.clone(),
+        client_source: confirmation.client_source,
         model_asked: true,
     }
 }

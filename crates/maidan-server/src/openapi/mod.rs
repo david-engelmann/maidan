@@ -703,6 +703,7 @@ fn requires_credential(op: &Operation) -> bool {
         ApprovalPolicy,
         ApprovalRisk,
         GateDecisionVia,
+        ClientIdentitySource,
         ModelRequestView,
         RetentionDays,
         RetentionPolicy,

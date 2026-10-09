@@ -1157,10 +1157,47 @@ impl ApprovalRisk {
     }
 }
 
+/// Where a decided-via client's name came from, strongest first.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ClientIdentitySource {
+    /// From what the token was issued to: an installed app today, a
+    /// registered OAuth client once those exist. The server vouches for it.
+    Credential,
+    /// From the request's `clientInfo`: what the client called itself, which
+    /// proves nothing.
+    SelfReported,
+    /// The request named no client.
+    #[default]
+    None,
+}
+
+impl ClientIdentitySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Credential => "credential",
+            Self::SelfReported => "self_reported",
+            Self::None => "none",
+        }
+    }
+
+    /// The stored value, or `None` for anything the CHECK would refuse.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "credential" => Some(Self::Credential),
+            "self_reported" => Some(Self::SelfReported),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
+
 /// Which MCP client a model decided a gate through, and that a model asked.
-/// The client's name and version are what it called itself in
-/// `clientInfo`: a label for the record, never a credential. `None` when the
-/// request named no client.
+/// `client_source` says how far the name can be trusted: `credential` names
+/// what the token was issued to (and `client_id` is its id), `self_reported`
+/// is what the client called itself in `clientInfo` (a label for the record,
+/// never a credential), and `none` means the request named no client.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GateDecisionVia {
@@ -1168,6 +1205,12 @@ pub struct GateDecisionVia {
     pub client_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
+    /// The credential client's id. Set only when `client_source` is
+    /// `credential`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_source: ClientIdentitySource,
     /// Always `true` on a recorded decision: the tool is only ever called by
     /// a model. Kept as a field so the record says it, not the reader.
     pub model_asked: bool,
@@ -1210,6 +1253,10 @@ pub struct ApprovalConfirmation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_source: ClientIdentitySource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -1235,6 +1282,8 @@ pub struct NewApprovalConfirmation {
     pub token_hash: String,
     pub client_name: Option<String>,
     pub client_version: Option<String>,
+    pub client_id: Option<String>,
+    pub client_source: ClientIdentitySource,
     pub note: Option<String>,
     pub now: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,

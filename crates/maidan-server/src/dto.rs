@@ -411,6 +411,12 @@ pub struct ModelRequestView {
     pub client_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
+    /// The credential client's id, when `client_source` is `credential`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Where `client_name` came from: the credential, the client's own
+    /// `clientInfo` (self-reported), or nowhere.
+    pub client_source: maidan_types::ClientIdentitySource,
     pub expires_at: DateTime<Utc>,
 }
 
