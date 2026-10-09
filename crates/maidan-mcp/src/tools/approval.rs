@@ -18,8 +18,8 @@ use crate::call_context::CallContext;
 use crate::error::McpError;
 use maidan_auth::{capability::APPROVAL_GRANT, AuthContext};
 use maidan_types::{
-    ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalRisk, AuditScope, GateDecisionVia,
-    MemberKind, NewApprovalConfirmation, NewApprovalGate, NewAuditEvent,
+    ApprovalGate, ApprovalGateId, ApprovalGateState, ApprovalPolicy, ApprovalRisk, AuditScope,
+    GateDecisionVia, MemberKind, NewApprovalConfirmation, NewApprovalGate, NewAuditEvent,
 };
 
 /// Unknown fields are rejected.
@@ -217,7 +217,7 @@ pub(super) async fn approval_decide(
         )
         .await;
     }
-    confirmation(server, auth, &gate, note, call, needs_confirmation).await
+    confirmation(server, auth, &gate, note, call, &policy).await
 }
 
 /// A gate that is no longer pending, said as a result rather than an error:
@@ -287,8 +287,9 @@ async fn confirmation(
     gate: &ApprovalGate,
     note: Option<String>,
     call: &CallContext,
-    needs_confirmation: bool,
+    policy: &ApprovalPolicy,
 ) -> Result<Value, McpError> {
+    let needs_confirmation = policy.needs_confirmation(gate.risk);
     // A link is for the person whose credential this is. An agent member
     // cannot sign in to the console, so a link for one would be a dead end.
     let member = server.store.get_member(auth.member_id).await?;
@@ -309,8 +310,9 @@ async fn confirmation(
     let now = chrono::Utc::now();
     let nonce = uuid::Uuid::now_v7();
     let token = maidan_auth::approval_confirmation::token(&keys.secret, nonce);
-    let ttl = chrono::Duration::from_std(keys.ttl)
-        .map_err(|_| McpError::Internal("confirmation lifetime out of range".into()))?;
+    // The workspace's lifetime, read with the threshold this call was judged
+    // by. The store's expiry check enforces it on confirm.
+    let ttl = chrono::Duration::seconds(i64::from(policy.confirm_link_ttl_seconds));
     let actor = auth.actor_id;
     let new = NewApprovalConfirmation {
         gate_id: gate.id,
