@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Local OAuth development provider (Keycloak)
+
+- **Added:** `scripts/oauth-dev-provider.sh` starts a local Keycloak 26.8 with Client ID Metadata Document support, for developing Maidan's MCP authorization against a real provider. `examples/oauth-dev/compose.yaml` and `examples/keycloak/maidan-mcp-reference-realm.json` hold the container and realm; `scripts/mcp-oauth-smoke.sh` exercises the flow. Development only.
+
 ### The change flow can mark a draft ready (mark-ready app only)
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
@@ -1916,6 +1920,9 @@ Refs #1253
 
 - **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
 
+### A failed lease renewal stops the deploy recipe
+
+- **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
 ### A design note for the hosted console
 
 - **Docs:** `docs/Hosted Console.md` sets out the hosted console's first version against the code as it stands. It covers:

@@ -15,6 +15,11 @@ does unless its operator turns it on.
 
 ## What exists today
 
+These rows describe the code, not product claims. None of them is a new claim
+for [Claims](Claims.md), and this note adds none. Where the code falls short,
+the note says so as a gap (open question 6) rather than claiming the
+behaviour.
+
 | Piece | Where | What it does |
 | --- | --- | --- |
 | OIDC sign-in | `crates/maidan-server/src/oidc/handlers.rs` | `GET /auth/oidc/login?workspace_id=…` stores a one-time `state`, a nonce and a PKCE verifier bound to that workspace (`maidan_oidc_pending`), then redirects to the provider. `GET /auth/oidc/callback` checks the ID token's signature, nonce and issuer, resolves a member, and creates a server-side session (`session.create`, audited). |
@@ -189,6 +194,11 @@ get them:
   identity has an identity row, each as `{ workspace_id, name, member_id,
   handle, current }`, ordered by the identity row's `last_login_at`, newest
   first.
+- **How it finds them:** identity rows are per workspace, so comparing row
+  ids would only ever find the current one. The lookup has two steps. First,
+  resolve the session's `oidc_identity_id` to that row's `(issuer, subject)`.
+  Then select every `maidan_oidc_identities` row with that same issuer and
+  subject, in any workspace, joined to its workspace and member.
 - **A session made from a token:** only its own workspace (`current: true`).
   The token is one workspace's credential and proves nothing about the person
   behind it.
@@ -313,6 +323,8 @@ Each has a recommended answer. None blocks Next 6 as designed above.
    - **Recommended:** refuse sign-in for an inactive SCIM member and end that
      member's sessions on deactivation. It's a separate fix with its own
      test, and the switcher's listing already leaves such workspaces out.
+   - **Status:** the maintainer's review on #1345 treats this as a live bug,
+     not an open question, and it is being fixed in its own PR.
 7. **Where does OAuth consent happen for a person with several workspaces?**
    - **The answer:** consent is in the console (docs/OAuth.md, decided
      2026-10-08, arriving with #1324). The grant belongs to the session's
