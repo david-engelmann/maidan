@@ -68,16 +68,69 @@ async fn run_suite(store: &dyn Store) {
     assert!(policy.is_default);
     assert!(policy.needs_confirmation(ApprovalRisk::Low));
     assert!(policy.needs_confirmation(ApprovalRisk::High));
+    assert_eq!(policy.confirm_link_ttl_seconds, 600);
+
+    // A lifetime alone keeps the default threshold, and is no longer the
+    // default policy.
+    let ttl = store
+        .set_approval_policy_audited(ws.id, None, Some(120), audit("approval_policy.set", ws.id))
+        .await
+        .expect("set ttl");
+    assert_eq!(ttl.confirm_link_ttl_seconds, 120);
+    assert_eq!(ttl.confirm_at, ApprovalRisk::Low);
+    assert!(!ttl.is_default);
+    assert_eq!(
+        store
+            .get_approval_policy(ws.id)
+            .await
+            .expect("policy")
+            .confirm_link_ttl_seconds,
+        120
+    );
+    // The column refuses a lifetime outside a minute to an hour, whatever
+    // the caller checked.
+    for bad in [59, 3601] {
+        assert!(
+            store
+                .set_approval_policy_audited(
+                    ws.id,
+                    None,
+                    Some(bad),
+                    audit("approval_policy.set", ws.id),
+                )
+                .await
+                .is_err(),
+            "the store kept a {bad}-second link lifetime"
+        );
+    }
+    assert_eq!(
+        store
+            .get_approval_policy(ws.id)
+            .await
+            .expect("policy")
+            .confirm_link_ttl_seconds,
+        120,
+        "a refused write changed the lifetime"
+    );
+    // Neither set: back on the defaults.
+    let reset = store
+        .set_approval_policy_audited(ws.id, None, None, audit("approval_policy.set", ws.id))
+        .await
+        .expect("reset");
+    assert!(reset.is_default);
+    assert_eq!(reset.confirm_link_ttl_seconds, 600);
 
     let set = store
         .set_approval_policy_audited(
             ws.id,
             Some(ApprovalRisk::High),
+            None,
             audit("approval_policy.set", ws.id),
         )
         .await
         .expect("set");
     assert_eq!(set.confirm_at, ApprovalRisk::High);
+    assert_eq!(set.confirm_link_ttl_seconds, 600);
     assert!(!set.is_default);
     assert!(!set.needs_confirmation(ApprovalRisk::Medium));
     assert!(set.needs_confirmation(ApprovalRisk::High));
