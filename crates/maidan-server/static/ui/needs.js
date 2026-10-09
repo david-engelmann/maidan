@@ -234,7 +234,8 @@ import { answerGate, modelRequestLine } from "./tools.js";
         // that moved into its place first, else the heading, and the change is
         // said, since focus moved without the person moving it.
         const neighbour = rows[Math.min(focus.index, rows.length - 1)];
-        const next = neighbour && (neighbour.querySelector("button.primary:not(:disabled)") || nyControls(neighbour).find((c) => !c.disabled));
+        const usable = neighbour ? nyControls(neighbour).filter((c) => !c.disabled) : [];
+        const next = usable.find((c) => c.matches("button.primary")) || usable[0];
         if (next) {
           next.focus({ preventScroll: true });
           showError("That item is no longer waiting on you. Focus moved to the next one.", "success");
