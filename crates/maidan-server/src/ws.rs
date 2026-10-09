@@ -15,6 +15,10 @@
 //!    `presence` / `typing` frames (see [`crate::presence`]).
 //! 8. After subscribe, client may send `{"type":"presence","status":"online"|"away"}`
 //!    or `{"type":"typing","thread_id":"…","active":true|false}`.
+//! 9. The credential that opened the stream is checked again while it runs:
+//!    before a frame goes out or a client frame is acted on (at most once per
+//!    [`RECHECK_GAP`]), and at every ping. A revoked or expired token, an ended
+//!    session, or a member deactivated through SCIM closes the stream with 1008.
 
 use std::{sync::Arc, time::Duration};
 
@@ -34,7 +38,7 @@ use maidan_auth::{
     AuthContext,
 };
 use maidan_store::StoreError;
-use maidan_types::{EventFilter, LogSnapshot, MemberId, ThreadId, WorkspaceId};
+use maidan_types::{ApiTokenId, EventFilter, LogSnapshot, MemberId, ThreadId, WorkspaceId};
 use serde::Deserialize;
 use tokio::{
     sync::mpsc,
@@ -52,6 +56,64 @@ const PING_INTERVAL: Duration = Duration::from_secs(30);
 const PONG_TIMEOUT: Duration = Duration::from_secs(60);
 const SEND_QUEUE: usize = 256;
 const FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(10);
+/// The shortest time between two checks of a running stream's credential. A
+/// burst of frames costs one check, and a deactivated member's stream still
+/// ends at its next frame once this much time has passed.
+const RECHECK_GAP: Duration = Duration::from_secs(1);
+
+/// What opened the stream, kept so the stream can be checked again while it
+/// runs. Deactivating a member revokes their tokens and ends their sessions
+/// on the next request, but a stream makes no further requests, so without
+/// this it outlived both.
+#[derive(Clone)]
+enum StreamCredential {
+    /// Auth is disabled: nothing to check.
+    Open,
+    /// A bearer token in the subscribe frame.
+    Token {
+        token_id: ApiTokenId,
+        member_id: MemberId,
+    },
+    /// The browser session cookie from the upgrade request.
+    Session {
+        cookie: HeaderMap,
+        member_id: MemberId,
+    },
+}
+
+impl StreamCredential {
+    /// `Err(reason)` when the stream must end. A failed lookup ends it too,
+    /// since it cannot show the credential still holds; the client reconnects
+    /// and is checked afresh.
+    async fn recheck(&self, state: &AppState) -> Result<(), &'static str> {
+        let member_id = match self {
+            Self::Open => return Ok(()),
+            Self::Token {
+                token_id,
+                member_id,
+            } => {
+                maidan_auth::resolve_token_id(state.store.as_ref(), *token_id)
+                    .await
+                    .map_err(|_| "token no longer valid")?;
+                *member_id
+            }
+            Self::Session { cookie, member_id } => {
+                let session = load_session(state, cookie)
+                    .await
+                    .map_err(|_| "session ended")?;
+                if session.member_id != *member_id {
+                    return Err("session ended");
+                }
+                *member_id
+            }
+        };
+        match state.store.get_scim_user(member_id).await {
+            Ok(Some(user)) if !user.active => Err("member deactivated"),
+            Ok(_) => Ok(()),
+            Err(_) => Err("credential check failed"),
+        }
+    }
+}
 
 struct SubscribeRequest {
     filter: EventFilter,
@@ -63,6 +125,8 @@ struct SubscribeRequest {
     lean: bool,
     /// Who the socket acts as, from its credential; `None` when auth is off.
     attribution: Option<maidan_types::Attribution>,
+    /// The credential, checked again while the stream runs.
+    credential: StreamCredential,
 }
 
 /// Fail-loud subscribe rejection. A too-old cursor sends a JSON frame
@@ -378,11 +442,20 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
     let mut last_pong = Instant::now();
     let mut ping_interval = tokio::time::interval(PING_INTERVAL);
     ping_interval.tick().await;
+    let credential = request.credential;
+    let mut last_check = Instant::now();
 
     loop {
         tokio::select! {
             outbound = rx.recv() => {
                 let Some(msg) = outbound else { break; };
+                if last_check.elapsed() >= RECHECK_GAP {
+                    last_check = Instant::now();
+                    if let Err(reason) = credential.recheck(&state).await {
+                        close_ended(&mut socket, reason).await;
+                        break;
+                    }
+                }
                 if socket.send(msg).await.is_err() {
                     break;
                 }
@@ -392,6 +465,15 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
                     Some(Ok(WsMessage::Pong(_))) => last_pong = Instant::now(),
                     Some(Ok(WsMessage::Close(_))) | None => break,
                     Some(Ok(WsMessage::Text(text))) => {
+                        // Presence and typing speak for the member: not after
+                        // the credential has ended.
+                        if last_check.elapsed() >= RECHECK_GAP {
+                            last_check = Instant::now();
+                            if let Err(reason) = credential.recheck(&state).await {
+                                close_ended(&mut socket, reason).await;
+                                break;
+                            }
+                        }
                         if let Ok(frame) = serde_json::from_str::<ClientWsFrame>(&text) {
                             handle_client_frame(
                                 &presence_hub,
@@ -409,6 +491,11 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
                 }
             }
             _ = ping_interval.tick() => {
+                last_check = Instant::now();
+                if let Err(reason) = credential.recheck(&state).await {
+                    close_ended(&mut socket, reason).await;
+                    break;
+                }
                 if last_pong.elapsed() > PONG_TIMEOUT {
                     let _ = socket
                         .send(WsMessage::Close(Some(CloseFrame {
@@ -427,6 +514,16 @@ async fn serve(mut socket: WebSocket, state: AppState, request: SubscribeRequest
 
     drop(text_tx);
     bus_task.abort();
+}
+
+/// Close a stream whose credential no longer holds (1008, policy violation).
+async fn close_ended(socket: &mut WebSocket, reason: &'static str) {
+    let _ = socket
+        .send(WsMessage::Close(Some(CloseFrame {
+            code: 1008,
+            reason: reason.into(),
+        })))
+        .await;
 }
 
 async fn send_subscribe_ack(
@@ -488,12 +585,20 @@ async fn read_subscribe(
     // Resolve the caller's identity *before* expanding the filter / applying
     // channel grants, so the DM-participant check and the grant verification
     // can both check real membership.
-    let ctx = if state.auth_disabled {
-        AuthContext::bypass()
+    let (ctx, credential) = if state.auth_disabled {
+        (AuthContext::bypass(), StreamCredential::Open)
     } else if let Some(secret) = sub.token.as_deref().filter(|t| !t.is_empty()) {
-        resolve_bearer(state.store.as_ref(), secret)
+        let ctx = resolve_bearer(state.store.as_ref(), secret)
             .await
-            .map_err(|_| (1008u16, "invalid or expired token".to_string()))?
+            .map_err(|_| (1008u16, "invalid or expired token".to_string()))?;
+        let credential = match ctx.token_id {
+            Some(token_id) => StreamCredential::Token {
+                token_id,
+                member_id: ctx.member_id,
+            },
+            None => return Err((1008u16, "invalid or expired token".to_string()).into()),
+        };
+        (ctx, credential)
     } else if let Ok(session) = load_session(state, headers).await {
         // The handshake is a GET, but another origin could read this stream.
         crate::session::refuse_cross_origin(headers).map_err(|_| {
@@ -502,7 +607,18 @@ async fn read_subscribe(
                 "a cross-origin socket cannot use a browser session".to_string(),
             )
         })?;
-        session.auth_context(crate::auth::OIDC_READ_CAPABILITIES)
+        let mut cookie = HeaderMap::new();
+        if let Some(value) = headers.get(axum::http::header::COOKIE) {
+            cookie.insert(axum::http::header::COOKIE, value.clone());
+        }
+        let credential = StreamCredential::Session {
+            cookie,
+            member_id: session.member_id,
+        };
+        (
+            session.auth_context(crate::auth::OIDC_READ_CAPABILITIES),
+            credential,
+        )
     } else {
         return Err((
             1008u16,
@@ -573,6 +689,7 @@ async fn read_subscribe(
         at_least_once,
         lean: sub.lean,
         attribution: ctx.attribution(),
+        credential,
     })
 }
 
