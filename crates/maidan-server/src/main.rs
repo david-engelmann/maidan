@@ -716,13 +716,36 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
     // `/integrations/github/events` stays disabled (404). A projector, not a
     // bot.
+    //
+    // A GitHub App, when named, authenticates the egress instead of
+    // `MAIDAN_GITHUB_TOKEN`. A partial app config or a key that does not parse
+    // refuses boot rather than falling back to the token without a word.
+    let github_app = maidan_server::github_app::GithubAppAuth::from_env()
+        .map_err(|e| anyhow::anyhow!(e))?
+        .map(std::sync::Arc::new);
     if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
-        // Egress needs a token for issue-comment posts; ingress works without
-        // one. The egress runs on the notification-router bus consumer.
-        if let Some(token) = github_cfg.api_token.clone() {
+        // Egress needs a credential for issue-comment posts; ingress works
+        // without one. The egress runs on the notification-router bus consumer.
+        let client = match (github_app.clone(), github_cfg.api_token.clone()) {
+            (Some(app), token) => {
+                if token.is_some() {
+                    tracing::warn!(
+                        "MAIDAN_GITHUB_TOKEN is set but a GitHub App is configured: \
+                         GitHub calls authenticate as the app and the token is unused"
+                    );
+                }
+                tracing::info!(
+                    installation_id = app.installation_id(),
+                    "github egress authenticates as a GitHub App"
+                );
+                Some(maidan_server::github::GithubApiClient::with_app(app))
+            }
+            (None, Some(token)) => Some(maidan_server::github::GithubApiClient::new(token)),
+            (None, None) => None,
+        };
+        if let Some(client) = client {
             state.attach_github_sender(std::sync::Arc::new(
-                maidan_server::github::GithubApiClient::new(token)
-                    .with_write_repos(github_cfg.write_repos.clone()),
+                client.with_write_repos(github_cfg.write_repos.clone()),
             ));
             if github_cfg.write_repos.is_empty() {
                 tracing::warn!(
@@ -734,6 +757,11 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         }
         state.attach_github(std::sync::Arc::new(github_cfg));
         tracing::info!("github projector ingress configured");
+    } else if github_app.is_some() {
+        tracing::warn!(
+            "a GitHub App is configured but MAIDAN_GITHUB_WEBHOOK_SECRET is unset: \
+             the GitHub projector is off and the app is unused"
+        );
     }
 
     // The one app whose installations may mark agent pull requests ready.

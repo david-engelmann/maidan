@@ -1903,6 +1903,19 @@ Refs #1253
 
 - **Fixed:** `DELETE /channels/:cid/members/:mid` and the MCP `remove_channel_member` answer an id that is no member of the channel's workspace, unknown or another workspace's, as not found. They used to answer success and write a `channel_member.remove` audit row naming the id.
 
+### An evidence tier comes from the same read as the evidence, and an unrecorded actor is not shown independent
+
+- **Fixed:** A hand-off read each result and linked artifact twice, once for the review packet's manifest and once for who put it there. A concurrent write between the two reads could pair one version's hash with another version's author and tier. Each row is now read once, and the manifest and its tiers are built from that one read.
+- **Fixed:** Evidence written before migration 0147 has no recorded actor, so evidence a delegate wrote with another member's token could read as `attached`. Every write now records who acted (the delegate, or the member itself). At a hand-off, a row with no actor from a member who never delegated counts as the member's own act. A row from a member who has delegated counts as `self_reported`, because its independence cannot be shown. This addresses CodeRabbit's two concerns on #1327.
+
+### The board specs wait until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/board.spec.ts` opened the board by filling the token and clicking Refresh. Leaving the field already signs in and loads the channels, so Refresh started a second load, and the row click waited on neither request. On a busy full run "a refused subscribe shows the server's reason" timed out on the channel row; alone, it passed. The helper now waits for the page's first session read, signs in by leaving the token field, and clicks the row only after that sign-in's channel response.
+
+### Outbound GitHub calls can authenticate as a GitHub App
+
+- **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
+
 ### Kani proofs of cursor arithmetic
 
 - **Added:** Bounded Kani proofs, compiled only with `cfg(kani)`, of the subscribe cursor's gap rule (every `i64`, including a cursor at `i64::MAX`), of catch-up using that same rule, of a too-old body always saying to refetch, and of the room high-water never being negative. `scripts/kani-proofs.sh` runs them locally. They are not a CI job.
