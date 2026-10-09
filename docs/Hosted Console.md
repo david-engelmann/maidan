@@ -1,7 +1,7 @@
 # Hosted console (design)
 
 The design note for the hosted console's first version, written 2026-10-09
-against `main` at `58e942f3`. It unblocks Open Work Next 6, the workspace
+against `main` at `58e942f3`. It unblocks the workspace
 switcher, and says what the rest of the console needs before a hosted instance
 can take sign-ups. Every claim about today's behaviour names the file it comes
 from. Anything this note proposes is marked **Proposed**, and anything that
@@ -94,7 +94,9 @@ keeps it.
   because the person is a member of another.
 - **What a session is.** A session stays one member in one workspace, with
   that workspace's capabilities. A person in three workspaces has three
-  members and, at most, one live session per browser at a time.
+  members, and the browser carries one session cookie at a time. Today an
+  earlier session row stays live on the server until it expires, even after
+  the cookie is replaced. The switcher ends it (see "Switching").
 - **What the session carries.** Today it is `(workspace, member, token?)`.
   **Proposed:** add the signed-in identity, `maidan_sessions.oidc_identity_id`
   (nullable, `ON DELETE CASCADE`), set by the OIDC callback and `NULL` for a
@@ -180,9 +182,9 @@ get them:
 | Federation peers, outbound egress (GitHub App, Slack), secret broker | Configured per process. A hosted instance would offer them per workspace only after its own design. |
 | SCIM from the tenant's own directory | Works per workspace (`token:admin`) on any instance, but a hosted tenant's directory points at the shared provider's users, so it is only useful self-hosted until per-workspace providers exist. |
 
-## The workspace switcher (Next 6)
+## The workspace switcher
 
-**Not built.** The rest of this section is the design Next 6 builds.
+**Not built.** The rest of this section is the design the switcher builds.
 
 ### Listing
 
@@ -216,8 +218,10 @@ get them:
 **Proposed:** a switch is a fresh sign-in to the target workspace. The console
 sends the browser to `GET
 /auth/oidc/login?workspace_id={target}&return_to=/ui/`, the route it already
-uses (`static/ui/main.js`). With a live provider session the provider answers
-without a prompt, so the person sees a redirect, not a login form. The
+uses (`static/ui/main.js`). With a live provider session, the provider often answers
+without a prompt, and the person sees only a redirect. That isn't guaranteed:
+the request doesn't set `prompt=none`, so the provider may still ask for a
+login, consent or another step, depending on its own policy. The
 callback then:
 - resolves the member with `resolve_member_for_login`, as for any sign-in;
 - creates the new session, with its `oidc_identity_id`;
@@ -278,14 +282,14 @@ drives it against the seeded harness
 
 ## Open questions
 
-Each has a recommended answer. None blocks Next 6 as designed above.
+Each has a recommended answer. None blocks the switcher as designed above.
 
 1. **Switch by re-sign-in, or by a session swap?**
    - **The question:** a swap route (`POST /auth/session/switch`) would skip
      the provider round trip.
    - **Recommended:** re-sign-in. It keeps one session-issuing path, picks up
      a provider-side disable, and costs a redirect the provider usually
-     answers silently.
+     often answers without a prompt (not guaranteed: no `prompt=none`).
    - **Revisit if** a provider without silent SSO makes switching prompt
      every time.
 2. **Store the identity on the session, or derive it from the member?**
@@ -303,10 +307,10 @@ Each has a recommended answer. None blocks Next 6 as designed above.
      invite link (a sign-in URL with the workspace id) covers it.
 4. **A front door without a workspace id?**
    - **The question:** the console's Sign in needs the id typed.
-   - **Recommended:** after Next 6, let `/auth/oidc/login` take no workspace
+   - **Recommended:** after the switcher, let `/auth/oidc/login` take no workspace
      id. It signs in to the identity's most recently used workspace, or
      offers sign-up when it has none and sign-up is on.
-   - **Not in Next 6:** it needs the nullable pending row that sign-up needs.
+   - **Not in the switcher:** it needs the nullable pending row that sign-up needs.
 5. **The pre-authentication existence oracle.**
    - **The question:** `/auth/oidc/login` answers an unknown workspace id
      with an error before redirecting (`get_workspace`). It tells anyone
@@ -334,7 +338,7 @@ Each has a recommended answer. None blocks Next 6 as designed above.
 
 ## Order of work
 
-1. Next 6, the switcher (listing, switch by re-sign-in, `oidc_identity_id`,
+1. The workspace switcher (listing, switch by re-sign-in, `oidc_identity_id`,
    the console control, the two-tenant test).
 2. The SCIM-deactivation sign-in fix (open question 6).
 3. `POST /workspaces/{wid}/agents`, the invite on a production image.
