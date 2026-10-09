@@ -82,6 +82,10 @@ export interface Fixtures {
   proof_live_thread_id: string;
   /** Handed over with no result and no artifact. */
   proof_empty_thread_id: string;
+  /** Needs the operator and Rae; Rae approved it in the seed, before any page loaded. */
+  proof_decided_thread_id: string;
+  /** Rae linked the log; the screenshot was unlinked after the hand-off. */
+  proof_unlinked_thread_id: string;
   proof_screenshot_sha: string;
   proof_transcript_sha: string;
   /** A second workspace: its Visitor (human), Outsider (agent) and the Visitor's token. */
