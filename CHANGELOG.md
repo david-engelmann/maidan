@@ -1916,6 +1916,13 @@ Refs #1253
 
 - **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
 
+### The console can switch between your workspaces
+
+- **Added:** `GET /auth/session/workspaces` lists the workspaces the signed-in person can switch to: the session's own first, then every other workspace where the identity they signed in with (the same issuer and subject) is a member, newest sign-in first, at most 200. A workspace whose member is SCIM-deactivated or frozen is left out. A session made from a token lists only its own workspace, and a bearer is refused.
+- **Added:** For a person in more than one workspace, the console header shows **Switch workspace**. It opens a list you can search by name. Choosing a workspace signs you in there again through the identity provider (`/auth/oidc/login`); the page never mints a session for another workspace. Open Work Next 6, designed in `docs/Hosted Console.md`.
+- **Changed:** An OIDC session records the identity row it signed in with (`maidan_sessions.oidc_identity_id`, migration 0161), so the list follows the identity and never the member, which can hold more than one linked subject. Sessions from before the migration list only their own workspace until the next sign-in.
+- **Changed:** Signing in ends this browser's previous session, as the token exchange already did. Before, a switch left the old session live until it expired. The end is audited as `session.delete` with reason `switched`.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

@@ -7,7 +7,7 @@ use crate::dto::{
     ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace,
-    SearchQuery, SessionResponse,
+    SearchQuery, SessionResponse, SessionWorkspaces,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
@@ -73,6 +73,26 @@ pub fn oidc_logout() {}
     )
 )]
 pub fn get_auth_session() {}
+
+/// List the workspaces the signed-in person can switch to
+///
+/// The session's own workspace first, then every other workspace where the
+/// identity this session signed in with (the same issuer and subject) is a
+/// member, newest sign-in first, at most 200. A session made from a token
+/// lists only its own workspace. A workspace whose member is SCIM-deactivated
+/// or frozen is left out. To switch, sign in again at
+/// `/auth/oidc/login?workspace_id=…`.
+#[utoipa::path(
+    get,
+    path = "/auth/session/workspaces",
+    tag = "auth",
+    security(("sessionCookie" = [])),
+    responses(
+        (status = 200, body = SessionWorkspaces),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn list_auth_session_workspaces() {}
 
 /// Mint the first admin token from the browser session
 #[utoipa::path(

@@ -107,6 +107,7 @@ pub async fn login(
 
 pub async fn callback(
     State(state): State<AppState>,
+    headers_in: HeaderMap,
     ApiQuery(q): ApiQuery<OidcCallbackQuery>,
 ) -> Result<Response, ApiError> {
     let oidc = state
@@ -177,7 +178,7 @@ pub async fn callback(
     )
     .await?;
 
-    touch_identity(
+    let identity = touch_identity(
         state.store.as_ref(),
         pending.workspace_id,
         &issuer,
@@ -196,6 +197,7 @@ pub async fn callback(
                 workspace_id: pending.workspace_id,
                 member_id,
                 api_token_id: None,
+                oidc_identity_id: Some(identity.id),
                 expires_at: Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64),
             },
             Box::new(move |session| NewAuditEvent {
@@ -213,6 +215,37 @@ pub async fn callback(
             }),
         )
         .await?;
+
+    // This browser's previous session, if any, ends now that the new one
+    // exists: switching workspaces signs in again, and the old session is not
+    // left live beside the new one (Hosted Console, "Switching"). Ending it is
+    // recorded in its own transaction; one already gone has nothing to end,
+    // and a failed end is reported rather than shown as a clean switch.
+    if let Some(previous) = parse_session_cookie(&headers_in, oidc.session_secret.as_ref())
+        .filter(|previous| *previous != session.id)
+    {
+        let ended = state
+            .store
+            .delete_session_audited(
+                previous,
+                Box::new(|ended| NewAuditEvent {
+                    scope: AuditScope::Workspace(ended.workspace_id),
+                    actor_id: Some(ended.member_id),
+                    action: SESSION_DELETE.into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(ended.member_id.0),
+                    metadata: serde_json::json!({
+                        "workspace_id": ended.workspace_id.0,
+                        "reason": "switched",
+                    }),
+                }),
+            )
+            .await;
+        match ended {
+            Ok(_) | Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
 
     let mut headers = HeaderMap::new();
     set_session_cookie(

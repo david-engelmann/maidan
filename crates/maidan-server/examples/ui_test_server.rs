@@ -27,8 +27,8 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ArtifactKind, BlockedReason, MemberKind, NewApiToken, NewApprovalGate, NewArtifact, NewChannel,
-    NewMaidanSession, NewMember, NewMessage, NewThread, NewWebhookSubscription, NewWorkspace,
-    ReviewDecision,
+    NewMaidanSession, NewMember, NewMessage, NewOidcIdentity, NewThread, NewWebhookSubscription,
+    NewWorkspace, ReviewDecision,
 };
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -1021,11 +1021,77 @@ async fn main() {
     // console as a person rather than as a pasted token. Accepting a gate
     // needs this (or approval:grant); the harness has no identity provider,
     // so the row is written here and the spec sets its cookie.
+    //
+    // The same person is a member of a second workspace, signed in with the
+    // same identity, so the workspace switcher has somewhere to go. A third
+    // workspace belongs to someone else's identity and must never be listed.
+    const UI_ISSUER: &str = "https://idp.ui-test.local";
+    let identity = store
+        .upsert_oidc_identity(NewOidcIdentity {
+            workspace_id: ws.id,
+            issuer: UI_ISSUER.into(),
+            subject: "operator-sub".into(),
+            member_id: member.id,
+            email: None,
+        })
+        .await
+        .expect("operator identity");
+    let switch_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Second desk".into(),
+        })
+        .await
+        .expect("second workspace");
+    let switch_member = store
+        .create_member(NewMember {
+            workspace_id: switch_ws.id,
+            handle: "operator".into(),
+            display_name: Some("Operator".into()),
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("second member");
+    store
+        .upsert_oidc_identity(NewOidcIdentity {
+            workspace_id: switch_ws.id,
+            issuer: UI_ISSUER.into(),
+            subject: "operator-sub".into(),
+            member_id: switch_member.id,
+            email: None,
+        })
+        .await
+        .expect("second identity");
+    let foreign_ws = store
+        .create_workspace(NewWorkspace {
+            name: "Someone else's desk".into(),
+        })
+        .await
+        .expect("other workspace");
+    let foreign_member = store
+        .create_member(NewMember {
+            workspace_id: foreign_ws.id,
+            handle: "stranger".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .expect("other member");
+    store
+        .upsert_oidc_identity(NewOidcIdentity {
+            workspace_id: foreign_ws.id,
+            issuer: UI_ISSUER.into(),
+            subject: "stranger-sub".into(),
+            member_id: foreign_member.id,
+            email: None,
+        })
+        .await
+        .expect("other identity");
     let signed_in = store
         .create_session(NewMaidanSession {
             workspace_id: ws.id,
             member_id: member.id,
             api_token_id: None,
+            oidc_identity_id: Some(identity.id),
             expires_at: chrono::Utc::now() + chrono::Duration::hours(8),
         })
         .await
@@ -1080,6 +1146,8 @@ async fn main() {
         "requester_token": requester_secret.as_str(),
         "live_token": live_secret.as_str(),
         "workspace_id": ws.id.0.to_string(),
+        "switch_workspace_id": switch_ws.id.0.to_string(),
+        "foreign_workspace_id": foreign_ws.id.0.to_string(),
         "member_id": member.id.0.to_string(),
         "channel_id": channel.id.0.to_string(),
         "thread_id": thread.id.0.to_string(),

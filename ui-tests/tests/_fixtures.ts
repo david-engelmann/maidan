@@ -86,6 +86,9 @@ export interface Fixtures {
   proof_transcript_sha: string;
   /** A second workspace: its Visitor (human), Outsider (agent) and the Visitor's token. */
   other_workspace_id: string;
+  /** The workspace switcher: the signed-in operator's second workspace (same identity), and one that belongs to another identity. */
+  switch_workspace_id: string;
+  foreign_workspace_id: string;
   other_member_id: string;
   outsider_member_id: string;
   other_token: string;
