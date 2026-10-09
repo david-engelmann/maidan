@@ -139,7 +139,9 @@ retries it.
   `userName` another member of the workspace holds is `409` with
   `scimType: uniqueness`. Deactivation (`active=false`, also Entra ID's string
   `"False"`) and delete revoke the member's API tokens; delete also removes the
-  user from every group. `displayName` is set at creation and not changed
+  user from every group. A deactivated member cannot sign in through OIDC (the
+  callback answers `403`), and a browser session they already hold ends at its
+  next request, recorded as `session.delete` with reason `member_deactivated`. `displayName` is set at creation and not changed
   afterwards.
 - **Groups.** A group is the IdP's named set of users it provisioned into the
   workspace. It records membership and grants nothing by itself: no channel
