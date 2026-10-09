@@ -30,7 +30,7 @@ pub fn well_known_room() {}
     security(()),
     responses(
         (status = 200, body = crate::oauth::metadata::ProtectedResourceMetadata),
-        (status = 404, description = "`MAIDAN_PUBLIC_ORIGIN` is not set", body = ProblemDetails),
+        (status = 404, description = "`MAIDAN_PUBLIC_ORIGIN` is not set", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn oauth_protected_resource_metadata() {}
