@@ -453,13 +453,14 @@ import { tokenKey, wsResumeKey } from "./state.js";
       // no session was made). Read once and taken off the address bar, so a
       // reload or a shared link does not replay it.
       function takeFrontDoorHint() {
-        const params = new URLSearchParams(location.search);
+        const params = new URLSearchParams(window.location.search || "");
         const hint = params.has("no_workspace") ? "none" : params.has("choose_workspace") ? "choose" : null;
         if (!hint) return null;
         params.delete("no_workspace");
         params.delete("choose_workspace");
         const rest = params.toString();
-        history.replaceState(null, "", location.pathname + (rest ? `?${rest}` : "") + location.hash);
+        const { pathname, hash } = window.location;
+        window.history.replaceState(null, "", pathname + (rest ? `?${rest}` : "") + hash);
         return hint;
       }
 
