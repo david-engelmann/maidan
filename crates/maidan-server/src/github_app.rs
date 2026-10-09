@@ -21,7 +21,7 @@
 //! built. The signing uses `ring`, not the `rsa` crate, whose private-key
 //! operations are what `RUSTSEC-2023-0071` is about.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use base64::Engine as _;
 use chrono::{DateTime, Duration, Utc};
@@ -167,19 +167,13 @@ impl GithubAppAuth {
         }
         let issued = self.exchange_jwt(http, base_url).await?;
         let token = issued.token.clone();
-        if let Ok(mut current) = self.current.lock() {
-            *current = Some(issued);
-        }
+        *self.cache() = Some(issued);
         Ok(token)
     }
 
     /// `text` with the cached installation token cut out.
     pub(crate) fn redact(&self, text: &str) -> String {
-        let token = self
-            .current
-            .lock()
-            .ok()
-            .and_then(|current| current.as_ref().map(|t| t.token.clone()));
+        let token = self.cache().as_ref().map(|t| t.token.clone());
         match token {
             Some(token) => crate::github::redact(text, &token),
             None => text.to_string(),
@@ -189,17 +183,22 @@ impl GithubAppAuth {
     /// Cache `token` as if GitHub had just issued it for an hour.
     #[cfg(test)]
     pub(crate) fn seed_token_for_test(&self, token: &str) {
-        if let Ok(mut current) = self.current.lock() {
-            *current = Some(InstallationToken {
-                token: token.to_string(),
-                refresh_after: Utc::now() + Duration::minutes(55),
-            });
-        }
+        *self.cache() = Some(InstallationToken {
+            token: token.to_string(),
+            refresh_after: Utc::now() + Duration::minutes(55),
+        });
+    }
+
+    /// The token cache. A panic while it was held leaves at worst a stale
+    /// token, which `fresh` already judges by its time, so a poisoned lock
+    /// is taken anyway: skipping it would exchange a JWT on every request
+    /// and stop redacting the token.
+    fn cache(&self) -> MutexGuard<'_, Option<InstallationToken>> {
+        self.current.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn fresh(&self, now: DateTime<Utc>) -> Option<String> {
-        let current = self.current.lock().ok()?;
-        current
+        self.cache()
             .as_ref()
             .filter(|t| now < t.refresh_after)
             .map(|t| t.token.clone())
@@ -458,5 +457,51 @@ mod tests {
         assert_eq!(app.fresh(now).as_deref(), Some("ghs_cached"));
         assert_eq!(app.fresh(now + Duration::minutes(1)), None);
         assert_eq!(app.redact("x ghs_cached y"), "x [redacted] y");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::disallowed_methods)] // a fake GitHub, not the API
+    async fn a_poisoned_cache_still_caches_and_redacts() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let exchanges = Arc::new(AtomicUsize::new(0));
+        let counted = exchanges.clone();
+        let fake = axum::Router::new().route(
+            "/app/installations/2/access_tokens",
+            axum::routing::post(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let expires_at = (Utc::now() + Duration::hours(1)).to_rfc3339();
+                async move {
+                    axum::Json(serde_json::json!({
+                        "token": "ghs_afterpanic",
+                        "expires_at": expires_at,
+                    }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, fake).await.unwrap() });
+
+        let app = Arc::new(GithubAppAuth::new("1", "2", pkcs1()).unwrap());
+        let poisoner = app.clone();
+        let _ = std::thread::spawn(move || {
+            let _held = poisoner.current.lock();
+            panic!("poison the token cache");
+        })
+        .join();
+        assert!(app.current.is_poisoned());
+
+        let http = reqwest::Client::new();
+        for _ in 0..3 {
+            let token = app.installation_token(&http, &base).await.unwrap();
+            assert_eq!(token, "ghs_afterpanic");
+        }
+        assert_eq!(
+            exchanges.load(Ordering::SeqCst),
+            1,
+            "one exchange, then the cache"
+        );
+        assert_eq!(app.redact("x ghs_afterpanic y"), "x [redacted] y");
     }
 }
