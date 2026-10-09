@@ -159,6 +159,10 @@ async fn open_new_streamable_session(
     let registry_bg = registry.clone();
     let session_bg = session_id.clone();
     let owner = Principal::of(auth);
+    let credential = crate::stream_guard::StreamCredential::from_auth(auth);
+    let store_bg = state.store.clone();
+    let mcp_bg = state.mcp.clone();
+    let auth_bg = auth.clone();
     maidan_store::attribution::spawn(async move {
         // A closed or expired session gets no more notifications, so it is
         // noticed by checking, not by a failed push that never comes.
@@ -177,6 +181,12 @@ async fn open_new_streamable_session(
                     if !registry_bg.is_open_for(&session_bg, &owner).await {
                         break;
                     }
+                    // A deactivated member or revoked token closes the
+                    // session, and with it the subscriptions made in it.
+                    if credential.recheck(store_bg.as_ref()).await.is_err() {
+                        mcp_bg.close_streamable_session(&session_bg, &auth_bg).await;
+                        break;
+                    }
                 }
             }
         }
@@ -193,6 +203,7 @@ async fn open_new_streamable_session(
             )
         })
     });
+    let stream = crate::stream_guard::guard(state.store.clone(), auth, stream);
 
     let mut resp = Sse::new(stream)
         .keep_alive(
@@ -290,7 +301,8 @@ pub async fn stream_get(
                 .map(|data| Ok::<Event, Infallible>(Event::default().data(data)))
         });
 
-    let stream = replay.chain(notifications);
+    let stream =
+        crate::stream_guard::guard(state.store.clone(), &auth, replay.chain(notifications));
 
     let mut resp = Sse::new(stream)
         .keep_alive(
