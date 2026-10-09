@@ -1923,6 +1923,17 @@ Refs #1253
 ### A failed lease renewal stops the deploy recipe
 
 - **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
+### A design note for the hosted console
+
+- **Docs:** `docs/Hosted Console.md` sets out the hosted console's first version against the code as it stands. It covers:
+  - sign-up through the instance's existing OIDC provider, off by default;
+  - how one signed-in identity maps to a member in each of several workspaces, and what the session should carry;
+  - what the agent invite (#1144) and `POST /operator/workspaces` (#1208) do and don't allow;
+  - what stays self-hosted only;
+  - the design of the workspace switcher (Open Work Next 6): its listing route, switching by re-sign-in, its tenant-isolation rules and the two-tenant test it needs.
+
+  Each open question carries a recommended answer. The note is published in the book under Design.
+
 ### The console can switch between your workspaces
 
 - **Added:** `GET /auth/session/workspaces` lists the workspaces the signed-in person can switch to: the session's own first, then every other workspace where the identity they signed in with (the same issuer and subject) is a member, newest sign-in first, at most 200. A workspace whose member is SCIM-deactivated or frozen is left out. A session made from a token lists only its own workspace, and a bearer is refused.
@@ -1938,6 +1949,10 @@ Refs #1253
 
 - **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
 - **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
+
+### A member the identity provider deactivates is signed out
+
+- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
 
 ## [412.0.0] — 2026-09-28
 
