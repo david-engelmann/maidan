@@ -401,6 +401,38 @@ async fn the_card_is_listed_read_and_linked_from_both_approval_tools() {
         plain["result"]["capabilities"].get("extensions").is_none(),
         "{plain}"
     );
+    // Nor does one that says nothing at all, on initialize or discover: only
+    // a declaration earns the extension back.
+    let silent = env
+        .rpc(
+            &t.operator_tok,
+            "initialize",
+            json!({ "protocolVersion": "2025-11-25",
+                    "clientInfo": { "name": "host", "version": "1" } }),
+            Caps::None,
+            None,
+        )
+        .await;
+    assert!(
+        silent["result"]["capabilities"].get("extensions").is_none(),
+        "{silent}"
+    );
+    let discovered = env
+        .rpc(
+            &t.operator_tok,
+            "server/discover",
+            json!({}),
+            Caps::None,
+            None,
+        )
+        .await;
+    assert!(
+        discovered["result"]["capabilities"]
+            .get("extensions")
+            .is_none(),
+        "{discovered}"
+    );
+    assert_eq!(discovered["result"]["cacheScope"], "public");
 }
 
 #[tokio::test]
