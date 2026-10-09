@@ -88,8 +88,8 @@ calls the tools back through the host's `tools/call` and opens a confirmation li
 `ui/open-link`. Negotiation follows the spec's server behaviour: a client that declares
 capabilities without the extension gets the catalog, resource list and results it got before; a
 client that declares it hears `capabilities.extensions["io.modelcontextprotocol/ui"]` back from
-`initialize` and `server/discover` (that discover result is `cacheScope: "private"`, since it
-answers what the request declared). A stateless 2025 request declares nothing, so it is offered the
+`initialize` and `server/discover` (that discover result, and a `tools/list` with the link
+taken out, are `cacheScope: "private"`, since they answer what the request declared). A stateless 2025 request declares nothing, so it is offered the
 link and `structuredContent`, which a host without MCP Apps ignores. The details, and how the card
 answers a gate, are in [Integration](Integration.md#mcp-streamable).
 

@@ -424,6 +424,8 @@ async fn a_client_without_mcp_apps_sees_no_change() {
             "{name} keeps no link"
         );
     }
+    // Those bytes answer what this request declared: no shared cache.
+    assert_eq!(tools["result"]["cacheScope"], "private");
     let listed = env
         .rpc(
             &t.operator_tok,
