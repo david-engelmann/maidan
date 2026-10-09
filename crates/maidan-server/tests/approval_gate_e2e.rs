@@ -1201,6 +1201,27 @@ async fn foreign_consent_post_leaves_request_usable() {
         .unwrap();
     assert_eq!(intruder_resp.status(), StatusCode::NOT_FOUND);
 
+    // The consent page's CSP allows form-action to the client's redirect
+    // origin, so the 303 after Allow is not blocked by the browser.
+    // Check before the owner POSTs (which consumes the request).
+    let consent_page = no_redirect
+        .get(format!("{base}/ui/oauth/consent?request={request_id}"))
+        .header("Cookie", &owner_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(consent_page.status(), StatusCode::OK);
+    let csp = consent_page
+        .headers()
+        .get("content-security-policy")
+        .expect("consent page carries a CSP")
+        .to_str()
+        .unwrap();
+    assert!(
+        csp.contains("form-action 'self' https://client.example"),
+        "CSP allows the redirect origin, got: {csp}"
+    );
+
     // Owner's POST still works.
     let owner_resp = no_redirect
         .post(&url)
@@ -1211,17 +1232,6 @@ async fn foreign_consent_post_leaves_request_usable() {
         .await
         .unwrap();
     assert_eq!(owner_resp.status(), StatusCode::SEE_OTHER);
-
-    // The 303's CSP allows form navigation to the client's redirect origin.
-    // Without it, `form-action 'self'` would block the browser's redirect.
-    let csp = owner_resp
-        .headers()
-        .get("content-security-policy")
-        .expect("303 carries a CSP")
-        .to_str()
-        .unwrap();
-    assert!(
-        csp.contains("form-action") && csp.contains("https://client.example"),
-        "CSP allows the redirect origin, got: {csp}"
-    );
+    // The 303 carries no CSP; the navigation is governed by the page's.
+    assert!(owner_resp.headers().get("content-security-policy").is_none());
 }

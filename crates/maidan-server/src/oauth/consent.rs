@@ -85,6 +85,20 @@ pub async fn consent_page(
         .map(|s| format!("<li><code>{}</code></li>", html_escape(s)))
         .collect::<Vec<_>>()
         .join("");
+    // The consent form POSTs to /ui/api/oauth/consent, and the 303 after it
+    // navigates to the client's redirect URI. `form-action 'self'` alone
+    // would block that navigation, so allow the redirect target's origin.
+    // `ascii_serialization()` gives `scheme://host:port`; for an opaque
+    // origin it gives `scheme:`.
+    let redirect_origin = url::Url::parse(&pending.redirect_uri)
+        .ok()
+        .map(|u| u.origin().ascii_serialization())
+        .unwrap_or_else(|| "'self'".to_string());
+    let csp = BOARD_UI_CSP.replacen(
+        "form-action 'self'",
+        &format!("form-action 'self' {redirect_origin}"),
+        1,
+    );
     let body = format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -104,7 +118,7 @@ pub async fn consent_page(
         request_id = pending.id.0,
     );
     Ok((
-        [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+        [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
         Html(body),
     ))
 }
@@ -166,13 +180,7 @@ pub async fn decide_consent(
         );
         return Ok((
             StatusCode::SEE_OTHER,
-            [
-                (axum::http::header::LOCATION, redirect_to.clone()),
-                (
-                    axum::http::header::CONTENT_SECURITY_POLICY,
-                    consent_redirect_csp(&redirect_to),
-                ),
-            ],
+            [(axum::http::header::LOCATION, redirect_to)],
         ));
     }
 
@@ -259,27 +267,6 @@ pub async fn decide_consent(
     );
     Ok((
         StatusCode::SEE_OTHER,
-        [
-            (axum::http::header::LOCATION, redirect_to.clone()),
-            (
-                axum::http::header::CONTENT_SECURITY_POLICY,
-                consent_redirect_csp(&redirect_to),
-            ),
-        ],
+        [(axum::http::header::LOCATION, redirect_to)],
     ))
-}
-
-/// CSP for the consent 303 response. `form-action 'self'` (from
-/// `BOARD_UI_CSP`) would block the browser's navigation to the client's
-/// registered redirect URI, since a form POST's redirect is a form
-/// navigation. Allow the redirect target's origin explicitly.
-fn consent_redirect_csp(redirect_to: &str) -> String {
-    let origin = redirect_to
-        .split_once("://")
-        .map(|(scheme, rest)| {
-            let host = rest.split('/').next().unwrap_or("");
-            format!("{scheme}://{host}")
-        })
-        .unwrap_or_else(|| "'self'".to_string());
-    format!("form-action 'self' {origin}")
 }
