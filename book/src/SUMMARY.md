@@ -42,6 +42,7 @@
 - [Dependencies](docs/Dependencies.md)
 - [Open Work](docs/Open-Work.md)
 - [Roadmap](docs/Roadmap.md)
+- [Hosted console (design)](docs/Hosted-Console.md)
 
 # Historical (optional)
 
