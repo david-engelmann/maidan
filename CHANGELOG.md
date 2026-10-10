@@ -2004,6 +2004,10 @@ Refs #1253
 
 - **Security:** Deactivating or deprovisioning a member through SCIM revoked the tokens the member held, but not the delegated tokens it had exchanged under a delegation grant. Those belong to the grant's subject, so a removed delegate kept the subject's delegated authority on REST and MCP until the token or grant expired. Both now revoke the grants the member holds as delegate, in the same transaction and audited as `delegation_grant.revoke`, which ends every token exchanged or minted under them. Both also delete the member's browser sessions in the same transaction, audited as `session.delete`. Every row names its reason, `scim_deactivate` or `scim_deprovision`, where deactivation used to be recorded as a deprovision. Found by grokbot (#1253).
 
+### An open WebSocket stream ends when its member is deactivated
+
+- **Security:** `/ws/subscribe` checked its credential only when the stream opened. Deactivating a member through SCIM revokes their tokens, and #1346 ends their browser sessions at the next request, but an open stream makes no further requests. It kept delivering the workspace's events and kept relaying the member's presence and typing until the client disconnected. Now a stream checks again the credential that opened it, whether a token or a session cookie. It does this before a frame goes out or a client frame is acted on (at most once a second), and at every ping. A revoked or expired token, an ended session, or a member whose SCIM link is inactive closes the stream with `1008`, and the reason says which. A failed lookup closes it too, so the client reconnects and is checked afresh. Follow-up to #1346.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
