@@ -1206,7 +1206,7 @@ pub async fn dispatch(
             Ok(content_json(&packed))
         }
         "request_approval" => approval::request_approval(server, auth, args).await,
-        "get_approval_gate" => approval::get_approval_gate(server, auth, args).await,
+        "get_approval_gate" => approval::get_approval_gate(server, auth, args, call).await,
         "approval_decide" => approval::approval_decide(server, auth, args, call).await,
         "whoami" => whoami::whoami(auth).await,
         "list_capability_sets" => room::list_capability_sets().await,
