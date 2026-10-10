@@ -22,8 +22,8 @@ use crate::bootstrap;
 use crate::{
     a2a_agent, agui_stream, app_oauth, apps, auth, automation_deliveries, consistency,
     delivery_ops, dm, federation, fsm_hooks, github, group_dm, health, load_shed, mcp,
-    mcp_notifications, mcp_stream, mcp_streamable, metrics, oidc, openapi, panic_guard, quota,
-    rate_limit, reindex_ops, request_id, room_lsn, routes,
+    mcp_notifications, mcp_stream, mcp_streamable, metrics, oauth, oidc, openapi, panic_guard,
+    quota, rate_limit, reindex_ops, request_id, room_lsn, routes,
     routing::{delete, get, patch, post, put, ProblemFallbacks},
     scim, scim_groups, session, share_consumer, slack, slash_commands,
     state::AppState,
@@ -922,6 +922,11 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn_with_state(
             state.clone(),
             consistency::middleware,
+        ))
+        // Outermost, so it sees the auth layer's 401.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            oauth::challenge,
         ));
 
     let a2a = Router::new()
@@ -1371,6 +1376,10 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan.json", get(federation::well_known))
         .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
+        .route(
+            "/.well-known/oauth-protected-resource/mcp/streamable",
+            get(oauth::oauth_protected_resource),
+        )
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns

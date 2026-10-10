@@ -1963,6 +1963,11 @@ Refs #1253
 - **Fixed:** opening the card of a task under your review showed three filled buttons: the Needs you row's Approve, the thread's Approve, and Post. UI Design says a screen has one, and that Post is a ghost while the thread's actions draw Approve or Close task. Now the thread's button is the one filled button. Post is a ghost, and the Needs you row for that same task steps back to a ghost. Both get their fill back when the thread no longer draws the button, or when another thread is open. The swap skips the button's background transition, so no frame shows white text on a fading fill.
 - **Fixed:** a board that could not load drew its sentence in a pink panel with a pink border (`#fef2f2` on `#fecaca`). UI Design says "No red filled panel". The panel is now the plain onboarding box, and the heading keeps the error color.
 
+### OAuth phase one: the MCP endpoint describes itself as a protected resource
+
+- **Added:** With `MAIDAN_PUBLIC_ORIGIN` set, `GET /.well-known/oauth-protected-resource/mcp/streamable` serves the MCP endpoint's RFC 9728 metadata, and a 401 from `/mcp/streamable` carries `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and there is no root-form document, since RFC 9728 has a client reject metadata whose `resource` is not the URL it asked. `MAIDAN_PUBLIC_ORIGIN` must be an `https` origin, or `http` on a loopback host, with no path, query or credentials. Any other non-empty value, or one that is not UTF-8, refuses boot. Unset, blank or whitespace-only, it is off, and neither is served. The authorization-server document arrives with the token endpoint (phase three).
+- **Added:** `docs/OAuth.md`, the seven-phase plan (Open Work Next 23).
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
