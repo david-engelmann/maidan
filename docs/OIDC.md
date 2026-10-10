@@ -181,7 +181,7 @@ Migration 0012 creates these tables in Postgres and SQLite:
 | GET | `/auth/oidc/callback` | none | Code exchange, set session cookie. Ends this browser's previous session, if any (`session.delete`, reason `switched`). |
 | POST | `/auth/logout` | session | Clear session + optional IdP end-session redirect. |
 | GET | `/auth/session` | session | JSON `{ member_id, workspace_id, expires_at }` for UI. |
-| GET | `/auth/session/workspaces` | session | The workspace switcher: this session's workspace first, then every other workspace where the identity it signed in with (same issuer and subject) is a member, newest sign-in first, at most 200. A SCIM-deactivated or frozen member's workspace is left out; a session made from a token lists only its own. Switching is a fresh `GET /auth/oidc/login?workspace_id=…`. |
+| GET | `/auth/session/workspaces` | session | The workspace switcher: this session's workspace first, then every other workspace where the identity it signed in with (same issuer and subject) is a member, newest sign-in first, at most 200. Another workspace whose member is SCIM-deactivated or frozen is left out, but the session's own workspace stays listed even when its member is frozen, since that is where the person already is. A session made from a token lists only its own workspace. Switching is a fresh `GET /auth/oidc/login?workspace_id=…`. |
 | POST | `/auth/session/mint` | OIDC session | Mint the first `token:admin` for the session's member when `MAIDAN_OIDC_FIRST_ADMIN` is not `0` and the workspace has no active `token:admin`. |
 
 Existing bearer routes are unchanged. Session middleware is used on the session
