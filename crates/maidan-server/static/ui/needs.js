@@ -175,6 +175,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
         document.getElementById("needs-you-head").hidden = empty;
         if (empty) box.removeAttribute("aria-labelledby");
         else box.setAttribute("aria-labelledby", "needs-you-title");
+        syncFilledButton();
         renderTeam([...threadsById.values()]);
       }
 
@@ -1007,6 +1008,17 @@ import { answerGate, modelRequestLine } from "./tools.js";
         input.oninput = () => {
           send.disabled = changes && !input.value.trim();
         };
+        // Dismissing or sending the note gives Approve its fill back, then
+        // re-checks the screen: if this task's thread opened meanwhile, its
+        // Approve is the filled one and the row's steps back again.
+        const restorePrimary = () => {
+          li.querySelectorAll("[data-restore-primary]").forEach((el) => {
+            const b = /** @type {HTMLElement} */ (el);
+            b.classList.add("primary");
+            delete b.dataset.restorePrimary;
+          });
+          syncFilledButton();
+        };
         // The note is the decision for this row now, so Approve stops being the
         // filled button until the note is dismissed.
         li.querySelectorAll(".ny-actions button.primary").forEach((b) => {
@@ -1018,7 +1030,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
           const note = input.value.trim() || undefined;
           if (!changes) {
             row.remove();
-            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+            restorePrimary();
             return approveFromInbox(item, li, note);
           }
           const out = await submitReview(item.thread_id, "request_changes", note, send);
@@ -1033,7 +1045,7 @@ import { answerGate, modelRequestLine } from "./tools.js";
           if (e.key === "Enter") go();
           if (e.key === "Escape") {
             row.remove();
-            li.querySelectorAll("[data-restore-primary]").forEach((b) => b.classList.add("primary"));
+            restorePrimary();
           }
         };
         row.append(input, send);
@@ -1080,6 +1092,45 @@ import { answerGate, modelRequestLine } from "./tools.js";
           };
           box.appendChild(close);
         }
+        syncFilledButton();
+      }
+
+      // Filled or ghost, at once. A button's background eases (board.css), and
+      // white text over a fading fill is unreadable for that moment.
+      /** @param {HTMLElement} b @param {boolean} filled */
+      function swapFill(b, filled) {
+        b.style.transition = "none";
+        b.classList.toggle("primary", filled);
+        b.classList.toggle("ghost", !filled);
+        void b.offsetWidth;
+        b.style.transition = "";
+      }
+
+      // One filled button on the screen. While the open thread's actions draw
+      // a filled Approve or Close task, that is the decision: Post is a ghost
+      // (UI Design, "Thread"), and the Needs you row for the same task steps
+      // back to a ghost, so the screen does not show two filled Approves for
+      // one review. Both come back when the thread's actions go.
+      function syncFilledButton() {
+        const box = document.getElementById("thread-actions");
+        const decided = Boolean(box && box.querySelector("button.primary"));
+        const post = document.getElementById("post-message");
+        if (post && post.classList.contains("primary") === decided) swapFill(post, !decided);
+        const tid = decided ? selectedThreadId : null;
+        document.querySelectorAll("#needs-you-list .ny-item").forEach((li) => {
+          const item = /** @type {HTMLElement} */ (li);
+          const mine = Boolean(tid) && item.dataset.threadId === tid;
+          item.querySelectorAll(".ny-actions button").forEach((el) => {
+            const b = /** @type {HTMLElement} */ (el);
+            if (mine && b.classList.contains("primary")) {
+              swapFill(b, false);
+              b.dataset.threadPrimary = "1";
+            } else if (!mine && b.dataset.threadPrimary) {
+              swapFill(b, true);
+              delete b.dataset.threadPrimary;
+            }
+          });
+        });
       }
 
 
@@ -1089,4 +1140,4 @@ import { answerGate, modelRequestLine } from "./tools.js";
         document.getElementById("collab-panel").hidden = !selectedThreadId;
       }
 
-export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadEvidence, loadNeedsYou, needsYou, needsYouGen, needsYouRow, noteDecisionFrame, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel };
+export { approveFromInbox, askForNote, closeThread, dropRow, fillReviewContext, loadEvidence, loadNeedsYou, needsYou, needsYouGen, needsYouRow, noteDecisionFrame, nyKey, renderNeedsYou, renderThreadActions, reviewPacket, reviewStatus, rowOnScreen, showRowError, submitReview, syncCollabPanel, syncFilledButton };
