@@ -1990,6 +1990,10 @@ Refs #1253
 - **Fixed:** `cursor_is_too_old` used `after_id + 1`, which overflows at `i64::MAX` and, in a release build, wraps to a negative id that looks like a pruned gap. The next id is now a checked add, and a cursor with no next id is not too old.
 - **Added:** Bounded Kani proofs that an installation grant and a holder-side attenuation contain the request. The check is `first_not_held`, which `validate_subset` and `attenuate` call; the proofs run it on `workspace:read` and `token:admin`, every subset. A repeated ask is kept once. Every known capability is work (delegatable) or authority, not both. The harnesses are `#[cfg(kani)]` and do not change what a token is granted.
 
+### A delegate the identity provider removes loses what it was lent
+
+- **Security:** Deactivating or deprovisioning a member through SCIM revoked the tokens the member held, but not the delegated tokens it had exchanged under a delegation grant. Those belong to the grant's subject, so a removed delegate kept the subject's delegated authority on REST and MCP until the token or grant expired. Both now revoke the grants the member holds as delegate, in the same transaction and audited as `delegation_grant.revoke`, which ends every token exchanged or minted under them. Both also delete the member's browser sessions in the same transaction, audited as `session.delete`. Every row names its reason, `scim_deactivate` or `scim_deprovision`, where deactivation used to be recorded as a deprovision. Found by grokbot (#1253).
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
