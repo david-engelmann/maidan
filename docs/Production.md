@@ -269,6 +269,27 @@ mint cannot add those unless the caller already holds them. No
 `MAIDAN_BOOTSTRAP`, and the route exists on the production image, which is
 built without the bootstrap routes.
 
+### Connect an agent
+
+An admin token (one holding `token:admin`) connects an agent in one call. The
+call creates the agent member and its `maidan.agent.worker` token together,
+and returns the token once:
+
+```bash
+curl -sS -X POST "$MAIDAN_URL/workspaces/$WORKSPACE_ID/agents" \
+  -H "Authorization: Bearer $MAIDAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"handle":"builder","display_name":"Builder"}'
+```
+
+The response is the member and its token (`token.secret`, shown once). The
+member is always an agent. The route takes no capability list and no `kind`,
+so it can't create a human or grant more than the worker set. The member, the
+token and both audit rows (`member.create`, `token.mint`) commit together. A
+taken handle is a `409` and leaves nothing behind. Like the second-workspace
+call, it is on the production image and needs no `MAIDAN_BOOTSTRAP`. The
+console's Connect an agent uses it.
+
 ### HTTP bootstrap (development only)
 
 `maidan init` above is how a deployment gets its first token, on a private network
