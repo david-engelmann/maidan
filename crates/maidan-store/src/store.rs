@@ -38,6 +38,24 @@ pub struct ProvisionedTenant {
     pub events: Vec<StoredEvent>,
 }
 
+/// Input for [`MemberStore::create_agent_with_token`].
+pub struct NewAgentWithToken {
+    pub workspace_id: WorkspaceId,
+    pub handle: String,
+    pub display_name: Option<String>,
+    pub token_hash: String,
+    pub token_label: Option<String>,
+    pub capabilities: Vec<String>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// What [`MemberStore::create_agent_with_token`] committed.
+pub struct CreatedAgent {
+    pub member: Member,
+    pub token: ApiToken,
+    pub event: StoredEvent,
+}
+
 #[async_trait]
 pub trait WorkspaceStore: Send + Sync {
     /// Insert a whole workspace content graph — members, channels, threads,
@@ -217,6 +235,16 @@ pub trait MemberStore: Send + Sync {
         &self,
         new: NewMember,
     ) -> Result<(Member, StoredEvent), StoreError>;
+    /// Create an agent member and its first API token in one transaction,
+    /// with both audit rows (`member.create`, `token.mint`) in it. The member
+    /// is always [`MemberKind::Agent`]. The `MemberJoined` event is returned
+    /// for the caller to publish.
+    async fn create_agent_with_token(
+        &self,
+        new: NewAgentWithToken,
+        member_audit: crate::AuditFor<Member>,
+        token_audit: crate::AuditFor<ApiToken>,
+    ) -> Result<CreatedAgent, StoreError>;
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError>;
     /// The member `id` names, if it is one of `workspace_id`'s. A member of
     /// another workspace is `NotFound`, as an id that names no member is, so
