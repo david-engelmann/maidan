@@ -359,6 +359,7 @@
   {"method":"GET","path":"/workspaces/{id}/usage-rollup","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/wip-limit","kind":"reads"},
   {"method":"PUT","path":"/workspaces/{id}/wip-limit","kind":"changes"},
+  {"method":"POST","path":"/workspaces/{wid}/agents","kind":"changes"},
   {"method":"GET","path":"/workspaces/{wid}/app-installations","kind":"reads"},
   {"method":"DELETE","path":"/workspaces/{wid}/app-installations/{iid}","kind":"changes"},
   {"method":"POST","path":"/workspaces/{wid}/app-installations/{iid}/tokens","kind":"changes"},
