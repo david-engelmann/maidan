@@ -1958,6 +1958,11 @@ Refs #1253
 
 - **Fixed:** `ui-tests/tests/palette.spec.ts` "the palette opens the next review waiting on me" filled the token and clicked Refresh, the same double load #1338 removed from `board.spec.ts`, and it waited on neither the sign-in's nor the board's needs-you answer. Rebuilding the needs-you list detaches each row, and a detached row loses focus, so an answer that landed after Enter left no focused decision button. On a busy full run the last check failed once; alone, it passed. The spec now signs in by leaving the token field, waits for that sign-in's channel and needs-you answers, opens the board, and opens the palette only after the board's own needs-you answer has arrived and re-rendered the list. Test-only.
 
+### One filled button when the open thread decides, and no red error panel
+
+- **Fixed:** opening the card of a task under your review showed three filled buttons: the Needs you row's Approve, the thread's Approve, and Post. UI Design says a screen has one, and that Post is a ghost while the thread's actions draw Approve or Close task. Now the thread's button is the one filled button. Post is a ghost, and the Needs you row for that same task steps back to a ghost. Both get their fill back when the thread no longer draws the button, or when another thread is open. The swap skips the button's background transition, so no frame shows white text on a fading fill.
+- **Fixed:** a board that could not load drew its sentence in a pink panel with a pink border (`#fef2f2` on `#fecaca`). UI Design says "No red filled panel". The panel is now the plain onboarding box, and the heading keeps the error color.
+
 ### An approval gate shows up as a card in the chat, and the record says how far to trust the client's name
 
 - **Added:** An MCP Apps View (SEP-1865, stable `2026-01-26`): `ui://maidan/approval-card.html`, served as `text/html;profile=mcp-app` and listed in `resources/list`. `get_approval_gate` and `approval_decide` link it with `_meta.ui.resourceUri` and return `structuredContent` beside their unchanged text: the gate, who requested it, its risk, and the thread's latest review evidence with each attestation tier and the server's self-reported-only warning. ChatGPT reads the standard key, so there is no `openai/outputTemplate`. Next 17, part three.
