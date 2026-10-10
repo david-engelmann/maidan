@@ -272,6 +272,15 @@ macro_rules! store_delegations {
                 members::get_by_handle(self.read_pool(), workspace_id, handle).await
             }
 
+            async fn create_agent_with_token(
+                &self,
+                new: NewAgentWithToken,
+                member_audit: crate::AuditFor<Member>,
+                token_audit: crate::AuditFor<ApiToken>,
+            ) -> Result<CreatedAgent, StoreError> {
+                members::create_agent_with_token(self.pool(), new, member_audit, token_audit).await
+            }
+
             async fn create_scim_user(
                 &self,
                 member_id: MemberId,
