@@ -597,6 +597,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::oidc_callback,
         paths::oidc_logout,
         paths::get_auth_session,
+        paths::list_auth_session_workspaces,
         paths::mint_auth_session_token,
         paths::confirm_approval,
         paths::session_from_token,
@@ -955,6 +956,8 @@ fn requires_credential(op: &Operation) -> bool {
         WellKnownAuth,
         IngestSummary,
         SessionResponse,
+        SessionWorkspace,
+        SessionWorkspaces,
     )),
     modifiers(
         &SecurityAddon,
