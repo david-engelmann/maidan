@@ -198,6 +198,7 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
 /// each is gated by the `session_auth` layer in `app.rs`.
 const SESSION_OPERATIONS: &[(&str, &str)] = &[
     ("GET", "/auth/session"),
+    ("GET", "/auth/session/workspaces"),
     ("POST", "/auth/session/mint"),
     ("POST", "/auth/approval-confirmations/confirm"),
 ];
