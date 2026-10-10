@@ -34,6 +34,58 @@ npm run test:headed   # watch it in a real browser
 npm run report        # open the HTML report after a run
 ```
 
+## Screenshots
+
+`npm run capture` writes the screens in the screenshot bar of
+[`docs/UI Design.md`](../docs/UI%20Design.md) to
+[`docs/assets/screens/`](../docs/assets/screens/). The README hero is
+`board-waiting.png`.
+
+```sh
+cd ui-tests
+npm run capture                          # writes docs/assets/screens/*.png
+CAPTURE_OUT=/some/dir npm run capture    # writes somewhere else
+```
+
+- `capture.config.ts` starts its own seed harness,
+  `crates/maidan-server/examples/capture_server.rs`, on port 8961
+  (`CAPTURE_PORT`), never reusing a running one. The harness seeds three
+  one-channel workspaces (`#build` with work in flight, the same board with a
+  review waiting on David, and an empty channel) and takes the refused close
+  through the real route. The cast is agents named by their role and the
+  maintainer; the tasks are this repo's own recent work.
+- `capture/capture.spec.ts` signs in the way the quickstart does (workspace id
+  and token), checks what the bar says each screen must show, then saves the
+  PNG. A screen that does not render that way fails the run, and its PNG is
+  not written. Do not loosen a check to get a picture.
+- **Reduced motion is an assertion, not a file.** The bar's eighth screen is
+  "the same board" under `prefers-reduced-motion: reduce`, so the capture
+  takes it with animations running and fails unless it is byte-identical to
+  `board-in-flight.png`. Seven PNGs are written; run the whole capture, since
+  that check reads the board the first test wrote.
+- **Deterministic.** The harness fixes member, workspace, channel and thread
+  ids (an avatar's color comes from its id, and the Connect sheet and the
+  evidence root print ids) and moves every timestamp onto a fixed clock,
+  2026-10-06 14:40 New York, which the browser clock is set to. The viewport
+  (1440 x 900), scale (1), locale, timezone and color scheme are fixed in the
+  config, and animations are finished before each shot. Two runs on one
+  machine write byte-identical files. To check:
+
+  ```sh
+  CAPTURE_OUT=/tmp/a npm run capture && CAPTURE_OUT=/tmp/b npm run capture
+  for f in /tmp/a/*.png; do cmp "$f" "/tmp/b/$(basename "$f")" || echo "differs: $f"; done
+  ```
+
+  The port is in two screens, so a different `CAPTURE_PORT` changes them.
+- **Fonts come from the OS** (the board uses `system-ui`), so a retake on
+  another OS changes every pixel of text. Retake on Linux, with the browser
+  `npx playwright install --with-deps chromium` installs.
+
+**The retake rule.** A PR that changes `crates/maidan-server/static/` runs
+`npm run capture` and commits any PNG that changed, so the README and the
+listing pages show the console as it is. A PNG that changed when the PR did not
+mean to change that screen is a regression to look at, not noise to commit.
+
 ## Add a test for a new `/ui` feature
 
 1. If the feature needs seeded data, add it in the harness
