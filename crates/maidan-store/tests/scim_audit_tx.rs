@@ -91,7 +91,7 @@ where
         .await
         .unwrap()
         .into_iter()
-        .filter(|row| row.action == "token.revoke" && row.metadata["reason"] == "scim_deprovision")
+        .filter(|row| row.action == "token.revoke" && row.metadata["reason"] == "scim_deactivate")
         .count();
     assert_eq!(revokes, 2);
 
@@ -263,4 +263,156 @@ async fn scim_provisioning_needs_its_record_postgres() {
         .unwrap();
     })
     .await;
+}
+
+/// Deactivating or deprovisioning a member ends the delegation grants it holds
+/// as delegate, which no token revoke reaches (a delegated token belongs to the
+/// grant's subject), and deprovisioning also deletes its sessions, since no
+/// SCIM link is left behind to say the person is gone. Each with its record.
+async fn delegate_suite(store: &dyn Store) {
+    use chrono::{Duration, Utc};
+    let ws = store
+        .create_workspace(NewWorkspace { name: "d".into() })
+        .await
+        .unwrap();
+    let human = |handle: &str| NewMember {
+        workspace_id: ws.id,
+        handle: handle.into(),
+        display_name: None,
+        kind: MemberKind::Human,
+    };
+    let subject = store.create_member(human("subject")).await.unwrap();
+    let mut grants = Vec::new();
+    let mut delegates = Vec::new();
+    for handle in ["deactivated", "deprovisioned"] {
+        let (delegate, _) = store
+            .scim_provision_audited(
+                human(handle),
+                None,
+                true,
+                Box::new(|_| event("scim.user.create")),
+            )
+            .await
+            .unwrap();
+        let grant = store
+            .create_delegation_grant(maidan_types::NewDelegationGrant {
+                workspace_id: ws.id,
+                subject_id: subject.id,
+                delegate_id: delegate.id,
+                capabilities: vec!["workspace:read".into()],
+                purpose: "cover".into(),
+                authorized_by: subject.id,
+                expires_at: Utc::now() + Duration::hours(2),
+            })
+            .await
+            .unwrap();
+        grants.push(grant.id);
+        delegates.push(delegate.id);
+    }
+    let session = store
+        .create_session(maidan_types::NewMaidanSession {
+            workspace_id: ws.id,
+            member_id: delegates[1],
+            api_token_id: None,
+            oidc_identity_id: None,
+            expires_at: Utc::now() + Duration::hours(1),
+        })
+        .await
+        .unwrap();
+
+    store
+        .scim_update_user_audited(ws.id, delegates[0], None, None, false, event("deactivate"))
+        .await
+        .unwrap();
+    assert!(store
+        .get_delegation_grant(grants[0])
+        .await
+        .unwrap()
+        .revoked_at
+        .is_some());
+    assert!(
+        store
+            .get_delegation_grant(grants[1])
+            .await
+            .unwrap()
+            .revoked_at
+            .is_none(),
+        "another delegate's grant is untouched"
+    );
+
+    assert!(store
+        .scim_deprovision_audited(ws.id, delegates[1], event("delete"))
+        .await
+        .unwrap());
+    assert!(store
+        .get_delegation_grant(grants[1])
+        .await
+        .unwrap()
+        .revoked_at
+        .is_some());
+    assert!(store.get_session(session.id).await.is_err());
+
+    let audit = store.list_audit(500).await.unwrap();
+    for (delegate, reason) in delegates
+        .iter()
+        .zip(["scim_deactivate", "scim_deprovision"])
+    {
+        assert!(
+            audit.iter().any(|r| r.action == "delegation_grant.revoke"
+                && r.metadata["delegate_id"] == serde_json::json!(delegate.0)
+                && r.metadata["reason"] == reason),
+            "the grant's revoke row names {reason}"
+        );
+    }
+    assert!(audit
+        .iter()
+        .any(|r| r.action == "session.delete" && r.target_id == Some(delegates[1].0)));
+}
+
+#[tokio::test]
+async fn ending_a_member_ends_its_delegate_grants_and_sessions_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    delegate_suite(&SqliteStore::for_tests(pool)).await;
+}
+
+#[tokio::test]
+async fn ending_a_member_ends_its_delegate_grants_and_sessions_postgres() {
+    use maidan_store::{run_postgres_migrations, PostgresStore};
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(container) => container,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    delegate_suite(&PostgresStore::for_tests(pool)).await;
 }

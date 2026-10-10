@@ -2000,6 +2000,10 @@ Refs #1253
 - **Security:** sign-in no longer tells anyone whether a workspace id exists. `/auth/oidc/login` used to answer an unknown id with a 404 before redirecting. Now a real id and an unknown one get the same redirect, and the callback refuses an unknown id with the same 403 as a workspace the person has no member in, creating nothing.
 - **Changed:** migration 0163, on SQLite and Postgres. A pending sign-in (`maidan_oidc_pending`) has a `kind`, `sign_in` or `front_door`, tied by a CHECK to whether it names a workspace, so a front-door `state` can't complete a workspace sign-in or the other way round. Its workspace id has no foreign key. `maidan_oidc_identities` gets an index on `(issuer, subject)`.
 
+### A delegate the identity provider removes loses what it was lent
+
+- **Security:** Deactivating or deprovisioning a member through SCIM revoked the tokens the member held, but not the delegated tokens it had exchanged under a delegation grant. Those belong to the grant's subject, so a removed delegate kept the subject's delegated authority on REST and MCP until the token or grant expired. Both now revoke the grants the member holds as delegate, in the same transaction and audited as `delegation_grant.revoke`, which ends every token exchanged or minted under them. Both also delete the member's browser sessions in the same transaction, audited as `session.delete`. Every row names its reason, `scim_deactivate` or `scim_deprovision`, where deactivation used to be recorded as a deprovision. Found by grokbot (#1253).
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
