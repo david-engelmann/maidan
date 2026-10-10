@@ -55,7 +55,7 @@ pub async fn update_user(
         members::rename_on(&mut tx, workspace_id, member_id, handle).await?;
     }
     if !active {
-        end_member_authority(&mut tx, workspace_id, member_id).await?;
+        end_member_authority(&mut tx, workspace_id, member_id, "scim_deactivate").await?;
         // Deactivation ends the member's claims. Charge the time each one
         // worked, then release it, in this same transaction.
         super::threads::release_member_claims_in_tx(&mut tx, member_id).await?;
@@ -74,7 +74,7 @@ pub async fn deprovision(
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
-    end_member_authority(&mut tx, workspace_id, member_id).await?;
+    end_member_authority(&mut tx, workspace_id, member_id, "scim_deprovision").await?;
     let deleted = scim_users::delete_on(&mut tx, member_id).await?;
     if deleted {
         audit::append_counted(&mut tx, event).await?;
@@ -84,12 +84,14 @@ pub async fn deprovision(
 }
 
 /// End every authority the member holds in the workspace, each with its own
-/// audit row: its live tokens, the delegation grants it holds as delegate, and
-/// its browser sessions.
+/// audit row naming `reason`: its live tokens, the delegation grants it holds
+/// as delegate, and its browser sessions. Deactivation and deprovision both
+/// call it, so a session ends with the change rather than at its next request.
 async fn end_member_authority(
     conn: &mut sqlx::SqliteConnection,
     workspace_id: WorkspaceId,
     member_id: MemberId,
+    reason: &str,
 ) -> Result<(), StoreError> {
     let revoked: Vec<Uuid> = sqlx::query_scalar(
         "UPDATE maidan_api_tokens SET revoked_at = ?
@@ -113,7 +115,7 @@ async fn end_member_authority(
                 metadata: serde_json::json!({
                     "workspace_id": workspace_id.0,
                     "subject_member_id": member_id.0,
-                    "reason": "scim_deprovision",
+                    "reason": reason,
                 }),
             },
         )
@@ -146,7 +148,7 @@ async fn end_member_authority(
                     "workspace_id": workspace_id.0,
                     "subject_id": subject_id,
                     "delegate_id": member_id.0,
-                    "reason": "scim_deprovision",
+                    "reason": reason,
                 }),
             },
         )
@@ -172,7 +174,7 @@ async fn end_member_authority(
                 metadata: serde_json::json!({
                     "workspace_id": workspace_id.0,
                     "sessions": sessions.len(),
-                    "reason": "scim_deprovision",
+                    "reason": reason,
                 }),
             },
         )

@@ -91,7 +91,7 @@ where
         .await
         .unwrap()
         .into_iter()
-        .filter(|row| row.action == "token.revoke" && row.metadata["reason"] == "scim_deprovision")
+        .filter(|row| row.action == "token.revoke" && row.metadata["reason"] == "scim_deactivate")
         .count();
     assert_eq!(revokes, 2);
 
@@ -314,6 +314,7 @@ async fn delegate_suite(store: &dyn Store) {
             workspace_id: ws.id,
             member_id: delegates[1],
             api_token_id: None,
+            oidc_identity_id: None,
             expires_at: Utc::now() + Duration::hours(1),
         })
         .await
@@ -352,9 +353,16 @@ async fn delegate_suite(store: &dyn Store) {
     assert!(store.get_session(session.id).await.is_err());
 
     let audit = store.list_audit(500).await.unwrap();
-    for delegate in &delegates {
-        assert!(audit.iter().any(|r| r.action == "delegation_grant.revoke"
-            && r.metadata["delegate_id"] == serde_json::json!(delegate.0)));
+    for (delegate, reason) in delegates
+        .iter()
+        .zip(["scim_deactivate", "scim_deprovision"])
+    {
+        assert!(
+            audit.iter().any(|r| r.action == "delegation_grant.revoke"
+                && r.metadata["delegate_id"] == serde_json::json!(delegate.0)
+                && r.metadata["reason"] == reason),
+            "the grant's revoke row names {reason}"
+        );
     }
     assert!(audit
         .iter()

@@ -278,6 +278,7 @@ async fn a_deprovisioned_delegate_loses_its_delegated_token_and_its_sessions() {
             workspace_id: a.ws,
             member_id: a.delegate,
             api_token_id: None,
+            oidc_identity_id: None,
             expires_at: Utc::now() + ChronoDuration::hours(1),
         })
         .await

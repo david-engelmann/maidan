@@ -1975,7 +1975,7 @@ Refs #1253
 
 ### A delegate the identity provider removes loses what it was lent
 
-- **Security:** Deactivating or deprovisioning a member through SCIM revoked the tokens the member held, but not the delegated tokens it had exchanged under a delegation grant. Those belong to the grant's subject, so a removed delegate kept the subject's delegated authority on REST and MCP until the token or grant expired. Both now revoke the grants the member holds as delegate, in the same transaction and audited as `delegation_grant.revoke`, which ends every token exchanged or minted under them. Deprovisioning deletes the SCIM link, so it also deletes the member's browser sessions, audited as `session.delete`. Found by grokbot (#1253).
+- **Security:** Deactivating or deprovisioning a member through SCIM revoked the tokens the member held, but not the delegated tokens it had exchanged under a delegation grant. Those belong to the grant's subject, so a removed delegate kept the subject's delegated authority on REST and MCP until the token or grant expired. Both now revoke the grants the member holds as delegate, in the same transaction and audited as `delegation_grant.revoke`, which ends every token exchanged or minted under them. Both also delete the member's browser sessions in the same transaction, audited as `session.delete`. Every row names its reason, `scim_deactivate` or `scim_deprovision`, where deactivation used to be recorded as a deprovision. Found by grokbot (#1253).
 
 ## [412.0.0] — 2026-09-28
 
