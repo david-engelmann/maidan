@@ -88,12 +88,7 @@ pub async fn consent_page(
     // The consent form POSTs to /ui/api/oauth/consent, and the 303 after it
     // navigates to the client's redirect URI. `form-action 'self'` alone
     // would block that navigation, so allow the redirect target's origin.
-    // `ascii_serialization()` gives `scheme://host:port`; for an opaque
-    // origin it gives `scheme:`.
-    let redirect_origin = url::Url::parse(&pending.redirect_uri)
-        .ok()
-        .map(|u| u.origin().ascii_serialization())
-        .unwrap_or_else(|| "'self'".to_string());
+    let redirect_origin = redirect_origin_for_csp(&pending.redirect_uri);
     let csp = BOARD_UI_CSP.replacen(
         "form-action 'self'",
         &format!("form-action 'self' {redirect_origin}"),
@@ -269,4 +264,44 @@ pub async fn decide_consent(
         StatusCode::SEE_OTHER,
         [(axum::http::header::LOCATION, redirect_to)],
     ))
+}
+
+/// The CSP origin for a redirect URI: `scheme://host:port` for a tuple
+/// origin, `scheme:` for anything else. `Origin::ascii_serialization()`
+/// returns `"null"` for opaque origins (e.g. custom schemes), which would
+/// block the navigation; the scheme alone is the correct CSP source.
+fn redirect_origin_for_csp(redirect_uri: &str) -> String {
+    url::Url::parse(redirect_uri)
+        .ok()
+        .map(|u| {
+            if u.origin().is_tuple() {
+                u.origin().ascii_serialization()
+            } else {
+                format!("{}:", u.scheme())
+            }
+        })
+        .unwrap_or_else(|| "'self'".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn https_redirect_gives_origin() {
+        assert_eq!(
+            redirect_origin_for_csp("https://client.example/callback?x=1"),
+            "https://client.example"
+        );
+    }
+
+    #[test]
+    fn custom_scheme_redirect_gives_scheme() {
+        // ascii_serialization() would return "null" here; the CSP needs
+        // the scheme.
+        assert_eq!(
+            redirect_origin_for_csp("myapp://callback"),
+            "myapp:"
+        );
+    }
 }
