@@ -34,3 +34,7 @@ maidan-store = { path = "../maidan-store", features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 sqlx.workspace = true
 chrono.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+

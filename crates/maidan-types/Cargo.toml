@@ -26,3 +26,7 @@ utoipa = { version = "5", optional = true, features = ["chrono", "uuid"] }
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
