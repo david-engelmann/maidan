@@ -44,6 +44,8 @@ fn gate(age_secs: i64) -> ApprovalGate {
         resolved_actor_id: None,
         created_at: Utc::now() - Duration::seconds(age_secs),
         resolved_at: None,
+        risk: Default::default(),
+        decided_via: None,
     }
 }
 

@@ -52,6 +52,7 @@ export const OPERATIONS = [
   { method: "", path: "/threads/${tid}/review-status" },
   { method: "", path: "/threads/${tid}/reviews" },
   { method: "", path: "/workspaces/${wid()}" },
+  { method: "", path: "/workspaces/${wid()}/agents" },
   { method: "", path: "/workspaces/${wid()}/app-installations" },
   { method: "", path: "/workspaces/${wid()}/channels" },
   { method: "", path: "/workspaces/${wid()}/deliveries/${id}/replay?kind=${encodeURIComponent(kind)}" },

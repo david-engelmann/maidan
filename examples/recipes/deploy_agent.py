@@ -5,6 +5,8 @@ gate is durable and silence is never consent: nothing deploys until someone
 other than this agent accepts, in `/ui` or with `approve.py`. A decline or a
 cancel ends the task without deploying. While the gate is open, no other agent
 can claim the thread; this agent's lease is kept alive around the wait.
+If a renewal fails, nothing is deployed: the claim is released, or left to
+lapse when release is refused, and the process exits non-zero.
 
 `DEPLOY_COMMAND` is the deploy itself, run with the task in `$MAIDAN_TASK`.
 With none set, a stand-in prints what it would have done.
@@ -23,10 +25,22 @@ LEASE_SECS = int(os.environ.get("LEASE_SECS", "120"))
 POLL_SECS = float(os.environ.get("POLL_SECS", "3"))
 
 
-def wait_for_answer(maidan: Maidan, gate_id: str) -> dict:
+class LeaseLost(Exception):
+    """A renewal failed, so the deploy must not run."""
+
+
+def raise_if_lease_lost(claim: Claim) -> None:
+    error = claim.renewal_error()
+    if error is not None:
+        raise LeaseLost(error)
+
+
+def wait_for_answer(maidan: Maidan, claim: Claim, gate_id: str) -> dict:
     while True:
+        raise_if_lease_lost(claim)
         gate = maidan.tool("get_approval_gate", {"gate_id": gate_id})
         if gate["state"] != "pending":
+            raise_if_lease_lost(claim)
             return gate
         time.sleep(POLL_SECS)
 
@@ -56,13 +70,14 @@ def work_one(maidan: Maidan, claim: Claim) -> None:
         claim.post(f"Waiting for approval (gate {gate_id}) before: {task}")
         print(f"deploy-agent: {claim.thread_id} waiting on gate {gate_id}", flush=True)
 
-        gate = wait_for_answer(maidan, gate_id)
+        gate = wait_for_answer(maidan, claim, gate_id)
         if gate["state"] != "accepted":
             claim.post(f"Not deploying: the gate was {gate['state']}.")
             claim.finish({"status": "not_deployed", "gate": gate["state"]})
             print(f"deploy-agent: gate {gate['state']}, not deploying", flush=True)
             return
 
+        raise_if_lease_lost(claim)
         code, log = deploy(task)
         status = "deployed" if code == 0 else "failed"
         claim.post(f"{status} (exit {code})\n\n{log}")
@@ -80,7 +95,14 @@ def main() -> int:
                 return 0
             time.sleep(POLL_SECS)
             continue
-        work_one(maidan, claim)
+        try:
+            work_one(maidan, claim)
+        except LeaseLost as error:
+            print(
+                f"deploy-agent: lease renewal failed, not deploying: {error}",
+                flush=True,
+            )
+            return 1
         if once:
             return 0
 

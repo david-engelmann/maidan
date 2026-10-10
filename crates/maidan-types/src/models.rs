@@ -1100,6 +1100,15 @@ pub struct ApprovalGate {
     pub resolved_actor_id: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
+    /// How much a wrong accept would cost, as whoever opened the gate said.
+    /// `high` when it said nothing.
+    #[serde(default)]
+    pub risk: ApprovalRisk,
+    /// Set when a model decided the gate through `approval_decide`, directly
+    /// or by a person confirming its request in the console. `None` for an
+    /// answer given over REST or on the console's own buttons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_via: Option<GateDecisionVia>,
 }
 
 /// The inputs to open a new approval gate.
@@ -1110,6 +1119,190 @@ pub struct NewApprovalGate {
     pub requested_by: MemberId,
     pub prompt: String,
     pub schema: Option<serde_json::Value>,
+    pub risk: ApprovalRisk,
+}
+
+/// How much a wrong accept of a gate would cost. Ordered: `Low < Medium <
+/// High`. A workspace's [`ApprovalPolicy`] names the lowest risk at which a
+/// model's accept needs a person to confirm it.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ApprovalRisk {
+    Low,
+    Medium,
+    /// The default: a gate that says nothing is treated as the costliest kind.
+    #[default]
+    High,
+}
+
+impl ApprovalRisk {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" => Some(Self::High),
+            _ => None,
+        }
+    }
+}
+
+/// Where a decided-via client's name came from, strongest first.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ClientIdentitySource {
+    /// From what the token was issued to: an installed app today, a
+    /// registered OAuth client once those exist. The server vouches for it.
+    Credential,
+    /// From the request's `clientInfo`: what the client called itself, which
+    /// proves nothing.
+    SelfReported,
+    /// The request named no client.
+    #[default]
+    None,
+}
+
+impl ClientIdentitySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Credential => "credential",
+            Self::SelfReported => "self_reported",
+            Self::None => "none",
+        }
+    }
+
+    /// The stored value, or `None` for anything the CHECK would refuse.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "credential" => Some(Self::Credential),
+            "self_reported" => Some(Self::SelfReported),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
+
+/// Which MCP client a model decided a gate through, and that a model asked.
+/// `client_source` says how far the name can be trusted: `credential` names
+/// what the token was issued to (and `client_id` is its id), `self_reported`
+/// is what the client called itself in `clientInfo` (a label for the record,
+/// never a credential), and `none` means the request named no client.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GateDecisionVia {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    /// The credential client's id. Set only when `client_source` is
+    /// `credential`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_source: ClientIdentitySource,
+    /// Always `true` on a recorded decision: the tool is only ever called by
+    /// a model. Kept as a field so the record says it, not the reader.
+    pub model_asked: bool,
+}
+
+/// The confirmation threshold a workspace sets for `approval_decide`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ApprovalPolicy {
+    pub workspace_id: WorkspaceId,
+    /// The lowest gate risk at which a model's accept needs a person to
+    /// confirm it in the console. `low` (the default) means every one does.
+    pub confirm_at: ApprovalRisk,
+    /// How long a confirmation link `approval_decide` sends lives, in
+    /// seconds: from 60 to 3600, 600 (ten minutes) by default. A link keeps
+    /// the lifetime it was sent with.
+    pub confirm_link_ttl_seconds: u32,
+    /// `true` when the workspace has set nothing and the defaults apply.
+    pub is_default: bool,
+}
+
+impl ApprovalPolicy {
+    /// Whether a model's accept of a gate at `risk` needs a confirmation.
+    pub fn needs_confirmation(&self, risk: ApprovalRisk) -> bool {
+        risk >= self.confirm_at
+    }
+}
+
+/// A model's pending request to accept a gate, waiting for the person whose
+/// credential it used to confirm it in the console. The token in the link is
+/// derived from `nonce` and never stored; only its hash is.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ApprovalConfirmation {
+    pub gate_id: ApprovalGateId,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<MemberId>,
+    #[serde(skip)]
+    pub nonce: uuid::Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_source: ClientIdentitySource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_at: Option<DateTime<Utc>>,
+}
+
+impl ApprovalConfirmation {
+    /// Unused and unexpired at `now`.
+    pub fn is_live(&self, now: DateTime<Utc>) -> bool {
+        self.used_at.is_none() && self.expires_at > now
+    }
+}
+
+/// The inputs to issue (or find the live) confirmation for a gate and member.
+#[derive(Debug, Clone)]
+pub struct NewApprovalConfirmation {
+    pub gate_id: ApprovalGateId,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub actor_id: Option<MemberId>,
+    pub nonce: uuid::Uuid,
+    pub token_hash: String,
+    pub client_name: Option<String>,
+    pub client_version: Option<String>,
+    pub client_id: Option<String>,
+    pub client_source: ClientIdentitySource,
+    pub note: Option<String>,
+    pub now: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// What confirming a model's request came to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfirmOutcome {
+    /// The gate is accepted, recorded as decided via the requesting client.
+    Accepted(Box<ApprovalGate>),
+    /// No live confirmation matches: unknown, someone else's, used or
+    /// expired. One answer, so nothing about another's link leaks.
+    NotFound,
+    /// The confirmation was live but the gate had already been resolved.
+    GateResolved,
 }
 
 /// A per-recipient notification. Where a mention is one shared
@@ -3105,6 +3298,10 @@ pub struct MaidanSession {
     /// request re-resolves it, so the session holds that token's authority and
     /// ends with it. `None` for an OIDC session.
     pub api_token_id: Option<ApiTokenId>,
+    /// The identity row an OIDC session signed in with: the workspace switcher
+    /// lists that identity's workspaces. `None` for a session made from a
+    /// token, and for one from before migration 0161.
+    pub oidc_identity_id: Option<OidcIdentityId>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
@@ -3114,7 +3311,19 @@ pub struct NewMaidanSession {
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
     pub api_token_id: Option<ApiTokenId>,
+    pub oidc_identity_id: Option<OidcIdentityId>,
     pub expires_at: DateTime<Utc>,
+}
+
+/// One workspace a signed-in identity can switch to: a workspace where the
+/// same issuer and subject have an identity row, with the member it maps to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityWorkspace {
+    pub workspace_id: WorkspaceId,
+    pub workspace_name: String,
+    pub member_id: MemberId,
+    pub handle: String,
+    pub last_login_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]

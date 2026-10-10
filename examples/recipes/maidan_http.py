@@ -110,7 +110,9 @@ class Claim:
 
     A task claimed without a lease that is then never released stays assigned
     to a dead agent, so the lease is kept alive from a background thread for as
-    long as the work takes, and released however the work ends.
+    long as the work takes, and released however the work ends. A failed
+    renewal is remembered (`renewal_error`) so the caller can stop; if release
+    is then refused, the lease is left to lapse.
     """
 
     def __init__(self, maidan: Maidan, thread: dict[str, Any], lease_secs: int) -> None:
@@ -120,6 +122,9 @@ class Claim:
         self.lease_secs = lease_secs
         self._stop = threading.Event()
         self._renewer = threading.Thread(target=self._renew, daemon=True)
+        self._lock = threading.Lock()
+        # Set from the renewer thread. The caller reads it and stops work.
+        self._renewal_error: str | None = None
 
     def __enter__(self) -> "Claim":
         self.maidan.call(
@@ -130,22 +135,42 @@ class Claim:
         self._renewer.start()
         return self
 
+    def renewal_error(self) -> str | None:
+        """Why the last renewal failed, if one has. `None` means the lease is held."""
+        with self._lock:
+            return self._renewal_error
+
     def _renew(self) -> None:
         while not self._stop.wait(self.lease_secs / 3):
-            self.maidan.call(
-                "POST",
-                f"/threads/{self.thread_id}/claim/renew",
-                {"claim_lease_id": self.lease_id, "lease_secs": self.lease_secs},
-            )
+            try:
+                self.maidan.call(
+                    "POST",
+                    f"/threads/{self.thread_id}/claim/renew",
+                    {"claim_lease_id": self.lease_id, "lease_secs": self.lease_secs},
+                )
+            except MaidanError as error:
+                # One failure is enough: the caller must stop. The lease then
+                # either releases on the way out, or lapses if release is refused.
+                with self._lock:
+                    self._renewal_error = str(error)
+                return
 
     def __exit__(self, *_exc: object) -> None:
         self._stop.set()
         self._renewer.join()
-        self.maidan.call(
-            "POST",
-            f"/threads/{self.thread_id}/claim/release",
-            {"claim_lease_id": self.lease_id},
-        )
+        try:
+            self.maidan.call(
+                "POST",
+                f"/threads/{self.thread_id}/claim/release",
+                {"claim_lease_id": self.lease_id},
+            )
+        except MaidanError:
+            # Release was refused, usually because the lease is already gone.
+            # Letting it lapse is the other ending the recipes allow. A renewal
+            # failure is reported by the caller; a release failure on its own
+            # still propagates.
+            if self.renewal_error() is None:
+                raise
 
     def task(self) -> str:
         """The thread's opening message: what was asked.

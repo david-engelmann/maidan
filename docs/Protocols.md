@@ -75,9 +75,23 @@ One model, one capability map, four primary transports plus the IT surfaces.
 | App OAuth | `/oauth/app/token` | Production | Installed apps, not MCP resource-server OAuth (RFC 8707). |
 | Metrics | `GET /metrics` + OTLP smoke in CI | Production | Prometheus text. Plug into the scrape they already run. |
 
-MCP tool count is **246**. There is **no** MCP create workspace or member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Workspace and member bootstrap stay on REST or the CLI; then MCP for claim / wait / post / `transition_thread`.
+MCP tool count is **247**. There is **no** MCP create workspace or member. An agent creates a channel with `create_channel` and a thread with `create_thread` (both `workspace:write`). Workspace and member bootstrap stay on REST or the CLI; then MCP for claim / wait / post / `transition_thread`.
 
 Every tool in `tools/list` carries `annotations`: a `title` and explicit `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint`, the same on `/mcp`, `/mcp/streamable`, `/mcp/worker` and `/mcp/reviewer`. `openWorldHint` is true only for a tool that itself reaches outside Maidan, such as `post_message` running a slash command's HTTP receiver or `search_messages` calling a remote embedding provider. The reason for each value is in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`, and `tool_annotations_contract` fails when a tool lacks a hint or disagrees with that table.
+
+**MCP Apps (`io.modelcontextprotocol/ui`, SEP-1865 stable `2026-01-26`).** One View: the inline
+approval card at `ui://maidan/approval-card.html` (`text/html;profile=mcp-app`), linked from
+`get_approval_gate` and `approval_decide` with `_meta.ui.resourceUri` (visibility `model` and `app`)
+and fed from their `structuredContent`. ChatGPT reads the standard `_meta.ui.resourceUri`, so
+there is no `openai/outputTemplate` alias. The card is static and holds nothing of any workspace: it
+calls the tools back through the host's `tools/call` and opens a confirmation link with
+`ui/open-link`. Negotiation follows the spec's server behaviour: a client that declares
+capabilities without the extension gets the catalog, resource list and results it got before; a
+client that declares it hears `capabilities.extensions["io.modelcontextprotocol/ui"]` back from
+`initialize` and `server/discover` (that discover result, and a `tools/list` with the link
+taken out, are `cacheScope: "private"`, since they answer what the request declared). A stateless 2025 request declares nothing, so it is offered the
+link and `structuredContent`, which a host without MCP Apps ignores. The details, and how the card
+answers a gate, are in [Integration](Integration.md#mcp-streamable).
 
 ## MCP discovery and cache hints
 
@@ -91,8 +105,7 @@ means per-resource updates through `subscriptions/listen`, which Maidan does
 not implement. `initialize` for every 2025 revision and `2024-11-05` still
 sets `resources.subscribe` and still serves `resources/subscribe` and
 `resources/unsubscribe`, with the same instructions, on `POST /mcp` and on
-`POST /mcp/streamable`. Every result carries `resultType: "complete"`; Maidan
-never answers `input_required`.
+`POST /mcp/streamable`. Every result carries `resultType: "complete"`, except one: `approval_decide`, when a model asks to accept a gate that needs a person, answers a `2026-07-28` client that declared URL-mode elicitation with `resultType: "input_required"` carrying a URL-mode `elicitation/create` (never a form) pointing at a one-time console link. Any other client gets the link in the result. The model cannot complete the confirmation itself.
 
 Every result of the six cacheable operations carries a `ttlMs` and a
 `cacheScope` (SEP-2549; `CacheableResult` in the `2026-07-28` schema). The

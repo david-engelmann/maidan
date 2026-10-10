@@ -18,12 +18,18 @@
         <span id="identity-mode" class="identity-mode" hidden></span>
         <button id="conn-edit" type="button" class="ghost" title="Change API base, workspace or token">Change</button>
       </span>
+      <button id="ws-switch" type="button" class="ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="ws-switcher" title="Switch to another of your workspaces" hidden>Switch workspace</button>
       <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd mod-k">⌘K</span></button>
       <button id="connect-open" type="button" class="ghost" data-open-connect>Connect an agent</button>
       <button id="mint" type="button" hidden>Mint admin</button>
       <button id="logout" type="button" hidden>Sign out</button>
     </header>
     <p id="session-status" class="muted" role="status" aria-live="polite">Checking session…</p>
+    <div id="ws-switcher" role="dialog" aria-label="Switch workspace" hidden>
+      <label>Find a workspace <input id="ws-switch-search" type="search" autocomplete="off" /></label>
+      <ul id="ws-switch-list"></ul>
+      <p class="muted">Switching signs you in to that workspace.</p>
+    </div>
     <div id="mint-banner" role="status">
       <strong id="mint-title">Admin token (once)</strong>
       <code id="mint-secret"></code>

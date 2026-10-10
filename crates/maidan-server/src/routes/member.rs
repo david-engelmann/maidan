@@ -2,7 +2,11 @@
 
 use axum::http::StatusCode;
 use axum::{extract::State, Extension, Json};
-use maidan_auth::{capability::WORKSPACE_READ, AuthContext};
+use maidan_auth::{
+    capability::{TOKEN_ADMIN, WORKSPACE_READ},
+    capability_set::AGENT_WORKER,
+    hash_secret, AuthContext, TokenSecret,
+};
 use maidan_types::*;
 
 use super::{cap, ensure_own_personal_state, ensure_workspace, requested_member, ApiResult};
@@ -47,6 +51,110 @@ pub async fn create_member(
         .await?;
     super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(m)))
+}
+
+const AGENT_HANDLE_MAX_CHARS: usize = 64;
+
+/// `POST /workspaces/{wid}/agents` — create an agent member and its worker
+/// token in one call. `token:admin` in that workspace.
+///
+/// The authenticated way to connect an agent: unlike `POST
+/// /workspaces/{wid}/members`, this is mounted on the production image and
+/// does not need `MAIDAN_BOOTSTRAP`. It never creates a human and never takes
+/// a capability list: the token holds exactly `maidan.agent.worker`. The
+/// member, the token and both audit rows (`member.create`, `token.mint`)
+/// commit together, so a failure leaves neither. The secret is returned once.
+pub async fn create_agent(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(workspace_id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<CreateAgent>,
+) -> ApiResult<(StatusCode, Json<CreatedAgentResponse>)> {
+    let workspace_id = WorkspaceId(workspace_id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let handle = body.handle.trim().to_string();
+    let len = handle.chars().count();
+    if len == 0 || len > AGENT_HANDLE_MAX_CHARS || handle.chars().any(char::is_whitespace) {
+        return Err(ApiError::BadRequest(format!(
+            "handle must be 1..={AGENT_HANDLE_MAX_CHARS} characters with no whitespace"
+        )));
+    }
+    let display_name = body
+        .display_name
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty());
+    // The worker set, granted the way a mint grants it: through the caller's
+    // mint vocabulary, so this route can never hand out more than token:admin
+    // could mint directly.
+    let capabilities = maidan_auth::progressive_grant(
+        &super::token::mint_vocabulary(&auth),
+        Some(AGENT_WORKER),
+        &[],
+    )
+    .map_err(ApiError::BadRequest)?;
+    let secret = TokenSecret::generate();
+    let actor = auth.actor_id;
+    let label = body.label.unwrap_or_else(|| handle.clone());
+    let created = state
+        .store
+        .create_agent_with_token(
+            maidan_store::store::NewAgentWithToken {
+                workspace_id,
+                handle,
+                display_name,
+                token_hash: hash_secret(secret.as_str()),
+                token_label: Some(label),
+                capabilities,
+                expires_at: body.expires_at,
+            },
+            Box::new(move |member: &Member| NewAuditEvent {
+                scope: AuditScope::Workspace(member.workspace_id),
+                actor_id: Some(actor),
+                action: "member.create".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": member.workspace_id.0,
+                    "handle": member.handle,
+                    "kind": member.kind,
+                    "source": "agent-invite",
+                }),
+            }),
+            Box::new(move |record: &ApiToken| NewAuditEvent {
+                scope: AuditScope::Workspace(record.workspace_id),
+                actor_id: Some(actor),
+                action: "token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "subject_member_id": record.member_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "capability_set": AGENT_WORKER,
+                    "expires_at": record.expires_at,
+                    "source": "agent-invite",
+                }),
+            }),
+        )
+        .await?;
+    super::publish_stored(&state, created.event).await;
+    let token = created.token;
+    Ok((
+        StatusCode::CREATED,
+        Json(CreatedAgentResponse {
+            member: created.member,
+            token: MintApiTokenResponse {
+                id: token.id,
+                secret: secret.as_str().to_string(),
+                workspace_id: token.workspace_id,
+                member_id: token.member_id,
+                capabilities: token.capabilities,
+                expires_at: token.expires_at,
+                quotas: vec![],
+            },
+        }),
+    ))
 }
 
 pub async fn list_members(

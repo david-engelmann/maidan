@@ -1,5 +1,5 @@
 use maidan_store::Store;
-use maidan_types::{MemberId, MemberKind, NewMember, NewOidcIdentity, WorkspaceId};
+use maidan_types::{MemberId, MemberKind, NewMember, NewOidcIdentity, OidcIdentity, WorkspaceId};
 
 use crate::error::ApiError;
 
@@ -121,8 +121,8 @@ pub async fn touch_identity(
     subject: &str,
     member_id: MemberId,
     email: Option<&str>,
-) -> Result<(), ApiError> {
-    store
+) -> Result<OidcIdentity, ApiError> {
+    Ok(store
         .upsert_oidc_identity(NewOidcIdentity {
             workspace_id,
             issuer: issuer.to_string(),
@@ -130,6 +130,5 @@ pub async fn touch_identity(
             member_id,
             email: email.map(str::to_string),
         })
-        .await?;
-    Ok(())
+        .await?)
 }

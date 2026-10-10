@@ -98,6 +98,9 @@ pub struct AppState {
     /// Host names, besides loopback names and IP addresses, that a request with
     /// no credential may name (`MAIDAN_ALLOWED_HOSTS`, [`crate::rebinding`]).
     pub allowed_hosts: Vec<String>,
+    /// This instance's public origin (`MAIDAN_PUBLIC_ORIGIN`), which OAuth
+    /// identifiers are built from. `None` serves no OAuth metadata.
+    pub public_origin: Option<String>,
     /// Enables the explicit test-identity header used by in-process E2E
     /// harnesses. Never enabled by the server binary.
     pub test_identity_header: bool,
@@ -134,6 +137,11 @@ pub struct AppState {
     pub subscribe_resume_secret: Option<Arc<[u8]>>,
     /// TTL for signed resume tokens (seconds).
     pub subscribe_resume_ttl_secs: u64,
+    /// The console's public origin (`https://maidan.example`), which an
+    /// `approval_decide` confirmation link is built on. `None`: the link is
+    /// host-relative, and no URL-mode elicitation is offered, since that
+    /// needs an absolute URL. See [`console_origin_from_env`].
+    pub console_origin: Option<String>,
     /// Ephemeral presence/typing fan-out for WebSocket subscribers.
     pub presence: Arc<PresenceHub>,
     /// Live `/ws/subscribe` connections, for the ceiling and the gauge.
@@ -295,6 +303,7 @@ impl AppState {
             auth_disabled,
             dev_anonymous_reader: None,
             allowed_hosts: Vec::new(),
+            public_origin: None,
             test_identity_header: false,
             bootstrap_enabled,
             federation,
@@ -313,6 +322,7 @@ impl AppState {
             sessions: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
+            console_origin: None,
             presence,
             ws_connections: Arc::default(),
             draining: Arc::default(),
@@ -511,5 +521,67 @@ impl AppState {
         state.subscribe_resume_secret =
             Some(Arc::from(subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET));
         state
+    }
+}
+
+/// The console origin `approval_decide` builds links on: `MAIDAN_CONSOLE_ORIGIN`,
+/// or else the origin of `MAIDAN_OIDC_REDIRECT_URI`, since the identity
+/// provider already sends people back to the console there. A value that does
+/// not parse as an `http` or `https` URL is ignored with a warning rather than
+/// put in a link.
+pub fn console_origin_from_env() -> Option<String> {
+    let non_empty = |k: &str| std::env::var(k).ok().filter(|s| !s.trim().is_empty());
+    let (name, raw) = match non_empty("MAIDAN_CONSOLE_ORIGIN") {
+        Some(raw) => ("MAIDAN_CONSOLE_ORIGIN", raw),
+        None => (
+            "MAIDAN_OIDC_REDIRECT_URI",
+            non_empty("MAIDAN_OIDC_REDIRECT_URI")?,
+        ),
+    };
+    let origin = origin_of(&raw);
+    if origin.is_none() {
+        tracing::warn!(
+            variable = name,
+            "not an http(s) URL; approval confirmation links will be host-relative"
+        );
+    }
+    origin
+}
+
+/// `scheme://host[:port]` of an `http` or `https` URL.
+pub(crate) fn origin_of(raw: &str) -> Option<String> {
+    let url = url::Url::parse(raw.trim()).ok()?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return None;
+    }
+    Some(url.origin().ascii_serialization())
+}
+
+#[cfg(test)]
+mod console_origin_tests {
+    use super::origin_of;
+
+    #[test]
+    fn an_origin_keeps_scheme_host_and_port_and_drops_the_path() {
+        assert_eq!(
+            origin_of("https://maidan.example/auth/callback").as_deref(),
+            Some("https://maidan.example")
+        );
+        assert_eq!(
+            origin_of("http://localhost:8080/").as_deref(),
+            Some("http://localhost:8080")
+        );
+    }
+
+    #[test]
+    fn a_value_that_is_not_an_http_url_has_no_origin() {
+        for raw in [
+            "javascript:alert(1)",
+            "maidan.example",
+            "",
+            "ftp://x.example",
+        ] {
+            assert_eq!(origin_of(raw), None, "{raw}");
+        }
     }
 }

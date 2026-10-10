@@ -632,6 +632,7 @@ async fn seed_server_made(h: &Harness, victim: &mut Victim, owner: MemberId) {
             requested_by: owner,
             prompt: SECRET_BODY.into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .unwrap();

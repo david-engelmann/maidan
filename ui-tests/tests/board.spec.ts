@@ -3,11 +3,30 @@ import { fixtures } from "./_fixtures";
 
 const fx = fixtures();
 
+// Clicking Refresh blurs the token field, and leaving that field signs in.
+// Sign-in loads the channels, and the click starts a second loadChannels, so
+// the list stays on "Loading channels…" until the later of the two has also
+// loaded members. The row click waited on neither request. On a busy full
+// run the row was still missing when the 30s test budget ran out; alone, the
+// same helper passed. Wait for start()'s session read, sign in by leaving
+// the field, and click the row only after that sign-in's channel response.
 async function openBoard(page: Page) {
+  const session = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" && response.url().endsWith("/auth/session"),
+  );
   await page.goto("/ui/");
+  await session;
   await page.fill("#workspace", fx.workspace_id);
+  const channels = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      response.url().includes(`/workspaces/${fx.workspace_id}/channels`) &&
+      response.ok(),
+  );
   await page.fill("#token", fx.token);
-  await page.click("#refresh-channels");
+  await page.locator("#token").blur();
+  await channels;
   await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
 }
 

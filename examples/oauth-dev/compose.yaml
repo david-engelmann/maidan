@@ -1,0 +1,35 @@
+name: maidan-oauth-dev
+
+# A development OAuth 2.1 authorization server for building and testing Maidan's
+# MCP authorization (docs/OAuth.md). Keycloak runs with its
+# experimental Client ID Metadata Document and Resource Indicators features on.
+#
+# Start it with scripts/oauth-dev-provider.sh, which supplies a generated admin
+# password, then imports the realms in examples/keycloak through the admin API
+# (with your Maidan address substituted) and creates a development user:
+#
+#   scripts/oauth-dev-provider.sh up
+#
+# The realms go in through the admin API rather than a mounted import directory
+# so that a Docker daemon on another filesystem (a VM, a remote DOCKER_HOST)
+# works the same as a local one.
+#
+# It uses host networking on purpose. Keycloak fetches Client ID Metadata
+# Documents that the smoke script serves on 127.0.0.1, and the issuer it reports
+# must be the same address your shell and Maidan use. Docker Desktop needs host
+# networking turned on in its settings; on Linux it works as is.
+#
+# Development only: plain HTTP, an in-memory database, loopback client metadata.
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc
+    network_mode: host
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?run scripts/oauth-dev-provider.sh up, which sets it}
+    command:
+      - start-dev
+      - --http-host=127.0.0.1
+      - --http-port=${KC_PORT:-8081}
+      - --features=cimd,resource-indicators

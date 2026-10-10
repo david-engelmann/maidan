@@ -139,15 +139,20 @@ Migration 0012 creates these tables in Postgres and SQLite:
    an unprovisioned identity.
 2. Subsequent logins → same `member_id`.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
+   A person who is a member of several workspaces has one identity row and one
+   member in each. An OIDC session records the identity row it signed in with
+   (`maidan_sessions.oidc_identity_id`, migration 0161), and the console's
+   workspace switcher lists the workspaces of exactly that issuer and subject.
 
 ## HTTP routes
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | GET | `/auth/oidc/login` | none | Start flow; query `workspace_id`, optional `return_to`. |
-| GET | `/auth/oidc/callback` | none | Code exchange, set session cookie. |
+| GET | `/auth/oidc/callback` | none | Code exchange, set session cookie. Ends this browser's previous session, if any (`session.delete`, reason `switched`). |
 | POST | `/auth/logout` | session | Clear session + optional IdP end-session redirect. |
 | GET | `/auth/session` | session | JSON `{ member_id, workspace_id, expires_at }` for UI. |
+| GET | `/auth/session/workspaces` | session | The workspace switcher: this session's workspace first, then every other workspace where the identity it signed in with (same issuer and subject) is a member, newest sign-in first, at most 200. A SCIM-deactivated or frozen member's workspace is left out; a session made from a token lists only its own. Switching is a fresh `GET /auth/oidc/login?workspace_id=…`. |
 | POST | `/auth/session/mint` | OIDC session | Mint the first `token:admin` for the session's member when `MAIDAN_OIDC_FIRST_ADMIN` is not `0` and the workspace has no active `token:admin`. |
 
 Existing bearer routes are unchanged. Session middleware is used on the session

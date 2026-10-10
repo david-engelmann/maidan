@@ -822,9 +822,50 @@ object, including a positional array such as `["2.0", 1, "tools/list"]`, an obje
 a `null` id (MCP forbids one) or a non-object item inside a batch, is an invalid request (`-32600`).
 Both are answered with a `null` id; in a batch, a bad item gets its own error and the rest run.
 
-Maidan never issues requests *to* your client: there is no sampling, roots, or elicitation
-back-channel. When an agent needs a human, it opens a durable approval gate — see "Asking a human
+Maidan issues no sampling or roots requests, and asks the client for input in one place only: `approval_decide` returns a URL-mode elicitation (an `input_required` result, never a form) to a `2026-07-28` client that declared `elicitation.url`, and the same one-time console link in its result to any other client. The person confirms in the console; the model cannot. When an agent needs a human, it opens a durable approval gate — see "Asking a human
 mid-loop" under the waiter loop below.
+
+**The inline approval card (MCP Apps).** A host that renders MCP Apps
+([SEP-1865](https://modelcontextprotocol.io/extensions/apps/overview), stable
+`2026-01-26`) shows an approval gate as
+a card in the chat. `get_approval_gate` and `approval_decide` carry
+`_meta.ui.resourceUri: "ui://maidan/approval-card.html"` (visible to the model
+and the app). The host reads that resource (`text/html;profile=mcp-app`): one
+static page with no gate data, its inline script and style pinned by hash in a
+meta CSP, nothing loaded from anywhere, and no CSP domains in `_meta.ui.csp`.
+Both tools return `structuredContent` beside the unchanged text:
+`get_approval_gate` gives `{kind: "maidan.approval_gate", gate, requester,
+review}`, where `review` is the thread's latest review packet as the caller may
+read it (each attestation with its tier, and `self_reported_only`), and
+`approval_decide` mirrors its answer as `{kind: "maidan.approval_decision",
+status, ...}`.
+
+The card's buttons call `approval_decide` through the host's `tools/call`,
+under the same credential the model uses, so they meet the same rules. Decline
+takes effect, with an optional note. Accept gets whatever the server answers:
+on `confirmation_required` the card shows the console link and opens it with
+`ui/open-link`, and the gate stays pending until the person confirms in the
+console. A click in the card never confirms anything, and a plain bearer or
+OAuth token never accepts on its own.
+
+A client that declares its capabilities without the extension
+(`capabilities.extensions["io.modelcontextprotocol/ui"].mimeTypes` lacking
+`text/html;profile=mcp-app`, in `initialize` or in a `2026-07-28` request's
+`_meta`) sees none of it: no link, no listed card, no `structuredContent`. A
+client that declares it gets the extension back in `initialize` and
+`server/discover`. A request that declares nothing, as on a stateless 2025
+`tools/list`, gets the link and `structuredContent`; a host without MCP Apps
+ignores both.
+
+**Which client decided.** A gate a model decided records the client and how
+far its name can be trusted, in `decided_via.client_source`: `credential`
+when the token was issued to a registered client (on today's server, an
+installed app's token, with the app's registered name and its id in
+`client_id`), `self_reported` when the name came from the request's
+`clientInfo`, and `none` when nothing named one. The console shows a
+credential client by name, a self-reported one with "(self-reported)", and
+otherwise "an unidentified MCP client". The audit row and a pending
+confirmation carry the same pair.
 
 **Anonymous reading on a dev instance.** A dev instance started with
 `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` set to a workspace whose name begins `synthetic-` answers an
@@ -1699,6 +1740,60 @@ session a person signed in to, or a token holding approval:grant. …`. Nobody
 accepts their own request, whatever the credential. A fresh confirmation the
 person gives outside the model, as a link, is planned with the model-callable
 `approval_decide` tool; until then those two are the only ways to accept.
+
+### A model deciding a gate: `approval_decide`
+
+`approval_decide {gate_id, decision, note?}` is how a model accepts or declines
+a gate over MCP. `decision` is `accept` or `decline`.
+
+- **Decline** works on any member credential that can decline over REST, and the
+  note is recorded on the gate.
+- **Accept** happens directly only for a token holding `approval:grant`, and
+  only when the gate's risk is below the workspace's confirmation threshold.
+  Everything else gets a `confirmation_required` *result*, not an error: a plain
+  human bearer, any token without `approval:grant`, and a gate at or above the
+  threshold even with `approval:grant`. Nobody accepts their own request.
+- **The confirmation** is a one-time link,
+  `{console origin}/ui/#confirm-approval={gate_id}.{token}`. The token is in the
+  URL fragment, so it never reaches a log. It is bound to the workspace, the
+  gate and the member whose credential the model used, stored only as a hash,
+  and it expires after the workspace's link lifetime, ten minutes unless an
+  admin set another. A repeat call while it is live returns the same link. It is refused after use, after expiry, and once the
+  gate resolves, and another workspace's caller cannot tell it from no link.
+  The signed-in person confirms at `POST /auth/approval-confirmations/confirm`
+  with the session cookie, from the console page: the strict origin check, a
+  human member, and a session the person signed in to. A bearer, and a session
+  made from a token, are refused, so the model cannot finish it.
+- **Where the client declared it**, a `2026-07-28` call whose
+  `clientCapabilities` include `elicitation.url` gets the link as a URL-mode
+  elicitation (`resultType: "input_required"`, `elicitation/create` with
+  `mode: "url"`) instead of in the result. A retry that carries `inputResponses`
+  gets the plain result. Form mode is never used: a form's answer comes back
+  through the client, which the model could fill in.
+- **The record** names the client. A `2026-07-28` call may carry `clientInfo` in
+  `params._meta`; earlier revisions said it once in `initialize`, which on a
+  stateless transport says nothing about the call, so those are recorded as an
+  unidentified MCP client. The gate's `decided_via` and the audit row
+  (`approval_gate.decided`, `approval_gate.confirmation_requested`) carry the
+  client name and version and `model_asked: true`, and the console card says
+  "decided via <client>, requested by a model".
+
+A gate has a risk, `low`, `medium` or `high`, defaulting to `high`, set when
+`request_approval` opens it (`risk?`). The workspace sets the threshold and the link lifetime with
+`PUT /workspaces/{id}/approval-policy {"confirm_at": "low"|"medium"|"high", "confirm_link_ttl_seconds": 60..3600}`
+(`token:admin`, audited as `approval_policy.set`) and reads them with `GET`
+(`workspace:read`). The PUT replaces the policy: a field left out or `null` is
+back on its default, and `{}` restores both. The default threshold is `low`, so
+every acceptance a model asks for needs a person until an admin raises it. A
+gate at or above the threshold needs the confirmation even from
+`approval:grant`; `high` always does. The default lifetime is 600 seconds; a
+value under 60 or over 3600 is a 400. A link keeps the lifetime it was sent
+with, so a change applies to the next link, not to one already live.
+
+The link's origin is `MAIDAN_CONSOLE_ORIGIN`. When that is unset it is the
+origin of `MAIDAN_OIDC_REDIRECT_URI`, and with neither the link is host-relative
+and no elicitation is offered (a URL elicitation needs an absolute URL).
+
 
 Pass `thread_id` to make it a claim gate: while that gate is pending,
 `claim_next_thread` hands the thread to nobody. That protects the task but not

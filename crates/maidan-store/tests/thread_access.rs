@@ -174,6 +174,7 @@ async fn run_suite(store: &dyn Store) {
                 requested_by: alice,
                 prompt: "ok?".into(),
                 schema: None,
+                risk: Default::default(),
             })
             .await
             .expect("gate");

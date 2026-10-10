@@ -346,6 +346,12 @@ pub async fn remove_channel_member(
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     cap(&auth, CHANNEL_ADMIN)?;
     ensure_workspace(&auth, channel.workspace_id)?;
+    // An id from no member of this workspace is answered as not found, so the
+    // call neither claims a removal nor writes an audit row naming it.
+    state
+        .store
+        .get_member_in(channel.workspace_id, MemberId(mid))
+        .await?;
     state
         .store
         .remove_channel_member_audited(

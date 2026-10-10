@@ -237,6 +237,25 @@
         "reason": "only records the allowlist entry; makes no outbound call"
       }
     },
+    "approval_decide": {
+      "title": "Decide an approval gate",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "resolves the gate (resolve_approval_gate_audited) with an audit row, or issues a confirmation row with one"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "accepting or declining is an irreversible state transition: a resolved gate never returns to pending"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "a repeat after the confirmation link expires issues a new confirmation, so a repeat can change state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "store only; the confirmation link is returned to the caller, and nothing is sent outside Maidan"
+      }
+    },
     "assign_thread": {
       "title": "Assign thread",
       "readOnlyHint": {

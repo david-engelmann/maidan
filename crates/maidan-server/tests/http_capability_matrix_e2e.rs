@@ -404,6 +404,9 @@ fn apply_route_defaults(
     if path.ends_with("/wip-limit") && method == "PUT" {
         return b.json(&json!({ "limit": 5 }));
     }
+    if path.ends_with("/approval-policy") && method == "PUT" {
+        return b.json(&json!({ "confirm_at": "medium" }));
+    }
     if path.ends_with("/delegation-policy") && method == "PUT" {
         return b.json(&json!({ "max_grant_days": 30 }));
     }
@@ -436,6 +439,9 @@ fn apply_route_defaults(
     }
     if path.contains("/deliveries/{did}") {
         b = b.query(&[("kind", "automation")]);
+    }
+    if path == "/workspaces/{wid}/agents" && method == "POST" {
+        return b.json(&json!({ "handle": "deny-matrix-agent" }));
     }
     if path.contains("/members/") && path.ends_with("/tokens") && method == "POST" {
         return b.json(&json!({

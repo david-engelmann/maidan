@@ -163,6 +163,21 @@ pub fn search_messages() {}
     ))]
 pub fn list_members() {}
 
+/// Create an agent member and its worker token
+#[utoipa::path(post, path = "/workspaces/{wid}/agents", tag = "members",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateAgent,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = CreatedAgentResponse,
+        description = "The agent member and a one-time `maidan.agent.worker` token, created together. `token:admin`; mounted without `MAIDAN_BOOTSTRAP`"),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+        (status = 409, response = Conflict),
+    ))]
+pub fn create_agent() {}
+
 /// Mint an API token for a member
 #[utoipa::path(post, path = "/workspaces/{wid}/members/{mid}/tokens", tag = "tokens",
     params(

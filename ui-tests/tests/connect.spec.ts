@@ -4,11 +4,16 @@ import { openMoreTools } from "./_tools";
 
 const fx = fixtures();
 
-// Connect an agent finishes in the product: it creates a member and mints the
-// worker preset. The browser keeps the session it already exchanged, and does
-// not put either secret back in the field. The snippets keep a placeholder.
-// The minted token can claim.
+// Connect an agent finishes in the product: one POST /workspaces/{wid}/agents
+// creates the member and mints the worker preset together, with no bootstrap
+// route. The browser keeps the session it already exchanged, and does not put
+// either secret back in the field. The snippets keep a placeholder. The
+// minted token can claim.
 test("creating an agent mints a token that can claim, post, and transition", async ({ page, request }) => {
+  const posts: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST") posts.push(new URL(r.url()).pathname);
+  });
   await page.goto("/ui/");
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.admin_token);
@@ -29,6 +34,10 @@ test("creating an agent mints a token that can claim, post, and transition", asy
   await expect(page.locator("#token")).toHaveValue("");
   expect(await page.evaluate(() => localStorage.getItem("maidan_token"))).toBeNull();
   expect(token).not.toBe(fx.admin_token);
+  // One call, and neither of the two this replaces.
+  expect(posts).toContain(`/workspaces/${fx.workspace_id}/agents`);
+  expect(posts).not.toContain(`/workspaces/${fx.workspace_id}/members`);
+  expect(posts.filter((p) => /\/members\/[^/]+\/tokens$/.test(p))).toEqual([]);
 
   const me = await request.get(`${fx.base_url}/me`, { headers: { Authorization: `Bearer ${token}` } });
   expect(me.ok()).toBeTruthy();
@@ -75,6 +84,11 @@ test("creating an agent mints a token that can claim, post, and transition", asy
   );
 });
 
+// The tests below run against an older server without
+// POST /workspaces/{wid}/agents (it answers 404), where the page falls back to
+// creating the member and then minting its token.
+const agentsRoute = new RegExp(`/workspaces/${fx.workspace_id}/agents$`);
+
 // Once the member exists a retry cannot create it again: the handle is taken.
 // A mint the server refuses (4xx) names the member and puts its id in Tokens.
 test("a refused mint after the member is created points Tokens at that member", async ({ page }) => {
@@ -82,6 +96,7 @@ test("a refused mint after the member is created points Tokens at that member", 
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.admin_token);
   await page.locator("#token").dispatchEvent("change");
+  await page.route(agentsRoute, (route) => route.fulfill({ status: 404, body: "no such route" }));
   await page.route(/\/members\/[^/]+\/tokens$/, (route) =>
     route.request().method() === "POST" ? route.fulfill({ status: 403, body: "nope" }) : route.continue(),
   );
@@ -107,6 +122,7 @@ test("a 500 from the mint says the outcome is unknown", async ({ page }) => {
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.admin_token);
   await page.locator("#token").dispatchEvent("change");
+  await page.route(agentsRoute, (route) => route.fulfill({ status: 404, body: "no such route" }));
   await page.route(/\/members\/[^/]+\/tokens$/, (route) =>
     route.request().method() === "POST" ? route.fulfill({ status: 500, body: "boom" }) : route.continue(),
   );
@@ -133,6 +149,7 @@ test("an unreadable mint reply says the token cannot be shown", async ({ page })
   await page.fill("#workspace", fx.workspace_id);
   await page.fill("#token", fx.admin_token);
   await page.locator("#token").dispatchEvent("change");
+  await page.route(agentsRoute, (route) => route.fulfill({ status: 404, body: "no such route" }));
   await page.route(/\/members\/[^/]+\/tokens$/, (route) =>
     route.request().method() === "POST"
       ? route.fulfill({ status: 201, contentType: "application/json", body: "{not json" })
@@ -149,4 +166,36 @@ test("an unreadable mint reply says the token cannot be shown", async ({ page })
   await expect(status).toContainText("cannot be shown");
   await expect(page.locator("#token-member")).toHaveValue(/^[0-9a-f-]{36}$/);
   await expect(page.locator("#cx-create-agent")).toBeEnabled();
+});
+
+// With the route, a refusal is a refusal: member and token commit together,
+// so nothing was created, and the page does not fall back to the two calls.
+test("a refused agent create says so and does not fall back", async ({ page, request }) => {
+  // The handle is taken already, so the server answers 409 for real.
+  const handle = `taken-${Date.now()}`;
+  const first = await request.post(`${fx.base_url}/workspaces/${fx.workspace_id}/agents`, {
+    headers: { Authorization: `Bearer ${fx.admin_token}` },
+    data: { handle },
+  });
+  expect(first.status()).toBe(201);
+  const posts: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST") posts.push(new URL(r.url()).pathname);
+  });
+  await page.goto("/ui/");
+  await page.fill("#workspace", fx.workspace_id);
+  await page.fill("#token", fx.admin_token);
+  await page.locator("#token").dispatchEvent("change");
+  await page.getByRole("button", { name: "Connect an agent" }).first().click();
+  await page.fill("#cx-handle", handle);
+  const answered = page.waitForResponse((r) => agentsRoute.test(new URL(r.url()).pathname) && r.request().method() === "POST");
+  await page.click("#cx-create-agent");
+  expect((await answered).status()).toBe(409);
+
+  const status = page.locator("#cx-status");
+  await expect(status).toContainText("Could not connect the agent");
+  await expect(status).not.toContainText("was created");
+  await expect(page.locator("#cx-secret-value")).toHaveCount(0);
+  await expect(page.locator("#cx-create-agent")).toBeEnabled();
+  expect(posts).not.toContain(`/workspaces/${fx.workspace_id}/members`);
 });

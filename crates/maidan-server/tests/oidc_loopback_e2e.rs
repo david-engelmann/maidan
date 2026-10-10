@@ -541,6 +541,81 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         .expect("check deleted session");
     assert_eq!(stale_session.status(), ClientStatus::UNAUTHORIZED);
 
+    // An identity provider deactivates the member through SCIM: the session the
+    // person signed in to ends at its next request, and signing in again is
+    // refused, though the provider still vouches for them.
+    let callback = follow_login(&client, &base, workspace.id.0).await;
+    assert_eq!(callback.status(), ClientStatus::TEMPORARY_REDIRECT);
+    let live_cookie = callback
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find_map(|value| {
+            value
+                .split(';')
+                .next()
+                .filter(|pair| pair.starts_with("maidan_session="))
+        })
+        .expect("session cookie")
+        .to_string();
+    let read_session = |cookie: String| {
+        let (client, url) = (client.clone(), format!("{base}/auth/session"));
+        async move {
+            client
+                .get(url)
+                .header(reqwest::header::COOKIE, cookie)
+                .send()
+                .await
+                .expect("read session")
+                .status()
+        }
+    };
+    assert_eq!(read_session(live_cookie.clone()).await, ClientStatus::OK);
+    store
+        .create_scim_user(member_id, workspace.id, None, true)
+        .await
+        .expect("SCIM user");
+    store
+        .scim_update_user_audited(
+            workspace.id,
+            member_id,
+            None,
+            None,
+            false,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(workspace.id),
+                actor_id: None,
+                action: "scim.user.update".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member_id.0),
+                metadata: json!({}),
+            },
+        )
+        .await
+        .expect("deactivate");
+    assert_eq!(
+        read_session(live_cookie).await,
+        ClientStatus::UNAUTHORIZED,
+        "a deactivated member's session must end"
+    );
+    let ended = store
+        .list_audit(500)
+        .await
+        .expect("audit")
+        .into_iter()
+        .any(|row| {
+            row.action == "session.delete" && row.metadata["reason"] == "member_deactivated"
+        });
+    assert!(ended, "the session's end is recorded with its reason");
+    let refused = follow_login(&client, &base, workspace.id.0).await;
+    assert_eq!(refused.status(), ClientStatus::FORBIDDEN);
+    assert!(refused
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .all(|value| !value.as_bytes().starts_with(b"maidan_session=")));
+
     assert!(provider.discovery_seen.load(Ordering::SeqCst));
     assert!(provider.authorize_seen.load(Ordering::SeqCst));
     assert!(provider.token_seen.load(Ordering::SeqCst));

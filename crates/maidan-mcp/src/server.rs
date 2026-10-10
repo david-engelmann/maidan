@@ -103,9 +103,11 @@ pub const INSTRUCTIONS: &str = "Call `whoami` first. Then `claim_next_thread` or
 A claim is leased: `renew_claim` before `assignment_expires_at`, or the task returns to the queue. `acknowledge_claim`, `renew_claim`, and `release_claim` each send `claim_lease_id`, and you release on every exit you control. A claim that returns null has nothing ready; sleep and ask again, or call `wait_for_ready`. `request_approval` opens a gate and returns; poll `get_approval_gate`.\n\
 On `POST /mcp`, `tools/list` includes only tools your token can call. `POST /mcp/worker` and `POST /mcp/reviewer` each serve one fixed list, the same bytes for every caller. A tool your token cannot call is refused when you call it, on every endpoint.";
 
-/// Mark a result final. `2026-07-28` requires `resultType` on every result,
-/// and `"input_required"` is the multi-round-trip interim this server never
-/// sends. Earlier clients ignore the field, except in an empty result, which
+/// Mark a result final. `2026-07-28` requires `resultType` on every result.
+/// `"input_required"` is the multi-round-trip interim, which this server sends
+/// in one place: `approval_decide` asking a client that declared URL-mode
+/// elicitation to open a confirmation link, and that result keeps its own
+/// `resultType`. Earlier clients ignore the field, except in an empty result, which
 /// the official SDK reads strictly, so `ping` (gone from `2026-07-28`) is
 /// answered without it.
 fn complete(mut result: Value) -> Value {
@@ -135,6 +137,63 @@ fn server_capabilities(protocol_version: &str) -> Value {
         "resources": resources,
         "prompts": {}
     })
+}
+
+/// The MCP Apps extension (SEP-1724's `capabilities.extensions`), said back
+/// only to a client that declared it, so every other client's handshake is
+/// unchanged.
+fn with_ui_extension(mut capabilities: Value, ui: crate::call_context::UiSupport) -> Value {
+    if ui == crate::call_context::UiSupport::Declared {
+        if let Some(object) = capabilities.as_object_mut() {
+            object.insert(
+                "extensions".into(),
+                json!({
+                    crate::call_context::UI_EXTENSION: {
+                        "mimeTypes": [crate::call_context::UI_MIME_TYPE]
+                    }
+                }),
+            );
+        }
+    }
+    capabilities
+}
+
+/// How long a confirmation link lives when the workspace sets no other on its
+/// approval policy (`confirm_link_ttl_seconds`).
+pub const DEFAULT_CONFIRMATION_TTL: std::time::Duration = std::time::Duration::from_secs(
+    maidan_store::approval_policy::DEFAULT_CONFIRM_LINK_TTL_SECONDS as u64,
+);
+
+/// What `approval_decide` needs to send a person a confirmation link: the
+/// secret its tokens are derived with and the console's public origin. How
+/// long a link lives is the workspace's approval policy. Unset, the tool's confirmation path refuses rather than
+/// send a link nobody could use.
+#[derive(Clone)]
+pub struct ApprovalConfirmationKeys {
+    pub(crate) secret: Arc<[u8]>,
+    pub(crate) console_origin: Option<String>,
+}
+
+impl ApprovalConfirmationKeys {
+    pub fn new(secret: &[u8], console_origin: Option<String>) -> Self {
+        Self {
+            secret: Arc::from(secret),
+            console_origin: console_origin
+                .map(|o| o.trim().trim_end_matches('/').to_string())
+                .filter(|o| !o.is_empty()),
+        }
+    }
+
+    /// The console link for a gate's confirmation. The token rides in the
+    /// fragment, which a browser never sends, so it reaches no server or proxy
+    /// log. Without a configured origin the link is host-relative.
+    pub(crate) fn link(&self, gate_id: maidan_types::ApprovalGateId, token: &str) -> String {
+        let path = format!("/ui/#confirm-approval={}.{token}", gate_id.0);
+        match &self.console_origin {
+            Some(origin) => format!("{origin}{path}"),
+            None => path,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -183,6 +242,9 @@ pub struct McpServer {
     /// Optional land-gate advisor. Unset means `advise_land_gate` is not found
     /// and no gate row is written.
     land_gate_advisor: std::sync::OnceLock<Arc<dyn crate::land_gate_advice::LandGateAdvising>>,
+    /// Shared by every clone, so it can be set after the server is cloned
+    /// into the router's state.
+    approval_confirmations: Arc<std::sync::OnceLock<ApprovalConfirmationKeys>>,
 }
 
 /// What a caller with no credential may do on a dev instance: discover the
@@ -272,7 +334,19 @@ impl McpServer {
             slash_secret_forget: std::sync::OnceLock::new(),
             fsm_secret_forget: std::sync::OnceLock::new(),
             land_gate_advisor: std::sync::OnceLock::new(),
+            approval_confirmations: Arc::new(std::sync::OnceLock::new()),
         }
+    }
+
+    /// Install what `approval_decide` sends confirmation links with. Set once;
+    /// a later call is ignored, since the secret does not change while the
+    /// server runs.
+    pub fn set_approval_confirmations(&self, keys: ApprovalConfirmationKeys) {
+        let _ = self.approval_confirmations.set(keys);
+    }
+
+    pub(crate) fn approval_confirmations(&self) -> Option<&ApprovalConfirmationKeys> {
+        self.approval_confirmations.get()
     }
 
     /// How long a subscription outlives its last listener (the server reads
@@ -709,7 +783,20 @@ impl McpServer {
         }
         match request.method.as_str() {
             "initialize" => self.initialize(&request.params).await,
-            "server/discover" => Ok(caching::with_hint(self.discover(), caching::DISCOVER)),
+            "server/discover" => {
+                let ui = crate::call_context::UiSupport::from_params(&request.params);
+                // A card-declaring client gets the extension back; that answer
+                // varies by request, so no shared cache keeps it.
+                let hint = if ui == crate::call_context::UiSupport::Declared {
+                    caching::CacheHint {
+                        scope: caching::CacheScope::Private,
+                        ..caching::DISCOVER
+                    }
+                } else {
+                    caching::DISCOVER
+                };
+                Ok(caching::with_hint(self.discover(ui), hint))
+            }
             // The client's post-initialize handshake notification is accepted
             // (and ignored) rather than treated as an unknown method.
             "notifications/initialized" | "notifications/cancelled" => Ok(json!({})),
@@ -720,18 +807,37 @@ impl McpServer {
                     Some(profile) => (profile.catalog(), caching::PROFILE_TOOLS_LIST),
                     None => (tools::catalog_for(auth), caching::TOOLS_LIST),
                 };
-                let tools = if auth.is_anonymous() {
+                let mut tools = if auth.is_anonymous() {
                     anonymous_catalog(tools)
                 } else {
                     tools
                 };
+                // A client that declared no MCP Apps gets the catalog without
+                // the card's link. Those bytes answer what the request
+                // declared, so no shared cache keeps them for anyone else.
+                let hint =
+                    if crate::call_context::UiSupport::from_params(&request.params).offers_card() {
+                        hint
+                    } else {
+                        crate::apps_card::strip_tool_links(&mut tools);
+                        caching::CacheHint {
+                            scope: caching::CacheScope::Private,
+                            ..hint
+                        }
+                    };
                 Ok(caching::with_hint(json!({ "tools": tools }), hint))
             }
             "tools/call" => self.tools_call(&request.params, auth, profile).await,
-            "resources/list" => Ok(caching::with_hint(
-                json!({ "resources": resources::listed(auth) }),
-                caching::RESOURCES_LIST,
-            )),
+            "resources/list" => {
+                let mut listed = resources::listed(auth);
+                listed.extend(crate::apps_card::listed(
+                    crate::call_context::UiSupport::from_params(&request.params),
+                ));
+                Ok(caching::with_hint(
+                    json!({ "resources": listed }),
+                    caching::RESOURCES_LIST,
+                ))
+            }
             "resources/templates/list" => Ok(caching::with_hint(
                 json!({ "resourceTemplates": resources::templates() }),
                 caching::RESOURCE_TEMPLATES_LIST,
@@ -757,9 +863,10 @@ impl McpServer {
     async fn initialize(&self, params: &Value) -> Result<Value, McpError> {
         let requested = params.get("protocolVersion").and_then(|v| v.as_str());
         let protocol_version = negotiate_protocol_version(requested);
+        let ui = crate::call_context::UiSupport::from_params(params);
         Ok(json!({
             "protocolVersion": protocol_version,
-            "capabilities": server_capabilities(protocol_version),
+            "capabilities": with_ui_extension(server_capabilities(protocol_version), ui),
             "serverInfo": self.server_info(),
             "instructions": INSTRUCTIONS,
         }))
@@ -769,10 +876,10 @@ impl McpServer {
     /// told the versions, capabilities and instructions: that revision has no
     /// `initialize`, so a client speaking only it never sees what `initialize`
     /// says.
-    fn discover(&self) -> Value {
+    fn discover(&self, ui: crate::call_context::UiSupport) -> Value {
         json!({
             "supportedVersions": SUPPORTED_PROTOCOL_VERSIONS,
-            "capabilities": server_capabilities("2026-07-28"),
+            "capabilities": with_ui_extension(server_capabilities("2026-07-28"), ui),
             "instructions": INSTRUCTIONS,
             "_meta": { "io.modelcontextprotocol/serverInfo": self.server_info() },
         })
@@ -865,14 +972,16 @@ impl McpServer {
             .map_err(McpError::from)?;
         }
         let deadline = tools::deadline(name);
-        let result = tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args))
-            .await
-            .map_err(|_| {
-                McpError::Internal(format!(
-                    "tool {name} exceeded its {}s deadline",
-                    deadline.as_secs()
-                ))
-            })??;
+        let call = crate::call_context::CallContext::from_params(params);
+        let result =
+            tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args, &call))
+                .await
+                .map_err(|_| {
+                    McpError::Internal(format!(
+                        "tool {name} exceeded its {}s deadline",
+                        deadline.as_secs()
+                    ))
+                })??;
         self.queue_resource_updates(name, &args, &result, auth)
             .await;
         Ok(result)
@@ -963,6 +1072,14 @@ impl McpServer {
             .get("uri")
             .and_then(|v| v.as_str())
             .ok_or_else(|| McpError::InvalidParams("missing uri".into()))?;
+        // The card is static and the same for every caller: it carries no
+        // workspace's data, so reading it needs no more than workspace:read.
+        if crate::apps_card::is_ui_uri(uri) {
+            return Ok(caching::with_hint(
+                crate::apps_card::read(uri)?,
+                caching::resource_read(uri),
+            ));
+        }
         self.authorize_resource(uri, auth).await?;
         let read = resources::read(
             &self.store,
@@ -5139,6 +5256,7 @@ mod tests {
                 requested_by: agent.id,
                 prompt: "approve".into(),
                 schema: None,
+                risk: Default::default(),
             })
             .await
             .unwrap();
@@ -10027,7 +10145,10 @@ mod tests {
             .unwrap()
             .workspace_id;
         let notifier = Arc::new(maidan_bus::InMemoryResourceNotifier::new());
-        let ttl = std::time::Duration::from_millis(300);
+        // Long enough that upkeep runs its four passes per TTL (300 ms each)
+        // rather than three at its 100 ms floor, so a loaded runner that
+        // delays one pass does not lapse a subscription a listener holds.
+        let ttl = std::time::Duration::from_millis(1200);
         let a = replica(&server, &notifier, ttl);
         let b = replica(&server, &notifier, ttl);
         let alice = member_auth(member_id, ws);

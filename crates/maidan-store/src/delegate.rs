@@ -272,6 +272,15 @@ macro_rules! store_delegations {
                 members::get_by_handle(self.read_pool(), workspace_id, handle).await
             }
 
+            async fn create_agent_with_token(
+                &self,
+                new: NewAgentWithToken,
+                member_audit: crate::AuditFor<Member>,
+                token_audit: crate::AuditFor<ApiToken>,
+            ) -> Result<CreatedAgent, StoreError> {
+                members::create_agent_with_token(self.pool(), new, member_audit, token_audit).await
+            }
+
             async fn create_scim_user(
                 &self,
                 member_id: MemberId,
@@ -637,6 +646,93 @@ macro_rules! store_delegations {
                 content: Option<&serde_json::Value>,
             ) -> Result<Option<ApprovalGate>, StoreError> {
                 approval_gates::resolve(self.pool(), id, resolved_by, state, content).await
+            }
+
+            async fn resolve_approval_gate_audited(
+                &self,
+                id: ApprovalGateId,
+                resolved_by: MemberId,
+                state: ApprovalGateState,
+                content: Option<&serde_json::Value>,
+                via: &GateDecisionVia,
+                audit: crate::AuditFor<ApprovalGate>,
+            ) -> Result<Option<ApprovalGate>, StoreError> {
+                approval_gates::resolve_audited(
+                    self.pool(),
+                    id,
+                    resolved_by,
+                    state,
+                    content,
+                    via,
+                    audit,
+                )
+                .await
+            }
+
+            async fn get_approval_policy(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<ApprovalPolicy, StoreError> {
+                approval_gates::get_policy(self.pool(), workspace_id).await
+            }
+
+            async fn set_approval_policy_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                confirm_at: Option<ApprovalRisk>,
+                confirm_link_ttl_seconds: Option<u32>,
+                audit: crate::AuditFor<ApprovalPolicy>,
+            ) -> Result<ApprovalPolicy, StoreError> {
+                approval_gates::set_policy_audited(
+                    self.pool(),
+                    workspace_id,
+                    confirm_at,
+                    confirm_link_ttl_seconds,
+                    audit,
+                )
+                .await
+            }
+
+            async fn issue_approval_confirmation(
+                &self,
+                new: &NewApprovalConfirmation,
+                audit: crate::AuditFor<ApprovalConfirmation>,
+            ) -> Result<(ApprovalConfirmation, bool), StoreError> {
+                approval_gates::issue_confirmation(self.pool(), new, audit).await
+            }
+
+            async fn get_approval_confirmation_by_token(
+                &self,
+                token_hash: &str,
+            ) -> Result<Option<ApprovalConfirmation>, StoreError> {
+                approval_gates::get_confirmation_by_token(self.pool(), token_hash).await
+            }
+
+            async fn list_live_approval_confirmations(
+                &self,
+                workspace_id: WorkspaceId,
+                now: chrono::DateTime<chrono::Utc>,
+            ) -> Result<Vec<ApprovalConfirmation>, StoreError> {
+                approval_gates::list_live_confirmations(self.pool(), workspace_id, now).await
+            }
+
+            async fn confirm_approval_gate(
+                &self,
+                token_hash: &str,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+                now: chrono::DateTime<chrono::Utc>,
+                audit: crate::AuditFor<ApprovalGate>,
+            ) -> Result<ConfirmOutcome, StoreError> {
+                approval_gates::confirm(
+                    self.pool(),
+                    token_hash,
+                    workspace_id,
+                    member_id,
+                    now,
+                    audit,
+                )
+                .await
             }
         }
     };
@@ -1410,6 +1506,14 @@ macro_rules! store_delegations {
                 subject: &str,
             ) -> Result<OidcIdentity, StoreError> {
                 oidc::get_identity(self.pool(), workspace_id, issuer, subject).await
+            }
+
+            async fn list_identity_workspaces(
+                &self,
+                identity_id: OidcIdentityId,
+                limit: i64,
+            ) -> Result<Vec<IdentityWorkspace>, StoreError> {
+                oidc::list_identity_workspaces(self.pool(), identity_id, limit).await
             }
 
             async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError> {

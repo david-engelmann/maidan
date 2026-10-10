@@ -240,6 +240,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{wid}/search", get(routes::search_messages))
         .route("/workspaces/{wid}/members", get(routes::list_members))
+        .route("/workspaces/{wid}/agents", post(routes::create_agent))
         .route(
             "/workspaces/{wid}/members/{mid}/tokens",
             post(routes::mint_api_token).merge(get(routes::list_api_tokens)),
@@ -1380,10 +1381,6 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/maidan.json", get(federation::well_known))
         .route("/.well-known/maidan-room", get(routes::well_known_room))
         .route("/.well-known/agent-card.json", get(a2a_agent::agent_card))
-        .route(
-            "/.well-known/oauth-protected-resource",
-            get(oauth::oauth_protected_resource),
-        )
         .route(
             "/.well-known/oauth-protected-resource/mcp/streamable",
             get(oauth::oauth_protected_resource),

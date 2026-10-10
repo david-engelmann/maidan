@@ -40,40 +40,87 @@ pub(crate) async fn manifest_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
 ) -> Result<EvidenceManifest, StoreError> {
-    let result = match sqlx::query(
-        "SELECT result, produced_by FROM maidan_thread_results WHERE thread_id = ?1",
-    )
+    Ok(evidence_in_tx(tx, thread_id).await?.0)
+}
+
+/// Whether the member was ever the subject of a delegation grant, so that a
+/// delegate could have carried what it wrote.
+const EVER_DELEGATED: &str =
+    "EXISTS (SELECT 1 FROM maidan_delegation_grants g WHERE g.subject_id = {}) AS delegated";
+
+/// The manifest and who put each piece of it there, each item read in one
+/// statement so its content and its author come from the same row version.
+async fn evidence_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<(EvidenceManifest, Option<Author>, Vec<(String, Author)>), StoreError> {
+    let (result, result_author) = match sqlx::query(&format!(
+        "SELECT r.result, r.produced_by, r.produced_actor_id, {}
+         FROM maidan_thread_results r WHERE r.thread_id = ?1",
+        EVER_DELEGATED.replace("{}", "r.produced_by"),
+    ))
     .bind(thread_id.0)
     .fetch_optional(&mut **tx)
     .await?
     {
-        Some(row) => Some(ResultEvidence {
-            sha256: result_sha256(&serde_json::from_str::<serde_json::Value>(
+        Some(row) => {
+            let sha256 = result_sha256(&serde_json::from_str::<serde_json::Value>(
                 &row.get::<String, _>("result"),
             )?)
-            .map_err(|e| StoreError::InvalidInput(e.to_string()))?,
-            produced_by: MemberId(row.get::<Uuid, _>("produced_by")),
-        }),
-        None => None,
+            .map_err(|e| StoreError::InvalidInput(e.to_string()))?;
+            let by = author(
+                row.get("produced_by"),
+                row.get("produced_actor_id"),
+                row.get("delegated"),
+            );
+            (
+                Some(ResultEvidence {
+                    sha256,
+                    produced_by: by.member,
+                }),
+                Some(by),
+            )
+        }
+        None => (None, None),
     };
-    let artifacts: Vec<String> = sqlx::query_scalar(
-        "SELECT sha256 FROM maidan_thread_artifacts WHERE thread_id = ?1 ORDER BY sha256",
-    )
+    let links: Vec<(String, Author)> = sqlx::query(&format!(
+        "SELECT a.sha256, a.linked_by, a.linked_actor_id, {}
+         FROM maidan_thread_artifacts a WHERE a.thread_id = ?1 ORDER BY a.sha256",
+        EVER_DELEGATED.replace("{}", "a.linked_by"),
+    ))
     .bind(thread_id.0)
     .fetch_all(&mut **tx)
-    .await?;
-    Ok(EvidenceManifest {
+    .await?
+    .iter()
+    .map(|row| {
+        (
+            row.get::<String, _>("sha256"),
+            author(
+                row.get("linked_by"),
+                row.get("linked_actor_id"),
+                row.get("delegated"),
+            ),
+        )
+    })
+    .collect();
+    let manifest = EvidenceManifest {
         thread_id,
         result,
-        artifacts,
+        artifacts: links.iter().map(|(sha, _)| sha.clone()).collect(),
         attestations: Vec::new(),
-    })
+    };
+    Ok((manifest, result_author, links))
 }
 
-fn author(member: Uuid, actor: Option<Uuid>) -> Author {
+/// Since migration 0147 every write records who acted. A row without an
+/// actor predates it: the member acted when it never delegated, and who acted
+/// is unknown when it did.
+fn author(member: Uuid, actor: Option<Uuid>, delegated: bool) -> Author {
+    let member = MemberId(member);
     Author {
-        member: MemberId(member),
-        actor: actor.map(MemberId),
+        member,
+        actor: actor.map(MemberId).or((!delegated).then_some(member)),
+        actor_unknown: actor.is_none() && delegated,
     }
 }
 
@@ -84,30 +131,10 @@ fn author(member: Uuid, actor: Option<Uuid>) -> Author {
 async fn attestations_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     manifest: &EvidenceManifest,
+    result_author: Option<Author>,
+    link_authors: &[(String, Author)],
 ) -> Result<Vec<EvidenceAttestation>, StoreError> {
     let thread_id = manifest.thread_id;
-    let result_author = sqlx::query(
-        "SELECT produced_by, produced_actor_id FROM maidan_thread_results WHERE thread_id = ?1",
-    )
-    .bind(thread_id.0)
-    .fetch_optional(&mut **tx)
-    .await?
-    .map(|row| author(row.get("produced_by"), row.get("produced_actor_id")));
-    let link_authors: Vec<(String, Author)> = sqlx::query(
-        "SELECT sha256, linked_by, linked_actor_id FROM maidan_thread_artifacts
-         WHERE thread_id = ?1",
-    )
-    .bind(thread_id.0)
-    .fetch_all(&mut **tx)
-    .await?
-    .iter()
-    .map(|row| {
-        (
-            row.get::<String, _>("sha256"),
-            author(row.get("linked_by"), row.get("linked_actor_id")),
-        )
-    })
-    .collect();
     let workers: HashSet<MemberId> = sqlx::query_scalar::<_, Uuid>(
         "SELECT member_id FROM maidan_thread_workers WHERE thread_id = ?1",
     )
@@ -121,7 +148,7 @@ async fn attestations_in_tx(
     Ok(attest(
         manifest,
         result_author,
-        &link_authors,
+        link_authors,
         &workers,
         &gate,
     ))
@@ -139,8 +166,8 @@ pub(crate) async fn record_in_tx(
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
     .await?;
-    let mut manifest = manifest_in_tx(tx, thread_id).await?;
-    manifest.attestations = attestations_in_tx(tx, &manifest).await?;
+    let (mut manifest, result_author, link_authors) = evidence_in_tx(tx, thread_id).await?;
+    manifest.attestations = attestations_in_tx(tx, &manifest, result_author, &link_authors).await?;
     let evidence_root = manifest
         .root()
         .map_err(|e| StoreError::InvalidInput(e.to_string()))?;

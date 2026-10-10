@@ -327,6 +327,36 @@ pub fn set_wip_limit() {}
 )]
 pub fn get_wip_limit() {}
 
+/// Set a workspace's approval policy
+#[utoipa::path(
+    put,
+    path = "/workspaces/{id}/approval-policy",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetApprovalPolicy,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ApprovalPolicy, description = "The confirmation threshold and link lifetime now in force"),
+        (status = 400, description = "An unknown risk, or a link lifetime outside 60–3600 seconds", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Requires token:admin", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn set_approval_policy() {}
+
+/// Get a workspace's approval policy
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/approval-policy",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ApprovalPolicy, description = "The lowest gate risk at which a model's accept through approval_decide needs a person to confirm it, and how long its confirmation link lives"),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn get_approval_policy() {}
+
 /// Set a workspace's delegation policy
 #[utoipa::path(
     put,

@@ -348,6 +348,7 @@ async fn skips_threads_that_are_not_ready(store: &dyn Store) {
             requested_by: agent,
             prompt: "ship it?".into(),
             schema: None,
+            risk: Default::default(),
         })
         .await
         .expect("gate");

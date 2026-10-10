@@ -431,6 +431,7 @@ impl World {
                 requested_by,
                 prompt: "ship it?".into(),
                 schema: None,
+                risk: Default::default(),
             })
             .await
             .unwrap();
