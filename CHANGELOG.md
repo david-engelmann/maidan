@@ -1982,7 +1982,7 @@ Refs #1253
 
 ### A needs-you reload keeps a keyboard user on their decision button
 
-- **Fixed:** any reload of the needs-you list (a realtime reconnect, the live-poll fallback, a board refresh, a row leaving after a decision) dropped keyboard focus from the decision button a person was on to the page body. The list is rebuilt by detaching every row, even the ones it keeps, and a detached element loses focus. The render now notes the focused control by its row's key and its label and puts focus back on the same control afterwards. If that item has left the queue, focus moves to the row that took its place (its primary button, else its first usable control), or to the list heading when no row is left, and the polite status region says that focus moved. `ui-tests/tests/needs-you-focus.spec.ts` covers both cases.
+- **Fixed:** any reload of the needs-you list (a realtime reconnect, the live-poll fallback, a board refresh, a row leaving after a decision) dropped keyboard focus from the decision button a person was on to the page body. The list is rebuilt by detaching every row, even the ones it keeps, and a detached element loses focus. The render now notes the focused control by its row's key and its label and puts focus back on that control afterwards. When the control can't take focus again (a redrawn review row starts with its approve buttons disabled until its packet loads), focus goes to an enabled control in the same row. If that item has left the queue, focus moves to the row that took its place (its primary button, else its first usable control), or to the list heading when no row is left, and the polite status region says that focus moved. `ui-tests/tests/needs-you-focus.spec.ts` covers both cases.
 
 ## [412.0.0] — 2026-09-28
 
