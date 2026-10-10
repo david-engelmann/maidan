@@ -443,6 +443,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
       // A newer load or hide wins over an older load still in flight, so a
       // late answer for an earlier session never reveals the switcher.
       let switcherGen = 0;
+<<<<<<< HEAD
       // Opened by a front-door sign-in with more than one workspace: the list
       // is a chooser, and the current workspace is a choice too ("continue
       // here") rather than a disabled row.
@@ -463,6 +464,8 @@ import { tokenKey, wsResumeKey } from "./state.js";
         window.history.replaceState(null, "", pathname + (rest ? `?${rest}` : "") + hash);
         return hint;
       }
+=======
+>>>>>>> origin/main
 
       function hideWorkspaceSwitcher() {
         switcherGen += 1;
@@ -506,6 +509,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
             const button = document.createElement("button");
             button.type = "button";
             button.className = "ghost";
+<<<<<<< HEAD
             button.title = `Signed in there as ${w.handle}`;
             if (w.current && choosing) {
               button.textContent = `${w.name} (continue here)`;
@@ -518,6 +522,12 @@ import { tokenKey, wsResumeKey } from "./state.js";
               button.disabled = w.current;
               button.onclick = () => switchWorkspace(w.workspace_id);
             }
+=======
+            button.textContent = w.current ? `${w.name} (current)` : w.name;
+            button.title = `Signed in there as ${w.handle}`;
+            button.disabled = w.current;
+            button.onclick = () => switchWorkspace(w.workspace_id);
+>>>>>>> origin/main
             li.append(button);
             return li;
           }),
@@ -530,6 +540,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         }
       }
 
+<<<<<<< HEAD
       function openWorkspaceSwitcher(asChooser = false) {
         const panel = document.getElementById("ws-switcher");
         const search = /** @type {HTMLInputElement} */ (document.getElementById("ws-switch-search"));
@@ -541,6 +552,11 @@ import { tokenKey, wsResumeKey } from "./state.js";
           ? `You're in ${current.name}, your most recent workspace. You're a member of ${switchable.length}: pick one, or continue here.`
           : "";
         panel.setAttribute("aria-label", choosing ? "Choose a workspace" : "Switch workspace");
+=======
+      function openWorkspaceSwitcher() {
+        const panel = document.getElementById("ws-switcher");
+        const search = /** @type {HTMLInputElement} */ (document.getElementById("ws-switch-search"));
+>>>>>>> origin/main
         search.value = "";
         renderWorkspaceSwitcher();
         panel.hidden = false;
@@ -549,7 +565,10 @@ import { tokenKey, wsResumeKey } from "./state.js";
       }
 
       function closeWorkspaceSwitcher() {
+<<<<<<< HEAD
         choosing = false;
+=======
+>>>>>>> origin/main
         document.getElementById("ws-switcher").hidden = true;
         document.getElementById("ws-switch").setAttribute("aria-expanded", "false");
       }
@@ -601,6 +620,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
           }
         }
         await refreshSession();
+<<<<<<< HEAD
         // A front-door sign-in with several workspaces opens the list as a
         // chooser once it has loaded; one with none says so here, since no
         // session was made.
@@ -608,6 +628,9 @@ import { tokenKey, wsResumeKey } from "./state.js";
           if (frontDoor === "choose" && switchable.length > 1) openWorkspaceSwitcher(true);
         });
         document.getElementById("no-workspace").hidden = !(frontDoor === "none" && !sessionMemberId);
+=======
+        loadWorkspaceSwitcher();
+>>>>>>> origin/main
         const identity = await refreshBearerIdentity();
         // A token (pasted, or the session made from one) answered /me; with
         // none, a session alone is a sign-in.

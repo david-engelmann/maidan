@@ -1923,6 +1923,17 @@ Refs #1253
 ### A failed lease renewal stops the deploy recipe
 
 - **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
+### A design note for the hosted console
+
+- **Docs:** `docs/Hosted Console.md` sets out the hosted console's first version against the code as it stands. It covers:
+  - sign-up through the instance's existing OIDC provider, off by default;
+  - how one signed-in identity maps to a member in each of several workspaces, and what the session should carry;
+  - what the agent invite (#1144) and `POST /operator/workspaces` (#1208) do and don't allow;
+  - what stays self-hosted only;
+  - the design of the workspace switcher (Open Work Next 6): its listing route, switching by re-sign-in, its tenant-isolation rules and the two-tenant test it needs.
+
+  Each open question carries a recommended answer. The note is published in the book under Design.
+
 ### The console can switch between your workspaces
 
 - **Added:** `GET /auth/session/workspaces` lists the workspaces the signed-in person can switch to: the session's own first, then every other workspace where the identity they signed in with (the same issuer and subject) is a member, newest sign-in first, at most 200. A workspace whose member is SCIM-deactivated or frozen is left out. A session made from a token lists only its own workspace, and a bearer is refused.
@@ -1939,11 +1950,20 @@ Refs #1253
 - **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
 - **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
 
+<<<<<<< HEAD
 ### Sign in without a workspace id
 
 - **Added:** the front door. `GET /auth/oidc/login` takes no `workspace_id`: the callback signs the identity in to its most recently used workspace, among those where the same issuer and subject already have an identity row and the member is neither SCIM-deactivated nor frozen. With more than one, the console opens the workspace list as a chooser, where the current workspace is "continue here" and any other is a sign-in there. With none, no session is made and the console says the account is a member of no workspace on this server. A front-door sign-in never links by email and never auto-provisions. **Sign in with your identity provider** needs no workspace id, and one typed in still signs in to that workspace.
 - **Security:** sign-in no longer tells anyone whether a workspace id exists. `/auth/oidc/login` used to answer an unknown id with a 404 before redirecting. Now a real id and an unknown one get the same redirect, and the callback refuses an unknown id with the same 403 as a workspace the person has no member in, creating nothing.
 - **Changed:** migration 0162, on SQLite and Postgres. A pending sign-in (`maidan_oidc_pending`) has a `kind`, `sign_in` or `front_door`, tied by a CHECK to whether it names a workspace, so a front-door `state` can't complete a workspace sign-in or the other way round. Its workspace id has no foreign key. `maidan_oidc_identities` gets an index on `(issuer, subject)`.
+=======
+### A member the identity provider deactivates is signed out
+
+- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
+
+### The palette's next-review spec waits until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/palette.spec.ts` "the palette opens the next review waiting on me" filled the token and clicked Refresh, the same double load #1338 removed from `board.spec.ts`, and it waited on neither the sign-in's nor the board's needs-you answer. Rebuilding the needs-you list detaches each row, and a detached row loses focus, so an answer that landed after Enter left no focused decision button. On a busy full run the last check failed once; alone, it passed. The spec now signs in by leaving the token field, waits for that sign-in's channel and needs-you answers, opens the board, and opens the palette only after the board's own needs-you answer has arrived and re-rendered the list. Test-only.
 
 ## [412.0.0] — 2026-09-28
 
