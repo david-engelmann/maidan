@@ -76,7 +76,7 @@ sequenceDiagram
     participant Maidan as maidan-server
     participant IdP as OIDC Provider
 
-    Browser->>Maidan: GET /auth/oidc/login?workspace_id=...
+    Browser->>Maidan: GET /auth/oidc/login?workspace_id=... (optional)
     Maidan->>Browser: 302 redirect to IdP (state, nonce, PKCE challenge)
     Browser->>IdP: authenticate user
     IdP->>Browser: 302 redirect /auth/oidc/callback?code=...
@@ -86,6 +86,35 @@ sequenceDiagram
     Maidan->>Maidan: verify id_token, upsert identity, session cookie
     Maidan->>Browser: 302 /ui/ (optional auto_mint hint)
 ```
+
+### The front door: no workspace id
+
+`GET /auth/oidc/login` without `workspace_id` starts the same flow with no
+workspace (a pending row of kind `front_door`, migration 0163). The callback
+then:
+
+- finds the workspaces where this issuer and subject already have an identity
+  row, leaving out one whose member is SCIM-deactivated or frozen;
+- signs in to the most recently used one (`last_login_at`), and adds
+  `choose_workspace=1` to the return path when there are more, so the console
+  opens the workspace list as a chooser;
+- with none, creates no session and redirects with `no_workspace=1`, and the
+  console says the account is a member of no workspace here.
+
+A front-door sign-in never links by email and never auto-provisions: there is
+no workspace to do it in, and matching an email across workspaces is the
+"automatic cross-workspace identity" rule 3 below rules out. A person reaches a
+new workspace the first time through its own id or invite link. Sign-up,
+proposed in the hosted console design note, is not built.
+
+### No existence oracle before sign-in
+
+`GET /auth/oidc/login?workspace_id=…` does not look the workspace up. A real id
+and an unknown one get the same redirect, and the pending row keeps the id
+without a foreign key. The callback refuses an unknown id with the same `403`
+("not provisioned in this workspace") as a real workspace the person has no
+member in, and creates nothing. `oidc_front_door_e2e` checks both responses
+are identical.
 
 ### Why not implicit or resource-owner password?
 
@@ -148,11 +177,11 @@ Migration 0012 creates these tables in Postgres and SQLite:
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/auth/oidc/login` | none | Start flow; query `workspace_id`, optional `return_to`. |
+| GET | `/auth/oidc/login` | none | Start flow; optional `workspace_id` (without it, the front door), optional `return_to`. The id is not looked up here. |
 | GET | `/auth/oidc/callback` | none | Code exchange, set session cookie. Ends this browser's previous session, if any (`session.delete`, reason `switched`). |
 | POST | `/auth/logout` | session | Clear session + optional IdP end-session redirect. |
 | GET | `/auth/session` | session | JSON `{ member_id, workspace_id, expires_at }` for UI. |
-| GET | `/auth/session/workspaces` | session | The workspace switcher: this session's workspace first, then every other workspace where the identity it signed in with (same issuer and subject) is a member, newest sign-in first, at most 200. A SCIM-deactivated or frozen member's workspace is left out; a session made from a token lists only its own. Switching is a fresh `GET /auth/oidc/login?workspace_id=…`. |
+| GET | `/auth/session/workspaces` | session | The workspace switcher: this session's workspace first, then every other workspace where the identity it signed in with (same issuer and subject) is a member, newest sign-in first, at most 200. Another workspace whose member is SCIM-deactivated or frozen is left out, but the session's own workspace stays listed even when its member is frozen, since that is where the person already is. A session made from a token lists only its own workspace. Switching is a fresh `GET /auth/oidc/login?workspace_id=…`. |
 | POST | `/auth/session/mint` | OIDC session | Mint the first `token:admin` for the session's member when `MAIDAN_OIDC_FIRST_ADMIN` is not `0` and the workspace has no active `token:admin`. |
 
 Existing bearer routes are unchanged. Session middleware is used on the session
