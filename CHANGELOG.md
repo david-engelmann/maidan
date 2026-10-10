@@ -1990,6 +1990,10 @@ Refs #1253
 - **Fixed:** `cursor_is_too_old` used `after_id + 1`, which overflows at `i64::MAX` and, in a release build, wraps to a negative id that looks like a pruned gap. The next id is now a checked add, and a cursor with no next id is not too old.
 - **Added:** Bounded Kani proofs that an installation grant and a holder-side attenuation contain the request. The check is `first_not_held`, which `validate_subset` and `attenuate` call; the proofs run it on `workspace:read` and `token:admin`, every subset. A repeated ask is kept once. Every known capability is work (delegatable) or authority, not both. The harnesses are `#[cfg(kani)]` and do not change what a token is granted.
 
+### An open WebSocket stream ends when its member is deactivated
+
+- **Security:** `/ws/subscribe` checked its credential only when the stream opened. Deactivating a member through SCIM revokes their tokens, and #1346 ends their browser sessions at the next request, but an open stream makes no further requests. It kept delivering the workspace's events and kept relaying the member's presence and typing until the client disconnected. Now a stream checks again the credential that opened it, whether a token or a session cookie. It does this before a frame goes out or a client frame is acted on (at most once a second), and at every ping. A revoked or expired token, an ended session, or a member whose SCIM link is inactive closes the stream with `1008`, and the reason says which. A failed lookup closes it too, so the client reconnects and is checked afresh. Follow-up to #1346.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
