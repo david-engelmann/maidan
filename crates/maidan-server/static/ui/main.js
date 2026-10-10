@@ -8,7 +8,7 @@ import { openConnect, openPalette, openTool } from "./palette.js";
 import { authorId, loadMembers } from "./people.js";
 import { registerBrowserPush } from "./push.js";
 import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./realtime.js";
-import { loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
+import { initWorkspaceSwitcher, loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
 import { loadMessages } from "./thread.js";
 import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
@@ -208,6 +208,8 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       });
 
       baseInput.addEventListener("change", loadServerAuth);
+
+      initWorkspaceSwitcher();
 
       document.getElementById("login").onclick = () => {
         if (!oidcLoginPath) return;

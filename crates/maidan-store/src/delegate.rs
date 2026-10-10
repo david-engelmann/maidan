@@ -1499,6 +1499,14 @@ macro_rules! store_delegations {
                 oidc::get_identity(self.pool(), workspace_id, issuer, subject).await
             }
 
+            async fn list_identity_workspaces(
+                &self,
+                identity_id: OidcIdentityId,
+                limit: i64,
+            ) -> Result<Vec<IdentityWorkspace>, StoreError> {
+                oidc::list_identity_workspaces(self.pool(), identity_id, limit).await
+            }
+
             async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError> {
                 oidc::insert_pending(self.pool(), new).await
             }

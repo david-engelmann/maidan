@@ -406,6 +406,7 @@ async fn signed_in(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> Stri
             workspace_id: ws,
             member_id: member,
             api_token_id: None,
+            oidc_identity_id: None,
             expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         })
         .await
