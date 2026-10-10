@@ -117,6 +117,7 @@ where
         workspace_id: ws.id,
         member_id: member.id,
         api_token_id: None,
+        oidc_identity_id: None,
         expires_at: Utc::now() + Duration::hours(1),
     };
     let live_session = store

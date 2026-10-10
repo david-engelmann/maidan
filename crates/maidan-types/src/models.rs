@@ -3136,6 +3136,10 @@ pub struct MaidanSession {
     /// request re-resolves it, so the session holds that token's authority and
     /// ends with it. `None` for an OIDC session.
     pub api_token_id: Option<ApiTokenId>,
+    /// The identity row an OIDC session signed in with: the workspace switcher
+    /// lists that identity's workspaces. `None` for a session made from a
+    /// token, and for one from before migration 0161.
+    pub oidc_identity_id: Option<OidcIdentityId>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
@@ -3145,7 +3149,19 @@ pub struct NewMaidanSession {
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
     pub api_token_id: Option<ApiTokenId>,
+    pub oidc_identity_id: Option<OidcIdentityId>,
     pub expires_at: DateTime<Utc>,
+}
+
+/// One workspace a signed-in identity can switch to: a workspace where the
+/// same issuer and subject have an identity row, with the member it maps to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityWorkspace {
+    pub workspace_id: WorkspaceId,
+    pub workspace_name: String,
+    pub member_id: MemberId,
+    pub handle: String,
+    pub last_login_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
