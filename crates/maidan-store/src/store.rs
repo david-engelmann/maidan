@@ -558,16 +558,21 @@ pub trait ApprovalGateStore: Send + Sync {
         via: &GateDecisionVia,
         audit: crate::AuditFor<ApprovalGate>,
     ) -> Result<Option<ApprovalGate>, StoreError>;
-    /// The workspace's `approval_decide` threshold; `low` when unset.
+    /// The workspace's `approval_decide` threshold and confirmation-link
+    /// lifetime; `low` and 600 seconds when unset.
     async fn get_approval_policy(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<ApprovalPolicy, StoreError>;
-    /// Set the threshold, or restore the default with `None`, audited.
+    /// Set the threshold and the link lifetime, each `None` for its
+    /// default, audited. Both `None` puts the workspace back on the defaults.
+    /// The caller bounds the lifetime; the column's CHECK refuses one outside
+    /// 60..=3600 too.
     async fn set_approval_policy_audited(
         &self,
         workspace_id: WorkspaceId,
         confirm_at: Option<ApprovalRisk>,
+        confirm_link_ttl_seconds: Option<u32>,
         audit: crate::AuditFor<ApprovalPolicy>,
     ) -> Result<ApprovalPolicy, StoreError>;
     /// Issue a confirmation for `new`'s gate and member, or return the live
@@ -1220,6 +1225,16 @@ pub trait SessionStore: Send + Sync {
         issuer: &str,
         subject: &str,
     ) -> Result<OidcIdentity, StoreError>;
+    /// The workspaces a signed-in identity can switch to (the workspace
+    /// switcher): every workspace where the same issuer and subject have an
+    /// identity row, newest sign-in first, at most `limit`. Its own workspace
+    /// is always listed; another is left out when its member is
+    /// SCIM-deactivated or frozen.
+    async fn list_identity_workspaces(
+        &self,
+        identity_id: OidcIdentityId,
+        limit: i64,
+    ) -> Result<Vec<IdentityWorkspace>, StoreError>;
     async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError>;
     async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError>;
 

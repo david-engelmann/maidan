@@ -159,6 +159,7 @@ async fn signed_in(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> Stri
             workspace_id: ws,
             member_id: member,
             api_token_id: None,
+            oidc_identity_id: None,
             expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         })
         .await
@@ -342,6 +343,72 @@ async fn set_policy(env: &Env, t: &Team, confirm_at: &str) {
         "{}",
         res.text().await.unwrap()
     );
+}
+
+/// PUT `body` to the team's approval policy with an admin token: the status
+/// and the body.
+async fn put_policy(env: &Env, t: &Team, body: Value) -> (StatusCode, Value) {
+    let admin = mint(
+        env.store.as_ref(),
+        t.ws,
+        t.approver,
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let res = env
+        .client
+        .put(format!("{}/workspaces/{}/approval-policy", env.base, t.ws))
+        .bearer_auth(&admin)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    (status, res.json().await.unwrap_or(Value::Null))
+}
+
+async fn get_policy(env: &Env, t: &Team) -> Value {
+    env.client
+        .get(format!("{}/workspaces/{}/approval-policy", env.base, t.ws))
+        .bearer_auth(&t.approver_write)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+/// The stored `(created_at, expires_at)` of the gate's one confirmation.
+async fn confirmation_times(
+    env: &Env,
+    gate: ApprovalGateId,
+) -> (chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) {
+    sqlx::query_as(
+        "SELECT created_at, expires_at FROM maidan_approval_confirmations WHERE gate_id = ?",
+    )
+    .bind(gate.0)
+    .fetch_one(&env.pool)
+    .await
+    .unwrap()
+}
+
+/// Move the gate's confirmation `secs` into the past, as if that long had
+/// gone by since it was sent.
+async fn age_confirmation(env: &Env, gate: ApprovalGateId, secs: i64) {
+    let (created, expires) = confirmation_times(env, gate).await;
+    let back = chrono::Duration::seconds(secs);
+    let fmt =
+        |t: chrono::DateTime<chrono::Utc>| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    sqlx::query(
+        "UPDATE maidan_approval_confirmations SET created_at = ?, expires_at = ? WHERE gate_id = ?",
+    )
+    .bind(fmt(created - back))
+    .bind(fmt(expires - back))
+    .bind(gate.0)
+    .execute(&env.pool)
+    .await
+    .unwrap();
 }
 
 /// The headline case: a plain human bearer (no `approval:grant`) asking to
@@ -899,7 +966,8 @@ async fn another_workspace_cannot_use_or_probe_the_link_or_the_gate() {
         );
         assert_eq!(msg, missing, "B can tell A's gate from no gate");
     }
-    // B cannot read or set A's policy.
+    // B cannot read or set A's policy, its link lifetime included, even as
+    // B's admin, and a bad value is not a way to tell A's workspace exists.
     let res = env
         .client
         .get(format!("{}/workspaces/{}/approval-policy", env.base, a.ws))
@@ -908,6 +976,48 @@ async fn another_workspace_cannot_use_or_probe_the_link_or_the_gate() {
         .await
         .unwrap();
     assert!(!res.status().is_success());
+    let b_admin = mint(
+        env.store.as_ref(),
+        b.ws,
+        b.approver,
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    for body in [
+        json!({ "confirm_link_ttl_seconds": 60 }),
+        json!({ "confirm_link_ttl_seconds": 59 }),
+        json!({ "confirm_at": "high" }),
+    ] {
+        let res = env
+            .client
+            .put(format!("{}/workspaces/{}/approval-policy", env.base, a.ws))
+            .bearer_auth(&b_admin)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::FORBIDDEN,
+            "B set A's policy: {body}"
+        );
+        let res = env
+            .client
+            .get(format!("{}/workspaces/{}/approval-policy", env.base, a.ws))
+            .bearer_auth(&b_admin)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::FORBIDDEN,
+            "B's admin read A's policy"
+        );
+    }
+    let a_policy = get_policy(&env, &a).await;
+    assert_eq!(a_policy["is_default"], true, "{a_policy}");
+    assert_eq!(a_policy["confirm_link_ttl_seconds"], 600);
+    assert!(env.audit(a.ws, "approval_policy.set").await.is_empty());
     assert!(!env.gate(gate.id).await.state.is_resolved());
     assert!(env
         .audit(b.ws, "approval_gate.confirmation_requested")
@@ -962,4 +1072,156 @@ async fn a_client_with_url_elicitation_is_asked_to_open_the_link() {
         assert_eq!(res["result"]["resultType"], "complete", "{res}");
         assert_eq!(payload(&res)["status"], "confirmation_required");
     }
+}
+
+/// With nothing set, a link lives ten minutes, as it did when the lifetime
+/// was compiled in.
+#[tokio::test]
+async fn the_default_link_lifetime_stays_ten_minutes() {
+    let env = spawn().await;
+    let t = team(&env, "ttl-default").await;
+    let got = get_policy(&env, &t).await;
+    assert_eq!(got["confirm_link_ttl_seconds"], 600, "{got}");
+    assert_eq!(got["is_default"], true);
+    let gate = open_gate(env.store.as_ref(), t.ws, t.requester, ApprovalRisk::High).await;
+    let out = payload(
+        &env.decide(
+            &t.approver_write,
+            Client::Current(None),
+            json!({ "gate_id": gate.id, "decision": "accept" }),
+        )
+        .await,
+    );
+    let (created, expires) = confirmation_times(&env, gate.id).await;
+    assert_eq!((expires - created).num_seconds(), 600);
+    let said: chrono::DateTime<chrono::Utc> =
+        serde_json::from_value(out["expires_at"].clone()).unwrap();
+    assert_eq!(said, expires, "the result names another expiry");
+
+    // Setting only the threshold keeps the default lifetime.
+    set_policy(&env, &t, "medium").await;
+    let got = get_policy(&env, &t).await;
+    assert_eq!(got["confirm_link_ttl_seconds"], 600, "{got}");
+    assert_eq!(got["is_default"], false);
+}
+
+/// A workspace's lifetime is the one the link is minted with, and the
+/// confirm route refuses the link once it has passed, well inside the
+/// default ten minutes.
+#[tokio::test]
+async fn a_custom_link_lifetime_is_minted_and_enforced() {
+    let env = spawn().await;
+    let t = team(&env, "ttl-custom").await;
+    let (status, set) = put_policy(&env, &t, json!({ "confirm_link_ttl_seconds": 120 })).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    assert_eq!(set["confirm_link_ttl_seconds"], 120);
+    assert_eq!(
+        set["confirm_at"], "low",
+        "the threshold left out is the default"
+    );
+    assert_eq!(set["is_default"], false);
+    let rows = env.audit(t.ws, "approval_policy.set").await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["confirm_link_ttl_seconds"], 120);
+
+    let cookie = signed_in(env.store.as_ref(), t.ws, t.approver).await;
+    let ask = |gate: ApprovalGateId| {
+        let env = &env;
+        let bearer = t.approver_write.clone();
+        async move {
+            payload(
+                &env.decide(
+                    &bearer,
+                    Client::Current(None),
+                    json!({ "gate_id": gate, "decision": "accept" }),
+                )
+                .await,
+            )
+        }
+    };
+
+    // Minted with two minutes, said so in the result.
+    let late = open_gate(env.store.as_ref(), t.ws, t.requester, ApprovalRisk::High).await;
+    let out = ask(late.id).await;
+    let (created, expires) = confirmation_times(&env, late.id).await;
+    assert_eq!((expires - created).num_seconds(), 120);
+    let said: chrono::DateTime<chrono::Utc> =
+        serde_json::from_value(out["expires_at"].clone()).unwrap();
+    assert_eq!(said, expires);
+    // 130 seconds on, the link is dead, though ten minutes have not passed.
+    let (_, token) = link_parts(out["confirmation_url"].as_str().unwrap());
+    age_confirmation(&env, late.id, 130).await;
+    let res = env
+        .confirm(&cookie, true, json!({ "gate_id": late.id, "token": token }))
+        .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::NOT_FOUND,
+        "an expired link confirmed"
+    );
+    assert!(!env.gate(late.id).await.state.is_resolved());
+
+    // 100 seconds on, inside the two minutes, it still works.
+    let early = open_gate(env.store.as_ref(), t.ws, t.requester, ApprovalRisk::High).await;
+    let out = ask(early.id).await;
+    let (_, token) = link_parts(out["confirmation_url"].as_str().unwrap());
+    age_confirmation(&env, early.id, 100).await;
+    let res = env
+        .confirm(
+            &cookie,
+            true,
+            json!({ "gate_id": early.id, "token": token }),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+/// The lifetime is bounded: under a minute or over an hour is a 400 that
+/// changes nothing, and only `token:admin` sets it.
+#[tokio::test]
+async fn the_link_lifetime_is_bounded_and_set_by_admins_only() {
+    let env = spawn().await;
+    let t = team(&env, "ttl-bounds").await;
+    for bad in [
+        json!(59),
+        json!(3601),
+        json!(0),
+        json!(-60),
+        json!(4_294_967_356_i64),
+    ] {
+        let (status, body) = put_policy(&env, &t, json!({ "confirm_link_ttl_seconds": bad })).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}: {body}");
+    }
+    for edge in [60, 3600] {
+        let (status, body) =
+            put_policy(&env, &t, json!({ "confirm_link_ttl_seconds": edge })).await;
+        assert_eq!(status, StatusCode::OK, "{edge}: {body}");
+        assert_eq!(body["confirm_link_ttl_seconds"], edge);
+    }
+    assert_eq!(
+        env.audit(t.ws, "approval_policy.set").await.len(),
+        2,
+        "a refused value was audited as set"
+    );
+
+    // approval:grant and workspace:write are not token:admin.
+    for bearer in [&t.approver_grant, &t.approver_write] {
+        let res = env
+            .client
+            .put(format!("{}/workspaces/{}/approval-policy", env.base, t.ws))
+            .bearer_auth(bearer)
+            .json(&json!({ "confirm_link_ttl_seconds": 60 }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN, "a non-admin set it");
+    }
+    let got = get_policy(&env, &t).await;
+    assert_eq!(got["confirm_link_ttl_seconds"], 3600, "{got}");
+
+    // Both left out: back on the defaults.
+    let (status, body) = put_policy(&env, &t, json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["confirm_link_ttl_seconds"], 600);
+    assert_eq!(body["is_default"], true);
 }

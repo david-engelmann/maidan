@@ -423,13 +423,21 @@ pub struct ConfirmApprovalGate {
     pub token: String,
 }
 
-/// Body for `PUT /workspaces/:id/approval-policy`: the lowest gate risk at
-/// which a model's accept through `approval_decide` needs a person's
-/// confirmation; `null` restores the default, `low`.
+/// Body for `PUT /workspaces/:id/approval-policy`. It replaces the whole
+/// policy: a field left out or `null` is back on its default, and with both
+/// left out the workspace has no policy of its own.
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetApprovalPolicy {
+    /// The lowest gate risk at which a model's accept through
+    /// `approval_decide` needs a person's confirmation. Default `low`.
+    #[serde(default)]
     pub confirm_at: Option<ApprovalRisk>,
+    /// How long a confirmation link lives, in seconds: 60 to 3600. Default
+    /// 600. A link already sent keeps the lifetime it was minted with.
+    #[serde(default)]
+    #[schema(minimum = 60, maximum = 3600)]
+    pub confirm_link_ttl_seconds: Option<i64>,
 }
 
 /// A task's dependency edges plus whether it is ready to run.
@@ -1638,4 +1646,25 @@ pub struct SessionResponse {
     /// Display name of the signed-in member, when one is set. `null` when the
     /// member has none. The id stays in `member_id`.
     pub display_name: Option<String>,
+}
+
+/// One workspace the signed-in person can switch to.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspace {
+    pub workspace_id: WorkspaceId,
+    /// The workspace's display name (a label, not an address).
+    pub name: String,
+    /// The person's member in that workspace.
+    pub member_id: MemberId,
+    pub handle: String,
+    /// `true` for the workspace this session is in.
+    pub current: bool,
+}
+
+/// `GET /auth/session/workspaces`: the session's own workspace first, then
+/// every other workspace the identity it signed in with is a member of,
+/// newest sign-in first, at most 200.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspaces {
+    pub workspaces: Vec<SessionWorkspace>,
 }

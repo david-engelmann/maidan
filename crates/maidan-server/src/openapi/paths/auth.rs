@@ -7,12 +7,13 @@ use crate::dto::{
     ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace,
-    SearchQuery, SessionResponse,
+    SearchQuery, SessionResponse, SessionWorkspaces,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
-    ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, Workspace,
+    ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, ThreadArtifact,
+    ThreadReview, Workspace,
 };
 
 /// Start an OIDC login
@@ -73,6 +74,26 @@ pub fn oidc_logout() {}
     )
 )]
 pub fn get_auth_session() {}
+
+/// List the workspaces the signed-in person can switch to
+///
+/// The session's own workspace first, then every other workspace where the
+/// identity this session signed in with (the same issuer and subject) is a
+/// member, newest sign-in first, at most 200. A session made from a token
+/// lists only its own workspace. A workspace whose member is SCIM-deactivated
+/// or frozen is left out. To switch, sign in again at
+/// `/auth/oidc/login?workspace_id=…`.
+#[utoipa::path(
+    get,
+    path = "/auth/session/workspaces",
+    tag = "auth",
+    security(("sessionCookie" = [])),
+    responses(
+        (status = 200, body = SessionWorkspaces),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn list_auth_session_workspaces() {}
 
 /// Mint the first admin token from the browser session
 #[utoipa::path(
@@ -290,6 +311,50 @@ pub fn ui_list_threads() {}
     )
 )]
 pub fn ui_list_messages() {}
+
+/// List a thread's reviews (console)
+///
+/// The bearer tree's `GET /threads/{id}/reviews` for the console: each
+/// reviewer's current review, so the approval card names who decided after a
+/// reload.
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/reviews",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<ThreadReview>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_reviews() {}
+
+/// List a thread's linked artifacts (console)
+///
+/// The bearer tree's `GET /threads/{id}/artifacts` for the console: who linked
+/// each artifact to the thread and when, so the approval card can say so and
+/// flag an artifact the packet pinned that the thread no longer links.
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/artifacts",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<ThreadArtifact>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_thread_artifacts() {}
 
 /// Search a workspace's messages (console)
 #[utoipa::path(

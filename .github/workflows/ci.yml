@@ -123,6 +123,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - uses: helm/kind-action@v1
         with:
           install_only: true
@@ -391,12 +401,18 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      docker:
-        image: docker:dind
-        options: --privileged
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -494,12 +510,18 @@ jobs:
     # The job fails when the workspace or any crate drops under its floor in
     # .config/coverage-floors.toml. It is not a required check (see
     # docs/Decisions.md, "Coverage floors are per crate and advisory").
-    services:
-      docker:
-        image: docker:dind
-        options: --privileged
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -547,9 +569,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A cold image build of the server took 14 m 12 s on a loaded runner on
+    # 2026-10-09, and two runs hit the old 15-minute limit mid-build.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: validate quickstart stack
         # No network/build: guards the one-command quickstart files from bit-rot
         # (compose validity + build-context/dockerfile resolution + script syntax).
@@ -625,6 +659,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: two-replica scale-out smoke
         run: bash scripts/scale-out-smoke.sh
 
@@ -640,6 +684,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: build maidan-postgres
         run: docker build -f docker/Dockerfile.db -t maidan-postgres:ci docker
       - name: point-in-time recovery drill
@@ -758,9 +812,21 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Builds the same server image; its last pass on 2026-10-09 took about
+    # 15 minutes, at the old limit.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: build images
         run: |
           docker build \
@@ -793,6 +859,16 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo

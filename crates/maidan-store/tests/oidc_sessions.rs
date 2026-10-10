@@ -120,6 +120,7 @@ async fn session_create_get_and_delete() {
             workspace_id,
             member_id,
             api_token_id: None,
+            oidc_identity_id: None,
             expires_at: Utc::now() + Duration::hours(1),
         })
         .await

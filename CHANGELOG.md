@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Local OAuth development provider (Keycloak)
+
+- **Added:** `scripts/oauth-dev-provider.sh` starts a local Keycloak 26.8 with Client ID Metadata Document support, for developing Maidan's MCP authorization against a real provider. `examples/oauth-dev/compose.yaml` and `examples/keycloak/maidan-mcp-reference-realm.json` hold the container and realm; `scripts/mcp-oauth-smoke.sh` exercises the flow. Development only.
+
 ### The change flow can mark a draft ready (mark-ready app only)
 
 - **Added:** `POST /operator/github/mark-ready` flips a draft pull request to ready for review via the GraphQL `markPullRequestReadyForReview` mutation (GitHub's REST `draft: false` is a silent no-op; the flip counts only when the mutation answers `isDraft: false`). Callable only by the mark-ready app (the operator-designated client, `MAIDAN_MARK_READY_APP_ID`); the flip lands only on a `feature/agent-*` head into the workspace's allowlisted base for that repo. Never prod, never a merge, never any other PR mutation. Every call that reaches the handler is audited (`github.mark_ready`). Records the maintainer's 2026-10-06 decision: Maidan does the flip; the mark-ready app stays without `contents:write`.
@@ -1911,6 +1915,48 @@ Refs #1253
 ### The board specs wait until the console has finished signing in
 
 - **Fixed:** `ui-tests/tests/board.spec.ts` opened the board by filling the token and clicking Refresh. Leaving the field already signs in and loads the channels, so Refresh started a second load, and the row click waited on neither request. On a busy full run "a refused subscribe shows the server's reason" timed out on the channel row; alone, it passed. The helper now waits for the page's first session read, signs in by leaving the token field, and clicks the row only after that sign-in's channel response.
+
+### Outbound GitHub calls can authenticate as a GitHub App
+
+- **Added:** with `MAIDAN_GITHUB_APP_ID`, `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` set (the key also from `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`), the change flow, comments, reviews and check runs authenticate as the app instead of with `MAIDAN_GITHUB_TOKEN`. Maidan signs an RS256 JWT with the app key, exchanges it for an installation token, and keeps the token until five minutes before it expires, with one exchange at a time. `MAIDAN_GITHUB_WRITE_REPOS` still bounds every write before a token is fetched. A partial app config or a key that does not parse refuses boot, naming the variable and never the value. A refused exchange is a misconfiguration; a rate-limited or failing one is retried. Without the app, `MAIDAN_GITHUB_TOKEN` works as before. Signing uses `ring`, not the `rsa` crate.
+
+### A failed lease renewal stops the deploy recipe
+
+- **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
+### A design note for the hosted console
+
+- **Docs:** `docs/Hosted Console.md` sets out the hosted console's first version against the code as it stands. It covers:
+  - sign-up through the instance's existing OIDC provider, off by default;
+  - how one signed-in identity maps to a member in each of several workspaces, and what the session should carry;
+  - what the agent invite (#1144) and `POST /operator/workspaces` (#1208) do and don't allow;
+  - what stays self-hosted only;
+  - the design of the workspace switcher (Open Work Next 6): its listing route, switching by re-sign-in, its tenant-isolation rules and the two-tenant test it needs.
+
+  Each open question carries a recommended answer. The note is published in the book under Design.
+
+### The console can switch between your workspaces
+
+- **Added:** `GET /auth/session/workspaces` lists the workspaces the signed-in person can switch to: the session's own first, then every other workspace where the identity they signed in with (the same issuer and subject) is a member, newest sign-in first, at most 200. A workspace whose member is SCIM-deactivated or frozen is left out. A session made from a token lists only its own workspace, and a bearer is refused.
+- **Added:** For a person in more than one workspace, the console header shows **Switch workspace**. It opens a list you can search by name. Choosing a workspace signs you in there again through the identity provider (`/auth/oidc/login`); the page never mints a session for another workspace. Open Work Next 6, designed in `docs/Hosted Console.md`.
+- **Changed:** An OIDC session records the identity row it signed in with (`maidan_sessions.oidc_identity_id`, migration 0161), so the list follows the identity and never the member, which can hold more than one linked subject. Sessions from before the migration list only their own workspace until the next sign-in.
+- **Changed:** Signing in ends this browser's previous session, as the token exchange already did. Before, a switch left the old session live until it expired. The end is audited as `session.delete` with reason `switched`.
+
+### A workspace sets how long an approval confirmation link lives
+
+- **Added:** the workspace approval policy (`GET`/`PUT /workspaces/{id}/approval-policy`) has `confirm_link_ttl_seconds`, from 60 to 3600 and 600 by default. `approval_decide` mints its confirmation link with it. The confirm route refuses the link once that time has passed, because the store's expiry check reads the `expires_at` minted with it. Before this the lifetime was ten minutes, compiled in. A value outside the bounds is a 400 that changes nothing. Setting it takes `token:admin` and is audited as `approval_policy.set` with the new lifetime. A link keeps the lifetime it was sent with. The PUT replaces the policy, so a field left out is back on its default. Migration 0149 adds the column, with a CHECK, on SQLite and Postgres. `ApprovalConfirmationKeys::with_ttl` is gone from `maidan-mcp`: the lifetime is the workspace's now.
+
+### The approval card names who decided after a reload, and who linked each artifact
+
+- **Added:** `GET /ui/api/threads/{tid}/reviews` and `GET /ui/api/threads/{tid}/artifacts`, the bearer tree's reads of a task's reviews and artifact links behind the session proxy. They run the same handlers, so a caller gets exactly what the review packet read gives them: `workspace:read`, the thread's workspace, and membership of a private channel. Another workspace's session gets the packet read's refusal and none of the data.
+- **Changed:** A review row in Needs you names who decided from the task's reviews when it loads, so a reload keeps the decider. A dismissed review, or an approval of an earlier hand-off, names nobody. Each artifact line says who linked it to the task and when. A hash the packet pinned that the task no longer links says "no longer linked to the task" again, since approving that packet is refused. When the links can't be read, the line says who uploaded the bytes and flags nothing. These are the follow-ups #1316 deferred.
+
+### A member the identity provider deactivates is signed out
+
+- **Security:** A member deactivated through SCIM (`active: false`) could still sign in through OIDC, since the provider vouches for the person regardless, and a browser session they already held kept working until it expired. Deactivation revoked only API tokens. Now the OIDC callback refuses an inactive SCIM member with `403`, and every session request checks the member: a deactivated member's session is refused from its next request on, and that request deletes it, audited as `session.delete` with reason `member_deactivated` (a failed delete still refuses, and the next request tries again). Found by the hosted-console design note (#1345).
+
+### The palette's next-review spec waits until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/palette.spec.ts` "the palette opens the next review waiting on me" filled the token and clicked Refresh, the same double load #1338 removed from `board.spec.ts`, and it waited on neither the sign-in's nor the board's needs-you answer. Rebuilding the needs-you list detaches each row, and a detached row loses focus, so an answer that landed after Enter left no focused decision button. On a busy full run the last check failed once; alone, it passed. The spec now signs in by leaving the token field, waits for that sign-in's channel and needs-you answers, opens the board, and opens the palette only after the board's own needs-you answer has arrived and re-rendered the list. Test-only.
 
 ## [412.0.0] — 2026-09-28
 
