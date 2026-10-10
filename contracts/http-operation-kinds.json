@@ -31,6 +31,7 @@
   {"method":"GET","path":"/auth/session","kind":"changes","reason":"Deletes the caller's session row when it has expired, then refuses it."},
   {"method":"POST","path":"/auth/session/from-token","kind":"changes"},
   {"method":"POST","path":"/auth/session/mint","kind":"changes"},
+  {"method":"GET","path":"/auth/session/workspaces","kind":"changes","reason":"Deletes the caller's session row when it has expired, then refuses it."},
   {"method":"GET","path":"/capability-sets","kind":"reads"},
   {"method":"GET","path":"/channels/{cid}/blocked","kind":"reads"},
   {"method":"GET","path":"/channels/{cid}/dlq","kind":"reads"},
