@@ -407,20 +407,17 @@ const SQLITE_UP_V144: &str =
     include_str!("../../../migrations/sqlite/0144_thread_state_version.sql");
 const SQLITE_UP_V145: &str = include_str!("../../../migrations/sqlite/0145_review_packets.sql");
 const SQLITE_UP_V146: &str = include_str!("../../../migrations/sqlite/0146_bound_verdicts.sql");
-<<<<<<< HEAD
+const SQLITE_UP_V147: &str = include_str!("../../../migrations/sqlite/0147_evidence_actors.sql");
+const SQLITE_UP_V148: &str = include_str!("../../../migrations/sqlite/0148_approval_decide.sql");
+const SQLITE_UP_V149: &str =
+    include_str!("../../../migrations/sqlite/0149_approval_confirm_link_ttl.sql");
 const SQLITE_UP_V150: &str =
     include_str!("../../../migrations/sqlite/0150_oauth_clients_codes_grants.sql");
 const SQLITE_UP_V151: &str =
     include_str!("../../../migrations/sqlite/0151_oauth_pending_requests.sql");
 const SQLITE_UP_V152: &str =
     include_str!("../../../migrations/sqlite/0152_oauth_grant_live_unique.sql");
-=======
-const SQLITE_UP_V147: &str = include_str!("../../../migrations/sqlite/0147_evidence_actors.sql");
-const SQLITE_UP_V148: &str = include_str!("../../../migrations/sqlite/0148_approval_decide.sql");
-const SQLITE_UP_V149: &str =
-    include_str!("../../../migrations/sqlite/0149_approval_confirm_link_ttl.sql");
 const SQLITE_UP_V161: &str = include_str!("../../../migrations/sqlite/0161_session_identity.sql");
->>>>>>> origin/main
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -790,16 +787,13 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 144, SQLITE_UP_V144).await?;
     apply_sqlite(pool, 145, SQLITE_UP_V145).await?;
     apply_sqlite(pool, 146, SQLITE_UP_V146).await?;
-<<<<<<< HEAD
-    apply_sqlite(pool, 150, SQLITE_UP_V150).await?;
-    apply_sqlite(pool, 151, SQLITE_UP_V151).await?;
-    apply_sqlite(pool, 152, SQLITE_UP_V152).await?;
-=======
     apply_sqlite(pool, 147, SQLITE_UP_V147).await?;
     apply_sqlite(pool, 148, SQLITE_UP_V148).await?;
     apply_sqlite(pool, 149, SQLITE_UP_V149).await?;
+    apply_sqlite(pool, 150, SQLITE_UP_V150).await?;
+    apply_sqlite(pool, 151, SQLITE_UP_V151).await?;
+    apply_sqlite(pool, 152, SQLITE_UP_V152).await?;
     apply_sqlite(pool, 161, SQLITE_UP_V161).await?;
->>>>>>> origin/main
     Ok(())
 }
 
