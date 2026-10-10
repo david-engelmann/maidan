@@ -268,6 +268,9 @@
       #ws-switcher ul { list-style: none; margin: .5rem 0; padding: 0; max-height: 18rem; overflow-y: auto; }
       #ws-switcher li button { width: 100%; text-align: left; }
       #ws-switcher li[aria-current="true"] button { font-weight: 600; }
+      #ws-switch-note { margin: 0 0 .5rem; }
+      .no-workspace { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: .75rem 1rem; margin: .5rem 0 1rem; }
+      .no-workspace p { margin: .25rem 0 0; }
       /* The credential is a word after the workspace name, still type. */
       #identity-pill .identity-mode { color: inherit; font-size: 0.75rem; }
       #identity-pill .identity-mode::before { content: "· "; }
