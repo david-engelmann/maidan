@@ -97,6 +97,20 @@ async fn drop_events_partition(
     max_id: i64,
 ) -> Result<u64, StoreError> {
     let name = &part.name;
+    let keeps_sql = format!(
+        "SELECT COALESCE((SELECT max(id) FROM {name}) > $1, FALSE)
+             OR EXISTS (SELECT 1 FROM maidan_legal_holds h
+                        WHERE EXISTS (SELECT 1 FROM {name} e WHERE e.workspace_id = h.workspace_id))"
+    );
+    // Pre-check without the lock: a kept partition must not queue an
+    // ACCESS EXCLUSIVE lock on the whole event log on every batch.
+    let likely_kept: bool = sqlx::query_scalar(&keeps_sql)
+        .bind(max_id)
+        .fetch_one(pool)
+        .await?;
+    if likely_kept {
+        return Ok(0);
+    }
     // Counted before the lock, so the lock is held only for the checks, the
     // cascade and the drop. A row added in between is still checked below.
     let rows: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {name}"))
@@ -106,14 +120,10 @@ async fn drop_events_partition(
     else {
         return Ok(0);
     };
-    let keeps: bool = sqlx::query_scalar(&format!(
-        "SELECT COALESCE((SELECT max(id) FROM {name}) > $1, FALSE)
-             OR EXISTS (SELECT 1 FROM maidan_legal_holds h
-                        WHERE EXISTS (SELECT 1 FROM {name} e WHERE e.workspace_id = h.workspace_id))"
-    ))
-    .bind(max_id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let keeps: bool = sqlx::query_scalar(&keeps_sql)
+        .bind(max_id)
+        .fetch_one(&mut *tx)
+        .await?;
     if keeps {
         tx.rollback().await?;
         return Ok(0);

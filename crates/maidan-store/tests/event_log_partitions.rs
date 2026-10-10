@@ -633,7 +633,7 @@ async fn deleting_an_event_still_cascades_to_its_outbox_and_ingest_rows() {
     let alice = tenant(&pg.store, "a").await;
     let kept = append_at(&pg.store, &alice, Utc::now()).await;
     let gone = append_at(&pg.store, &alice, month(1) + days(1)).await;
-    let peer = uuid::Uuid::new_v4();
+    let peer = uuid::Uuid::now_v7();
     sqlx::query(
         "INSERT INTO maidan_peers (id, workspace_id, name, base_url, token_hash, remote_workspace_id)
          VALUES ($1, $2, 'p', 'https://peer.invalid', $3, $2)",
