@@ -76,3 +76,22 @@ mod tests {
         assert_eq!(RoomLsn::from_max_id(-3), RoomLsn::EMPTY);
     }
 }
+
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// The room high-water is a cursor. A negative `MAX(id)` clamps to
+    /// empty; every non-negative id is kept.
+    #[kani::proof]
+    fn the_room_high_water_is_never_negative() {
+        let id: i64 = kani::any();
+        let room = RoomLsn::from_max_id(id);
+        assert!(room.as_i64() >= 0);
+        if id >= 0 {
+            assert_eq!(room.as_i64(), id);
+        } else {
+            assert_eq!(room, RoomLsn::EMPTY);
+        }
+    }
+}

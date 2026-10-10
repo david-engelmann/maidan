@@ -42,10 +42,12 @@ impl CursorTooOld {
 /// — that is a normal resume just behind the remaining log.
 ///
 /// `after_id <= 0` (fresh) and an empty log (`oldest_id == None`) are
-/// never too old.
+/// never too old. `after_id == i64::MAX` has no next id, so it is not a
+/// gap either: the addition is checked, and a wrapping `+ 1` would call
+/// a cursor at the end of the id space too old.
 pub fn cursor_is_too_old(after_id: i64, oldest_retained_id: Option<i64>) -> bool {
     match oldest_retained_id {
-        Some(oldest) if after_id > 0 => after_id + 1 < oldest,
+        Some(oldest) if after_id > 0 => after_id.checked_add(1).is_some_and(|next| next < oldest),
         _ => false,
     }
 }
@@ -172,6 +174,13 @@ mod tests {
     }
 
     #[test]
+    fn a_cursor_at_the_end_of_the_id_space_is_not_a_gap() {
+        assert!(!cursor_is_too_old(i64::MAX, Some(1)));
+        assert!(!cursor_is_too_old(i64::MAX, Some(i64::MAX)));
+        assert!(!cursor_is_too_old(i64::MAX, None));
+    }
+
+    #[test]
     fn projector_shape_round_trips_and_filters() {
         let shape = ProjectorShape {
             workspace_id: ws(),
@@ -233,5 +242,63 @@ mod tests {
         assert!(parse_projector_types("message_posted,not_a_kind").is_err());
         assert!(parse_projector_types("").unwrap().is_empty());
         assert!(parse_projector_types("  ,  ").unwrap().is_empty());
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// The gap rule over every cursor and every retained floor.
+    /// A fresh cursor, an empty log, an adjacent resume, and a cursor
+    /// already at `i64::MAX` are not too old. A next id strictly behind
+    /// the floor is.
+    #[kani::proof]
+    fn a_pruned_gap_is_the_only_cursor_that_is_too_old() {
+        let after: i64 = kani::any();
+        let oldest: i64 = kani::any();
+        let retained: bool = kani::any();
+        let floor = retained.then_some(oldest);
+        let too_old = cursor_is_too_old(after, floor);
+
+        if after <= 0 || floor.is_none() {
+            assert!(!too_old);
+        }
+        match after.checked_add(1) {
+            Some(next) if after > 0 => {
+                if let Some(oldest) = floor {
+                    assert_eq!(too_old, next < oldest);
+                    if next == oldest || after >= oldest {
+                        assert!(!too_old);
+                    }
+                }
+            }
+            Some(_) => assert!(!too_old),
+            None => assert!(!too_old),
+        }
+    }
+
+    /// Catch-up uses the same rule, negated: allowed exactly when the
+    /// cursor is not sitting in a pruned gap.
+    #[kani::proof]
+    fn catch_up_is_allowed_exactly_when_the_cursor_is_not_too_old() {
+        let after: i64 = kani::any();
+        let oldest: i64 = kani::any();
+        let retained: bool = kani::any();
+        let floor = retained.then_some(oldest);
+        assert_eq!(
+            crate::log_snapshot::catch_up_allowed(after, floor),
+            !cursor_is_too_old(after, floor)
+        );
+    }
+
+    #[kani::proof]
+    fn a_too_old_body_always_says_to_refetch() {
+        let after: i64 = kani::any();
+        let oldest: i64 = kani::any();
+        let body = CursorTooOld::new(after, oldest);
+        assert!(body.must_refetch);
+        assert_eq!(body.after_id, after);
+        assert_eq!(body.oldest_id, oldest);
     }
 }

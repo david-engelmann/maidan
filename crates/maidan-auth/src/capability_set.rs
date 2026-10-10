@@ -94,23 +94,30 @@ pub fn held_sets(held: &[String]) -> Vec<String> {
 
 fn validate_held(held: &[String], requested: &[String]) -> Result<(), String> {
     capability::validate_list(requested)?;
-    for cap in requested {
-        if !held.iter().any(|h| h == cap) {
-            return Err(format!("capability {cap} exceeds holder grant"));
-        }
+    let held_refs: Vec<&str> = held.iter().map(String::as_str).collect();
+    let requested_refs: Vec<&str> = requested.iter().map(String::as_str).collect();
+    if let Some(cap) = capability::first_not_held(&held_refs, &requested_refs) {
+        return Err(format!("capability {cap} exceeds holder grant"));
     }
     Ok(())
 }
 
-/// Dedup while preserving first-seen order (holder / set order).
-fn unique_in_order(caps: &[String]) -> Vec<String> {
+/// Dedup while preserving first-seen order. The `&str` form is what the
+/// proof checks; tokens still get `String`s.
+pub(crate) fn unique_strs<'a>(caps: &[&'a str]) -> Vec<&'a str> {
     let mut out = Vec::with_capacity(caps.len());
     for cap in caps {
-        if !out.iter().any(|c| c == cap) {
-            out.push(cap.clone());
+        if !out.contains(cap) {
+            out.push(*cap);
         }
     }
     out
+}
+
+/// Dedup while preserving first-seen order (holder / set order).
+fn unique_in_order(caps: &[String]) -> Vec<String> {
+    let refs: Vec<&str> = caps.iter().map(String::as_str).collect();
+    unique_strs(&refs).into_iter().map(str::to_string).collect()
 }
 
 /// Holder-side attenuation: `requested` must be a known subset of `held`.
@@ -386,5 +393,59 @@ mod tests {
             crate::capability::validate_list(&[RETIRED.to_string()]).is_err(),
             "a token must not be mintable with {RETIRED}"
         );
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::unique_strs;
+    use crate::capability::{first_not_held, TOKEN_ADMIN, WORKSPACE_READ};
+
+    fn pair(read: bool, admin: bool) -> &'static [&'static str] {
+        match (read, admin) {
+            (false, false) => &[],
+            (true, false) => &[WORKSPACE_READ],
+            (false, true) => &[TOKEN_ADMIN],
+            (true, true) => &[WORKSPACE_READ, TOKEN_ADMIN],
+        }
+    }
+
+    /// Holder-side attenuation over one work capability and one authority
+    /// capability. A duplicate ask is a third slice, checked separately so
+    /// the list stays a fixed size. Unwind covers `workspace:read`.
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn attenuation_never_amplifies() {
+        let hold_read: bool = kani::any();
+        let hold_admin: bool = kani::any();
+        let ask_read: bool = kani::any();
+        let ask_admin: bool = kani::any();
+        let held = pair(hold_read, hold_admin);
+        let requested = pair(ask_read, ask_admin);
+        match first_not_held(held, requested) {
+            Some(_) => {
+                assert!((ask_read && !hold_read) || (ask_admin && !hold_admin));
+            }
+            None => {
+                // Dedup is a separate harness. Keeping it out of this one
+                // avoids unrolling Vec growth across every subset.
+                if ask_read {
+                    assert!(hold_read);
+                }
+                if ask_admin {
+                    assert!(hold_admin);
+                }
+            }
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(16)]
+    fn a_repeated_ask_is_kept_once() {
+        let held = &[WORKSPACE_READ, TOKEN_ADMIN];
+        let requested = &[WORKSPACE_READ, WORKSPACE_READ];
+        assert!(first_not_held(held, requested).is_none());
+        let out = unique_strs(requested);
+        assert_eq!(out, &[WORKSPACE_READ]);
     }
 }
