@@ -90,7 +90,7 @@ sequenceDiagram
 ### The front door: no workspace id
 
 `GET /auth/oidc/login` without `workspace_id` starts the same flow with no
-workspace (a pending row of kind `front_door`, migration 0162). The callback
+workspace (a pending row of kind `front_door`, migration 0163). The callback
 then:
 
 - finds the workspaces where this issuer and subject already have an identity
