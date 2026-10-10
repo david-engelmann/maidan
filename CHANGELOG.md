@@ -1990,6 +1990,10 @@ Refs #1253
 - **Fixed:** `cursor_is_too_old` used `after_id + 1`, which overflows at `i64::MAX` and, in a release build, wraps to a negative id that looks like a pruned gap. The next id is now a checked add, and a cursor with no next id is not too old.
 - **Added:** Bounded Kani proofs that an installation grant and a holder-side attenuation contain the request. The check is `first_not_held`, which `validate_subset` and `attenuate` call; the proofs run it on `workspace:read` and `token:admin`, every subset. A repeated ask is kept once. Every known capability is work (delegatable) or authority, not both. The harnesses are `#[cfg(kani)]` and do not change what a token is granted.
 
+### A needs-you reload keeps a keyboard user on their decision button
+
+- **Fixed:** any reload of the needs-you list (a realtime reconnect, the live-poll fallback, a board refresh, a row leaving after a decision) dropped keyboard focus from the decision button a person was on to the page body. The list is rebuilt by detaching every row, even the ones it keeps, and a detached element loses focus. The render now notes the focused control by its row's key and its label and puts focus back on that control afterwards. When the control can't take focus again (a redrawn review row starts with its approve buttons disabled until its packet loads), focus goes to an enabled control in the same row. If that item has left the queue, focus moves to the row that took its place (its primary button, else its first usable control), or to the list heading when no row is left, and the polite status region says that focus moved. `ui-tests/tests/needs-you-focus.spec.ts` covers both cases.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated
