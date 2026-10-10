@@ -66,3 +66,11 @@ async fn migrations_are_idempotent() {
         .await
         .expect("re-apply migrations");
 }
+
+#[tokio::test]
+async fn identity_workspaces_roundtrip() {
+    let Some((store, _container)) = spawn().await else {
+        return;
+    };
+    common::run_identity_workspaces_scenario(&store).await;
+}

@@ -1079,6 +1079,13 @@ pub fn router(state: AppState) -> Router {
             "/auth/session",
             get(session::get_session).layer(session_auth.clone()),
         )
+        // The workspaces this person can switch to. Switching itself is a fresh
+        // sign-in at `/auth/oidc/login`; no route mints a session for another
+        // workspace from this one.
+        .route(
+            "/auth/session/workspaces",
+            get(session::list_session_workspaces).layer(session_auth.clone()),
+        )
         .route(
             "/auth/session/mint",
             post(session::mint_first_admin_token).layer(session_auth.clone()),
