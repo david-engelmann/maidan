@@ -1923,6 +1923,23 @@ Refs #1253
 ### A failed lease renewal stops the deploy recipe
 
 - **Fixed:** `examples/recipes/deploy_agent.py` kept deploying after a claim renewal failed, because that failure died in the renewer thread and the wait carried on. A failed renewal now stops the wait before anything is deployed, the claim is released or left to lapse when release is refused, and the process exits non-zero saying `lease renewal failed, not deploying`.
+### A design note for the hosted console
+
+- **Docs:** `docs/Hosted Console.md` sets out the hosted console's first version against the code as it stands. It covers:
+  - sign-up through the instance's existing OIDC provider, off by default;
+  - how one signed-in identity maps to a member in each of several workspaces, and what the session should carry;
+  - what the agent invite (#1144) and `POST /operator/workspaces` (#1208) do and don't allow;
+  - what stays self-hosted only;
+  - the design of the workspace switcher (Open Work Next 6): its listing route, switching by re-sign-in, its tenant-isolation rules and the two-tenant test it needs.
+
+  Each open question carries a recommended answer. The note is published in the book under Design.
+
+### The console can switch between your workspaces
+
+- **Added:** `GET /auth/session/workspaces` lists the workspaces the signed-in person can switch to: the session's own first, then every other workspace where the identity they signed in with (the same issuer and subject) is a member, newest sign-in first, at most 200. A workspace whose member is SCIM-deactivated or frozen is left out. A session made from a token lists only its own workspace, and a bearer is refused.
+- **Added:** For a person in more than one workspace, the console header shows **Switch workspace**. It opens a list you can search by name. Choosing a workspace signs you in there again through the identity provider (`/auth/oidc/login`); the page never mints a session for another workspace. Open Work Next 6, designed in `docs/Hosted Console.md`.
+- **Changed:** An OIDC session records the identity row it signed in with (`maidan_sessions.oidc_identity_id`, migration 0161), so the list follows the identity and never the member, which can hold more than one linked subject. Sessions from before the migration list only their own workspace until the next sign-in.
+- **Changed:** Signing in ends this browser's previous session, as the token exchange already did. Before, a switch left the old session live until it expired. The end is audited as `session.delete` with reason `switched`.
 
 ### A workspace sets how long an approval confirmation link lives
 
@@ -1943,6 +1960,9 @@ Refs #1253
 - **Added:** `postgres/partitions.rs` creates the coming months' partitions, at boot and at the start of every retention sweep. It keeps the current month plus three ahead, and a DEFAULT partition catches any row no month covers. It moves rows that DEFAULT already holds into a new month when that month is created. Each partition carries the event log's autovacuum settings: vacuum and insert-vacuum at 5%, analyze at 2%. `Store::maintain_partitions` exposes it, and does nothing on SQLite.
 - **Changed:** Instance event retention drops a month whole once its range ends by the cutoff and every row in it is one the batched delete would have removed. That means none above the delivery-cursor floor and none in a workspace under legal hold. Any other partition that may hold rows before the cutoff gets the batched `DELETE`, inside that partition only: a kept month, the month the cutoff falls in, the legacy partition and DEFAULT. The rows left are exactly those the delete alone would have left. Per-workspace event retention still deletes, now limited to the partitions before its cutoff.
 - **Changed:** `maidan_outbox.log_id` and `maidan_federated_ingest.local_event_id` no longer have foreign keys to `maidan_events`, since a key on `id` alone can't reference a partitioned table. Their `ON DELETE CASCADE` is now a delete trigger on the event log, plus an explicit delete before a partition drop. `maidan_outbox.log_id` gets the index the cascade never had.
+### The palette's next-review spec waits until the console has finished signing in
+
+- **Fixed:** `ui-tests/tests/palette.spec.ts` "the palette opens the next review waiting on me" filled the token and clicked Refresh, the same double load #1338 removed from `board.spec.ts`, and it waited on neither the sign-in's nor the board's needs-you answer. Rebuilding the needs-you list detaches each row, and a detached row loses focus, so an answer that landed after Enter left no focused decision button. On a busy full run the last check failed once; alone, it passed. The spec now signs in by leaving the token field, waits for that sign-in's channel and needs-you answers, opens the board, and opens the palette only after the board's own needs-you answer has arrived and re-rendered the list. Test-only.
 
 ## [412.0.0] — 2026-09-28
 

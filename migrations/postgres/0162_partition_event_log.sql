@@ -7,9 +7,10 @@
 -- floor and legal holds allow it; see `postgres/retention.rs`).
 --
 -- The primary key must include the partition key, so it becomes
--- `(id, occurred_at)`. `id` still comes from one sequence, so it is still
--- unique, and every read still orders by `id`: cursors, the per-workspace hash
--- chain (`prev_hash`) and the delivery floor are unchanged.
+-- `(id, occurred_at)`. `id` still comes from one sequence, so it is unique
+-- by sequence, not by a separate unique constraint, and every read still
+-- orders by `id`: cursors, the per-workspace hash chain (`prev_hash`) and
+-- the delivery floor are unchanged.
 --
 -- Existing rows are not copied. The old table is renamed and attached as one
 -- partition covering everything before the first month after its newest row

@@ -326,6 +326,11 @@ async fn retention_drops_months_past_the_cutoff_and_deletes_inside_the_one_it_fa
     for gone in [legacy, m1a, m1b, m2, m3_before] {
         assert!(pg.store.get_stored_event(gone).await.is_err());
     }
+    // The chain still verifies after the whole-month drop and the
+    // partial-month batch delete.
+    for ws in [alice.workspace_id, bob.workspace_id] {
+        assert!(pg.store.verify_event_chain(ws).await.expect("verify").ok);
+    }
     // The next sweep finds nothing more.
     assert_eq!(prune_all(&pg.store, cutoff, i64::MAX, 1_000).await, 0);
     // And a new row still gets a fresh id.

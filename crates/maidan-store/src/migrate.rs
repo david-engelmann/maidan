@@ -224,6 +224,8 @@ const POSTGRES_UP_V148: &str =
     include_str!("../../../migrations/postgres/0148_approval_decide.sql");
 const POSTGRES_UP_V149: &str =
     include_str!("../../../migrations/postgres/0149_approval_confirm_link_ttl.sql");
+const POSTGRES_UP_V161: &str =
+    include_str!("../../../migrations/postgres/0161_session_identity.sql");
 // 0162 is Postgres only: SQLite keeps the event log in one table.
 const POSTGRES_UP_V162: &str =
     include_str!("../../../migrations/postgres/0162_partition_event_log.sql");
@@ -406,6 +408,7 @@ const SQLITE_UP_V147: &str = include_str!("../../../migrations/sqlite/0147_evide
 const SQLITE_UP_V148: &str = include_str!("../../../migrations/sqlite/0148_approval_decide.sql");
 const SQLITE_UP_V149: &str =
     include_str!("../../../migrations/sqlite/0149_approval_confirm_link_ttl.sql");
+const SQLITE_UP_V161: &str = include_str!("../../../migrations/sqlite/0161_session_identity.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -611,10 +614,14 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 147, POSTGRES_UP_V147).await?;
     apply_postgres(pool, 148, POSTGRES_UP_V148).await?;
     apply_postgres(pool, 149, POSTGRES_UP_V149).await?;
+<<<<<<< HEAD
     apply_postgres(pool, 162, POSTGRES_UP_V162).await?;
     // The partitioned tables need their months ready before the first write,
     // or rows land in DEFAULT until the first retention sweep.
     crate::postgres::partitions::maintain(pool, chrono::Utc::now()).await?;
+=======
+    apply_postgres(pool, 161, POSTGRES_UP_V161).await?;
+>>>>>>> origin/main
     Ok(())
 }
 
@@ -778,6 +785,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 147, SQLITE_UP_V147).await?;
     apply_sqlite(pool, 148, SQLITE_UP_V148).await?;
     apply_sqlite(pool, 149, SQLITE_UP_V149).await?;
+    apply_sqlite(pool, 161, SQLITE_UP_V161).await?;
     Ok(())
 }
 
