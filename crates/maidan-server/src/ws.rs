@@ -73,6 +73,9 @@ enum StreamCredential {
     Token {
         token_id: ApiTokenId,
         member_id: MemberId,
+        /// The delegate presenting a delegated token, when that is someone
+        /// other than the member it acts for. Either one deactivated ends it.
+        actor_id: Option<MemberId>,
     },
     /// The browser session cookie from the upgrade request.
     Session {
@@ -86,17 +89,24 @@ impl StreamCredential {
     /// since it cannot show the credential still holds; the client reconnects
     /// and is checked afresh.
     async fn recheck(&self, state: &AppState) -> Result<(), &'static str> {
-        let member_id = match self {
+        let members = match self {
             Self::Open => return Ok(()),
-            Self::Token { member_id, .. } | Self::Session { member_id, .. } => *member_id,
+            Self::Token {
+                member_id,
+                actor_id,
+                ..
+            } => [Some(*member_id), *actor_id],
+            Self::Session { member_id, .. } => [Some(*member_id), None],
         };
         // Deactivation first: it also revokes the member's tokens and ends its
         // sessions, so checking those first would close the stream with a
         // vaguer reason than the one that caused it.
-        match state.store.get_scim_user(member_id).await {
-            Ok(Some(user)) if !user.active => return Err("member deactivated"),
-            Ok(_) => {}
-            Err(_) => return Err("credential check failed"),
+        for member_id in members.into_iter().flatten() {
+            match state.store.get_scim_user(member_id).await {
+                Ok(Some(user)) if !user.active => return Err("member deactivated"),
+                Ok(_) => {}
+                Err(_) => return Err("credential check failed"),
+            }
         }
         match self {
             Self::Open => Ok(()),
@@ -599,6 +609,7 @@ async fn read_subscribe(
             Some(token_id) => StreamCredential::Token {
                 token_id,
                 member_id: ctx.member_id,
+                actor_id: (ctx.actor_id != ctx.member_id).then_some(ctx.actor_id),
             },
             None => return Err((1008u16, "invalid or expired token".to_string()).into()),
         };

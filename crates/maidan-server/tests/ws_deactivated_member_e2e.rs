@@ -391,3 +391,55 @@ async fn a_deactivated_members_token_stream_ends_too() {
         Frame::Json(_)
     ));
 }
+
+/// A delegated token's stream checks the delegate presenting it as well as
+/// the member it acts for: a delegate whose SCIM link goes inactive outside
+/// the audited path (which would also revoke the grant) still ends it.
+#[tokio::test]
+async fn a_deactivated_delegates_token_stream_ends_too() {
+    let env = spawn().await;
+    let a = env.workspace("Alpha").await;
+    let (_, alice) = env.sign_in(a, "alice").await;
+    let (_, dave) = env.sign_in(a, "dave").await;
+    let grant = env
+        .store
+        .create_delegation_grant(maidan_types::NewDelegationGrant {
+            workspace_id: a,
+            subject_id: alice,
+            delegate_id: dave,
+            capabilities: vec![
+                capability::WORKSPACE_READ.into(),
+                capability::EVENT_SUBSCRIBE.into(),
+            ],
+            purpose: "cover the stream".into(),
+            authorized_by: alice,
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        })
+        .await
+        .unwrap();
+    let dave_token = env.token(a, dave).await;
+    let exchanged: Value = reqwest::Client::new()
+        .post(format!("http://{}/tokens/delegate", env.addr))
+        .bearer_auth(&dave_token)
+        .json(&json!({ "grant_id": grant.id.0 }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let delegated = exchanged["token"]["secret"]
+        .as_str()
+        .expect("delegated secret");
+    let mut ws = env.stream(a, alice, None, Some(delegated)).await;
+
+    env.store
+        .update_scim_user(dave, None, false)
+        .await
+        .unwrap()
+        .expect("SCIM user");
+    tokio::time::sleep(PAST_RECHECK_GAP).await;
+
+    say(&mut ws, "away").await;
+    assert_ended(until(&mut ws, |_| false).await, "member deactivated");
+}
