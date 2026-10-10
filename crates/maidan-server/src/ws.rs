@@ -88,14 +88,23 @@ impl StreamCredential {
     async fn recheck(&self, state: &AppState) -> Result<(), &'static str> {
         let member_id = match self {
             Self::Open => return Ok(()),
-            Self::Token {
-                token_id,
-                member_id,
-            } => {
+            Self::Token { member_id, .. } | Self::Session { member_id, .. } => *member_id,
+        };
+        // Deactivation first: it also revokes the member's tokens and ends its
+        // sessions, so checking those first would close the stream with a
+        // vaguer reason than the one that caused it.
+        match state.store.get_scim_user(member_id).await {
+            Ok(Some(user)) if !user.active => return Err("member deactivated"),
+            Ok(_) => {}
+            Err(_) => return Err("credential check failed"),
+        }
+        match self {
+            Self::Open => Ok(()),
+            Self::Token { token_id, .. } => {
                 maidan_auth::resolve_token_id(state.store.as_ref(), *token_id)
                     .await
                     .map_err(|_| "token no longer valid")?;
-                *member_id
+                Ok(())
             }
             Self::Session { cookie, member_id } => {
                 let session = load_session(state, cookie)
@@ -104,13 +113,8 @@ impl StreamCredential {
                 if session.member_id != *member_id {
                     return Err("session ended");
                 }
-                *member_id
+                Ok(())
             }
-        };
-        match state.store.get_scim_user(member_id).await {
-            Ok(Some(user)) if !user.active => Err("member deactivated"),
-            Ok(_) => Ok(()),
-            Err(_) => Err("credential check failed"),
         }
     }
 }

@@ -382,11 +382,9 @@ async fn a_deactivated_members_token_stream_ends_too() {
     tokio::time::sleep(PAST_RECHECK_GAP).await;
 
     say(&mut alice_ws, "away").await;
-    // Deactivation revoked the token, which the recheck sees first.
-    assert_ended(
-        until(&mut alice_ws, |_| false).await,
-        "token no longer valid",
-    );
+    // Deactivation also revoked the token, but the re-check looks at the
+    // member first, so the stream says why it really ended.
+    assert_ended(until(&mut alice_ws, |_| false).await, "member deactivated");
     say(&mut bob_ws, "away").await;
     assert!(matches!(
         until(&mut bob_ws, presence_of(bob, "away")).await,
