@@ -24,7 +24,7 @@ interface Element {
   tabIndex: number;
   onclick: ((this: GlobalEventHandlers, ev: MouseEvent) => unknown) | null;
   click(): void;
-  focus(): void;
+  focus(options?: FocusOptions): void;
   showModal(): void;
   close(): void;
 }

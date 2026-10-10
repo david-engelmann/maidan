@@ -55,6 +55,7 @@ period is cut, and clients retry.
 | `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready`: the **mark-ready app**, the client in the change flow that asks Maidan to flip its draft pull requests to ready. An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
 | `MAIDAN_MARK_READY_BASES` | no | Comma-separated `owner/name=branch` pairs: the only base each listed repository's agent pull requests may be marked ready into, for example `example-org/example-repo=dev,example-org/example-skills=main`. Repository names compare case-insensitively, as in `MAIDAN_GITHUB_WRITE_REPOS`. A repository not listed is pinned to no base; the workspace egress allowlist (`owner/name@base`) decides its flips alone. Blank entries are skipped. An entry that is not `owner/name=branch`, a branch name git would refuse, `prod`, or a repository listed twice refuses boot. With `MAIDAN_MARK_READY_APP_ID` set and no pins, boot logs a warning. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
+| `MAIDAN_PUBLIC_ORIGIN` | no | This instance's public origin, such as `https://maidan.example.com` (`https`, or `http` on a loopback host, with no path). OAuth identifiers are built from it. Unset, the instance serves no OAuth metadata. A malformed value refuses boot. See [OAuth](OAuth.md). |
 | `MAIDAN_ALLOWED_HOSTS` | no | Comma-separated host names, without ports, that a request with no credential may name under `AUTH_DISABLED` or the anonymous MCP reader, besides loopback names and IP addresses. A public dev instance lists its own name. See "DNS rebinding". |
 | `MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE` | no | Dev only. A workspace id whose name begins `synthetic-`, read by an MCP `POST` with no credential (read-only tools). Refused under `MAIDAN_ENV=production` and beside `AUTH_DISABLED`. See Integration, "Anonymous reading on a dev instance". |
 | `AUTH_DISABLED` | no       | Serve every request unauthenticated. **Fail-closed:** takes effect only when `MAIDAN_ALLOW_INSECURE_NO_AUTH=1` is *also* set, and never when `MAIDAN_ENV=production` (either violation refuses boot). A stray `AUTH_DISABLED=1` alone now fails startup loudly instead of silently serving an open workspace. Dev/test/CI only. |
@@ -267,6 +268,27 @@ tokens. It does not hold `operator:global` or `audit:read-global`, and a later
 mint cannot add those unless the caller already holds them. No
 `MAIDAN_BOOTSTRAP`, and the route exists on the production image, which is
 built without the bootstrap routes.
+
+### Connect an agent
+
+An admin token (one holding `token:admin`) connects an agent in one call. The
+call creates the agent member and its `maidan.agent.worker` token together,
+and returns the token once:
+
+```bash
+curl -sS -X POST "$MAIDAN_URL/workspaces/$WORKSPACE_ID/agents" \
+  -H "Authorization: Bearer $MAIDAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"handle":"builder","display_name":"Builder"}'
+```
+
+The response is the member and its token (`token.secret`, shown once). The
+member is always an agent. The route takes no capability list and no `kind`,
+so it can't create a human or grant more than the worker set. The member, the
+token and both audit rows (`member.create`, `token.mint`) commit together. A
+taken handle is a `409` and leaves nothing behind. Like the second-workspace
+call, it is on the production image and needs no `MAIDAN_BOOTSTRAP`. The
+console's Connect an agent uses it.
 
 ### HTTP bootstrap (development only)
 
