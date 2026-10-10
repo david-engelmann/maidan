@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use maidan_store::thread_access::readable_thread;
 use maidan_types::*;
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -49,6 +50,15 @@ impl Search for SqliteSearch {
         // RBAC pre-filter: drop hits in denied channels at the query level.
         // SQLite has no array binding — expand `NOT IN (?, …)`.
         let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
+        let reader_id = filters.reader_id.map(|id| id.0);
+        let thread_clause = if reader_id.is_some() {
+            // ?1 refers to the first bind param (workspace_id); the member
+            // id uses a positional `?` bound after the deny list.
+            let f = readable_thread("m.thread_id", "c.workspace_id", "?", "'__dm__'");
+            format!("AND ({f})")
+        } else {
+            String::new()
+        };
         let sql = format!(
             r#"
             SELECT
@@ -76,6 +86,7 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.posted_at >= ?)
               AND (? IS NULL OR m.posted_at < ?)
               {deny_clause}
+              {thread_clause}
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT ?
             "#
@@ -95,6 +106,10 @@ impl Search for SqliteSearch {
             .bind(filters.before);
         for cid in &filters.deny_channels {
             q = q.bind(cid.0);
+        }
+        if let Some(rid) = reader_id {
+            // readable_thread uses the member placeholder 3 times
+            q = q.bind(rid).bind(rid).bind(rid);
         }
         let rows = q.bind(limit).fetch_all(&self.pool).await?;
 
@@ -156,6 +171,13 @@ impl Search for SqliteSearch {
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
 
         let deny_clause = deny_channels_clause_sqlite(&filters.deny_channels);
+        let reader_id = filters.reader_id.map(|id| id.0);
+        let thread_clause = if reader_id.is_some() {
+            let f = readable_thread("m.thread_id", "c.workspace_id", "?", "'__dm__'");
+            format!("AND ({f})")
+        } else {
+            String::new()
+        };
         if sqlite_vec::vec_available(&self.pool).await {
             let query_bytes = embedding_bytes(embedding);
             let sql = format!(
@@ -182,6 +204,7 @@ impl Search for SqliteSearch {
                   AND (? IS NULL OR m.posted_at >= ?)
                   AND (? IS NULL OR m.posted_at < ?)
                   {deny_clause}
+                  {thread_clause}
                 ORDER BY vec_distance_cosine(e.embedding, ?)
                 LIMIT ?
                 "#
@@ -201,6 +224,9 @@ impl Search for SqliteSearch {
                 .bind(filters.before);
             for cid in &filters.deny_channels {
                 q = q.bind(cid.0);
+            }
+            if let Some(rid) = reader_id {
+                q = q.bind(rid).bind(rid).bind(rid);
             }
             let rows = q
                 .bind(&query_bytes)

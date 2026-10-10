@@ -66,10 +66,11 @@ pub(super) async fn search_messages(
     let workspace_id = WorkspaceId(a.workspace_id);
     let limit = clamp_search_limit(a.limit);
     // Exclude private channels the caller can't see at the query level so they
-    // don't crowd out `limit`; the post-filter below is still the
-    // authoritative, DM-aware check.
+    // don't crowd out `limit`. The thread-level `reader_id` filter is the
+    // authoritative, DM-aware check, applied in SQL.
     let deny_channels =
         maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;
+    let reader_id = if auth.bypass { None } else { Some(auth.member_id) };
     let filters = maidan_search::SearchFilters {
         author_id: a.author_id.map(maidan_types::MemberId),
         channel_id: a.channel_id.map(maidan_types::ChannelId),
@@ -77,6 +78,7 @@ pub(super) async fn search_messages(
         after: a.after,
         before: a.before,
         deny_channels,
+        reader_id,
     };
     let hits = match a.mode {
         SearchMessagesMode::Lexical => {
@@ -120,29 +122,8 @@ pub(super) async fn search_messages(
                 .await?
         }
     };
-    // Drop hits the caller can't access — thread-keyed + DM-participant-aware.
-    // Cache the per-thread decision.
-    let hits = if auth.bypass {
-        hits
-    } else {
-        let mut decision: HashMap<ThreadId, bool> = HashMap::new();
-        let mut allowed = Vec::with_capacity(hits.len());
-        for hit in hits {
-            let ok = match decision.get(&hit.thread_id) {
-                Some(v) => *v,
-                None => {
-                    let v =
-                        maidan_auth::can_access_thread(store.as_ref(), auth, hit.thread_id).await?;
-                    decision.insert(hit.thread_id, v);
-                    v
-                }
-            };
-            if ok {
-                allowed.push(hit);
-            }
-        }
-        allowed
-    };
+    // The SQL filters by readable_thread in-query (via SearchFilters.reader_id),
+    // so no post-filter is needed. Bypass mode skips the filter entirely.
     let hits = if a.snippet_only {
         hits.into_iter()
             .map(maidan_search::SearchHit::into_snippet_only)

@@ -15,7 +15,7 @@
 /// placeholders (with any cast the backend needs) bound to the caller's
 /// workspace, its member id and [`maidan_types::DM_CHANNEL_NAME`]. The same
 /// SQL runs on Postgres and SQLite.
-pub(crate) fn readable_thread(
+pub fn readable_thread(
     thread: &str,
     workspace: &str,
     member: &str,
@@ -46,7 +46,7 @@ pub(crate) fn readable_thread(
 
 /// The listing filter: no reader keeps every row, a row on no thread is the
 /// workspace's, and any other row needs [`readable_thread`].
-pub(crate) fn readable_row(
+pub fn readable_row(
     thread_column: &str,
     workspace: &str,
     member: &str,

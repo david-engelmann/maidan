@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use maidan_store::thread_access::readable_thread;
 use maidan_types::*;
 use pgvector::Vector;
 use sqlx::{PgPool, Row};
@@ -200,7 +201,18 @@ impl Search for PostgresSearch {
         // ALL($8)` vacuously true, so no dynamic SQL is needed.
         let deny = deny_channel_uuids(filters);
 
-        let rows = sqlx::query(
+        // Thread-level access: when the caller is known, filter to threads
+        // they can read directly in SQL, so hidden DM/private rows never
+        // crowd out the limit.
+        let reader_id = filters.reader_id.map(|id| id.0);
+        let thread_clause = if reader_id.is_some() {
+            let f = readable_thread("m.thread_id", "$1", "$11::uuid", "'__dm__'");
+            format!("AND ({f})")
+        } else {
+            String::new()
+        };
+
+        let sql = format!(
             r#"
             WITH q AS (
                 SELECT CASE WHEN $7
@@ -236,10 +248,12 @@ impl Search for PostgresSearch {
               AND t.channel_id <> ALL($8)
               AND ($9::timestamptz IS NULL OR m.posted_at >= $9)
               AND ($10::timestamptz IS NULL OR m.posted_at < $10)
+                {thread_clause}
             ORDER BY rank DESC, m.posted_at DESC
             LIMIT $3
             "#,
-        )
+        );
+        let rows = sqlx::query(&sql)
         .bind(workspace_id.0)
         .bind(query)
         .bind(limit)
@@ -250,6 +264,7 @@ impl Search for PostgresSearch {
         .bind(deny)
         .bind(filters.after)
         .bind(filters.before)
+        .bind(reader_id)
         .fetch_all(self.read_pool())
         .await?;
 
@@ -341,6 +356,13 @@ impl Search for PostgresSearch {
         let channel_id = filters.channel_id.map(|id| id.0);
         let author_kind = filters.author_kind.map(|k| k.as_str().to_string());
         let deny = deny_channel_uuids(filters);
+        let reader_id = filters.reader_id.map(|id| id.0);
+        let thread_clause = if reader_id.is_some() {
+            let f = readable_thread("m.thread_id", "$1", "$10::uuid", "'__dm__'");
+            format!("AND ({f})")
+        } else {
+            String::new()
+        };
 
         let sql = format!(
             r#"
@@ -367,6 +389,7 @@ impl Search for PostgresSearch {
               AND t.channel_id <> ALL($7)
               AND ($8::timestamptz IS NULL OR m.posted_at >= $8)
               AND ($9::timestamptz IS NULL OR m.posted_at < $9)
+              {thread_clause}
             ORDER BY e.embedding <=> $2
             LIMIT $3
             "#
@@ -380,7 +403,8 @@ impl Search for PostgresSearch {
             .bind(author_kind)
             .bind(deny)
             .bind(filters.after)
-            .bind(filters.before);
+            .bind(filters.before)
+            .bind(reader_id);
         // When `ef_search` is configured, set it for this query only via a
         // transaction-scoped `SET LOCAL` (pooled connections are reused, so a
         // session-level SET would leak to other queries).

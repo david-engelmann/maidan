@@ -23,6 +23,11 @@ pub struct SearchFilters {
     /// crowd out the requested `limit` (the thread-level post-filter stays the
     /// authoritative, DM-aware check). Empty = no restriction.
     pub deny_channels: Vec<ChannelId>,
+    /// The caller's member ID for thread-level access control. When Some,
+    /// the query filters to threads the member can read via
+    /// `thread_access::readable_thread`, so hidden DM/private rows never
+    /// crowd out the limit and no post-filter is needed.
+    pub reader_id: Option<MemberId>,
 }
 
 impl SearchFilters {
