@@ -299,9 +299,6 @@ mod tests {
     fn custom_scheme_redirect_gives_scheme() {
         // ascii_serialization() would return "null" here; the CSP needs
         // the scheme.
-        assert_eq!(
-            redirect_origin_for_csp("myapp://callback"),
-            "myapp:"
-        );
+        assert_eq!(redirect_origin_for_csp("myapp://callback"), "myapp:");
     }
 }

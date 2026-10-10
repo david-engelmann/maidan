@@ -167,7 +167,11 @@ async fn oauth_authorize_then_exchange_is_single_use() {
         .send()
         .await
         .unwrap();
-    assert_eq!(retry.status(), 201, "a mismatched URI must not burn the code");
+    assert_eq!(
+        retry.status(),
+        201,
+        "a mismatched URI must not burn the code"
+    );
 
     // A fresh code exchanged correctly yields an app-scoped token for the bot.
     let code = authorize(&client, h.addr, &wid, &app_id, &auth).await;

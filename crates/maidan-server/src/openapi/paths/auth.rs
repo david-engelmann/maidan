@@ -196,7 +196,7 @@ pub fn oauth_token() {}
         ("state" = String, Query, description = "Opaque client state, echoed back"),
         ("resource" = Option<String>, Query, description = "RFC 8707 resource indicator"),
     ),
-    security(()),
+    security(("bearerAuth" = [])),
     responses(
         (status = 307, description = "Redirect to the consent page, or to the client with an error"),
         (status = 400, response = BadRequest),

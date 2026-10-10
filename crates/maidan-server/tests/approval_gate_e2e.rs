@@ -1053,7 +1053,9 @@ async fn concurrent_consent_allow_issues_one_code() {
     let (addr, _client, store) = spawn().await;
     let base = format!("http://{addr}");
     let ws = store
-        .create_workspace(NewWorkspace { name: "oauth-race".into() })
+        .create_workspace(NewWorkspace {
+            name: "oauth-race".into(),
+        })
         .await
         .unwrap();
     let human = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
@@ -1101,7 +1103,13 @@ async fn concurrent_consent_allow_issues_one_code() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
-    let location = resp.headers().get("location").unwrap().to_str().unwrap().to_string();
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     let request_id = location.split("request=").nth(1).unwrap().to_string();
 
     let cookie = signed_in(store.as_ref(), ws.id, human).await;
@@ -1141,7 +1149,9 @@ async fn foreign_consent_post_leaves_request_usable() {
     let (addr, _client, store) = spawn().await;
     let base = format!("http://{addr}");
     let ws = store
-        .create_workspace(NewWorkspace { name: "oauth-foreign".into() })
+        .create_workspace(NewWorkspace {
+            name: "oauth-foreign".into(),
+        })
         .await
         .unwrap();
     let owner = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
@@ -1187,7 +1197,13 @@ async fn foreign_consent_post_leaves_request_usable() {
         .send()
         .await
         .unwrap();
-    let location = resp.headers().get("location").unwrap().to_str().unwrap().to_string();
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     let request_id = location.split("request=").nth(1).unwrap().to_string();
 
     let owner_cookie = signed_in(store.as_ref(), ws.id, owner).await;
@@ -1237,5 +1253,8 @@ async fn foreign_consent_post_leaves_request_usable() {
         .unwrap();
     assert_eq!(owner_resp.status(), StatusCode::SEE_OTHER);
     // The 303 carries no CSP; the navigation is governed by the page's.
-    assert!(owner_resp.headers().get("content-security-policy").is_none());
+    assert!(owner_resp
+        .headers()
+        .get("content-security-policy")
+        .is_none());
 }

@@ -40,7 +40,7 @@ mod social;
 mod task_schedule;
 mod thread;
 mod token;
-pub(crate) use token::mint_vocabulary;
+pub use token::mint_vocabulary;
 mod usage;
 mod workspace;
 

@@ -52,11 +52,12 @@ pub async fn authorize(
     Extension(auth): Extension<AuthContext>,
     ApiQuery(query): ApiQuery<AuthorizeQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // Authorizing a client lends the member's authority; a credential that
+    // cannot read the workspace has none worth lending.
+    crate::routes::cap(&auth, capability::WORKSPACE_READ)?;
     // OAuth 2.1 requires response_type=code.
     if query.response_type != "code" {
-        return Err(ApiError::BadRequest(
-            "response_type must be code".into(),
-        ));
+        return Err(ApiError::BadRequest("response_type must be code".into()));
     }
 
     // P1: pre-registered clients first, then CIMD via the egress guard.

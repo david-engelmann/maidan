@@ -1100,7 +1100,7 @@ pub fn router(state: AppState) -> Router {
         // strict origin and the accepting credential itself.
         .route(
             "/auth/approval-confirmations/confirm",
-            post(routes::confirm_approval_gate).layer(session_auth),
+            post(routes::confirm_approval_gate).layer(session_auth.clone()),
         );
 
     let ui_api_read = Router::new()
@@ -1412,7 +1412,7 @@ pub fn router(state: AppState) -> Router {
         // session. Consumes the pending request (single use).
         .route(
             "/ui/api/oauth/consent",
-            post(oauth::consent::decide_consent).layer(session_auth.clone()),
+            post(oauth::consent::decide_consent).layer(session_auth),
         )
         .route("/llms.txt", get(llms_txt))
         .merge({
