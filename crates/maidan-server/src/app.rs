@@ -265,6 +265,10 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{wid}/apps/{app_id}/oauth/authorize",
             post(app_oauth::authorize_app_install),
         )
+        // OAuth 2.1 authorization endpoint: the member's browser lands here
+        // to consent. Behind the bearer middleware, so `auth` is the
+        // consenting member whose capabilities bound the grant.
+        .route("/oauth/authorize", get(oauth::authorize::authorize))
         .route(
             "/workspaces/{wid}/app-installations",
             get(apps::list_app_installations),
@@ -1074,6 +1078,7 @@ pub fn router(state: AppState) -> Router {
 
     let auth_routes = Router::new()
         .route("/auth/oidc/login", get(oidc::login))
+        .route("/auth/oidc/signup", get(oidc::signup))
         .route("/auth/oidc/callback", get(oidc::callback))
         .route("/auth/logout", post(oidc::logout))
         .route(
@@ -1096,7 +1101,7 @@ pub fn router(state: AppState) -> Router {
         // strict origin and the accepting credential itself.
         .route(
             "/auth/approval-confirmations/confirm",
-            post(routes::confirm_approval_gate).layer(session_auth),
+            post(routes::confirm_approval_gate).layer(session_auth.clone()),
         );
 
     let ui_api_read = Router::new()
@@ -1382,6 +1387,9 @@ pub fn router(state: AppState) -> Router {
             get(oauth::oauth_protected_resource),
         )
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
+        // OAuth 2.1 token endpoint (public; the client authenticates with
+        // its secret and the PKCE verifier).
+        .route("/oauth/token", post(oauth::token::token))
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.
@@ -1394,6 +1402,19 @@ pub fn router(state: AppState) -> Router {
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .route("/ui/static/{name}", get(ui_asset))
+        // OAuth 2.1 consent page: the member approves or denies a pending
+        // authorization request. Signed-in session only (never a bearer);
+        // the handler checks `SessionContext::token.is_none()`.
+        .route(
+            "/ui/oauth/consent",
+            get(oauth::consent::consent_page).layer(session_auth.clone()),
+        )
+        // OAuth 2.1 consent decision: same-origin POST on the signed-in
+        // session. Consumes the pending request (single use).
+        .route(
+            "/ui/api/oauth/consent",
+            post(oauth::consent::decide_consent).layer(session_auth),
+        )
         .route("/llms.txt", get(llms_txt))
         .merge({
             #[cfg(feature = "bootstrap")]

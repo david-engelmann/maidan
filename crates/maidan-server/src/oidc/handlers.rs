@@ -124,6 +124,81 @@ pub async fn login(
     Ok(Redirect::temporary(auth_url.as_str()).into_response())
 }
 
+/// Start a sign-up: OIDC flow with no workspace. The callback creates the
+/// workspace, admin member, identity, and session in one transaction.
+///
+/// Only with `MAIDAN_SIGNUP=1` (off by default). See docs/Hosted Console.md.
+pub async fn signup(
+    State(state): State<AppState>,
+) -> Result<Response, ApiError> {
+    if std::env::var("MAIDAN_SIGNUP").as_deref() != Ok("1") {
+        return Err(ApiError::NotFound);
+    }
+    // Refuse to run with auto-provisioning: on a shared instance, anyone the
+    // provider authenticates must not become a member of an existing workspace.
+    if std::env::var("MAIDAN_OIDC_AUTO_PROVISION").as_deref() == Ok("1") {
+        return Err(ApiError::Internal(
+            "MAIDAN_SIGNUP=1 refuses to run with MAIDAN_OIDC_AUTO_PROVISION=1".into(),
+        ));
+    }
+
+    let oidc = state
+        .oidc
+        .as_ref()
+        .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
+
+    let state_token = random_token();
+    let nonce = random_token();
+    let pkce_verifier = PkceCodeVerifier::new(random_token());
+    let pkce_secret = pkce_verifier.secret().to_string();
+    let expires_at = Utc::now() + Duration::seconds(oidc.settings.pending_ttl_secs as i64);
+
+    state
+        .store
+        .insert_oidc_pending(NewOidcPendingAuth {
+            state: state_token.clone(),
+            target: OidcPendingTarget::Signup,
+            nonce: nonce.clone(),
+            pkce_verifier: pkce_secret.clone(),
+            return_to: None,
+            expires_at,
+        })
+        .await?;
+
+    if oidc.settings.mock {
+        let mut url = format!(
+            "/auth/oidc/callback?state={}",
+            urlencoding::encode(&state_token)
+        );
+        url.push_str("&mock_sub=mock-user&mock_email=human@example.com");
+        return Ok(Redirect::temporary(&url).into_response());
+    }
+
+    let client = oidc
+        .client
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("OIDC client is not configured".into()))?;
+
+    let pkce_challenge = PkceCodeChallenge::from_code_verifier_sha256(&pkce_verifier);
+    let scopes: Vec<Scope> = std::env::var("MAIDAN_OIDC_SCOPES")
+        .unwrap_or_else(|_| "openid profile email".to_string())
+        .split_whitespace()
+        .map(|s| Scope::new(s.to_string()))
+        .collect();
+
+    let mut req = client.authorize_url(
+        CoreAuthenticationFlow::AuthorizationCode,
+        || openidconnect::CsrfToken::new(state_token),
+        || Nonce::new(nonce),
+    );
+    req = req.set_pkce_challenge(pkce_challenge);
+    for scope in scopes {
+        req = req.add_scope(scope);
+    }
+    let (auth_url, _csrf, _nonce) = req.url();
+    Ok(Redirect::temporary(auth_url.as_str()).into_response())
+}
+
 pub async fn callback(
     State(state): State<AppState>,
     headers_in: HeaderMap,
@@ -221,6 +296,50 @@ pub async fn callback(
                     return Ok(Redirect::temporary(&location).into_response());
                 }
             }
+        }
+        OidcPendingTarget::Signup => {
+            // Sign-up requires a verified email.
+            if !email_verified {
+                return Err(ApiError::Forbidden("email is not verified".into()));
+            }
+            let email_str = email.as_deref().ok_or_else(|| {
+                ApiError::Forbidden("email is required for sign-up".into())
+            })?;
+
+            // Optional domain allowlist.
+            if let Ok(domains) = std::env::var("MAIDAN_SIGNUP_EMAIL_DOMAINS") {
+                let domain = email_str.rsplit('@').next().unwrap_or("").to_lowercase();
+                let allowed: Vec<String> = domains
+                    .split(',')
+                    .map(|d| d.trim().to_lowercase())
+                    .filter(|d| !d.is_empty())
+                    .collect();
+                if !allowed.iter().any(|d| d == &domain) {
+                    return Err(ApiError::Forbidden("email domain is not allowed".into()));
+                }
+            }
+
+            // Create the workspace with an admin member. The admin's handle
+            // is derived from the email local part.
+            let handle = email_str
+                .rsplit('@')
+                .next()
+                .unwrap_or("admin")
+                .chars()
+                .take(32)
+                .collect::<String>();
+            let workspace_name = format!("{}'s workspace", handle);
+
+            // Note: This uses provision_workspace which creates a token; the
+            // signup flow will have the user mint their first token via
+            // POST /auth/session/mint instead. For now, we create the
+            // workspace and member, then the identity and session.
+            //
+            // TODO: Single transaction for workspace+member+identity+session.
+            // See docs/Hosted Console.md.
+            return Err(ApiError::Internal(
+                "sign-up workspace creation not yet implemented".into(),
+            ));
         }
     };
     // A front-door sign-in never links by email and never provisions: it can

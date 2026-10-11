@@ -193,6 +193,7 @@ fn pending_target(
     match (kind.as_str(), workspace_id) {
         ("sign_in", Some(id)) => Ok(OidcPendingTarget::Workspace(WorkspaceId(id))),
         ("front_door", None) => Ok(OidcPendingTarget::FrontDoor),
+        ("signup", None) => Ok(OidcPendingTarget::Signup),
         _ => Err(StoreError::InvalidInput(format!(
             "pending sign-in has kind {kind:?} and workspace {workspace_id:?}"
         ))),

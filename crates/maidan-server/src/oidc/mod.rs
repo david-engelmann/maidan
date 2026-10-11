@@ -5,4 +5,4 @@ mod handlers;
 mod member;
 
 pub use config::{OidcInitError, OidcRuntime, OidcSettings};
-pub use handlers::{callback, login, logout, SESSION_CREATE, SESSION_DELETE};
+pub use handlers::{callback, login, logout, signup, SESSION_CREATE, SESSION_DELETE};
