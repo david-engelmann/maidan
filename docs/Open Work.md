@@ -145,7 +145,7 @@ Each links its record. Entries roll off after about a month.
 
 | Date | Decision | Record |
 |---|---|---|
-| 2026-10-10 | Cut `v413.0.0` once the last security PR merged, then bump the deploy pins (Next 7). No submission to any directory or registry until the maintainer says the product is ready, so the `sdk-*-v0.3.0` tags wait | Decisions pending the maintainer |
+| 2026-10-10 | Cut `v413.0.0` once the last security PR merged, then bump the deploy pins (Next 7). No submission to any directory or registry until the maintainer says the product is ready, so the `sdk-*-v0.3.0` tags wait | [Decisions](Decisions.md) |
 | 2026-10-09 | The inline approve card is an MCP Apps UI resource that decides through the host's `tools/call` to `approval_decide`, not a ChatGPT-only confirmation prompt. The deciding client is named from the credential first (a registered OAuth client), then from the client's own `clientInfo` shown as self-reported, then none. The confirmation link's lifetime becomes a workspace setting | [Decisions](Decisions.md), Next 17 |
 | 2026-10-08 | An approval may be decided by a model (`approval_decide`, a ChatGPT inline card), and acceptance becomes a property of the credential: a browser session, `approval:grant`, or a fresh confirmation outside the model. A token minted for an MCP client cannot accept a gate | [Decisions](Decisions.md), Next 17 |
 | 2026-10-08 | Build the OAuth authorization server at full OAuth 2.1 scope, consent in the console, public and confidential clients, no dynamic registration | [Decisions](Decisions.md), Next 23 |

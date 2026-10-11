@@ -2245,3 +2245,11 @@ On 2026-10-04 the maintainer added three rulings.
 **Why.** Mark-ready flips a draft with GitHub's GraphQL `markPullRequestReadyForReview`. Gitea has no GraphQL and marks drafts with a `WIP:` title prefix, so a Gitea run would test a different path. The CI tests already cover the request shapes against a mock base URL.
 
 **Record.** Open Work Now.
+
+### Cut `v413.0.0`, and submit nowhere yet (2026-10-10)
+
+**Decision.** The maintainer chose on 2026-10-10 to cut `v413.0.0` once the last open security PR merged, ending the hold recorded on 2026-10-08. The deploy pins move to it in the PR after the tag (Open Work Next 7). Nothing goes to a directory, catalog or registry until he says the product is ready, so the `sdk-*-v0.3.0` tags wait too.
+
+**Why.** Every deploy path pinned `v412.0.0`, from before the week's cross-tenant fixes, so no release anyone could run carried them. A release is reversible and points nowhere new. A submission publishes the product to strangers, and he wants it finished first.
+
+**Record.** Open Work, Recently decided.
