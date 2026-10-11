@@ -609,6 +609,12 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.public_origin =
         maidan_server::oauth::metadata::public_origin_from(public_origin.as_deref())
             .map_err(anyhow::Error::msg)?;
+    let oauth_clients = maidan_server::oauth::registry::load_preregistered_clients(&state)
+        .await
+        .map_err(|e| anyhow::anyhow!("loading pre-registered OAuth clients: {e:?}"))?;
+    if oauth_clients > 0 {
+        tracing::info!("loaded {oauth_clients} pre-registered OAuth clients");
+    }
     state.dev_anonymous_reader =
         maidan_server::dev_anonymous::from_env(state.store.as_ref(), auth_disabled).await?;
     if let Some(reader) = &state.dev_anonymous_reader {

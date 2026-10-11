@@ -1225,6 +1225,12 @@
   },
   {
     "method": "GET",
+    "path": "/oauth/authorize",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/me",
     "capability": "workspace:read",
     "surface": "http"

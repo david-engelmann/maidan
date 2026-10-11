@@ -1286,6 +1286,11 @@ async fn main() {
     )
     .expect("write fixtures");
 
+    // The server binary loads pre-registered OAuth clients at boot; this
+    // harness boots the router directly, so it loads them the same way.
+    maidan_server::oauth::registry::load_preregistered_clients(&state)
+        .await
+        .expect("load MAIDAN_OAUTH_CLIENTS");
     let app = router(state);
     let addr: SocketAddr = ([127, 0, 0, 1], port).into();
     let listener = tokio::net::TcpListener::bind(addr)
