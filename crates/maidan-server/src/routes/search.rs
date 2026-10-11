@@ -35,6 +35,11 @@ pub async fn search_messages(
         after: q.after,
         before: q.before,
         deny_channels,
+        reader_id: if auth.bypass {
+            None
+        } else {
+            Some(auth.member_id)
+        },
     };
     let mut hits = match q.mode {
         SearchMode::Lexical => {
