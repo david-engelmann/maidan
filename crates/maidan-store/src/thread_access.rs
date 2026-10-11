@@ -15,12 +15,7 @@
 /// placeholders (with any cast the backend needs) bound to the caller's
 /// workspace, its member id and [`maidan_types::DM_CHANNEL_NAME`]. The same
 /// SQL runs on Postgres and SQLite.
-pub fn readable_thread(
-    thread: &str,
-    workspace: &str,
-    member: &str,
-    dm_channel: &str,
-) -> String {
+pub fn readable_thread(thread: &str, workspace: &str, member: &str, dm_channel: &str) -> String {
     format!(
         "EXISTS (SELECT 1 FROM maidan_threads rt_thread
                  JOIN maidan_channels rt_channel ON rt_channel.id = rt_thread.channel_id

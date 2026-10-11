@@ -254,19 +254,19 @@ impl Search for PostgresSearch {
             "#,
         );
         let rows = sqlx::query(&sql)
-        .bind(workspace_id.0)
-        .bind(query)
-        .bind(limit)
-        .bind(author_id)
-        .bind(channel_id)
-        .bind(author_kind)
-        .bind(websearch)
-        .bind(deny)
-        .bind(filters.after)
-        .bind(filters.before)
-        .bind(reader_id)
-        .fetch_all(self.read_pool())
-        .await?;
+            .bind(workspace_id.0)
+            .bind(query)
+            .bind(limit)
+            .bind(author_id)
+            .bind(channel_id)
+            .bind(author_kind)
+            .bind(websearch)
+            .bind(deny)
+            .bind(filters.after)
+            .bind(filters.before)
+            .bind(reader_id)
+            .fetch_all(self.read_pool())
+            .await?;
 
         let mut hits: Vec<SearchHit> = rows.iter().map(row_to_lexical_hit).collect();
         normalize_lexical_scores(&mut hits);
