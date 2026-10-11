@@ -160,6 +160,61 @@ pub fn confirm_approval() {}
 )]
 pub fn session_from_token() {}
 
+/// Exchange an OAuth authorization code for an access token
+///
+/// The OAuth 2.1 token endpoint. The form carries the code, the redirect URI
+/// it was issued for, the client id, and the PKCE verifier; confidential
+/// clients also send their secret. The code is validated before it is
+/// consumed, so a wrong guess cannot burn the real client's code. The
+/// minted token is capability-scoped from the member's grant and never
+/// carries `approval:grant`.
+#[utoipa::path(
+    post,
+    path = "/oauth/token",
+    tag = "auth",
+    request_body(
+        content = crate::oauth::token::OAuthTokenRequest,
+        content_type = "application/x-www-form-urlencoded",
+    ),
+    security(()),
+    responses(
+        (status = 200, body = crate::oauth::token::OAuthTokenResponse),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn oauth_token() {}
+
+/// Start an OAuth authorization request
+///
+/// The OAuth 2.1 authorization endpoint. Validates the request (client,
+/// redirect URI, PKCE challenge, resource indicator) and stores it pending
+/// the member's consent decision, then redirects to the consent page. Never
+/// issues a code on a GET.
+#[utoipa::path(
+    get,
+    path = "/oauth/authorize",
+    tag = "auth",
+    params(
+        ("response_type" = String, Query, description = "Must be `code`"),
+        ("client_id" = String, Query, description = "The client's id, or an HTTPS client metadata URL (CIMD)"),
+        ("redirect_uri" = String, Query, description = "Where the code goes; must match a registered URI exactly"),
+        ("code_challenge" = String, Query, description = "PKCE S256 challenge"),
+        ("code_challenge_method" = String, Query, description = "Must be S256"),
+        ("scope" = Option<String>, Query, description = "Space-delimited capabilities"),
+        ("state" = String, Query, description = "Opaque client state, echoed back"),
+        ("resource" = Option<String>, Query, description = "RFC 8707 resource indicator"),
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 307, description = "Redirect to the consent page, or to the client with an error"),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn oauth_authorize() {}
+
 /// List a workspace's events (console)
 #[utoipa::path(
     get,

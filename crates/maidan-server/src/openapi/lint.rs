@@ -28,6 +28,7 @@ const REDIRECT_ONLY: &[(&str, &str)] = &[
     ("get", "/auth/oidc/login"),
     ("get", "/auth/oidc/callback"),
     ("post", "/auth/logout"),
+    ("get", "/oauth/authorize"),
 ];
 
 fn document() -> Value {

@@ -1885,6 +1885,26 @@ Refs #1253
 - **Security:** `POST /approval-gates/:id/answer` with `accept` needs a token holding `approval:grant` (or a session made from one), or a browser session the person signed in to through the identity provider, sent from the console page with the strict origin check (`Sec-Fetch-Site` must be `same-origin` when present; only when it is absent must `Origin` match the host; a request naming neither is refused). A plain bearer token whose member is a human, a delegated token, and a session made from a plain token with `POST /auth/session/from-token` are refused with 403 `missing capability: approval:grant. …`, because they are the credentials a person hands an agent. Declining and cancelling are unchanged, and nobody accepts their own request. Next 17, part one.
 - **Changed:** The console says what accepting needs when a pasted token is refused, and still declines and cancels with it. The admin token `maidan init` prints holds every capability, `approval:grant` included, so `examples/recipes/approve.py` still accepts with it; its docstring now says so and why that token never goes to an agent.
 
+### OAuth phase two hardening
+
+- **Fixed:** The consent page resolves CIMD clients through `registry::resolve_client` (ephemeral clients never hit `oauth_clients`), so a CIMD client that passes `authorize` can complete consent.
+- **Fixed:** The consent POST is a native form with a 303 redirect to the client's redirect URI. The inline script is removed; `BOARD_UI_CSP` blocks inline scripts.
+- **Security:** `POST /oauth/token` responses carry `Cache-Control: no-store` and `Pragma: no-cache`.
+- **Security:** Redirect URIs must be HTTPS (HTTP allowed only on loopback), validated for both `MAIDAN_OAUTH_CLIENTS` and CIMD documents.
+- **Added:** Migration 0152 adds a partial unique index on live OAuth grants (`client_id, member_id, workspace_id, scope` where `revoked_at IS NULL`). Concurrent consent approvals for the same tuple converge on one grant instead of racing the find-then-create.
+- **Added:** `GET /oauth/authorize` is documented in the OpenAPI paths.
+- **Fixed:** The installed-app exchange (`POST /oauth/app/token`) validates `redirect_uri` and the PKCE verifier before consuming the code, then consumes atomically. A mismatch no longer burns the code. The minted token expires after 24 hours.
+
+### One minting vocabulary
+
+- **Added:** Every token-minting route is bounded by `routes::mint_vocabulary`. `mint_vocabulary` is now public. The direct mint, attenuation, app token mint, OAuth token endpoint, and app OAuth exchange each verify their minted capabilities against the vocabulary. A structural contract test (`token_minting_vocabulary_contract.rs`) fails if a new mint path skips the bound.
+
+
+### OAuth authorization server, phase two: authorization-code flow
+
+- **Added:** `GET /oauth/authorize` and `POST /oauth/token` implement the OAuth 2.1 authorization-code flow with PKCE S256 only. Clients are pre-registered (no dynamic registration); redirect URIs match exactly; codes are single-use with a ten-minute expiry and are consumed atomically. Scopes are delegatable capabilities, never wider than the member's own.
+- **Security:** A token issued through OAuth never carries `approval:grant` (stripped at mint), so it can never accept an approval gate — only a signed-in browser session or a token holding `approval:grant` can (#1325). Covered by `an_oauth_token_cannot_accept_a_gate` in `approval_gate_e2e.rs`.
+- New tables: `oauth_clients`, `oauth_authorization_codes`, `oauth_grants` (migration 0150); `maidan_api_tokens.oauth_grant_id` ties a token to its grant.
 ### An approval card says how far to trust each piece of evidence
 
 - **Added:** A review packet records an attestation tier for each piece of evidence, judged once at the hand-off: `verified` for a land-gate pass the close gate would accept (its own `land_gate` item, with the pass's `artifact_sha` and recorder), `attached` for a result or artifact from a member who never worked the thread, and `self_reported` for a worker's own result or link. A delegate that worked the thread and links with someone else's token is judged as itself, so its link is still self-reported (migration 0147 records a link's and a result's delegate actor). The packet's `self_reported_only` is true when it holds evidence and every item is self-reported. Both appear on `get_review_packet`, `GET /threads/:id/review-packet` and `GET /ui/api/threads/:tid/review-packet`. This is the fourth part of evidence-bound approvals (Open Work Next 3).
@@ -2007,6 +2027,8 @@ Refs #1253
 ### An open WebSocket stream ends when its member is deactivated
 
 - **Security:** `/ws/subscribe` checked its credential only when the stream opened. Deactivating a member through SCIM revokes their tokens, and #1346 ends their browser sessions at the next request, but an open stream makes no further requests. It kept delivering the workspace's events and kept relaying the member's presence and typing until the client disconnected. Now a stream checks again the credential that opened it, whether a token or a session cookie. It does this before a frame goes out or a client frame is acted on (at most once a second), and at every ping. A revoked or expired token, an ended session, or a member whose SCIM link is inactive closes the stream with `1008`, and the reason says which. A failed lookup closes it too, so the client reconnects and is checked afresh. Follow-up to #1346.
+
+
 
 ## [412.0.0] — 2026-09-28
 

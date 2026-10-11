@@ -18,7 +18,7 @@
 
 use axum::{
     body::Bytes,
-    extract::{FromRequest, Path, Query, Request},
+    extract::{Form, FromRequest, Path, Query, Request},
     http::StatusCode,
     Json,
 };
@@ -162,6 +162,14 @@ wrap_extractor!(
     /// A JSON request body. Requires a JSON `Content-Type`.
     ApiJson,
     body Json,
+    ApiError,
+    rejected
+);
+wrap_extractor!(
+    /// An `application/x-www-form-urlencoded` body, as the OAuth token
+    /// endpoint takes. Requires the form content type.
+    ApiForm,
+    body Form,
     ApiError,
     rejected
 );
