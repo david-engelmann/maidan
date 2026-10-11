@@ -76,6 +76,9 @@ pub async fn install_app(
         validate_list(&body.granted_capabilities).map_err(ApiError::BadRequest)?;
         body.granted_capabilities
     };
+    // An installation's grant is minted later without the caller in the room,
+    // so it is bounded here by what the caller could mint directly.
+    within_vocabulary(&auth, &granted)?;
 
     let (actor, audited_capabilities) = (auth.actor_id, granted.clone());
     let installed = state
@@ -185,18 +188,9 @@ pub async fn mint_app_token(
             .map_err(ApiError::BadRequest)?;
         body.capabilities
     };
-    // One minting vocabulary: the minted capabilities must also be within
-    // what the caller may mint.
-    {
-        let vocab = crate::routes::mint_vocabulary(&auth);
-        for cap in &capabilities {
-            if !vocab.iter().any(|v| v == cap) {
-                return Err(ApiError::BadRequest(format!(
-                    "capability '{cap}' is outside the mint vocabulary"
-                )));
-            }
-        }
-    }
+    // The grant may have been set by an operator; whoever mints from it still
+    // gets only what they could mint directly.
+    within_vocabulary(&auth, &capabilities)?;
     crate::quota::validate_token_quotas(&body.quotas, &capabilities)?;
 
     let secret = TokenSecret::generate();
@@ -271,4 +265,14 @@ fn normalize_slug(slug: &str) -> Result<String, ApiError> {
         ));
     }
     Ok(s)
+}
+
+fn within_vocabulary(auth: &AuthContext, capabilities: &[String]) -> ApiResult<()> {
+    let vocabulary = crate::routes::mint_vocabulary(auth);
+    match capabilities.iter().find(|c| !vocabulary.contains(c)) {
+        Some(c) => Err(ApiError::BadRequest(format!(
+            "capability {c} is beyond what this token may grant"
+        ))),
+        None => Ok(()),
+    }
 }
