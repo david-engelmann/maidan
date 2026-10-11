@@ -41,6 +41,9 @@ pub async fn stream(
                 .map(|data| Ok(Event::default().data(data)))
         });
 
+    let notification_stream =
+        crate::stream_guard::guard(state.store.clone(), &auth, notification_stream);
+
     Ok(Sse::new(notification_stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))

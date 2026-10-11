@@ -2028,6 +2028,10 @@ Refs #1253
 
 
 
+### A deactivated member's server-sent event streams end
+
+- **Fixed:** `/mcp/stream`, `/agui/stream`, `/mcp/notifications`, `GET /mcp/streamable`, the `POST /mcp/streamable` session stream and A2A `SubscribeToTask` (REST, JSON-RPC and gRPC) checked the credential only when they opened. A member deactivated through SCIM, or whose token was revoked, kept receiving events for as long as the stream stayed open. Each stream now checks again before a frame goes out (at most once a second) and every 10 seconds while idle. When the check fails, the stream sends one last `event: stream_ended` with `data: {"reason": "..."}` and closes. gRPC ends with `UNAUTHENTICATED`. The reason is `token no longer valid`, `member deactivated` or `credential check failed`. A streamable session whose credential has ended is closed, and its subscriptions go with it. The new `stream_guard` module does the check, and it is the SSE counterpart of the WebSocket recheck in #1350. Other members' streams, in the same workspace or another, are not affected. No migration.
+
 ## [412.0.0] — 2026-09-28
 
 The first release since 410.0.0. **411.0.0 was never tagged; its delegated

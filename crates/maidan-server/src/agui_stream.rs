@@ -105,6 +105,7 @@ pub async fn stream(
         .await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
+    let guard_auth = auth.clone();
     let store = state.store.clone();
     maidan_store::attribution::spawn(async move {
         let mut high_water = after_id;
@@ -119,7 +120,11 @@ pub async fn stream(
         forward_agui(subscriber, store.as_ref(), &auth, high_water, &sse_tx).await;
     });
 
-    let stream = ReceiverStream::new(sse_rx);
+    let stream = crate::stream_guard::guard(
+        state.store.clone(),
+        &guard_auth,
+        ReceiverStream::new(sse_rx),
+    );
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))

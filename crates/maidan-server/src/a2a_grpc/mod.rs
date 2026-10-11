@@ -266,7 +266,15 @@ impl A2aService for GrpcA2a {
             )
             .await
             .map_err(status)?;
-        Ok(Response::new(events(stream)))
+        // Ends with UNAUTHENTICATED once the caller's credential no longer
+        // holds (see `crate::stream_guard`).
+        let stream = crate::stream_guard::guard_ending(
+            self.state.store.clone(),
+            &auth,
+            events(stream),
+            |reason| Err(Status::unauthenticated(reason)),
+        );
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn create_task_push_notification_config(

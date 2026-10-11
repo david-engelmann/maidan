@@ -62,19 +62,26 @@ fn reply<T: Serialize>(id: &JsonRpcId, value: T) -> Result<Response, A2aError> {
     Ok(Json(JsonRpcResponse::success(id.clone(), value)).into_response())
 }
 
-fn stream<S>(id: &JsonRpcId, events: S) -> Response
+/// An SSE response that ends with a `stream_ended` frame once the caller's
+/// credential no longer holds (see [`crate::stream_guard`]).
+fn stream<S>(state: &AppState, auth: &AuthContext, id: &JsonRpcId, events: S) -> Response
 where
     S: Stream<Item = StreamResponse> + Send + 'static,
 {
     let id = id.clone();
-    Sse::new(events.map(move |event| {
+    let frames = events.map(move |event| {
         let frame = match serde_json::to_value(event) {
             Ok(value) => JsonRpcResponse::success(id.clone(), value),
             Err(err) => JsonRpcResponse::failure(id.clone(), internal(err).to_json_rpc()),
         };
         let data = serde_json::to_string(&frame).unwrap_or_default();
         Ok::<Event, Infallible>(Event::default().data(data))
-    }))
+    });
+    Sse::new(crate::stream_guard::guard(
+        state.store.clone(),
+        auth,
+        frames,
+    ))
     .into_response()
 }
 
@@ -117,12 +124,17 @@ async fn dispatch(
         }
         Operation::SendStreamingMessage(req) => {
             let events = ops::send_streaming_message(state, auth, req).await?;
-            Ok(stream(id, futures::stream::iter(events)))
+            Ok(stream(state, auth, id, futures::stream::iter(events)))
         }
         Operation::GetTask(req) => reply(id, ops::get_task(state, auth, req).await?),
         Operation::ListTasks(req) => reply(id, ops::list_tasks(state, auth, req).await?),
         Operation::CancelTask(req) => reply(id, ops::cancel_task(state, auth, req).await?),
-        Operation::SubscribeToTask(req) => Ok(stream(id, ops::subscribe(state, auth, req).await?)),
+        Operation::SubscribeToTask(req) => Ok(stream(
+            state,
+            auth,
+            id,
+            ops::subscribe(state, auth, req).await?,
+        )),
         Operation::CreatePushNotificationConfig(req) => {
             reply(id, push::create(state, auth, req).await?)
         }
