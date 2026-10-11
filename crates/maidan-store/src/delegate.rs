@@ -3542,7 +3542,7 @@ macro_rules! store_delegations {
                 &self,
                 client_id: &str,
             ) -> Result<Option<OAuthClient>, StoreError> {
-                oauth_as::get_client_by_client_id(self.read_pool(), client_id).await
+                oauth_as::get_client_by_client_id(self.pool(), client_id).await
             }
 
             async fn create_oauth_authorization_code(
@@ -3556,7 +3556,7 @@ macro_rules! store_delegations {
                 &self,
                 code_hash: &str,
             ) -> Result<Option<OAuthAuthorizationCode>, StoreError> {
-                oauth_as::get_code(self.read_pool(), code_hash).await
+                oauth_as::get_code(self.pool(), code_hash).await
             }
 
             async fn consume_oauth_authorization_code(
@@ -3585,7 +3585,7 @@ macro_rules! store_delegations {
                 &self,
                 grant_id: OAuthGrantId,
             ) -> Result<Option<OAuthGrant>, StoreError> {
-                oauth_as::get_grant(self.read_pool(), grant_id).await
+                oauth_as::get_grant(self.pool(), grant_id).await
             }
 
             async fn find_oauth_grant(
@@ -3595,8 +3595,7 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 scope: &[String],
             ) -> Result<Option<OAuthGrant>, StoreError> {
-                oauth_as::find_grant(self.read_pool(), client_id, member_id, workspace_id, scope)
-                    .await
+                oauth_as::find_grant(self.pool(), client_id, member_id, workspace_id, scope).await
             }
 
             async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError> {

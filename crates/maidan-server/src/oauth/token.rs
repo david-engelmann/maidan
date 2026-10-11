@@ -88,11 +88,12 @@ pub async fn token(
         return Err(ApiError::BadRequest("resource mismatch".into()));
     }
 
-    let client = state
-        .store
-        .get_oauth_client_by_client_id(&form.client_id)
-        .await?
-        .ok_or(ApiError::Unauthorized)?;
+    // Resolve the client the way `authorize` did, so a client identified by a
+    // metadata document can exchange the code it was issued, and a revoked
+    // client cannot. Any failure here is an unknown client to the caller.
+    let client = super::registry::resolve_client(&state, pending.workspace_id, &form.client_id)
+        .await
+        .map_err(|_| ApiError::Unauthorized)?;
     if let Some(expected) = client.client_secret_hash.as_deref() {
         let provided = form
             .client_secret

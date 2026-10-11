@@ -196,6 +196,7 @@ pub fn oauth_token() {}
     path = "/oauth/authorize",
     tag = "auth",
     params(
+        ("response_type" = String, Query, description = "Must be `code`"),
         ("client_id" = String, Query, description = "The client's id, or an HTTPS client metadata URL (CIMD)"),
         ("redirect_uri" = String, Query, description = "Where the code goes; must match a registered URI exactly"),
         ("code_challenge" = String, Query, description = "PKCE S256 challenge"),
@@ -209,6 +210,7 @@ pub fn oauth_token() {}
         (status = 307, description = "Redirect to the consent page, or to the client with an error"),
         (status = 400, response = BadRequest),
         (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
     )
 )]
 pub fn oauth_authorize() {}
