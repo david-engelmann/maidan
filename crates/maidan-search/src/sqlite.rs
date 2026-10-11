@@ -266,6 +266,7 @@ impl Search for SqliteSearch {
               AND (? IS NULL OR m.posted_at >= ?)
               AND (? IS NULL OR m.posted_at < ?)
               {deny_clause}
+              {thread_clause}
             "#
         );
         let mut q = sqlx::query(&sql)
@@ -282,6 +283,9 @@ impl Search for SqliteSearch {
             .bind(filters.before);
         for cid in &filters.deny_channels {
             q = q.bind(cid.0);
+        }
+        if let Some(rid) = reader_id {
+            q = q.bind(rid).bind(rid).bind(rid);
         }
         let rows = q.fetch_all(&self.pool).await?;
 
