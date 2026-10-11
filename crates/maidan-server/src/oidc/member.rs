@@ -3,6 +3,11 @@ use maidan_types::{MemberId, MemberKind, NewMember, NewOidcIdentity, OidcIdentit
 
 use crate::error::ApiError;
 
+/// The refusal for a sign-in to a workspace the person has no member in. A
+/// workspace id that does not exist gets the same words, so the callback tells
+/// nobody which ids are real.
+pub const NOT_PROVISIONED: &str = "OIDC user is not provisioned in this workspace";
+
 pub fn handle_from_claims(subject: &str, email: Option<&str>) -> String {
     if let Some(email) = email {
         let local = email.split('@').next().unwrap_or(email);
@@ -79,9 +84,7 @@ pub async fn resolve_member_for_login(
     }
 
     if !auto_provision {
-        return Err(ApiError::Forbidden(
-            "OIDC user is not provisioned in this workspace".into(),
-        ));
+        return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));
     }
 
     let handle = handle_from_claims(subject, email);
