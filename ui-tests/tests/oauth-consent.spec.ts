@@ -10,17 +10,9 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
   page,
   request,
 }) => {
-  // Create an OAuth client with a redirect URI on another origin.
-  const clientRes = await request.post(`${fx.base_url}/oauth/clients`, {
-    headers: { Authorization: `Bearer ${fx.admin_token}` },
-    data: {
-      client_id: "playwright-consent-client",
-      name: "Playwright Consent Client",
-      redirect_uris: ["https://client.example/callback"],
-      allowed_scopes: ["workspace:read"],
-    },
-  });
-  expect(clientRes.ok()).toBeTruthy();
+  // The playwright-consent-client is seeded via MAIDAN_OAUTH_CLIENTS in
+  // playwright.config.ts (there is no POST /oauth/clients; dynamic
+  // registration is not implemented by design).
 
   // Start the authorize flow to get a pending request. Use PKCE S256.
   // (The verifier/challenge are fixed for the test.)

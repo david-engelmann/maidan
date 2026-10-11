@@ -33,6 +33,7 @@ export default defineConfig({
     env: {
       UI_TEST_PORT: PORT,
       UI_TEST_FIXTURES: "ui-tests/.fixtures.json",
+      MAIDAN_OAUTH_CLIENTS: '[{"client_id": "playwright-consent-client", "name": "Playwright Consent Client", "redirect_uris": ["https://client.example/callback"], "allowed_scopes": ["workspace:read"]}]',
     },
     stdout: "pipe",
     stderr: "pipe",
