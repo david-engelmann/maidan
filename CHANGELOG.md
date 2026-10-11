@@ -7,6 +7,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [413.0.0] — 2026-10-11
+
+The first release since 412.0.0. It ships every PR merged after the 412.0.0
+tag, from #1079 through #1360: the week's cross-tenant fixes, OAuth phases one
+and two, the console front door, the approval card with evidence tiers, MCP
+conformance, Program C's context economics, and the board at `/ui`. It is the
+first release whose images carry an attested CycloneDX SBOM.
+
 ### Local OAuth development provider (Keycloak)
 
 - **Added:** `scripts/oauth-dev-provider.sh` starts a local Keycloak 26.8 with Client ID Metadata Document support, for developing Maidan's MCP authorization against a real provider. `examples/oauth-dev/compose.yaml` and `examples/keycloak/maidan-mcp-reference-realm.json` hold the container and realm; `scripts/mcp-oauth-smoke.sh` exercises the flow. Development only.

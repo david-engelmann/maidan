@@ -37,7 +37,7 @@ the maintainer's call.
 
 ## Where it is
 
-The latest release is `v412.0.0`, and `main` is ahead of it. The work in
+The latest release is `v413.0.0` (2026-10-11). The work in
 flight and the ranked plan are the **Now** and **Next** sections of
 [Open Work](Open%20Work.md). `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
 run the binary from `CARGO_TARGET_DIR` when it is set.
@@ -47,8 +47,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
    newest release, no chart renders a default credential or the `dev` image,
    and a contract keeps the pins from drifting (both #1156). What remains: the
-   pins name `v412.0.0`, from before the week's cross-tenant fixes, until the
-   next tag. The stack's bundled Postgres and MinIO run in the chart since
+   pins name `v412.0.0` until the pin bump that follows the `v413.0.0` tag. The stack's bundled Postgres and MinIO run in the chart since
    #1172. This is the **Before anyone deploys** section of Open Work, and
    it comes first.
 1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
