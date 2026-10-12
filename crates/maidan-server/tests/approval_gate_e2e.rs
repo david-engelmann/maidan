@@ -47,6 +47,12 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<St
 const SESSION_SECRET: &[u8] = b"approval-gate-e2e-session-secret-32b";
 
 async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
+    spawn_with_origin(None).await
+}
+
+async fn spawn_with_origin(
+    public_origin: Option<&str>,
+) -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -82,6 +88,7 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         ttl_secs: 3600,
         cookie_secure: false,
     });
+    state.public_origin = public_origin.map(str::to_string);
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -1257,4 +1264,130 @@ async fn foreign_consent_post_leaves_request_usable() {
         .headers()
         .get("content-security-policy")
         .is_none());
+}
+
+/// Seed a workspace, its human owner and a pre-registered client for an
+/// authorization-response test, and return the owner's bearer token.
+async fn seed_consent_flow(store: &dyn Store) -> (WorkspaceId, MemberId, String) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "issuer-response".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store, ws.id, "owner", MemberKind::Human).await;
+    let human_token = mint(store, ws.id, human, caps(&["workspace:read"])).await;
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "issuer-client".into(),
+            name: "Issuer test client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .unwrap();
+    (ws.id, human, human_token)
+}
+
+/// Run one authorize and consent round and return the redirect the consent
+/// decision sends the browser to: the client's callback with a code when
+/// approved, with an error when denied.
+async fn consent_redirect(
+    base: &str,
+    store: &dyn Store,
+    ws: WorkspaceId,
+    human: MemberId,
+    human_token: &str,
+    approved: bool,
+) -> String {
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(b"iss-verifier"))
+    };
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{base}/oauth/authorize?response_type=code&client_id=issuer-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {human_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+    let cookie = signed_in(store, ws, human).await;
+    let consent_resp = no_redirect
+        .post(format!("{base}/ui/api/oauth/consent"))
+        .header("Cookie", &cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[
+            ("request_id", request_id.as_str()),
+            ("approved", if approved { "true" } else { "false" }),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(consent_resp.status(), StatusCode::SEE_OTHER);
+    consent_resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+/// RFC 9207: with a public origin configured, the authorization response
+/// names its issuer, on an approval and on a denial alike, so a client can
+/// match the response against the authorization server it discovered.
+#[tokio::test]
+async fn the_authorization_response_names_its_issuer_when_a_public_origin_is_set() {
+    let (addr, _client, store) = spawn_with_origin(Some("https://maidan.example.com")).await;
+    let base = format!("http://{addr}");
+    let (ws, human, human_token) = seed_consent_flow(store.as_ref()).await;
+
+    let approved = consent_redirect(&base, store.as_ref(), ws, human, &human_token, true).await;
+    assert!(
+        approved.contains("&iss=https%3A%2F%2Fmaidan.example.com"),
+        "the code response carries the issuer: {approved}"
+    );
+    let denied = consent_redirect(&base, store.as_ref(), ws, human, &human_token, false).await;
+    assert!(
+        denied.contains("error=access_denied"),
+        "the denial is an error response: {denied}"
+    );
+    assert!(
+        denied.contains("&iss=https%3A%2F%2Fmaidan.example.com"),
+        "the error response carries the issuer too: {denied}"
+    );
+}
+
+/// With no public origin there is no issuer identifier to assert, and the
+/// response carries none.
+#[tokio::test]
+async fn the_authorization_response_names_no_issuer_without_a_public_origin() {
+    let (addr, _client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (ws, human, human_token) = seed_consent_flow(store.as_ref()).await;
+
+    let approved = consent_redirect(&base, store.as_ref(), ws, human, &human_token, true).await;
+    assert!(
+        !approved.contains("iss="),
+        "no issuer is invented without a configured origin: {approved}"
+    );
 }

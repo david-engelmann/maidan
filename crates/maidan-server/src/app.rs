@@ -1385,6 +1385,10 @@ pub fn router(state: AppState) -> Router {
             "/.well-known/oauth-protected-resource/mcp/streamable",
             get(oauth::oauth_protected_resource),
         )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(oauth::oauth_authorization_server),
+        )
         .route("/oauth/app/token", post(app_oauth::exchange_app_code))
         // OAuth 2.1 token endpoint (public; the client authenticates with
         // its secret and the PKCE verifier).
