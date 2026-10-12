@@ -37,6 +37,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
 
+### A result delivered to GitHub links its attached files
+
+- **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
+
 ### OAuth refresh, revocation and resource binding (phase three, second half)
 
 - **Added:** the token endpoint returns a refresh token with every access token. A refresh rotates: the presented token is marked used and a new pair is issued under the same grant and lineage, in one transaction, and it may narrow the scope but never widen it. A refresh token presented again after use revokes every grant, access token and refresh token of its lineage, and so does an authorization code presented again after use with its PKCE verifier, each with an `oauth_lineage.revoke` audit row. Refresh tokens live 30 days, in migration 0153.
