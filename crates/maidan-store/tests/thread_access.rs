@@ -261,6 +261,41 @@ async fn run_suite(store: &dyn Store) {
         [theirs.as_str()],
         "a tenant lists its own tasks, never another's"
     );
+    // A member of another workspace reads none of this workspace's threads,
+    // not even a public one, whatever workspace the query names: the store's
+    // rule holds without a route pinning the workspace first. A thread-less
+    // row is the workspace's own and is the caller's scope check, not this one.
+    let cross: BTreeSet<_> = store
+        .list_a2a_tasks(ws, query(Some(dave)))
+        .await
+        .expect("cross-tenant tasks")
+        .iter()
+        .map(|row| task_thread[row.id.as_str()])
+        .collect();
+    assert_eq!(
+        cross,
+        BTreeSet::from(["none"]),
+        "no thread of another tenant"
+    );
+    let cross_gates: BTreeSet<_> = store
+        .page_pending_approval_gates(
+            ws,
+            PendingGateQuery {
+                limit: 1000,
+                readable_by: Some(dave),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("cross-tenant gates")
+        .iter()
+        .map(|gate| gate_thread[&gate.id])
+        .collect();
+    assert_eq!(
+        cross_gates,
+        BTreeSet::from(["none"]),
+        "no gate on another tenant's thread"
+    );
     let row = store
         .get_a2a_task(&theirs)
         .await
