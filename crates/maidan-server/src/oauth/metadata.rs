@@ -128,6 +128,10 @@ pub struct AuthorizationServerMetadata {
     token_endpoint: String,
     response_types_supported: Vec<String>,
     grant_types_supported: Vec<String>,
+    /// Named because the RFC 8414 default is `client_secret_basic`, which
+    /// the token endpoint does not read: a confidential client sends its
+    /// secret in the form body, and a public client sends none.
+    token_endpoint_auth_methods_supported: Vec<String>,
     code_challenge_methods_supported: Vec<String>,
 }
 
@@ -138,6 +142,7 @@ fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
         token_endpoint: format!("{origin}{TOKEN_PATH}"),
         response_types_supported: vec!["code".into()],
         grant_types_supported: vec!["authorization_code".into()],
+        token_endpoint_auth_methods_supported: vec!["client_secret_post".into(), "none".into()],
         code_challenge_methods_supported: vec!["S256".into()],
     }
 }
@@ -286,6 +291,11 @@ mod tests {
             json["grant_types_supported"],
             serde_json::json!(["authorization_code"]),
             "refresh_token is listed only once the token endpoint mints refresh tokens"
+        );
+        assert_eq!(
+            json["token_endpoint_auth_methods_supported"],
+            serde_json::json!(["client_secret_post", "none"]),
+            "the default, client_secret_basic, is not what the token endpoint reads"
         );
         assert_eq!(
             json["code_challenge_methods_supported"],
