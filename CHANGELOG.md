@@ -12,6 +12,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.
 - **Fixed:** `docs/Pi.md` pulled `:latest`, ran `v315.0.0` with `AUTH_DISABLED=1`, and its native recipe could not boot without `MAIDAN_CONTENT_KEK`. It now runs `v413.0.0` with auth on: `maidan init` from the tag-matched CLI image, both containers as the host user so SQLite can create its file, the content key and session secret generated once into an owner-only file and loaded on every start, and every recipe listening on loopback, reached from elsewhere through SSH or a TLS proxy. The recipe was run on `linux/arm64`: `/me` answers 200 with the minted token and 401 without. `scripts/check-deploy-pins.sh` now checks `docs/Pi.md` too, fifteen pins in all.
 
+### Artifact uploads have their own body limit
+
+- **Added:** `MAIDAN_ARTIFACT_MAX_BODY_BYTES` caps `POST /artifacts` and each multipart part, default 100 MiB, while every other route keeps `MAIDAN_MAX_BODY_BYTES` (default 2 MiB). A deployment that takes long recordings raises the artifact limit alone, instead of every route's. A single-shot upload is still held in memory while it is hashed.
+- **Tests:** `artifact_isolation_e2e` now checks the attachment path between two apps: another member of the uploader's workspace reads the same bytes back, and another tenant's member who knows the sha gets 404 on the bytes and the metadata. A 3 MiB upload succeeds while a 3 MiB JSON body on another route gets 413.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

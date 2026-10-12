@@ -17,6 +17,25 @@ pub fn max_body_bytes_from_env() -> usize {
     parse_max_body_bytes(std::env::var("MAIDAN_MAX_BODY_BYTES").ok())
 }
 
+/// Default cap on an artifact upload body (`POST /artifacts` and a multipart
+/// part): 100 MiB. Media needs far more than a JSON body does, but a
+/// single-shot upload is buffered in memory before it is hashed, so the
+/// default stays well under what one replica can hold several of at once. A
+/// deployment that takes long recordings raises it.
+const DEFAULT_ARTIFACT_MAX_BODY_BYTES: usize = 100 * 1024 * 1024;
+
+fn parse_artifact_max_body_bytes(raw: Option<String>) -> usize {
+    raw.and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(DEFAULT_ARTIFACT_MAX_BODY_BYTES)
+}
+
+/// Resolve the artifact upload cap from `MAIDAN_ARTIFACT_MAX_BODY_BYTES`, so
+/// raising it for media leaves every other route at `MAIDAN_MAX_BODY_BYTES`.
+pub fn artifact_max_body_bytes_from_env() -> usize {
+    parse_artifact_max_body_bytes(std::env::var("MAIDAN_ARTIFACT_MAX_BODY_BYTES").ok())
+}
+
 #[cfg(feature = "bootstrap")]
 use crate::bootstrap;
 use crate::{
@@ -639,7 +658,12 @@ pub fn router(state: AppState) -> Router {
                 .merge(get(routes::list_pins))
                 .merge(delete(routes::unpin_message)),
         )
-        .route("/artifacts", post(routes::upload_artifact))
+        // The route layer is inner to the router-wide limit, so it wins here.
+        .route(
+            "/artifacts",
+            post(routes::upload_artifact)
+                .layer(DefaultBodyLimit::max(artifact_max_body_bytes_from_env())),
+        )
         .route(
             "/artifacts/multipart",
             post(routes::begin_multipart_artifact).merge(delete(routes::abort_multipart_artifact)),
@@ -650,7 +674,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/artifacts/multipart/{upload_id}/parts/{part_number}",
-            put(routes::upload_multipart_artifact_part),
+            put(routes::upload_multipart_artifact_part)
+                .layer(DefaultBodyLimit::max(artifact_max_body_bytes_from_env())),
         )
         .route(
             "/artifacts/{sha}",
@@ -1500,5 +1525,21 @@ mod body_limit_tests {
             DEFAULT_MAX_BODY_BYTES
         );
         assert_eq!(parse_max_body_bytes(Some("4096".into())), 4096);
+    }
+
+    #[test]
+    fn artifact_max_body_bytes_parses_and_falls_back() {
+        assert_eq!(
+            parse_artifact_max_body_bytes(None),
+            DEFAULT_ARTIFACT_MAX_BODY_BYTES
+        );
+        assert_eq!(
+            parse_artifact_max_body_bytes(Some("0".into())),
+            DEFAULT_ARTIFACT_MAX_BODY_BYTES
+        );
+        assert_eq!(
+            parse_artifact_max_body_bytes(Some("545259520".into())),
+            545_259_520
+        );
     }
 }
