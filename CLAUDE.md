@@ -75,12 +75,13 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-08)
+## Current state (2026-10-11)
 
-- **Releases:** latest **`v412.0.0`**. Release tags are cut when the
-  maintainer chooses, not per cluster, so some clusters were never tagged
-  (v23–26, v78–100, v311, v350–401, v403, v411); their work ships in the next
-  tag. `main` is well ahead of `v412.0.0`. Tagging is the maintainer's call.
+- **Releases:** latest **`v413.0.0`** (2026-10-11), with the week's
+  cross-tenant fixes. Release tags are cut when the maintainer chooses, not per
+  cluster, so some clusters were never tagged (v23–26, v78–100, v311, v350–401,
+  v403, v411); their work ships in the next tag. Tagging is the maintainer's
+  call.
 - **The queue is led by approvals.** Accepting a gate is a property of the
   credential since #1325: a browser session the person signed in to, sent
   from the console page, or `approval:grant`, and nobody accepts their own
@@ -96,11 +97,11 @@ change.
   pilot is planned under a runner-enforced cap. Most `wip/` branches hold work
   that has since shipped: check the Open Work row they name before building on
   one.
-- **Do not point anyone at a deploy yet.** No deploy path runs a release with
-  the week's cross-tenant fixes: the release pins name `v412.0.0`, and some
+- **Do not point anyone at a deploy yet.** The release pins still name
+  `v412.0.0` until the pin-bump PR that follows the `v413.0.0` tag, and some
   paths run `dev`, `latest`, `v315.0.0` or `v0.0.1`. Open Work's **Before anyone
-  deploys** lists the blockers; the pin bump waits for the next tag, and
-  `scripts/check-deploy-pins.sh` (from #1156) says which lines to change.
+  deploys** lists the blockers, and `scripts/check-deploy-pins.sh` (from #1156)
+  says which lines to change.
 - **The forward plan is the ranked list in
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).
@@ -110,8 +111,7 @@ change.
   keeper reconciles after the merge. When each PR edited its own row, every PR
   conflicted with every other.
 - **Decisions only the maintainer makes** are listed in Open Work under
-  "Decisions pending the maintainer" (on 2026-10-01, only when to cut the next
-  release and the launch). Don't guess at them. The ones he delegated are under
+  "Decisions pending the maintainer" (on 2026-10-11, only the launch). Don't guess at them. The ones he delegated are under
   "Recently decided" and in [`docs/Decisions.md`](docs/Decisions.md).
 
 Working beside other agents (several PRs are usually open at once):
@@ -375,7 +375,7 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   (not the historical `v1.0.0` tag), rename, delete and refactor freely; there
   is no compatibility promise (Open Work, F-54).
 - **Don't bypass GPG signing** unless told to. No signing key is configured;
-  tags through `v412.0.0` are annotated and unsigned.
+  tags through `v413.0.0` are annotated and unsigned.
 - **Don't cut release tags.** That is the maintainer's call.
 
 ## When you are stuck
