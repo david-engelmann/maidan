@@ -108,8 +108,8 @@ impl Search for SqliteSearch {
             q = q.bind(cid.0);
         }
         if let Some(rid) = reader_id {
-            // readable_thread uses the member placeholder 3 times
-            q = q.bind(rid).bind(rid).bind(rid);
+            // readable_thread names the member placeholder once
+            q = q.bind(rid);
         }
         let rows = q.bind(limit).fetch_all(&self.pool).await?;
 
@@ -226,7 +226,7 @@ impl Search for SqliteSearch {
                 q = q.bind(cid.0);
             }
             if let Some(rid) = reader_id {
-                q = q.bind(rid).bind(rid).bind(rid);
+                q = q.bind(rid);
             }
             let rows = q
                 .bind(&query_bytes)
@@ -285,7 +285,7 @@ impl Search for SqliteSearch {
             q = q.bind(cid.0);
         }
         if let Some(rid) = reader_id {
-            q = q.bind(rid).bind(rid).bind(rid);
+            q = q.bind(rid);
         }
         let rows = q.fetch_all(&self.pool).await?;
 

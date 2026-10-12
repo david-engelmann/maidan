@@ -212,15 +212,17 @@ async fn run_suite(store: &dyn Store) {
         "alice counts public posts only"
     );
     assert_eq!(posted_count(&census_bob), 5, "bob counts every A post");
-    // A reader from another tenant counts only A's public posts too.
+    // A reader from another tenant counts none of A's posts, not even its
+    // public ones: the store's rule requires the reader to belong to the
+    // thread's workspace, whatever workspace the query names.
     let census_carol = store
         .event_kind_census(ws_a.id, None, None, &[], Some(carol.id))
         .await
         .unwrap();
     assert_eq!(
         posted_count(&census_carol),
-        2,
-        "carol counts A's public posts only"
+        0,
+        "carol counts none of another tenant's posts"
     );
     let census_b = store
         .event_kind_census(ws_b.id, None, None, &[], Some(carol.id))
