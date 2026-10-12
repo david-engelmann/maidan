@@ -371,6 +371,19 @@ async fn an_artifact_upload_past_the_json_body_limit_fits_under_the_artifact_lim
         StatusCode::CREATED,
         "3 MiB of media uploads"
     );
+    let ui_upload = ctx
+        .client
+        .post(format!("{base}/ui/api/artifacts?kind=recording"))
+        .header("Authorization", bearer(&token))
+        .body(big.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        ui_upload.status(),
+        StatusCode::CREATED,
+        "the console's upload route has the same limit"
+    );
 
     let json = ctx
         .client

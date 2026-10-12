@@ -70,6 +70,18 @@ pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
 /// and curling it; the binary's `main.rs` uses the same router.
 pub fn router(state: AppState) -> Router {
+    // One budget for every route that buffers an artifact upload, so the
+    // bytes they hold together stay bounded.
+    let artifact_limit = artifact_max_body_bytes_from_env();
+    let upload_budget = crate::upload_budget::UploadBudget::from_env(artifact_limit);
+    let upload_layers = |route: axum::routing::MethodRouter<AppState>| {
+        route
+            .layer(DefaultBodyLimit::max(artifact_limit))
+            .layer(middleware::from_fn_with_state(
+                upload_budget.clone(),
+                crate::upload_budget::middleware,
+            ))
+    };
     // `approval_decide` derives its confirmation links with the same secret
     // the gate's `requestState` is signed with. Without one, its confirmation
     // path refuses, as the answer route does.
@@ -659,11 +671,7 @@ pub fn router(state: AppState) -> Router {
                 .merge(delete(routes::unpin_message)),
         )
         // The route layer is inner to the router-wide limit, so it wins here.
-        .route(
-            "/artifacts",
-            post(routes::upload_artifact)
-                .layer(DefaultBodyLimit::max(artifact_max_body_bytes_from_env())),
-        )
+        .route("/artifacts", upload_layers(post(routes::upload_artifact)))
         .route(
             "/artifacts/multipart",
             post(routes::begin_multipart_artifact).merge(delete(routes::abort_multipart_artifact)),
@@ -674,8 +682,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/artifacts/multipart/{upload_id}/parts/{part_number}",
-            put(routes::upload_multipart_artifact_part)
-                .layer(DefaultBodyLimit::max(artifact_max_body_bytes_from_env())),
+            upload_layers(put(routes::upload_multipart_artifact_part)),
         )
         .route(
             "/artifacts/{sha}",
@@ -1297,7 +1304,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/ui/api/threads/{tid}/reviews", post(routes::submit_review))
         .route("/ui/api/messages/{mid}", patch(routes::edit_message))
-        .route("/ui/api/artifacts", post(routes::upload_artifact))
+        .route(
+            "/ui/api/artifacts",
+            upload_layers(post(routes::upload_artifact)),
+        )
         .route(
             "/ui/api/messages/{mid}/reactions",
             post(routes::add_reaction).merge(delete(routes::remove_reaction)),
