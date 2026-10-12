@@ -234,6 +234,9 @@ const POSTGRES_UP_V160: &str =
     include_str!("../../../migrations/postgres/0160_decided_via_source.sql");
 const POSTGRES_UP_V161: &str =
     include_str!("../../../migrations/postgres/0161_session_identity.sql");
+// 0162 is Postgres only: SQLite keeps the event log in one table.
+const POSTGRES_UP_V162: &str =
+    include_str!("../../../migrations/postgres/0162_partition_event_log.sql");
 const POSTGRES_UP_V163: &str =
     include_str!("../../../migrations/postgres/0163_oidc_front_door.sql");
 const POSTGRES_UP_V170: &str =
@@ -638,8 +641,12 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 152, POSTGRES_UP_V152).await?;
     apply_postgres(pool, 160, POSTGRES_UP_V160).await?;
     apply_postgres(pool, 161, POSTGRES_UP_V161).await?;
+    apply_postgres(pool, 162, POSTGRES_UP_V162).await?;
     apply_postgres(pool, 163, POSTGRES_UP_V163).await?;
     apply_postgres(pool, 170, POSTGRES_UP_V170).await?;
+    // The partitioned tables need their months ready before the first write,
+    // or rows land in DEFAULT until the first retention sweep.
+    crate::postgres::partitions::maintain(pool, chrono::Utc::now()).await?;
     Ok(())
 }
 
