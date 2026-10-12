@@ -322,6 +322,29 @@ pub enum ChangeReply {
 /// than waiting on a row that may never settle.
 pub const CHANGE_REPLY_MAX_WAIT: chrono::Duration = chrono::Duration::hours(6);
 
+/// The longest a change reply's reason runs, in characters.
+const CHANGE_REASON_MAX_CHARS: usize = 600;
+
+/// A run's failure reason, short enough for a chat line: a cause repeated
+/// across retries is said once (lines are compared trimmed, first occurrence
+/// kept), and the result is cut at [`CHANGE_REASON_MAX_CHARS`] on a character
+/// boundary with an ellipsis.
+fn compact_reason(reason: &str) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let kept: Vec<&str> = reason
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && seen.insert(*line))
+        .collect();
+    let joined = kept.join("\n");
+    if joined.chars().count() <= CHANGE_REASON_MAX_CHARS {
+        return joined;
+    }
+    let mut cut: String = joined.chars().take(CHANGE_REASON_MAX_CHARS - 1).collect();
+    cut.push('…');
+    cut
+}
+
 /// Build the Slack reply to a [`CHANGE_RESULT_KIND`] from its
 /// `github_branch` deliveries: the commit and pull request when one landed,
 /// the recorded reason when it did not, and the status alone when the producer reported
@@ -351,8 +374,10 @@ pub async fn change_reply_at(
             "The coding agent finished with status `{}`, so nothing was committed.",
             change.status
         ));
-        if let Some(summary) = &change.summary {
-            lines.push(summary.clone());
+        // The cause, so the thread gets one end notice that says why. A
+        // producer's own detail wins over its summary, as soundcheck reads it.
+        if let Some(reason) = change.error_detail.as_deref().or(change.summary.as_deref()) {
+            lines.push(compact_reason(reason));
         }
         return ChangeReply::Ready(slack_body(&lines.join("\n")));
     }
@@ -594,6 +619,25 @@ pub async fn audit_replay(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_change_reason_says_a_repeated_cause_once() {
+        let reason = "pi gave up after 3 failed attempts\nseat timed out\n  seat timed out\n\nseat timed out";
+        assert_eq!(
+            super::compact_reason(reason),
+            "pi gave up after 3 failed attempts\nseat timed out"
+        );
+    }
+
+    #[test]
+    fn a_long_change_reason_is_cut_on_a_character_boundary() {
+        let reason = "é".repeat(super::CHANGE_REASON_MAX_CHARS + 50);
+        let cut = super::compact_reason(&reason);
+        assert_eq!(cut.chars().count(), super::CHANGE_REASON_MAX_CHARS);
+        assert!(cut.ends_with('…'));
+        assert_eq!(super::compact_reason("short"), "short");
+    }
+
     use super::*;
     use maidan_types::{
         FindingLineRange, GithubDiffSide, WaiterFinding, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
