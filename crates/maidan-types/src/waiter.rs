@@ -797,11 +797,14 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         .map(|entries| entries.iter().filter_map(parse_finding).collect())
         .unwrap_or_default();
 
-    // Attachments live under the producer's own `pi` namespace, not the
-    // envelope's top level — the one nested read in this parser.
+    // pi writes the list under the dotted top-level key
+    // `pi.result_attachments` (soundcheck's docs/cross-repo/attachments.md),
+    // which soundcheck also reads, falling back to an unprefixed key. A
+    // nested `pi` object is read last, for a producer that nests it.
     let attachments = obj
-        .get("pi")
-        .and_then(|pi| pi.get("result_attachments"))
+        .get("pi.result_attachments")
+        .or_else(|| obj.get("result_attachments"))
+        .or_else(|| obj.get("pi").and_then(|pi| pi.get("result_attachments")))
         .and_then(Value::as_array)
         .map(|entries| entries.iter().filter_map(parse_result_attachment).collect())
         .unwrap_or_default();
@@ -833,9 +836,15 @@ fn parse_result_attachment(entry: &Value) -> Option<ResultAttachment> {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
     };
+    // The sha becomes a URL path segment, so only a full lowercase SHA-256
+    // is taken: a short or uppercase one is not an artifact address.
     let sha = non_empty("sha256")
         .or_else(|| non_empty("sha"))
-        .filter(|s| s.bytes().all(|b| b.is_ascii_hexdigit()))?;
+        .filter(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })?;
     let filename = non_empty("filename")?;
     Some(ResultAttachment {
         sha: sha.to_string(),
@@ -1023,18 +1032,16 @@ mod tests {
     }
 
     #[test]
-    fn attachments_are_read_from_the_producers_pi_namespace() {
+    fn attachments_are_read_from_pis_dotted_top_level_key() {
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
             "result_kind": "example.review.result/1",
             "status": "reviewed",
-            "pi": {
-                "result_attachments": [
-                    { "sha256": "a".repeat(64), "filename": "trace.png", "caption": "The failing run" },
-                    { "sha": "b".repeat(64), "filename": "notes.md" },
-                    { "sha256": "c".repeat(64), "filename": "extra.bin", "caption": "", "producer_field": 1 }
-                ]
-            }
+            "pi.result_attachments": [
+                { "sha256": "a".repeat(64), "filename": "trace.png", "caption": "The failing run" },
+                { "sha": "b".repeat(64), "filename": "notes.md" },
+                { "sha256": "c".repeat(64), "filename": "extra.bin", "caption": "", "producer_field": 1 }
+            ]
         });
         let parsed = parse_waiter_result(&value).expect("envelope parses");
         assert_eq!(
@@ -1060,6 +1067,27 @@ mod tests {
     }
 
     #[test]
+    fn an_unprefixed_or_nested_attachment_list_is_read_too() {
+        for value in [
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "example.review.result/1",
+                "status": "reviewed",
+                "result_attachments": [{ "sha256": "a".repeat(64), "filename": "a.png" }]
+            }),
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "example.review.result/1",
+                "status": "reviewed",
+                "pi": { "result_attachments": [{ "sha256": "a".repeat(64), "filename": "a.png" }] }
+            }),
+        ] {
+            let parsed = parse_waiter_result(&value).expect("envelope parses");
+            assert_eq!(parsed.attachments.len(), 1, "{value}");
+        }
+    }
+
+    #[test]
     fn attachment_entries_without_a_sha_or_a_filename_are_skipped() {
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
@@ -1071,6 +1099,8 @@ mod tests {
                     { "sha256": "d".repeat(64) },
                     { "sha256": "", "filename": "empty-sha.png" },
                     { "sha256": "not-a-sha", "filename": "forged.png" },
+                    { "sha256": "abc123", "filename": "short.png" },
+                    { "sha256": "E".repeat(64), "filename": "upper.png" },
                     "not an object",
                     { "sha256": "e".repeat(64), "filename": "kept.png" }
                 ]
