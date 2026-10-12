@@ -17,9 +17,11 @@
 //! endpoints (`POST /mcp`, `POST /mcp/worker`, `POST /mcp/reviewer`).
 //! Stdio transport: [`stdio::run_stdio`] via `maidan-cli mcp-stdio`.
 
+pub mod apps_card;
 pub mod caching;
 pub mod call_context;
 pub mod claim_lease;
+pub mod client_identity;
 pub mod context;
 pub mod error;
 mod land_gate_advice;

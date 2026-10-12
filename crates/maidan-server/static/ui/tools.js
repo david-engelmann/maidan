@@ -950,23 +950,28 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
       }
 
 
+      // The client a model used, as far as it can be trusted: the name its
+      // credential was issued to, then what it called itself (marked
+      // self-reported), then nothing. A record from before the source was kept
+      // got its name from clientInfo, so it reads as self-reported too.
+      function clientLabel(record) {
+        if (!record || !record.client_name) return "an unidentified MCP client";
+        if (record.client_source === "credential") return record.client_name;
+        const version = record.client_version ? " " + record.client_version : "";
+        return `${record.client_name}${version} (self-reported)`;
+      }
+
       // A model's live request to accept a gate, as the card says it.
       function modelRequestLine(request) {
         if (!request) return null;
-        const who = request.client_name
-          ? `a model asked via ${request.client_name}${request.client_version ? " " + request.client_version : ""}`
-          : "a model asked via an unidentified MCP client";
-        return `${who}, waiting for you to confirm`;
+        return `a model asked via ${clientLabel(request)}, waiting for you to confirm`;
       }
 
       // How a decided gate says who decided it.
       function decidedViaLine(gate) {
         const via = gate.decided_via;
         if (!via || !via.model_asked) return null;
-        const who = via.client_name
-          ? `decided via ${via.client_name}${via.client_version ? " " + via.client_version : ""}`
-          : "decided via an unidentified MCP client";
-        return `${who}, requested by a model`;
+        return `decided via ${clientLabel(via)}, requested by a model`;
       }
 
       // The link approval_decide gave a person: #confirm-approval=<gate id>.<token>.

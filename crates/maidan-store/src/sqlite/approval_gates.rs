@@ -13,7 +13,8 @@ use crate::thread_access::readable_row;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at, risk, \
-     decided_via_client, decided_via_client_version, model_asked";
+     decided_via_client, decided_via_client_version, model_asked, decided_via_source, \
+     decided_via_client_id";
 
 /// The `created_at` text form: always millisecond `...Z`, so rows and cursors
 /// compare correctly as strings.
@@ -214,7 +215,8 @@ async fn resolve_on(
     let row = sqlx::query(&format!(
         "UPDATE maidan_approval_gates
          SET state = ?, content = ?, resolved_by = ?, resolved_at = ?, resolved_actor_id = ?,
-             decided_via_client = ?, decided_via_client_version = ?, model_asked = ?
+             decided_via_client = ?, decided_via_client_version = ?, model_asked = ?,
+             decided_via_source = ?, decided_via_client_id = ?
          WHERE id = ? AND state = 'pending'
          RETURNING {GATE_COLUMNS}"
     ))
@@ -226,6 +228,8 @@ async fn resolve_on(
     .bind(via.and_then(|v| v.client_name.as_deref()))
     .bind(via.and_then(|v| v.client_version.as_deref()))
     .bind(via.is_some_and(|v| v.model_asked))
+    .bind(via.map(|v| v.client_source.as_str()))
+    .bind(via.and_then(|v| v.client_id.as_deref()))
     .bind(id.0)
     .fetch_optional(&mut *conn)
     .await?;
@@ -317,7 +321,7 @@ pub async fn set_policy_audited(
 }
 
 const CONFIRMATION_COLUMNS: &str = "gate_id, member_id, workspace_id, actor_id, nonce, \
-     client_name, client_version, note, created_at, expires_at, used_at";
+     client_name, client_version, client_id, client_source, note, created_at, expires_at, used_at";
 
 /// See the Postgres twin. Times are millisecond `...Z` text, so the expiry
 /// comparison in the upsert is a string comparison that orders correctly.
@@ -330,12 +334,13 @@ pub async fn issue_confirmation(
     let inserted = sqlx::query(&format!(
         "INSERT INTO maidan_approval_confirmations
              (gate_id, member_id, workspace_id, actor_id, nonce, token_hash, client_name,
-              client_version, note, created_at, expires_at, used_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+              client_version, client_id, client_source, note, created_at, expires_at, used_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
          ON CONFLICT (gate_id, member_id) DO UPDATE
          SET workspace_id = excluded.workspace_id, actor_id = excluded.actor_id,
              nonce = excluded.nonce, token_hash = excluded.token_hash,
              client_name = excluded.client_name, client_version = excluded.client_version,
+             client_id = excluded.client_id, client_source = excluded.client_source,
              note = excluded.note, created_at = excluded.created_at,
              expires_at = excluded.expires_at, used_at = NULL
          WHERE maidan_approval_confirmations.used_at IS NOT NULL
@@ -350,6 +355,8 @@ pub async fn issue_confirmation(
     .bind(&new.token_hash)
     .bind(new.client_name.as_deref())
     .bind(new.client_version.as_deref())
+    .bind(new.client_id.as_deref())
+    .bind(new.client_source.as_str())
     .bind(new.note.as_deref())
     .bind(ts(new.now))
     .bind(ts(new.expires_at))
@@ -469,6 +476,8 @@ fn row_to_confirmation(row: &sqlx::sqlite::SqliteRow) -> Result<ApprovalConfirma
         nonce: row.get::<Uuid, _>("nonce"),
         client_name: row.get("client_name"),
         client_version: row.get("client_version"),
+        client_id: row.get("client_id"),
+        client_source: crate::approval_policy::source(row.get("client_source")),
         note: row.get("note"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
@@ -502,6 +511,8 @@ fn row_to_gate(row: &sqlx::sqlite::SqliteRow) -> Result<ApprovalGate, StoreError
         decided_via: crate::approval_policy::decided_via(
             row.get("decided_via_client"),
             row.get("decided_via_client_version"),
+            row.get("decided_via_client_id"),
+            row.get("decided_via_source"),
             row.get::<bool, _>("model_asked"),
         ),
     })

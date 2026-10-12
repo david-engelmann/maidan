@@ -77,6 +77,7 @@ async fn run_suite(store: &dyn Store, pool: Pool, break_audit: &str) {
         workspace_id: ws.id,
         member_id: member.id,
         api_token_id,
+        oidc_identity_id: None,
         expires_at: Utc::now() + Duration::hours(1),
     };
 

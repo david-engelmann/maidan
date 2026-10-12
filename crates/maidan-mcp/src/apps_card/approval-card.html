@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-5f6VI2HVUQ9ozWdVZo1CyS76Q58UbbGqPfHnjH40uOk='; style-src 'sha256-LJzL1jTs++h8mqbMbEVq2NoFHaDk3Fh0u34D4JR6aMI='; img-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maidan approval</title>
+<style>
+:root { color-scheme: light dark; --fg: #1d1d1f; --muted: #5f6368; --line: #d9dce1; --bg: #ffffff; --warn-bg: #fff4e5; --warn-fg: #7a4100; --accent: #1a5fd0; }
+@media (prefers-color-scheme: dark) { :root { --fg: #ececf1; --muted: #a1a5ab; --line: #3a3d42; --bg: #1e1f22; --warn-bg: #3b2a12; --warn-fg: #ffd59a; --accent: #8ab4ff; } }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 14px 16px; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+h1 { font-size: 15px; margin: 0 0 6px; font-weight: 600; }
+.prompt { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 10px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 10px; }
+dt { color: var(--muted); }
+dd { margin: 0; overflow-wrap: anywhere; }
+.state { font-weight: 600; }
+.warn { background: var(--warn-bg); color: var(--warn-fg); border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; }
+ul.evidence { list-style: none; padding: 0; margin: 0 0 10px; border-top: 1px solid var(--line); }
+ul.evidence li { padding: 5px 0; border-bottom: 1px solid var(--line); display: flex; gap: 8px; flex-wrap: wrap; }
+.tier { font-size: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; }
+.tier-verified { border-color: #2e7d32; }
+.tier-self_reported { border-color: #b26a00; }
+.muted { color: var(--muted); }
+textarea { width: 100%; min-height: 52px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 0 0 8px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+button.primary { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+.panel { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 10px 0 0; }
+.link { font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; user-select: all; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main id="card" aria-live="polite">
+  <p id="loading" class="muted">Loading the approval gate…</p>
+  <section id="gate" hidden>
+    <h1>Approval requested</h1>
+    <p id="prompt" class="prompt"></p>
+    <dl>
+      <dt>Requested by</dt><dd id="requester"></dd>
+      <dt>Risk</dt><dd id="risk"></dd>
+      <dt>Status</dt><dd id="state" class="state"></dd>
+      <dt id="via-label" hidden>Decided via</dt><dd id="via" hidden></dd>
+    </dl>
+    <p id="self-reported-warning" class="warn" hidden>All of this evidence is self-reported. Maidan checked none of it.</p>
+    <p id="no-evidence" class="muted" hidden>No review evidence is attached to this gate.</p>
+    <ul id="evidence" class="evidence" aria-label="Evidence" hidden></ul>
+    <form id="decide" hidden>
+      <label class="muted" for="note">Note (optional)</label>
+      <textarea id="note" maxlength="2000"></textarea>
+      <div class="actions">
+        <button type="button" id="accept" class="primary">Accept</button>
+        <button type="button" id="decline">Decline</button>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+    </form>
+    <div id="confirm" class="panel" hidden>
+      <p id="confirm-text">Confirmation needed. Nothing is decided until a person confirms in the Maidan console, signed in as themselves.</p>
+      <p id="confirm-url" class="link"></p>
+      <div class="actions">
+        <button type="button" id="open-link" class="primary">Open the Maidan console</button>
+      </div>
+      <p id="open-link-error" class="muted" hidden></p>
+    </div>
+  </section>
+  <p id="error" class="warn" role="alert" hidden></p>
+</main>
+<script>
+(function () {
+  "use strict";
+  var PROTOCOL_VERSION = "2026-01-26";
+  var STATES = { pending: "Waiting for a decision", accepted: "Accepted", declined: "Declined", cancelled: "Cancelled" };
+  var TIERS = { verified: "verified", attached: "attached", self_reported: "self-reported" };
+  var nextId = 1;
+  var pending = {};
+  var current = { gate: null, gateId: null, requester: null, review: null, busy: false };
+
+  function $(id) { return document.getElementById(id); }
+  function show(el, on) { el.hidden = !on; }
+  function text(id, value) { $(id).textContent = value == null ? "" : String(value); }
+  function send(message) { window.parent.postMessage(message, "*"); }
+
+  function request(method, params) {
+    var id = nextId++;
+    send({ jsonrpc: "2.0", id: id, method: method, params: params || {} });
+    return new Promise(function (resolve, reject) { pending[id] = { resolve: resolve, reject: reject }; });
+  }
+  function notify(method, params) { send({ jsonrpc: "2.0", method: method, params: params || {} }); }
+
+  function sizeChanged() {
+    var el = document.documentElement;
+    notify("ui/notifications/size-changed", { width: el.scrollWidth, height: el.scrollHeight });
+  }
+
+  function fail(message) {
+    text("error", message);
+    show($("error"), true);
+    sizeChanged();
+  }
+
+  function firstText(result) {
+    var content = result && Array.isArray(result.content) ? result.content : [];
+    for (var i = 0; i < content.length; i++) {
+      if (content[i] && content[i].type === "text" && typeof content[i].text === "string") { return content[i].text; }
+    }
+    return "";
+  }
+
+  function openable(url) {
+    if (typeof url !== "string") { return false; }
+    try {
+      var parsed = new URL(url);
+      return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function who(requester, gate) {
+    if (requester && typeof requester === "object") {
+      var name = requester.display_name || requester.handle || requester.id || "";
+      var parts = [String(name)];
+      if (requester.handle && requester.display_name) { parts.push("(@" + requester.handle + ")"); }
+      if (requester.kind) { parts.push("· " + requester.kind); }
+      return parts.join(" ");
+    }
+    return gate && gate.requested_by ? String(gate.requested_by) : "unknown";
+  }
+
+  function via(decided) {
+    if (!decided || typeof decided !== "object") { return ""; }
+    if (decided.client_source === "credential" && decided.client_name) { return String(decided.client_name); }
+    if (decided.client_source === "self_reported" && decided.client_name) {
+      return String(decided.client_name) + (decided.client_version ? " " + decided.client_version : "") + " (self-reported)";
+    }
+    if (decided.client_name && !decided.client_source) { return String(decided.client_name) + " (self-reported)"; }
+    return "an unidentified MCP client";
+  }
+
+  function renderEvidence(review) {
+    var list = $("evidence");
+    while (list.firstChild) { list.removeChild(list.firstChild); }
+    var items = review && Array.isArray(review.attestations) ? review.attestations : [];
+    show($("no-evidence"), !review);
+    show($("self-reported-warning"), !!(review && review.self_reported_only === true));
+    show(list, items.length > 0);
+    items.forEach(function (item) {
+      if (!item || typeof item !== "object") { return; }
+      var li = document.createElement("li");
+      var kind = document.createElement("span");
+      kind.textContent = String(item.kind || "evidence");
+      var tier = document.createElement("span");
+      var tierKey = Object.prototype.hasOwnProperty.call(TIERS, item.tier) ? item.tier : "unknown";
+      tier.className = "tier tier-" + tierKey;
+      tier.textContent = TIERS[tierKey] || "unknown tier";
+      li.appendChild(kind);
+      li.appendChild(tier);
+      if (item.attested_by) {
+        var by = document.createElement("span");
+        by.className = "muted";
+        by.textContent = "by " + String(item.attested_by);
+        li.appendChild(by);
+      }
+      if (typeof item.sha256 === "string") {
+        var sha = document.createElement("span");
+        sha.className = "muted";
+        sha.textContent = "sha256 " + item.sha256.slice(0, 12);
+        li.appendChild(sha);
+      }
+      list.appendChild(li);
+    });
+  }
+
+  function render() {
+    var gate = current.gate;
+    show($("loading"), !gate);
+    show($("gate"), !!gate);
+    if (!gate) { sizeChanged(); return; }
+    text("prompt", gate.prompt);
+    text("requester", who(current.requester, gate));
+    text("risk", gate.risk || "high");
+    text("state", STATES[gate.state] || "Unknown");
+    var decided = gate.state !== "pending" && gate.decided_via;
+    show($("via-label"), !!decided);
+    show($("via"), !!decided);
+    text("via", decided ? via(gate.decided_via) : "");
+    renderEvidence(current.review);
+    show($("decide"), gate.state === "pending");
+    if (gate.state !== "pending") { show($("confirm"), false); }
+    ["accept", "decline", "refresh"].forEach(function (id) { $(id).disabled = current.busy; });
+    sizeChanged();
+  }
+
+  function showConfirmation(answer) {
+    var url = answer.confirmation_url;
+    text("confirm-url", typeof url === "string" ? url : "");
+    var canOpen = openable(url);
+    $("open-link").disabled = !canOpen;
+    show($("open-link-error"), !canOpen);
+    text("open-link-error", canOpen ? "" : "This link is relative to the Maidan console: open it there.");
+    show($("confirm"), true);
+    sizeChanged();
+  }
+
+  function onResult(result) {
+    if (!result || typeof result !== "object") { return; }
+    if (result.isError === true) { fail(firstText(result) || "The tool call failed."); return; }
+    var data = result.structuredContent;
+    if (!data || typeof data !== "object") {
+      if (current.gate === null && result.structuredContent === null) { fail("No such approval gate in your workspace."); }
+      return;
+    }
+    show($("error"), false);
+    if (data.kind === "maidan.approval_gate") {
+      if (!data.gate) { current.gate = null; fail("No such approval gate in your workspace."); return; }
+      current.gate = data.gate;
+      current.gateId = data.gate.id;
+      current.requester = data.requester || null;
+      current.review = data.review || null;
+      render();
+      return;
+    }
+    if (data.kind === "maidan.approval_decision") {
+      if (data.gate_id) { current.gateId = data.gate_id; }
+      if (data.gate && typeof data.gate === "object") {
+        current.gateId = data.gate.id;
+        current.gate = data.gate;
+      }
+      if (data.status === "confirmation_required") {
+        render();
+        showConfirmation(data);
+      } else {
+        render();
+      }
+      if (!current.requester && current.gateId) { refresh(); }
+    }
+  }
+
+  function call(name, args) {
+    current.busy = true;
+    render();
+    return request("tools/call", { name: name, arguments: args }).then(function (result) {
+      current.busy = false;
+      onResult(result);
+    }, function (error) {
+      current.busy = false;
+      render();
+      fail(error && error.message ? String(error.message) : "The host refused the tool call.");
+    });
+  }
+
+  function refresh() {
+    if (!current.gateId) { return Promise.resolve(); }
+    return call("get_approval_gate", { gate_id: current.gateId });
+  }
+
+  function decide(decision) {
+    if (!current.gateId || current.busy) { return; }
+    var args = { gate_id: current.gateId, decision: decision };
+    var note = $("note").value.trim();
+    if (note) { args.note = note; }
+    call("approval_decide", args);
+  }
+
+  $("accept").addEventListener("click", function () { decide("accept"); });
+  $("decline").addEventListener("click", function () { decide("decline"); });
+  $("refresh").addEventListener("click", function () { refresh(); });
+  $("open-link").addEventListener("click", function () {
+    var url = $("confirm-url").textContent;
+    if (!openable(url)) { return; }
+    request("ui/open-link", { url: url }).then(function (result) {
+      if (result && result.isError) {
+        text("open-link-error", "Your host would not open the link. Copy it from above.");
+        show($("open-link-error"), true);
+        sizeChanged();
+      }
+    }, function () {
+      text("open-link-error", "Your host would not open the link. Copy it from above.");
+      show($("open-link-error"), true);
+      sizeChanged();
+    });
+  });
+
+  window.addEventListener("message", function (event) {
+    if (event.source !== window.parent) { return; }
+    var message = event.data;
+    if (!message || typeof message !== "object" || message.jsonrpc !== "2.0") { return; }
+    if (message.method === undefined && message.id !== undefined) {
+      var waiter = pending[message.id];
+      if (!waiter) { return; }
+      delete pending[message.id];
+      if (message.error) { waiter.reject(message.error); } else { waiter.resolve(message.result); }
+      return;
+    }
+    var params = message.params || {};
+    if (message.method === "ui/notifications/tool-input") {
+      var args = params.arguments || {};
+      if (typeof args.gate_id === "string") { current.gateId = args.gate_id; }
+    } else if (message.method === "ui/notifications/tool-result") {
+      onResult(params);
+    } else if (message.method === "ui/notifications/tool-cancelled") {
+      if (!current.gate) { fail("The tool call was cancelled."); }
+    } else if (message.id !== undefined && (message.method === "ui/resource-teardown" || message.method === "ping")) {
+      send({ jsonrpc: "2.0", id: message.id, result: {} });
+    }
+  });
+
+  request("ui/initialize", {
+    appInfo: { name: "maidan-approval-card", version: "1" },
+    appCapabilities: { availableDisplayModes: ["inline"] },
+    protocolVersion: PROTOCOL_VERSION
+  }).then(function () {
+    notify("ui/notifications/initialized", {});
+    sizeChanged();
+  }, function () {
+    fail("This host did not start the MCP Apps bridge.");
+  });
+}());
+</script>
+</body>
+</html>

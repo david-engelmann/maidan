@@ -72,18 +72,27 @@ fn reply<T: Serialize>(result: Result<T, A2aError>) -> Response {
     }
 }
 
-fn stream<S>(events: Result<S, A2aError>) -> Response
+/// An SSE response that ends with a `stream_ended` frame once the caller's
+/// credential no longer holds (see [`crate::stream_guard`]).
+fn stream<S>(state: &AppState, auth: &AuthContext, events: Result<S, A2aError>) -> Response
 where
     S: Stream<Item = StreamResponse> + Send + 'static,
 {
     match events {
-        Ok(events) => Sse::new(events.map(|event| {
-            let data = serde_json::to_string(&event).unwrap_or_else(|err| {
-                serde_json::to_string(&internal(err).to_rest_body()).unwrap_or_default()
+        Ok(events) => {
+            let frames = events.map(|event| {
+                let data = serde_json::to_string(&event).unwrap_or_else(|err| {
+                    serde_json::to_string(&internal(err).to_rest_body()).unwrap_or_default()
+                });
+                Ok::<Event, Infallible>(Event::default().data(data))
             });
-            Ok::<Event, Infallible>(Event::default().data(data))
-        }))
-        .into_response(),
+            Sse::new(crate::stream_guard::guard(
+                state.store.clone(),
+                auth,
+                frames,
+            ))
+            .into_response()
+        }
         Err(err) => error(&err),
     }
 }
@@ -131,6 +140,8 @@ pub async fn rest_message(
             .map(SendMessageResponse::Task),
         ),
         ":stream" => stream(
+            &state,
+            &auth,
             recorded(
                 &state,
                 &auth,
@@ -262,7 +273,11 @@ pub async fn rest_task_get(
 /// `SubscribeToTask`, served on both `GET` and `POST /tasks/{id}:subscribe`.
 async fn subscribe(state: &AppState, auth: &AuthContext, id: &str) -> Response {
     let call = ops::subscribe(state, auth, SubscribeToTaskRequest { id: id.to_string() });
-    stream(recorded(state, auth, "rest", Method::SubscribeToTask, call).await)
+    stream(
+        state,
+        auth,
+        recorded(state, auth, "rest", Method::SubscribeToTask, call).await,
+    )
 }
 
 /// `POST /tasks/{id}:cancel` and `POST /tasks/{id}:subscribe`

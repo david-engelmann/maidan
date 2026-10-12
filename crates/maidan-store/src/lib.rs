@@ -138,7 +138,7 @@ pub mod sqlite;
 pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
-mod thread_access;
+pub mod thread_access;
 pub mod trace;
 mod usage_metrics;
 pub mod workspace_export;

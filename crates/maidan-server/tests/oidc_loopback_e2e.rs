@@ -572,10 +572,45 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         }
     };
     assert_eq!(read_session(live_cookie.clone()).await, ClientStatus::OK);
+    let second = follow_login(&client, &base, workspace.id.0).await;
+    let backstop_cookie = second
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find_map(|value| {
+            value
+                .split(';')
+                .next()
+                .filter(|pair| pair.starts_with("maidan_session="))
+        })
+        .expect("second session cookie")
+        .to_string();
     store
         .create_scim_user(member_id, workspace.id, None, true)
         .await
         .expect("SCIM user");
+    // A link made inactive outside the audited path ends no session in a
+    // transaction, so the per-request check is what refuses one.
+    store
+        .update_scim_user(member_id, None, false)
+        .await
+        .expect("raw deactivate");
+    assert_eq!(
+        read_session(backstop_cookie).await,
+        ClientStatus::UNAUTHORIZED,
+        "the per-request check refuses a deactivated member's session"
+    );
+    assert!(
+        store
+            .list_audit(500)
+            .await
+            .expect("audit")
+            .iter()
+            .any(|row| row.action == "session.delete"
+                && row.metadata["reason"] == "member_deactivated"),
+        "the backstop records its reason"
+    );
     store
         .scim_update_user_audited(
             workspace.id,
@@ -605,7 +640,9 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         .expect("audit")
         .into_iter()
         .any(|row| {
-            row.action == "session.delete" && row.metadata["reason"] == "member_deactivated"
+            // Deactivation deletes the session in its own transaction; the
+            // per-request refusal is the backstop for one it did not reach.
+            row.action == "session.delete" && row.metadata["reason"] == "scim_deactivate"
         });
     assert!(ended, "the session's end is recorded with its reason");
     let refused = follow_login(&client, &base, workspace.id.0).await;

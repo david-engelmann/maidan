@@ -13,7 +13,8 @@ use crate::thread_access::readable_row;
 
 const GATE_COLUMNS: &str = "id, workspace_id, thread_id, requested_by, prompt, schema, state, \
      content, resolved_by, requested_actor_id, resolved_actor_id, created_at, resolved_at, risk, \
-     decided_via_client, decided_via_client_version, model_asked";
+     decided_via_client, decided_via_client_version, model_asked, decided_via_source, \
+     decided_via_client_id";
 
 /// Open a new `Pending` approval gate. See the SQLite twin. `schema` binds
 /// directly to the JSONB column.
@@ -200,7 +201,8 @@ async fn resolve_on(
         "UPDATE maidan_approval_gates
          SET state = $2, content = $3, resolved_by = $4, resolved_at = now(),
              resolved_actor_id = $5, decided_via_client = $6,
-             decided_via_client_version = $7, model_asked = $8
+             decided_via_client_version = $7, model_asked = $8,
+             decided_via_source = $9, decided_via_client_id = $10
          WHERE id = $1 AND state = 'pending'
          RETURNING {GATE_COLUMNS}"
     ))
@@ -212,6 +214,8 @@ async fn resolve_on(
     .bind(via.and_then(|v| v.client_name.as_deref()))
     .bind(via.and_then(|v| v.client_version.as_deref()))
     .bind(via.is_some_and(|v| v.model_asked))
+    .bind(via.map(|v| v.client_source.as_str()))
+    .bind(via.and_then(|v| v.client_id.as_deref()))
     .fetch_optional(&mut *conn)
     .await?;
     Ok(row.as_ref().map(row_to_gate))
@@ -309,7 +313,7 @@ pub async fn set_policy_audited(
 }
 
 const CONFIRMATION_COLUMNS: &str = "gate_id, member_id, workspace_id, actor_id, nonce, \
-     client_name, client_version, note, created_at, expires_at, used_at";
+     client_name, client_version, client_id, client_source, note, created_at, expires_at, used_at";
 
 /// Issue a confirmation for a gate and member, or hand back the live one.
 /// The upsert replaces a row only once it is used or expired, so while one
@@ -324,12 +328,13 @@ pub async fn issue_confirmation(
     let inserted = sqlx::query(&format!(
         "INSERT INTO maidan_approval_confirmations
              (gate_id, member_id, workspace_id, actor_id, nonce, token_hash, client_name,
-              client_version, note, created_at, expires_at, used_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL)
+              client_version, client_id, client_source, note, created_at, expires_at, used_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL)
          ON CONFLICT (gate_id, member_id) DO UPDATE
          SET workspace_id = excluded.workspace_id, actor_id = excluded.actor_id,
              nonce = excluded.nonce, token_hash = excluded.token_hash,
              client_name = excluded.client_name, client_version = excluded.client_version,
+             client_id = excluded.client_id, client_source = excluded.client_source,
              note = excluded.note, created_at = excluded.created_at,
              expires_at = excluded.expires_at, used_at = NULL
          WHERE maidan_approval_confirmations.used_at IS NOT NULL
@@ -344,6 +349,8 @@ pub async fn issue_confirmation(
     .bind(&new.token_hash)
     .bind(new.client_name.as_deref())
     .bind(new.client_version.as_deref())
+    .bind(new.client_id.as_deref())
+    .bind(new.client_source.as_str())
     .bind(new.note.as_deref())
     .bind(new.now)
     .bind(new.expires_at)
@@ -469,6 +476,8 @@ fn row_to_confirmation(row: &sqlx::postgres::PgRow) -> ApprovalConfirmation {
         nonce: row.get::<Uuid, _>("nonce"),
         client_name: row.get("client_name"),
         client_version: row.get("client_version"),
+        client_id: row.get("client_id"),
+        client_source: crate::approval_policy::source(row.get("client_source")),
         note: row.get("note"),
         created_at: row.get("created_at"),
         expires_at: row.get("expires_at"),
@@ -500,6 +509,8 @@ fn row_to_gate(row: &sqlx::postgres::PgRow) -> ApprovalGate {
         decided_via: crate::approval_policy::decided_via(
             row.get("decided_via_client"),
             row.get("decided_via_client_version"),
+            row.get("decided_via_client_id"),
+            row.get("decided_via_source"),
             row.get::<bool, _>("model_asked"),
         ),
     }

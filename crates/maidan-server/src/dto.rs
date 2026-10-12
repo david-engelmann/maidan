@@ -62,6 +62,27 @@ pub struct CreateMember {
     pub kind: MemberKind,
 }
 
+/// Body for `POST /workspaces/{wid}/agents`. There is no `kind` and no
+/// capability list: the member is always an agent, and its token always holds
+/// the `maidan.agent.worker` set.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateAgent {
+    /// 1 to 64 characters, no whitespace. Unique in the workspace.
+    pub handle: String,
+    pub display_name: Option<String>,
+    /// The token's label. Defaults to the handle.
+    pub label: Option<String>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// `POST /workspaces/{wid}/agents` response. `token.secret` is shown once.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreatedAgentResponse {
+    pub member: Member,
+    pub token: MintApiTokenResponse,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateChannel {
     pub name: String,
@@ -411,6 +432,12 @@ pub struct ModelRequestView {
     pub client_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
+    /// The credential client's id, when `client_source` is `credential`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    /// Where `client_name` came from: the credential, the client's own
+    /// `clientInfo` (self-reported), or nowhere.
+    pub client_source: maidan_types::ClientIdentitySource,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -1622,7 +1649,11 @@ pub struct MintShareTicketResponse {
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcLoginQuery {
-    pub workspace_id: uuid::Uuid,
+    /// The workspace to sign in to. Leave it out for the front door: the
+    /// callback signs in to the identity's most recently used workspace. An id
+    /// is not looked up before the redirect, so an unknown one redirects like a
+    /// real one and is refused at the callback.
+    pub workspace_id: Option<uuid::Uuid>,
     pub return_to: Option<String>,
 }
 
@@ -1646,4 +1677,25 @@ pub struct SessionResponse {
     /// Display name of the signed-in member, when one is set. `null` when the
     /// member has none. The id stays in `member_id`.
     pub display_name: Option<String>,
+}
+
+/// One workspace the signed-in person can switch to.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspace {
+    pub workspace_id: WorkspaceId,
+    /// The workspace's display name (a label, not an address).
+    pub name: String,
+    /// The person's member in that workspace.
+    pub member_id: MemberId,
+    pub handle: String,
+    /// `true` for the workspace this session is in.
+    pub current: bool,
+}
+
+/// `GET /auth/session/workspaces`: the session's own workspace first, then
+/// every other workspace the identity it signed in with is a member of,
+/// newest sign-in first, at most 200.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SessionWorkspaces {
+    pub workspaces: Vec<SessionWorkspace>,
 }

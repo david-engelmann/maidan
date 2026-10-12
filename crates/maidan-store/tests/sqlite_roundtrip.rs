@@ -39,3 +39,9 @@ async fn migrations_are_idempotent() {
         .await
         .expect("re-apply sqlite migrations");
 }
+
+#[tokio::test]
+async fn identity_workspaces_roundtrip() {
+    let store = spawn().await;
+    common::run_identity_workspaces_scenario(&store).await;
+}

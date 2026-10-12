@@ -730,3 +730,102 @@ pub async fn run_cross_tenant_write_scenario(store: &dyn Store) {
         .await
         .expect("owner revoke hook");
 }
+
+/// The workspace switcher's listing (Open Work Next 6): an identity lists the
+/// workspaces where the same issuer and subject have an identity row, never
+/// another subject's, newest sign-in first and bounded; an OIDC session keeps
+/// the identity row it signed in with.
+#[allow(dead_code)]
+pub async fn run_identity_workspaces_scenario(store: &dyn Store) {
+    const ISSUER: &str = "https://idp.example";
+    let mut workspaces = Vec::new();
+    for name in ["switch-a", "switch-b", "switch-c"] {
+        workspaces.push(
+            store
+                .create_workspace(NewWorkspace { name: name.into() })
+                .await
+                .expect("workspace"),
+        );
+    }
+    let (a, b, c) = (&workspaces[0], &workspaces[1], &workspaces[2]);
+    let member = |ws: WorkspaceId, handle: &'static str| async move {
+        store
+            .create_member(NewMember {
+                workspace_id: ws,
+                handle: handle.into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .expect("member")
+    };
+    let link = |ws: WorkspaceId, subject: &'static str, member_id: MemberId| async move {
+        store
+            .upsert_oidc_identity(NewOidcIdentity {
+                workspace_id: ws,
+                issuer: ISSUER.into(),
+                subject: subject.into(),
+                member_id,
+                email: None,
+            })
+            .await
+            .expect("identity")
+    };
+    let xa = member(a.id, "x").await;
+    let xb = member(b.id, "x").await;
+    let yc = member(c.id, "y").await;
+    let x_in_a = link(a.id, "x", xa.id).await;
+    // Signed in to B later, so B lists first.
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    link(b.id, "x", xb.id).await;
+    let y_in_c = link(c.id, "y", yc.id).await;
+
+    let listed = store
+        .list_identity_workspaces(x_in_a.id, 200)
+        .await
+        .expect("list");
+    let ids: Vec<WorkspaceId> = listed.iter().map(|w| w.workspace_id).collect();
+    assert_eq!(ids, vec![b.id, a.id], "{listed:?}");
+    assert_eq!(listed[0].workspace_name, "switch-b");
+    assert_eq!(listed[0].member_id, xb.id);
+    assert_eq!(listed[0].handle, "x");
+
+    let only_c = store
+        .list_identity_workspaces(y_in_c.id, 200)
+        .await
+        .expect("list");
+    assert_eq!(only_c.len(), 1);
+    assert_eq!(only_c[0].workspace_id, c.id);
+
+    let bounded = store
+        .list_identity_workspaces(x_in_a.id, 1)
+        .await
+        .expect("list");
+    assert_eq!(bounded.len(), 1);
+
+    let unknown = store
+        .list_identity_workspaces(OidcIdentityId(uuid::Uuid::new_v4()), 200)
+        .await
+        .expect("list");
+    assert!(unknown.is_empty());
+
+    let session = store
+        .create_session(NewMaidanSession {
+            workspace_id: a.id,
+            member_id: xa.id,
+            api_token_id: None,
+            oidc_identity_id: Some(x_in_a.id),
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        })
+        .await
+        .expect("session");
+    assert_eq!(session.oidc_identity_id, Some(x_in_a.id));
+    assert_eq!(
+        store
+            .get_session(session.id)
+            .await
+            .expect("get session")
+            .oidc_identity_id,
+        Some(x_in_a.id)
+    );
+}

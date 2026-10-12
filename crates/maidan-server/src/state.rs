@@ -98,6 +98,9 @@ pub struct AppState {
     /// Host names, besides loopback names and IP addresses, that a request with
     /// no credential may name (`MAIDAN_ALLOWED_HOSTS`, [`crate::rebinding`]).
     pub allowed_hosts: Vec<String>,
+    /// This instance's public origin (`MAIDAN_PUBLIC_ORIGIN`), which OAuth
+    /// identifiers are built from. `None` serves no OAuth metadata.
+    pub public_origin: Option<String>,
     /// Enables the explicit test-identity header used by in-process E2E
     /// harnesses. Never enabled by the server binary.
     pub test_identity_header: bool,
@@ -300,6 +303,7 @@ impl AppState {
             auth_disabled,
             dev_anonymous_reader: None,
             allowed_hosts: Vec::new(),
+            public_origin: None,
             test_identity_header: false,
             bootstrap_enabled,
             federation,

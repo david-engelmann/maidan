@@ -282,6 +282,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
           return;
         }
         await refreshSession();
+        loadWorkspaceSwitcher();
         if (!current()) return;
         let res = null;
         try {
@@ -432,8 +433,160 @@ import { tokenKey, wsResumeKey } from "./state.js";
       }
 
 
+      // The workspace switcher (Open Work Next 6, docs/Hosted Console.md). A
+      // person signed in with the identity provider who is a member of more
+      // than one workspace can switch. The server lists only the workspaces of
+      // the identity this session signed in with; switching is a fresh sign-in
+      // to the chosen workspace, never a session minted from this one.
+      /** @type {{workspace_id: string, name: string, member_id: string, handle: string, current: boolean}[]} */
+      let switchable = [];
+      // A newer load or hide wins over an older load still in flight, so a
+      // late answer for an earlier session never reveals the switcher.
+      let switcherGen = 0;
+      // Opened by a front-door sign-in with more than one workspace: the list
+      // is a chooser, and the current workspace is a choice too ("continue
+      // here") rather than a disabled row.
+      let choosing = false;
+
+      // The hint a front-door sign-in leaves on the return path: "choose" when
+      // the identity has more than one workspace, "none" when it has none (and
+      // no session was made). Read once and taken off the address bar, so a
+      // reload or a shared link does not replay it.
+      function takeFrontDoorHint() {
+        const params = new URLSearchParams(window.location.search || "");
+        const hint = params.has("no_workspace") ? "none" : params.has("choose_workspace") ? "choose" : null;
+        if (!hint) return null;
+        params.delete("no_workspace");
+        params.delete("choose_workspace");
+        const rest = params.toString();
+        const { pathname, hash } = window.location;
+        window.history.replaceState(null, "", pathname + (rest ? `?${rest}` : "") + hash);
+        return hint;
+      }
+
+      function hideWorkspaceSwitcher() {
+        switcherGen += 1;
+        switchable = [];
+        document.getElementById("ws-switch").hidden = true;
+        closeWorkspaceSwitcher();
+      }
+
+      async function loadWorkspaceSwitcher() {
+        if (!sessionMemberId || tokenSession) return hideWorkspaceSwitcher();
+        const gen = ++switcherGen;
+        let listed = [];
+        try {
+          const res = await api(`${base()}/auth/session/workspaces`, { credentials: "include" });
+          if (gen !== switcherGen) return;
+          if (!res.ok) return hideWorkspaceSwitcher();
+          const body = await res.json();
+          listed = Array.isArray(body.workspaces) ? body.workspaces : [];
+        } catch (_e) {
+          if (gen === switcherGen) hideWorkspaceSwitcher();
+          return;
+        }
+        if (gen !== switcherGen) return;
+        // The session may have changed while the list was on its way.
+        if (!sessionMemberId || tokenSession) return hideWorkspaceSwitcher();
+        switchable = listed;
+        document.getElementById("ws-switch").hidden = switchable.length < 2;
+      }
+
+      function renderWorkspaceSwitcher() {
+        const query = /** @type {HTMLInputElement} */ (document.getElementById("ws-switch-search")).value
+          .trim()
+          .toLowerCase();
+        const list = document.getElementById("ws-switch-list");
+        const shown = switchable.filter((w) => !query || w.name.toLowerCase().includes(query));
+        list.replaceChildren(
+          ...shown.map((w) => {
+            const li = document.createElement("li");
+            li.dataset.id = w.workspace_id;
+            if (w.current) li.setAttribute("aria-current", "true");
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "ghost";
+            button.title = `Signed in there as ${w.handle}`;
+            if (w.current && choosing) {
+              button.textContent = `${w.name} (continue here)`;
+              button.onclick = () => {
+                closeWorkspaceSwitcher();
+                document.getElementById("ws-switch").focus();
+              };
+            } else {
+              button.textContent = w.current ? `${w.name} (current)` : w.name;
+              button.disabled = w.current;
+              button.onclick = () => switchWorkspace(w.workspace_id);
+            }
+            li.append(button);
+            return li;
+          }),
+        );
+        if (!shown.length) {
+          const li = document.createElement("li");
+          li.className = "muted";
+          li.textContent = "No workspace matches.";
+          list.append(li);
+        }
+      }
+
+      function openWorkspaceSwitcher(asChooser = false) {
+        const panel = document.getElementById("ws-switcher");
+        const search = /** @type {HTMLInputElement} */ (document.getElementById("ws-switch-search"));
+        choosing = asChooser;
+        const note = document.getElementById("ws-switch-note");
+        const current = switchable.find((w) => w.current);
+        note.hidden = !choosing;
+        note.textContent = choosing && current
+          ? `You're in ${current.name}, your most recent workspace. You're a member of ${switchable.length}: pick one, or continue here.`
+          : "";
+        panel.setAttribute("aria-label", choosing ? "Choose a workspace" : "Switch workspace");
+        search.value = "";
+        renderWorkspaceSwitcher();
+        panel.hidden = false;
+        document.getElementById("ws-switch").setAttribute("aria-expanded", "true");
+        search.focus();
+      }
+
+      function closeWorkspaceSwitcher() {
+        choosing = false;
+        document.getElementById("ws-switcher").hidden = true;
+        document.getElementById("ws-switch").setAttribute("aria-expanded", "false");
+      }
+
+      function switchWorkspace(workspaceId) {
+        const target = switchable.find((w) => w.workspace_id === workspaceId && !w.current);
+        if (!target) return;
+        /** @type {HTMLInputElement} */ (document.getElementById("workspace")).value = target.workspace_id;
+        persist();
+        const login = oidcLoginPath || "/auth/oidc/login";
+        window.location.href =
+          `${base()}${login}?workspace_id=${encodeURIComponent(target.workspace_id)}&return_to=/ui/`;
+      }
+
+      function initWorkspaceSwitcher() {
+        document.getElementById("ws-switch").onclick = () => {
+          if (document.getElementById("ws-switcher").hidden) openWorkspaceSwitcher();
+          else closeWorkspaceSwitcher();
+        };
+        const search = document.getElementById("ws-switch-search");
+        search.addEventListener("input", renderWorkspaceSwitcher);
+        search.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            closeWorkspaceSwitcher();
+            document.getElementById("ws-switch").focus();
+          } else if (e.key === "Enter") {
+            const first = Array.from(document.querySelectorAll("#ws-switch-list li button")).find(
+              (b) => b instanceof HTMLButtonElement && !b.disabled,
+            );
+            if (first instanceof HTMLButtonElement) first.click();
+          }
+        });
+      }
+
       async function start() {
         setAttention(0);
+        const frontDoor = takeFrontDoorHint();
         loadServerAuth();
         // An older page kept the token in localStorage: exchange it once and
         // remove it.
@@ -448,6 +601,13 @@ import { tokenKey, wsResumeKey } from "./state.js";
           }
         }
         await refreshSession();
+        // A front-door sign-in with several workspaces opens the list as a
+        // chooser once it has loaded; one with none says so here, since no
+        // session was made.
+        loadWorkspaceSwitcher().then(() => {
+          if (frontDoor === "choose" && switchable.length > 1) openWorkspaceSwitcher(true);
+        });
+        document.getElementById("no-workspace").hidden = !(frontDoor === "none" && !sessionMemberId);
         const identity = await refreshBearerIdentity();
         // A token (pasted, or the session made from one) answered /me; with
         // none, a session alone is a sign-in.
@@ -476,4 +636,4 @@ import { tokenKey, wsResumeKey } from "./state.js";
         showConnection(false);
       }
 
-export { bearerMemberId, credentialMode, exchangeToken, forgetBearerMember, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showIdentityMode, showSecretOnce, signOutPostsLogout, start, tokenSession };
+export { initWorkspaceSwitcher, loadWorkspaceSwitcher, bearerMemberId, credentialMode, exchangeToken, forgetBearerMember, loadServerAuth, oidcLoginPath, refreshBearerIdentity, refreshSession, renderIdentity, saveWorkspaceName, serverOffersSessions, sessionMemberId, showConnection, showIdentityMode, showSecretOnce, signOutPostsLogout, start, tokenSession };

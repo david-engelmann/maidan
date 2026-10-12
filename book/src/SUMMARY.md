@@ -38,9 +38,12 @@
 - [Decisions](docs/Decisions.md)
 - [Conventions](docs/Conventions.md)
 - [Operations](docs/Operations.md)
+- [Kani proofs](docs/Kani.md)
 - [Dependencies](docs/Dependencies.md)
 - [Open Work](docs/Open-Work.md)
 - [Roadmap](docs/Roadmap.md)
+- [OAuth authorization server plan](docs/OAuth.md)
+- [Hosted console (design)](docs/Hosted-Console.md)
 
 # Historical (optional)
 

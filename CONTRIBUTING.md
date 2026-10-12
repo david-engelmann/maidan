@@ -39,6 +39,9 @@ rubber stamp.
 2. Branch from `main` per the convention above.
 3. Develop locally; `make ci` green before pushing. For contract changes also run
    `bash scripts/check-agent-contract.sh`.
+   A change under `crates/maidan-server/static/` also runs `npm run capture`
+   in `ui-tests/` and commits the screenshots that changed (the retake rule in
+   [`ui-tests/README.md`](ui-tests/README.md), "Screenshots").
 4. Open a PR from the [template](.github/pull_request_template.md). The
    Retrospective section is mandatory.
 5. All **8 required CI checks** must pass (`lint (fmt + clippy + deny)`,

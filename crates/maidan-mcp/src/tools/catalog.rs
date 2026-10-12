@@ -4006,7 +4006,8 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "get_approval_gate",
-            "description": "Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace.",
+            "description": "Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace. Hosts with MCP Apps show it as an inline approval card.",
+            "_meta": { "ui": { "resourceUri": crate::apps_card::APPROVAL_CARD_URI, "visibility": ["model", "app"] } },
             "annotations": {
                 "title": "Get approval gate",
                 "readOnlyHint": true,
@@ -4025,6 +4026,7 @@ pub fn catalog() -> Vec<Value> {
         json!({
             "name": "approval_decide",
             "description": "Decide a pending approval gate: accept or decline, with an optional note. Decline takes effect at once. Accept takes effect at once only for a token holding approval:grant, on a gate below the workspace's confirmation threshold (by default every gate is at or above it). Otherwise you get {status: confirmation_required, confirmation_url}: a one-time link the person opens in the Maidan console and confirms, signed in as themselves. Clients that declare URL-mode elicitation are shown the same link through elicitation. You cannot confirm for the person; do not retry, poll get_approval_gate. Nobody accepts a gate they requested. The decision records which client you used and that a model asked.",
+            "_meta": { "ui": { "resourceUri": crate::apps_card::APPROVAL_CARD_URI, "visibility": ["model", "app"] } },
             "annotations": {
                 "title": "Decide an approval gate",
                 "readOnlyHint": false,

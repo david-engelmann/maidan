@@ -5,8 +5,8 @@
 use chrono::Utc;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ApprovalGateState, ApprovalRisk, ConfirmOutcome, GateDecisionVia, MemberKind,
-    NewApprovalConfirmation, NewApprovalGate, NewMember, NewWorkspace,
+    ApprovalGateState, ApprovalRisk, ClientIdentitySource, ConfirmOutcome, GateDecisionVia,
+    MemberKind, NewApprovalConfirmation, NewApprovalGate, NewMember, NewWorkspace,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
@@ -158,6 +158,8 @@ async fn run_suite(store: &dyn Store) {
         token_hash: hash.to_string(),
         client_name: Some("test-client".into()),
         client_version: Some("1.2.3".into()),
+        client_id: Some("app-1".into()),
+        client_source: ClientIdentitySource::Credential,
         note: Some("looks right".into()),
         now,
         expires_at: now + chrono::Duration::minutes(10),
@@ -169,6 +171,8 @@ async fn run_suite(store: &dyn Store) {
     assert!(fresh);
     assert_eq!(issued.nonce, nonce);
     assert_eq!(issued.client_name.as_deref(), Some("test-client"));
+    assert_eq!(issued.client_source, ClientIdentitySource::Credential);
+    assert_eq!(issued.client_id.as_deref(), Some("app-1"));
 
     // A second issue for the same gate and member returns the live one.
     let (again, fresh) = store
@@ -221,9 +225,12 @@ async fn run_suite(store: &dyn Store) {
 
     // The person it is bound to spends it once, and the gate records the
     // client and the note.
+    // The source and the credential client's id travel with it.
     let via = GateDecisionVia {
         client_name: Some("test-client".into()),
         client_version: Some("1.2.3".into()),
+        client_id: Some("app-1".into()),
+        client_source: ClientIdentitySource::Credential,
         model_asked: true,
     };
     let outcome = store

@@ -70,6 +70,62 @@ pub async fn create_with_event(
     Ok((member, stored))
 }
 
+/// Insert an agent member, its first token and both audit rows, and append
+/// its `MemberJoined` event, in one transaction.
+pub async fn create_agent_with_token(
+    pool: &SqlitePool,
+    new: crate::store::NewAgentWithToken,
+    member_audit: crate::AuditFor<Member>,
+    token_audit: crate::AuditFor<maidan_types::ApiToken>,
+) -> Result<crate::store::CreatedAgent, StoreError> {
+    let workspace_id = new.workspace_id;
+    let mut tx = pool.begin().await?;
+    let member = create_on(
+        &mut tx,
+        NewMember {
+            workspace_id,
+            handle: new.handle,
+            display_name: new.display_name,
+            kind: MemberKind::Agent,
+        },
+    )
+    .await?;
+    let event = events::append_in_tx(
+        &mut tx,
+        &Event::MemberJoined {
+            occurred_at: Utc::now(),
+            workspace_id,
+            member: member.clone(),
+        },
+    )
+    .await?;
+    super::audit::append_on(&mut tx, member_audit(&member))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    let token = super::tokens::create_on(
+        &mut tx,
+        maidan_types::NewApiToken {
+            workspace_id,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: new.token_hash,
+            label: new.token_label,
+            capabilities: new.capabilities,
+            expires_at: new.expires_at,
+        },
+    )
+    .await?;
+    super::audit::append_on(&mut tx, token_audit(&token))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(crate::store::CreatedAgent {
+        member,
+        token,
+        event,
+    })
+}
+
 /// `NotFound` unless `member_id` names a member of `workspace_id`. A request
 /// naming a member is refused the same way whether the id names no member or
 /// another workspace's: left to the foreign key, the first answered 500 and

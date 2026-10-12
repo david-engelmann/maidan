@@ -224,6 +224,12 @@ const POSTGRES_UP_V148: &str =
     include_str!("../../../migrations/postgres/0148_approval_decide.sql");
 const POSTGRES_UP_V149: &str =
     include_str!("../../../migrations/postgres/0149_approval_confirm_link_ttl.sql");
+const POSTGRES_UP_V150: &str =
+    include_str!("../../../migrations/postgres/0150_oauth_clients_codes_grants.sql");
+const POSTGRES_UP_V151: &str =
+    include_str!("../../../migrations/postgres/0151_oauth_pending_requests.sql");
+const POSTGRES_UP_V152: &str =
+    include_str!("../../../migrations/postgres/0152_oauth_grant_live_unique.sql");
 const POSTGRES_UP_V160: &str =
     include_str!("../../../migrations/postgres/0160_decided_via_source.sql");
 const POSTGRES_UP_V161: &str =
@@ -231,6 +237,8 @@ const POSTGRES_UP_V161: &str =
 // 0162 is Postgres only: SQLite keeps the event log in one table.
 const POSTGRES_UP_V162: &str =
     include_str!("../../../migrations/postgres/0162_partition_event_log.sql");
+const POSTGRES_UP_V163: &str =
+    include_str!("../../../migrations/postgres/0163_oidc_front_door.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -410,8 +418,15 @@ const SQLITE_UP_V147: &str = include_str!("../../../migrations/sqlite/0147_evide
 const SQLITE_UP_V148: &str = include_str!("../../../migrations/sqlite/0148_approval_decide.sql");
 const SQLITE_UP_V149: &str =
     include_str!("../../../migrations/sqlite/0149_approval_confirm_link_ttl.sql");
+const SQLITE_UP_V150: &str =
+    include_str!("../../../migrations/sqlite/0150_oauth_clients_codes_grants.sql");
+const SQLITE_UP_V151: &str =
+    include_str!("../../../migrations/sqlite/0151_oauth_pending_requests.sql");
+const SQLITE_UP_V152: &str =
+    include_str!("../../../migrations/sqlite/0152_oauth_grant_live_unique.sql");
 const SQLITE_UP_V160: &str = include_str!("../../../migrations/sqlite/0160_decided_via_source.sql");
 const SQLITE_UP_V161: &str = include_str!("../../../migrations/sqlite/0161_session_identity.sql");
+const SQLITE_UP_V163: &str = include_str!("../../../migrations/sqlite/0163_oidc_front_door.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -617,10 +632,13 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, 147, POSTGRES_UP_V147).await?;
     apply_postgres(pool, 148, POSTGRES_UP_V148).await?;
     apply_postgres(pool, 149, POSTGRES_UP_V149).await?;
-    apply_postgres(pool, 149, POSTGRES_UP_V149).await?;
+    apply_postgres(pool, 150, POSTGRES_UP_V150).await?;
+    apply_postgres(pool, 151, POSTGRES_UP_V151).await?;
+    apply_postgres(pool, 152, POSTGRES_UP_V152).await?;
     apply_postgres(pool, 160, POSTGRES_UP_V160).await?;
     apply_postgres(pool, 161, POSTGRES_UP_V161).await?;
     apply_postgres(pool, 162, POSTGRES_UP_V162).await?;
+    apply_postgres(pool, 163, POSTGRES_UP_V163).await?;
     // The partitioned tables need their months ready before the first write,
     // or rows land in DEFAULT until the first retention sweep.
     crate::postgres::partitions::maintain(pool, chrono::Utc::now()).await?;
@@ -787,8 +805,12 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, 147, SQLITE_UP_V147).await?;
     apply_sqlite(pool, 148, SQLITE_UP_V148).await?;
     apply_sqlite(pool, 149, SQLITE_UP_V149).await?;
+    apply_sqlite(pool, 150, SQLITE_UP_V150).await?;
+    apply_sqlite(pool, 151, SQLITE_UP_V151).await?;
+    apply_sqlite(pool, 152, SQLITE_UP_V152).await?;
     apply_sqlite(pool, 160, SQLITE_UP_V160).await?;
     apply_sqlite(pool, 161, SQLITE_UP_V161).await?;
+    apply_sqlite(pool, 163, SQLITE_UP_V163).await?;
     Ok(())
 }
 

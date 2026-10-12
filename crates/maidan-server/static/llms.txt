@@ -15,7 +15,9 @@
   older session flow (`initialize`, then `Mcp-Session-Id`). An MCP client that
   negotiates its own version handles this itself.
 - Your token: use one minted for you alone and scoped to what you do (a person
-  mints it in the web UI's Tokens tab, or with
+  connects you in the web UI's Connect an agent, which calls
+  `POST /workspaces/{wid}/agents` to create your member and worker token
+  together, or mints one in the Tokens tab or with
   `POST /workspaces/{wid}/members/{mid}/tokens`), so the room knows who did what.
   The all-capability token `maidan init` prints is for provisioning, not for
   agents.

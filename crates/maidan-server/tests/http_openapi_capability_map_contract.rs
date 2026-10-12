@@ -188,9 +188,17 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
     ("GET", "/openapi.json"),
     ("GET", "/.well-known/maidan.json"),
     ("GET", "/.well-known/maidan-room"),
+    (
+        "GET",
+        "/.well-known/oauth-protected-resource/mcp/streamable",
+    ),
     ("GET", "/auth/oidc/login"),
     ("GET", "/auth/oidc/callback"),
     ("POST", "/auth/logout"),
+    // The OAuth 2.1 token endpoint: public by design, like the OIDC
+    // callback. The client authenticates with its secret and the PKCE
+    // verifier in the form body, not with a Maidan bearer.
+    ("POST", "/oauth/token"),
 ];
 
 /// Authenticated by the `maidan_session` cookie (the OIDC browser flow), not a
@@ -198,6 +206,7 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
 /// each is gated by the `session_auth` layer in `app.rs`.
 const SESSION_OPERATIONS: &[(&str, &str)] = &[
     ("GET", "/auth/session"),
+    ("GET", "/auth/session/workspaces"),
     ("POST", "/auth/session/mint"),
     ("POST", "/auth/approval-confirmations/confirm"),
 ];

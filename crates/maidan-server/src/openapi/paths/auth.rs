@@ -7,7 +7,7 @@ use crate::dto::{
     ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace,
-    SearchQuery, SessionResponse,
+    SearchQuery, SessionResponse, SessionWorkspaces,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
@@ -17,6 +17,14 @@ use maidan_types::{
 };
 
 /// Start an OIDC login
+///
+/// With `workspace_id`, signs in to that workspace. The id is not looked up
+/// before the redirect: an unknown id redirects like a real one and the
+/// callback refuses it with the same 403 as a workspace the person has no
+/// member in. Without it (the front door), the callback signs in to the
+/// identity's most recently used workspace, adds `choose_workspace=1` to the
+/// return path when there are more, and creates no session (adding
+/// `no_workspace=1`) when there are none.
 #[utoipa::path(
     get,
     path = "/auth/oidc/login",
@@ -25,8 +33,8 @@ use maidan_types::{
     security(()),
     responses(
         (status = 307, description = "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"),
+        (status = 400, response = BadRequest),
         (status = 403, description = "OIDC disabled", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 404, description = "Workspace not found", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn oidc_login() {}
@@ -74,6 +82,26 @@ pub fn oidc_logout() {}
     )
 )]
 pub fn get_auth_session() {}
+
+/// List the workspaces the signed-in person can switch to
+///
+/// The session's own workspace first, then every other workspace where the
+/// identity this session signed in with (the same issuer and subject) is a
+/// member, newest sign-in first, at most 200. A session made from a token
+/// lists only its own workspace. A workspace whose member is SCIM-deactivated
+/// or frozen is left out. To switch, sign in again at
+/// `/auth/oidc/login?workspace_id=…`.
+#[utoipa::path(
+    get,
+    path = "/auth/session/workspaces",
+    tag = "auth",
+    security(("sessionCookie" = [])),
+    responses(
+        (status = 200, body = SessionWorkspaces),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn list_auth_session_workspaces() {}
 
 /// Mint the first admin token from the browser session
 #[utoipa::path(
@@ -131,6 +159,61 @@ pub fn confirm_approval() {}
     )
 )]
 pub fn session_from_token() {}
+
+/// Exchange an OAuth authorization code for an access token
+///
+/// The OAuth 2.1 token endpoint. The form carries the code, the redirect URI
+/// it was issued for, the client id, and the PKCE verifier; confidential
+/// clients also send their secret. The code is validated before it is
+/// consumed, so a wrong guess cannot burn the real client's code. The
+/// minted token is capability-scoped from the member's grant and never
+/// carries `approval:grant`.
+#[utoipa::path(
+    post,
+    path = "/oauth/token",
+    tag = "auth",
+    request_body(
+        content = crate::oauth::token::OAuthTokenRequest,
+        content_type = "application/x-www-form-urlencoded",
+    ),
+    security(()),
+    responses(
+        (status = 200, body = crate::oauth::token::OAuthTokenResponse),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+    )
+)]
+pub fn oauth_token() {}
+
+/// Start an OAuth authorization request
+///
+/// The OAuth 2.1 authorization endpoint. Validates the request (client,
+/// redirect URI, PKCE challenge, resource indicator) and stores it pending
+/// the member's consent decision, then redirects to the consent page. Never
+/// issues a code on a GET.
+#[utoipa::path(
+    get,
+    path = "/oauth/authorize",
+    tag = "auth",
+    params(
+        ("response_type" = String, Query, description = "Must be `code`"),
+        ("client_id" = String, Query, description = "The client's id, or an HTTPS client metadata URL (CIMD)"),
+        ("redirect_uri" = String, Query, description = "Where the code goes; must match a registered URI exactly"),
+        ("code_challenge" = String, Query, description = "PKCE S256 challenge"),
+        ("code_challenge_method" = String, Query, description = "Must be S256"),
+        ("scope" = Option<String>, Query, description = "Space-delimited capabilities"),
+        ("state" = String, Query, description = "Opaque client state, echoed back"),
+        ("resource" = Option<String>, Query, description = "RFC 8707 resource indicator"),
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 307, description = "Redirect to the consent page, or to the client with an error"),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn oauth_authorize() {}
 
 /// List a workspace's events (console)
 #[utoipa::path(

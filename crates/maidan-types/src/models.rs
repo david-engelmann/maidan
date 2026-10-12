@@ -1157,10 +1157,47 @@ impl ApprovalRisk {
     }
 }
 
+/// Where a decided-via client's name came from, strongest first.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ClientIdentitySource {
+    /// From what the token was issued to: an installed app today, a
+    /// registered OAuth client once those exist. The server vouches for it.
+    Credential,
+    /// From the request's `clientInfo`: what the client called itself, which
+    /// proves nothing.
+    SelfReported,
+    /// The request named no client.
+    #[default]
+    None,
+}
+
+impl ClientIdentitySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Credential => "credential",
+            Self::SelfReported => "self_reported",
+            Self::None => "none",
+        }
+    }
+
+    /// The stored value, or `None` for anything the CHECK would refuse.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "credential" => Some(Self::Credential),
+            "self_reported" => Some(Self::SelfReported),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
+
 /// Which MCP client a model decided a gate through, and that a model asked.
-/// The client's name and version are what it called itself in
-/// `clientInfo`: a label for the record, never a credential. `None` when the
-/// request named no client.
+/// `client_source` says how far the name can be trusted: `credential` names
+/// what the token was issued to (and `client_id` is its id), `self_reported`
+/// is what the client called itself in `clientInfo` (a label for the record,
+/// never a credential), and `none` means the request named no client.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GateDecisionVia {
@@ -1168,6 +1205,12 @@ pub struct GateDecisionVia {
     pub client_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
+    /// The credential client's id. Set only when `client_source` is
+    /// `credential`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_source: ClientIdentitySource,
     /// Always `true` on a recorded decision: the tool is only ever called by
     /// a model. Kept as a field so the record says it, not the reader.
     pub model_asked: bool,
@@ -1214,6 +1257,10 @@ pub struct ApprovalConfirmation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub client_source: ClientIdentitySource,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -1239,6 +1286,8 @@ pub struct NewApprovalConfirmation {
     pub token_hash: String,
     pub client_name: Option<String>,
     pub client_version: Option<String>,
+    pub client_id: Option<String>,
+    pub client_source: ClientIdentitySource,
     pub note: Option<String>,
     pub now: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
@@ -3043,6 +3092,10 @@ pub struct ApiToken {
     pub revoked_at: Option<DateTime<Utc>>,
     /// Present for a grant-exchanged token and every attenuated descendant.
     pub delegation_grant_id: Option<DelegationGrantId>,
+    /// Present for a token minted through the OAuth 2.1 authorization server
+    /// (`docs/OAuth.md`): the grant it was issued under. Such tokens never
+    /// carry `approval:grant` (stripped at mint, see `OAuthAsStore`).
+    pub oauth_grant_id: Option<OAuthGrantId>,
 }
 
 #[derive(Debug, Clone)]
@@ -3075,6 +3128,115 @@ pub struct OAuthCode {
     pub workspace_id: WorkspaceId,
     pub redirect_uri: String,
     pub code_challenge: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A pre-registered OAuth 2.1 client (`docs/OAuth.md`). No dynamic client
+/// registration: rows are inserted by the operator, never by the protocol.
+#[derive(Debug, Clone)]
+pub struct NewOAuthClient {
+    pub client_id: String,
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    /// `None` for public clients (PKCE is their only credential); a SHA-256 hex
+    /// digest of the secret for confidential clients.
+    pub client_secret_hash: Option<String>,
+    pub allowed_scopes: Vec<String>,
+}
+
+/// A registered OAuth 2.1 client (see [`NewOAuthClient`]).
+#[derive(Debug, Clone)]
+pub struct OAuthClient {
+    pub id: uuid::Uuid,
+    pub client_id: String,
+    pub name: String,
+    pub redirect_uris: Vec<String>,
+    pub client_secret_hash: Option<String>,
+    pub allowed_scopes: Vec<String>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// An OAuth 2.1 authorization code. Only the SHA-256 hash of the code is
+/// stored; PKCE is S256-only, enforced by the schema.
+#[derive(Debug, Clone)]
+pub struct NewOAuthAuthorizationCode {
+    pub code_hash: String,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    /// RFC 8707 resource indicator the grant is bound to.
+    pub resource: Option<String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A stored OAuth 2.1 authorization code (see [`NewOAuthAuthorizationCode`]).
+#[derive(Debug, Clone)]
+pub struct OAuthAuthorizationCode {
+    pub code_hash: String,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    pub resource: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+}
+
+/// A member's standing consent for a client: the scopes the member granted it.
+/// Tokens minted under the grant carry its lineage id.
+#[derive(Debug, Clone)]
+pub struct NewOAuthGrant {
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub scope: Vec<String>,
+    pub lineage_id: uuid::Uuid,
+}
+
+/// A stored OAuth grant (see [`NewOAuthGrant`]).
+#[derive(Debug, Clone)]
+pub struct OAuthGrant {
+    pub id: OAuthGrantId,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub scope: Vec<String>,
+    pub lineage_id: uuid::Uuid,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// A validated authorize request waiting for the member's consent decision.
+/// Created by `GET /oauth/authorize`, consumed by `POST /ui/api/oauth/consent`.
+#[derive(Debug, Clone)]
+pub struct NewOAuthPendingRequest {
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    pub resource: Option<String>,
+    pub state: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A stored pending OAuth request (see [`NewOAuthPendingRequest`]).
+#[derive(Debug, Clone)]
+pub struct OAuthPendingRequest {
+    pub id: OAuthPendingRequestId,
+    pub client_id: String,
+    pub member_id: MemberId,
+    pub workspace_id: WorkspaceId,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub scope: Vec<String>,
+    pub resource: Option<String>,
+    pub state: String,
     pub expires_at: DateTime<Utc>,
 }
 
@@ -3136,6 +3298,10 @@ pub struct MaidanSession {
     /// request re-resolves it, so the session holds that token's authority and
     /// ends with it. `None` for an OIDC session.
     pub api_token_id: Option<ApiTokenId>,
+    /// The identity row an OIDC session signed in with: the workspace switcher
+    /// lists that identity's workspaces. `None` for a session made from a
+    /// token, and for one from before migration 0161.
+    pub oidc_identity_id: Option<OidcIdentityId>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
 }
@@ -3145,7 +3311,19 @@ pub struct NewMaidanSession {
     pub workspace_id: WorkspaceId,
     pub member_id: MemberId,
     pub api_token_id: Option<ApiTokenId>,
+    pub oidc_identity_id: Option<OidcIdentityId>,
     pub expires_at: DateTime<Utc>,
+}
+
+/// One workspace a signed-in identity can switch to: a workspace where the
+/// same issuer and subject have an identity row, with the member it maps to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityWorkspace {
+    pub workspace_id: WorkspaceId,
+    pub workspace_name: String,
+    pub member_id: MemberId,
+    pub handle: String,
+    pub last_login_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
@@ -3157,10 +3335,42 @@ pub struct NewOidcIdentity {
     pub email: Option<String>,
 }
 
+/// Where a pending OIDC sign-in will land. Stored as the pending row's `kind`,
+/// and the database ties the kind to whether a workspace is named, so a
+/// front-door `state` can never complete a workspace sign-in or the other way
+/// round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OidcPendingTarget {
+    /// The workspace the person asked for (`kind = 'sign_in'`). Login does not
+    /// check that it exists; the callback does.
+    Workspace(WorkspaceId),
+    /// No workspace (`kind = 'front_door'`): the callback picks the identity's
+    /// most recently used workspace.
+    FrontDoor,
+}
+
+impl OidcPendingTarget {
+    /// The pending row's `kind`.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Self::Workspace(_) => "sign_in",
+            Self::FrontDoor => "front_door",
+        }
+    }
+
+    /// The workspace named, if any.
+    pub fn workspace_id(self) -> Option<WorkspaceId> {
+        match self {
+            Self::Workspace(id) => Some(id),
+            Self::FrontDoor => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OidcPendingAuth {
     pub state: String,
-    pub workspace_id: WorkspaceId,
+    pub target: OidcPendingTarget,
     pub nonce: String,
     pub pkce_verifier: String,
     pub return_to: Option<String>,
@@ -3170,7 +3380,7 @@ pub struct OidcPendingAuth {
 #[derive(Debug, Clone)]
 pub struct NewOidcPendingAuth {
     pub state: String,
-    pub workspace_id: WorkspaceId,
+    pub target: OidcPendingTarget,
     pub nonce: String,
     pub pkce_verifier: String,
     pub return_to: Option<String>,

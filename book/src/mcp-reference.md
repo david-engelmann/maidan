@@ -6249,7 +6249,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_approval_gate`
 
-**Get approval gate.** Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace.
+**Get approval gate.** Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace. Hosts with MCP Apps show it as an inline approval card.
 
 **Capability:** `workspace:read`
 

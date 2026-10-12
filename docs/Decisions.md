@@ -2198,6 +2198,16 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 17 and Known risks.
 
+### The inline approve card is an MCP Apps resource, and the client comes from the credential (2026-10-09)
+
+**Decision.** The maintainer chose on 2026-10-09 that Next 17's card is an MCP Apps UI resource (SEP-1865, extension `io.modelcontextprotocol/ui`): a static `ui://` page the host renders inline, whose buttons call `approval_decide` through the host's `tools/call`. The record of who decided names the client from the credential first, a registered OAuth client's name and id. Without one it uses the client's own `clientInfo`, recorded and shown as self-reported, and otherwise says no client was identified. The confirmation link's lifetime becomes a per-workspace setting.
+
+**Alternative.** ChatGPT's own confirmation prompt on the tool call, with no card. And recording `clientInfo` as the client, as #1332 does.
+
+**Why.** MCP Apps is a standard that ChatGPT and other hosts implement, so one card serves them all, and deciding through `approval_decide` keeps the server's rule the only rule. `clientInfo` is whatever the client says, so a record built on it alone would let any client claim to be another.
+
+**Record.** Open Work Next 17, #1343 and #1344.
+
 ### OAuth authorization server: build, full scope (2026-10-08)
 
 **Decision.** The maintainer chose on 2026-10-08 to build the OAuth authorization server rather than adopt a crate, at full OAuth 2.1 scope in seven phases, with the first two (discovery and metadata) landing first as a reviewable milestone. Consent happens in the `/ui` console. Public and confidential clients are both supported from the start. Maidan skips dynamic client registration by choice and registers clients through client metadata documents and pre-registration.
@@ -2235,3 +2245,11 @@ On 2026-10-04 the maintainer added three rulings.
 **Why.** Mark-ready flips a draft with GitHub's GraphQL `markPullRequestReadyForReview`. Gitea has no GraphQL and marks drafts with a `WIP:` title prefix, so a Gitea run would test a different path. The CI tests already cover the request shapes against a mock base URL.
 
 **Record.** Open Work Now.
+
+### Cut `v413.0.0`, and submit nowhere yet (2026-10-10)
+
+**Decision.** The maintainer chose on 2026-10-10 to cut `v413.0.0` once the last open security PR merged, ending the hold recorded on 2026-10-08. The deploy pins move to it in the PR after the tag (Open Work Next 7). Nothing goes to a directory, catalog or registry until he says the product is ready, so the `sdk-*-v0.3.0` tags wait too.
+
+**Why.** Every deploy path pinned `v412.0.0`, from before the week's cross-tenant fixes, so no release anyone could run carried them. A release is reversible and points nowhere new. A submission publishes the product to strangers, and he wants it finished first.
+
+**Record.** Open Work, Recently decided.

@@ -55,7 +55,7 @@ pub async fn update_user(
         members::rename_on(&mut tx, workspace_id, member_id, handle).await?;
     }
     if !active {
-        revoke_member_tokens(&mut tx, workspace_id, member_id).await?;
+        end_member_authority(&mut tx, workspace_id, member_id, "scim_deactivate").await?;
         // Deactivation ends the member's claims. Charge the time each one
         // worked, then release it, in this same transaction.
         super::threads::release_member_claims_in_tx(&mut tx, member_id).await?;
@@ -74,7 +74,7 @@ pub async fn deprovision(
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
-    revoke_member_tokens(&mut tx, workspace_id, member_id).await?;
+    end_member_authority(&mut tx, workspace_id, member_id, "scim_deprovision").await?;
     let deleted = scim_users::delete_on(&mut tx, member_id).await?;
     if deleted {
         audit::append_counted(&mut tx, event).await?;
@@ -83,11 +83,15 @@ pub async fn deprovision(
     Ok(deleted)
 }
 
-/// Revoke every live token the member holds, one `token.revoke` row each.
-async fn revoke_member_tokens(
+/// End every authority the member holds in the workspace, each with its own
+/// audit row naming `reason`: its live tokens, the delegation grants it holds
+/// as delegate, and its browser sessions. Deactivation and deprovision both
+/// call it, so a session ends with the change rather than at its next request.
+async fn end_member_authority(
     conn: &mut sqlx::SqliteConnection,
     workspace_id: WorkspaceId,
     member_id: MemberId,
+    reason: &str,
 ) -> Result<(), StoreError> {
     let revoked: Vec<Uuid> = sqlx::query_scalar(
         "UPDATE maidan_api_tokens SET revoked_at = ?
@@ -111,7 +115,66 @@ async fn revoke_member_tokens(
                 metadata: serde_json::json!({
                     "workspace_id": workspace_id.0,
                     "subject_member_id": member_id.0,
-                    "reason": "scim_deprovision",
+                    "reason": reason,
+                }),
+            },
+        )
+        .await?;
+    }
+    // A grant this member holds as delegate lends someone else's authority.
+    // Its delegated tokens belong to the grant's subject, so the revoke above
+    // misses them; revoking the grant ends them and every token minted from
+    // them.
+    let grants: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        "UPDATE maidan_delegation_grants SET revoked_at = ?
+         WHERE workspace_id = ? AND delegate_id = ? AND revoked_at IS NULL
+         RETURNING id, subject_id",
+    )
+    .bind(Utc::now().to_rfc3339())
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(&mut *conn)
+    .await?;
+    for (grant_id, subject_id) in grants {
+        audit::append_counted(
+            &mut *conn,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: None,
+                action: "delegation_grant.revoke".into(),
+                target_kind: Some("delegation_grant".into()),
+                target_id: Some(grant_id),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "subject_id": subject_id,
+                    "delegate_id": member_id.0,
+                    "reason": reason,
+                }),
+            },
+        )
+        .await?;
+    }
+    // A browser session the person signed in to has no token to revoke.
+    let sessions: Vec<Uuid> = sqlx::query_scalar(
+        "DELETE FROM maidan_sessions WHERE workspace_id = ? AND member_id = ? RETURNING id",
+    )
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(&mut *conn)
+    .await?;
+    if !sessions.is_empty() {
+        audit::append_counted(
+            &mut *conn,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: None,
+                action: "session.delete".into(),
+                target_kind: Some("member".into()),
+                target_id: Some(member_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": workspace_id.0,
+                    "sessions": sessions.len(),
+                    "reason": reason,
                 }),
             },
         )

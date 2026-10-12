@@ -205,7 +205,8 @@ pub async fn stream(
         });
     }
 
-    let stream = ReceiverStream::new(sse_rx);
+    let stream =
+        crate::stream_guard::guard(state.store.clone(), &auth, ReceiverStream::new(sse_rx));
     Ok(Sse::new(stream).keep_alive(
         KeepAlive::new()
             .interval(Duration::from_secs(15))

@@ -40,6 +40,27 @@ pub async fn insert(pool: &SqlitePool, new: NewOAuthCode) -> Result<(), StoreErr
     Ok(())
 }
 
+pub async fn get(pool: &SqlitePool, code_hash: &str) -> Result<Option<OAuthCode>, StoreError> {
+    let row: Option<CodeRow> = sqlx::query_as(
+        "SELECT app_id, workspace_id, redirect_uri, code_challenge, expires_at
+             FROM maidan_oauth_codes
+             WHERE code_hash = ? AND expires_at > ?",
+    )
+    .bind(code_hash)
+    .bind(Utc::now())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(
+        |(app_id, workspace_id, redirect_uri, code_challenge, expires_at)| OAuthCode {
+            app_id: AppId(app_id),
+            workspace_id: WorkspaceId(workspace_id),
+            redirect_uri,
+            code_challenge,
+            expires_at,
+        },
+    ))
+}
+
 pub async fn consume(pool: &SqlitePool, code_hash: &str) -> Result<Option<OAuthCode>, StoreError> {
     let row: Option<CodeRow> = sqlx::query_as(
         "DELETE FROM maidan_oauth_codes

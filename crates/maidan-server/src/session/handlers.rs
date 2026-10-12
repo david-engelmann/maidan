@@ -12,7 +12,7 @@ use maidan_auth::{
 use maidan_types::{AuditScope, MemberId, NewApiToken, NewAuditEvent, NewMaidanSession};
 
 use crate::auth::bearer_from_headers;
-use crate::dto::{MintApiTokenResponse, SessionResponse};
+use crate::dto::{MintApiTokenResponse, SessionResponse, SessionWorkspace, SessionWorkspaces};
 use crate::error::ApiError;
 use crate::session::{parse_session_cookie, set_session_cookie, SessionContext};
 use crate::state::AppState;
@@ -106,6 +106,7 @@ pub async fn session_from_token(
                 workspace_id: auth.workspace_id,
                 member_id: auth.member_id,
                 api_token_id: Some(token_id),
+                oidc_identity_id: None,
                 expires_at,
             },
             Box::new(move |session| NewAuditEvent {
@@ -239,4 +240,80 @@ pub async fn get_session(
         token_id: session.api_token_id,
         display_name: member_display_name(&state, session.member_id).await?,
     }))
+}
+
+/// The most workspaces `GET /auth/session/workspaces` lists. The console
+/// searches this list by name; the route has no search of its own.
+pub const SESSION_WORKSPACES_LIMIT: i64 = 200;
+
+/// The workspaces this browser session can switch to (Open Work Next 6,
+/// `docs/Hosted Console.md`).
+///
+/// An OIDC session lists every workspace where the identity it signed in with
+/// (the same issuer and subject) has an identity row, its own first. Nothing
+/// the client sends picks the identity. A session made from a token, or one
+/// from before the identity was recorded, lists only its own workspace: a
+/// token proves nothing about the person behind it.
+pub async fn list_session_workspaces(
+    State(state): State<AppState>,
+    Extension(ctx): Extension<SessionContext>,
+) -> Result<Json<SessionWorkspaces>, ApiError> {
+    let session = state.store.get_session(ctx.session_id).await?;
+    if session.expires_at < Utc::now() {
+        let _ = state.store.delete_expired_session(session.id).await;
+        return Err(ApiError::Unauthorized);
+    }
+    let listed = match session
+        .oidc_identity_id
+        .filter(|_| session.api_token_id.is_none())
+    {
+        Some(identity) => {
+            state
+                .store
+                .list_identity_workspaces(identity, SESSION_WORKSPACES_LIMIT)
+                .await?
+        }
+        None => Vec::new(),
+    };
+    let mut workspaces: Vec<SessionWorkspace> = Vec::with_capacity(listed.len().max(1));
+    let current = match listed
+        .iter()
+        .find(|w| w.workspace_id == session.workspace_id && w.member_id == session.member_id)
+    {
+        Some(row) => SessionWorkspace {
+            workspace_id: row.workspace_id,
+            name: row.workspace_name.clone(),
+            member_id: row.member_id,
+            handle: row.handle.clone(),
+            current: true,
+        },
+        None => {
+            let workspace = state.store.get_workspace(session.workspace_id).await?;
+            let member = state.store.get_member(session.member_id).await?;
+            SessionWorkspace {
+                workspace_id: workspace.id,
+                name: workspace.name,
+                member_id: member.id,
+                handle: member.handle,
+                current: true,
+            }
+        }
+    };
+    workspaces.push(current);
+    workspaces.extend(
+        listed
+            .into_iter()
+            .filter(|w| w.workspace_id != session.workspace_id)
+            .map(|w| SessionWorkspace {
+                workspace_id: w.workspace_id,
+                name: w.workspace_name,
+                member_id: w.member_id,
+                handle: w.handle,
+                current: false,
+            }),
+    );
+    // The current workspace may have been fetched on its own, beside a full
+    // page of listed ones: the response still holds at most the limit.
+    workspaces.truncate(usize::try_from(SESSION_WORKSPACES_LIMIT).unwrap_or(usize::MAX));
+    Ok(Json(SessionWorkspaces { workspaces }))
 }

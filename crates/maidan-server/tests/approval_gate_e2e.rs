@@ -406,6 +406,7 @@ async fn signed_in(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> Stri
             workspace_id: ws,
             member_id: member,
             api_token_id: None,
+            oidc_identity_id: None,
             expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
         })
         .await
@@ -887,4 +888,373 @@ async fn another_workspaces_session_or_approval_grant_cannot_see_or_accept_a_gat
         .answer(&gate_b2, &state_b2, "accept", &Cred::Bearer(&grant_b))
         .await;
     assert_eq!(accepted.status(), StatusCode::OK);
+}
+
+/// An OAuth-issued token is a token, so it can never accept an approval gate.
+/// The token endpoint strips `approval:grant` at mint, and the authorize
+/// step refuses it as a scope: even a grant for a member who holds the
+/// capability cannot carry it into an OAuth token.
+#[tokio::test]
+async fn an_oauth_token_cannot_accept_a_gate() {
+    let (addr, client, store) = spawn().await;
+    let api = Api {
+        base: format!("http://{addr}"),
+        client,
+    };
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "oauth-gate".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
+    let agent = member(store.as_ref(), ws.id, "worker", MemberKind::Agent).await;
+
+    // The human holds approval:grant (like an admin), and the OAuth client
+    // is allowed workspace:write. The grant must still not carry approval:grant.
+    let human_token = mint(
+        store.as_ref(),
+        ws.id,
+        human,
+        caps(&["workspace:read", "workspace:write", "approval:grant"]),
+    )
+    .await;
+    let human_bearer = Cred::Bearer(&human_token);
+
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "test-mcp-client".into(),
+            name: "Test MCP client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into(), "workspace:write".into()],
+        })
+        .await
+        .unwrap();
+
+    // PKCE: S256 challenge from a random verifier.
+    let verifier: String = {
+        use base64::Engine;
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw)
+    };
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+    };
+
+    // Authorize: the human's bearer goes in, a pending request comes out via
+    // redirect to the consent page. A no-redirect client: we read the
+    // Location header ourselves.
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{}/oauth/authorize?response_type=code&client_id=test-mcp-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz",
+        api.base,
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {human_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        location.starts_with("/ui/oauth/consent?request="),
+        "authorize redirects to consent, got {location}"
+    );
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+
+    // Consent: the human approves on their signed-in session (a cookie, not
+    // a bearer), via same-origin POST as the consent page sends it. The
+    // handler 303-redirects to the client's redirect URI; we read the
+    // Location ourselves instead of following it.
+    let cookie = signed_in(store.as_ref(), ws.id, human).await;
+    let consent_resp = no_redirect
+        .post(format!("{}/ui/api/oauth/consent", api.base))
+        .header("Cookie", &cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(consent_resp.status(), StatusCode::SEE_OTHER);
+    let redirect_to = consent_resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let code = redirect_to
+        .split("code=")
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .next()
+        .unwrap()
+        .to_string();
+    assert!(!code.is_empty());
+
+    // Exchange the code for a token.
+    let token_resp = api
+        .client
+        .post(format!("{}/oauth/token", api.base))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code.as_str()),
+            ("redirect_uri", "https://client.example/callback"),
+            ("client_id", "test-mcp-client"),
+            ("code_verifier", verifier.as_str()),
+        ])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(token_resp.status(), StatusCode::OK);
+    let token_body: Value = token_resp.json().await.unwrap();
+    let oauth_token = token_body["access_token"].as_str().unwrap().to_string();
+    let oauth_bearer = Cred::Bearer(&oauth_token);
+
+    // The OAuth token cannot accept a gate, even though the human behind it
+    // holds approval:grant. The capability was stripped at mint.
+    let gate = open_gate(store.as_ref(), ws.id, agent).await;
+    let state = api.request_state(ws.id, &gate, &human_bearer).await;
+    assert_refused_with(
+        api.answer(&gate, &state, "accept", &oauth_bearer).await,
+        "missing capability: approval:grant",
+    )
+    .await;
+    assert_pending(store.as_ref(), &gate).await;
+
+    // Declining and cancelling are not accepting, and are unchanged.
+    let declined = api.answer(&gate, &state, "decline", &oauth_bearer).await;
+    assert_eq!(declined.status(), StatusCode::OK);
+}
+
+/// Two concurrent "Allow" POSTs for one consent request issue exactly one
+/// code. The atomic consume (DELETE ... RETURNING) lets one win; the other
+/// gets 404.
+#[tokio::test]
+async fn concurrent_consent_allow_issues_one_code() {
+    let (addr, _client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "oauth-race".into(),
+        })
+        .await
+        .unwrap();
+    let human = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
+    let human_token = mint(store.as_ref(), ws.id, human, caps(&["workspace:read"])).await;
+
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "race-client".into(),
+            name: "Race client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .unwrap();
+
+    // PKCE challenge.
+    let verifier: String = {
+        use base64::Engine;
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw)
+    };
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+    };
+
+    // Authorize to create the pending request.
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{base}/oauth/authorize?response_type=code&client_id=race-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {human_token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TEMPORARY_REDIRECT);
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+
+    let cookie = signed_in(store.as_ref(), ws.id, human).await;
+    let url = format!("{base}/ui/api/oauth/consent");
+
+    // Two concurrent Allow POSTs.
+    let (r1, r2) = tokio::join!(
+        no_redirect
+            .post(&url)
+            .header("Cookie", &cookie)
+            .header("Sec-Fetch-Site", "same-origin")
+            .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+            .send(),
+        no_redirect
+            .post(&url)
+            .header("Cookie", &cookie)
+            .header("Sec-Fetch-Site", "same-origin")
+            .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+            .send()
+    );
+    let r1 = r1.unwrap();
+    let r2 = r2.unwrap();
+
+    // Exactly one wins with 303; the other gets 404.
+    let statuses = [r1.status(), r2.status()];
+    assert!(
+        statuses.contains(&StatusCode::SEE_OTHER) && statuses.contains(&StatusCode::NOT_FOUND),
+        "one Allow wins (303), one loses (404), got {statuses:?}"
+    );
+}
+
+/// Another member's consent POST leaves the request usable by its owner.
+/// The atomic consume matches on member_id, so a foreign POST gets 404 and
+/// the row stays for the owner.
+#[tokio::test]
+async fn foreign_consent_post_leaves_request_usable() {
+    let (addr, _client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "oauth-foreign".into(),
+        })
+        .await
+        .unwrap();
+    let owner = member(store.as_ref(), ws.id, "owner", MemberKind::Human).await;
+    let intruder = member(store.as_ref(), ws.id, "intruder", MemberKind::Human).await;
+    let owner_token = mint(store.as_ref(), ws.id, owner, caps(&["workspace:read"])).await;
+
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "foreign-client".into(),
+            name: "Foreign client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .unwrap();
+
+    let verifier: String = {
+        use base64::Engine;
+        use rand::RngCore;
+        let mut raw = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut raw);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(raw)
+    };
+    let challenge = {
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+    };
+
+    let no_redirect = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let auth_url = format!(
+        "{base}/oauth/authorize?response_type=code&client_id=foreign-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        urlencoding::encode("https://client.example/callback"),
+        challenge,
+    );
+    let resp = no_redirect
+        .get(&auth_url)
+        .header("Authorization", format!("Bearer {owner_token}"))
+        .send()
+        .await
+        .unwrap();
+    let location = resp
+        .headers()
+        .get("location")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    let request_id = location.split("request=").nth(1).unwrap().to_string();
+
+    let owner_cookie = signed_in(store.as_ref(), ws.id, owner).await;
+    let intruder_cookie = signed_in(store.as_ref(), ws.id, intruder).await;
+    let url = format!("{base}/ui/api/oauth/consent");
+
+    // Intruder's POST gets 404 and does not consume the request.
+    let intruder_resp = no_redirect
+        .post(&url)
+        .header("Cookie", &intruder_cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(intruder_resp.status(), StatusCode::NOT_FOUND);
+
+    // The consent page's CSP allows form-action to the client's redirect
+    // origin, so the 303 after Allow is not blocked by the browser.
+    // Check before the owner POSTs (which consumes the request).
+    let consent_page = no_redirect
+        .get(format!("{base}/ui/oauth/consent?request={request_id}"))
+        .header("Cookie", &owner_cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(consent_page.status(), StatusCode::OK);
+    let csp = consent_page
+        .headers()
+        .get("content-security-policy")
+        .expect("consent page carries a CSP")
+        .to_str()
+        .unwrap();
+    assert!(
+        csp.contains("form-action 'self' https://client.example"),
+        "CSP allows the redirect origin, got: {csp}"
+    );
+
+    // Owner's POST still works.
+    let owner_resp = no_redirect
+        .post(&url)
+        .header("Cookie", &owner_cookie)
+        .header("Sec-Fetch-Site", "same-origin")
+        .form(&[("request_id", request_id.as_str()), ("approved", "true")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(owner_resp.status(), StatusCode::SEE_OTHER);
+    // The 303 carries no CSP; the navigation is governed by the page's.
+    assert!(owner_resp
+        .headers()
+        .get("content-security-policy")
+        .is_none());
 }
