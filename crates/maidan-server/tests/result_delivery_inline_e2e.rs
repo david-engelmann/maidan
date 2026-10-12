@@ -481,7 +481,8 @@ async fn a_reviewed_github_result_posts_the_summary_and_a_right_side_inline_revi
 
 #[tokio::test]
 async fn a_reviewed_github_result_links_its_pi_attachments_in_the_summary_comment() {
-    let h = harness("attachments").await;
+    let mut h = harness("attachments").await;
+    h.state.public_origin = Some("https://maidan.example.com".to_string());
     bless_github(&h).await;
     let mut result = envelope("reviewed", github_target(), None, json!([]));
     result["pi"] = json!({
@@ -504,18 +505,21 @@ async fn a_reviewed_github_result_links_its_pi_attachments_in_the_summary_commen
     );
     assert!(
         body.contains(&format!(
-            "- [The failing run](/artifacts/{})",
+            "- [The failing run](https://maidan.example.com/artifacts/{})",
             "a".repeat(64)
         )),
         "a captioned file is labelled by its caption: {body}"
     );
     assert!(
-        body.contains(&format!("- [notes.md](/artifacts/{})", "b".repeat(64))),
+        body.contains(&format!(
+            "- [notes.md](https://maidan.example.com/artifacts/{})",
+            "b".repeat(64)
+        )),
         "an uncaptioned file is labelled by its filename: {body}"
     );
     assert!(
         body.contains(&format!(
-            "- [See \\[x\\]\\(https://evil.test\\)](/artifacts/{})",
+            "- [See \\[x\\]\\(https://evil.test\\)](https://maidan.example.com/artifacts/{})",
             "c".repeat(64)
         )),
         "a Markdown caption is escaped into a literal label: {body}"

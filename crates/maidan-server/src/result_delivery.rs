@@ -66,9 +66,14 @@ pub fn failure_notice(status: &str) -> String {
 /// under Maidan's identity. Escaping is idempotent, so the reviewed path —
 /// already escaped inside `slack_message_body` — is unchanged by passing
 /// through again.
-pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &WaiterResult) -> String {
+pub fn delivery_body(
+    thread_id: ThreadId,
+    target: &EgressTarget,
+    waiter: &WaiterResult,
+    public_origin: Option<&str>,
+) -> String {
     let inner = if waiter.is_reviewed() {
-        reviewed_body(target, waiter)
+        reviewed_body(target, waiter, public_origin)
     } else {
         // Still marked on GitHub so a later reviewed result updates this
         // comment rather than stacking a second one.
@@ -94,24 +99,39 @@ pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &Waiter
     }
 }
 
-/// One link line per attached file, under a header that says the links need
+/// One line per attached file, under a header that says the files need
 /// Maidan auth: `/artifacts/{sha}` sits behind the artifact routes' member
 /// check, so a reader without a Maidan sign-in reaches a login wall, not
-/// the file. The label is the producer's caption, or the filename when there
-/// is no caption — escaped either way, because the caption is producer text
-/// and the filename is about to become link text.
-fn attachment_lines(attachments: &[ResultAttachment]) -> String {
-    let mut out = String::from("Attachments (the links open in Maidan and need Maidan auth):");
+/// the file. With a configured public origin the lines are absolute links
+/// — a root-relative link inside a GitHub comment resolves against
+/// github.com and 404s, so the origin is what makes the link open the
+/// file at all. Without one the files are named, not linked; the reader
+/// opens them from the thread in Maidan. The label is the producer's
+/// caption, or the filename when there is no caption — escaped either
+/// way, because the caption is producer text and the filename is about
+/// to become link text.
+fn attachment_lines(attachments: &[ResultAttachment], public_origin: Option<&str>) -> String {
+    let mut out = match public_origin {
+        Some(_) => String::from("Attachments (the links open in Maidan and need Maidan auth):"),
+        None => String::from(
+            "Attachments (open them from this thread in Maidan; they need Maidan auth):",
+        ),
+    };
     for attachment in attachments {
         let label = attachment
             .caption
             .as_deref()
             .unwrap_or(attachment.filename.as_str());
-        out.push_str(&format!(
-            "\n- [{}](/artifacts/{})",
-            escape_markdown_label(label),
-            attachment.sha
-        ));
+        let label = escape_markdown_label(label);
+        match public_origin {
+            Some(origin) => out.push_str(&format!(
+                "\n- [{}]({}/artifacts/{})",
+                label,
+                origin.trim_end_matches('/'),
+                attachment.sha
+            )),
+            None => out.push_str(&format!("\n- {label}")),
+        }
     }
     out
 }
@@ -141,7 +161,11 @@ fn slack_body(text: &str) -> String {
     )
 }
 
-fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
+fn reviewed_body(
+    target: &EgressTarget,
+    waiter: &WaiterResult,
+    public_origin: Option<&str>,
+) -> String {
     let backlink = waiter.view_url.as_deref();
     match target {
         EgressTarget::Github { .. } => {
@@ -157,7 +181,7 @@ fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
                 if !rendered.is_empty() {
                     rendered.push_str("\n\n");
                 }
-                rendered.push_str(&attachment_lines(&waiter.attachments));
+                rendered.push_str(&attachment_lines(&waiter.attachments, public_origin));
             }
             // Mentions / truncation happen in `github_result_comment_body`
             // so the marker is reserved in the ceiling. Pass the raw
@@ -528,7 +552,7 @@ async fn enqueue_routable(
     else {
         return Ok(());
     };
-    let body = delivery_body(thread_id, target, waiter);
+    let body = delivery_body(thread_id, target, waiter, state.public_origin.as_deref());
     state
         .store
         .enqueue_egress(NewEgressOutbox {
@@ -555,7 +579,12 @@ pub async fn current_delivery_body(
     target: &maidan_types::EgressTarget,
 ) -> Option<String> {
     let waiter = current_waiter(state, thread_id).await?;
-    Some(delivery_body(thread_id, target, &waiter))
+    Some(delivery_body(
+        thread_id,
+        target,
+        &waiter,
+        state.public_origin.as_deref(),
+    ))
 }
 
 /// The live waiter envelope, if the thread still has one Maidan recognizes.
@@ -682,7 +711,7 @@ mod tests {
         );
         let tid = ThreadId::new();
         for target in [github(), slack()] {
-            let body = delivery_body(tid, &target, &waiter);
+            let body = delivery_body(tid, &target, &waiter, None);
             assert!(
                 body.contains(&failure_notice("failed")),
                 "the notice must still be the body: {body}"
@@ -696,12 +725,12 @@ mod tests {
                 "the producer's summary must never ride a non-reviewed delivery: {body}"
             );
         }
-        let gh = delivery_body(tid, &github(), &waiter);
+        let gh = delivery_body(tid, &github(), &waiter, None);
         assert!(
             crate::egress_body::comment_carries_result_marker(&gh, tid),
             "a failure notice on GitHub is still marked so a later review updates it: {gh}"
         );
-        let sl = delivery_body(tid, &slack(), &waiter);
+        let sl = delivery_body(tid, &slack(), &waiter, None);
         assert_eq!(sl, failure_notice("failed"));
     }
 
@@ -713,7 +742,7 @@ mod tests {
             Some("3 findings"),
         );
         let tid = ThreadId::new();
-        let gh = delivery_body(tid, &github(), &waiter);
+        let gh = delivery_body(tid, &github(), &waiter, None);
         assert!(
             crate::egress_body::comment_carries_result_marker(&gh, tid),
             "the recovery marker is at byte 0: {gh:.80}"
@@ -730,7 +759,7 @@ mod tests {
         assert!(gh.contains("PR: acme/widgets#7"));
         assert!(gh.contains("https://producer.example.test/r/1"));
 
-        let sl = delivery_body(tid, &slack(), &waiter);
+        let sl = delivery_body(tid, &slack(), &waiter, None);
         assert!(sl.contains("3 findings"), "slack delivers the summary");
         assert!(
             !sl.contains("Findings") && !sl.contains("@octocat"),
@@ -760,24 +789,27 @@ mod tests {
             attachment(&"b".repeat(64), "notes.md", None),
         ];
         let tid = ThreadId::new();
-        let gh = delivery_body(tid, &github(), &waiter);
+        let gh = delivery_body(tid, &github(), &waiter, Some("https://maidan.example.com"));
         assert!(
             gh.contains("Attachments (the links open in Maidan and need Maidan auth):"),
             "the header says the links need Maidan auth: {gh}"
         );
         assert!(
             gh.contains(&format!(
-                "- [The failing run](/artifacts/{})",
+                "- [The failing run](https://maidan.example.com/artifacts/{})",
                 "a".repeat(64)
             )),
             "a captioned file is labelled by its caption: {gh}"
         );
         assert!(
-            gh.contains(&format!("- [notes.md](/artifacts/{})", "b".repeat(64))),
+            gh.contains(&format!(
+                "- [notes.md](https://maidan.example.com/artifacts/{})",
+                "b".repeat(64)
+            )),
             "an uncaptioned file is labelled by its filename: {gh}"
         );
 
-        let sl = delivery_body(tid, &slack(), &waiter);
+        let sl = delivery_body(tid, &slack(), &waiter, None);
         assert!(
             !sl.contains("/artifacts/") && !sl.contains("Attachments"),
             "attachment links are a GitHub-comment affordance only: {sl}"
@@ -787,7 +819,7 @@ mod tests {
     #[test]
     fn a_result_without_attachments_gains_no_attachment_lines() {
         let waiter = waiter(STATUS_REVIEWED, Some("## Findings"), Some("3 findings"));
-        let gh = delivery_body(ThreadId::new(), &github(), &waiter);
+        let gh = delivery_body(ThreadId::new(), &github(), &waiter, None);
         assert!(
             !gh.contains("/artifacts/") && !gh.contains("Attachments"),
             "no attachments, no extra lines: {gh}"
@@ -802,10 +834,15 @@ mod tests {
             "report.md",
             Some("Report [final] **v2** (draft) #1"),
         )];
-        let gh = delivery_body(ThreadId::new(), &github(), &waiter);
+        let gh = delivery_body(
+            ThreadId::new(),
+            &github(),
+            &waiter,
+            Some("https://maidan.example.com"),
+        );
         assert!(
             gh.contains(&format!(
-                "- [Report \\[final\\] \\*\\*v2\\*\\* \\(draft\\) \\#1](/artifacts/{})",
+                "- [Report \\[final\\] \\*\\*v2\\*\\* \\(draft\\) \\#1](https://maidan.example.com/artifacts/{})",
                 "c".repeat(64)
             )),
             "the caption renders literally, as data: {gh}"
@@ -813,6 +850,30 @@ mod tests {
         assert!(
             !gh.contains("[final] **v2**"),
             "no raw Markdown from the caption survives: {gh}"
+        );
+    }
+
+    #[test]
+    fn without_a_public_origin_attachments_are_named_not_linked() {
+        let mut waiter = waiter(STATUS_REVIEWED, Some("## Findings"), Some("3 findings"));
+        waiter.attachments = vec![
+            attachment(&"a".repeat(64), "trace.png", Some("The failing run")),
+            attachment(&"b".repeat(64), "notes.md", None),
+        ];
+        let gh = delivery_body(ThreadId::new(), &github(), &waiter, None);
+        assert!(
+            gh.contains(
+                "Attachments (open them from this thread in Maidan; they need Maidan auth):"
+            ),
+            "the header points at the thread, there are no links to follow: {gh}"
+        );
+        assert!(
+            gh.contains("\n- The failing run") && gh.contains("\n- notes.md"),
+            "each file is named, captioned first: {gh}"
+        );
+        assert!(
+            !gh.contains("/artifacts/"),
+            "a relative link would resolve against github.com and 404: {gh}"
         );
     }
 
