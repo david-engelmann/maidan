@@ -1443,6 +1443,11 @@ pub fn router(state: AppState) -> Router {
         // route group's own middleware (auth, quota) becomes a 500 problem
         // that the metrics, rate limiter and request id still see.
         .layer(panic_guard::layer())
+        // Compression wraps the panic guard (a panic's 500 problem encodes
+        // like any other body) and sits inside metrics, so the recorded
+        // response is the encoded one that left the server. What it must
+        // never encode — event streams, upgrades — is in compression.rs.
+        .layer(crate::compression::layer())
         .layer(middleware::from_fn(metrics::middleware))
         // Room-LSN sits *inside* the rate limiter: a later `.layer` is the
         // outer one, so this order makes the limiter outermost. It used to wrap

@@ -39,6 +39,10 @@ tokio-stream = "0.1"
 tokio.workspace = true
 uuid.workspace = true
 axum = { workspace = true, features = ["ws"] }
+# Named directly so compression.rs can implement tower-http's Predicate
+# (its bound is over http_body::Body). Already in the tree via tower-http;
+# this adds no new package.
+http-body = "1.0"
 tower.workspace = true
 tower-http.workspace = true
 # A2A gRPC binding (§10). Versions match what the OTLP exporter already pulls
@@ -104,6 +108,9 @@ loom = ["dep:loom"]
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
 # Hand-written WAT for the WASI slash e2e.
 wat = "1"
+# Gunzips responses in the compression e2e. Already in the tree through
+# tower-http's gzip backend; this adds no new package.
+flate2 = "1"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 testcontainers = "0.23"
