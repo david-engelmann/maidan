@@ -35,6 +35,19 @@ pub fn well_known_room() {}
 )]
 pub fn oauth_protected_resource_metadata() {}
 
+/// The OAuth authorization server's metadata (RFC 8414)
+#[utoipa::path(
+    get,
+    path = "/.well-known/oauth-authorization-server",
+    tag = "auth",
+    security(()),
+    responses(
+        (status = 200, body = crate::oauth::metadata::AuthorizationServerMetadata),
+        (status = 404, description = "`MAIDAN_PUBLIC_ORIGIN` is not set", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn oauth_authorization_server_metadata() {}
+
 /// Get a workspace's room card
 #[utoipa::path(
     get,

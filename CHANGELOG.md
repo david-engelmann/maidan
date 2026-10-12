@@ -29,6 +29,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** a per-workspace media quota, `MAIDAN_MEDIA_QUOTA_BYTES` (default 20 GiB, `0` or `off` lifts it) or the workspace's own lower `media_quota_bytes`. A REST media upload past it is refused with a `409` `media-quota-exceeded` problem carrying `used_bytes`, `quota_bytes` and `upload_bytes`. Over MCP it is a JSON-RPC invalid-params error whose message names the same three numbers. Bytes the workspace already holds cost nothing, and uploads at the same moment can overshoot slightly.
 - **Changed:** `PUT /workspaces/{wid}/retention` and MCP `set_retention_policy` take `media_days` and `media_quota_bytes` (migration 0170), each held to the instance's.
 
+### OAuth discovery (phase three, first half)
+
+- **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
+
 ### A change that ends without a commit says why in its one Slack notice
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
