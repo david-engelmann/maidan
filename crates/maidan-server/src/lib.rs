@@ -96,6 +96,7 @@ pub mod subscribe_resume;
 pub mod thread_context;
 pub mod trace_context;
 pub mod trace_redaction;
+pub mod upload_budget;
 pub mod wait_sweeper;
 pub mod wasi_handler;
 pub mod web_push;
