@@ -1415,12 +1415,16 @@ pub trait ThreadStore: Send + Sync {
     /// thread id of the prior page); `None` starts from the beginning. Unlike
     /// [`list_threads_for_workspace`](Self::list_threads_for_workspace), this
     /// filters tombstoned threads and applies `LIMIT` in SQL, so workspace
-    /// context assembly does not load every thread into memory.
+    /// context assembly does not load every thread into memory. With
+    /// `reader_id`, threads the reader cannot read are filtered in the query
+    /// too, so hidden threads never crowd out the page; `None` is the
+    /// unrestricted view.
     async fn page_threads_for_workspace(
         &self,
         workspace_id: WorkspaceId,
         after: Option<ThreadId>,
         limit: i64,
+        reader_id: Option<MemberId>,
     ) -> Result<Vec<Thread>, StoreError>;
 
     /// One keyset page of a channel's **live** threads, ordered `(created_at,
@@ -2534,7 +2538,9 @@ pub trait ReferenceStore: Send + Sync {
 pub trait IntegrityStore: Send + Sync {
     /// Tombstoned messages in `workspace_id`, newest first. Optional channel /
     /// thread narrowing. `include_purged` reconstructs hard-deleted rows from
-    /// `MessageTombstoned` events (`retained = false`).
+    /// `MessageTombstoned` events (`retained = false`). With `reader_id`,
+    /// rows on threads the reader cannot read are filtered in the query, on
+    /// both the retained and the reconstructed half.
     async fn list_tombstones(
         &self,
         workspace_id: WorkspaceId,
@@ -2542,24 +2548,31 @@ pub trait IntegrityStore: Send + Sync {
         thread_id: Option<ThreadId>,
         include_purged: bool,
         limit: i64,
+        reader_id: Option<MemberId>,
     ) -> Result<Vec<TombstoneRecord>, StoreError>;
 
     /// Incoming pointers at `message_id` (`RelationKind` reverse edges + pins
-    /// + reactions + votes). `NotFound` if the message row is gone.
+    /// + reactions + votes). `NotFound` if the message row is gone. With
+    /// `reader_id`, a target on a thread the reader cannot read answers
+    /// empty, and references narrow to sources the reader may read.
     async fn list_message_backlinks(
         &self,
         message_id: MessageId,
+        reader_id: Option<MemberId>,
     ) -> Result<MessageBacklinks, StoreError>;
 
     /// `EventKind` counts for `workspace_id`, optionally narrowed to a channel
     /// or thread. `deny_channels` drops those channels' events (private-channel
-    /// pre-filter); `channel_id IS NULL` workspace-level events stay.
+    /// pre-filter); `channel_id IS NULL` workspace-level events stay. With
+    /// `reader_id`, counts cover only events on threads the reader may read
+    /// (thread-less events are the workspace's own and stay).
     async fn event_kind_census(
         &self,
         workspace_id: WorkspaceId,
         channel_id: Option<ChannelId>,
         thread_id: Option<ThreadId>,
         deny_channels: &[ChannelId],
+        reader_id: Option<MemberId>,
     ) -> Result<KindCensus, StoreError>;
 }
 

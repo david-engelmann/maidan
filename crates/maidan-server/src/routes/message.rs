@@ -308,8 +308,16 @@ pub async fn list_message_backlinks(
 ) -> ApiResult<Json<MessageBacklinks>> {
     cap(&auth, WORKSPACE_READ)?;
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(id)).await?;
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
     Ok(Json(
-        state.store.list_message_backlinks(MessageId(id)).await?,
+        state
+            .store
+            .list_message_backlinks(MessageId(id), reader_id)
+            .await?,
     ))
 }
 

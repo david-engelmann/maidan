@@ -66,6 +66,13 @@ pub(super) async fn list_tombstones(
     let workspace_id = workspace(auth, a.workspace_id)?;
     store.get_workspace(workspace_id).await?;
     let limit = clamp_tombstone_limit(a.limit);
+    // Read access is filtered in the query now, so no per-row access check
+    // runs after the page is cut.
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
     let rows = store
         .list_tombstones(
             workspace_id,
@@ -73,27 +80,25 @@ pub(super) async fn list_tombstones(
             a.thread_id.map(ThreadId),
             a.include_purged,
             limit,
+            reader_id,
         )
         .await?;
-    if auth.bypass {
-        return Ok(content_json(&rows));
-    }
-    let mut visible = Vec::with_capacity(rows.len());
-    for row in rows {
-        if maidan_auth::can_access_thread(store.as_ref(), auth, row.thread_id).await? {
-            visible.push(row);
-        }
-    }
-    Ok(content_json(&visible))
+    Ok(content_json(&rows))
 }
 
 pub(super) async fn list_message_backlinks(
     store: &Arc<dyn Store>,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: ListMessageBacklinksArgs = crate::tools::parse_args(args)?;
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
     let backlinks = store
-        .list_message_backlinks(MessageId(a.message_id))
+        .list_message_backlinks(MessageId(a.message_id), reader_id)
         .await?;
     Ok(content_json(&backlinks))
 }
@@ -107,12 +112,18 @@ pub(super) async fn get_kind_census(
     let workspace_id = workspace(auth, a.workspace_id)?;
     store.get_workspace(workspace_id).await?;
     let deny = maidan_auth::private_channel_deny_set(store.as_ref(), auth, workspace_id).await?;
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
     let census = store
         .event_kind_census(
             workspace_id,
             a.channel_id.map(ChannelId),
             a.thread_id.map(ThreadId),
             &deny,
+            reader_id,
         )
         .await?;
     Ok(content_json(&census))
