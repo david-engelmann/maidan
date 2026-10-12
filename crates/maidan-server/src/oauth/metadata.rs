@@ -127,6 +127,9 @@ pub struct AuthorizationServerMetadata {
     authorization_endpoint: String,
     token_endpoint: String,
     response_types_supported: Vec<String>,
+    /// Named because an omitted list means `query` and `fragment`, and the
+    /// authorization response is only ever a query string.
+    response_modes_supported: Vec<String>,
     grant_types_supported: Vec<String>,
     /// Named because the RFC 8414 default is `client_secret_basic`, which
     /// the token endpoint does not read: a confidential client sends its
@@ -141,6 +144,7 @@ fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
         authorization_endpoint: format!("{origin}{AUTHORIZE_PATH}"),
         token_endpoint: format!("{origin}{TOKEN_PATH}"),
         response_types_supported: vec!["code".into()],
+        response_modes_supported: vec!["query".into()],
         grant_types_supported: vec!["authorization_code".into()],
         token_endpoint_auth_methods_supported: vec!["client_secret_post".into(), "none".into()],
         code_challenge_methods_supported: vec!["S256".into()],
@@ -286,6 +290,11 @@ mod tests {
         assert_eq!(
             json["response_types_supported"],
             serde_json::json!(["code"])
+        );
+        assert_eq!(
+            json["response_modes_supported"],
+            serde_json::json!(["query"]),
+            "the code and error arrive in the query string only"
         );
         assert_eq!(
             json["grant_types_supported"],
