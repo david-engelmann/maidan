@@ -52,6 +52,15 @@ pub async fn prune_events(
     Ok(res.rows_affected())
 }
 
+/// SQLite keeps the event log in one table, so there is nothing to create.
+/// The Postgres twin keeps the monthly partitions ready.
+pub async fn maintain_partitions(
+    _pool: &SqlitePool,
+    _now: DateTime<Utc>,
+) -> Result<u64, StoreError> {
+    Ok(0)
+}
+
 pub async fn prune_audit(
     pool: &SqlitePool,
     cutoff: DateTime<Utc>,
