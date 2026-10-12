@@ -33,6 +33,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
 
+### The MCP server card and the catalog listing manifests
+
+- **Added:** `GET /.well-known/mcp/server-card.json` serves the MCP server card for catalogs that index servers without connecting first. The card is a projection of what the server already serves — its `serverInfo` and the live `tools/list` catalog — so it cannot drift from the endpoint it describes.
+- **Added:** prepared listing manifests under `listings/` for the MCP registry, the Docker MCP Catalog and the ToolHive catalog, all naming the published `ghcr.io/david-engelmann/maidan-server:v413.0.0` image. Nothing is filed or published. A contract test fails when the Docker catalog's `tools.json` differs from `tools/list`.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

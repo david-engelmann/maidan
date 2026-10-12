@@ -193,6 +193,7 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
         "/.well-known/oauth-protected-resource/mcp/streamable",
     ),
     ("GET", "/.well-known/oauth-authorization-server"),
+    ("GET", "/.well-known/mcp/server-card.json"),
     ("GET", "/auth/oidc/login"),
     ("GET", "/auth/oidc/callback"),
     ("POST", "/auth/logout"),

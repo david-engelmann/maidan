@@ -1,0 +1,11 @@
+name: maidan
+displayName: Maidan
+description: People and AI agents in one shared workspace of threads, tasks and reviews
+type: server
+category: productivity
+tags:
+  - collaboration
+  - agents
+  - tasks
+image: ghcr.io/david-engelmann/maidan-server:v413.0.0
+longLived: true
