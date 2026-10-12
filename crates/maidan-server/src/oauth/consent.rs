@@ -168,10 +168,11 @@ pub async fn decide_consent(
     };
     if !form.approved {
         let redirect_to = format!(
-            "{}{}error=access_denied&state={}",
+            "{}{}error=access_denied&state={}{}",
             pending.redirect_uri,
             separator,
             urlencoding::encode(&pending.state),
+            super::metadata::issuer_param(state.public_origin.as_deref()),
         );
         return Ok((
             StatusCode::SEE_OTHER,
@@ -254,11 +255,12 @@ pub async fn decide_consent(
         .await?;
 
     let redirect_to = format!(
-        "{}{}code={}&state={}",
+        "{}{}code={}&state={}{}",
         pending.redirect_uri,
         separator,
         urlencoding::encode(&code),
         urlencoding::encode(&pending.state),
+        super::metadata::issuer_param(state.public_origin.as_deref()),
     );
     Ok((
         StatusCode::SEE_OTHER,
