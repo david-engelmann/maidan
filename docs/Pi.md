@@ -15,28 +15,48 @@ with auth on. Integrate agents against the instance with
 
 ---
 
+## First: the two secrets, once
+
+The server refuses to start without `MAIDAN_CONTENT_KEK`, which wraps the key
+that encrypts each message's content: lose it, or start the same database with
+a different one, and every message's words are unreadable. Generate it and the
+session secret once, into a file only you can read, and load that file on every
+start. Back the file up apart from the database.
+
+```sh
+mkdir -p ~/.config/maidan
+if [ ! -f ~/.config/maidan/maidan.env ]; then
+  ( umask 077
+    printf 'MAIDAN_CONTENT_KEK=%s\nMAIDAN_SESSION_SECRET=%s\n' \
+      "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > ~/.config/maidan/maidan.env )
+fi
+```
+
+Every recipe below listens on loopback only. The admin token travels as a
+bearer header, so never send it over plain HTTP across a network. To use the
+board from another machine, tunnel over SSH
+(`ssh -L 8080:127.0.0.1:8080 pi@<pi-ip>`, then open `http://127.0.0.1:8080/ui/`),
+or put a TLS-terminating proxy in front ([Production.md](Production.md)).
+
+---
+
 ## Option A: Docker (recommended)
 
-Requires Docker on Pi OS or another aarch64 Linux. Auth is on. The server
-refuses to start without `MAIDAN_CONTENT_KEK`, which wraps the key that encrypts
-each message's content, so keep it and the session secret somewhere safe:
-losing the KEK loses every message's words.
+Requires Docker on Pi OS or another aarch64 Linux. Auth is on.
 
 ```sh
 MAIDAN_TAG=v413.0.0
 mkdir -p ~/maidan-data
-export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"
-export MAIDAN_SESSION_SECRET="$(openssl rand -hex 32)"
 DB='sqlite:///data/maidan.db?mode=rwc'
 
 # Create the database and the first admin token. It prints the token once.
 docker run --rm --user "$(id -u):$(id -g)" -v ~/maidan-data:/data \
-  -e DATABASE_URL="$DB" -e MAIDAN_CONTENT_KEK \
+  --env-file ~/.config/maidan/maidan.env -e DATABASE_URL="$DB" \
   "ghcr.io/david-engelmann/maidan-cli:${MAIDAN_TAG}" init --workspace pi-lab
 
 docker run -d --name maidan --restart unless-stopped \
-  --user "$(id -u):$(id -g)" -p 8080:8080 -v ~/maidan-data:/data \
-  -e DATABASE_URL="$DB" -e MAIDAN_CONTENT_KEK -e MAIDAN_SESSION_SECRET \
+  --user "$(id -u):$(id -g)" -p 127.0.0.1:8080:8080 -v ~/maidan-data:/data \
+  --env-file ~/.config/maidan/maidan.env -e DATABASE_URL="$DB" \
   "ghcr.io/david-engelmann/maidan-server:${MAIDAN_TAG}"
 
 curl -s http://127.0.0.1:8080/health
@@ -70,15 +90,16 @@ sudo install -m755 maidan-server maidan /usr/local/bin/
 
 ```sh
 mkdir -p ~/maidan
+set -a; . ~/.config/maidan/maidan.env; set +a
 export DATABASE_URL="sqlite://$HOME/maidan/maidan.db?mode=rwc"
-export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"      # keep it: it wraps every message key
-export MAIDAN_SESSION_SECRET="$(openssl rand -hex 32)"
+export MAIDAN_BIND=127.0.0.1:8080
 maidan init --workspace pi          # prints an admin bearer token once, so save it
 maidan-server
 ```
 
-Open `http://<pi-ip>:8080/ui/` for the board, or send `Authorization: Bearer
-<token>` per [Integration.md](Integration.md).
+Open `http://127.0.0.1:8080/ui/` on the Pi, or through the SSH tunnel above, for
+the board, or send `Authorization: Bearer <token>` per
+[Integration.md](Integration.md).
 
 ---
 
@@ -91,8 +112,10 @@ can take 30+ minutes on a Pi 4/5.
 git clone https://github.com/david-engelmann/maidan.git
 cd maidan
 cargo build --release --bin maidan-server --bin maidan
+mkdir -p ~/maidan
+set -a; . ~/.config/maidan/maidan.env; set +a
 export DATABASE_URL="sqlite://$HOME/maidan/maidan.db?mode=rwc"
-export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)" MAIDAN_SESSION_SECRET="$(openssl rand -hex 32)"
+export MAIDAN_BIND=127.0.0.1:8080
 ./target/release/maidan init --workspace pi
 ./target/release/maidan-server
 ```
