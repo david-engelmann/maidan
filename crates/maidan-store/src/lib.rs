@@ -126,6 +126,7 @@ pub mod idempotency;
 pub mod lag_resume;
 pub mod log_snapshot;
 pub mod mcp_subscriptions;
+pub mod media_retention;
 pub mod migrate;
 pub mod outbox;
 pub mod postgres;

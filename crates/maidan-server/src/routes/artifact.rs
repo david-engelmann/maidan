@@ -94,6 +94,14 @@ pub async fn complete_multipart_artifact(
         .complete_multipart_upload(&upload, &parts)
         .await?;
     let bytes = state.artifacts.get(&sha).await?;
+    // The parts are already stored, so the size is known only now. A refused
+    // upload's bytes go unless another workspace holds them.
+    if let Err(refused) =
+        ensure_media_quota(&state, &auth, body.kind, &sha.to_hex(), bytes.len() as i64).await
+    {
+        super::reap_orphaned_blobs(state.store.as_ref(), &state.artifacts, &[sha.to_hex()]).await;
+        return Err(refused);
+    }
     // Upsert + the per-workspace ref + the ArtifactUpserted event commit
     // atomically (ref only for a non-bypass caller, as before).
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
@@ -141,6 +149,16 @@ pub async fn upload_artifact(
         return Err(ApiError::BadRequest("empty artifact body".into()));
     }
     let filename = upload_filename(q.filename)?;
+    // Refused before the bytes are written, so a refusal stores nothing.
+    let upload_sha = Sha256::compute(&body);
+    ensure_media_quota(
+        &state,
+        &auth,
+        q.kind,
+        &upload_sha.to_hex(),
+        body.len() as i64,
+    )
+    .await?;
     let sha = state.artifacts.put(body.clone()).await?;
     // Upsert + the per-workspace ref (so only the uploader's workspace can
     // fetch the deduped blob) + the ArtifactUpserted event commit atomically;
@@ -164,6 +182,34 @@ pub async fn upload_artifact(
     maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, body).await?;
     super::publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(artifact)))
+}
+
+/// 409 `media-quota-exceeded` when this media upload would take the caller's
+/// workspace past its media quota. An unscoped (bypass) upload records no
+/// workspace ref, so no workspace's quota applies to it.
+async fn ensure_media_quota(
+    state: &AppState,
+    auth: &AuthContext,
+    kind: ArtifactKind,
+    sha256: &str,
+    upload_bytes: i64,
+) -> ApiResult<()> {
+    if auth.bypass {
+        return Ok(());
+    }
+    match maidan_store::media_retention::check_media_quota(
+        state.store.as_ref(),
+        auth.workspace_id,
+        &state.mcp.instance_retention(),
+        kind,
+        sha256,
+        upload_bytes,
+    )
+    .await?
+    {
+        Some(refused) => Err(refused.into()),
+        None => Ok(()),
+    }
 }
 
 /// 404 (not 403) when the caller's workspace has no access link to `sha` — a

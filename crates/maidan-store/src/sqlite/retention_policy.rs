@@ -12,6 +12,8 @@ fn row_to_days(row: &sqlx::sqlite::SqliteRow) -> RetentionDays {
         messages_days: row.get("messages_days"),
         events_days: row.get("events_days"),
         deliveries_days: row.get("deliveries_days"),
+        media_days: row.get("media_days"),
+        media_quota_bytes: row.get("media_quota_bytes"),
     }
 }
 
@@ -29,7 +31,7 @@ async fn get_on(
     workspace_id: WorkspaceId,
 ) -> Result<RetentionDays, StoreError> {
     let row = sqlx::query(
-        "SELECT messages_days, events_days, deliveries_days
+        "SELECT messages_days, events_days, deliveries_days, media_days, media_quota_bytes
          FROM maidan_retention_policies WHERE workspace_id = ?",
     )
     .bind(workspace_id.0)
@@ -58,18 +60,23 @@ pub async fn set_audited(
     } else {
         sqlx::query(
             "INSERT INTO maidan_retention_policies
-                 (workspace_id, messages_days, events_days, deliveries_days, updated_at)
-             VALUES (?, ?, ?, ?, ?)
+                 (workspace_id, messages_days, events_days, deliveries_days,
+                  media_days, media_quota_bytes, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (workspace_id) DO UPDATE
              SET messages_days = excluded.messages_days,
                  events_days = excluded.events_days,
                  deliveries_days = excluded.deliveries_days,
+                 media_days = excluded.media_days,
+                 media_quota_bytes = excluded.media_quota_bytes,
                  updated_at = excluded.updated_at",
         )
         .bind(workspace_id.0)
         .bind(days.messages_days)
         .bind(days.events_days)
         .bind(days.deliveries_days)
+        .bind(days.media_days)
+        .bind(days.media_quota_bytes)
         .bind(chrono::Utc::now())
         .execute(&mut *tx)
         .await?;
@@ -83,7 +90,8 @@ pub async fn set_audited(
 /// Every workspace that has set a retention.
 pub async fn list(pool: &SqlitePool) -> Result<Vec<(WorkspaceId, RetentionDays)>, StoreError> {
     let rows = sqlx::query(
-        "SELECT workspace_id, messages_days, events_days, deliveries_days
+        "SELECT workspace_id, messages_days, events_days, deliveries_days,
+                media_days, media_quota_bytes
          FROM maidan_retention_policies ORDER BY workspace_id",
     )
     .fetch_all(pool)

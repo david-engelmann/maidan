@@ -2721,6 +2721,7 @@ pub fn answer_approval_gate() {}
         (status = 201, body = Artifact),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
+        (status = 409, description = "media-quota-exceeded: a media upload (attachment, screenshot, recording) would take the workspace past its media quota; `used_bytes`, `quota_bytes` and `upload_bytes` say by how much", body = ProblemDetails, content_type = "application/problem+json"),
     ))]
 pub fn upload_artifact() {}
 
@@ -2816,6 +2817,7 @@ pub fn abort_multipart_artifact_doc() {}
         (status = 200, body = Artifact),
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
+        (status = 409, description = "media-quota-exceeded: a media upload (attachment, screenshot, recording) would take the workspace past its media quota; `used_bytes`, `quota_bytes` and `upload_bytes` say by how much", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn complete_multipart_artifact_doc() {}

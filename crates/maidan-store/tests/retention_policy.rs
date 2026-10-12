@@ -129,6 +129,7 @@ fn one_day() -> RetentionDays {
         messages_days: Some(1),
         events_days: Some(1),
         deliveries_days: Some(1),
+        ..RetentionDays::default()
     }
 }
 
@@ -145,6 +146,7 @@ async fn run_policy_suite(store: &dyn Store) {
         messages_days: None,
         events_days: Some(30),
         deliveries_days: Some(14),
+        ..RetentionDays::default()
     };
     let too_long = RetentionDays {
         events_days: Some(31),
