@@ -1186,7 +1186,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "set_retention_policy",
-            "description": "Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.",
+            "description": "Replace this workspace's own retention for its messages, events, finished deliveries and unreferenced media, in days (1 to 3650 each), and its media quota in bytes. A workspace may keep rows for less time than the instance does, never longer, and hold less media, never more: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.",
             "annotations": {
                 "title": "Set retention policy",
                 "readOnlyHint": false,
@@ -1199,7 +1199,9 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "messages_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep messages; null/omit = as long as the instance (forever)"},
                     "events_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep event-log rows; null/omit = as long as the instance"},
-                    "deliveries_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep finished deliveries; null/omit = as long as the instance"}
+                    "deliveries_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep finished deliveries; null/omit = as long as the instance"},
+                    "media_days": {"anyOf": [{"type": "integer", "minimum": 1, "maximum": 3650}, {"type": "null"}], "description": "days to keep an attachment, screenshot or recording once nothing in the workspace references it; null/omit = as long as the instance"},
+                    "media_quota_bytes": {"anyOf": [{"type": "integer", "minimum": 1}, {"type": "null"}], "description": "bytes of attachments, screenshots and recordings the workspace may hold; null/omit = the instance's quota"}
                 },
                 "additionalProperties": false
             }

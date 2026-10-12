@@ -2626,6 +2626,36 @@ pub trait ArtifactMetaStore: Send + Sync {
         audit: crate::AuditFor<ArtifactErasure>,
     ) -> Result<ArtifactErasure, StoreError>;
 
+    /// Bytes of media (attachments, screenshots, recordings) `workspace_id`
+    /// holds: each sha it references once, by the kind on its own ref. What
+    /// the media quota is checked against.
+    async fn media_artifact_bytes(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError>;
+
+    /// Up to `limit` media refs in `scope` created before `cutoff` that
+    /// nothing in their workspace references, oldest first: no thread that is
+    /// not tombstoned links the sha, and no message that is not tombstoned
+    /// names it in its metadata (the shapes `artifact_shas_from_metadata`
+    /// reads). A workspace under legal hold has none.
+    async fn expirable_media_artifact_refs(
+        &self,
+        scope: crate::media_retention::MediaExpiryScope,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<(WorkspaceId, String)>, StoreError>;
+
+    /// Erase `workspace_id`'s media ref to `sha256` as
+    /// [`Self::erase_artifact_audited`] does, if it is still expirable as of
+    /// `cutoff` (see [`Self::expirable_media_artifact_refs`]) when its
+    /// transaction checks. `None`, with nothing written, when it is not: it
+    /// was referenced, held or erased since it was listed.
+    async fn expire_media_artifact_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        sha256: &str,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        audit: crate::AuditFor<ArtifactErasure>,
+    ) -> Result<Option<ArtifactErasure>, StoreError>;
+
     /// Delete the bytes of `sha256` if no artifact row holds it. The check
     /// and a lease on the sha commit together; `delete` then runs outside any
     /// transaction, bounded by [`crate::BLOB_DELETE_TIMEOUT`], and every

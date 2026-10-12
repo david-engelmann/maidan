@@ -74,6 +74,42 @@ pub use workspace::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
+/// Delete the blobs of `shas` that no artifact row holds any more, after a
+/// purge, an erase or a media expiry. Each delete runs under a lease on the
+/// sha (`reap_artifact_blob`), so a workspace uploading the same bytes
+/// meanwhile either commits its row first, and the bytes stay, or after, and
+/// puts them back. A failure is logged: the bytes are only orphaned, never
+/// reachable.
+pub(crate) async fn reap_orphaned_blobs(
+    store: &dyn maidan_store::Store,
+    artifacts: &std::sync::Arc<dyn maidan_artifacts::ArtifactStore>,
+    shas: &[String],
+) {
+    for sha_hex in shas {
+        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
+            continue;
+        };
+        let artifacts = artifacts.clone();
+        let delete: maidan_store::BlobDelete<'_> = Box::new(move || {
+            Box::pin(async move {
+                match artifacts.delete(&sha).await {
+                    Ok(()) | Err(maidan_artifacts::ArtifactError::NotFound) => Ok(()),
+                    Err(err) => Err(err.to_string()),
+                }
+            })
+        });
+        match store.reap_artifact_blob(sha_hex, delete).await {
+            Ok(maidan_store::BlobReap::Deleted | maidan_store::BlobReap::Referenced) => {}
+            Ok(maidan_store::BlobReap::DeleteFailed(err)) => {
+                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
+            }
+            Err(err) => {
+                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
+            }
+        }
+    }
+}
+
 pub(crate) fn clamp_context_transition_limit(limit: i64) -> i64 {
     if limit > 0 {
         limit.min(200)

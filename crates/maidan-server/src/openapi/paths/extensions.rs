@@ -397,7 +397,7 @@ pub fn get_delegation_policy() {}
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = RetentionPolicy, description = "The workspace's retention, the instance's, and what is pruned in effect"),
-        (status = 400, description = "Days outside 1–3650, or longer than the instance keeps that kind of row", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 400, description = "Days outside 1–3650, or longer than the instance keeps that kind of row; a media quota below 1 or above the instance's", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 403, description = "Requires token:admin", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]

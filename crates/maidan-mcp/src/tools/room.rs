@@ -841,6 +841,8 @@ pub(super) async fn set_retention_policy(
                     "messages_days": days.messages_days,
                     "events_days": days.events_days,
                     "deliveries_days": days.deliveries_days,
+                    "media_days": days.media_days,
+                    "media_quota_bytes": days.media_quota_bytes,
                 }),
             }),
         )

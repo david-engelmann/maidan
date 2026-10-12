@@ -730,8 +730,19 @@ PUT /workspaces/{wid}/retention
 {"messages_days": 30, "events_days": 90, "deliveries_days": 7}
 ```
 
-Each value is 1–3650 days; a kind left out or `null` is kept as long as the
-instance keeps it, and `{}` clears the policy. A value longer than the instance
+The same call sets `media_days`, how long an attachment, screenshot or
+recording is kept once nothing in the workspace references it, and
+`media_quota_bytes`, how much media the workspace may hold. Both are held to the
+instance's, which by default expires unreferenced media after 30 days and caps
+each workspace at 20 GiB. A REST media upload past the quota is a `409`
+`media-quota-exceeded` problem, and over MCP a JSON-RPC invalid-params error
+naming the same numbers. Linking an artifact to a thread, or naming its
+sha in a message's metadata, keeps it. See
+[Production](Production.md#media-retention-and-quota).
+
+`messages_days`, `events_days`, `deliveries_days` and `media_days` are each
+1–3650 days, and `media_quota_bytes` is at least 1 byte. A kind left out or
+`null` is kept as long as the instance keeps it, and `{}` clears the policy. A value longer than the instance
 keeps that kind is refused with 400: the instance's retention is the ceiling,
 because its sweep prunes past its own cutoff whatever a workspace says. The
 change writes a `retention_policy.set` audit row in the same transaction.
@@ -1072,6 +1083,7 @@ which is prose. Each type is `https://maidan.dev/problems/` plus:
 | `idempotency-key-in-flight` | 409 | The first request with this `Idempotency-Key` is still running; retry shortly |
 | `cursor-too-old` | 409 | The cursor is behind the retained log: `must_refetch` is true and `snapshot` names what to fetch. Never clamp |
 | `event-log-broken` | 409 | The hash-chained event log failed verification; the server fails closed |
+| `media-quota-exceeded` | 409 | A media upload (attachment, screenshot, recording) would take the workspace past its media quota. `used_bytes`, `quota_bytes` and `upload_bytes` say by how much. Erase media, or ask for a higher quota |
 | `payload-too-large` | 413 | The body is over the limit |
 | `unsupported-media-type` | 415 | The body's content type is not accepted |
 | `idempotency-key-reused` | 422 | The key was used for a different request; use a new key |
