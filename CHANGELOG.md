@@ -33,6 +33,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
 
+### A change that ends without a commit says why in its one Slack notice
+
+- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

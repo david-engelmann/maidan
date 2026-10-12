@@ -690,6 +690,9 @@ pub struct ChangeResult {
     pub diff: Option<String>,
     pub title: Option<String>,
     pub summary: Option<String>,
+    /// Why a run that changed nothing ended, as the producer recorded it
+    /// (pi's `error_detail`), preferred over `summary` in the reply.
+    pub error_detail: Option<String>,
 }
 
 impl ChangeResult {
@@ -720,6 +723,7 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
         diff: text("diff"),
         title: text("title"),
         summary: text("summary"),
+        error_detail: text("error_detail"),
     })
 }
 
