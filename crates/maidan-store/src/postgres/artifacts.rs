@@ -223,13 +223,15 @@ async fn record_ref_in_tx(
     new: &NewArtifact,
 ) -> Result<(), StoreError> {
     // The workspace's latest upload sets its kind (and its type and name, when
-    // given); who first uploaded it here, and when, stay.
+    // given) and restarts its media TTL; who first uploaded it here, and when,
+    // stay.
     sqlx::query(
         "INSERT INTO maidan_artifact_refs
-             (workspace_id, sha256, kind, mime_type, filename, uploaded_by)
-         VALUES ($1, $2, $3, $4, $5, $6)
+             (workspace_id, sha256, kind, mime_type, filename, uploaded_by, last_uploaded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (workspace_id, sha256) DO UPDATE
              SET kind = EXCLUDED.kind,
+                 last_uploaded_at = EXCLUDED.last_uploaded_at,
                  mime_type = COALESCE(EXCLUDED.mime_type, maidan_artifact_refs.mime_type),
                  filename = COALESCE(EXCLUDED.filename, maidan_artifact_refs.filename),
                  uploaded_by = COALESCE(maidan_artifact_refs.uploaded_by, EXCLUDED.uploaded_by)",
@@ -389,7 +391,7 @@ async fn erase_ref_in_tx(
 fn expirable_sql() -> String {
     format!(
         "r.kind IN {kinds}
-         AND r.created_at < $1
+         AND COALESCE(r.last_uploaded_at, r.created_at) < $1
          AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = r.workspace_id)
          AND NOT EXISTS (
              SELECT 1 FROM maidan_thread_artifacts ta
@@ -448,7 +450,7 @@ pub async fn expirable_media_refs(
     let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
         "SELECT r.workspace_id, r.sha256 FROM maidan_artifact_refs r
          WHERE {scope_sql} AND {expirable}
-         ORDER BY r.created_at, r.workspace_id, r.sha256
+         ORDER BY COALESCE(r.last_uploaded_at, r.created_at), r.workspace_id, r.sha256
          LIMIT $2",
         expirable = expirable_sql(),
     ))

@@ -1707,10 +1707,10 @@ A reference in another workspace protects only that workspace's copy.
 **The TTL.** Each sweep erases a workspace's unreferenced media older than the
 workspace's TTL. The TTL is the workspace's own `media_days` when it set one,
 held to `MAIDAN_RETENTION_MEDIA_DAYS`, and otherwise `MAIDAN_RETENTION_MEDIA_DAYS`
-(30 days unless set, and `0` turns it off). The age counts from when the
-workspace first uploaded the bytes. Uploading the same bytes again does not
-restart the clock, so link the artifact to a thread or name it in a message to
-keep it.
+(30 days unless set, and `0` turns it off). The age counts from the
+workspace's latest upload of the bytes, so uploading the same screenshot again
+restarts the clock. Link the artifact to a thread or name it in a message to
+keep it past the TTL.
 
 **The erase.** An expired copy is erased the way `DELETE /artifacts/{sha}`
 erases it. The workspace loses access, its share tickets stop granting the

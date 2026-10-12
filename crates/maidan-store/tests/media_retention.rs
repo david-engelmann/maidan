@@ -125,8 +125,9 @@ impl Db {
             Db::Sqlite(pool) => {
                 sqlx::query(
                     "UPDATE maidan_artifact_refs
-                     SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
-                     WHERE sha256 = ?",
+                     SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1),
+                         last_uploaded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1)
+                     WHERE sha256 = ?2",
                 )
                 .bind(format!("-{days} days"))
                 .bind(sha256)
@@ -137,7 +138,8 @@ impl Db {
             Db::Postgres(pool) => {
                 sqlx::query(
                     "UPDATE maidan_artifact_refs
-                     SET created_at = NOW() - make_interval(days => $1)
+                     SET created_at = NOW() - make_interval(days => $1),
+                         last_uploaded_at = NOW() - make_interval(days => $1)
                      WHERE sha256 = $2",
                 )
                 .bind(days as i32)
@@ -174,6 +176,7 @@ async fn run_expiry_suite(store: &dyn Store, db: &Db) {
     let held_sha = sha(9);
     let own_sha = sha(10);
     let fresh = sha(11);
+    let reuploaded = sha(12);
 
     // Both workspaces hold the same bytes; only B links them on a thread.
     upload(store, &a, &shared, ArtifactKind::Attachment, 10).await;
@@ -213,6 +216,7 @@ async fn run_expiry_suite(store: &dyn Store, db: &Db) {
     upload(store, &held, &held_sha, ArtifactKind::Attachment, 10).await;
     upload(store, &own, &own_sha, ArtifactKind::Attachment, 10).await;
     upload(store, &a, &fresh, ArtifactKind::Attachment, 10).await;
+    upload(store, &a, &reuploaded, ArtifactKind::Screenshot, 10).await;
 
     for old in [
         &shared,
@@ -226,6 +230,10 @@ async fn run_expiry_suite(store: &dyn Store, db: &Db) {
     ] {
         db.age(old, 10).await;
     }
+    // First uploaded long ago, uploaded again now: the TTL runs from the
+    // latest upload, so the message about it can still be posted.
+    db.age(&reuploaded, 10).await;
+    upload(store, &a, &reuploaded, ArtifactKind::Screenshot, 10).await;
     // Inside the instance's TTL, past the workspace's own.
     db.age(&young, 3).await;
     db.age(&own_sha, 3).await;
@@ -289,6 +297,7 @@ async fn run_expiry_suite(store: &dyn Store, db: &Db) {
         (&transcript, "a transcript is evidence, never expired"),
         (&young, "inside the instance's TTL"),
         (&fresh, "a ref newer than the TTL stays"),
+        (&reuploaded, "uploading old bytes again restarts their TTL"),
     ] {
         assert!(holds(store, a.workspace, sha256).await, "{why}");
     }

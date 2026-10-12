@@ -215,13 +215,17 @@ async fn record_ref_in_tx(
     workspace_id: WorkspaceId,
     new: &NewArtifact,
 ) -> Result<(), StoreError> {
-    // See the Postgres twin: the workspace's latest upload sets its kind.
+    // See the Postgres twin: the workspace's latest upload sets its kind,
+    // and restarts its media TTL.
+    let now = Utc::now();
     sqlx::query(
         "INSERT INTO maidan_artifact_refs
-             (workspace_id, sha256, kind, mime_type, filename, uploaded_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+             (workspace_id, sha256, kind, mime_type, filename, uploaded_by, created_at,
+              last_uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (workspace_id, sha256) DO UPDATE
              SET kind = excluded.kind,
+                 last_uploaded_at = excluded.last_uploaded_at,
                  mime_type = COALESCE(excluded.mime_type, maidan_artifact_refs.mime_type),
                  filename = COALESCE(excluded.filename, maidan_artifact_refs.filename),
                  uploaded_by = COALESCE(maidan_artifact_refs.uploaded_by, excluded.uploaded_by)",
@@ -232,7 +236,8 @@ async fn record_ref_in_tx(
     .bind(new.mime_type.as_deref())
     .bind(new.filename.as_deref())
     .bind(new.uploaded_by.map(|m| m.0))
-    .bind(Utc::now())
+    .bind(now)
+    .bind(now)
     .execute(&mut **tx)
     .await?;
     Ok(())
@@ -373,7 +378,7 @@ async fn erase_ref_in_tx(
 fn expirable_sql() -> String {
     format!(
         "r.kind IN {kinds}
-         AND julianday(r.created_at) < julianday(?1)
+         AND julianday(COALESCE(r.last_uploaded_at, r.created_at)) < julianday(?1)
          AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = r.workspace_id)
          AND NOT EXISTS (
              SELECT 1 FROM maidan_thread_artifacts ta
@@ -438,7 +443,7 @@ pub async fn expirable_media_refs(
     let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
         "SELECT r.workspace_id, r.sha256 FROM maidan_artifact_refs r
          WHERE {scope_sql} AND {expirable}
-         ORDER BY julianday(r.created_at), r.workspace_id, r.sha256
+         ORDER BY julianday(COALESCE(r.last_uploaded_at, r.created_at)), r.workspace_id, r.sha256
          LIMIT ?2",
         expirable = expirable_sql(),
     ))

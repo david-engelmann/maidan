@@ -305,7 +305,8 @@ async fn the_retention_sweep_expires_unreferenced_media_and_reaps_its_bytes() {
     let evidence = uploaded(&ctx, &tok_a, "transcript", b"evidence").await;
     sqlx::query(
         "UPDATE maidan_artifact_refs
-         SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 days')",
+         SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 days'),
+             last_uploaded_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 days')",
     )
     .execute(&ctx.pool)
     .await
