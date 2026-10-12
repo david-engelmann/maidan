@@ -4,9 +4,17 @@
 //! (webhook and automation deliveries, the transactional, egress and mail
 //! outboxes, the agent-run DLQ) grow without bound. This sweeper deletes rows
 //! past a per-table age, in batches (so a first sweep over a long-unpruned
-//! table doesn't lock it). Everything is opt-in: with no
-//! `MAIDAN_RETENTION_*_DAYS` set and no workspace policy, nothing is pruned.
-//! The usage ledger is not pruned.
+//! table doesn't lock it). Everything but media is opt-in: with no
+//! `MAIDAN_RETENTION_*_DAYS` set and no workspace policy, nothing else is
+//! pruned. The usage ledger is not pruned.
+//!
+//! **Media.** A media artifact (attachment, screenshot, recording) that
+//! nothing in its workspace references expires after
+//! `MAIDAN_RETENTION_MEDIA_DAYS` (30 unless set; `0` keeps media forever) or
+//! the workspace's own, shorter `media_days`. It is erased for that workspace
+//! as `DELETE /artifacts/{sha}` erases it, audited as `artifact.expire`, and
+//! its bytes go with the last workspace's reference. See
+//! `maidan_store::media_retention`.
 //!
 //! **Per-workspace retention.** A workspace may set a shorter retention for
 //! its messages, events and finished deliveries (`maidan_retention_policies`,
@@ -26,7 +34,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use maidan_store::retention_policy::parse_days as parse_days_raw;
+use maidan_artifacts::ArtifactStore;
+use maidan_store::retention_policy::{
+    parse_days as parse_days_raw, parse_media_days, parse_media_quota_bytes,
+};
 use maidan_store::Store;
 use maidan_types::{RetentionDays, WorkspaceId};
 
@@ -43,6 +54,12 @@ pub struct RetentionConfig {
     /// Read notifications. Unread and snoozed rows are never pruned. `None`
     /// keeps every notification.
     pub notifications_days: Option<u32>,
+    /// From `MAIDAN_RETENTION_MEDIA_DAYS`: how long an unreferenced media
+    /// artifact is kept. `None` keeps media unless a workspace sets its own.
+    pub media_days: Option<u32>,
+    /// From `MAIDAN_MEDIA_QUOTA_BYTES`, the ceiling a workspace's quota is
+    /// held to. `None` is no instance quota.
+    pub media_quota_bytes: Option<i64>,
     pub sweep: Duration,
     pub batch: i64,
 }
@@ -58,6 +75,8 @@ impl RetentionConfig {
             messages_days: self.messages_days.map(i64::from),
             events_days: self.events_days.map(i64::from),
             deliveries_days: self.deliveries_days.map(i64::from),
+            media_days: self.media_days.map(i64::from),
+            media_quota_bytes: self.media_quota_bytes,
         }
     }
 }
@@ -71,6 +90,9 @@ pub fn config_from_env() -> RetentionConfig {
     let audit_days = parse_days(std::env::var("MAIDAN_RETENTION_AUDIT_DAYS").ok());
     let deliveries_days = parse_days(std::env::var("MAIDAN_RETENTION_DELIVERIES_DAYS").ok());
     let notifications_days = parse_days(std::env::var("MAIDAN_RETENTION_NOTIFICATIONS_DAYS").ok());
+    let media_days = parse_media_days(std::env::var("MAIDAN_RETENTION_MEDIA_DAYS").ok().as_deref());
+    let media_quota_bytes =
+        parse_media_quota_bytes(std::env::var("MAIDAN_MEDIA_QUOTA_BYTES").ok().as_deref());
     let sweep = std::env::var("MAIDAN_RETENTION_SWEEP_SECS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -87,6 +109,8 @@ pub fn config_from_env() -> RetentionConfig {
         audit_days,
         deliveries_days,
         notifications_days,
+        media_days,
+        media_quota_bytes,
         sweep: Duration::from_secs(sweep),
         batch,
     }
@@ -97,8 +121,13 @@ fn cutoff(now: chrono::DateTime<chrono::Utc>, days: u32) -> chrono::DateTime<chr
 }
 
 /// Run one sweep across every configured table. Errors on a single table are
-/// logged and do not abort the others.
-pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
+/// logged and do not abort the others. `artifacts` holds the bytes an expired
+/// media artifact's last reference takes with it.
+pub async fn sweep_once(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    cfg: &RetentionConfig,
+) {
     let now = chrono::Utc::now();
 
     if let Some(days) = cfg.events_days {
@@ -162,6 +191,53 @@ pub async fn sweep_once(store: &Arc<dyn Store>, cfg: &RetentionConfig) {
             tracing::warn!(error = %err, "retention: listing workspace policies failed");
         }
     }
+
+    let expired = expire_media(store, artifacts, cfg.batch, now, cfg.media_days).await;
+    record("media_artifacts", expired);
+}
+
+/// Expire media page by page until a page comes back short, reaping the
+/// bytes of each last reference as it goes. Each page erases what it returns,
+/// so the matching set shrinks and the loop ends; a page cut short by a
+/// failure ends it too, and the next sweep picks up the rest.
+async fn expire_media(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    batch: i64,
+    now: chrono::DateTime<chrono::Utc>,
+    instance_days: Option<u32>,
+) -> u64 {
+    let mut total = 0u64;
+    loop {
+        let page = match maidan_store::media_retention::expire_media_artifacts(
+            store.as_ref(),
+            now,
+            instance_days.map(i64::from),
+            batch,
+        )
+        .await
+        {
+            Ok(page) => page,
+            Err(err) => {
+                tracing::warn!(error = %err, "retention: expiring media failed");
+                break;
+            }
+        };
+        let orphaned: Vec<String> = page
+            .iter()
+            .filter(|erasure| erasure.last_reference)
+            .map(|erasure| erasure.sha256.clone())
+            .collect();
+        crate::routes::reap_orphaned_blobs(store.as_ref(), artifacts, &orphaned).await;
+        total += page.len() as u64;
+        if (page.len() as i64) < batch {
+            break;
+        }
+    }
+    if total > 0 {
+        tracing::info!(expired = total, "retention: media artifacts expired");
+    }
+    total
 }
 
 /// A workspace's own days for one kind of row, when they are shorter than the
@@ -241,17 +317,18 @@ fn record(table: &str, pruned: u64) {
 }
 
 /// Loop: sweep, then sleep `cfg.sweep`. Spawned once at startup.
-pub async fn run(store: Arc<dyn Store>, cfg: RetentionConfig) {
+pub async fn run(store: Arc<dyn Store>, artifacts: Arc<dyn ArtifactStore>, cfg: RetentionConfig) {
     tracing::info!(
         events_days = ?cfg.events_days,
         audit_days = ?cfg.audit_days,
         deliveries_days = ?cfg.deliveries_days,
         notifications_days = ?cfg.notifications_days,
+        media_days = ?cfg.media_days,
         sweep_secs = cfg.sweep.as_secs(),
         "retention sweeper started"
     );
     loop {
-        sweep_once(&store, &cfg).await;
+        sweep_once(&store, &artifacts, &cfg).await;
         tokio::time::sleep(cfg.sweep).await;
     }
 }

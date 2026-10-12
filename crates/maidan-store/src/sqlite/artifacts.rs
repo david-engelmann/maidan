@@ -297,13 +297,27 @@ pub async fn erase_for_workspace(
 ) -> Result<ArtifactErasure, StoreError> {
     let mut tx = pool.begin().await?;
     super::legal_hold::refuse_if_held(&mut tx, workspace_id).await?;
+    let erasure = erase_ref_in_tx(&mut tx, workspace_id, sha256, audit_for).await?;
+    tx.commit().await?;
+    Ok(erasure)
+}
+
+/// The erase itself, on a transaction that has already refused a held
+/// workspace. Shared by an erase on request and a media expiry, so both write
+/// the same rows.
+async fn erase_ref_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+    audit_for: crate::AuditFor<ArtifactErasure>,
+) -> Result<ArtifactErasure, StoreError> {
     // SQLite serializes writers: an upload of the same bytes cannot land its
     // reference between the delete and the check below.
     let removed =
         sqlx::query("DELETE FROM maidan_artifact_refs WHERE workspace_id = ?1 AND sha256 = ?2")
             .bind(workspace_id.0)
             .bind(sha256)
-            .execute(&mut *tx)
+            .execute(&mut **tx)
             .await?;
     if removed.rows_affected() == 0 {
         return Err(StoreError::NotFound);
@@ -316,7 +330,7 @@ pub async fn erase_for_workspace(
     )
     .bind(sha256)
     .bind(workspace_id.0)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     // Threads here stop listing the artifact as evidence; their versions move.
     // Another workspace's links to the same bytes stay.
@@ -330,7 +344,7 @@ pub async fn erase_for_workspace(
     )
     .bind(sha256)
     .bind(workspace_id.0)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     // A row nobody references reads as unscoped (readable by any workspace),
     // so the last reference must take the row with it.
@@ -339,7 +353,7 @@ pub async fn erase_for_workspace(
          AND NOT EXISTS (SELECT 1 FROM maidan_artifact_refs WHERE sha256 = ?1)",
     )
     .bind(sha256)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?
     .rows_affected()
         > 0;
@@ -349,7 +363,124 @@ pub async fn erase_for_workspace(
         last_reference,
         occurred_at: Utc::now(),
     };
-    super::audit::append_counted(&mut tx, audit_for(&erasure)).await?;
-    tx.commit().await?;
+    super::audit::append_counted(tx, audit_for(&erasure)).await?;
     Ok(erasure)
+}
+
+/// Whether the ref `r` has expired as of `?1`. See the Postgres twin. The
+/// `json_type` checks match strings only, as `artifact_shas_from_metadata`
+/// does: without them a number would compare to the sha as text.
+fn expirable_sql() -> String {
+    format!(
+        "r.kind IN {kinds}
+         AND julianday(r.created_at) < julianday(?1)
+         AND NOT EXISTS (SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = r.workspace_id)
+         AND NOT EXISTS (
+             SELECT 1 FROM maidan_thread_artifacts ta
+             JOIN maidan_threads t ON t.id = ta.thread_id
+             JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE ta.sha256 = r.sha256
+               AND c.workspace_id = r.workspace_id
+               AND t.tombstoned_at IS NULL)
+         AND NOT EXISTS (
+             SELECT 1 FROM maidan_messages m
+             JOIN maidan_threads t ON t.id = m.thread_id
+             JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE c.workspace_id = r.workspace_id
+               AND m.tombstoned_at IS NULL
+               AND json_valid(m.metadata)
+               AND ((json_type(m.metadata, '$.artifact_sha256') = 'text'
+                     AND json_extract(m.metadata, '$.artifact_sha256') = r.sha256)
+                    OR (json_type(m.metadata, '$.sha256') = 'text'
+                        AND json_extract(m.metadata, '$.sha256') = r.sha256)
+                    OR (json_type(m.metadata, '$.artifacts') = 'array'
+                        AND EXISTS (
+                            SELECT 1 FROM json_each(m.metadata, '$.artifacts') e
+                            WHERE (e.type = 'text' AND e.value = r.sha256)
+                               OR (e.type = 'object'
+                                   AND json_type(e.value, '$.sha256') = 'text'
+                                   AND json_extract(e.value, '$.sha256') = r.sha256)))))",
+        kinds = crate::media_retention::MEDIA_KINDS_SQL,
+    )
+}
+
+pub async fn media_bytes(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<i64, StoreError> {
+    // One ref per (workspace, sha) and one row per sha: each sha counts once.
+    let used: i64 = sqlx::query_scalar(&format!(
+        "SELECT COALESCE(SUM(a.size_bytes), 0)
+         FROM maidan_artifact_refs r
+         JOIN maidan_artifacts a ON a.sha256 = r.sha256
+         WHERE r.workspace_id = ? AND r.kind IN {kinds}",
+        kinds = crate::media_retention::MEDIA_KINDS_SQL,
+    ))
+    .bind(workspace_id.0)
+    .fetch_one(pool)
+    .await?;
+    Ok(used)
+}
+
+pub async fn expirable_media_refs(
+    pool: &SqlitePool,
+    scope: crate::media_retention::MediaExpiryScope,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<(WorkspaceId, String)>, StoreError> {
+    use crate::media_retention::MediaExpiryScope;
+    let (scope_sql, workspace) = match scope {
+        MediaExpiryScope::Workspace(workspace_id) => ("r.workspace_id = ?3", Some(workspace_id.0)),
+        MediaExpiryScope::InstanceDefault => (
+            "?3 IS NULL AND NOT EXISTS (
+                 SELECT 1 FROM maidan_retention_policies p
+                 WHERE p.workspace_id = r.workspace_id AND p.media_days IS NOT NULL)",
+            None,
+        ),
+    };
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(&format!(
+        "SELECT r.workspace_id, r.sha256 FROM maidan_artifact_refs r
+         WHERE {scope_sql} AND {expirable}
+         ORDER BY julianday(r.created_at), r.workspace_id, r.sha256
+         LIMIT ?2",
+        expirable = expirable_sql(),
+    ))
+    .bind(cutoff)
+    .bind(limit)
+    .bind(workspace)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(workspace_id, sha256)| (WorkspaceId(workspace_id), sha256))
+        .collect())
+}
+
+pub async fn expire_media_ref(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    sha256: &str,
+    cutoff: DateTime<Utc>,
+    audit_for: crate::AuditFor<ArtifactErasure>,
+) -> Result<Option<ArtifactErasure>, StoreError> {
+    let mut tx = pool.begin().await?;
+    match super::legal_hold::refuse_if_held(&mut tx, workspace_id).await {
+        Ok(()) => {}
+        Err(StoreError::Conflict(_) | StoreError::NotFound) => return Ok(None),
+        Err(err) => return Err(err),
+    }
+    let expirable: bool = sqlx::query_scalar(&format!(
+        "SELECT EXISTS(SELECT 1 FROM maidan_artifact_refs r
+                       WHERE r.workspace_id = ?2 AND r.sha256 = ?3 AND {expirable})",
+        expirable = expirable_sql(),
+    ))
+    .bind(cutoff)
+    .bind(workspace_id.0)
+    .bind(sha256)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !expirable {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+    let erasure = erase_ref_in_tx(&mut tx, workspace_id, sha256, audit_for).await?;
+    tx.commit().await?;
+    Ok(Some(erasure))
 }

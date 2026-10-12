@@ -100,6 +100,8 @@ period is cut, and clients retry.
 | `MAIDAN_DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | no | Postgres `idle_in_transaction_session_timeout`. **Default `60000` (60 s).** A connection left idle inside an open transaction holds its locks and its snapshot, which blocks vacuum cluster-wide; this ends it. Set `0` to disable. |
 | `MAIDAN_MAX_CONCURRENT_REQUESTS` | no | The most HTTP requests in flight at once. **Default `1024`; `0` turns it off.** Past it a request is refused at once with a `503` problem and `Retry-After: 1`, before the rate limiter or authentication run, so overload costs no database or Redis work. A request holds its slot until its response starts, so a long-poll MCP wait holds one while it waits; streaming bodies and WebSockets do not. `/health*` and `/metrics` are exempt. Watch `maidan_http_in_flight_requests` and `maidan_http_shed_total` (alert `MaidanLoadShedding`). |
 | `MAIDAN_MAX_WS_CONNECTIONS` | no | The most concurrent `/ws/subscribe` connections accepted. **Default `10000`.** Past it an upgrade gets `503`, so long-lived sockets cannot exhaust the process; watch `maidan_ws_connections`. Client frames are capped at 64 KiB. |
+| `MAIDAN_RETENTION_MEDIA_DAYS` | no | Days an attachment, screenshot or recording is kept once nothing in its workspace references it. **Default `30`.** Unlike the other `MAIDAN_RETENTION_*_DAYS`, it is on when unset. `0` or `off` keeps media until someone erases it, and so does any value that is not a positive whole number, as for the other day knobs. A workspace may set a shorter `media_days`. See [Media retention and quota](#media-retention-and-quota). |
+| `MAIDAN_MEDIA_QUOTA_BYTES` | no | Bytes of attachments, screenshots and recordings each workspace may hold. **Default `21474836480` (20 GiB).** `0` or `off` lifts the quota. Any other value that is not a positive whole number is logged and the default kept, so a typo cannot lift the cap. A workspace may set a lower `media_quota_bytes`. See [Media retention and quota](#media-retention-and-quota). |
 | `MAIDAN_DB_LOCK_TIMEOUT_MS` | no | Postgres `lock_timeout`. **Default `10000` (10 s)**, so a request queued behind a held lock fails fast instead of piling up until `statement_timeout`. Boot migrations exempt themselves. Set `0` to disable. |
 | `MAIDAN_DB_BUSY_TIMEOUT_MS` | no | SQLite `busy_timeout` (default `5000`). |
 | `MAIDAN_CLAIM_REAP_TICK_SECS` | no | Seconds between claim-reaper ticks. **Default `5`; `0` turns it off.** Each tick frees every claim whose lease lapsed on an open thread (at most 1000 a tick) and emits `ClaimExpired` for the holder, so a dead agent's work returns to the queue and its supervisor hears about it on an idle channel too. The claim's worked time is charged to the thread's `max_wall_secs` budget in the same transaction; a claim that leaves the thread over budget gets `ClaimFailed` and a DLQ entry instead. Every replica runs it; Postgres `SKIP LOCKED` splits the work. Counter `maidan_claims_reaped_total`. |
@@ -1622,12 +1624,13 @@ message's earlier versions with it.
 
 ## Retention
 
-Nothing is pruned unless you set a retention, or a workspace sets its own. Each
-knob is an age in days; the sweeper runs every `MAIDAN_RETENTION_SWEEP_SECS`
-(default 86400) and deletes in batches of `MAIDAN_RETENTION_BATCH` (default
-5000), so a first sweep over a long-unpruned table does not lock it. Each sweep
-counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
-`audit`, `notifications`, `deliveries`, and `messages`).
+Nothing but unreferenced media is pruned unless you set a retention, or a
+workspace sets its own. Each knob is an age in days; the sweeper runs every
+`MAIDAN_RETENTION_SWEEP_SECS` (default 86400) and deletes in batches of
+`MAIDAN_RETENTION_BATCH` (default 5000), so a first sweep over a long-unpruned
+table does not lock it. Each sweep counts what it deleted in
+`maidan_retention_pruned_total{table}` (`events`, `audit`, `notifications`,
+`deliveries`, `messages` and `media_artifacts`).
 
 | Variable | What it prunes | What it never prunes |
 |---|---|---|
@@ -1636,6 +1639,7 @@ counts what it deleted in `maidan_retention_pruned_total{table}` (`events`,
 | `MAIDAN_RETENTION_NOTIFICATIONS_DAYS` | Read notifications older than the cutoff | Unread notifications; any notification with a snooze set, including one whose snooze has lapsed; a held workspace's notifications |
 | `MAIDAN_RETENTION_DELIVERIES_DAYS` | Finished delivery rows: delivered or quarantined webhook and automation deliveries, published transactional-outbox rows, delivered projector and result egress, delivered notification mail, and dead-lettered agent runs | Pending or retrying rows, whatever their age; egress and mail **dead letters**, which leave when an operator requeues them (`MaidanEgressDeadLettered` and `MaidanMailDeadLettered` fire while any exist); a held workspace's rows in every one of these tables |
 | `MAIDAN_RETENTION_MESSAGES_DAYS` | Messages posted before the cutoff, erased the way a purge erases them (words, embeddings, references, content keys) in every workspace | Messages in a held workspace; a message newer than the cutoff. Off when unset |
+| `MAIDAN_RETENTION_MEDIA_DAYS` | A workspace's attachments, screenshots and recordings uploaded before the cutoff that nothing in the workspace references, erased as `DELETE /artifacts/{sha}` erases them. **On by default, at 30 days** | Media a live thread links or a live message names, transcripts, code dumps and context snapshots, a held workspace's media, and another workspace's copy of the same bytes. See [Media retention and quota](#media-retention-and-quota) |
 
 Audit rows belong to the workspace stamped on them when they were written. On
 upgrade, migration 0123 backfilled older rows from what they reference: a
@@ -1676,6 +1680,79 @@ every workspace that set a stricter policy past its own cutoff; a held workspace
 keeps everything. Message pruning erases a message the way a purge does, including
 its embeddings, references and content key. Policies are stored in
 `maidan_retention_policies` (migration 0134) and removed with their workspace.
+A workspace may also set a shorter `media_days` and a lower `media_quota_bytes`
+(migration 0170), held to `MAIDAN_RETENTION_MEDIA_DAYS` and
+`MAIDAN_MEDIA_QUOTA_BYTES` the same way.
+
+### Media retention and quota
+
+Attachments, screenshots and recordings are media. They fill storage fast, and
+much of what an agent uploads is never pointed at again, so media expires once
+nothing uses it, and each workspace has a media quota. Transcripts, code dumps
+and context snapshots are evidence. Neither rule touches them.
+
+**What counts as a reference.** A workspace's copy of a media artifact is
+referenced while either of these holds:
+
+- a thread in that workspace links the sha (`maidan_thread_artifacts`, the
+  thread's evidence), and the thread is not tombstoned
+- a message in that workspace names the sha in its metadata, and the message is
+  not withdrawn. The shapes are the ones the context assemblers read: a string
+  `artifact_sha256` or `sha256`, or an `artifacts` array holding sha strings or
+  `{"sha256": "..."}` objects.
+
+A withdrawn message has its metadata blanked, so it stops protecting the sha.
+A reference in another workspace protects only that workspace's copy.
+
+**The TTL.** Each sweep erases a workspace's unreferenced media older than the
+workspace's TTL. The TTL is the workspace's own `media_days` when it set one,
+held to `MAIDAN_RETENTION_MEDIA_DAYS`, and otherwise `MAIDAN_RETENTION_MEDIA_DAYS`
+(30 days unless set, and `0` turns it off). The age counts from when the
+workspace first uploaded the bytes. Uploading the same bytes again does not
+restart the clock, so link the artifact to a thread or name it in a message to
+keep it.
+
+**The erase.** An expired copy is erased the way `DELETE /artifacts/{sha}`
+erases it. The workspace loses access, its share tickets stop granting the
+artifact, and an `artifact.expire` audit row with no actor is written in the
+same transaction. The bytes are deleted only when no other workspace references
+them. Each candidate is checked again inside the transaction that erases it, so
+a reference made after the sweep listed it keeps it. Expiry runs in batches of
+`MAIDAN_RETENTION_BATCH`.
+
+**The legal hold.** A workspace under legal hold keeps all its media, whatever
+its age and whatever its policy says.
+
+**The quota.** A media upload is refused when the workspace's media plus the
+upload would pass its quota. The quota is the workspace's own
+`media_quota_bytes` when it set one, held to `MAIDAN_MEDIA_QUOTA_BYTES`, and
+otherwise `MAIDAN_MEDIA_QUOTA_BYTES` (20 GiB unless set, and `0` lifts it).
+Usage is the size of each media sha the workspace references, counted once by
+the kind the workspace gave it. Bytes the workspace already references cost
+nothing to upload again, since dedup stores them once. Erasing an artifact frees
+its space at once. The refusal is a `409` problem with the numbers a client
+needs to free room:
+
+```json
+{
+  "type": "https://maidan.dev/problems/media-quota-exceeded",
+  "title": "Media Quota Exceeded",
+  "status": 409,
+  "detail": "this upload of 60 bytes would take the workspace's media to 120 bytes, past its quota of 100 (60 used). Erase media it no longer needs, or raise the quota.",
+  "used_bytes": 60,
+  "quota_bytes": 100,
+  "upload_bytes": 60
+}
+```
+
+A single-shot `POST /artifacts` is refused before its bytes are written. A
+multipart upload is checked when it completes, and its bytes are then deleted
+unless another workspace holds them. MCP `upload_artifact` and
+`complete_artifact_multipart` apply the same quota and answer with an invalid
+params error naming the three numbers. The check reads usage before the upload
+writes, so uploads running at the same moment can each pass and together
+overshoot the quota by at most what they upload. The quota bounds storage. It
+is not an exact ledger.
 
 ## Event-log hash chain
 

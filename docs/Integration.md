@@ -730,6 +730,15 @@ PUT /workspaces/{wid}/retention
 {"messages_days": 30, "events_days": 90, "deliveries_days": 7}
 ```
 
+The same call sets `media_days`, how long an attachment, screenshot or
+recording is kept once nothing in the workspace references it, and
+`media_quota_bytes`, how much media the workspace may hold. Both are held to the
+instance's, which by default expires unreferenced media after 30 days and caps
+each workspace at 20 GiB. A media upload past the quota is a `409`
+`media-quota-exceeded` problem. Linking an artifact to a thread, or naming its
+sha in a message's metadata, keeps it. See
+[Production](Production.md#media-retention-and-quota).
+
 Each value is 1–3650 days; a kind left out or `null` is kept as long as the
 instance keeps it, and `{}` clears the policy. A value longer than the instance
 keeps that kind is refused with 400: the instance's retention is the ceiling,
@@ -1072,6 +1081,7 @@ which is prose. Each type is `https://maidan.dev/problems/` plus:
 | `idempotency-key-in-flight` | 409 | The first request with this `Idempotency-Key` is still running; retry shortly |
 | `cursor-too-old` | 409 | The cursor is behind the retained log: `must_refetch` is true and `snapshot` names what to fetch. Never clamp |
 | `event-log-broken` | 409 | The hash-chained event log failed verification; the server fails closed |
+| `media-quota-exceeded` | 409 | A media upload (attachment, screenshot, recording) would take the workspace past its media quota. `used_bytes`, `quota_bytes` and `upload_bytes` say by how much. Erase media, or ask for a higher quota |
 | `payload-too-large` | 413 | The body is over the limit |
 | `unsupported-media-type` | 415 | The body's content type is not accepted |
 | `idempotency-key-reused` | 422 | The key was used for a different request; use a new key |

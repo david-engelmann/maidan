@@ -53,6 +53,13 @@ pub enum ApiError {
         break_at: Option<i64>,
         reason: maidan_types::ChainBreakReason,
     },
+    /// A media upload would take the workspace past its media quota. 409
+    /// with the three numbers, so a client can tell how much to free.
+    MediaQuotaExceeded {
+        used_bytes: i64,
+        quota_bytes: i64,
+        upload_bytes: i64,
+    },
 }
 
 impl ApiError {
@@ -74,6 +81,7 @@ impl ApiError {
             Self::UnprocessableEntity(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::IdempotencyKeyInFlight => StatusCode::CONFLICT,
             Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
+            Self::MediaQuotaExceeded { .. } => StatusCode::CONFLICT,
         }
     }
 
@@ -96,6 +104,7 @@ impl ApiError {
             Self::IdempotencyKeyInFlight => "Idempotency Key In Flight",
             Self::CursorTooOld { .. } => "Cursor Too Old",
             Self::EventLogBroken { .. } => "Event Log Broken",
+            Self::MediaQuotaExceeded { .. } => "Media Quota Exceeded",
         }
     }
 
@@ -142,6 +151,16 @@ impl ApiError {
                 Some(id) => format!("event log chain broken at id={id}: {}", reason.as_str()),
                 None => format!("event log chain broken: {}", reason.as_str()),
             },
+            Self::MediaQuotaExceeded {
+                used_bytes,
+                quota_bytes,
+                upload_bytes,
+            } => format!(
+                "this upload of {upload_bytes} bytes would take the workspace's media \
+                 to {} bytes, past its quota of {quota_bytes} ({used_bytes} used). \
+                 Erase media it no longer needs, or raise the quota.",
+                used_bytes.saturating_add(*upload_bytes)
+            ),
         }
     }
 
@@ -165,6 +184,7 @@ impl ApiError {
             Self::IdempotencyKeyInFlight => "https://maidan.dev/problems/idempotency-key-in-flight",
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
+            Self::MediaQuotaExceeded { .. } => "https://maidan.dev/problems/media-quota-exceeded",
         }
     }
 
@@ -221,6 +241,16 @@ pub struct ProblemDetails {
     /// catch up from `as_of_lsn`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot: Option<String>,
+    /// On a `media-quota-exceeded` 409: the bytes of media the workspace
+    /// holds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used_bytes: Option<i64>,
+    /// On a `media-quota-exceeded` 409: the workspace's media quota.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quota_bytes: Option<i64>,
+    /// On a `media-quota-exceeded` 409: the size of the refused upload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_bytes: Option<i64>,
 }
 
 impl IntoResponse for ApiError {
@@ -230,6 +260,14 @@ impl IntoResponse for ApiError {
             Self::CursorTooOld { snapshot, .. } => snapshot.clone(),
             _ => None,
         };
+        let quota = match &self {
+            Self::MediaQuotaExceeded {
+                used_bytes,
+                quota_bytes,
+                upload_bytes,
+            } => Some((*used_bytes, *quota_bytes, *upload_bytes)),
+            _ => None,
+        };
         let body = ProblemDetails {
             type_: self.problem_type().to_string(),
             title: self.title().to_string(),
@@ -237,6 +275,9 @@ impl IntoResponse for ApiError {
             detail: self.detail(),
             must_refetch: matches!(self, Self::CursorTooOld { .. }),
             snapshot,
+            used_bytes: quota.map(|(used, _, _)| used),
+            quota_bytes: quota.map(|(_, quota, _)| quota),
+            upload_bytes: quota.map(|(_, _, upload)| upload),
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(
@@ -244,6 +285,16 @@ impl IntoResponse for ApiError {
             header::HeaderValue::from_static("application/problem+json"),
         );
         response
+    }
+}
+
+impl From<maidan_store::media_retention::MediaQuotaExceeded> for ApiError {
+    fn from(err: maidan_store::media_retention::MediaQuotaExceeded) -> Self {
+        Self::MediaQuotaExceeded {
+            used_bytes: err.used_bytes,
+            quota_bytes: err.quota_bytes,
+            upload_bytes: err.upload_bytes,
+        }
     }
 }
 

@@ -12,6 +12,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.
 - **Fixed:** `docs/Pi.md` pulled `:latest`, ran `v315.0.0` with `AUTH_DISABLED=1`, and its native recipe could not boot without `MAIDAN_CONTENT_KEK`. It now runs `v413.0.0` with auth on: `maidan init` from the tag-matched CLI image, both containers as the host user so SQLite can create its file, the content key and session secret generated once into an owner-only file and loaded on every start, and every recipe listening on loopback, reached from elsewhere through SSH or a TLS proxy. The recipe was run on `linux/arm64`: `/me` answers 200 with the minted token and 401 without. `scripts/check-deploy-pins.sh` now checks `docs/Pi.md` too, fifteen pins in all.
 
+### Media expires when nothing references it, under a per-workspace quota
+
+- **Added:** attachments, screenshots and recordings that nothing in their workspace references expire after `MAIDAN_RETENTION_MEDIA_DAYS` (default 30, `0` or `off` keeps media) or the workspace's own shorter `media_days`. A live thread linking the sha, or a live message naming it in its metadata, keeps it. An expired copy is erased as `DELETE /artifacts/{sha}` erases it, audited as `artifact.expire` with no actor, and its bytes go with the last workspace's reference. A held workspace keeps everything. Transcripts, code dumps and context snapshots are never expired.
+- **Added:** a per-workspace media quota, `MAIDAN_MEDIA_QUOTA_BYTES` (default 20 GiB, `0` or `off` lifts it) or the workspace's own lower `media_quota_bytes`. A media upload past it, over REST or MCP, is refused with a `409` `media-quota-exceeded` problem carrying `used_bytes`, `quota_bytes` and `upload_bytes`. Bytes the workspace already holds cost nothing, and uploads at the same moment can overshoot slightly.
+- **Changed:** `PUT /workspaces/{wid}/retention` and MCP `set_retention_policy` take `media_days` and `media_quota_bytes` (migration 0170), each held to the instance's.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
