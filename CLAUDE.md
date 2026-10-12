@@ -109,8 +109,8 @@ change.
   keeper reconciles after the merge. When each PR edited its own row, every PR
   conflicted with every other.
 - **Decisions only the maintainer makes** are listed in Open Work under
-  "Decisions pending the maintainer" (on 2026-10-12: the domain layout, the
-  launch date and release, and the go for directory submissions). The launch
+  "Decisions pending the maintainer" (on 2026-10-12: where the hosted service
+  runs, the launch date and release, and the go for directory submissions). The launch
   itself is decided: open source plus a hosted service at maidan.world, and
   Open Work's Next is the path to it, ending at the `maidan-launch-1.0` gate. Don't guess at them. The ones he delegated are under
   "Recently decided" and in [`docs/Decisions.md`](docs/Decisions.md).

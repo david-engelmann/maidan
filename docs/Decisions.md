@@ -2264,7 +2264,7 @@ On 2026-10-04 the maintainer added three rulings.
 
 ### The launch is open source plus a hosted service at maidan.world (2026-10-12)
 
-**Decision.** The maintainer chose on 2026-10-12 to launch Maidan as open source plus a hosted service at maidan.world, which he owns. The console takes sign-ups through a waitlist first, and invited sign-up runs behind it. The room stays open source. The domain layout is still his to pick (Open Work, Decisions pending). Its recommendation is one origin at the apex for the console, the API, MCP and OAuth.
+**Decision.** The maintainer chose on 2026-10-12 to launch Maidan as open source plus a hosted service at maidan.world, which he owns. The console takes sign-ups through a waitlist first, and invited sign-up runs behind it. The room stays open source. The domain layout, decided the same day: `maidan.world` serves the console, the API, MCP and OAuth from one origin, so the connector URL is `https://maidan.world/mcp`. `docs.maidan.world` serves the docs, `dev.maidan.world` the staging instance running `main`, and `try.maidan.world` the demo instance for reviewers and trying the room. Where it is hosted is still open (Open Work, Decisions pending).
 
 **Why.** A hosted room is how most people will try Maidan, and a waitlist lets the service open at the pace operations can carry. Open source first keeps self-hosting a first-class path.
 
