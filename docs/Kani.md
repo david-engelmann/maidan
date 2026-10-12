@@ -1,7 +1,11 @@
 # Kani proofs
 
-Bounded proofs, run locally. They are not a CI job, and nothing here changes
-a workflow.
+Bounded proofs. They run locally with the commands below, and the nightly
+workflow's `kani` job runs the same two `cargo kani` invocations
+(`scripts/kani-proofs.sh`'s halves, through the official Kani action,
+pinned to kani-verifier 0.68.0). A failing proof fails that job; the
+proofs are not on the per-PR required checks, because Kani's toolchain is
+large and a proof run takes minutes.
 
 | Property | Where | Bound |
 |---|---|---|
