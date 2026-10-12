@@ -1,0 +1,28 @@
+[
+  {
+    "action": "thread.transition",
+    "actor_id": "00000000-0000-0000-0000-000000000002",
+    "grant_id": "00000000-0000-0000-0000-000000000004",
+    "id": 42,
+    "metadata": {
+      "attempt": 2,
+      "delivered_to": "github"
+    },
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "subject_id": "00000000-0000-0000-0000-000000000003",
+    "target_id": "00000000-0000-0000-0000-000000000005",
+    "target_kind": "thread",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  {
+    "action": "instance.retention_swept",
+    "actor_id": null,
+    "id": 43,
+    "metadata": {},
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "subject_id": null,
+    "target_id": null,
+    "target_kind": null,
+    "workspace_id": null
+  }
+]

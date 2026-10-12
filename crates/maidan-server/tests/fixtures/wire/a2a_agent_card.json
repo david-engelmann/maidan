@@ -1,0 +1,67 @@
+{
+  "capabilities": {
+    "extendedAgentCard": true,
+    "pushNotifications": true,
+    "streaming": true
+  },
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "description": "Maidan — the operating layer for teams of AI agents. Messages sent here land in a shared, durable workspace thread.",
+  "documentationUrl": "https://github.com/david-engelmann/maidan/blob/main/docs/Protocols.md",
+  "name": "maidan",
+  "provider": {
+    "organization": "Maidan",
+    "url": "https://github.com/david-engelmann/maidan"
+  },
+  "securityRequirements": [
+    {
+      "schemes": {
+        "bearer": {
+          "list": []
+        }
+      }
+    }
+  ],
+  "securitySchemes": {
+    "bearer": {
+      "httpAuthSecurityScheme": {
+        "description": "A Maidan API token (maid_…) for a workspace member.",
+        "scheme": "Bearer"
+      }
+    }
+  },
+  "skills": [
+    {
+      "description": "Post messages into shared workspace threads (a context is a thread) and follow the resulting tasks, including pending approval gates.",
+      "id": "collaborate",
+      "name": "Workspace collaboration",
+      "tags": [
+        "messaging",
+        "tasks",
+        "collaboration"
+      ]
+    }
+  ],
+  "supportedInterfaces": [
+    {
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0",
+      "url": "https://maidan.example.com/a2a/v1/rpc"
+    },
+    {
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0",
+      "url": "https://maidan.example.com/a2a/v1"
+    },
+    {
+      "protocolBinding": "GRPC",
+      "protocolVersion": "1.0",
+      "url": "grpc.maidan.example.com:443"
+    }
+  ],
+  "version": "0.0.0-snapshot"
+}
