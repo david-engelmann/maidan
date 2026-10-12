@@ -37,6 +37,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
 
+### A result delivered to GitHub links its attached files
+
+- **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
+
 ### Artifact uploads have their own body limit
 
 - **Added:** `MAIDAN_ARTIFACT_MAX_BODY_BYTES` caps `POST /artifacts`, `POST /ui/api/artifacts` and each multipart part, default 100 MiB, while every other route keeps `MAIDAN_MAX_BODY_BYTES` (default 2 MiB). A deployment that takes long recordings raises the artifact limit alone, instead of every route's. A single-shot upload is held in memory while it is hashed, so `MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES` (default 256 MiB, `0` off) bounds the upload bytes held at once: each upload is charged its `Content-Length`, or the whole artifact limit when it declares none, and one that does not fit gets `503` with `Retry-After: 1` (`maidan_artifact_upload_budget_refused_total`).

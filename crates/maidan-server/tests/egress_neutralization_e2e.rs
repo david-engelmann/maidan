@@ -127,6 +127,7 @@ fn a_hostile_status_cannot_broadcast_through_the_failure_notice() {
             thread_ts: None,
         },
         &waiter,
+        None,
     );
     assert!(
         !body.contains("<!") && !body.contains("<@"),
@@ -145,6 +146,7 @@ fn a_hostile_status_cannot_broadcast_through_the_failure_notice() {
             issue_number: 7,
         },
         &waiter,
+        None,
     );
     assert!(
         gh.contains("maidan:result:"),

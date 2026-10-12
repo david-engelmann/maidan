@@ -787,6 +787,13 @@ two per kind (`effective`). `null` means not pruned.
 
 ### MCP streamable
 
+> **Claiming `2026-07-28` means following all of its rules.** A client that puts
+> `2026-07-28` in its `MCP-Protocol-Version` header or its `_meta` gets that revision's checks
+> on every request, and a request that skips them is refused with the error below. Two clients
+> broke this way: the recipes' helper (#1326) and pi's waiter, which stamped `2026-07-28` on
+> `initialize`, a method that revision does not have. A client that is not ready for the
+> stateless revision should handshake on `2025-11-25` and keep its session.
+
 **`2026-07-28` (current, stateless):** send `MCP-Protocol-Version: 2026-07-28` on `POST /mcp/streamable`
 (or `POST /mcp`). Each request lands cold and returns a single JSON-RPC response, with no `initialize`
 and no `Mcp-Session-Id`. On this revision every request also carries, as the revision requires:
