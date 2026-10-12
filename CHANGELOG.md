@@ -41,6 +41,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
 
+### The store's thread-read rule requires the reader to belong to the thread's workspace
+
+- **Security:** `thread_access::readable_thread`, the SQL form of the thread read rule behind search, the workspace context, the explorer, A2A task lists, pending gates, `claim_next` and the queue counts, checked only the workspace the query named. A member of another tenant asked for this workspace's rows read its public threads, and only each route's own workspace check stopped it. The predicate now also requires the reader to be a member of the thread's workspace, so it holds on its own. It names the member once, in a one-row derived table, so SQLite search binds the member once instead of a hand-counted three times.
+- **Tests:** `tests/thread_access.rs` adds a reader from another tenant who sees only the workspace's thread-less rows, on both backends. `thread_filter_explorer` now expects another tenant's reader to count none of the workspace's posts.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
