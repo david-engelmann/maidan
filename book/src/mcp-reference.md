@@ -1893,7 +1893,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_retention_policy`
 
-**Set retention policy.** Replace this workspace's own retention for its messages, events and finished deliveries, in days (1 to 3650 each). A workspace may keep rows for less time than the instance does, never longer: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.
+**Set retention policy.** Replace this workspace's own retention for its messages, events, finished deliveries and unreferenced media, in days (1 to 3650 each), and its media quota in bytes. A workspace may keep rows for less time than the instance does, never longer, and hold less media, never more: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.
 
 **Capability:** `token:admin`
 
@@ -1928,6 +1928,31 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         }
       ],
       "description": "days to keep event-log rows; null/omit = as long as the instance"
+    },
+    "media_days": {
+      "anyOf": [
+        {
+          "maximum": 3650,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "days to keep an attachment, screenshot or recording once nothing in the workspace references it; null/omit = as long as the instance"
+    },
+    "media_quota_bytes": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "bytes of attachments, screenshots and recordings the workspace may hold; null/omit = the instance's quota"
     },
     "messages_days": {
       "anyOf": [

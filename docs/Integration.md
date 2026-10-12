@@ -734,13 +734,15 @@ The same call sets `media_days`, how long an attachment, screenshot or
 recording is kept once nothing in the workspace references it, and
 `media_quota_bytes`, how much media the workspace may hold. Both are held to the
 instance's, which by default expires unreferenced media after 30 days and caps
-each workspace at 20 GiB. A media upload past the quota is a `409`
-`media-quota-exceeded` problem. Linking an artifact to a thread, or naming its
+each workspace at 20 GiB. A REST media upload past the quota is a `409`
+`media-quota-exceeded` problem, and over MCP a JSON-RPC invalid-params error
+naming the same numbers. Linking an artifact to a thread, or naming its
 sha in a message's metadata, keeps it. See
 [Production](Production.md#media-retention-and-quota).
 
-Each value is 1–3650 days; a kind left out or `null` is kept as long as the
-instance keeps it, and `{}` clears the policy. A value longer than the instance
+`messages_days`, `events_days`, `deliveries_days` and `media_days` are each
+1–3650 days, and `media_quota_bytes` is at least 1 byte. A kind left out or
+`null` is kept as long as the instance keeps it, and `{}` clears the policy. A value longer than the instance
 keeps that kind is refused with 400: the instance's retention is the ceiling,
 because its sweep prunes past its own cutoff whatever a workspace says. The
 change writes a `retention_policy.set` audit row in the same transaction.

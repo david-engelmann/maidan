@@ -27,7 +27,18 @@ pub fn parse_days(raw: Option<&str>) -> Option<u32> {
 pub fn parse_media_days(raw: Option<&str>) -> Option<u32> {
     match raw.map(str::trim) {
         None | Some("") => Some(DEFAULT_MEDIA_DAYS),
-        Some(set) => parse_days(Some(set)),
+        Some(set) => {
+            let days = parse_days(Some(set));
+            // A typo keeps media, the safe direction, but it turns off an
+            // expiry that is on by default, so the operator is told.
+            if days.is_none() && set != "0" && !set.eq_ignore_ascii_case("off") {
+                tracing::warn!(
+                    value = set,
+                    "MAIDAN_RETENTION_MEDIA_DAYS is not a whole number of days, 0 or off; media is not expired"
+                );
+            }
+            days
+        }
     }
 }
 
