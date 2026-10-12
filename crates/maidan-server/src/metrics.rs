@@ -111,6 +111,10 @@ pub fn init() {
             "HTTP requests refused with 503 because the in-flight ceiling was reached"
         );
         describe_counter!(
+            "maidan_artifact_upload_budget_refused_total",
+            "Artifact uploads refused with 503 because the in-memory upload byte budget was full"
+        );
+        describe_counter!(
             "maidan_http_panics_total",
             "HTTP requests whose handler panicked, answered with a 500 problem"
         );

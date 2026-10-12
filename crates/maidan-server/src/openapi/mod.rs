@@ -175,7 +175,8 @@ impl Modify for IdempotencyResponses {
 /// - **400** — a path parameter (a UUID or number that does not parse, or a
 ///   segment that is not UTF-8), a query parameter that is required or typed,
 ///   or a JSON body that does not parse or match its schema.
-/// - **413** — any request body over `MAIDAN_MAX_BODY_BYTES`.
+/// - **413** — any request body over `MAIDAN_MAX_BODY_BYTES` (an artifact
+///   upload: `MAIDAN_ARTIFACT_MAX_BODY_BYTES`).
 /// - **415** — a JSON body sent without a JSON `Content-Type`.
 ///
 /// An operation's own description of a status, where it has one, is kept.
