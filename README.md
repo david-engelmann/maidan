@@ -74,7 +74,7 @@ this README maps to a test, a gate or an honest "not yet" in
 ## Quickstart
 
 Needs Docker Compose, `curl` and `jq`. It runs the release that
-`compose.quickstart.yaml` on `main` pins (`v412.0.0`), on SQLite, bound to
+`compose.quickstart.yaml` on `main` pins (`v413.0.0`), on SQLite, bound to
 loopback, **with authentication on**:
 
 ```sh

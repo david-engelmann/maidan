@@ -16,8 +16,8 @@
 #   README.md, docs/Production.md         every ghcr.io/david-engelmann/maidan-{server,
 #                                         cli,postgres}:vN.N.N and MAIDAN_TAG=vN.N.N,
 #                                         and README's "pins (`vN.N.N`)" quickstart line
-# docs/Pi.md is not checked yet: it still runs v315.0.0 and is rewritten with the
-# next pin bump (Open Work B4), which adds it here.
+#   docs/Pi.md                            its image pins, MAIDAN_TAG=vN.N.N and the
+#                                         release link the native install downloads
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -90,6 +90,9 @@ pin README.md 0 "${image}"
 pin README.md 1 "^MAIDAN_TAG=${v}$"
 pin README.md 1 "pins \(\`${v}\`\)"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
+pin docs/Pi.md 0 "${image}"
+pin docs/Pi.md 1 "^MAIDAN_TAG=${v}$"
+pin docs/Pi.md 1 "releases/tag/${v}"
 
 if [[ "${#failures[@]}" -gt 0 ]]; then
   echo "deploy pins: the newest tagged CHANGELOG section is ${expected}; bump every pin in one PR:" >&2
