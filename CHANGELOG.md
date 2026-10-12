@@ -23,6 +23,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** the workspace thread page and the explorer listings (tombstones, message backlinks and the EventKind census) take the reader and filter by thread read access in the SQL on both backends, the way search does. Rows from a private channel or a DM the reader is not in never reach the caller and never crowd a page or a count out, so the REST and MCP surfaces dropped their per-row access post-filters. Backlinks for a message the reader cannot read answer empty instead of confirming the message is pointed at, and its references narrow to sources the reader may read.
 
+### A change that ends without a commit says why in its one Slack notice
+
+- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
