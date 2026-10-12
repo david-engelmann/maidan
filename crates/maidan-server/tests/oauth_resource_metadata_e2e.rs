@@ -1,7 +1,9 @@
-//! OAuth phase one over HTTP: with `MAIDAN_PUBLIC_ORIGIN` unset the instance
+//! OAuth discovery over HTTP: with `MAIDAN_PUBLIC_ORIGIN` unset the instance
 //! serves no OAuth metadata and challenges nothing. With it set, the MCP
-//! endpoint's RFC 9728 document names the configured origin, a 401 from an MCP
-//! route points at it, and a 401 elsewhere does not.
+//! endpoint's RFC 9728 document names the configured origin and the
+//! authorization server behind it, the RFC 8414 document lists only the
+//! flows that exist, a 401 from an MCP route points at the resource
+//! document, and a 401 elsewhere does not.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -94,7 +96,11 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
         .await
         .unwrap();
     assert_eq!(doc["resource"], resource);
-    assert!(doc.get("authorization_servers").is_none(), "{doc}");
+    assert_eq!(
+        doc["authorization_servers"],
+        serde_json::json!([origin]),
+        "{doc}"
+    );
     // The root form would describe the resource `<origin>`, which this
     // document is not, so it is not served.
     let root = client
@@ -104,14 +110,6 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
         .unwrap()
         .status();
     assert_eq!(root, StatusCode::NOT_FOUND);
-    // No authorization-server document until the flows exist.
-    let s = client
-        .get(format!("{base}/.well-known/oauth-authorization-server"))
-        .send()
-        .await
-        .unwrap()
-        .status();
-    assert_eq!(s, StatusCode::NOT_FOUND);
 
     let expected = "Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/streamable\"";
     let refused = client
@@ -149,4 +147,39 @@ async fn with_a_public_origin_the_mcp_resource_describes_itself_and_its_401_poin
         .unwrap();
     assert_eq!(elsewhere.status(), StatusCode::UNAUTHORIZED);
     assert!(elsewhere.headers().get(WWW_AUTHENTICATE).is_none());
+}
+
+#[tokio::test]
+async fn with_a_public_origin_the_authorization_server_lists_only_the_flows_that_exist() {
+    let origin = "https://maidan.example.com";
+    let base = spawn(Some(origin)).await;
+    let client = reqwest::Client::new();
+
+    let doc: Value = client
+        .get(format!("{base}/.well-known/oauth-authorization-server"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(doc["issuer"], origin);
+    assert_eq!(
+        doc["authorization_endpoint"],
+        "https://maidan.example.com/oauth/authorize"
+    );
+    assert_eq!(
+        doc["token_endpoint"],
+        "https://maidan.example.com/oauth/token"
+    );
+    assert_eq!(doc["response_types_supported"], serde_json::json!(["code"]));
+    assert_eq!(
+        doc["grant_types_supported"],
+        serde_json::json!(["authorization_code"]),
+        "refresh_token is advertised only once the token endpoint mints refresh tokens: {doc}"
+    );
+    assert_eq!(
+        doc["code_challenge_methods_supported"],
+        serde_json::json!(["S256"])
+    );
 }

@@ -3152,6 +3152,32 @@ macro_rules! store_delegations {
                 artifacts::erase_for_workspace(self.pool(), workspace_id, sha256, audit).await
             }
 
+            async fn media_artifact_bytes(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<i64, StoreError> {
+                artifacts::media_bytes(self.pool(), workspace_id).await
+            }
+
+            async fn expirable_media_artifact_refs(
+                &self,
+                scope: crate::media_retention::MediaExpiryScope,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<Vec<(WorkspaceId, String)>, StoreError> {
+                artifacts::expirable_media_refs(self.pool(), scope, cutoff, limit).await
+            }
+
+            async fn expire_media_artifact_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                sha256: &str,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                audit: crate::AuditFor<ArtifactErasure>,
+            ) -> Result<Option<ArtifactErasure>, StoreError> {
+                artifacts::expire_media_ref(self.pool(), workspace_id, sha256, cutoff, audit).await
+            }
+
             async fn reap_artifact_blob(
                 &self,
                 sha256: &str,

@@ -122,6 +122,13 @@ pub(super) async fn complete_artifact_multipart(
         .get(&sha)
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
+    // The parts are already stored, so the size is known only now. A refused
+    // upload's bytes go unless another workspace holds them.
+    if let Err(refused) = ensure_media_quota(server, auth, a.kind, &sha.to_hex(), bytes.len()).await
+    {
+        reap_if_orphaned(server, &sha).await;
+        return Err(refused);
+    }
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let (artifact, stored) = server
         .store
@@ -175,6 +182,9 @@ pub(super) async fn upload_artifact(
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
     let bytes = Bytes::from(raw);
+    // Refused before the bytes are written, so a refusal stores nothing.
+    let upload_sha = maidan_artifacts::Sha256::compute(&bytes);
+    ensure_media_quota(server, auth, a.kind, &upload_sha.to_hex(), bytes.len()).await?;
     let sha = server
         .artifacts
         .put(bytes.clone())
@@ -283,4 +293,59 @@ pub(super) async fn get_artifact(
         "artifact": artifact,
         "content_base64": STANDARD.encode(bytes),
     })))
+}
+
+/// The media quota, as the REST upload routes apply it: a media upload that
+/// would take the caller's workspace past its quota is refused, naming the
+/// workspace's usage, its quota and the upload's size. An unscoped (bypass)
+/// upload records no workspace ref, so no quota applies.
+async fn ensure_media_quota(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    kind: ArtifactKind,
+    sha256: &str,
+    upload_bytes: usize,
+) -> Result<(), McpError> {
+    if auth.bypass {
+        return Ok(());
+    }
+    let upload_bytes = i64::try_from(upload_bytes).unwrap_or(i64::MAX);
+    match maidan_store::media_retention::check_media_quota(
+        server.store.as_ref(),
+        auth.workspace_id,
+        &server.instance_retention(),
+        kind,
+        sha256,
+        upload_bytes,
+    )
+    .await?
+    {
+        Some(refused) => Err(McpError::InvalidParams(refused.to_string())),
+        None => Ok(()),
+    }
+}
+
+/// Delete the bytes of a refused multipart upload unless an artifact row
+/// holds them, under the reap lease every erase uses. A failure leaves only
+/// unreachable bytes, so it is logged, not returned.
+async fn reap_if_orphaned(server: &crate::server::McpServer, sha: &maidan_artifacts::Sha256) {
+    let artifacts = server.artifacts.clone();
+    let target = *sha;
+    let delete: maidan_store::BlobDelete<'_> = Box::new(move || {
+        Box::pin(async move {
+            match artifacts.delete(&target).await {
+                Ok(()) | Err(maidan_artifacts::ArtifactError::NotFound) => Ok(()),
+                Err(err) => Err(err.to_string()),
+            }
+        })
+    });
+    match server.store.reap_artifact_blob(&sha.to_hex(), delete).await {
+        Ok(maidan_store::BlobReap::Deleted | maidan_store::BlobReap::Referenced) => {}
+        Ok(maidan_store::BlobReap::DeleteFailed(err)) => {
+            tracing::warn!(sha = %sha, error = %err, "artifact.refused_blob_not_deleted");
+        }
+        Err(err) => {
+            tracing::warn!(sha = %sha, error = %err, "artifact.refused_blob_not_deleted");
+        }
+    }
 }

@@ -7,11 +7,13 @@
 //! let a forged header make this server name another origin, so the origin is
 //! configured, never derived.
 //!
-//! The authorization-server document (RFC 8414) is not served yet. That RFC
-//! requires `response_types_supported` and an authorization endpoint, and
-//! phase one serves no flow, so a document now would either be invalid or
-//! advertise endpoints that do not exist. It lands with the token endpoint, and
-//! `authorization_servers` is added to the resource document then.
+//! Phase three adds the authorization-server document (RFC 8414) at
+//! `/.well-known/oauth-authorization-server`, and the resource document gains
+//! `authorization_servers` naming it. The document lists only what the server
+//! does today: the authorization-code grant, PKCE with S256, and the authorize
+//! and token endpoints. Refresh tokens are not listed; they arrive with the
+//! flow that mints them, so a client reading the document never plans around
+//! a grant the token endpoint would refuse.
 
 use axum::{
     extract::{Request, State},
@@ -31,6 +33,17 @@ pub const MCP_RESOURCE_PATH: &str = "/mcp/streamable";
 /// Where the resource's metadata is served, per RFC 9728 section 3.1: the
 /// well-known prefix inserted before the resource's path.
 pub const RESOURCE_METADATA_PATH: &str = "/.well-known/oauth-protected-resource/mcp/streamable";
+
+/// Where the authorization server's metadata is served, per RFC 8414
+/// section 3: the well-known suffix appended to the issuer identifier, which
+/// here is the origin itself, so the path is the suffix alone.
+pub const AUTHORIZATION_SERVER_METADATA_PATH: &str = "/.well-known/oauth-authorization-server";
+
+/// The authorization endpoint's path, on the issuer origin.
+pub const AUTHORIZE_PATH: &str = "/oauth/authorize";
+
+/// The token endpoint's path, on the issuer origin.
+pub const TOKEN_PATH: &str = "/oauth/token";
 
 /// Parse `MAIDAN_PUBLIC_ORIGIN`: `https://host[:port]`, or `http://` on a
 /// loopback host for local work, with no path, query, fragment or
@@ -72,19 +85,21 @@ pub fn public_origin_from(raw: Option<&str>) -> Result<Option<String>, String> {
 
 /// RFC 9728 protected-resource metadata for the MCP endpoint.
 ///
-/// No `scopes_supported` yet: a client treats it as the set it may request,
-/// and until the token endpoint exists there is no set it will be granted.
-/// It arrives with the authorization server, naming what that server mints.
+/// No `scopes_supported`: a client treats it as the set it may request, and
+/// the set a member can delegate is their own capabilities intersected with
+/// the client's allowed scopes, so there is no server-wide set to name.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ProtectedResourceMetadata {
     resource: String,
+    authorization_servers: Vec<String>,
     bearer_methods_supported: Vec<String>,
     resource_name: String,
 }
 
-fn document(origin: &str) -> ProtectedResourceMetadata {
+fn resource_document(origin: &str) -> ProtectedResourceMetadata {
     ProtectedResourceMetadata {
         resource: format!("{origin}{MCP_RESOURCE_PATH}"),
+        authorization_servers: vec![origin.into()],
         bearer_methods_supported: vec!["header".into()],
         resource_name: "Maidan".into(),
     }
@@ -96,7 +111,68 @@ pub async fn oauth_protected_resource(
     State(state): State<AppState>,
 ) -> Result<Json<ProtectedResourceMetadata>, ApiError> {
     let origin = state.public_origin.as_deref().ok_or(ApiError::NotFound)?;
-    Ok(Json(document(origin)))
+    Ok(Json(resource_document(origin)))
+}
+
+/// RFC 8414 authorization-server metadata.
+///
+/// Only the grant, response type and challenge method the server implements
+/// are listed. `refresh_token` is absent until the token endpoint mints
+/// refresh tokens, and there is no `registration_endpoint` because clients
+/// are pre-registered or carry a client metadata document, never registered
+/// dynamically.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AuthorizationServerMetadata {
+    issuer: String,
+    authorization_endpoint: String,
+    token_endpoint: String,
+    response_types_supported: Vec<String>,
+    /// Named because an omitted list means `query` and `fragment`, and the
+    /// authorization response is only ever a query string.
+    response_modes_supported: Vec<String>,
+    grant_types_supported: Vec<String>,
+    /// Named because the RFC 8414 default is `client_secret_basic`, which
+    /// the token endpoint does not read: a confidential client sends its
+    /// secret in the form body, and a public client sends none.
+    token_endpoint_auth_methods_supported: Vec<String>,
+    code_challenge_methods_supported: Vec<String>,
+}
+
+fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
+    AuthorizationServerMetadata {
+        issuer: origin.into(),
+        authorization_endpoint: format!("{origin}{AUTHORIZE_PATH}"),
+        token_endpoint: format!("{origin}{TOKEN_PATH}"),
+        response_types_supported: vec!["code".into()],
+        response_modes_supported: vec!["query".into()],
+        grant_types_supported: vec!["authorization_code".into()],
+        token_endpoint_auth_methods_supported: vec!["client_secret_post".into(), "none".into()],
+        code_challenge_methods_supported: vec!["S256".into()],
+    }
+}
+
+/// `GET /.well-known/oauth-authorization-server`. 404 until
+/// `MAIDAN_PUBLIC_ORIGIN` is set, like the resource document: both are off
+/// until the deployment names the origin its clients reach it at.
+pub async fn oauth_authorization_server(
+    State(state): State<AppState>,
+) -> Result<Json<AuthorizationServerMetadata>, ApiError> {
+    let origin = state.public_origin.as_deref().ok_or(ApiError::NotFound)?;
+    Ok(Json(authorization_server_document(origin)))
+}
+
+/// The RFC 9207 `iss` parameter for an authorization response, as a query
+/// fragment the response's redirect appends: `&iss=<issuer>` when the
+/// deployment names its public origin, empty when it does not. The issuer is
+/// the origin, the same value the authorization-server document carries, so
+/// a client can match a response against the server it discovered. With no
+/// origin configured there is no issuer identifier to assert and discovery
+/// is off, so the parameter is omitted rather than invented.
+pub fn issuer_param(origin: Option<&str>) -> String {
+    match origin {
+        Some(origin) => format!("&iss={}", urlencoding::encode(origin)),
+        None => String::new(),
+    }
 }
 
 /// The value of the challenge a 401 from an MCP route carries.
@@ -175,23 +251,77 @@ mod tests {
     }
 
     #[test]
-    fn the_resource_document_names_the_mcp_endpoint_and_no_authorization_server_yet() {
-        let json = serde_json::to_value(document("https://maidan.example.com")).expect("json");
+    fn the_resource_document_names_the_mcp_endpoint_and_its_authorization_server() {
+        let json =
+            serde_json::to_value(resource_document("https://maidan.example.com")).expect("json");
         assert_eq!(
             json["resource"],
             "https://maidan.example.com/mcp/streamable"
         );
-        assert!(
-            json.get("scopes_supported").is_none(),
-            "no scope set is advertised before a server grants one"
+        assert_eq!(
+            json["authorization_servers"],
+            serde_json::json!(["https://maidan.example.com"]),
+            "the issuer is the origin the discovery documents are served from"
         );
         assert!(
-            json.get("authorization_servers").is_none(),
-            "phase one names no authorization server, since none serves a flow yet"
+            json.get("scopes_supported").is_none(),
+            "no scope set is advertised, since what a member can delegate is not a server-wide set"
         );
         assert_eq!(
             challenge_value("https://maidan.example.com"),
             "Bearer resource_metadata=\"https://maidan.example.com/.well-known/oauth-protected-resource/mcp/streamable\""
         );
+    }
+
+    #[test]
+    fn the_authorization_server_document_lists_only_what_the_server_does() {
+        let json =
+            serde_json::to_value(authorization_server_document("https://maidan.example.com"))
+                .expect("json");
+        assert_eq!(json["issuer"], "https://maidan.example.com");
+        assert_eq!(
+            json["authorization_endpoint"],
+            "https://maidan.example.com/oauth/authorize"
+        );
+        assert_eq!(
+            json["token_endpoint"],
+            "https://maidan.example.com/oauth/token"
+        );
+        assert_eq!(
+            json["response_types_supported"],
+            serde_json::json!(["code"])
+        );
+        assert_eq!(
+            json["response_modes_supported"],
+            serde_json::json!(["query"]),
+            "the code and error arrive in the query string only"
+        );
+        assert_eq!(
+            json["grant_types_supported"],
+            serde_json::json!(["authorization_code"]),
+            "refresh_token is listed only once the token endpoint mints refresh tokens"
+        );
+        assert_eq!(
+            json["token_endpoint_auth_methods_supported"],
+            serde_json::json!(["client_secret_post", "none"]),
+            "the default, client_secret_basic, is not what the token endpoint reads"
+        );
+        assert_eq!(
+            json["code_challenge_methods_supported"],
+            serde_json::json!(["S256"])
+        );
+        assert!(
+            json.get("registration_endpoint").is_none(),
+            "there is no dynamic client registration to advertise"
+        );
+    }
+
+    #[test]
+    fn the_issuer_parameter_names_the_configured_origin_and_nothing_when_unset() {
+        assert_eq!(
+            issuer_param(Some("https://maidan.example.com")),
+            "&iss=https%3A%2F%2Fmaidan.example.com"
+        );
+        assert_eq!(issuer_param(None), "");
     }
 }
