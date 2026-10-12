@@ -1735,8 +1735,10 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 after: Option<ThreadId>,
                 limit: i64,
+                reader_id: Option<MemberId>,
             ) -> Result<Vec<Thread>, StoreError> {
-                threads::page_for_workspace(self.pool(), workspace_id, after, limit).await
+                threads::page_for_workspace(self.pool(), workspace_id, after, limit, reader_id)
+                    .await
             }
 
             async fn page_threads_for_channel(
@@ -3346,6 +3348,7 @@ macro_rules! store_delegations {
                 thread_id: Option<ThreadId>,
                 include_purged: bool,
                 limit: i64,
+                reader_id: Option<MemberId>,
             ) -> Result<Vec<TombstoneRecord>, StoreError> {
                 explorer::list_tombstones(
                     self.read_pool(),
@@ -3354,6 +3357,7 @@ macro_rules! store_delegations {
                     thread_id,
                     include_purged,
                     limit,
+                    reader_id,
                 )
                 .await
             }
@@ -3361,8 +3365,9 @@ macro_rules! store_delegations {
             async fn list_message_backlinks(
                 &self,
                 message_id: MessageId,
+                reader_id: Option<MemberId>,
             ) -> Result<MessageBacklinks, StoreError> {
-                explorer::list_message_backlinks(self.read_pool(), message_id).await
+                explorer::list_message_backlinks(self.read_pool(), message_id, reader_id).await
             }
 
             async fn event_kind_census(
@@ -3371,6 +3376,7 @@ macro_rules! store_delegations {
                 channel_id: Option<ChannelId>,
                 thread_id: Option<ThreadId>,
                 deny_channels: &[ChannelId],
+                reader_id: Option<MemberId>,
             ) -> Result<KindCensus, StoreError> {
                 explorer::event_kind_census(
                     self.read_pool(),
@@ -3378,6 +3384,7 @@ macro_rules! store_delegations {
                     channel_id,
                     thread_id,
                     deny_channels,
+                    reader_id,
                 )
                 .await
             }

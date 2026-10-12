@@ -13,6 +13,7 @@ use crate::postgres::budget;
 use crate::postgres::events;
 use crate::postgres::thread_workers;
 use crate::queue_counts::{self, QueueScope, QueueSql};
+use crate::thread_access::readable_row;
 
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
@@ -1093,8 +1094,13 @@ pub async fn page_for_workspace(
     workspace_id: WorkspaceId,
     after: Option<ThreadId>,
     limit: i64,
+    reader_id: Option<MemberId>,
 ) -> Result<Vec<Thread>, StoreError> {
-    let rows = sqlx::query(
+    // Read access is filtered in the query, so a thread the reader cannot
+    // read never crowds out the page limit. `readable_row` keeps every row
+    // when the reader bind is NULL (no reader: the unrestricted view).
+    let readable = readable_row("t.id", "$1", "$4::uuid", "$5");
+    let sql = format!(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state,
                 t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
@@ -1104,14 +1110,18 @@ pub async fn page_for_workspace(
            AND ($2::uuid IS NULL OR (t.created_at, t.id) > (
                  SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = $2
                ))
+           AND ({readable})
          ORDER BY t.created_at ASC, t.id ASC
          LIMIT $3",
-    )
-    .bind(workspace_id.0)
-    .bind(after.map(|t| t.0))
-    .bind(limit.max(0))
-    .fetch_all(pool)
-    .await?;
+    );
+    let rows = sqlx::query(&sql)
+        .bind(workspace_id.0)
+        .bind(after.map(|t| t.0))
+        .bind(limit.max(0))
+        .bind(reader_id.map(|id| id.0))
+        .bind(DM_CHANNEL_NAME)
+        .fetch_all(pool)
+        .await?;
     rows.iter().map(row_to_thread).collect()
 }
 

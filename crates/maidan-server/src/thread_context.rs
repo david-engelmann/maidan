@@ -32,10 +32,18 @@ pub async fn build_workspace_context(
     thread_limit: i64,
     thread_cursor: Option<ThreadId>,
     limits: ThreadContextLimits,
+    reader_id: Option<MemberId>,
 ) -> Result<WorkspaceContext, ApiError> {
-    build_workspace_context_store(store, workspace_id, thread_limit, thread_cursor, limits)
-        .await
-        .map_err(Into::into)
+    build_workspace_context_store(
+        store,
+        workspace_id,
+        thread_limit,
+        thread_cursor,
+        limits,
+        reader_id,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

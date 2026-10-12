@@ -1761,7 +1761,7 @@
       "title": "Get workspace context",
       "readOnlyHint": {
         "value": true,
-        "reason": "load_workspace_context -> build_workspace_context only reads; dispatch filters threads with can_access_thread"
+        "reason": "load_workspace_context -> build_workspace_context only reads; the thread page is filtered by the caller's access in the store query"
       },
       "destructiveHint": {
         "value": false,
