@@ -97,11 +97,12 @@ change.
   pilot is planned under a runner-enforced cap. Most `wip/` branches hold work
   that has since shipped: check the Open Work row they name before building on
   one.
-- **Do not point anyone at a deploy yet.** The release pins still name
-  `v412.0.0` until the pin-bump PR that follows the `v413.0.0` tag, and some
-  paths run `dev`, `latest`, `v315.0.0` or `v0.0.1`. Open Work's **Before anyone
-  deploys** lists the blockers, and `scripts/check-deploy-pins.sh` (from #1156)
-  says which lines to change.
+- **Every deploy path pins `v413.0.0`.** `scripts/check-deploy-pins.sh` (the
+  `deploy pins` job) keeps fifteen pins on the newest tag, `docs/Pi.md`
+  included, and says which lines to change after the next one. The `:dev`
+  images in `compose.yaml` and the charts' default values are built from
+  source on purpose. Pointing anyone at a deploy is part of the launch, the
+  maintainer's call.
 - **The forward plan is the ranked list in
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).
