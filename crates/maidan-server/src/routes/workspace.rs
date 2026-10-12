@@ -346,6 +346,13 @@ pub async fn list_workspace_tombstones(
         maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, ThreadId(tid)).await?;
     }
     let limit = maidan_types::clamp_tombstone_limit(q.limit);
+    // Read access is filtered in the query now, so no per-row access check
+    // runs after the page is cut.
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
     let rows = state
         .store
         .list_tombstones(
@@ -354,18 +361,10 @@ pub async fn list_workspace_tombstones(
             q.thread_id.map(ThreadId),
             q.include_purged,
             limit,
+            reader_id,
         )
         .await?;
-    if auth.bypass {
-        return Ok(Json(rows));
-    }
-    let mut visible = Vec::with_capacity(rows.len());
-    for row in rows {
-        if maidan_auth::can_access_thread(state.store.as_ref(), &auth, row.thread_id).await? {
-            visible.push(row);
-        }
-    }
-    Ok(Json(visible))
+    Ok(Json(rows))
 }
 
 /// EventKind census for a workspace. Optional channel/thread narrowing.
@@ -389,6 +388,11 @@ pub async fn get_workspace_kind_census(
     }
     let deny =
         maidan_auth::private_channel_deny_set(state.store.as_ref(), &auth, workspace_id).await?;
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
     Ok(Json(
         state
             .store
@@ -397,6 +401,7 @@ pub async fn get_workspace_kind_census(
                 q.channel_id.map(ChannelId),
                 q.thread_id.map(ThreadId),
                 &deny,
+                reader_id,
             )
             .await?,
     ))
@@ -791,38 +796,22 @@ pub async fn get_workspace_context(
         include_accepted_decisions: false,
         max_bytes: q.max_bytes,
     };
-    let mut packed = crate::thread_context::build_workspace_context(
+    // The thread page is filtered by the caller's access in the query, so
+    // the pack needs no per-thread access check after it is built.
+    let reader_id = if auth.bypass {
+        None
+    } else {
+        Some(auth.member_id)
+    };
+    let packed = crate::thread_context::build_workspace_context(
         state.store.as_ref(),
         workspace_id,
         q.thread_limit.clamp(1, 50),
         q.thread_cursor.map(ThreadId),
         limits,
+        reader_id,
     )
     .await?;
-    // Drop packed threads in private channels the caller can't access. Cache
-    // the per-channel decision.
-    if !auth.bypass {
-        // Thread-keyed + DM-participant-aware.
-        let mut decision: std::collections::HashMap<ThreadId, bool> =
-            std::collections::HashMap::new();
-        let mut visible = Vec::with_capacity(packed.threads.len());
-        for tc in packed.threads {
-            let ok = match decision.get(&tc.thread_id()) {
-                Some(v) => *v,
-                None => {
-                    let v =
-                        maidan_auth::can_access_thread(state.store.as_ref(), &auth, tc.thread_id())
-                            .await?;
-                    decision.insert(tc.thread_id(), v);
-                    v
-                }
-            };
-            if ok {
-                visible.push(tc);
-            }
-        }
-        packed.threads = visible;
-    }
     Ok(Json(packed))
 }
 

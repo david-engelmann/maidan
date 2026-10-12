@@ -14,6 +14,7 @@ use crate::sqlite::events;
 use crate::sqlite::thread_workers;
 
 use crate::error::StoreError;
+use crate::thread_access::readable_row;
 
 pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
@@ -1136,27 +1137,35 @@ pub async fn page_for_workspace(
     workspace_id: WorkspaceId,
     after: Option<ThreadId>,
     limit: i64,
+    reader_id: Option<MemberId>,
 ) -> Result<Vec<Thread>, StoreError> {
     let cursor = after.map(|t| t.0);
-    let rows = sqlx::query(
+    // Numbered placeholders throughout: `readable_row`'s member placeholder
+    // appears three times in the generated SQL but binds once, and a NULL
+    // reader bind keeps every row (no reader: the unrestricted view).
+    let readable = readable_row("t.id", "?1", "?3", "?4");
+    let sql = format!(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state,
                 t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
-         WHERE c.workspace_id = ?
+         WHERE c.workspace_id = ?1
            AND t.tombstoned_at IS NULL
-           AND (? IS NULL OR (t.created_at, t.id) > (
-                 SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = ?
+           AND (?2 IS NULL OR (t.created_at, t.id) > (
+                 SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = ?2
                ))
+           AND ({readable})
          ORDER BY t.created_at ASC, t.id ASC
-         LIMIT ?",
-    )
-    .bind(workspace_id.0)
-    .bind(cursor)
-    .bind(cursor)
-    .bind(limit.max(0))
-    .fetch_all(pool)
-    .await?;
+         LIMIT ?5",
+    );
+    let rows = sqlx::query(&sql)
+        .bind(workspace_id.0)
+        .bind(cursor)
+        .bind(reader_id.map(|id| id.0))
+        .bind(DM_CHANNEL_NAME)
+        .bind(limit.max(0))
+        .fetch_all(pool)
+        .await?;
     rows.iter().map(row_to_thread).collect()
 }
 

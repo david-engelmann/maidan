@@ -2,14 +2,15 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, Event, EventKind, KindCensus, KindCount, MessageBacklinks, MessageId, Pin, RefSide,
-    ThreadId, TombstoneEntityKind, TombstoneRecord, WorkspaceId,
+    ChannelId, Event, EventKind, KindCensus, KindCount, MemberId, MessageBacklinks, MessageId, Pin,
+    RefSide, ThreadId, TombstoneEntityKind, TombstoneRecord, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 use crate::postgres::{messages, reactions, refs, votes};
+use crate::thread_access::{readable_row, readable_thread};
 
 pub async fn list_tombstones(
     pool: &PgPool,
@@ -18,13 +19,15 @@ pub async fn list_tombstones(
     thread_id: Option<ThreadId>,
     include_purged: bool,
     limit: i64,
+    reader_id: Option<MemberId>,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     let limit = limit.max(1);
-    let mut retained = list_retained(pool, workspace_id, channel_id, thread_id, limit).await?;
+    let mut retained =
+        list_retained(pool, workspace_id, channel_id, thread_id, limit, reader_id).await?;
     if !include_purged {
         return Ok(retained);
     }
-    let purged = list_purged(pool, workspace_id, channel_id, thread_id, limit).await?;
+    let purged = list_purged(pool, workspace_id, channel_id, thread_id, limit, reader_id).await?;
     let retained_ids: std::collections::HashSet<Uuid> = retained.iter().map(|r| r.id).collect();
     for row in purged {
         if !retained_ids.contains(&row.id) {
@@ -42,6 +45,7 @@ async fn list_retained(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     limit: i64,
+    reader_id: Option<MemberId>,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     let mut sql = String::from(
         "SELECT m.id, m.thread_id, m.author_id, m.tombstoned_at,
@@ -60,8 +64,18 @@ async fn list_retained(
         sql.push_str(&format!(" AND m.thread_id = ${n}"));
         n += 1;
     }
+    // Filtered in the query so a tombstone on a thread the reader cannot
+    // read never crowds out the limit; a NULL reader bind keeps every row.
+    let readable = readable_row(
+        "m.thread_id",
+        "c.workspace_id",
+        &format!("${n}::uuid"),
+        &format!("${}", n + 1),
+    );
+    sql.push_str(&format!(" AND ({readable})"));
     sql.push_str(&format!(
-        " ORDER BY m.tombstoned_at DESC, m.id DESC LIMIT ${n}"
+        " ORDER BY m.tombstoned_at DESC, m.id DESC LIMIT ${}",
+        n + 2
     ));
 
     let mut q = sqlx::query(&sql).bind(workspace_id.0);
@@ -71,6 +85,8 @@ async fn list_retained(
     if let Some(tid) = thread_id {
         q = q.bind(tid.0);
     }
+    q = q.bind(reader_id.map(|id| id.0));
+    q = q.bind(DM_CHANNEL_NAME);
     q = q.bind(limit);
     let rows = q.fetch_all(pool).await?;
     Ok(rows.iter().map(row_to_retained).collect())
@@ -109,6 +125,7 @@ async fn list_purged(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     limit: i64,
+    reader_id: Option<MemberId>,
 ) -> Result<Vec<TombstoneRecord>, StoreError> {
     let mut sql = String::from(
         "SELECT id, payload, occurred_at, channel_id, thread_id
@@ -124,7 +141,19 @@ async fn list_purged(
         sql.push_str(&format!(" AND thread_id = ${n}"));
         n += 1;
     }
-    sql.push_str(&format!(" ORDER BY occurred_at DESC, id DESC LIMIT ${n}"));
+    // Same in-query read filter as the retained half: the event's thread
+    // decides, and a NULL reader bind keeps every row.
+    let readable = readable_row(
+        "thread_id",
+        "$1",
+        &format!("${n}::uuid"),
+        &format!("${}", n + 1),
+    );
+    sql.push_str(&format!(" AND ({readable})"));
+    sql.push_str(&format!(
+        " ORDER BY occurred_at DESC, id DESC LIMIT ${}",
+        n + 2
+    ));
     let mut q = sqlx::query(&sql).bind(workspace_id.0);
     if let Some(cid) = channel_id {
         q = q.bind(cid.0);
@@ -132,6 +161,8 @@ async fn list_purged(
     if let Some(tid) = thread_id {
         q = q.bind(tid.0);
     }
+    q = q.bind(reader_id.map(|id| id.0));
+    q = q.bind(DM_CHANNEL_NAME);
     let rows = q.bind(limit).fetch_all(pool).await?;
     let mut out = Vec::new();
     for row in &rows {
@@ -167,9 +198,27 @@ async fn list_purged(
 pub async fn list_message_backlinks(
     pool: &PgPool,
     message_id: MessageId,
+    reader_id: Option<MemberId>,
 ) -> Result<MessageBacklinks, StoreError> {
     messages::get(pool, message_id).await?;
-    let references = refs::list_to(pool, RefSide::Message, message_id.0).await?;
+    let references = match reader_id {
+        None => refs::list_to(pool, RefSide::Message, message_id.0).await?,
+        Some(reader) => {
+            // An unreadable target answers empty rather than leaking that
+            // the message exists and is pointed at; a readable target
+            // narrows its references to sources the reader may read.
+            let Some((workspace_id, readable)) =
+                target_read_access(pool, message_id, reader).await?
+            else {
+                return Ok(empty_backlinks(message_id));
+            };
+            if !readable {
+                return Ok(empty_backlinks(message_id));
+            }
+            refs::list_to_for_reader(pool, RefSide::Message, message_id.0, workspace_id, reader)
+                .await?
+        }
+    };
     let pins = list_pins_for_message(pool, message_id).await?;
     let reactions = reactions::list(pool, message_id).await?;
     let votes = votes::list(pool, message_id).await?;
@@ -180,6 +229,44 @@ pub async fn list_message_backlinks(
         reactions,
         votes,
     })
+}
+
+fn empty_backlinks(message_id: MessageId) -> MessageBacklinks {
+    MessageBacklinks {
+        message_id,
+        references: Vec::new(),
+        pins: Vec::new(),
+        reactions: Vec::new(),
+        votes: Vec::new(),
+    }
+}
+
+/// The message's workspace and whether `reader_id` may read its thread, in
+/// one query. `None` when the message does not exist.
+async fn target_read_access(
+    pool: &PgPool,
+    message_id: MessageId,
+    reader_id: MemberId,
+) -> Result<Option<(WorkspaceId, bool)>, StoreError> {
+    let readable = readable_thread("m.thread_id", "c.workspace_id", "$2::uuid", "$3");
+    let row = sqlx::query(&format!(
+        "SELECT c.workspace_id AS workspace_id, ({readable}) AS readable
+         FROM maidan_messages m
+         JOIN maidan_threads t ON t.id = m.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE m.id = $1"
+    ))
+    .bind(message_id.0)
+    .bind(reader_id.0)
+    .bind(DM_CHANNEL_NAME)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| {
+        (
+            WorkspaceId(r.get::<Uuid, _>("workspace_id")),
+            r.get::<bool, _>("readable"),
+        )
+    }))
 }
 
 async fn list_pins_for_message(
@@ -212,6 +299,7 @@ pub async fn event_kind_census(
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     deny_channels: &[ChannelId],
+    reader_id: Option<MemberId>,
 ) -> Result<KindCensus, StoreError> {
     let mut sql = String::from(
         "SELECT kind, COUNT(*)::bigint AS count
@@ -231,7 +319,17 @@ pub async fn event_kind_census(
         sql.push_str(&format!(
             " AND (channel_id IS NULL OR channel_id <> ALL(${n}))"
         ));
+        n += 1;
     }
+    // Counts cover only events on threads the reader may read (thread-less
+    // events are the workspace's own); a NULL reader bind counts everything.
+    let readable = readable_row(
+        "thread_id",
+        "$1",
+        &format!("${n}::uuid"),
+        &format!("${}", n + 1),
+    );
+    sql.push_str(&format!(" AND ({readable})"));
     sql.push_str(" GROUP BY kind ORDER BY count DESC, kind ASC");
 
     let mut q = sqlx::query(&sql).bind(workspace_id.0);
@@ -245,6 +343,8 @@ pub async fn event_kind_census(
         let ids: Vec<Uuid> = deny_channels.iter().map(|c| c.0).collect();
         q = q.bind(ids);
     }
+    q = q.bind(reader_id.map(|id| id.0));
+    q = q.bind(DM_CHANNEL_NAME);
     let rows = q.fetch_all(pool).await?;
     let mut counts = Vec::new();
     let mut total = 0_i64;

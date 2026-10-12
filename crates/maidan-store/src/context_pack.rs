@@ -378,6 +378,7 @@ pub async fn build_workspace_context(
     thread_limit: i64,
     thread_cursor: Option<ThreadId>,
     limits: ThreadContextLimits,
+    reader_id: Option<MemberId>,
 ) -> Result<WorkspaceContext, StoreError> {
     let workspace = store.get_workspace(workspace_id).await?;
     let mut channels = store.list_channels(workspace_id).await?;
@@ -396,8 +397,10 @@ pub async fn build_workspace_context(
         ..limits
     };
     let page_limit = thread_limit.clamp(1, 50);
+    // The page is filtered by the reader's access in the query, so hidden
+    // threads neither appear nor eat into `thread_limit`.
     let mut page = store
-        .page_threads_for_workspace(workspace_id, thread_cursor, page_limit + 1)
+        .page_threads_for_workspace(workspace_id, thread_cursor, page_limit + 1, reader_id)
         .await?;
     let has_more = page.len() > page_limit as usize;
     page.truncate(page_limit as usize);
