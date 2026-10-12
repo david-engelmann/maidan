@@ -29,6 +29,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** a per-workspace media quota, `MAIDAN_MEDIA_QUOTA_BYTES` (default 20 GiB, `0` or `off` lifts it) or the workspace's own lower `media_quota_bytes`. A REST media upload past it is refused with a `409` `media-quota-exceeded` problem carrying `used_bytes`, `quota_bytes` and `upload_bytes`. Over MCP it is a JSON-RPC invalid-params error whose message names the same three numbers. Bytes the workspace already holds cost nothing, and uploads at the same moment can overshoot slightly.
 - **Changed:** `PUT /workspaces/{wid}/retention` and MCP `set_retention_policy` take `media_days` and `media_quota_bytes` (migration 0170), each held to the instance's.
 
+### OAuth discovery (phase three, first half)
+
+- **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
+
 ### Artifact uploads have their own body limit
 
 - **Added:** `MAIDAN_ARTIFACT_MAX_BODY_BYTES` caps `POST /artifacts`, `POST /ui/api/artifacts` and each multipart part, default 100 MiB, while every other route keeps `MAIDAN_MAX_BODY_BYTES` (default 2 MiB). A deployment that takes long recordings raises the artifact limit alone, instead of every route's. A single-shot upload is held in memory while it is hashed, so `MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES` (default 256 MiB, `0` off) bounds the upload bytes held at once: each upload is charged its `Content-Length`, or the whole artifact limit when it declares none, and one that does not fit gets `503` with `Retry-After: 1` (`maidan_artifact_upload_budget_refused_total`).
