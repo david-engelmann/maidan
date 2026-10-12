@@ -34,6 +34,14 @@ use sqlx::sqlite::SqlitePoolOptions;
 const INSTANCE_EVENTS_DAYS: &str = "30";
 const INSTANCE_MESSAGES_DAYS: &str = "14";
 
+/// A blob store for a sweep that expires no media.
+fn artifacts() -> Arc<dyn maidan_artifacts::ArtifactStore> {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(LocalFsStore::new(dir.path()));
+    std::mem::forget(dir);
+    store
+}
+
 async fn sqlite_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -53,6 +61,8 @@ async fn spawn() -> (String, reqwest::Client, Arc<dyn Store>) {
         std::env::set_var("MAIDAN_RETENTION_EVENTS_DAYS", INSTANCE_EVENTS_DAYS);
         std::env::set_var("MAIDAN_RETENTION_MESSAGES_DAYS", INSTANCE_MESSAGES_DAYS);
         std::env::remove_var("MAIDAN_RETENTION_DELIVERIES_DAYS");
+        std::env::remove_var("MAIDAN_RETENTION_MEDIA_DAYS");
+        std::env::remove_var("MAIDAN_MEDIA_QUOTA_BYTES");
     }
     let (store, pool) = sqlite_store().await;
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
@@ -170,8 +180,19 @@ async fn a_workspace_sets_its_own_retention_within_the_instances_over_rest_and_m
         .unwrap();
     assert_eq!(
         read["workspace"],
-        json!({"messages_days": null, "events_days": null, "deliveries_days": null})
+        json!({
+            "messages_days": null,
+            "events_days": null,
+            "deliveries_days": null,
+            "media_days": null,
+            "media_quota_bytes": null,
+        })
     );
+    assert_eq!(
+        read["instance"]["media_days"], 30,
+        "media expires by default"
+    );
+    assert_eq!(read["instance"]["media_quota_bytes"], 21_474_836_480_i64);
     assert_eq!(read["instance"]["events_days"], 30);
     assert_eq!(read["instance"]["messages_days"], 14);
     assert_eq!(read["effective"]["events_days"], 30);
@@ -422,6 +443,7 @@ fn one_day() -> RetentionDays {
         messages_days: Some(1),
         events_days: Some(1),
         deliveries_days: Some(1),
+        ..RetentionDays::default()
     }
 }
 
@@ -472,10 +494,12 @@ where
         audit_days: None,
         deliveries_days: None,
         notifications_days: None,
+        media_days: None,
+        media_quota_bytes: None,
         sweep: Duration::from_secs(86_400),
         batch: 100,
     };
-    retention::sweep_once(&store, &cfg).await;
+    retention::sweep_once(&store, &artifacts(), &cfg).await;
 
     assert!(
         store.get_message(a_old.0).await.is_err(),
@@ -603,10 +627,12 @@ where
         audit_days: None,
         deliveries_days: None,
         notifications_days: None,
+        media_days: None,
+        media_quota_bytes: None,
         sweep: Duration::from_secs(86_400),
         batch: 100,
     };
-    retention::sweep_once(&store, &cfg).await;
+    retention::sweep_once(&store, &artifacts(), &cfg).await;
 
     assert!(
         store.get_message(open_old).await.is_err(),

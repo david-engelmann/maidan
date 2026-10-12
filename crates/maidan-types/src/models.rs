@@ -295,6 +295,14 @@ impl ArtifactKind {
         }
     }
 
+    /// Media: an attachment, screenshot or recording. Media counts against a
+    /// workspace's media quota and expires once nothing references it.
+    /// Transcripts, code dumps and context snapshots are evidence, and are
+    /// never counted or expired.
+    pub fn is_media(self) -> bool {
+        matches!(self, Self::Attachment | Self::Screenshot | Self::Recording)
+    }
+
     pub fn default_mime(self) -> &'static str {
         match self {
             Self::Screenshot => "image/png",
