@@ -59,9 +59,16 @@ impl UploadBudget {
         )
     }
 
-    /// What an upload declaring `content_length` is charged.
-    fn charge(&self, content_length: Option<usize>) -> u32 {
-        units(content_length.map_or(self.max_upload, |len| len.min(self.max_upload)))
+    /// What an upload declaring `content_length` is charged, or `None` when
+    /// it declares more than the limit: that upload is refused with 413 by the
+    /// body limit whatever the budget holds, so it must not be answered with
+    /// a retryable 503 first.
+    fn charge(&self, content_length: Option<usize>) -> Option<u32> {
+        match content_length {
+            Some(len) if len > self.max_upload => None,
+            Some(len) => Some(units(len)),
+            None => Some(units(self.max_upload)),
+        }
     }
 }
 
@@ -102,7 +109,10 @@ pub async fn middleware(
         .get(header::CONTENT_LENGTH)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<usize>().ok());
-    match permits.try_acquire_many_owned(budget.charge(content_length)) {
+    let Some(charge) = budget.charge(content_length) else {
+        return next.run(request).await;
+    };
+    match permits.try_acquire_many_owned(charge) {
         Ok(_held) => next.run(request).await,
         Err(_) => {
             counter!("maidan_artifact_upload_budget_refused_total").increment(1);
@@ -134,12 +144,16 @@ mod tests {
     }
 
     #[test]
-    fn an_undeclared_length_is_charged_the_whole_limit_and_a_declared_one_is_capped() {
+    fn an_undeclared_length_is_charged_the_whole_limit_and_an_oversized_one_nothing() {
         let budget = UploadBudget::new(8 * MIB, 4 * MIB);
-        assert_eq!(budget.charge(None), units(4 * MIB));
-        assert_eq!(budget.charge(Some(10 * MIB)), units(4 * MIB));
-        assert_eq!(budget.charge(Some(3000)), 3);
-        assert_eq!(budget.charge(Some(0)), 1);
+        assert_eq!(budget.charge(None), Some(units(4 * MIB)));
+        assert_eq!(budget.charge(Some(3000)), Some(3));
+        assert_eq!(budget.charge(Some(0)), Some(1));
+        assert_eq!(
+            budget.charge(Some(10 * MIB)),
+            None,
+            "an upload over the limit goes to the body limit's 413, not the budget's 503"
+        );
     }
 
     #[tokio::test]
@@ -148,18 +162,20 @@ mod tests {
         let permits = budget.permits.clone().expect("a budget");
         let held = permits
             .clone()
-            .try_acquire_many_owned(budget.charge(Some(3 * MIB)))
+            .try_acquire_many_owned(budget.charge(Some(3 * MIB)).expect("in limit"))
             .expect("the first fits");
         assert!(permits
             .clone()
-            .try_acquire_many_owned(budget.charge(Some(2 * MIB)))
+            .try_acquire_many_owned(budget.charge(Some(2 * MIB)).expect("in limit"))
             .is_err());
         assert!(permits
             .clone()
-            .try_acquire_many_owned(budget.charge(Some(MIB)))
+            .try_acquire_many_owned(budget.charge(Some(MIB)).expect("in limit"))
             .is_ok());
         drop(held);
-        assert!(permits.try_acquire_many_owned(budget.charge(None)).is_ok());
+        assert!(permits
+            .try_acquire_many_owned(budget.charge(None).expect("undeclared"))
+            .is_ok());
     }
 
     #[tokio::test]
