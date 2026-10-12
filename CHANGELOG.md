@@ -37,6 +37,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
 
+### A result delivered to GitHub links its attached files
+
+- **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
+
 ### The store's thread-read rule requires the reader to belong to the thread's workspace
 
 - **Security:** `thread_access::readable_thread`, the SQL form of the thread read rule behind search, the workspace context, the explorer, A2A task lists, pending gates, `claim_next` and the queue counts, checked only the workspace the query named. A member of another tenant asked for this workspace's rows read its public threads, and only each route's own workspace check stopped it. The predicate now also requires the reader to be a member of the thread's workspace, so it holds on its own. It names the member once, in a one-row derived table, so SQLite search binds the member once instead of a hand-counted three times.
