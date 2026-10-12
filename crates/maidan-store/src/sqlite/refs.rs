@@ -1,10 +1,14 @@
 use chrono::{DateTime, Utc};
-use maidan_types::{Event, NewReference, RefSide, Reference, RelationKind, StoredEvent};
+use maidan_types::{
+    Event, MemberId, NewReference, RefSide, Reference, RelationKind, StoredEvent, WorkspaceId,
+    DM_CHANNEL_NAME,
+};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
 use crate::sqlite::events;
+use crate::thread_access::readable_thread;
 
 fn map_ref_err(err: sqlx::Error) -> StoreError {
     match err {
@@ -102,6 +106,44 @@ pub async fn list_to(
     )
     .bind(dst_kind.as_str())
     .bind(dst_id)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_reference).collect()
+}
+
+/// [`list_to`] narrowed to sources `reader_id` may read, filtered in the
+/// query: a thread source must itself be readable and a message source's
+/// thread must be. `workspace_id` is the target's workspace; read access is
+/// judged there, the way `thread_access::readable_thread` defines it.
+/// Numbered placeholders: the member placeholder appears three times in the
+/// generated SQL but binds once.
+pub async fn list_to_for_reader(
+    pool: &SqlitePool,
+    dst_kind: RefSide,
+    dst_id: Uuid,
+    workspace_id: WorkspaceId,
+    reader_id: MemberId,
+) -> Result<Vec<Reference>, StoreError> {
+    let readable_thread_src = readable_thread("r.src_id", "?3", "?4", "?5");
+    let readable_message_src = readable_thread("sm.thread_id", "?3", "?4", "?5");
+    let rows = sqlx::query(&format!(
+        "SELECT r.id, r.src_kind, r.src_id, r.dst_kind, r.dst_id, r.relation, r.created_at
+         FROM maidan_references r
+         WHERE r.dst_kind = ?1 AND r.dst_id = ?2
+           AND (
+             (r.src_kind = 'thread' AND {readable_thread_src})
+             OR (r.src_kind = 'message' AND EXISTS (
+                   SELECT 1 FROM maidan_messages sm
+                   WHERE sm.id = r.src_id AND {readable_message_src}
+                 ))
+           )
+         ORDER BY r.created_at ASC, r.id ASC"
+    ))
+    .bind(dst_kind.as_str())
+    .bind(dst_id)
+    .bind(workspace_id.0)
+    .bind(reader_id.0)
+    .bind(DM_CHANNEL_NAME)
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_reference).collect()

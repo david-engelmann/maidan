@@ -220,7 +220,7 @@ async fn assert_thread_pagination(store: &dyn Store) {
 
     // A large page defines the canonical order; it must be exactly the created set.
     let full: Vec<ThreadId> = store
-        .page_threads_for_workspace(ws.id, None, 100)
+        .page_threads_for_workspace(ws.id, None, 100, None)
         .await
         .unwrap()
         .iter()
@@ -240,7 +240,7 @@ async fn assert_thread_pagination(store: &dyn Store) {
     let mut cursor: Option<ThreadId> = None;
     for _ in 0..10 {
         let page = store
-            .page_threads_for_workspace(ws.id, cursor, 2)
+            .page_threads_for_workspace(ws.id, cursor, 2, None)
             .await
             .unwrap();
         if page.is_empty() {
@@ -259,12 +259,12 @@ async fn assert_thread_pagination(store: &dyn Store) {
 
     // The cursor is exclusive: at the end → empty; mid → strictly-after.
     assert!(store
-        .page_threads_for_workspace(ws.id, full.last().copied(), 100)
+        .page_threads_for_workspace(ws.id, full.last().copied(), 100, None)
         .await
         .unwrap()
         .is_empty());
     let after_first: Vec<ThreadId> = store
-        .page_threads_for_workspace(ws.id, Some(full[0]), 100)
+        .page_threads_for_workspace(ws.id, Some(full[0]), 100, None)
         .await
         .unwrap()
         .iter()

@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Workspace context and the explorer filter by thread access in the query
+
+- **Changed:** the workspace thread page and the explorer listings (tombstones, message backlinks and the EventKind census) take the reader and filter by thread read access in the SQL on both backends, the way search does. Rows from a private channel or a DM the reader is not in never reach the caller and never crowd a page or a count out, so the REST and MCP surfaces dropped their per-row access post-filters. Backlinks for a message the reader cannot read answer empty instead of confirming the message is pointed at, and its references narrow to sources the reader may read.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
