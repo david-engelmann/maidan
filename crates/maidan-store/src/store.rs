@@ -2715,6 +2715,26 @@ pub trait EventStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// [`Store::list_events_after`] with the projector-shape filters applied
+    /// by the database: only rows in `channel_id` / `thread_id` (when set)
+    /// and of one of `kinds` (when non-empty). A filtered read used to page
+    /// `list_events_after` over the whole workspace log and drop non-matching
+    /// rows in Rust — for a channel whose matching events are sparse that is
+    /// hundreds of page queries and a decryption per examined row. Backed by
+    /// `idx_events_workspace_channel_kind` (migration 0164). Row order and
+    /// the `id > after_id` keyset are unchanged, and matching is exactly
+    /// [`ProjectorShape::matches_stored`](maidan_types::ProjectorShape::matches_stored)
+    /// for the filtered fields.
+    async fn list_events_matching(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        kinds: &[EventKind],
+        after_id: i64,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Like [`Store::list_events_after`] but only rows inserted at or before
     /// `stable_before` (the at-least-once reconcile read).
     async fn list_events_after_stable(

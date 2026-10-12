@@ -32,6 +32,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### OAuth discovery (phase three, first half)
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
+- **Changed:** filtered event-log reads (a projector shape with a channel, thread or kind filter — the board's notices fetch is one) are answered by the database over a new index, `idx_events_workspace_channel_kind` (migration 0164), instead of paging the workspace's whole log and dropping non-matching rows in memory. On a 100,000-row workspace log whose channel holds 300 matching posts, the fetch examined all 100,000 rows before; it now seeks to the matches.
 
 ### A change that ends without a commit says why in its one Slack notice
 

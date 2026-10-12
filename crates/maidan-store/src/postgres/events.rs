@@ -189,6 +189,42 @@ pub async fn list_after(
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
+/// [`crate::Store::list_events_matching`]: the shape filters are predicates,
+/// so the (workspace_id, channel_id, kind, id) index from migration 0164
+/// seeks to the matching rows instead of the caller paging the whole log.
+#[allow(clippy::too_many_arguments)]
+pub async fn list_matching(
+    pool: &PgPool,
+    keys: Option<&ContentKeyring>,
+    workspace_id: WorkspaceId,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    kinds: &[maidan_types::EventKind],
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
+    let rows = sqlx::query(&format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.workspace_id = $1 AND e.id > $2
+           AND ($3::uuid IS NULL OR e.channel_id = $3)
+           AND ($4::uuid IS NULL OR e.thread_id = $4)
+           AND (cardinality($5) = 0 OR e.kind = ANY($5))
+         ORDER BY e.id ASC
+         LIMIT $6"
+    ))
+    .bind(workspace_id.0)
+    .bind(after_id)
+    .bind(channel_id.map(|c| c.0))
+    .bind(thread_id.map(|t| t.0))
+    .bind(names)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(|row| row_to_stored(row, keys)).collect()
+}
+
 /// Replay rows with `id > after_id` that are **stable** — inserted at or before
 /// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
 /// loop advance a durable cursor without stranding a lower `id` that is still
