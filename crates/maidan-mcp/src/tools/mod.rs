@@ -1088,7 +1088,7 @@ pub async fn dispatch(
         "catch_up_events" => event_log::catch_up_events(store, auth, args).await,
         "verify_event_chain" => event_log::verify_event_chain(store, auth, args).await,
         "list_tombstones" => explorer::list_tombstones(store, auth, args).await,
-        "list_message_backlinks" => explorer::list_message_backlinks(store, args).await,
+        "list_message_backlinks" => explorer::list_message_backlinks(store, auth, args).await,
         "get_kind_census" => explorer::get_kind_census(store, auth, args).await,
         "create_memory_block" => memory_block::create_memory_block(store, auth, args).await,
         "get_memory_block" => memory_block::get_memory_block(store, auth, args).await,
@@ -1177,32 +1177,17 @@ pub async fn dispatch(
         }
         "snapshot_thread_context" => snapshot::snapshot_thread_context(server, auth, args).await,
         "get_workspace_context" => {
-            let mut packed = crate::context::load_workspace_context(store.as_ref(), args).await?;
-            // Drop packed threads in private channels the caller can't access,
-            // caching the per-channel decision. Thread-keyed +
-            // DM-participant-aware. Filter before serialize so the bytes stay
-            // the canonical struct order REST uses.
-            if !auth.bypass {
-                let mut decision: std::collections::HashMap<maidan_types::ThreadId, bool> =
-                    std::collections::HashMap::new();
-                let mut kept = Vec::with_capacity(packed.threads.len());
-                for thread in packed.threads {
-                    let id = thread.thread_id();
-                    let ok = match decision.get(&id) {
-                        Some(v) => *v,
-                        None => {
-                            let allowed =
-                                maidan_auth::can_access_thread(store.as_ref(), auth, id).await?;
-                            decision.insert(id, allowed);
-                            allowed
-                        }
-                    };
-                    if ok {
-                        kept.push(thread);
-                    }
-                }
-                packed.threads = kept;
-            }
+            // The thread page is filtered by the caller's access in the
+            // query, so the pack needs no per-thread access check after it
+            // is built. Filter before serialize so the bytes stay the
+            // canonical struct order REST uses.
+            let reader_id = if auth.bypass {
+                None
+            } else {
+                Some(auth.member_id)
+            };
+            let packed =
+                crate::context::load_workspace_context(store.as_ref(), reader_id, args).await?;
             Ok(content_json(&packed))
         }
         "request_approval" => approval::request_approval(server, auth, args).await,

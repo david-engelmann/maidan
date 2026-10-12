@@ -138,6 +138,7 @@ pub async fn render_thread_context(
 
 pub async fn load_workspace_context(
     store: &dyn Store,
+    reader_id: Option<MemberId>,
     args: &Value,
 ) -> Result<WorkspaceContext, McpError> {
     let a: WorkspaceContextArgs =
@@ -169,13 +170,18 @@ pub async fn load_workspace_context(
             include_parent_grounding: false,
             include_accepted_decisions: false,
         },
+        reader_id,
     )
     .await
     .map_err(McpError::from)
 }
 
-pub async fn get_workspace_context(store: &dyn Store, args: &Value) -> Result<Value, McpError> {
-    let packed = load_workspace_context(store, args).await?;
+pub async fn get_workspace_context(
+    store: &dyn Store,
+    reader_id: Option<MemberId>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let packed = load_workspace_context(store, reader_id, args).await?;
     Ok(serde_json::to_value(&packed)?)
 }
 
@@ -363,7 +369,7 @@ mod tests {
         assert!(off.get("glossary").is_none());
 
         // Workspace context carries it once at the top; nested threads don't repeat it.
-        let wctx = get_workspace_context(store.as_ref(), &json!({ "workspace_id": ws.id.0 }))
+        let wctx = get_workspace_context(store.as_ref(), None, &json!({ "workspace_id": ws.id.0 }))
             .await
             .unwrap();
         assert_eq!(wctx["glossary"].as_array().unwrap().len(), 1);
@@ -903,7 +909,7 @@ mod tests {
         .unwrap();
         assert!(off.get("accepted_decisions").is_none());
 
-        let wctx = get_workspace_context(store.as_ref(), &json!({ "workspace_id": ws.id.0 }))
+        let wctx = get_workspace_context(store.as_ref(), None, &json!({ "workspace_id": ws.id.0 }))
             .await
             .unwrap();
         for t in wctx["threads"].as_array().unwrap() {
