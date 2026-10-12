@@ -175,13 +175,12 @@ async fn run_suite(store: &dyn Store, search: &dyn Search) {
 
 #[tokio::test]
 async fn search_filters_by_thread_access_in_query_sqlite() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    // The crate's pool options load sqlite-vec and turn on foreign keys on
+    // every connection. A bare pool opened before `SqliteSearch` registers the
+    // extension leaves its first connection without `vec_distance_cosine`.
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
