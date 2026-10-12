@@ -51,6 +51,7 @@ pub(crate) mod oauth_as;
 mod oauth_codes;
 mod oidc;
 pub mod outbox;
+pub mod partitions;
 mod peers;
 mod pins;
 mod priorities;
