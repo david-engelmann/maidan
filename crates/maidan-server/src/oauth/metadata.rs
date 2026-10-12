@@ -10,10 +10,10 @@
 //! Phase three adds the authorization-server document (RFC 8414) at
 //! `/.well-known/oauth-authorization-server`, and the resource document gains
 //! `authorization_servers` naming it. The document lists only what the server
-//! does today: the authorization-code grant, PKCE with S256, and the authorize
-//! and token endpoints. Refresh tokens are not listed; they arrive with the
-//! flow that mints them, so a client reading the document never plans around
-//! a grant the token endpoint would refuse.
+//! does: the authorization-code and refresh-token grants, PKCE with S256, the
+//! three client authentication methods the token and revocation endpoints
+//! read, and the authorize, token and revocation endpoints. A client reading
+//! it never plans around a grant or endpoint the server would refuse.
 
 use axum::{
     extract::{Request, State},
@@ -44,6 +44,19 @@ pub const AUTHORIZE_PATH: &str = "/oauth/authorize";
 
 /// The token endpoint's path, on the issuer origin.
 pub const TOKEN_PATH: &str = "/oauth/token";
+
+/// The revocation endpoint's path (RFC 7009), on the issuer origin.
+pub const REVOKE_PATH: &str = "/oauth/revoke";
+
+/// How a client authenticates at the token and revocation endpoints: HTTP
+/// Basic, the form body, or not at all for a public client.
+const CLIENT_AUTH_METHODS: [&str; 3] = ["client_secret_basic", "client_secret_post", "none"];
+
+/// The MCP resource's identifier (RFC 8707) under `origin`: the only resource
+/// the authorization server issues tokens for, and the one they are bound to.
+pub fn mcp_resource(origin: &str) -> String {
+    format!("{origin}{MCP_RESOURCE_PATH}")
+}
 
 /// Parse `MAIDAN_PUBLIC_ORIGIN`: `https://host[:port]`, or `http://` on a
 /// loopback host for local work, with no path, query, fragment or
@@ -98,7 +111,7 @@ pub struct ProtectedResourceMetadata {
 
 fn resource_document(origin: &str) -> ProtectedResourceMetadata {
     ProtectedResourceMetadata {
-        resource: format!("{origin}{MCP_RESOURCE_PATH}"),
+        resource: mcp_resource(origin),
         authorization_servers: vec![origin.into()],
         bearer_methods_supported: vec!["header".into()],
         resource_name: "Maidan".into(),
@@ -116,25 +129,28 @@ pub async fn oauth_protected_resource(
 
 /// RFC 8414 authorization-server metadata.
 ///
-/// Only the grant, response type and challenge method the server implements
-/// are listed. `refresh_token` is absent until the token endpoint mints
-/// refresh tokens, and there is no `registration_endpoint` because clients
-/// are pre-registered or carry a client metadata document, never registered
+/// Only the grants, response type and challenge method the server implements
+/// are listed. There is no `registration_endpoint` because clients are
+/// pre-registered or carry a client metadata document, never registered
 /// dynamically.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct AuthorizationServerMetadata {
     issuer: String,
     authorization_endpoint: String,
     token_endpoint: String,
+    revocation_endpoint: String,
     response_types_supported: Vec<String>,
     /// Named because an omitted list means `query` and `fragment`, and the
     /// authorization response is only ever a query string.
     response_modes_supported: Vec<String>,
     grant_types_supported: Vec<String>,
-    /// Named because the RFC 8414 default is `client_secret_basic`, which
-    /// the token endpoint does not read: a confidential client sends its
-    /// secret in the form body, and a public client sends none.
+    /// Named although the RFC 8414 default, `client_secret_basic`, is among
+    /// them: the list also says a public client may send no secret at all.
     token_endpoint_auth_methods_supported: Vec<String>,
+    /// RFC 8414 gives no default for the revocation endpoint, so a client
+    /// learns only from this list that it authenticates there as at the
+    /// token endpoint.
+    revocation_endpoint_auth_methods_supported: Vec<String>,
     code_challenge_methods_supported: Vec<String>,
 }
 
@@ -143,10 +159,12 @@ fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
         issuer: origin.into(),
         authorization_endpoint: format!("{origin}{AUTHORIZE_PATH}"),
         token_endpoint: format!("{origin}{TOKEN_PATH}"),
+        revocation_endpoint: format!("{origin}{REVOKE_PATH}"),
         response_types_supported: vec!["code".into()],
         response_modes_supported: vec!["query".into()],
-        grant_types_supported: vec!["authorization_code".into()],
-        token_endpoint_auth_methods_supported: vec!["client_secret_post".into(), "none".into()],
+        grant_types_supported: vec!["authorization_code".into(), "refresh_token".into()],
+        token_endpoint_auth_methods_supported: CLIENT_AUTH_METHODS.map(String::from).to_vec(),
+        revocation_endpoint_auth_methods_supported: CLIENT_AUTH_METHODS.map(String::from).to_vec(),
         code_challenge_methods_supported: vec!["S256".into()],
     }
 }
@@ -297,15 +315,23 @@ mod tests {
             "the code and error arrive in the query string only"
         );
         assert_eq!(
-            json["grant_types_supported"],
-            serde_json::json!(["authorization_code"]),
-            "refresh_token is listed only once the token endpoint mints refresh tokens"
+            json["revocation_endpoint"],
+            "https://maidan.example.com/oauth/revoke"
         );
         assert_eq!(
-            json["token_endpoint_auth_methods_supported"],
-            serde_json::json!(["client_secret_post", "none"]),
-            "the default, client_secret_basic, is not what the token endpoint reads"
+            json["grant_types_supported"],
+            serde_json::json!(["authorization_code", "refresh_token"])
         );
+        for field in [
+            "token_endpoint_auth_methods_supported",
+            "revocation_endpoint_auth_methods_supported",
+        ] {
+            assert_eq!(
+                json[field],
+                serde_json::json!(["client_secret_basic", "client_secret_post", "none"]),
+                "{field}"
+            );
+        }
         assert_eq!(
             json["code_challenge_methods_supported"],
             serde_json::json!(["S256"])

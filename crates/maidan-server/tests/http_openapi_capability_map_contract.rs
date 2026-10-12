@@ -196,10 +196,11 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
     ("GET", "/auth/oidc/login"),
     ("GET", "/auth/oidc/callback"),
     ("POST", "/auth/logout"),
-    // The OAuth 2.1 token endpoint: public by design, like the OIDC
-    // callback. The client authenticates with its secret and the PKCE
-    // verifier in the form body, not with a Maidan bearer.
+    // The OAuth 2.1 token and revocation endpoints: public by design, like
+    // the OIDC callback. The client authenticates with HTTP Basic, its secret
+    // in the form body, or PKCE alone, never with a Maidan bearer.
     ("POST", "/oauth/token"),
+    ("POST", "/oauth/revoke"),
 ];
 
 /// Authenticated by the `maidan_session` cookie (the OIDC browser flow), not a
