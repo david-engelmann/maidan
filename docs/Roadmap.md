@@ -32,14 +32,18 @@ and the root `CHANGELOG.md`; how the project got here is in
 | `maidan-operator-1.0` | `v101.0.0` | The operator surface: the web UI, health, metrics, OpenAPI (`maidan_operator_gate_e2e`) |
 | `maidan-scale-1.0` | `v120.0.0` | Scale-out: several replicas, sharded fan-out, SLOs ([gate record](Gates/maidan-scale-1.0.md)) |
 
-No further gate is defined. The next one would be the public launch, which is
-the maintainer's call.
+The next gate is **`maidan-launch-1.0`**, the launch (decided 2026-10-12). A
+`launch_gate_e2e` test drives the hosted path end to end: an invite from the
+waitlist, sign-up through the OIDC front door, a new workspace, an agent
+connected through OAuth from an MCP client, a task claimed, reviewed and
+closed, and the usage that path metered. The gate passes on the launch
+release, with every row from Next 23 to Next 30 in Open Work closed.
 
 ## Where it is
 
-The latest release is `v413.0.0` (2026-10-11). The work in
-flight and the ranked plan are the **Now** and **Next** sections of
-[Open Work](Open%20Work.md). `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
+The latest release is `v413.0.0` (2026-10-11). The work in flight and the
+launch path are the **Now** and **Next** sections of [Open Work](Open%20Work.md),
+which end at the launch gate. `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
 run the binary from `CARGO_TARGET_DIR` when it is set.
 
 ## Horizons
@@ -76,8 +80,10 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    deliveries, and read notifications age out (#1165). When
    `MAIDAN_RETENTION_MESSAGES_DAYS` is set, it is the instance ceiling: a
    longer workspace `messages_days` is refused, and the sweep erases messages
-   past the cutoff in every workspace that is not held (#1232). Next:
-   partitioning the append-only tables.
+   past the cutoff in every workspace that is not held (#1232). The event log
+   is partitioned by month (#1359), and unreferenced media expires under a
+   per-workspace quota (#1366). Next: partitioning the audit and delivery
+   tables.
    A schema change while two versions share one database expands, then contracts in a later release ([Migrations](Migrations.md)).
 4. **Proof over tests.** The protocol decoders are fuzzed, the auth and bus
    tests are mutation-checked (#1125), the release workflow attests image SBOMs
@@ -88,8 +94,11 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    the fuzz job on every target (#1160, whose first night found two real
    decoder bugs). The review comments left unanswered on merged PRs were fixed
    or answered (#1162 to #1191, #1262), the cross-tenant rate-limit bug among
-   them, and the official MCP conformance suite runs in CI (#1286). Next: Kani proofs, and a named
-   regression test per Threat-Model row. REST `POST /threads/{id}` names
+   them, and the official MCP conformance suite runs in CI (#1286). Kani proves
+   capability containment and cursor arithmetic (#1340), nightly (#1374).
+   Next: the store's thread-read rule requiring the reader's own workspace
+   (#1376, in review), wire snapshots, and a named regression test per
+   Threat-Model row. REST `POST /threads/{id}` names
    `action` as `start_review`, `close`, or `archive`.
 5. **A web UI worth showing.** The board is the one thread surface (#1118),
    errors are inline (#1117), a blank page walks to a connected board (#1123),
@@ -121,7 +130,9 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    request names the change and a member holds one verdict (#1304 to #1306),
    and an approval binds the evidence it was shown, re-checked at close (#1309,
    #1310, #1312), with the evidence on the card (#1316) and how far to trust
-   each piece (#1327). Next: screenshots captured by a script.
+   each piece (#1327). The screenshots are captured by a script, and the board
+   is the README hero (#1353). Next: the launch polish of Next 30, performance
+   Tier 0 and the UI audit's P2 items.
 6. **Agents pay for what changed.** Maidan's context is byte-stable and
    layered, its MCP surface follows the 2026-07-28 caching rules with small,
    stable tool profiles, and its ledger prices every cache tier and reports
@@ -137,13 +148,36 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    cost-per-success pilot, under a cap the runner enforces (decided
    2026-10-08).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
-7. **Launch** (the maintainer's call): the public site, an in-browser
-   playground, and paid self-hosted tiers before any hosted service, with the
-   room itself staying open source. An operator can open a
-   second workspace with `POST /operator/workspaces`, without `MAIDAN_BOOTSTRAP` (#1208).
-   Signup and a hosted console are not started.
-   The connected-apps program is the discovery half. The maintainer chose its fast track on 2026-10-03, lanes 1 to 7 with no authorization server (a Gemini CLI extension, a Copilot CLI plugin, the MCP registries and catalogs, a listing asset pack with a demo instance for reviewers, connect recipes, Muse behind the Dawn outcome, and Cursor). Nothing is submitted until the maintainer says go, and every submission is validated first. Self-hosting stays the product, and no enterprise track starts until the consumer lanes measure (Open Work Next 9 to Next 16). The maintainer chose on 2026-10-08 to build the authorization server, at full OAuth 2.1 scope with consent in the console, which the ChatGPT and full-OAuth Claude listings need (Open Work Next 23).
-   The connected-app dev and test program comes first among the listings work. ChatGPT developer mode and claude.ai accept a server with no authentication, so Maidan is tested inside each client from a dev instance before anything is listed. An approval may be decided by a model (decided 2026-10-08). Since #1325, two credentials can accept a gate: a browser session the person signed in to, sent from the console page, and a token holding `approval:grant`. A plain bearer token, a delegate token and a session made from a token can only decline or cancel. Nobody accepts their own request, whatever the credential. All of this holds with auth on: `AUTH_DISABLED` has no identities to check, so it accepts anything, and it is never a deployment mode. An agent can accept only with a token a person minted with `approval:grant` (Known risks). `approval_decide` (#1332) lets a model ask. It accepts directly only with `approval:grant` on a gate below the workspace's confirmation threshold, which by default no gate is, and otherwise a person confirms in the console. The provider research of 2026-10-06 points the fast track at surfaces that need no directory first (CLI plugins, custom connectors and install links), while the Muse lane, now cleared on Meta's data terms (2026-10-06), still waits on the Dawn outcome, the validation record and the maintainer's go-ahead to submit, and the ChatGPT and Claude directories wait on the authorization server.
+7. **Launch** (decided 2026-10-12). Maidan launches as open source plus a
+   hosted service at maidan.world. The console takes sign-ups through a
+   waitlist first, with invited sign-up behind it, and the room itself stays
+   open source. The hosted service is free up to an allowance of compute,
+   storage and the like, and usage past it is billed: metering comes before
+   launch, billing after. The path, in Open Work's order:
+   - **Connect.** The OAuth 2.1 server people connect their MCP clients
+     through (Next 23): discovery (#1364), refresh and revocation (#1367, in review),
+     then consent management, hardening and a recorded run from real clients.
+   - **Host.** Per-tenant key custody before a stranger's data lands
+     (Next 25), the deployment on the maidan.world layout with staging, a
+     demo host, backups, alerts and a status page (Next 24), the waitlist,
+     sign-up and invites (Next 26), usage metering against the free allowance
+     (Next 27), and abuse controls (Next 28).
+   - **Prove.** A validated version (Next 14), the ChatGPT card and the
+     connect recipes tested live (Next 17, Next 13), the listing assets and
+     demo instance (Next 12), and the launch polish (Next 30).
+   - **Launch.** The launch release and its surfaces, closed by the
+     `maidan-launch-1.0` gate (Next 29).
+
+   The directory listings (the Copilot CLI plugin, the MCP registries and
+   catalogs, Muse and Cursor) are built up to the act of submitting, and are
+   submitted on the maintainer's go after launch. Every submission is a
+   validated version first. The approval rules hold on every surface: since
+   #1325 a gate is accepted only by a browser session the person signed in to
+   or a token holding `approval:grant`, nobody accepts their own request, and
+   `approval_decide` (#1332) lets a model ask but sends a person to the console
+   to confirm unless the workspace set a threshold. `AUTH_DISABLED` is never a
+   deployment mode. The privacy policy, terms and trust page are the
+   maintainer's, prepared outside the repo.
 
 ## What Maidan will not become
 

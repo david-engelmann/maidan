@@ -75,28 +75,25 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-11)
+## Current state (2026-10-12)
 
 - **Releases:** latest **`v413.0.0`** (2026-10-11), with the week's
   cross-tenant fixes. Release tags are cut when the maintainer chooses, not per
   cluster, so some clusters were never tagged (v23–26, v78–100, v311, v350–401,
   v403, v411); their work ships in the next tag. Tagging is the maintainer's
   call.
-- **The queue is led by approvals.** Accepting a gate is a property of the
-  credential since #1325: a browser session the person signed in to, sent
-  from the console page, or `approval:grant`, and nobody accepts their own
-  request (with auth on: `AUTH_DISABLED` checks no identity). A plain bearer,
-  a delegate token or a session made from one can only decline or cancel. A model asks through `approval_decide` (#1332), which
-  accepts directly only with `approval:grant` below the workspace's
-  confirmation threshold (by default, never) and otherwise sends a person a
-  console link to confirm. All of these rules assume auth is on:
-  `AUTH_DISABLED` accepts directly and checks nothing. Next are the ChatGPT card (Next 17) and
-  the OAuth authorization server (Next 23). The approval card shows each
-  piece of evidence with its attestation tier (#1327). Program C's C1
-  to C4 shipped (C4, the SDK usage normalizers, in #1297 and #1299), and its
-  pilot is planned under a runner-enforced cap. Most `wip/` branches hold work
-  that has since shipped: check the Open Work row they name before building on
-  one.
+- **The queue is the launch path** (Open Work Next, in order): the OAuth
+  server (Next 23), per-tenant key custody (Next 25), the hosted deployment
+  at maidan.world (Next 24), waitlist and sign-up (Next 26), usage metering
+  (Next 27), abuse controls (Next 28), then validation, live client tests,
+  the launch polish and the launch release (Next 14, 17, 13, 12, 30, 29).
+  The approval rules hold throughout: since #1325 a gate is accepted only by
+  a browser session the person signed in to or `approval:grant`, nobody
+  accepts their own request, and `approval_decide` (#1332) sends a person to
+  confirm in the console unless the workspace set a threshold. These assume
+  auth is on: `AUTH_DISABLED` checks nothing and is never a deployment mode.
+  Most `wip/` branches hold work that has since shipped: check the Open Work
+  row they name before building on one.
 - **Every deploy path pins `v413.0.0`.** `scripts/check-deploy-pins.sh` (the
   `deploy pins` job) keeps fifteen pins on the newest tag, `docs/Pi.md`
   included, and says which lines to change after the next one. The `:dev`
@@ -112,7 +109,10 @@ change.
   keeper reconciles after the merge. When each PR edited its own row, every PR
   conflicted with every other.
 - **Decisions only the maintainer makes** are listed in Open Work under
-  "Decisions pending the maintainer" (on 2026-10-11, only the launch). Don't guess at them. The ones he delegated are under
+  "Decisions pending the maintainer" (on 2026-10-12: the domain layout, the
+  launch date and release, and the go for directory submissions). The launch
+  itself is decided: open source plus a hosted service at maidan.world, and
+  Open Work's Next is the path to it, ending at the `maidan-launch-1.0` gate. Don't guess at them. The ones he delegated are under
   "Recently decided" and in [`docs/Decisions.md`](docs/Decisions.md).
 
 Working beside other agents (several PRs are usually open at once):

@@ -2261,3 +2261,28 @@ On 2026-10-04 the maintainer added three rulings.
 **Why.** Media fills storage fast. Pi's attachment flow, through soundcheck and pi, uploads screenshots, recordings and attachments, most of which nothing points at again. An artifact a result or a message still lists must not vanish, so a reference keeps it however old, and the expiry checks again inside the erasing transaction. Concurrent uploads may overshoot the quota slightly, because the check reads usage before the upload writes. A quota bounds storage, and serializing every media upload in a workspace to make it exact is not worth the cost.
 
 **Record.** Migration 0170, `maidan_store::media_retention`, the retention sweeper, [Production](Production.md#media-retention-and-quota).
+
+### The launch is open source plus a hosted service at maidan.world (2026-10-12)
+
+**Decision.** The maintainer chose on 2026-10-12 to launch Maidan as open source plus a hosted service at maidan.world, which he owns. The console takes sign-ups through a waitlist first, and invited sign-up runs behind it. The room stays open source. The domain layout is still his to pick (Open Work, Decisions pending). Its recommendation is one origin at the apex for the console, the API, MCP and OAuth.
+
+**Why.** A hosted room is how most people will try Maidan, and a waitlist lets the service open at the pace operations can carry. Open source first keeps self-hosting a first-class path.
+
+**Supersedes.** The 2026-10-03 hybrid-hosting decision that listing copy says production is self-hosted, and Later L's order of paid self-hosted tiers before any hosted service. Thread 52's gate stands: per-tenant key custody lands before the first stranger's data (Open Work Next 25).
+
+**Record.** Open Work Next 24 to Next 30, Roadmap horizon 7 and the `maidan-launch-1.0` gate.
+
+### The hosted service is free up to an allowance, and usage past it is billed (2026-10-12)
+
+**Decision.** The hosted service is free up to an allowance of compute, storage and the like, and usage past it is billed. Metering comes before launch: each workspace's usage is recorded per meter, the free allowance is an instance setting, and a workspace past it is marked and told, not cut off. Billing is built on that ledger after launch.
+
+**Why.** A free amount lets people adopt the room without a purchase decision. Billing only what is used past it ties the price to what the service costs to run. Metering first means the numbers exist before anyone is charged for them.
+
+**Record.** Open Work Next 27 and Later L.
+
+### The legal pages are the maintainer's, outside the repo (2026-10-12)
+
+**Decision.** The privacy policy, terms of service, support contact and data statement are prepared by the maintainer outside the repository, and will be done by launch. The listing work links them rather than writing them.
+
+**Record.** Open Work Next 12.
+
