@@ -8,7 +8,7 @@ use maidan_auth::{
     },
     hash_secret, AuthContext, TokenSecret,
 };
-use maidan_store::{BlobReap, StoreError};
+use maidan_store::StoreError;
 use maidan_types::*;
 
 use super::publish_stored;
@@ -584,9 +584,10 @@ pub async fn get_delegation_policy(
 }
 
 /// `PUT /workspaces/:wid/retention` — replace the workspace's own retention for
-/// its messages, events and finished deliveries, in days (1–3650 each; `null`
-/// or omitted keeps what the instance keeps; `{}` clears it). A value longer
-/// than the instance keeps that kind of row is refused (400). `token:admin`,
+/// its messages, events, finished deliveries and unreferenced media, in days
+/// (1–3650 each), and its media quota in bytes (`null` or omitted keeps what
+/// the instance keeps; `{}` clears it). A value longer than the instance keeps
+/// that kind of row, or a quota above the instance's, is refused (400). `token:admin`,
 /// like a legal hold: it decides what of the workspace's record survives.
 /// Audited in its own transaction (D-A).
 pub async fn set_retention_policy(
@@ -616,6 +617,8 @@ pub async fn set_retention_policy(
                     "messages_days": days.messages_days,
                     "events_days": days.events_days,
                     "deliveries_days": days.deliveries_days,
+                    "media_days": days.media_days,
+                    "media_quota_bytes": days.media_quota_bytes,
                 }),
             }),
         )
@@ -870,36 +873,10 @@ fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
 }
 
 /// Delete the blobs a purge or erase orphaned — shas no workspace references
-/// any more.
-///
-/// The store decides orphanhood inside its transaction; this runs after it.
-/// Each delete runs under a lease on the sha (`reap_artifact_blob`), so a
-/// workspace uploading the same bytes meanwhile either commits its row first,
-/// and the bytes stay, or after, and puts them back.
+/// any more. The store decides orphanhood inside its transaction; this runs
+/// after it.
 pub(super) async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
-    for sha_hex in shas {
-        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
-            continue;
-        };
-        let artifacts = state.artifacts.clone();
-        let delete: maidan_store::BlobDelete<'_> = Box::new(move || {
-            Box::pin(async move {
-                match artifacts.delete(&sha).await {
-                    Ok(()) | Err(maidan_artifacts::ArtifactError::NotFound) => Ok(()),
-                    Err(err) => Err(err.to_string()),
-                }
-            })
-        });
-        match state.store.reap_artifact_blob(sha_hex, delete).await {
-            Ok(BlobReap::Deleted | BlobReap::Referenced) => {}
-            Ok(BlobReap::DeleteFailed(err)) => {
-                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
-            }
-            Err(err) => {
-                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
-            }
-        }
-    }
+    super::reap_orphaned_blobs(state.store.as_ref(), &state.artifacts, shas).await;
 }
 
 pub async fn erase_workspace(
