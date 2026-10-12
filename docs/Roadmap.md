@@ -46,10 +46,10 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
    newest release, no chart renders a default credential or the `dev` image,
-   and a contract keeps the pins from drifting (both #1156). What remains: the
-   pins name `v412.0.0` until the pin bump that follows the `v413.0.0` tag. The stack's bundled Postgres and MinIO run in the chart since
-   #1172. This is the **Before anyone deploys** section of Open Work, and
-   it comes first.
+   and a contract keeps the pins from drifting (both #1156). Done: every
+   deploy path pins `v413.0.0`, including the ARM64 page with auth on, and the
+   stack's bundled Postgres and MinIO run in the chart since #1172. Open Work's
+   **Before anyone deploys** has no open blocker.
 1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
    2026-10-03: a `!change` in Slack opens a Maidan thread, Pi does the coding
    without holding any GitHub credential, Maidan commits Pi's diff to the
