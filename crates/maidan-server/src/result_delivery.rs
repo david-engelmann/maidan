@@ -30,8 +30,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     parse_change_result, parse_waiter_result, status, DeliverTarget, EgressKind, EgressTarget,
-    ExternalRef, GithubReviewComment, NewEgressOutbox, ResultDelivery, ThreadId, WaiterResult,
-    WorkspaceId, CHANGE_RESULT_KIND,
+    ExternalRef, GithubReviewComment, NewEgressOutbox, ResultAttachment, ResultDelivery, ThreadId,
+    WaiterResult, WorkspaceId, CHANGE_RESULT_KIND,
 };
 use tracing::{debug, warn};
 
@@ -94,6 +94,45 @@ pub fn delivery_body(thread_id: ThreadId, target: &EgressTarget, waiter: &Waiter
     }
 }
 
+/// One link line per attached file, under a header that says the links need
+/// Maidan auth: `/artifacts/{sha}` sits behind the artifact routes' member
+/// check, so a reader without a Maidan sign-in reaches a login wall, not
+/// the file. The label is the producer's caption, or the filename when there
+/// is no caption — escaped either way, because the caption is producer text
+/// and the filename is about to become link text.
+fn attachment_lines(attachments: &[ResultAttachment]) -> String {
+    let mut out = String::from("Attachments (the links open in Maidan and need Maidan auth):");
+    for attachment in attachments {
+        let label = attachment
+            .caption
+            .as_deref()
+            .unwrap_or(attachment.filename.as_str());
+        out.push_str(&format!(
+            "\n- [{}](/artifacts/{})",
+            escape_markdown_label(label),
+            attachment.sha
+        ));
+    }
+    out
+}
+
+/// Backslash-escape the characters that would let producer text style
+/// itself or break out of a Markdown link label. The label is data, never
+/// markup.
+fn escape_markdown_label(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        if matches!(
+            ch,
+            '\\' | '`' | '*' | '_' | '[' | ']' | '(' | ')' | '#' | '<' | '>' | '|' | '~' | '!'
+        ) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 fn slack_body(text: &str) -> String {
     crate::egress_body::truncate_with_tail(
         &crate::egress_body::neutralize_slack_mentions(text),
@@ -113,6 +152,12 @@ fn reviewed_body(target: &EgressTarget, waiter: &WaiterResult) -> String {
                 }
                 rendered.push_str("PR: ");
                 rendered.push_str(pr);
+            }
+            if !waiter.attachments.is_empty() {
+                if !rendered.is_empty() {
+                    rendered.push_str("\n\n");
+                }
+                rendered.push_str(&attachment_lines(&waiter.attachments));
             }
             // Mentions / truncation happen in `github_result_comment_body`
             // so the marker is reserved in the ceiling. Pass the raw
@@ -610,6 +655,7 @@ mod tests {
             pr: Some("acme/widgets#7".into()),
             head_sha: None,
             findings: vec![],
+            attachments: vec![],
         }
     }
 
@@ -698,6 +744,78 @@ mod tests {
         );
     }
 
+    fn attachment(sha: &str, filename: &str, caption: Option<&str>) -> ResultAttachment {
+        ResultAttachment {
+            sha: sha.into(),
+            filename: filename.into(),
+            caption: caption.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn github_appends_one_line_per_attachment_and_slack_gets_none() {
+        let mut waiter = waiter(STATUS_REVIEWED, Some("## Findings"), Some("3 findings"));
+        waiter.attachments = vec![
+            attachment(&"a".repeat(64), "trace.png", Some("The failing run")),
+            attachment(&"b".repeat(64), "notes.md", None),
+        ];
+        let tid = ThreadId::new();
+        let gh = delivery_body(tid, &github(), &waiter);
+        assert!(
+            gh.contains("Attachments (the links open in Maidan and need Maidan auth):"),
+            "the header says the links need Maidan auth: {gh}"
+        );
+        assert!(
+            gh.contains(&format!(
+                "- [The failing run](/artifacts/{})",
+                "a".repeat(64)
+            )),
+            "a captioned file is labelled by its caption: {gh}"
+        );
+        assert!(
+            gh.contains(&format!("- [notes.md](/artifacts/{})", "b".repeat(64))),
+            "an uncaptioned file is labelled by its filename: {gh}"
+        );
+
+        let sl = delivery_body(tid, &slack(), &waiter);
+        assert!(
+            !sl.contains("/artifacts/") && !sl.contains("Attachments"),
+            "attachment links are a GitHub-comment affordance only: {sl}"
+        );
+    }
+
+    #[test]
+    fn a_result_without_attachments_gains_no_attachment_lines() {
+        let waiter = waiter(STATUS_REVIEWED, Some("## Findings"), Some("3 findings"));
+        let gh = delivery_body(ThreadId::new(), &github(), &waiter);
+        assert!(
+            !gh.contains("/artifacts/") && !gh.contains("Attachments"),
+            "no attachments, no extra lines: {gh}"
+        );
+    }
+
+    #[test]
+    fn an_attachment_caption_is_escaped_before_it_becomes_a_link_label() {
+        let mut waiter = waiter(STATUS_REVIEWED, Some("## Findings"), Some("3 findings"));
+        waiter.attachments = vec![attachment(
+            &"c".repeat(64),
+            "report.md",
+            Some("Report [final] **v2** (draft) #1"),
+        )];
+        let gh = delivery_body(ThreadId::new(), &github(), &waiter);
+        assert!(
+            gh.contains(&format!(
+                "- [Report \\[final\\] \\*\\*v2\\*\\* \\(draft\\) \\#1](/artifacts/{})",
+                "c".repeat(64)
+            )),
+            "the caption renders literally, as data: {gh}"
+        );
+        assert!(
+            !gh.contains("[final] **v2**"),
+            "no raw Markdown from the caption survives: {gh}"
+        );
+    }
+
     #[test]
     fn the_schema_constant_is_what_the_parser_routes_on() {
         // Guard against a silent rename: this module's contract is the 379.2
@@ -730,6 +848,7 @@ mod tests {
             pr: None,
             head_sha,
             findings,
+            attachments: vec![],
         }
     }
 

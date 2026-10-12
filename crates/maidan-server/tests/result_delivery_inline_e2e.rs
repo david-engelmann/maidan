@@ -480,6 +480,53 @@ async fn a_reviewed_github_result_posts_the_summary_and_a_right_side_inline_revi
 }
 
 #[tokio::test]
+async fn a_reviewed_github_result_links_its_pi_attachments_in_the_summary_comment() {
+    let h = harness("attachments").await;
+    bless_github(&h).await;
+    let mut result = envelope("reviewed", github_target(), None, json!([]));
+    result["pi"] = json!({
+        "result_attachments": [
+            { "sha256": "a".repeat(64), "filename": "trace.png", "caption": "The failing run" },
+            { "sha256": "b".repeat(64), "filename": "notes.md" },
+            { "sha256": "c".repeat(64), "filename": "raw.md", "caption": "See [x](https://evil.test)" }
+        ]
+    });
+    set_result(&h, &result).await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    let posts = h.github.posts.lock().unwrap();
+    assert_eq!(posts.len(), 1);
+    let body = &posts[0].2;
+    assert!(
+        body.contains("Attachments (the links open in Maidan and need Maidan auth):"),
+        "the comment says the links need Maidan auth: {body}"
+    );
+    assert!(
+        body.contains(&format!(
+            "- [The failing run](/artifacts/{})",
+            "a".repeat(64)
+        )),
+        "a captioned file is labelled by its caption: {body}"
+    );
+    assert!(
+        body.contains(&format!("- [notes.md](/artifacts/{})", "b".repeat(64))),
+        "an uncaptioned file is labelled by its filename: {body}"
+    );
+    assert!(
+        body.contains(&format!(
+            "- [See \\[x\\]\\(https://evil.test\\)](/artifacts/{})",
+            "c".repeat(64)
+        )),
+        "a Markdown caption is escaped into a literal label: {body}"
+    );
+    assert!(
+        !body.contains("[x](https://evil.test)"),
+        "the caption never becomes a live link of its own: {body}"
+    );
+}
+
+#[tokio::test]
 async fn missing_head_sha_posts_the_summary_and_skips_the_review() {
     let h = harness("no-sha").await;
     bless_github(&h).await;

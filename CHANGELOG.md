@@ -33,6 +33,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
 
+### A result delivered to GitHub links its attached files
+
+- **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
