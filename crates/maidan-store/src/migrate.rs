@@ -244,6 +244,7 @@ const POSTGRES_UP_V163: &str =
     include_str!("../../../migrations/postgres/0163_oidc_front_door.sql");
 const POSTGRES_UP_V164: &str =
     include_str!("../../../migrations/postgres/0164_event_channel_kind_index.sql");
+const POSTGRES_UP_V167: &str = include_str!("../../../migrations/postgres/0167_workspace_keys.sql");
 const POSTGRES_UP_V168: &str =
     include_str!("../../../migrations/postgres/0168_claim_footprints.sql");
 const POSTGRES_UP_V170: &str =
@@ -440,6 +441,7 @@ const SQLITE_UP_V161: &str = include_str!("../../../migrations/sqlite/0161_sessi
 const SQLITE_UP_V163: &str = include_str!("../../../migrations/sqlite/0163_oidc_front_door.sql");
 const SQLITE_UP_V164: &str =
     include_str!("../../../migrations/sqlite/0164_event_channel_kind_index.sql");
+const SQLITE_UP_V167: &str = include_str!("../../../migrations/sqlite/0167_workspace_keys.sql");
 const SQLITE_UP_V168: &str = include_str!("../../../migrations/sqlite/0168_claim_footprints.sql");
 const SQLITE_UP_V170: &str =
     include_str!("../../../migrations/sqlite/0170_media_retention_quota.sql");
@@ -661,6 +663,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 162, POSTGRES_UP_V162).await?;
     apply_postgres(pool, &applied, 163, POSTGRES_UP_V163).await?;
     apply_postgres(pool, &applied, 164, POSTGRES_UP_V164).await?;
+    apply_postgres(pool, &applied, 167, POSTGRES_UP_V167).await?;
     apply_postgres(pool, &applied, 168, POSTGRES_UP_V168).await?;
     apply_postgres(pool, &applied, 170, POSTGRES_UP_V170).await?;
     // The partitioned tables need their months ready before the first write,
@@ -838,6 +841,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 161, SQLITE_UP_V161).await?;
     apply_sqlite(pool, &applied, 163, SQLITE_UP_V163).await?;
     apply_sqlite(pool, &applied, 164, SQLITE_UP_V164).await?;
+    apply_sqlite(pool, &applied, 167, SQLITE_UP_V167).await?;
     apply_sqlite(pool, &applied, 168, SQLITE_UP_V168).await?;
     apply_sqlite(pool, &applied, 170, SQLITE_UP_V170).await?;
     Ok(())

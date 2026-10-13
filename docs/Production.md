@@ -1624,7 +1624,20 @@ its audit row counts them (`metadata.content_keys_destroyed`). A replica that
 ingests the origin's tombstone shreds its copy. Under a legal hold the preserved
 copy keeps the words, as described below.
 
-Content keys live in `maidan_content_keys`, each wrapped by `MAIDAN_CONTENT_KEK`.
+**Each workspace has its own key.** A message's key lives in
+`maidan_content_keys`, wrapped by its workspace's key; the workspace keys live
+in `maidan_workspace_keys`, each wrapped by `MAIDAN_CONTENT_KEK`, the instance
+KEK. So one workspace's key opens nothing of another's, erasing or purging a
+workspace deletes its keys, and rotating a workspace's key rewraps only key
+rows. An operator holding the database alone opens nothing: the workspace keys
+need the instance KEK, which is not in the database. A server holds a workspace
+key in memory for at most five minutes after it last used it, and only while
+the stored row matches what it opened.
+
+Message keys written before workspace keys existed are wrapped by the instance
+KEK directly. They still open, and the startup pass moves each under its
+workspace's key.
+
 The server refuses to start without the KEK. The Helm chart refuses to render
 without `contentKek` or an `existingSecret` holding `MAIDAN_CONTENT_KEK`, and the
 k8s base reads it from `maidan-secrets`. Only an explicit
@@ -1644,21 +1657,31 @@ versions (kept on purpose under a legal hold), an unsealed event payload, a
 queued webhook, egress or mail copy, a search entry or an embedding. It exits
 non-zero when it finds one.
 
-**Rotate the KEK.** Generate a new key (`openssl rand -hex 32`), set it as
-`MAIDAN_CONTENT_KEK`, move the old one to `MAIDAN_CONTENT_KEK_PREVIOUS`, and
-roll the replicas. Each rewraps the keys still under an old KEK at startup.
-Remove the old KEK once no key needs it:
+**Rotate a workspace's key.** `maidan rotate-workspace-key --database-url …
+--workspace-id <id>`, with the server's `MAIDAN_CONTENT_KEK`, retires the
+workspace's key, makes a new one, moves the workspace's message keys under it,
+destroys the old key and writes a `workspace_key.rotate` audit row. No sealed
+message is rewritten. Running servers pick up the new key on their next read.
+
+**Rotate the instance KEK.** Generate a new key (`openssl rand -hex 32`), set it
+as `MAIDAN_CONTENT_KEK`, move the old one to `MAIDAN_CONTENT_KEK_PREVIOUS`, and
+roll the replicas. Each rewraps the workspace keys still under an old KEK at
+startup: one row per workspace, not one per message. Remove the old KEK once
+no key needs it:
 
 ```sql
+SELECT count(*) FROM maidan_workspace_keys
+ WHERE wrapped_key IS NOT NULL AND wrapping_key_id <> '<new kek id>';
 SELECT count(*) FROM maidan_content_keys
- WHERE wrapped_key IS NOT NULL AND kek_id <> '<new kek id>';
+ WHERE wrapped_key IS NOT NULL AND workspace_key_id IS NULL;
 ```
 
 The KEK id is logged at startup. A key wrapped by a KEK the server does not
 have fails the read with a 500; it is never shown as withdrawn.
 
-**Backups.** A database backup taken before a withdrawal still holds that
-message's key. Anyone with that backup and the KEK can read the words. Keep the
+**Backups.** A database backup taken before a withdrawal or an erasure still
+holds those keys. Anyone with that backup and the instance KEK can read the
+words. Keep the
 KEK out of data backups, and expire backups within your erasure deadline.
 
 **Artifacts.** Artifacts are deduplicated across workspaces. `DELETE

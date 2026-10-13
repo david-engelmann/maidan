@@ -2719,11 +2719,21 @@ pub trait EventStore: Send + Sync {
         event: &Event,
         origin: PeerId,
     ) -> Result<StoredEvent, StoreError>;
-    /// Re-wrap up to `limit` content keys still wrapped by a previous KEK under
-    /// the primary one. Returns how many were re-wrapped; `0` means done.
+    /// One batch of moving keys to where they belong: workspace keys under the
+    /// primary instance KEK, data keys under their workspace's active key, and
+    /// retired workspace keys destroyed once nothing needs them. Returns how
+    /// many rows changed; `0` means done.
     async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError>;
-    /// Live content keys not yet wrapped by the primary KEK.
+    /// Rows [`Self::rewrap_content_keys`] has still to change.
     async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
+    /// Retire the workspace's key and make a new one. The workspace's data keys
+    /// move to it on the next [`Self::rewrap_content_keys`] passes, which then
+    /// destroy the retired key; no sealed message is rewritten. Returns the
+    /// retired key's id, if the workspace had one, and the new key's.
+    async fn rotate_workspace_key(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<(Option<uuid::Uuid>, uuid::Uuid), StoreError>;
     async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError>;
     /// A thread's events with `id <= through_id`, in `id` order — the immutable
     /// substrate for as-of context replay.

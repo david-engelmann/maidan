@@ -8,12 +8,17 @@
 //! - `message_tombstoned`: the key is shredded in the same transaction, along
 //!   with queued deliveries that copied the words.
 //!
+//! A new data key is wrapped by its workspace's key, which the append opens or
+//! creates in the same transaction (see [`maidan_types::ContentKeyring`] for
+//! the hierarchy).
+//!
 //! A subject once shredded stays shredded: a later event about it is sealed
 //! under a throwaway key, never under a new live one, and an event that
 //! arrives by federation already sealed (its origin shredded it) shreds here.
 
 use maidan_types::{
-    content_subject, seal_payload, ContentKey, ContentKeyring, Event, PeerId, WrappedKey,
+    content_subject, parse_workspace_kek_id, seal_payload, ContentKey, ContentKeyring, Event,
+    PeerId, WrappedKey,
 };
 use uuid::Uuid;
 
@@ -97,8 +102,11 @@ pub(crate) struct Decision {
     seal_with: Option<(ContentKey, bool)>,
 }
 
+/// `workspace_key` is the workspace's active key, open in `keys`; a new data
+/// key is wrapped by it, so it is required when the subject has no key yet.
 pub(crate) fn decide(
     keys: &ContentKeyring,
+    workspace_key: Option<Uuid>,
     subject: Uuid,
     state: KeyState,
     arrived_shredded: bool,
@@ -116,8 +124,11 @@ pub(crate) fn decide(
     }
     Ok(match state {
         KeyState::Absent => {
+            let workspace_key = workspace_key.ok_or_else(|| {
+                StoreError::InvalidInput("a new content key needs its workspace's key".into())
+            })?;
             let key = ContentKey::generate();
-            let wrapped = keys.wrap(subject, &key)?;
+            let wrapped = keys.wrap_for_workspace(workspace_key, subject, &key)?;
             Decision {
                 write: Write::Insert(Some(wrapped)),
                 seal_with: Some((key, true)),
@@ -171,6 +182,42 @@ pub(crate) fn require(keys: Option<&ContentKeyring>) -> Result<&ContentKeyring, 
     })
 }
 
+/// The workspace-key columns a read joins beside a data key (`wk_kek_id` and
+/// `wk_wrapped`, from `maidan_workspace_keys wk ON wk.id = k.workspace_key_id`),
+/// so the data key can be opened without a second query.
+#[derive(Debug, Default)]
+pub(crate) struct JoinedWorkspaceKey {
+    pub(crate) kek_id: Option<String>,
+    pub(crate) blob: Option<Vec<u8>>,
+}
+
+/// Open the workspace key a data key's `kek_id` names, from the columns a read
+/// joined beside it. A data key an instance KEK wrapped needs nothing opened.
+/// One whose workspace key row is gone or destroyed does not open, whatever
+/// this process still holds in memory: the row is the truth.
+pub(crate) fn open_joined(
+    keys: &ContentKeyring,
+    kek_id: &str,
+    joined: JoinedWorkspaceKey,
+) -> Result<(), StoreError> {
+    let Some(workspace_key) = parse_workspace_kek_id(kek_id) else {
+        return Ok(());
+    };
+    match (joined.kek_id, joined.blob) {
+        (Some(wrapping), Some(blob)) => {
+            keys.open_workspace_key(
+                workspace_key,
+                &WrappedKey {
+                    kek_id: wrapping,
+                    blob,
+                },
+            )?;
+            Ok(())
+        }
+        _ => Err(maidan_types::SealError::UnknownKek(kek_id.to_string()).into()),
+    }
+}
+
 /// Unwrap the key a read joined beside an event. `None` when the event has no
 /// key or the key was shredded.
 pub(crate) fn unwrap_joined(
@@ -178,9 +225,11 @@ pub(crate) fn unwrap_joined(
     subject: Option<Uuid>,
     kek_id: Option<String>,
     blob: Option<Vec<u8>>,
+    joined: JoinedWorkspaceKey,
 ) -> Result<Option<ContentKey>, StoreError> {
     match (keys, subject, kek_id, blob) {
         (Some(keys), Some(subject), Some(kek_id), Some(blob)) => {
+            open_joined(keys, &kek_id, joined)?;
             Ok(Some(keys.unwrap(subject, &WrappedKey { kek_id, blob })?))
         }
         _ => Ok(None),
@@ -191,25 +240,61 @@ pub(crate) fn unwrap_joined(
 mod tests {
     use super::*;
 
-    fn keys() -> ContentKeyring {
-        ContentKeyring::new([4; 32], Vec::new())
+    /// A keyring with one open workspace key.
+    fn keys() -> (ContentKeyring, Uuid) {
+        let keys = ContentKeyring::new([4; 32], Vec::new());
+        let workspace_key = Uuid::now_v7();
+        keys.wrap_workspace_key(workspace_key, &ContentKey::generate())
+            .unwrap();
+        (keys, workspace_key)
     }
 
     #[test]
-    fn a_first_seal_creates_a_live_key() {
+    fn a_first_seal_creates_a_live_key_under_the_workspace_key() {
+        let (keys, workspace_key) = keys();
         let subject = Uuid::now_v7();
-        let d = decide(&keys(), subject, KeyState::Absent, false).unwrap();
+        let d = decide(&keys, Some(workspace_key), subject, KeyState::Absent, false).unwrap();
         let Write::Insert(Some(wrapped)) = &d.write else {
             panic!("expected a live insert, got {:?}", d.write);
         };
+        assert_eq!(
+            wrapped.kek_id,
+            maidan_types::workspace_kek_id(workspace_key)
+        );
         let (key, live) = d.seal_with.as_ref().unwrap();
         assert!(live);
-        assert_eq!(&keys().unwrap(subject, wrapped).unwrap(), key);
+        assert_eq!(&keys.unwrap(subject, wrapped).unwrap(), key);
+    }
+
+    #[test]
+    fn a_data_key_under_one_workspace_key_does_not_open_under_another() {
+        let (keys, mine) = keys();
+        let theirs = Uuid::now_v7();
+        keys.wrap_workspace_key(theirs, &ContentKey::generate())
+            .unwrap();
+        let subject = Uuid::now_v7();
+        let wrapped = keys
+            .wrap_for_workspace(mine, subject, &ContentKey::generate())
+            .unwrap();
+        // The same bytes, claimed to be under the other workspace's key.
+        let moved = WrappedKey {
+            kek_id: maidan_types::workspace_kek_id(theirs),
+            blob: wrapped.blob,
+        };
+        assert!(keys.unwrap(subject, &moved).is_err());
     }
 
     #[test]
     fn a_shredded_subject_is_sealed_under_a_throwaway_key() {
-        let d = decide(&keys(), Uuid::now_v7(), KeyState::Shredded, false).unwrap();
+        let (keys, workspace_key) = keys();
+        let d = decide(
+            &keys,
+            Some(workspace_key),
+            Uuid::now_v7(),
+            KeyState::Shredded,
+            false,
+        )
+        .unwrap();
         assert!(matches!(d.write, Write::Nothing));
         assert!(!d.seal_with.as_ref().unwrap().1);
         let mut payload = serde_json::json!({
@@ -223,13 +308,14 @@ mod tests {
 
     #[test]
     fn an_event_that_arrives_shredded_shreds_here() {
-        let wrapped = keys().wrap(Uuid::nil(), &ContentKey::generate()).unwrap();
+        let (keys, workspace_key) = keys();
+        let wrapped = keys.wrap(Uuid::nil(), &ContentKey::generate()).unwrap();
         for (state, expected) in [
             (KeyState::Absent, "insert-shredded"),
             (KeyState::Live(wrapped), "shred"),
             (KeyState::Shredded, "nothing"),
         ] {
-            let d = decide(&keys(), Uuid::nil(), state, true).unwrap();
+            let d = decide(&keys, Some(workspace_key), Uuid::nil(), state, true).unwrap();
             let got = match d.write {
                 Write::Insert(None) => "insert-shredded",
                 Write::Shred => "shred",

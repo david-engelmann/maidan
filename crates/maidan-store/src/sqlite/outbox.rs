@@ -51,10 +51,11 @@ pub async fn claim_pending(
     }
     let placeholders = vec!["?"; ids.len()].join(",");
     let sql = format!(
-        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, e.traceparent, e.tracestate
+        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped, e.traceparent, e.tracestate
          FROM maidan_outbox o
          JOIN maidan_events e ON e.id = o.log_id
          LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
+         LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id
          WHERE o.id IN ({placeholders})
          ORDER BY o.id ASC"
     );
@@ -77,6 +78,10 @@ pub async fn claim_pending(
                     row.get("content_key_id"),
                     row.get("key_kek_id"),
                     row.get("key_wrapped"),
+                    crate::content_keys::JoinedWorkspaceKey {
+                        kek_id: row.get("wk_kek_id"),
+                        blob: row.get("wk_wrapped"),
+                    },
                 )?,
                 trace: maidan_types::TraceContext::from_columns(
                     row.try_get("traceparent").unwrap_or(None),
@@ -93,10 +98,11 @@ pub async fn list_pending(
     limit: i64,
 ) -> Result<Vec<OutboxRow>, StoreError> {
     let rows = sqlx::query(&format!(
-        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, e.traceparent, e.tracestate
+        "SELECT o.id, o.log_id, o.attempts, e.payload, e.content_key_id, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped, e.traceparent, e.tracestate
          FROM maidan_outbox o
          JOIN maidan_events e ON e.id = o.log_id
          LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id
+         LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id
          WHERE {RELAYABLE}
          ORDER BY o.id ASC
          LIMIT ?"
@@ -117,6 +123,10 @@ pub async fn list_pending(
                     row.get("content_key_id"),
                     row.get("key_kek_id"),
                     row.get("key_wrapped"),
+                    crate::content_keys::JoinedWorkspaceKey {
+                        kek_id: row.get("wk_kek_id"),
+                        blob: row.get("wk_wrapped"),
+                    },
                 )?,
                 trace: maidan_types::TraceContext::from_columns(
                     row.try_get("traceparent").unwrap_or(None),
