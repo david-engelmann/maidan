@@ -37,7 +37,7 @@ The next gate is **`maidan-launch-1.0`**, the launch (decided 2026-10-12). A
 waitlist, sign-up through the OIDC front door, a new workspace, an agent
 connected through OAuth from an MCP client, a task claimed, reviewed and
 closed, and the usage that path metered. The gate passes on the launch
-release, with every row from Next 23 to Next 30 in Open Work closed.
+release, with every row from Next 23 to Next 32 in Open Work closed.
 
 ## Where it is
 
@@ -164,7 +164,9 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
      (Next 27), and abuse controls (Next 28).
    - **Prove.** A validated version (Next 14), the ChatGPT card and the
      connect recipes tested live (Next 17, Next 13), the listing assets and
-     demo instance (Next 12), and the launch polish (Next 30).
+     demo instance (Next 12), the launch polish (Next 30), public `main` naming no
+     internal project (Next 31), and pi's client contract in Maidan's CI
+     (Next 32).
    - **Launch.** The launch release and its surfaces, closed by the
      `maidan-launch-1.0` gate (Next 29).
 
