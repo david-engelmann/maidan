@@ -50,8 +50,9 @@ pub async fn ensure_subscribe_cursor(
 
 /// HTTP backfill for a projector shape: freshness check, then a page of matching
 /// rows. Unfiltered shapes use a single `list_events_after`; filtered shapes
-/// keep paging until `limit` matches or the log ends (never under-fill by
-/// dropping non-matching rows from a single page).
+/// page `list_events_matching` — the channel/thread/kind filters are SQL
+/// predicates over the 0164 index, not rows dropped in Rust — until `limit`
+/// matches or the matching rows end.
 /// With `visible`, only the events that caller may read are returned; paging
 /// continues past hidden rows, so a page is never short while more readable
 /// events remain.
@@ -79,7 +80,14 @@ pub async fn list_events_for_shape(
     let page_size = limit.max(1);
     loop {
         let page = store
-            .list_events_after(shape.workspace_id, after, page_size)
+            .list_events_matching(
+                shape.workspace_id,
+                shape.channel_id,
+                shape.thread_id,
+                &shape.types,
+                after,
+                page_size,
+            )
             .await?;
         if page.is_empty() {
             break;

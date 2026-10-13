@@ -65,6 +65,44 @@ use crate::{
 /// same default origin, which is what `form-action 'self'` allows.
 pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
+/// Every load of the board page or an asset revalidates: `no-cache` lets the
+/// browser keep a copy, and the ETag below turns an unchanged one into a 304
+/// with no body. A max-age would let a browser run cached modules from before a
+/// deploy beside new ones, and the board's ES modules import each other, so a
+/// mixed set can break the page.
+const UI_CACHE_CONTROL: &str = "no-cache";
+
+/// A strong ETag over a static body's bytes, spelled the way the agent
+/// card spells its own: the first 16 bytes of the SHA-256, hex, quoted.
+fn strong_etag(body: &[u8]) -> String {
+    use sha2::Digest as _;
+    format!("\"{}\"", hex::encode(&sha2::Sha256::digest(body)[..16]))
+}
+
+/// Whether an `If-None-Match` header names this ETag (the card's matching
+/// rules: a comma list, weak prefixes tolerated, `*` matches anything).
+fn if_none_match_fresh(headers: &axum::http::HeaderMap, etag: &str) -> bool {
+    headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(',')
+                .map(|t| t.trim().trim_start_matches("W/"))
+                .any(|t| t == "*" || t == etag)
+        })
+}
+
+/// The cache headers a board page or asset answer carries, fresh or 304.
+fn ui_cache_headers(etag: &str) -> [(axum::http::HeaderName, String); 2] {
+    [
+        (
+            axum::http::header::CACHE_CONTROL,
+            UI_CACHE_CONTROL.to_string(),
+        ),
+        (axum::http::header::ETAG, etag.to_string()),
+    ]
+}
+
 /// Build the axum [`Router`] with all routes wired up.
 ///
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
@@ -1024,24 +1062,35 @@ pub fn router(state: AppState) -> Router {
             share_consumer::middleware,
         ));
 
-    async fn ui_index() -> impl axum::response::IntoResponse {
+    async fn ui_index(headers: axum::http::HeaderMap) -> axum::response::Response {
+        use axum::response::IntoResponse as _;
+        const BODY: &str = include_str!("../static/index.html");
+        // The body is a compile-time constant a few dozen kilobytes long;
+        // hashing it per request is noise next to the round trip.
+        let etag = strong_etag(BODY.as_bytes());
+        if if_none_match_fresh(&headers, &etag) {
+            return (
+                axum::http::StatusCode::NOT_MODIFIED,
+                [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+                ui_cache_headers(&etag),
+            )
+                .into_response();
+        }
         (
             [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
-            axum::response::Html(include_str!("../static/index.html")),
+            ui_cache_headers(&etag),
+            axum::response::Html(BODY),
         )
+            .into_response()
     }
 
     // Board modules next to the page. The name must be one of these files.
     // Anything else is a 404. cargo build does not run a bundler.
     async fn ui_asset(
         crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
-    ) -> Result<
-        (
-            [(axum::http::header::HeaderName, &'static str); 2],
-            &'static str,
-        ),
-        axum::http::StatusCode,
-    > {
+        headers: axum::http::HeaderMap,
+    ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        use axum::response::IntoResponse as _;
         let (content_type, body) = match name.as_str() {
             "board.css" => (
                 "text/css; charset=utf-8",
@@ -1117,13 +1166,24 @@ pub fn router(state: AppState) -> Router {
             ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
+        let etag = strong_etag(body.as_bytes());
+        if if_none_match_fresh(&headers, &etag) {
+            return Ok((
+                axum::http::StatusCode::NOT_MODIFIED,
+                [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+                ui_cache_headers(&etag),
+            )
+                .into_response());
+        }
         Ok((
             [
                 (axum::http::header::CONTENT_TYPE, content_type),
                 (axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP),
             ],
+            ui_cache_headers(&etag),
             body,
-        ))
+        )
+            .into_response())
     }
 
     // The agent-facing index (llmstxt.org): how to connect and the work loop,
