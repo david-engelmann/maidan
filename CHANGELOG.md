@@ -88,6 +88,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `GET /.well-known/mcp/server-card.json` serves the MCP server card for catalogs that index servers without connecting first. The card is a projection of what the server already serves — its `serverInfo` and the live `tools/list` catalog — so it cannot drift from the endpoint it describes.
 - **Added:** prepared listing manifests under `listings/` for the MCP registry, the Docker MCP Catalog and the ToolHive catalog, all naming the published `ghcr.io/david-engelmann/maidan-server:v413.0.0` image. Nothing is filed or published. A contract test fails when the Docker catalog's `tools.json` differs from `tools/list`.
 
+### The MCP serverInfo reports the release version
+
+- **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
+
 ### The board's live feed is capped
 
 - **Changed:** the Live panel's raw event feed keeps only its newest 500 lines, dropping the oldest as new events arrive, and each line is appended as a text node. A long live session no longer grows the panel's DOM without bound, and an append no longer re-reads and re-writes every line already shown.
