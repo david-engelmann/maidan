@@ -55,8 +55,67 @@ pub const EVENTS: PartitionedTable = PartitionedTable {
     ],
 };
 
+/// The delivery tables (0166): the retention sweep's terminal-rows set,
+/// each partitioned on the time column its rows stop moving at — creation
+/// for the webhook, automation and outbox logs, last update for mail
+/// (terminal mail no longer updates), failure time for the dead-letter
+/// queue. `maidan_egress_outbox` is not here: its dedup index is global
+/// (see migration 0166). The settings are the event log's: a month should
+/// freeze soon after it fills, and the newest month's statistics go stale
+/// fastest because the relay and the workers read it.
+const DELIVERY_RELOPTIONS: &[&str] = &[
+    "autovacuum_vacuum_scale_factor=0.05",
+    "autovacuum_vacuum_insert_scale_factor=0.05",
+    "autovacuum_analyze_scale_factor=0.02",
+];
+
+/// Webhook deliveries, by the month they were enqueued.
+pub const WEBHOOK_DELIVERIES: PartitionedTable = PartitionedTable {
+    parent: "maidan_webhook_deliveries",
+    key: "created_at",
+    reloptions: DELIVERY_RELOPTIONS,
+};
+
+/// Automation deliveries, by the month they were enqueued.
+pub const AUTOMATION_DELIVERIES: PartitionedTable = PartitionedTable {
+    parent: "maidan_automation_deliveries",
+    key: "created_at",
+    reloptions: DELIVERY_RELOPTIONS,
+};
+
+/// The transactional outbox, by the month a row was enqueued. Retention
+/// cuts it on `published_at`; the drop pass checks each row's
+/// deletability exactly, so the offset between the two columns costs at
+/// most a kept month, never a wrongly dropped row.
+pub const OUTBOX: PartitionedTable = PartitionedTable {
+    parent: "maidan_outbox",
+    key: "created_at",
+    reloptions: DELIVERY_RELOPTIONS,
+};
+
+/// Transactional mail, by the month a row last changed state.
+pub const MAIL_OUTBOX: PartitionedTable = PartitionedTable {
+    parent: "maidan_mail_outbox",
+    key: "updated_at",
+    reloptions: DELIVERY_RELOPTIONS,
+};
+
+/// The agent-work dead-letter queue, by the month a row failed.
+pub const AGENT_WORK_DLQ: PartitionedTable = PartitionedTable {
+    parent: "maidan_agent_work_dlq",
+    key: "failed_at",
+    reloptions: DELIVERY_RELOPTIONS,
+};
+
 /// Every partitioned table [`maintain`] looks after.
-pub const TABLES: &[&PartitionedTable] = &[&EVENTS];
+pub const TABLES: &[&PartitionedTable] = &[
+    &EVENTS,
+    &WEBHOOK_DELIVERIES,
+    &AUTOMATION_DELIVERIES,
+    &OUTBOX,
+    &MAIL_OUTBOX,
+    &AGENT_WORK_DLQ,
+];
 
 /// One partition of a [`PartitionedTable`].
 #[derive(Debug, Clone, PartialEq, Eq)]

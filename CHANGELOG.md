@@ -73,6 +73,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** the token and revocation endpoints answer client errors as RFC 6749 errors (`invalid_request`, `invalid_client`, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope`, and RFC 8707's `invalid_target`) instead of problems, since OAuth clients parse that envelope.
 - **Changed:** authorize and token requests must name `resource`, the MCP endpoint under `MAIDAN_PUBLIC_ORIGIN`, and an OAuth access token is accepted on `/mcp/streamable` only. Every other route, `/mcp` included, answers it with 401 and `invalid_token`, and it cannot be exchanged for a browser session. Without `MAIDAN_PUBLIC_ORIGIN` the authorize, token and revocation endpoints answer 404. The RFC 8414 document lists the refresh grant, the revocation endpoint and the three client authentication methods.
 
+### The delivery tables are partitioned by month
+
+- **Changed:** the Postgres delivery tables are range-partitioned by calendar month (migration 0166), the way the event log is (0162): webhook and automation deliveries and the outbox by `created_at`, mail by `updated_at`, the dead-letter queue by `failed_at`. `prune_deliveries` drops a month whole when every row in it is one the batched delete would take, and deletes inside the rest. The egress outbox is deliberately not partitioned — its dedup index is global, and a partition key inside it would weaken enqueue idempotency to per-month — and neither is `maidan_result_deliveries`, an updated-in-place state table retention never age-prunes. SQLite keeps one table each.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
