@@ -91,6 +91,13 @@ pub fn delivery_body(
             github_result_comment_body(thread_id, &inner, backlink)
         }
         EgressTarget::Slack { .. } => slack_body(&inner),
+        EgressTarget::Linear { .. } => crate::egress_body::linear_result_comment_body(
+            &inner,
+            waiter
+                .is_reviewed()
+                .then_some(waiter.view_url.as_deref())
+                .flatten(),
+        ),
         // The commit and pull request are built from the envelope at send
         // time; this is only what the outbox row says it carries.
         EgressTarget::GithubBranch { repo, branch } => {
@@ -168,7 +175,7 @@ fn reviewed_body(
 ) -> String {
     let backlink = waiter.view_url.as_deref();
     match target {
-        EgressTarget::Github { .. } => {
+        EgressTarget::Github { .. } | EgressTarget::Linear { .. } => {
             let mut rendered = waiter.rendered.clone().unwrap_or_default();
             if let Some(pr) = &waiter.pr {
                 if !rendered.is_empty() {
@@ -376,13 +383,26 @@ fn no_change_reason(target: &EgressTarget, waiter: &WaiterResult) -> Option<Stri
     })
 }
 
-/// The Slack reply to a change result, which reports what happened on GitHub.
+/// The reply to a change result, which reports what happened on GitHub. A
+/// Slack thread and a Linear issue both get it.
 pub enum ChangeReply {
     /// Not a change result: the ordinary body applies.
     NotAChange,
     /// A branch delivery for this result has not finished yet.
     Waiting,
+    /// The reply as plain text; each surface escapes it its own way
+    /// ([`slack_reply_body`], [`linear_reply_body`]).
     Ready(String),
+}
+
+/// A change reply as a Slack message.
+pub fn slack_reply_body(reply: &str) -> String {
+    slack_body(reply)
+}
+
+/// A change reply as a Linear comment.
+pub fn linear_reply_body(reply: &str) -> String {
+    crate::egress_body::linear_result_comment_body(reply, None)
 }
 
 /// How long a change's Slack reply waits for its branch delivery. The branch's
@@ -414,7 +434,7 @@ fn compact_reason(reason: &str) -> String {
     cut
 }
 
-/// Build the Slack reply to a [`CHANGE_RESULT_KIND`] from its
+/// Build the reply to a [`CHANGE_RESULT_KIND`] from its
 /// `github_branch` deliveries: the commit and pull request when one landed,
 /// the recorded reason when it did not, and the status alone when the producer reported
 /// anything other than `changed`.
@@ -448,7 +468,7 @@ pub async fn change_reply_at(
         if let Some(reason) = change.error_detail.as_deref().or(change.summary.as_deref()) {
             lines.push(compact_reason(reason));
         }
-        return ChangeReply::Ready(slack_body(&lines.join("\n")));
+        return ChangeReply::Ready(lines.join("\n"));
     }
     let gave_up = now - stored.produced_at > CHANGE_REPLY_MAX_WAIT;
     let unsettled = |repo: &str, branch: &str| {
@@ -503,7 +523,7 @@ pub async fn change_reply_at(
     if lines.is_empty() {
         lines.push("The result named no `github_branch` target, so nothing was committed.".into());
     }
-    ChangeReply::Ready(slack_body(&lines.join("\n")))
+    ChangeReply::Ready(lines.join("\n"))
 }
 
 async fn skip_routable(

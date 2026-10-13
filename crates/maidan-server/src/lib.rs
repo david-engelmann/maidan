@@ -53,6 +53,7 @@ pub mod health;
 pub mod idempotency;
 pub mod import;
 pub mod land_gate_advisor;
+pub mod linear;
 pub mod load_shed;
 pub mod mail;
 pub mod mail_worker;

@@ -1504,7 +1504,9 @@ egress allowlist. GitHub receives `rendered`; Slack receives `summary`; a
 re-review updates the same comment or message; a Slack target with `thread_ts`
 replies in that thread. A `pi.change.result/1` aimed at a `github_branch` target
 is committed to the branch and opened as a draft pull request (the change flow
-in Result Delivery). Empty `deliver_to` is valid
+in Result Delivery). A `linear` target comments on the Linear issue, with the
+draft pull request once it opens, and can move the issue to a workflow state;
+the blessing is the issue's team, by id. Empty `deliver_to` is valid
 (thread-only). Confirm where it landed with `list_result_deliveries` /
 `GET /threads/:id/deliveries`. The grammar is frozen — see
 [Result Delivery](Result%20Delivery.md).
