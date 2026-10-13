@@ -10,6 +10,13 @@ use crate::hit::SearchHit;
 /// Default semantic weight for hybrid fusion (`0.5` = equal parts).
 pub const DEFAULT_HYBRID_WEIGHT: f64 = 0.5;
 
+/// How much deeper than the requested limit [`crate::Search::hybrid_search`]
+/// fetches each side before fusing. Fusing two lists already truncated to
+/// the final limit caps the union at what either side happened to surface;
+/// a document solidly mid-list on both sides — whose combined score would
+/// beat a one-sided top hit — would never be ranked at all.
+pub const HYBRID_FETCH_DEPTH: i64 = 4;
+
 /// Fuse normalized lexical and semantic results into one ranking by a weighted
 /// sum of their `[0, 1]` scores: `combined = weight*semantic + (1-weight)*lexical`.
 /// A result present in only one side contributes `0` on the other. `weight` is
