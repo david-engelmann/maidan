@@ -28,6 +28,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** attachments, screenshots and recordings that nothing in their workspace references expire after `MAIDAN_RETENTION_MEDIA_DAYS` (default 30, `0` or `off` keeps media) or the workspace's own shorter `media_days`. A live thread linking the sha, or a live message naming it in its metadata, keeps it. The age counts from the workspace's latest upload of the bytes, so uploading them again restarts it (`maidan_artifact_refs.last_uploaded_at`). An expired copy is erased as `DELETE /artifacts/{sha}` erases it, audited as `artifact.expire` with no actor, and its bytes go with the last workspace's reference. A held workspace keeps everything. Transcripts, code dumps and context snapshots are never expired.
 - **Added:** a per-workspace media quota, `MAIDAN_MEDIA_QUOTA_BYTES` (default 20 GiB, `0` or `off` lifts it) or the workspace's own lower `media_quota_bytes`. A REST media upload past it is refused with a `409` `media-quota-exceeded` problem carrying `used_bytes`, `quota_bytes` and `upload_bytes`. Over MCP it is a JSON-RPC invalid-params error whose message names the same three numbers. Bytes the workspace already holds cost nothing, and uploads at the same moment can overshoot slightly.
 - **Changed:** `PUT /workspaces/{wid}/retention` and MCP `set_retention_policy` take `media_days` and `media_quota_bytes` (migration 0170), each held to the instance's.
+- **Changed:** the board page (`/ui`, `/ui/`) and the `/ui/static/*` assets carry a strong `ETag` and `Cache-Control: no-cache`, so every load revalidates. A revalidation with a current `If-None-Match` answers `304` with no body, so repeat board loads stop re-downloading the page and its modules, and a deploy never leaves a browser running cached modules beside new ones.
 
 ### OAuth discovery (phase three, first half)
 
@@ -59,6 +60,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Boot reads the applied migrations once
 
 - **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
+
+### The notices query seeks to its rows
+
+- **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
 
 ### OAuth refresh, revocation and resource binding (phase three, second half)
 
