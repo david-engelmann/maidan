@@ -451,10 +451,14 @@ async fn maintenance_keeps_months_ahead_and_moves_rows_out_of_default() {
         0
     );
 
-    // Four months on, months 4 to 7 are created, and month 6 takes the row
-    // DEFAULT held for it, with its outbox row (a move is not a delete).
+    // Four months on, months 4 to 7 are created for every partitioned table,
+    // and month 6 takes the row DEFAULT held for it, with its outbox row (a
+    // move is not a delete).
     let later = month(4) + days(1);
-    assert_eq!(pg.store.maintain_partitions(later).await.expect("later"), 4);
+    assert_eq!(
+        pg.store.maintain_partitions(later).await.expect("later"),
+        4 * partitions::TABLES.len() as u64
+    );
     assert_eq!(home(&pg.pool, far).await, partition_name(&EVENTS, month(6)));
     assert_eq!(outbox_log_ids(&pg.pool).await, vec![far]);
     let in_default: i64 = sqlx::query_scalar("SELECT count(*) FROM maidan_events_default")

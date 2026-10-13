@@ -21,11 +21,16 @@ use std::path::{Path, PathBuf};
 /// - `partition_event_log` (Postgres only): range-partitions `maidan_events` by
 ///   month (0162) so retention can drop a month instead of deleting its rows.
 ///   SQLite has no table partitioning; its event log stays one table.
+/// - `partition_audit_log` (Postgres only): the same for `maidan_audit` (0165).
 /// - `share_ticket_expiry_precision` (SQLite only): rebuilds the share-ticket
 ///   table so its expiry CHECK compares `julianday()` instead of whole-second
 ///   `datetime()`. Postgres compares `timestamptz` values at full precision
 ///   already, so it has nothing to change.
-const POSTGRES_ONLY_MIGRATIONS: &[&str] = &["outbox_quarantine", "partition_event_log"];
+const POSTGRES_ONLY_MIGRATIONS: &[&str] = &[
+    "outbox_quarantine",
+    "partition_audit_log",
+    "partition_event_log",
+];
 const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 
 /// Store modules that legitimately exist for only one backend.

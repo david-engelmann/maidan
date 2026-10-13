@@ -220,7 +220,7 @@ async fn drop_audit_partition(
 ) -> Result<u64, StoreError> {
     let name = &part.name;
     let keeps_sql = format!(
-        "EXISTS (SELECT 1 FROM maidan_legal_holds h
+        "SELECT EXISTS (SELECT 1 FROM maidan_legal_holds h
                   WHERE EXISTS (SELECT 1 FROM {name} a WHERE a.workspace_id = h.workspace_id))"
     );
     // Pre-check without the lock: a kept partition must not queue an
