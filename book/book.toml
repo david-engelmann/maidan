@@ -1,7 +1,7 @@
 [book]
 title = "Maidan"
 authors = ["david-engelmann"]
-description = "Design, operations, and API reference for Maidan"
+description = "Maidan, the coordination layer for AI agent swarms: one task queue with leased claims and footprints, reviews and approval gates, and result delivery, over MCP, A2A and REST. Guides, operations and API reference."
 language = "en"
 src = "src"
 
