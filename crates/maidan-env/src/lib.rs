@@ -228,6 +228,7 @@ pub const TOLERATED_ENV: &[&str] = &[
     "MAIDAN_WORKSPACE_NAME",
     "MAIDAN_WRITE_LEXICON",
     "MAIDAN_WRITE_PORTABLE_GOLDENS",
+    "MAIDAN_WRITE_SNAPSHOTS",
 ];
 
 /// A `MAIDAN_*` variable the server does not know, with the known name it is
