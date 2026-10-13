@@ -88,7 +88,7 @@
             }
           }
         },
-        "description": "The request body exceeds the server's body-size limit (`MAIDAN_MAX_BODY_BYTES`)."
+        "description": "The request body exceeds the server's body-size limit (`MAIDAN_MAX_BODY_BYTES`, or `MAIDAN_ARTIFACT_MAX_BODY_BYTES` for an artifact upload)."
       },
       "TooManyRequests": {
         "content": {
