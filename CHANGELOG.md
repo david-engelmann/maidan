@@ -55,6 +55,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** the database client was built without TLS, so a `DATABASE_URL` with `sslmode=require`, which every managed Postgres needs (Neon, PlanetScale, RDS, Cloud SQL), failed with "SQLx was built without TLS support" before reaching the server. `sqlx` now carries rustls with bundled Mozilla roots (`tls-rustls-ring-webpki`), which needs no system certificate store, so it works on the distroless image. Verified by booting Maidan against Neon Postgres 17: every migration applied, `/health/ready` 200. `tests/postgres_tls.rs` pins that the TLS client is compiled in.
 
+### Boot reads the applied migrations once
+
+- **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
+
 ### The MCP server card and the catalog listing manifests
 
 - **Added:** `GET /.well-known/mcp/server-card.json` serves the MCP server card for catalogs that index servers without connecting first. The card is a projection of what the server already serves — its `serverInfo` and the live `tools/list` catalog — so it cannot drift from the endpoint it describes.
