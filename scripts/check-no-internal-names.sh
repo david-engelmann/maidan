@@ -17,8 +17,19 @@ while IFS= read -r line; do
 done < "$list"
 [[ "${#names[@]}" -gt 0 ]] || { echo "internal names: $list names nothing" >&2; exit 1; }
 
-pattern="$(IFS='|'; echo "${names[*]}")"
-hits="$(git grep -inIE "$pattern" -- . ":(exclude)${list}" || true)"
+# One -e per name, matched literally (-F): a name is a name, not a pattern,
+# so a dot or a bracket in one cannot widen or break the match.
+args=()
+for name in "${names[@]}"; do args+=(-e "$name"); done
+# Only exit 1 means "no matches". Anything higher is the scan itself
+# failing (a bad pathspec, no work tree), and a check that fails open is
+# worse than no check, so refuse to pass.
+status=0
+hits="$(git grep -inIF "${args[@]}" -- . ":(exclude)${list}")" || status=$?
+if [[ $status -gt 1 ]]; then
+  echo "internal names: the scan failed (git grep exited $status); refusing to pass" >&2
+  exit 1
+fi
 if [[ -n "$hits" ]]; then
   echo "internal names: the public tree names an internal project again:" >&2
   echo "$hits" >&2
