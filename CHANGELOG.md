@@ -61,6 +61,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
 
+### The notices query seeks to its rows
+
+- **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
