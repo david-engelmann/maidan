@@ -276,7 +276,8 @@ impl AppState {
                 search.clone(),
                 embedding_provider.clone(),
             )
-            .with_event_bus(bus.clone()),
+            .with_event_bus(bus.clone())
+            .with_server_version(crate::version()),
         );
         mcp.attach_presence_reader(presence.clone());
         let slash = SlashRuntime::new(None);

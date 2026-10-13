@@ -65,6 +65,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
 
+### The MCP serverInfo reports the release version
+
+- **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
