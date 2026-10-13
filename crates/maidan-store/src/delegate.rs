@@ -3228,6 +3228,13 @@ macro_rules! store_delegations {
                 content_keys::count_needing_rewrap(self.pool(), &self.keys).await
             }
 
+            async fn rotate_workspace_key(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<(Option<uuid::Uuid>, uuid::Uuid), StoreError> {
+                content_keys::rotate_workspace_key(self.pool(), &self.keys, workspace_id.0).await
+            }
+
             async fn get_stored_event(&self, log_id: i64) -> Result<StoredEvent, StoreError> {
                 events::get_by_id(self.pool(), &self.keys, log_id).await
             }

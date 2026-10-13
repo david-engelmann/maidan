@@ -62,6 +62,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** the database client was built without TLS, so a `DATABASE_URL` with `sslmode=require`, which every managed Postgres needs (Neon, PlanetScale, RDS, Cloud SQL), failed with "SQLx was built without TLS support" before reaching the server. `sqlx` now carries rustls with bundled Mozilla roots (`tls-rustls-ring-webpki`), which needs no system certificate store, so it works on the distroless image. Verified by booting Maidan against Neon Postgres 17: every migration applied, `/health/ready` 200. `tests/postgres_tls.rs` pins that the TLS client is compiled in.
 
+### Each workspace's message keys are wrapped by a key of its own
+
+- **Security:** message keys were all wrapped by the one instance KEK. Each workspace now has its own key (migration 0167, both backends), wrapped by the instance KEK, and the workspace's message keys are wrapped by it. One workspace's key opens nothing of another's, erasing or purging a workspace deletes its keys, and an operator holding the database alone still opens nothing. A server keeps a workspace key in memory for at most five minutes, and only while its stored row matches what it opened. Message keys written before this stay readable and move under their workspace's key on the next start.
+- **Added:** `maidan rotate-workspace-key --workspace-id <id>` retires a workspace's key, moves its message keys to a new one, destroys the old key and audits `workspace_key.rotate`, without rewriting a sealed message. An instance KEK rotation now rewraps one row per workspace rather than one per message.
+- **Tests:** `crypto_shredding` on both backends covers:
+  - a two-tenant check that a message key pointed at the other workspace's key opens nothing;
+  - a second process opening both workspaces from the rows alone;
+  - a pre-0167 key moving under its workspace's key;
+  - a rotation that moves only its workspace's keys and leaves the sealed bytes unchanged;
+  - erasure deleting the key.
+
+  The CLI rotation is tested end to end.
+
 ### Boot reads the applied migrations once
 
 - **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
@@ -91,6 +104,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### The MCP serverInfo reports the release version
 
 - **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
+
+### Hybrid search ranks a deeper candidate pool
+
+- **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)
 
 ### The board's live feed is capped
 

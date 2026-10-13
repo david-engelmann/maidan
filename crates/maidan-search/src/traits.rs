@@ -85,11 +85,13 @@ pub trait Search: Send + Sync {
     }
 
     /// Hybrid lexical+semantic ranking: run both surfaces and fuse their
-    /// normalized `[0, 1]` scores via [`crate::score::fuse_hybrid`]. `weight`
-    /// is the semantic weight in `[0, 1]`; the caller supplies the query's
-    /// `embedding` (the provider does the embedding). The default composes the
-    /// existing `search_messages` + `semantic_search`, so both backends inherit
-    /// it.
+    /// normalized scores via [`crate::score::fuse_hybrid`]. `weight` is the
+    /// semantic weight in `[0, 1]`; the caller supplies the query's
+    /// `embedding` (the provider does the embedding). Each surface is
+    /// fetched [`crate::score::HYBRID_FETCH_DEPTH`] times deeper than
+    /// `limit`, so the fusion ranks a union wider than the page it returns.
+    /// The default composes the existing `search_messages` +
+    /// `semantic_search`, so both backends inherit it.
     async fn hybrid_search(
         &self,
         workspace_id: WorkspaceId,
@@ -100,11 +102,16 @@ pub trait Search: Send + Sync {
         model: &str,
         weight: f64,
     ) -> Result<Vec<SearchHit>, SearchError> {
+        let fetch = if limit > 0 {
+            limit.saturating_mul(crate::score::HYBRID_FETCH_DEPTH)
+        } else {
+            limit
+        };
         let lexical = self
-            .search_messages(workspace_id, query, limit, filters)
+            .search_messages(workspace_id, query, fetch, filters)
             .await?;
         let semantic = self
-            .semantic_search(workspace_id, embedding, limit, filters, model)
+            .semantic_search(workspace_id, embedding, fetch, filters, model)
             .await?;
         Ok(crate::score::fuse_hybrid(
             lexical,
