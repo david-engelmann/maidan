@@ -64,6 +64,87 @@ impl Db {
     }
 }
 
+impl Db {
+    /// The content key an event is sealed under.
+    async fn subject_of(&self, log_id: i64) -> Uuid {
+        let sql = "SELECT content_key_id FROM maidan_events WHERE id = ?";
+        match self {
+            Db::Sqlite(pool) => sqlx::query_scalar(sql).bind(log_id).fetch_one(pool).await,
+            Db::Pg(pool) => {
+                sqlx::query_scalar(&sql.replace('?', "$1"))
+                    .bind(log_id)
+                    .fetch_one(pool)
+                    .await
+            }
+        }
+        .unwrap()
+    }
+
+    /// A data key's row: the key that wraps it, its wrapped bytes, and its
+    /// workspace key.
+    async fn key_row(&self, subject: Uuid) -> (String, Vec<u8>, Option<Uuid>) {
+        let sql =
+            "SELECT kek_id, wrapped_key, workspace_key_id FROM maidan_content_keys WHERE id = ?";
+        match self {
+            Db::Sqlite(pool) => sqlx::query_as(sql).bind(subject).fetch_one(pool).await,
+            Db::Pg(pool) => {
+                sqlx::query_as(&sql.replace('?', "$1"))
+                    .bind(subject)
+                    .fetch_one(pool)
+                    .await
+            }
+        }
+        .unwrap()
+    }
+
+    /// Point a data key's row at another wrapping, as a database writer could.
+    async fn set_key_row(
+        &self,
+        subject: Uuid,
+        kek_id: &str,
+        blob: &[u8],
+        workspace_key: Option<Uuid>,
+    ) {
+        let sql = "UPDATE maidan_content_keys SET kek_id = ?, wrapped_key = ?, workspace_key_id = ? WHERE id = ?";
+        match self {
+            Db::Sqlite(pool) => sqlx::query(sql)
+                .bind(kek_id)
+                .bind(blob)
+                .bind(workspace_key)
+                .bind(subject)
+                .execute(pool)
+                .await
+                .map(|_| ()),
+            Db::Pg(pool) => sqlx::query(
+                "UPDATE maidan_content_keys SET kek_id = $1, wrapped_key = $2, workspace_key_id = $3 WHERE id = $4",
+            )
+            .bind(kek_id)
+            .bind(blob)
+            .bind(workspace_key)
+            .bind(subject)
+            .execute(pool)
+            .await
+            .map(|_| ()),
+        }
+        .unwrap()
+    }
+
+    /// A workspace key's row: whether it is retired, and whether destroyed.
+    async fn workspace_key_state(&self, id: Uuid) -> (bool, bool) {
+        let sql = "SELECT retired_at IS NOT NULL, destroyed_at IS NOT NULL FROM maidan_workspace_keys WHERE id = ?";
+        match self {
+            Db::Sqlite(pool) => sqlx::query_as(sql).bind(id).fetch_one(pool).await,
+            Db::Pg(pool) => {
+                sqlx::query_as(&sql.replace('?', "$1"))
+                    .bind(id)
+                    .fetch_one(pool)
+                    .await
+            }
+        }
+        .unwrap()
+    }
+}
+
 async fn sqlite() -> Db {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -490,6 +571,9 @@ async fn workspace_purge_destroys_its_content_keys(db: Db) {
     let keys_sql = "SELECT COUNT(*) FROM maidan_content_keys WHERE workspace_id = ?";
     assert_eq!(db.count(keys_sql, room.ws.id.0).await, 0);
     assert_eq!(db.count(keys_sql, other.ws.id.0).await, 1);
+    let workspace_keys = "SELECT COUNT(*) FROM maidan_workspace_keys WHERE workspace_id = ?";
+    assert_eq!(db.count(workspace_keys, room.ws.id.0).await, 0);
+    assert_eq!(db.count(workspace_keys, other.ws.id.0).await, 1);
     let bystander = store.get_stored_event(bystander.id).await.unwrap();
     assert_eq!(
         message_of(&bystander.opened_event().unwrap()).body,
@@ -1000,6 +1084,139 @@ async fn the_residue_check_finds_words_a_withdrawal_left(db: Db) {
     );
 }
 
+async fn body_of(store: &dyn Store, log_id: i64) -> String {
+    let read = store.get_stored_event(log_id).await.unwrap();
+    message_of(&read.opened_event().unwrap()).body.clone()
+}
+
+/// Two workspaces, two keys: each workspace's data keys are wrapped by its
+/// own key, another process with the instance KEK opens both from the rows
+/// alone, and a data key pointed at the other workspace's key opens nothing.
+async fn each_workspace_seals_under_its_own_key(db: Db) {
+    let store = db.store(kek(1));
+    let a = room(store.as_ref(), "tenant-a").await;
+    let b = room(store.as_ref(), "tenant-b").await;
+    let (_, in_a) = post(store.as_ref(), &a, "words of a").await;
+    let (_, in_b) = post(store.as_ref(), &b, "words of b").await;
+
+    let (a_kek, _, a_key) = db.key_row(db.subject_of(in_a.id).await).await;
+    let (b_kek, _, b_key) = db.key_row(db.subject_of(in_b.id).await).await;
+    let (a_key, b_key) = (a_key.unwrap(), b_key.unwrap());
+    assert_ne!(a_key, b_key, "each workspace has its own key");
+    assert_eq!(a_kek, workspace_kek_id(a_key));
+    assert_eq!(b_kek, workspace_kek_id(b_key));
+
+    // A second replica holds nothing in memory and opens both from the rows.
+    let replica = db.store(kek(1));
+    assert_eq!(body_of(replica.as_ref(), in_a.id).await, "words of a");
+    assert_eq!(body_of(replica.as_ref(), in_b.id).await, "words of b");
+
+    // A's data key, claimed to be under B's key, does not open.
+    let subject = db.subject_of(in_a.id).await;
+    let (_, blob, _) = db.key_row(subject).await;
+    db.set_key_row(subject, &workspace_kek_id(b_key), &blob, Some(b_key))
+        .await;
+    for reader in [&store, &replica, &db.store(kek(1))] {
+        assert!(matches!(
+            reader.get_stored_event(in_a.id).await,
+            Err(StoreError::ContentKey(_))
+        ));
+    }
+    assert_eq!(body_of(replica.as_ref(), in_b.id).await, "words of b");
+}
+
+/// A data key the instance KEK wrapped directly, as every key was before
+/// workspace keys, still opens, and the rewrap pass moves it under its
+/// workspace's key.
+async fn a_key_from_before_workspace_keys_moves_under_its_workspace_key(db: Db) {
+    let keys = kek(1);
+    let store = db.store(keys.clone());
+    let room = room(store.as_ref(), "legacy").await;
+    let (_, posted) = post(store.as_ref(), &room, WORDS).await;
+    let subject = db.subject_of(posted.id).await;
+    let data_key = posted.content_key.clone().unwrap();
+    let legacy = keys.wrap(subject, &data_key).unwrap();
+    db.set_key_row(subject, &legacy.kek_id, &legacy.blob, None)
+        .await;
+
+    assert_eq!(body_of(db.store(kek(1)).as_ref(), posted.id).await, WORDS);
+    assert_eq!(store.content_keys_needing_rewrap().await.unwrap(), 1);
+    assert_eq!(store.rewrap_content_keys(100).await.unwrap(), 1);
+    assert_eq!(store.rewrap_content_keys(100).await.unwrap(), 0);
+    let (kek_id, _, workspace_key) = db.key_row(subject).await;
+    assert_eq!(kek_id, workspace_kek_id(workspace_key.unwrap()));
+    assert_eq!(body_of(db.store(kek(1)).as_ref(), posted.id).await, WORDS);
+}
+
+/// Rotating one workspace's key moves only that workspace's data keys,
+/// rewrites no sealed message, and destroys the old key once nothing needs
+/// it.
+async fn rotating_a_workspace_key_rewraps_its_keys_and_nothing_else(db: Db) {
+    let store = db.store(kek(1));
+    let a = room(store.as_ref(), "rotate-a").await;
+    let b = room(store.as_ref(), "rotate-b").await;
+    let (_, first) = post(store.as_ref(), &a, "first").await;
+    let (_, second) = post(store.as_ref(), &a, "second").await;
+    let (_, other) = post(store.as_ref(), &b, "bystander").await;
+    let old_key = db.key_row(db.subject_of(first.id).await).await.2.unwrap();
+    let b_row = db.key_row(db.subject_of(other.id).await).await;
+    let sealed_before = store.get_stored_event(first.id).await.unwrap().payload;
+
+    let (retired, active) = store.rotate_workspace_key(a.ws.id).await.unwrap();
+    assert_eq!(retired, Some(old_key));
+    assert_ne!(active, old_key);
+    // Until the pass runs, the retired key still opens what it wraps.
+    assert_eq!(body_of(store.as_ref(), first.id).await, "first");
+    assert_eq!(store.content_keys_needing_rewrap().await.unwrap(), 2);
+
+    let mut moved = 0;
+    loop {
+        match store.rewrap_content_keys(100).await.unwrap() {
+            0 => break,
+            n => moved += n,
+        }
+    }
+    assert_eq!(moved, 3, "two data keys moved, one workspace key destroyed");
+    assert_eq!(store.content_keys_needing_rewrap().await.unwrap(), 0);
+    for event in [&first, &second] {
+        let (kek_id, _, key) = db.key_row(db.subject_of(event.id).await).await;
+        assert_eq!(key, Some(active));
+        assert_eq!(kek_id, workspace_kek_id(active));
+    }
+    assert_eq!(db.workspace_key_state(old_key).await, (true, true));
+    assert_eq!(db.key_row(db.subject_of(other.id).await).await, b_row);
+
+    let replica = db.store(kek(1));
+    assert_eq!(body_of(replica.as_ref(), first.id).await, "first");
+    assert_eq!(body_of(replica.as_ref(), second.id).await, "second");
+    assert_eq!(body_of(replica.as_ref(), other.id).await, "bystander");
+    assert_eq!(
+        replica.get_stored_event(first.id).await.unwrap().payload,
+        sealed_before,
+        "the sealed message is the same bytes"
+    );
+    assert!(store.verify_event_chain(a.ws.id).await.unwrap().ok);
+}
+
+/// Erasing a workspace deletes its key; the other workspace's key and words
+/// are untouched.
+async fn erasing_a_workspace_destroys_its_key(db: Db) {
+    let store = db.store(kek(1));
+    let gone = room(store.as_ref(), "erase-me").await;
+    let kept = room(store.as_ref(), "keep-me").await;
+    post(store.as_ref(), &gone, WORDS).await;
+    let (_, survivor) = post(store.as_ref(), &kept, "kept words").await;
+
+    store.erase_workspace(gone.ws.id).await.unwrap();
+    let keys_sql = "SELECT COUNT(*) FROM maidan_workspace_keys WHERE workspace_id = ?";
+    assert_eq!(db.count(keys_sql, gone.ws.id.0).await, 0);
+    assert_eq!(db.count(keys_sql, kept.ws.id.0).await, 1);
+    assert_eq!(
+        body_of(db.store(kek(1)).as_ref(), survivor.id).await,
+        "kept words"
+    );
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -1025,6 +1242,10 @@ macro_rules! on_both_backends {
 }
 
 on_both_backends!(
+    each_workspace_seals_under_its_own_key,
+    a_key_from_before_workspace_keys_moves_under_its_workspace_key,
+    rotating_a_workspace_key_rewraps_its_keys_and_nothing_else,
+    erasing_a_workspace_destroys_its_key,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,
     a_plain_tombstone_shreds_too,

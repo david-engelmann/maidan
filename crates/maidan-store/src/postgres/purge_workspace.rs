@@ -99,6 +99,11 @@ pub(crate) async fn purge_on(
             .bind(workspace_id.0)
             .execute(&mut *tx)
             .await?;
+    // And the workspace's own keys, after the data keys that name them.
+    sqlx::query("DELETE FROM maidan_workspace_keys WHERE workspace_id = $1")
+        .bind(workspace_id.0)
+        .execute(&mut *tx)
+        .await?;
 
     // Artifacts are content-addressed and shared: one row and one blob per
     // sha, whoever uploaded it first, and per-workspace access lives in
