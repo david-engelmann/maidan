@@ -3178,6 +3178,9 @@ pub struct NewOAuthAuthorizationCode {
     /// RFC 8707 resource indicator the grant is bound to.
     pub resource: Option<String>,
     pub expires_at: DateTime<Utc>,
+    /// The lineage of the grant the code was issued under, so a reuse revokes
+    /// that lineage and not a later grant for the same client and scope.
+    pub lineage_id: Option<uuid::Uuid>,
 }
 
 /// A stored OAuth 2.1 authorization code (see [`NewOAuthAuthorizationCode`]).
@@ -3193,6 +3196,7 @@ pub struct OAuthAuthorizationCode {
     pub resource: Option<String>,
     pub expires_at: DateTime<Utc>,
     pub used_at: Option<DateTime<Utc>>,
+    pub lineage_id: Option<uuid::Uuid>,
 }
 
 /// A member's standing consent for a client: the scopes the member granted it.

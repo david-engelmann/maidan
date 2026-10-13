@@ -236,6 +236,19 @@ pub async fn decide_consent(
         }
     }
 
+    // The code records the lineage it is issued under, so a reuse of it later
+    // revokes this lineage and not a grant the member consents to afterwards.
+    let lineage_id = state
+        .store
+        .find_oauth_grant(
+            &pending.client_id,
+            pending.member_id,
+            pending.workspace_id,
+            &scope,
+        )
+        .await?
+        .map(|grant| grant.lineage_id);
+
     let mut raw = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut raw);
     let code = URL_SAFE_NO_PAD.encode(raw);
@@ -251,6 +264,7 @@ pub async fn decide_consent(
             scope,
             resource: pending.resource.clone(),
             expires_at: Utc::now() + chrono::Duration::seconds(CODE_TTL_SECS),
+            lineage_id,
         })
         .await?;
 

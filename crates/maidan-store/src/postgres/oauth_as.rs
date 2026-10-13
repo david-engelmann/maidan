@@ -19,7 +19,7 @@ use crate::error::StoreError;
 
 const CLIENT_COLUMNS: &str =
     "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at";
-const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at";
+const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at, lineage_id";
 const GRANT_COLUMNS: &str = "id, client_id, member_id, workspace_id, scope, lineage_id, revoked_at";
 
 fn scopes_from(json: &str) -> Result<Vec<String>, StoreError> {
@@ -51,6 +51,7 @@ fn row_to_code(row: &sqlx::postgres::PgRow) -> Result<OAuthAuthorizationCode, St
         resource: row.get("resource"),
         expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
         used_at: row.get::<Option<DateTime<Utc>>, _>("used_at"),
+        lineage_id: row.get::<Option<Uuid>, _>("lineage_id"),
     })
 }
 
@@ -110,8 +111,9 @@ pub async fn insert_code(pool: &PgPool, new: NewOAuthAuthorizationCode) -> Resul
     sqlx::query(
         "INSERT INTO oauth_authorization_codes
             (code_hash, client_id, member_id, workspace_id, redirect_uri,
-             code_challenge, code_challenge_method, scope, resource, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9)",
+             code_challenge, code_challenge_method, scope, resource, expires_at,
+             lineage_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10)",
     )
     .bind(&new.code_hash)
     .bind(&new.client_id)
@@ -122,6 +124,7 @@ pub async fn insert_code(pool: &PgPool, new: NewOAuthAuthorizationCode) -> Resul
     .bind(&scope)
     .bind(new.resource.as_deref())
     .bind(new.expires_at)
+    .bind(new.lineage_id)
     .execute(pool)
     .await?;
     Ok(())
@@ -669,21 +672,9 @@ pub async fn revoke_lineage_for_used_code(
     let Some(code) = code.map(|r| row_to_code(&r)).transpose()? else {
         return Ok(None);
     };
-    let scope = serde_json::to_string(&code.scope)?;
-    let lineage = sqlx::query_scalar::<_, Uuid>(
-        "SELECT lineage_id FROM oauth_grants
-         WHERE client_id = $1 AND member_id = $2 AND workspace_id = $3
-           AND scope = $4 AND revoked_at IS NULL
-         ORDER BY created_at DESC
-         LIMIT 1",
-    )
-    .bind(&code.client_id)
-    .bind(code.member_id.0)
-    .bind(code.workspace_id.0)
-    .bind(&scope)
-    .fetch_optional(&mut *tx)
-    .await?;
-    let Some(lineage) = lineage else {
+    // The code names its own lineage: a later grant for the same client,
+    // member and scope is not this code's and is left alone.
+    let Some(lineage) = code.lineage_id else {
         return Ok(None);
     };
     let revoked = revoke_lineage_on(&mut tx, lineage).await?;

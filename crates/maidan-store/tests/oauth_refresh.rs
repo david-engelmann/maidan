@@ -10,6 +10,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
+use uuid::Uuid;
 
 const RESOURCE: &str = "https://maidan.example.com/mcp/streamable";
 
@@ -319,6 +320,7 @@ async fn assert_code_reuse_and_access_revocation(store: &dyn Store) {
             scope: d.grant.scope.clone(),
             resource: Some(RESOURCE.into()),
             expires_at: Utc::now() + chrono::Duration::minutes(10),
+            lineage_id: Some(d.grant.lineage_id),
         })
         .await
         .unwrap();
@@ -378,6 +380,28 @@ async fn assert_code_reuse_and_access_revocation(store: &dyn Store) {
     assert_eq!(revoked.grants_revoked, 1);
     assert_eq!(revoked.refresh_tokens_revoked, 1);
     assert!(store.get_oauth_grant(d.grant.id).await.unwrap().is_none());
+
+    // The member consents again: a new grant, a new lineage, for the same
+    // client, member, workspace and scope. Replaying the old code revokes the
+    // old lineage only, never the new grant, which never saw that code.
+    let renewed = store
+        .create_oauth_grant(NewOAuthGrant {
+            client_id: "client-y".into(),
+            member_id: d.grant.member_id,
+            workspace_id: d.ws,
+            scope: d.grant.scope.clone(),
+            lineage_id: Uuid::now_v7(),
+        })
+        .await
+        .unwrap();
+    store
+        .revoke_oauth_lineage_for_used_code("d-code", lineage_audit())
+        .await
+        .unwrap();
+    assert!(
+        store.get_oauth_grant(renewed.id).await.unwrap().is_some(),
+        "a replayed code leaves a later grant for the same tuple alone"
+    );
 
     // Revoking a lineage directly is idempotent.
     let again = store

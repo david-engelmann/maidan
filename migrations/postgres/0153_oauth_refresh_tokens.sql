@@ -22,3 +22,10 @@ CREATE TABLE oauth_refresh_tokens (
 
 CREATE INDEX idx_oauth_refresh_lineage ON oauth_refresh_tokens (lineage_id);
 CREATE INDEX idx_oauth_refresh_grant ON oauth_refresh_tokens (grant_id);
+
+-- The lineage a code was issued under, written at consent. A used code that is
+-- presented again revokes this lineage and no other: looking the grant up by
+-- client, member, workspace and scope would find a newer grant the member
+-- consented to after revoking the one this code belonged to. NULL only on
+-- codes issued before this migration, which revoke nothing on reuse.
+ALTER TABLE oauth_authorization_codes ADD COLUMN lineage_id UUID;
