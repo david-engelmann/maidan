@@ -65,6 +65,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
 
+### OAuth refresh, revocation and resource binding (phase three, second half)
+
+- **Added:** the token endpoint returns a refresh token with every access token. A refresh rotates: the presented token is marked used and a new pair is issued under the same grant and lineage, in one transaction, and it may narrow the scope but never widen it. A refresh token presented again after use revokes every grant, access token and refresh token of its lineage, and so does an authorization code presented again after use with its PKCE verifier, each with an `oauth_lineage.revoke` audit row. Refresh tokens live 30 days, in migration 0153.
+- **Added:** `POST /oauth/revoke` (RFC 7009). A refresh token revokes its lineage and an access token revokes itself. It answers 200 for an unknown token and for another client's token alike, and changes nothing for the latter.
+- **Added:** clients authenticate with HTTP Basic (`client_secret_basic`) as well as `client_secret_post` and `none`, at both endpoints. Sending two methods at once is `invalid_request`.
+- **Changed:** the token and revocation endpoints answer client errors as RFC 6749 errors (`invalid_request`, `invalid_client`, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope`, and RFC 8707's `invalid_target`) instead of problems, since OAuth clients parse that envelope.
+- **Changed:** authorize and token requests must name `resource`, the MCP endpoint under `MAIDAN_PUBLIC_ORIGIN`, and an OAuth access token is accepted on `/mcp/streamable` only. Every other route, `/mcp` included, answers it with 401 and `invalid_token`, and it cannot be exchanged for a browser session. Without `MAIDAN_PUBLIC_ORIGIN` the authorize, token and revocation endpoints answer 404. The RFC 8414 document lists the refresh grant, the revocation endpoint and the three client authentication methods.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

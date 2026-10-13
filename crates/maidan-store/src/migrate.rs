@@ -231,6 +231,8 @@ const POSTGRES_UP_V151: &str =
     include_str!("../../../migrations/postgres/0151_oauth_pending_requests.sql");
 const POSTGRES_UP_V152: &str =
     include_str!("../../../migrations/postgres/0152_oauth_grant_live_unique.sql");
+const POSTGRES_UP_V153: &str =
+    include_str!("../../../migrations/postgres/0153_oauth_refresh_tokens.sql");
 const POSTGRES_UP_V160: &str =
     include_str!("../../../migrations/postgres/0160_decided_via_source.sql");
 const POSTGRES_UP_V161: &str =
@@ -429,6 +431,8 @@ const SQLITE_UP_V151: &str =
     include_str!("../../../migrations/sqlite/0151_oauth_pending_requests.sql");
 const SQLITE_UP_V152: &str =
     include_str!("../../../migrations/sqlite/0152_oauth_grant_live_unique.sql");
+const SQLITE_UP_V153: &str =
+    include_str!("../../../migrations/sqlite/0153_oauth_refresh_tokens.sql");
 const SQLITE_UP_V160: &str = include_str!("../../../migrations/sqlite/0160_decided_via_source.sql");
 const SQLITE_UP_V161: &str = include_str!("../../../migrations/sqlite/0161_session_identity.sql");
 const SQLITE_UP_V163: &str = include_str!("../../../migrations/sqlite/0163_oidc_front_door.sql");
@@ -648,6 +652,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 150, POSTGRES_UP_V150).await?;
     apply_postgres(pool, &applied, 151, POSTGRES_UP_V151).await?;
     apply_postgres(pool, &applied, 152, POSTGRES_UP_V152).await?;
+    apply_postgres(pool, &applied, 153, POSTGRES_UP_V153).await?;
     apply_postgres(pool, &applied, 160, POSTGRES_UP_V160).await?;
     apply_postgres(pool, &applied, 161, POSTGRES_UP_V161).await?;
     apply_postgres(pool, &applied, 162, POSTGRES_UP_V162).await?;
@@ -824,6 +829,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 150, SQLITE_UP_V150).await?;
     apply_sqlite(pool, &applied, 151, SQLITE_UP_V151).await?;
     apply_sqlite(pool, &applied, 152, SQLITE_UP_V152).await?;
+    apply_sqlite(pool, &applied, 153, SQLITE_UP_V153).await?;
     apply_sqlite(pool, &applied, 160, SQLITE_UP_V160).await?;
     apply_sqlite(pool, &applied, 161, SQLITE_UP_V161).await?;
     apply_sqlite(pool, &applied, 163, SQLITE_UP_V163).await?;

@@ -3178,6 +3178,9 @@ pub struct NewOAuthAuthorizationCode {
     /// RFC 8707 resource indicator the grant is bound to.
     pub resource: Option<String>,
     pub expires_at: DateTime<Utc>,
+    /// The lineage of the grant the code was issued under, so a reuse revokes
+    /// that lineage and not a later grant for the same client and scope.
+    pub lineage_id: Option<uuid::Uuid>,
 }
 
 /// A stored OAuth 2.1 authorization code (see [`NewOAuthAuthorizationCode`]).
@@ -3193,6 +3196,7 @@ pub struct OAuthAuthorizationCode {
     pub resource: Option<String>,
     pub expires_at: DateTime<Utc>,
     pub used_at: Option<DateTime<Utc>>,
+    pub lineage_id: Option<uuid::Uuid>,
 }
 
 /// A member's standing consent for a client: the scopes the member granted it.
@@ -3246,6 +3250,76 @@ pub struct OAuthPendingRequest {
     pub resource: Option<String>,
     pub state: String,
     pub expires_at: DateTime<Utc>,
+}
+
+/// A refresh token to store under an OAuth grant. Only its hash is kept. The
+/// lineage and resource are copied from the grant and the code so that a
+/// reuse can revoke the lineage without trusting anything the client sends.
+#[derive(Debug, Clone)]
+pub struct NewOAuthRefreshToken {
+    pub token_hash: String,
+    pub grant_id: OAuthGrantId,
+    pub lineage_id: uuid::Uuid,
+    pub client_id: String,
+    pub resource: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// A stored OAuth refresh token (see [`NewOAuthRefreshToken`]). `used_at` is
+/// set when it is rotated, and a second presentation after that is a reuse.
+#[derive(Debug, Clone)]
+pub struct OAuthRefreshToken {
+    pub token_hash: String,
+    pub grant_id: OAuthGrantId,
+    pub lineage_id: uuid::Uuid,
+    pub client_id: String,
+    pub resource: String,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+/// One refresh-token rotation. The new access token's member, workspace and
+/// grant come from the presented token's grant, never from the caller, so a
+/// rotation cannot move authority to another member or tenant.
+#[derive(Debug, Clone)]
+pub struct OAuthRefreshRotation {
+    pub presented_hash: String,
+    pub access_token_hash: String,
+    pub access_label: Option<String>,
+    /// Must be a subset of the grant's scope; the store refuses a wider set.
+    pub access_capabilities: Vec<String>,
+    pub access_expires_at: DateTime<Utc>,
+    pub refresh_hash: String,
+    pub refresh_expires_at: DateTime<Utc>,
+}
+
+/// What revoking one grant lineage touched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OAuthLineageRevocation {
+    pub lineage_id: uuid::Uuid,
+    /// The workspace of the lineage's grants, or `None` when no grant carries
+    /// the lineage id.
+    pub workspace_id: Option<WorkspaceId>,
+    pub grants_revoked: u64,
+    pub access_tokens_revoked: u64,
+    pub refresh_tokens_revoked: u64,
+}
+
+/// The result of presenting a refresh token for rotation.
+#[derive(Debug, Clone)]
+pub enum OAuthRefreshOutcome {
+    /// The presented token is now used, and these replace it. Boxed, because
+    /// the other outcomes are a few words.
+    Rotated {
+        access: Box<ApiToken>,
+        refresh: Box<OAuthRefreshToken>,
+    },
+    /// The presented token had already been used, so its lineage was revoked.
+    Reused(OAuthLineageRevocation),
+    /// Unknown, expired or revoked, or its grant is revoked. Nothing changed.
+    Invalid,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

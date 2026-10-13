@@ -23,7 +23,9 @@ test("OAuth consent Allow lands on the client redirect with code and state", asy
     `&client_id=playwright-consent-client` +
     `&redirect_uri=${encodeURIComponent("https://client.example/callback")}` +
     `&code_challenge=${challenge}&code_challenge_method=S256` +
-    `&scope=workspace%3Aread&state=test-state-123`;
+    `&scope=workspace%3Aread&state=test-state-123` +
+    // The resource is required, and must be the MCP endpoint (RFC 8707).
+    `&resource=${encodeURIComponent(`${fx.base_url}/mcp/streamable`)}`;
 
   // Sign in via the session cookie, then open the authorize URL.
   await page.goto("/ui/");

@@ -160,14 +160,21 @@ pub fn confirm_approval() {}
 )]
 pub fn session_from_token() {}
 
-/// Exchange an OAuth authorization code for an access token
+/// Exchange an OAuth authorization code or refresh token for tokens
 ///
-/// The OAuth 2.1 token endpoint. The form carries the code, the redirect URI
-/// it was issued for, the client id, and the PKCE verifier; confidential
-/// clients also send their secret. The code is validated before it is
-/// consumed, so a wrong guess cannot burn the real client's code. The
-/// minted token is capability-scoped from the member's grant and never
-/// carries `approval:grant`.
+/// The OAuth 2.1 token endpoint, advertised in the RFC 8414 document.
+/// `grant_type=authorization_code` exchanges a code, its redirect URI and the
+/// PKCE verifier for an access token and a refresh token. The code is
+/// validated before it is consumed, so a wrong guess cannot burn the real
+/// client's code, and a code presented again after use revokes its grant's
+/// lineage. `grant_type=refresh_token` rotates: the presented refresh token is
+/// marked used and a new pair is returned under the same lineage; a reused
+/// refresh token revokes the whole lineage. `scope` may narrow a refresh,
+/// never widen it. Every request names `resource`, the MCP endpoint, and the
+/// access token is accepted on `/mcp/streamable` only (RFC 8707). The client
+/// authenticates with HTTP Basic, its secret in the form, or, if public, PKCE
+/// alone. Client errors are RFC 6749 section 5.2 errors, not problems. 404
+/// until `MAIDAN_PUBLIC_ORIGIN` is set.
 #[utoipa::path(
     post,
     path = "/oauth/token",
@@ -179,11 +186,39 @@ pub fn session_from_token() {}
     security(()),
     responses(
         (status = 200, body = crate::oauth::token::OAuthTokenResponse),
-        (status = 400, response = BadRequest),
-        (status = 401, response = Unauthorized),
+        (status = 400, description = "`invalid_request`, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope` or `invalid_target`", body = crate::oauth::error::OAuthErrorBody, content_type = "application/json"),
+        (status = 401, description = "`invalid_client`; `WWW-Authenticate: Basic` when the client tried HTTP Basic", body = crate::oauth::error::OAuthErrorBody, content_type = "application/json"),
+        (status = 404, response = NotFound),
     )
 )]
 pub fn oauth_token() {}
+
+/// Revoke an OAuth access token or refresh token
+///
+/// RFC 7009 token revocation. The client authenticates as at the token
+/// endpoint. A refresh token revokes its whole lineage (every grant, access
+/// token and refresh token under it); an access token revokes that token
+/// only. The answer is 200 with an empty body whether or not the token was
+/// known, and a token issued to another client is left alone with the same
+/// 200. Client errors are RFC 6749 section 5.2 errors, not problems. 404
+/// until `MAIDAN_PUBLIC_ORIGIN` is set.
+#[utoipa::path(
+    post,
+    path = "/oauth/revoke",
+    tag = "auth",
+    request_body(
+        content = crate::oauth::revoke::OAuthRevokeRequest,
+        content_type = "application/x-www-form-urlencoded",
+    ),
+    security(()),
+    responses(
+        (status = 200, description = "Revoked, or nothing of this client's to revoke"),
+        (status = 400, description = "`invalid_request`", body = crate::oauth::error::OAuthErrorBody, content_type = "application/json"),
+        (status = 401, description = "`invalid_client`; `WWW-Authenticate: Basic` when the client tried HTTP Basic", body = crate::oauth::error::OAuthErrorBody, content_type = "application/json"),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn oauth_revoke() {}
 
 /// Start an OAuth authorization request
 ///
@@ -203,7 +238,7 @@ pub fn oauth_token() {}
         ("code_challenge_method" = String, Query, description = "Must be S256"),
         ("scope" = Option<String>, Query, description = "Space-delimited capabilities"),
         ("state" = String, Query, description = "Opaque client state, echoed back"),
-        ("resource" = Option<String>, Query, description = "RFC 8707 resource indicator"),
+        ("resource" = String, Query, description = "RFC 8707 resource indicator: `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`, the only resource tokens are issued for"),
     ),
     security(("bearerAuth" = [])),
     responses(
@@ -211,6 +246,7 @@ pub fn oauth_token() {}
         (status = 400, response = BadRequest),
         (status = 401, response = Unauthorized),
         (status = 403, response = Forbidden),
+        (status = 404, description = "The authorization server is off: no `MAIDAN_PUBLIC_ORIGIN`", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn oauth_authorize() {}
