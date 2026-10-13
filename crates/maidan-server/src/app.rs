@@ -65,12 +65,12 @@ use crate::{
 /// same default origin, which is what `form-action 'self'` allows.
 pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
-/// How long a client may reuse a board page or asset before revalidating.
-/// The same value the agent card uses: short enough that a deploy reaches
-/// every open board within minutes, long enough that a reload inside the
-/// window costs no requests at all. After it, the ETag below makes the
-/// revalidation a 304 with no body.
-const UI_CACHE_MAX_AGE_SECS: u32 = 300;
+/// Every load of the board page or an asset revalidates: `no-cache` lets the
+/// browser keep a copy, and the ETag below turns an unchanged one into a 304
+/// with no body. A max-age would let a browser run cached modules from before a
+/// deploy beside new ones, and the board's ES modules import each other, so a
+/// mixed set can break the page.
+const UI_CACHE_CONTROL: &str = "no-cache";
 
 /// A strong ETag over a static body's bytes, spelled the way the agent
 /// card spells its own: the first 16 bytes of the SHA-256, hex, quoted.
@@ -97,7 +97,7 @@ fn ui_cache_headers(etag: &str) -> [(axum::http::HeaderName, String); 2] {
     [
         (
             axum::http::header::CACHE_CONTROL,
-            format!("public, max-age={UI_CACHE_MAX_AGE_SECS}"),
+            UI_CACHE_CONTROL.to_string(),
         ),
         (axum::http::header::ETAG, etag.to_string()),
     ]

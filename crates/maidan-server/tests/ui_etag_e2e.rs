@@ -62,13 +62,13 @@ async fn assert_revalidates(client: &reqwest::Client, url: &str) -> String {
     let cache_control = first
         .headers()
         .get("cache-control")
-        .expect("the answer carries a cache lifetime")
+        .expect("the answer carries a cache policy")
         .to_str()
         .unwrap()
         .to_string();
-    assert!(
-        cache_control.contains("max-age=300"),
-        "the lifetime is the short one: {cache_control}"
+    assert_eq!(
+        cache_control, "no-cache",
+        "every load revalidates, so a deploy never mixes cached and new modules"
     );
     let body = first.text().await.unwrap();
     assert!(!body.is_empty(), "{url} answers with its body");
