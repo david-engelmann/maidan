@@ -808,6 +808,29 @@ async fn a_non_changed_status_is_recorded_and_answered_in_slack_with_no_github_w
 }
 
 #[tokio::test]
+async fn a_seat_error_reply_names_its_cause_once_in_place_of_the_summary() {
+    let h = harness().await;
+    h.allow_change().await;
+    let mut result = change("seat_error", &h.base_sha, BRANCH, "");
+    result["error_detail"] =
+        json!("pi gave up after 3 failed attempts\nthe seat timed out\nthe seat timed out");
+    result["summary"] = json!("a summary the detail outranks");
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let posts = h.slack_posts();
+    assert_eq!(posts.len(), 1, "one end notice");
+    let body = &posts[0].2;
+    assert!(body.contains("`seat_error`"), "{body}");
+    assert!(
+        body.contains("pi gave up after 3 failed attempts"),
+        "{body}"
+    );
+    assert_eq!(body.matches("the seat timed out").count(), 1, "{body}");
+    assert!(!body.contains("a summary the detail outranks"), "{body}");
+}
+
+#[tokio::test]
 async fn an_unknown_surface_beside_a_change_is_still_a_recorded_skip() {
     let h = harness().await;
     h.allow_change().await;

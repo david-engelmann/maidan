@@ -522,6 +522,15 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The instrumented target dir and the Postgres containers outgrew the
+      # runner's free disk: Postgres failed with "No space left on device"
+      # on 2026-10-12. The preinstalled SDKs below are unused here.
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af --volumes >/dev/null
+          df -h /
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:

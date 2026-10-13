@@ -18,7 +18,9 @@ pub fn server_card() -> Value {
     json!({
         "serverInfo": {
             "name": "maidan",
-            "version": env!("CARGO_PKG_VERSION"),
+            // The release this binary was built as (`MAIDAN_VERSION` at build
+            // time), not the crate version, which is 0.0.0 in this workspace.
+            "version": crate::version(),
         },
         "authentication": {
             "required": true,
@@ -45,8 +47,8 @@ mod tests {
         assert_eq!(card["serverInfo"]["name"], "maidan");
         assert_eq!(
             card["serverInfo"]["version"],
-            env!("CARGO_PKG_VERSION"),
-            "the card carries the build's version, the way serverInfo does"
+            crate::version(),
+            "the card carries the release the binary was built as"
         );
         assert_eq!(card["authentication"]["required"], true);
         assert_eq!(card["authentication"]["schemes"], json!(["bearer"]));

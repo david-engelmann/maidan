@@ -330,6 +330,7 @@ mod tests {
             diff: None,
             title: title.map(str::to_string),
             summary: summary.map(str::to_string),
+            error_detail: None,
         }
     }
 

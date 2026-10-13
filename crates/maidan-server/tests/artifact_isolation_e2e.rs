@@ -266,3 +266,137 @@ async fn one_workspace_erasing_its_copy_leaves_anothers_readable() {
         .unwrap();
     assert_eq!(bytes.as_ref(), b"bytes both tenants hold");
 }
+
+/// A second member of `ws`, holding only `caps`.
+async fn member_token(ctx: &Ctx, ws: WorkspaceId, handle: &str, caps: &[&str]) -> String {
+    let member = ctx
+        .store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    ctx.store
+        .create_api_token(NewApiToken {
+            workspace_id: ws,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: caps.iter().map(|c| c.to_string()).collect(),
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+/// The attachment path between two apps: one member uploads, another member of
+/// the same workspace reads the same bytes back, and another tenant's member
+/// who knows the sha gets 404.
+#[tokio::test]
+async fn another_member_of_the_workspace_reads_an_uploaded_artifact_and_another_tenant_gets_404() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+    let (wa, uploader) = workspace_with_token(&ctx, "acme").await;
+    let reader = member_token(&ctx, wa, "waiter", &[capability::WORKSPACE_READ]).await;
+    let (_wb, outsider) = workspace_with_token(&ctx, "other").await;
+
+    let payload: Vec<u8> = (0..=255u8).cycle().take(64 * 1024).collect();
+    let created = ctx
+        .client
+        .post(format!(
+            "{base}/artifacts?kind=attachment&filename=change.png&mime_type=image/png"
+        ))
+        .header("Authorization", bearer(&uploader))
+        .body(payload.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let sha = created.json::<Value>().await.unwrap()["sha256"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let read = ctx
+        .client
+        .get(format!("{base}/artifacts/{sha}"))
+        .header("Authorization", bearer(&reader))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(read.status(), StatusCode::OK, "a workspace member reads it");
+    assert_eq!(read.bytes().await.unwrap().as_ref(), payload.as_slice());
+
+    for suffix in ["", "/meta"] {
+        let resp = ctx
+            .client
+            .get(format!("{base}/artifacts/{sha}{suffix}"))
+            .header("Authorization", bearer(&outsider))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "another tenant cannot read {suffix}"
+        );
+    }
+}
+
+/// An artifact upload has its own body limit, so media past the 2 MiB JSON
+/// limit uploads while a JSON route of the same size is still refused.
+#[tokio::test]
+async fn an_artifact_upload_past_the_json_body_limit_fits_under_the_artifact_limit() {
+    let ctx = spawn().await;
+    let base = ctx.base();
+    let (wa, token) = workspace_with_token(&ctx, "acme").await;
+    let big: Vec<u8> = vec![7u8; 3 * 1024 * 1024];
+
+    let upload = ctx
+        .client
+        .post(format!("{base}/artifacts?kind=recording"))
+        .header("Authorization", bearer(&token))
+        .body(big.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        upload.status(),
+        StatusCode::CREATED,
+        "3 MiB of media uploads"
+    );
+    let ui_upload = ctx
+        .client
+        .post(format!("{base}/ui/api/artifacts?kind=recording"))
+        .header("Authorization", bearer(&token))
+        .body(big.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        ui_upload.status(),
+        StatusCode::CREATED,
+        "the console's upload route has the same limit"
+    );
+
+    let json = ctx
+        .client
+        .post(format!("{base}/workspaces/{}/channels", wa.0))
+        .header("Authorization", bearer(&token))
+        .header("Content-Type", "application/json")
+        .body(big)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        json.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "every other route keeps the 2 MiB limit"
+    );
+}

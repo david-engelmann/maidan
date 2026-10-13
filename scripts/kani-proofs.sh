@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run the Kani proofs locally. Not a CI job: Kani's toolchain is large and
-# these proofs are not on the required checks.
+# Run the Kani proofs locally. The nightly workflow's kani job runs the
+# same two invocations (through the official Kani action); the proofs are
+# not on the per-PR required checks.
 #
 #   cargo install --locked kani-verifier
 #   export KANI_HOME="${KANI_HOME:-$HOME/.kani}"
