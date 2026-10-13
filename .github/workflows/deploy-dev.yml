@@ -1,0 +1,138 @@
+name: deploy dev
+
+# dev.maidan.world runs `main` on Cloudflare Containers (deploy/cloudflare/,
+# docs/Production.md "Hosted on Cloudflare"). Every push to main that changes
+# the server builds the image and deploys it. A pull request that changes the
+# deploy itself builds the image only, so a broken Dockerfile or Worker shows
+# before it reaches main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "migrations/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "deploy/cloudflare/**"
+      - ".github/workflows/deploy-dev.yml"
+  pull_request:
+    paths:
+      - "deploy/cloudflare/**"
+      - ".github/workflows/deploy-dev.yml"
+  workflow_dispatch:
+
+# A newer main supersedes a deploy still building; dev runs the newest.
+concurrency:
+  group: deploy-dev-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: image (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: version
+        id: version
+        run: echo "version=main-${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+      # Cloudflare Containers run linux/amd64 only. The release cache scope
+      # warms the dependency layers; the dev scope keeps the rest.
+      - name: build maidan-server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            MAIDAN_VERSION=${{ steps.version.outputs.version }}
+          tags: maidan-server:${{ github.sha }}
+          outputs: type=docker,dest=${{ runner.temp }}/maidan-server.tar
+          cache-from: |
+            type=gha,scope=maidan-server-dev
+            type=gha,scope=maidan-server-amd64
+          cache-to: type=gha,mode=max,scope=maidan-server-dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maidan-server-image
+          path: ${{ runner.temp }}/maidan-server.tar
+          retention-days: 3
+
+  worker:
+    name: worker tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  deploy:
+    needs: [image, worker]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: dev
+      url: https://dev.maidan.world
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: maidan-server-image
+          path: ${{ runner.temp }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - run: npm ci
+      - name: push the image to the account registry
+        run: |
+          docker load --input "$RUNNER_TEMP/maidan-server.tar"
+          npx wrangler containers push "maidan-server:$GITHUB_SHA"
+      - name: deploy
+        run: |
+          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$GITHUB_SHA"
+          sed -i \
+            -e "s#\"image\": \"../../crates/maidan-server/Dockerfile\"#\"image\": \"$image\"#" \
+            -e '/"image_build_context"/d' \
+            wrangler.jsonc
+          grep -q "\"image\": \"$image\"" wrangler.jsonc
+          # A first deploy creates the Durable Object and the container
+          # application together, and the application can look for the
+          # namespace before it is visible (DURABLE_OBJECT_NOT_FOUND). The
+          # second attempt finds it.
+          npx wrangler deploy || { sleep 15; npx wrangler deploy; }
+      # The rollout replaces the running container, so wait until the new
+      # build is the one answering, not merely until something answers.
+      - name: dev runs this build
+        run: |
+          want="main-${GITHUB_SHA::8}"
+          for _ in $(seq 1 36); do
+            got=$(curl -fsS https://dev.maidan.world/health | jq -r .version || true)
+            if [ "$got" = "$want" ]; then echo "dev.maidan.world runs $want"; exit 0; fi
+            sleep 10
+          done
+          echo "dev.maidan.world still answers ${got:-nothing}, not $want" >&2
+          exit 1
