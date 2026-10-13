@@ -61,6 +61,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
 
+### dev.maidan.world runs `main` on Cloudflare Containers
+
+- **Added:** the first hosted instance. A Worker (`deploy/cloudflare/`) fronts one Maidan container on Cloudflare Containers that sleeps when idle and wakes on the next request, against a Neon Postgres project and an R2 bucket through the S3 backend. The `deploy dev` workflow builds the linux/amd64 image on every server change to `main`, pushes it to the account's registry, deploys it and waits until `/health` reports that build. Verified on the live instance: authenticated reads, an artifact stored in R2 and read back identical, a posted message delivered over both the WebSocket and the SSE stream through the Worker by way of Postgres `NOTIFY`, and both streams kept open through 130 idle seconds. The runbook is `docs/Production.md`, "Hosted on Cloudflare".
+- **Fixed:** an image built without a release tag reported its version as an empty string, because the Dockerfile sets `MAIDAN_VERSION` from a build arg that defaults to empty. An empty value now falls back to the crate version.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

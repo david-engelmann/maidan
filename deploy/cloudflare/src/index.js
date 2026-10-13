@@ -1,11 +1,11 @@
 // The Worker in front of a hosted Maidan on Cloudflare Containers.
 //
-// One container serves every request: the event bus is in process, so a second
-// instance would split live subscribers from the writes they wait on. The
-// container sleeps after `sleepAfter` without a request and the next request
-// wakes it; Postgres (Neon) and artifacts (R2) live outside it, so a sleep or a
-// restart loses nothing but the in-memory presence and live connections, which
-// clients already reconnect.
+// One container serves every request, which keeps an idle instance at the cost
+// of one; the bus runs through Postgres, so more can run when traffic needs
+// them (`max_instances` and `getRandom`). The container sleeps after
+// `sleepAfter` without a request and the next request wakes it. Postgres (Neon)
+// and artifacts (R2) live outside it, so a sleep or a restart loses nothing but
+// in-memory presence and live connections, which clients already reconnect.
 
 import { Container, getContainer } from "@cloudflare/containers";
 

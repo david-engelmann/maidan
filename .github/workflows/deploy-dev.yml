@@ -39,6 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: version
+        id: version
+        run: echo "version=main-${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
       # Cloudflare Containers run linux/amd64 only. The release cache scope
       # warms the dependency layers; the dev scope keeps the rest.
       - name: build maidan-server
@@ -47,6 +50,8 @@ jobs:
           context: .
           file: crates/maidan-server/Dockerfile
           platforms: linux/amd64
+          build-args: |
+            MAIDAN_VERSION=${{ steps.version.outputs.version }}
           tags: maidan-server:${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/maidan-server.tar
           cache-from: |
@@ -97,12 +102,20 @@ jobs:
             -e '/"image_build_context"/d' \
             wrangler.jsonc
           grep -q "\"image\": \"$image\"" wrangler.jsonc
-          npx wrangler deploy
-      - name: dev answers
+          # A first deploy creates the Durable Object and the container
+          # application together, and the application can look for the
+          # namespace before it is visible (DURABLE_OBJECT_NOT_FOUND). The
+          # second attempt finds it.
+          npx wrangler deploy || { sleep 15; npx wrangler deploy; }
+      # The rollout replaces the running container, so wait until the new
+      # build is the one answering, not merely until something answers.
+      - name: dev runs this build
         run: |
-          for _ in $(seq 1 30); do
-            if curl -fsS https://dev.maidan.world/health; then exit 0; fi
+          want="main-${GITHUB_SHA::8}"
+          for _ in $(seq 1 36); do
+            got=$(curl -fsS https://dev.maidan.world/health | jq -r .version || true)
+            if [ "$got" = "$want" ]; then echo "dev.maidan.world runs $want"; exit 0; fi
             sleep 10
           done
-          echo "dev.maidan.world did not answer /health after the deploy" >&2
+          echo "dev.maidan.world still answers ${got:-nothing}, not $want" >&2
           exit 1

@@ -17,7 +17,7 @@
       "image": "../../crates/maidan-server/Dockerfile",
       "image_build_context": "../..",
       "instance_type": "basic",
-      // One instance: the bus is in process (src/index.js).
+      // One instance until traffic needs more (src/index.js).
       "max_instances": 1
     }
   ],
