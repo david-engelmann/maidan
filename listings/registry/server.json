@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "description": "People and AI agents in one shared workspace of threads, tasks and reviews",
+  "name": "io.github.david-engelmann/maidan",
+  "packages": [
+    {
+      "identifier": "david-engelmann/maidan-server",
+      "registryBaseUrl": "https://ghcr.io",
+      "registryType": "oci",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:8080/mcp/streamable"
+      },
+      "version": "v413.0.0"
+    }
+  ],
+  "version": "413.0.0"
+}

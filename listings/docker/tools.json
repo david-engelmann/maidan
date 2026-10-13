@@ -1,0 +1,992 @@
+{
+  "tools": [
+    {
+      "description": "Return the authentication-bound identity: actor_id, member_id, optional delegation_grant_id, workspace_id, capabilities, capability_sets the caller fully holds, and whether the credential is a bearer. Call this first — writes are attributed to member_id.",
+      "name": "whoami"
+    },
+    {
+      "description": "List named capability sets (maidan.agent.worker, maidan.human.admin) and the atomic capabilities each expands to at mint time.",
+      "name": "list_capability_sets"
+    },
+    {
+      "description": "Parse a hierarchical maidan:// room URI (workspace UUID authority, then channels, threads, messages). The authority must be a workspace UUID, not a handle. Optional sha256 fragment is a content hash. MCP thread resource URIs and event pins are rejected.",
+      "name": "parse_maidan_uri"
+    },
+    {
+      "description": "Get the authenticated room card for a workspace: stable UUID URI plus the current handle alias. A handle rename does not change the URI.",
+      "name": "get_room"
+    },
+    {
+      "description": "Set or rename a workspace handle alias. Stored ids and maidan:// URIs keep using the workspace UUID. Requires workspace:write.",
+      "name": "set_workspace_handle"
+    },
+    {
+      "description": "Derive a weaker API token from the caller's grant without token:admin (Levy/Madden attenuation). capabilities must be a non-empty subset of what the caller holds. A derived expires_at cannot outlive the parent bearer. Returns the new token secret once.",
+      "name": "attenuate_token"
+    },
+    {
+      "description": "Replace the secret of the bearer token this call is made with. The new token keeps the same member, capabilities, expiry, quotas and derived tokens; the old secret stops working immediately. Returns the new secret once. Takes no arguments. A delegated token cannot be rotated; exchange its grant again.",
+      "name": "rotate_token"
+    },
+    {
+      "description": "Exchange a durable delegation grant for a short-lived token acting as its subject. The token defaults to 15 minutes, cannot exceed one hour or its grant/parent bearer, and is limited to the intersection of grant and delegate capabilities.",
+      "name": "delegate_token"
+    },
+    {
+      "description": "Create an expiring capability-scoped grant authorizing one workspace member to delegate actions for another. Requires token:admin and a non-empty purpose.",
+      "name": "create_delegation_grant"
+    },
+    {
+      "description": "List delegation grants in a workspace, including expiry and revocation state. Requires token:admin.",
+      "name": "list_delegation_grants"
+    },
+    {
+      "description": "Revoke a delegation grant and every exchanged token and attenuated descendant. Requires token:admin.",
+      "name": "revoke_delegation_grant"
+    },
+    {
+      "description": "Open the 1:1 DM conversation between the authenticated member and another workspace member. The first call creates the conversation and its thread, and a repeat returns the same conversation.",
+      "name": "open_dm_conversation"
+    },
+    {
+      "description": "List DM conversations for a member in a workspace.",
+      "name": "list_dm_conversations"
+    },
+    {
+      "description": "Post a message in a DM conversation.",
+      "name": "post_dm_message"
+    },
+    {
+      "description": "Create a channel in a workspace. Requires workspace:write, the same capability as POST /workspaces/{wid}/channels. A private channel adds the caller as its admin so they are not locked out.",
+      "name": "create_channel"
+    },
+    {
+      "description": "List channels in a workspace.",
+      "name": "list_channels"
+    },
+    {
+      "description": "Add (or update the role of) a member of a channel. Requires channel:admin. Private channels are gated to their members.",
+      "name": "add_channel_member"
+    },
+    {
+      "description": "List the members of a channel. Requires channel:admin.",
+      "name": "list_channel_members"
+    },
+    {
+      "description": "Remove a member from a channel. Requires channel:admin.",
+      "name": "remove_channel_member"
+    },
+    {
+      "description": "Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.",
+      "name": "create_thread"
+    },
+    {
+      "description": "List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.",
+      "name": "list_threads"
+    },
+    {
+      "description": "A parent thread's child threads, each collapsed to a summary with a message count — a threaded view of 'N replies' per child without loading each child's messages.",
+      "name": "list_child_threads"
+    },
+    {
+      "description": "A channel's threads ordered by last activity — most-recently-posted first. A post floats its thread to the top; a rename does not.",
+      "name": "list_recently_active_threads"
+    },
+    {
+      "description": "Mute a thread for yourself — the notification router stops routing this thread's activity to you, without leaving the channel or thread. Idempotent.",
+      "name": "mute_thread"
+    },
+    {
+      "description": "Unmute a thread you previously muted. Returns unmuted=false if it was not muted.",
+      "name": "unmute_thread"
+    },
+    {
+      "description": "Mute a whole channel for yourself — the notification router stops routing its firehose (new-message notifications) to you, without leaving the channel. A mention still breaks through. Idempotent.",
+      "name": "mute_channel"
+    },
+    {
+      "description": "Unmute a channel you previously muted. Returns unmuted=false if it was not muted.",
+      "name": "unmute_channel"
+    },
+    {
+      "description": "REPLACE a thread's whole budget envelope. Every dimension must be stated — max_tokens, max_usd_micros ($1 = 1000000), max_turns, max_wall_secs — and null means no cap on that dimension. Omitting one is an error rather than a silent removal, because a removed cap never binds and the run it should have stopped keeps going. Use update_thread_budget to change some dimensions and leave the rest alone. An unrecognized key is rejected rather than ignored. Accumulated usage is preserved. When a dimension is exceeded, report_usage stops the run.",
+      "name": "set_thread_budget"
+    },
+    {
+      "description": "Change only the budget dimensions you name, leaving the rest as they are. An omitted dimension is untouched; an explicit null clears that cap. Use this to raise or lower one limit without restating the others — set_thread_budget replaces the whole envelope. An unrecognized key is rejected rather than ignored.",
+      "name": "update_thread_budget"
+    },
+    {
+      "description": "A thread's budget envelope with accumulated usage, or null if none is set.",
+      "name": "get_thread_budget"
+    },
+    {
+      "description": "Record one retry-safe usage heartbeat for your active claim. input is uncached input. Cache writes are a 5-minute tier and a 1-hour tier. Reuse usage_report_id only for an exact retry; claim_lease_id fences stale workers. Maidan derives reporter from auth and payer from the thread. The price snapshot must calculate to usd_micros. A token budget counts fresh tokens only. A binding cap atomically stops the run.",
+      "name": "report_usage"
+    },
+    {
+      "description": "Spend, cache hit rate, cache write share, dollars saved against the uncached price, and cost per completed task. Scope is the workspace, or one thread, or one member. A completed task is a closed or archived thread that has not been tombstoned. Rates are parts per million of prompt tokens.",
+      "name": "usage_rollup"
+    },
+    {
+      "description": "A channel's agent-work dead-letter queue — runs stopped for exceeding their budget, newest first. Triage these (retry, raise the budget, give up).",
+      "name": "list_dlq"
+    },
+    {
+      "description": "A thread's tool-call transcript: every ToolUse block correlated with its ToolResult by id. A token-lean projection that drops text/code blocks and bodies.",
+      "name": "get_tool_transcript"
+    },
+    {
+      "description": "Assign or hand off a thread/task to a member, optionally with a handoff note delivered to subscribers on the assignment event.",
+      "name": "assign_thread"
+    },
+    {
+      "description": "Atomically claim an unassigned thread for a member. Returns {thread, claimed}; claimed=false if it was already assigned.",
+      "name": "claim_thread"
+    },
+    {
+      "description": "Clear a thread's assignee.",
+      "name": "unassign_thread"
+    },
+    {
+      "description": "Advance a thread's FSM state (start_review, close, or archive). The MCP twin of REST POST /threads/:id. Separation of duties, the required-reviewers close-gate, and unresolved refutes all apply identically — there is no MCP bypass. On a thread with a review requirement, start_review is refused until a result is posted (set_thread_result). Returns the updated thread.",
+      "name": "transition_thread"
+    },
+    {
+      "description": "List the threads currently assigned to a member (their work queue), oldest first.",
+      "name": "list_assigned_threads"
+    },
+    {
+      "description": "Set (upsert) a wait timer on a thread: it is waiting until wait_until, and on timeout the sweeper escalates via on_timeout but decides nothing (notify reaches the owner; park also marks the thread unclaimable). Default policy is notify. Cancel it when the awaited thing happens. Requires thread:transition. This returns at once and does not block; to block until something happens, use a wait_for_* tool such as wait_for_result or wait_for_ready.",
+      "name": "set_wait"
+    },
+    {
+      "description": "Cancel a thread's wait — the awaited thing happened (G2). {cancelled} is false when no wait was set. Requires thread:transition.",
+      "name": "cancel_wait"
+    },
+    {
+      "description": "The thread's wait timer (deadline, on_timeout policy, reason, fired_at), or null if none is set (G2).",
+      "name": "get_wait"
+    },
+    {
+      "description": "Set (upsert) a thread's dispatch priority (G3 fair dispatch). Higher = more urgent (default 0). claim_next orders by an effective rank = this priority aged up the longer the thread waits, so priority jumps the queue without starving long-waiting tasks. Requires thread:transition.",
+      "name": "set_priority"
+    },
+    {
+      "description": "The thread's dispatch-priority record, or null (which means the default priority 0) (G3).",
+      "name": "get_priority"
+    },
+    {
+      "description": "Park a thread from dispatch (G3): claim_next skips it and an explicit claim is refused, until cleared. An explicit park (needs triage, waiting on external, broken) — distinct from blocked-by-deps / blocked-by-gate / skill-miss. Reason must be non-empty. Requires thread:transition.",
+      "name": "mark_unclaimable"
+    },
+    {
+      "description": "Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.",
+      "name": "mark_claimable"
+    },
+    {
+      "description": "The parked (unclaimable) threads in a channel (G3), newest first — for triage.",
+      "name": "list_unclaimable"
+    },
+    {
+      "description": "Set (upsert) an explicit dispatch block on a thread (G14): claim_next skips it and an explicit claim is refused, until cleared. reason is the closed enum dag|gate|human|child|quota|unclaimable — not a free string. Distinct from DAG-children-must-be-terminal. Requires thread:transition.",
+      "name": "set_thread_block"
+    },
+    {
+      "description": "The thread's explicit dispatch block, or null when unblocked (G14). Requires workspace:read.",
+      "name": "get_thread_block"
+    },
+    {
+      "description": "Clear an explicit dispatch block (G14). Emits BlockedResolved so waiters can observe the unblock. {cleared} is false when it was not blocked. Requires thread:transition.",
+      "name": "clear_thread_block"
+    },
+    {
+      "description": "The explicitly blocked threads in a channel (G14), newest first — for triage. Distinct from queue-depth blocked (unfinished DAG deps).",
+      "name": "list_blocked_threads"
+    },
+    {
+      "description": "Declare the agent's self-reported status on a thread: working, needs_input, needs_review, blocked, or done, with a one-sentence note. By the claim holder or owner; stalled is refused (system-computed only). Supersedes any prior declaration. Appends StatusDeclared. Requires thread:transition.",
+      "name": "declare_status"
+    },
+    {
+      "description": "The thread's active agent status declaration, or null when cleared. Requires workspace:read.",
+      "name": "get_thread_status"
+    },
+    {
+      "description": "How many writes the thread's content has seen: its messages, result, title and description, and linked artifacts. The database moves it on every such write, so a decision can name the version it was shown. Requires workspace:read.",
+      "name": "get_thread_version"
+    },
+    {
+      "description": "What the thread's current review was handed, recorded when it went to review: the thread version, the result's content hash and the linked artifacts' hashes, with the evidence root over them. Each item carries an attestation tier judged at the hand-off: verified (a land-gate pass the close gate accepts), attached (linked by a member who never worked the thread) or self_reported (a worker's own result or link). self_reported_only is true when every item is self-reported. Null before any review. Requires workspace:read.",
+      "name": "get_review_packet"
+    },
+    {
+      "description": "The artifacts linked to the thread as evidence, in the order they were linked, each with who linked it. Requires workspace:read.",
+      "name": "list_thread_artifacts"
+    },
+    {
+      "description": "Link an artifact your workspace holds to a thread as evidence, by its sha256. Upload it first; a hash your workspace does not hold is not found. Linking twice keeps the first link. Moves the thread's version. Requires workspace:write.",
+      "name": "link_thread_artifact"
+    },
+    {
+      "description": "Unlink an artifact from a thread. Returns whether it was linked. Moves the thread's version when it was. Requires workspace:write.",
+      "name": "unlink_thread_artifact"
+    },
+    {
+      "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
+      "name": "set_wip_limit"
+    },
+    {
+      "description": "Set the longest a delegation grant may live in this workspace, in days (1 to 3650); omit or null to restore the default of 90. A grant is the standing authority to keep minting delegated tokens, so this bounds real exposure. Applies to grants issued afterwards. Requires token:admin.",
+      "name": "set_delegation_policy"
+    },
+    {
+      "description": "This workspace's delegation policy: max_grant_days, the longest a delegation grant may live, and is_default when the workspace has set none.",
+      "name": "get_delegation_policy"
+    },
+    {
+      "description": "Replace this workspace's own retention for its messages, events, finished deliveries and unreferenced media, in days (1 to 3650 each), and its media quota in bytes. A workspace may keep rows for less time than the instance does, never longer, and hold less media, never more: a value above the instance's is refused. Omit or null a kind to keep it as long as the instance does; no arguments clears the policy. Old messages are erased with their embeddings and content keys. A workspace under legal hold loses nothing whatever its policy says. Requires token:admin.",
+      "name": "set_retention_policy"
+    },
+    {
+      "description": "This workspace's retention: what it set (workspace), what the instance keeps (instance), and what is pruned in effect, the shorter of the two per kind (effective). Days per kind; null means not pruned.",
+      "name": "get_retention_policy"
+    },
+    {
+      "description": "This workspace's WIP limit (max concurrent live claims per member), or null when unset (unlimited).",
+      "name": "get_wip_limit"
+    },
+    {
+      "description": "Set this workspace's spawn budget (G6): how far an agent family may fan out. max_children caps the direct child threads per parent, max_depth the thread nesting, max_tools the tool calls recorded on one thread. A full replace — an omitted or null axis is unlimited, so calling with no arguments clears the budget; 0 freezes an axis. Keep the caps small: coordination cost grows quadratically in the number of agents. Requires workspace:write.",
+      "name": "set_spawn_budget"
+    },
+    {
+      "description": "This workspace's spawn budget as {max_children, max_depth, max_tools}; a null axis is unlimited. Read it before spawning helpers to see how much fan-out is left.",
+      "name": "get_spawn_budget"
+    },
+    {
+      "description": "A member's current live-claim count against the workspace WIP limit ({live_claims, limit}) — for backpressure decisions before claiming more work.",
+      "name": "get_member_wip"
+    },
+    {
+      "description": "Atomically claim the oldest claimable thread in a channel for a member (claimable = unassigned or its lease expired). Every claim is leased. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work. This tool takes work; it does not create it. Create a channel with create_channel and a task with create_thread (both need workspace:write; the REST twins are POST /workspaces/{wid}/channels and POST /channels/{cid}/threads).",
+      "name": "claim_next_thread"
+    },
+    {
+      "description": "Atomically claim the oldest claimable thread across every channel of the workspace you may read (claim_next_thread for the whole workspace), so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
+      "name": "claim_next_workspace_thread"
+    },
+    {
+      "description": "Extend a claimed thread's lease (heartbeat). Only the current assignee holding the matching fencing token may renew; a stale holder whose claim was reclaimed is rejected.",
+      "name": "renew_claim"
+    },
+    {
+      "description": "Acknowledge a claimed thread and start its working clock (work_started_at): the current holder signals it has begun work, distinct from just holding the claim. Acknowledge as soon as you start: a leased claim left unacknowledged past the server's window (MAIDAN_CLAIM_ACK_TIMEOUT_SECS, 120 s) is reported to its owner with a claim_unacknowledged event. Only the assignee holding the matching fencing token may acknowledge; idempotent (the first start time is kept).",
+      "name": "acknowledge_claim"
+    },
+    {
+      "description": "Release a claim (graceful handoff): the current holder returns the thread to the queue immediately by presenting its fencing token, instead of letting the lease lapse — e.g. an agent shutting down cleanly. Only the assignee holding the matching token may release. Clears the assignment and working clock and emits thread_assignment_changed.",
+      "name": "release_claim"
+    },
+    {
+      "description": "Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.",
+      "name": "add_thread_dependency"
+    },
+    {
+      "description": "List a task's dependencies plus whether it is ready to run (true when every dependency is terminal).",
+      "name": "list_thread_dependencies"
+    },
+    {
+      "description": "A channel's task-queue depth: counts of its open task threads as {open, ready, assigned, blocked, unclaimable}, for deciding whether to scale workers. ready is what claim_next_thread could take now. Counts only threads you may read: on the DM channel, your own DMs. For the whole workspace, use get_workspace_queue_depth.",
+      "name": "get_queue_depth"
+    },
+    {
+      "description": "A channel's occupancy as {open, queued, claimed, working, blocked}: the two-clocks refinement of get_queue_depth. It splits held work into claimed (an agent grabbed the task but hasn't acknowledged it via acknowledge_claim) and working (acknowledged and underway) — surfacing a claimed-but-idle agent. queued/blocked mirror get_queue_depth's ready/blocked.",
+      "name": "get_channel_occupancy"
+    },
+    {
+      "description": "get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.",
+      "name": "get_workspace_queue_depth"
+    },
+    {
+      "description": "get_channel_occupancy across every channel of the workspace you may read, as {open, queued, claimed, working, blocked}: the sum of those channels' occupancy. A private channel's threads count only for its members and a DM's only for its participants.",
+      "name": "get_workspace_occupancy"
+    },
+    {
+      "description": "Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.",
+      "name": "set_thread_lineage"
+    },
+    {
+      "description": "Read a thread's run lineage (parent_run_id + set_at), or null if none has been set.",
+      "name": "get_thread_lineage"
+    },
+    {
+      "description": "List threads in the caller's workspace that share a producer parent_run_id, oldest first. Nested children given the same value are included. Private-channel rows the caller cannot access are omitted. F7 mute is not consulted.",
+      "name": "list_run_threads"
+    },
+    {
+      "description": "Nested occupancy for a producer run as {parent_run_id, open, queued, claimed, working, blocked}: the two-clocks partition of every open workspace thread that shares parent_run_id. F7 mute is orthogonal (a muted nested thread still counts). Unknown / unused run returns zeros.",
+      "name": "get_run_occupancy"
+    },
+    {
+      "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.",
+      "name": "set_thread_result"
+    },
+    {
+      "description": "Read a task's structured result, or null if none has been produced yet.",
+      "name": "get_thread_result"
+    },
+    {
+      "description": "List thread results in the caller's workspace, newest first. Optional result_kind is an exact-match facet on the namespaced string (e.g. example.review.result/1), not a closed enum. Private-channel rows the caller cannot access are omitted.",
+      "name": "list_thread_results"
+    },
+    {
+      "description": "List per-target delivery status for a thread's structured result (disposition, external reference, last error). Empty means the result was not routed anywhere, which is valid. workspace:read + thread access.",
+      "name": "list_result_deliveries"
+    },
+    {
+      "description": "Re-enqueue one result delivery onto the egress outbox. Re-checks the workspace allowlist (an unblessed target stays skipped). Does not bump armed_revision. workspace:write + thread access.",
+      "name": "replay_result_delivery"
+    },
+    {
+      "description": "Set (or clear, by omitting owner_id) a thread's durable owner — the accountable party, distinct from the assignee/claimer. Once an owner is set, the claimer can no longer land (close/archive) its own work; the owner or another member must (separation of duties).",
+      "name": "set_thread_owner"
+    },
+    {
+      "description": "Rename a thread — give a titled thread a new name (e.g. name a post-derived child thread). The title must not be blank. A rename is metadata, not activity, so it does not float the thread in the recent-activity order.",
+      "name": "rename_thread"
+    },
+    {
+      "description": "Set (upsert) a thread's persisted steer — durable steering guidance that survives claims and handoffs, so a resuming or newly-assigned agent reads the current steer. Latest wins.",
+      "name": "set_thread_steer"
+    },
+    {
+      "description": "Read a thread's current steer, or null if none is set. A resuming or newly-assigned agent reads this to follow the current steering guidance.",
+      "name": "get_thread_steer"
+    },
+    {
+      "description": "Block until a task's result is produced (a thread_result_set event for thread_id), returning the result payload, or null on timeout. The coordination wait for spawn/wait/aggregate. Pass since_log_id (your high-water log_id) to also catch a result set in the gap before this call subscribes; omit it for pure-live (read get_thread_result first for an already-produced result). To put a deadline on a thread instead, use set_wait.",
+      "name": "wait_for_result"
+    },
+    {
+      "description": "Gather the structured results of a parent task's dependencies as a list of {thread_id, result} objects (result null if not produced yet), skipping dependencies you can't access. The spawn/wait/aggregate read for a parent task.",
+      "name": "get_dependency_results"
+    },
+    {
+      "description": "Declare a skill (free-form tag) for a member. Skill routing gates claim_next: a task is claimable by a member only if it holds all the task's required skills.",
+      "name": "add_member_skill"
+    },
+    {
+      "description": "List a member's declared skills.",
+      "name": "list_member_skills"
+    },
+    {
+      "description": "Add a required skill to a task. Only a member holding every required skill can claim the task via claim_next_thread.",
+      "name": "add_thread_required_skill"
+    },
+    {
+      "description": "List a task's required skills.",
+      "name": "list_thread_required_skills"
+    },
+    {
+      "description": "Create a task schedule: when due, the sweeper creates a thread titled `title` in `channel_id` (or, when recipe_id is set, instantiates that recipe — parent + DAG children — instead). interval_secs omitted = one-shot; a positive value = recurring. first_run_at omitted = fire on the next tick.",
+      "name": "create_task_schedule"
+    },
+    {
+      "description": "List the caller's workspace task schedules (filtered to channels the caller can access).",
+      "name": "list_task_schedules"
+    },
+    {
+      "description": "Create a recipe: a reusable thread-type blueprint. spec = {params, definition_of_done, retry, children}, where each child is {key, title, required_skills, depends_on (sibling keys)}. Instantiating it (instantiate_recipe) builds a parent thread + a child per child + wires the DAG + attaches skills. NOT a recipe VM — a blueprint the room instantiates.",
+      "name": "create_recipe"
+    },
+    {
+      "description": "List the caller's workspace recipes (filtered to channels the caller can access).",
+      "name": "list_recipes"
+    },
+    {
+      "description": "Instantiate a recipe into a parent thread + its DAG children (copy-on-fire: the recipe bytes are frozen into the run). params are validated against the recipe's declared params (required ones must be present). Returns the RecipeRun.",
+      "name": "instantiate_recipe"
+    },
+    {
+      "description": "List the caller's workspace secrets (metadata only — id, name, timestamps; NEVER the value). Use resolve_secret to fetch a value at exec.",
+      "name": "list_secrets"
+    },
+    {
+      "description": "Resolve a named secret to its value (the 'fetch at exec' path). The value is decrypted server-side and returned only in this response — it never enters the event log. Returns null-name error if the secret is unknown.",
+      "name": "resolve_secret"
+    },
+    {
+      "description": "List the hosts trusted with this workspace's secret values: on a webhook, automation HTTP or A2A push delivery to one of them, secret://<name> refs in the payload are replaced with the workspace's values; any other host gets the literal ref. Empty (the default) means no host gets a value. Requires secret:admin.",
+      "name": "list_secret_egress_hosts"
+    },
+    {
+      "description": "Trust a host with this workspace's secret values (idempotent). A listed host receives the value of every secret a payload bound for it names, so this needs secret:read as well as secret:admin. The host is a lowercase hostname or IPv4 address with no scheme, port, path or wildcard, and must be inside the instance ceiling when the operator set one. Audited.",
+      "name": "allow_secret_egress_host"
+    },
+    {
+      "description": "Stop trusting a host with this workspace's secret values; the next delivery to it carries the literal secret:// refs. Not found when the host was not listed. Requires secret:admin. Audited.",
+      "name": "revoke_secret_egress_host"
+    },
+    {
+      "description": "Freeze a member (the kill-switch): drops their active leases (releases their claimed threads) and makes claim_next refuse them. Returns the freeze record + the count released, and emits member_frozen to the workspace (the reason included). The member stays frozen until unfreeze_member. Requires token:admin. NOT a thread/workspace pause.",
+      "name": "freeze_member"
+    },
+    {
+      "description": "Lift a member's freeze so they can claim work again. Requires token:admin. Returns {unfrozen} (false if they were not frozen); an unfreeze that lifts a freeze emits member_unfrozen.",
+      "name": "unfreeze_member"
+    },
+    {
+      "description": "List the frozen members in the caller's workspace (member_id, frozen_at, frozen_by, reason). Requires token:admin.",
+      "name": "list_frozen_members"
+    },
+    {
+      "description": "Issue a read-only cross-organization ticket for one channel and an explicit artifact allowlist. Ownership is bound to the authenticated member. Lifetime is capped at 48 hours; the secret is returned once and only its hash is stored. Requires token:admin.",
+      "name": "create_share_ticket"
+    },
+    {
+      "description": "List share tickets and their explicit artifact scopes in the caller's workspace. Secrets are never returned after creation. Requires token:admin.",
+      "name": "list_share_tickets"
+    },
+    {
+      "description": "Immediately revoke a share ticket in the caller's workspace. Requires token:admin.",
+      "name": "revoke_share_ticket"
+    },
+    {
+      "description": "Export a workspace as a signed maidan.workspace.export/1 envelope. Tokens die on export: API tokens and secrets are omitted. A blank instance can verify the file without calling this host. Requires token:admin and MAIDAN_EXPORT_SIGNING_KEY.",
+      "name": "export_workspace"
+    },
+    {
+      "description": "Verify a signed workspace export without importing it. Fail-closed on tamper, a bad signature, stuffed secret fields, or a public key outside MAIDAN_EXPORT_VERIFY_KEYS when that pin is set. An empty pin checks integrity against the embedded key only. Requires token:admin.",
+      "name": "verify_workspace_export"
+    },
+    {
+      "description": "Verify then import a signed workspace export. mode new remaps ids into a fresh workspace; restore keeps original ids and fails if that workspace exists unless force is true. Tokens die on export: mint new tokens after import. Requires token:admin.",
+      "name": "import_workspace"
+    },
+    {
+      "description": "Hashed event-log snapshot for this workspace (getRepo-shaped, not MST/CAR). Header plus graph_hash is workspace:read. Pass include_graph true for the domain graph; that requires token:admin. Complements hash-chain verify of the retained suffix: this covers a pruned prefix so a peer can resume without trusting the host for history it never saw.",
+      "name": "get_log_snapshot"
+    },
+    {
+      "description": "Since-LSN catch-up page after a snapshot (or a prior page). Events have id greater than after_lsn, hash-chain checked from the predecessor. A pruned-gap cursor fails closed and names the snapshot path to refetch; a broken chain fails closed. Requires workspace:read.",
+      "name": "catch_up_events"
+    },
+    {
+      "description": "Verify the retained event-log hash chain for a workspace. Returns the chain report when intact; fails closed on a splice or rewrite. Twin of GET /workspaces/{id}/events/verify. Requires workspace:read.",
+      "name": "verify_event_chain"
+    },
+    {
+      "description": "Tombstone and deletion explorer for this workspace. Soft-deleted messages (body already cleared) plus, when include_purged is true, hard-purged reconstructions from MessageTombstoned events. Private-channel and DM rows the caller cannot access are omitted. Twin of GET /workspaces/{id}/tombstones. Requires workspace:read.",
+      "name": "list_tombstones"
+    },
+    {
+      "description": "Incoming pointers at a message: RelationKind reverse edges plus pins, reactions, and votes. Mentions are outgoing and omitted. Works on a retained tombstone; fails not-found after hard purge. Twin of GET /messages/{id}/backlinks. Requires workspace:read.",
+      "name": "list_message_backlinks"
+    },
+    {
+      "description": "EventKind counts for a workspace, optionally narrowed to a channel or thread. Inaccessible private channels are excluded from the totals. Twin of GET /workspaces/{id}/kind-census. Requires workspace:read.",
+      "name": "get_kind_census"
+    },
+    {
+      "description": "Create a labeled memory block — a Letta-shaped shared object {label, description, limit, read_only, value} in the workspace that a thread can attach to (a room object). It is how a parent watches a child's result block without a nested runtime: not a transcript, not RAG. Concurrent-safe on the label (re-creating a label returns the existing block). The caller owns it.",
+      "name": "create_memory_block"
+    },
+    {
+      "description": "Get a memory block by label within the caller's workspace, or null if none. This is the watch-a-child's-result-block read (poll it).",
+      "name": "get_memory_block"
+    },
+    {
+      "description": "List the memory blocks in the caller's workspace (id, label, description, limit, read_only, value, owner).",
+      "name": "list_memory_blocks"
+    },
+    {
+      "description": "Full-rewrite a memory block's value by label (last-writer-wins). A read-only block or a value over the block's char limit is rejected. Use this to publish a result other threads watch.",
+      "name": "set_memory_block_value"
+    },
+    {
+      "description": "Attach a memory block (by label) to a thread so the thread carries it as a room object — how a parent shares a block with a child. Idempotent. Returns {attached}.",
+      "name": "attach_memory_block"
+    },
+    {
+      "description": "Detach a memory block (by id) from a thread. Idempotent. Returns {detached} (false if it was not attached).",
+      "name": "detach_memory_block"
+    },
+    {
+      "description": "List the memory blocks attached to a thread (its room objects), by label.",
+      "name": "list_thread_memory_blocks"
+    },
+    {
+      "description": "Block until a memory block (by label) is rewritten in the caller's workspace, or the timeout lapses. Returns the block with its fresh value, or null on timeout. This is how a parent watches a child's result block without a nested runtime. Live: only sees updates after subscribing, so read the current value with get_memory_block first.",
+      "name": "wait_for_memory_block"
+    },
+    {
+      "description": "Set (upsert) a thread's required-reviewers gate (G5): required_count distinct qualifying approvals before it can close. An approval qualifies when the reviewer is neither the owner nor the assignee (separation of duties) and, when a named reviewer set exists, is in it. A refutes edge also blocks close. Requires thread:transition.",
+      "name": "set_review_requirement"
+    },
+    {
+      "description": "Name a reviewer for a thread (G5) — the eligible set. Empty set = open review (any qualifying member). Idempotent. Requires thread:transition.",
+      "name": "add_reviewer"
+    },
+    {
+      "description": "Submit a review decision as the caller (G5): approve or request_changes. The reviewer is you; an owner/assignee may submit but it will not count toward the requirement (separation of duties). request_changes on an in_review thread, from its owner or a reviewer whose approval would count, sends it back to open for rework: it is claimable again, earlier approvals are dismissed, and your note appears in its context as change_requests. request_changes needs a note saying what to change; approve may carry one. approve also needs evidence_root, the root from get_review_packet of what you were shown: it is refused when the thread was handed over again or changed since, and only an approval bound to the latest packet counts toward the close. Every verdict appends a review_submitted event (the note stays in the review history), and a request_changes notifies the thread's last worker. Re-submitting changes your decision. Requires thread:transition.",
+      "name": "submit_review"
+    },
+    {
+      "description": "Read a thread's review standing: required_count, approvals (distinct qualifying), and approvals_met. This is the approval side of the close-gate; a refutes edge is checked separately when closing.",
+      "name": "get_review_status"
+    },
+    {
+      "description": "List a thread's review decisions (reviewer, decision, note).",
+      "name": "list_reviews"
+    },
+    {
+      "description": "List every verdict submitted on a thread, oldest first (reviewer, decision, note, delegate, recorded_at). list_reviews shows each reviewer's current decision; a re-submission replaces it there but its earlier verdicts stay here.",
+      "name": "list_review_history"
+    },
+    {
+      "description": "Record a land-gate pointer on a thread: status pass or fail, optional artifact_sha, optional land green/amber/red. The room holds the pointer; an external verifier records pass/fail. A qualifying green pass (land-gate-skilled member who is not the implementer) is required to close once the gate is armed. Amber is flags-then-still-engages and is not a land. Requires thread:transition. The caller must have declared the land_gate skill.",
+      "name": "set_land_gate"
+    },
+    {
+      "description": "Read a thread's land-gate standing: required, pointer, land (green/amber/red), landable. No pointer is vacuous green. Requires workspace:read.",
+      "name": "get_land_gate"
+    },
+    {
+      "description": "List every land-gate verdict recorded on a thread, oldest first (status, land, artifact_sha, recorder, delegate, recorded_at). get_land_gate shows the latest pointer; a later pointer or clearing the gate leaves earlier verdicts here. Requires workspace:read.",
+      "name": "list_land_gate_history"
+    },
+    {
+      "description": "Arm the land-gate close-gate on a thread without a pointer yet so closed refuses until a qualifying green pass arrives. Idempotent. Requires thread:transition.",
+      "name": "require_land_gate"
+    },
+    {
+      "description": "Clear a thread's land-gate pointer and requirement. Requires thread:transition.",
+      "name": "clear_land_gate"
+    },
+    {
+      "description": "Define (or redefine) a term in the workspace's shared glossary — the canonical term -> definition so agents use words the same way (the anti-drift pin; the target of a `defines` reference). Upserts on the term.",
+      "name": "set_glossary_term"
+    },
+    {
+      "description": "Look up one term's canonical definition in the workspace glossary. Returns null when the term is undefined.",
+      "name": "get_glossary_term"
+    },
+    {
+      "description": "List all defined terms in the workspace's shared glossary, ordered by term.",
+      "name": "list_glossary_terms"
+    },
+    {
+      "description": "Block until a task becomes ready (its last blocking dependency reaches a terminal state, emitting thread_ready), or the timeout lapses. Returns the ThreadReady event, or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch readiness signalled in the gap before this call subscribes; omit it for pure-live (pick up already-ready work with claim_next_thread first). To put a deadline on a thread instead, use set_wait.",
+      "name": "wait_for_ready"
+    },
+    {
+      "description": "Block until a claim's lease lapses and its thread is reclaimed (by the claim reaper within seconds, or by the next claim_next_thread; either emits claim_expired), or the timeout lapses. A supervisor's 'an agent died' signal: returns the ClaimExpired event (its member_id is the dead holder), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch an expiry reclaimed in the gap before this call subscribes; omit it for pure-live. A lease on a thread in review is not reaped and emits nothing. To put a deadline on a thread instead, use set_wait.",
+      "name": "wait_for_claim_expired"
+    },
+    {
+      "description": "Block until a claimed run is stopped for going over its budget (report_usage past a tokens/usd/turns/wall limit releases the claim, dead-letters the run and emits claim_failed), or the timeout lapses. Returns the ClaimFailed event (member_id is the stopped holder, reason the budget axis), or null on timeout. Scoped to channel_id when given, else any accessible thread in the workspace. Pass since_log_id (your high-water log_id) to also catch a stop in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.",
+      "name": "wait_for_claim_failed"
+    },
+    {
+      "description": "Block until an explicit dispatch block is cleared (clear_thread_block emits blocked_resolved), or the timeout lapses. Returns the BlockedResolved event (the reason that cleared, resolved_by), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible thread in the workspace. Clearing a thread that was not blocked emits nothing. Pass since_log_id (your high-water log_id) to also catch a clear in the gap before this call subscribes; omit it for pure-live. To put a deadline on a thread instead, use set_wait.",
+      "name": "wait_for_blocked_resolved"
+    },
+    {
+      "description": "Block until a thread's linked GitHub PR lands (is merged, emitting thread_landed), or the timeout lapses. Returns the ThreadLanded event (repo, pr_number, merged_by, merge_commit_sha, title), or null on timeout. Scoped to thread_id and/or channel_id when given, else any accessible land in the workspace. The room records the landing but does NOT transition the thread's FSM. Pass since_log_id (your high-water log_id) to also catch a land emitted in the gap before this call subscribes; omit it for pure-live. Live-only; the GET /mcp/stream SSE transport (kinds=thread_landed) is the resumable alternative. To put a deadline on a thread instead, use set_wait.",
+      "name": "wait_for_landed"
+    },
+    {
+      "description": "List recent @mentions of a member (most recent first).",
+      "name": "list_mentions"
+    },
+    {
+      "description": "A member's mention inbox: recent mentions plus the read-cursor, so an agent can find what it hasn't seen. Mentions only; for everything waiting on the member (assigned tasks, requested reviews, open approval gates and unread mentions), use get_waiting_inbox.",
+      "name": "get_inbox"
+    },
+    {
+      "description": "Advance a member's inbox read-cursor through an instant (RFC 3339); returns the updated inbox.",
+      "name": "mark_inbox_read"
+    },
+    {
+      "description": "Block until the member is next @mentioned, or the timeout lapses. Returns the mention event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch a mention recorded in the gap before this call subscribes; omit it for pure-live behaviour (drain existing ones with get_inbox first).",
+      "name": "wait_for_mention"
+    },
+    {
+      "description": "List a member's per-recipient notifications, newest first. Set unread_only to see just the unread ones. The durable inbox the notification router fills; drain it here, then wait_for_notification for new ones.",
+      "name": "list_notifications"
+    },
+    {
+      "description": "The waiting-on-you inbox, everything needing a member's attention: their assigned non-terminal threads, the reviews requested from them (review_request: a thread in review naming them as a reviewer, without their approval yet), the reviews that name no reviewer and fall to them (unassigned_review: a thread in review with no named reviewer that they own, or that nobody owns when they are a workspace admin), the workspace's pending approval gates, and their unread mentions. Oldest-waiting first, each aged against sla_secs (default 86400 = 24h) with an overdue flag. One member's queue, not @everyone. For mentions alone, with a read-cursor you advance with mark_inbox_read, use get_inbox.",
+      "name": "get_waiting_inbox"
+    },
+    {
+      "description": "A member's notifications collapsed into per-thread groups, newest-activity first — a busy thread shows as one group (with its count, unread_count, and latest notification) instead of flooding the flat list. limit bounds how many notifications are scanned.",
+      "name": "list_notifications_grouped"
+    },
+    {
+      "description": "A member's buried decisions — task results (decisions) produced by someone else in a channel or thread the member follows, since a given instant (default 7 days ago), newest first. The decisions the digest surfaces, queryable directly.",
+      "name": "list_buried_decisions"
+    },
+    {
+      "description": "Compose this member's unread followed-member lifecycle notifications since an instant (default 7 days ago) into per-channel result, gate, and stuck counts. This is a notification view, not analytics.",
+      "name": "get_manager_digest"
+    },
+    {
+      "description": "A member's unread-notification badge count.",
+      "name": "get_unread_count"
+    },
+    {
+      "description": "Mark one of a member's notifications read (recipient-scoped; marked=false if the id isn't this member's).",
+      "name": "mark_notification_read"
+    },
+    {
+      "description": "Snooze one of a member's notifications until an RFC 3339 instant — it drops out of the inbox and unread badge until then, and resurfaces once the snooze lapses. Recipient-scoped (snoozed=false if the id isn't this member's).",
+      "name": "snooze_notification"
+    },
+    {
+      "description": "Block until the member gets a new notification-worthy event (today: mentions), or the timeout lapses. The general form of wait_for_mention. Returns the triggering event, or null on timeout. Pass since_log_id (your high-water log_id from the last drain) to also catch an event from the gap before this call subscribes; omit it for pure-live behaviour (drain with list_notifications first).",
+      "name": "wait_for_notification"
+    },
+    {
+      "description": "Set a member's mute preference for an event kind (kind is snake_case, e.g. mention_recorded). When muted, the router stops writing notifications of that kind for this member.",
+      "name": "set_notification_pref"
+    },
+    {
+      "description": "List a member's notification preferences (per-kind mute flags).",
+      "name": "list_notification_prefs"
+    },
+    {
+      "description": "Set a member's email delivery mode: immediate (a per-notification email) or digest (a periodic rollup instead). The two are mutually exclusive.",
+      "name": "set_delivery_mode"
+    },
+    {
+      "description": "Get a member's email delivery mode (immediate when never set).",
+      "name": "get_delivery_mode"
+    },
+    {
+      "description": "Set a member's delivery email address (where their email notifications go). A light @ check; full validation happens at send.",
+      "name": "set_member_email"
+    },
+    {
+      "description": "Get a member's delivery email address (null when unset).",
+      "name": "get_member_email"
+    },
+    {
+      "description": "Clear a member's delivery email address (opt out of email). Returns {deleted}.",
+      "name": "delete_member_email"
+    },
+    {
+      "description": "Follow a channel so the member is notified of new messages there even without a mention (honors mutes). Requires access to the channel.",
+      "name": "follow_channel"
+    },
+    {
+      "description": "Stop following a channel (removed=false if not following).",
+      "name": "unfollow_channel"
+    },
+    {
+      "description": "List the channels a member follows.",
+      "name": "list_channel_follows"
+    },
+    {
+      "description": "Follow a thread so the member is notified of new messages in it even without a mention (honors mutes). Requires access to the thread.",
+      "name": "follow_thread"
+    },
+    {
+      "description": "Stop following a thread (removed=false if not following).",
+      "name": "unfollow_thread"
+    },
+    {
+      "description": "List the threads a member follows.",
+      "name": "list_thread_follows"
+    },
+    {
+      "description": "Follow another same-workspace member's work occupancy. Self-follow is rejected.",
+      "name": "follow_member"
+    },
+    {
+      "description": "Get a member's live occupancy: ephemeral presence plus assigned non-terminal threads visible to the caller.",
+      "name": "get_member_occupancy"
+    },
+    {
+      "description": "Stop following another member's work occupancy (removed=false if not following).",
+      "name": "unfollow_member"
+    },
+    {
+      "description": "List the member-occupancy subscriptions owned by a member.",
+      "name": "list_member_follows"
+    },
+    {
+      "description": "List messages in a thread.",
+      "name": "list_messages"
+    },
+    {
+      "description": "Post a message to a thread as the authenticated member.",
+      "name": "post_message"
+    },
+    {
+      "description": "Seed a new titled work thread from a source message (the write side of 're-ask'), linked by a seeded_from reference edge. inclusion: 'pointer' (default, edge only) or 'quote' (a first message quoting the source). The source is untouched; N seeds per source. Lineage is queryable via list_references (dst=the source, relation=seeded_from).",
+      "name": "seed_from_message"
+    },
+    {
+      "description": "Edit your own message (message:post). Only the author can edit a message; another member's message can be tombstoned, not rewritten.",
+      "name": "edit_message"
+    },
+    {
+      "description": "Mark a member as mentioned in a message.",
+      "name": "record_mention"
+    },
+    {
+      "description": "Cast a vote on a message. kind is approve, request_changes, or ack. Any other kind is rejected. An emoji is a reaction, not a vote kind. You hold at most one verdict per message: approve replaces your request_changes and the other way round, and ack stands beside either. Optional confidence (0..1) for weighted consensus; re-casting the same kind updates your confidence. retract_vote takes a vote back.",
+      "name": "cast_vote"
+    },
+    {
+      "description": "Take back your own vote of one kind on a message. Removing a vote you do not hold changes nothing. Returns whether a vote was removed.",
+      "name": "retract_vote"
+    },
+    {
+      "description": "Add an emoji reaction to a message.",
+      "name": "add_reaction"
+    },
+    {
+      "description": "Remove an emoji reaction from a message.",
+      "name": "remove_reaction"
+    },
+    {
+      "description": "List emoji reactions on a message.",
+      "name": "list_reactions"
+    },
+    {
+      "description": "Pin a message to a thread.",
+      "name": "pin_message"
+    },
+    {
+      "description": "Unpin a message from a thread.",
+      "name": "unpin_message"
+    },
+    {
+      "description": "List pinned messages in a thread.",
+      "name": "list_pins"
+    },
+    {
+      "description": "Add a typed reference between two threads or messages.",
+      "name": "add_reference"
+    },
+    {
+      "description": "List references FROM a source (forward) or TO a target (reverse — 'what references this'), optionally filtered by relation. Provide exactly one of the src_kind+src_id or dst_kind+dst_id pair.",
+      "name": "list_references"
+    },
+    {
+      "description": "Store bytes in the artifact substrate and register metadata.",
+      "name": "upload_artifact"
+    },
+    {
+      "description": "Start an S3 multipart upload for a large artifact (requires S3 backend).",
+      "name": "begin_artifact_multipart"
+    },
+    {
+      "description": "Upload one part of an in-progress multipart artifact.",
+      "name": "upload_artifact_multipart_part"
+    },
+    {
+      "description": "Finish multipart upload, content-address bytes, and register artifact metadata.",
+      "name": "complete_artifact_multipart"
+    },
+    {
+      "description": "Abort a failed multipart upload.",
+      "name": "abort_artifact_multipart"
+    },
+    {
+      "description": "Fetch artifact metadata by sha256 hex digest.",
+      "name": "get_artifact_metadata"
+    },
+    {
+      "description": "Full-text, semantic, or hybrid search over a workspace's messages. Returns ranked hits with highlighted snippets, each naming its channel (channel_name), thread (thread_title) and author (author_handle) beside their ids.",
+      "name": "search_messages"
+    },
+    {
+      "description": "Register a workspace slash command handler (http URL or MCP tool name).",
+      "name": "register_slash_command"
+    },
+    {
+      "description": "List registered slash commands in a workspace.",
+      "name": "list_slash_commands"
+    },
+    {
+      "description": "Register an FSM hook invoked on matching thread state transitions.",
+      "name": "register_fsm_hook"
+    },
+    {
+      "description": "List registered FSM automation hooks in a workspace.",
+      "name": "list_fsm_hooks"
+    },
+    {
+      "description": "Pack thread messages, edits, references, FSM history, and the workspace glossary for agent prompts. Edits are lean by default (id/editor/timestamp only); pass include_edits=true for full before/after bodies. The glossary (canonical term definitions) is included by default when non-empty; pass include_glossary=false to drop it. Pass as_of=<event_id> to replay the thread as it stood at that event-log id (deterministic over the immutable log; audit / re-ask from before a tangent). Pass token_budget=<n> to cap the message page by estimated tokens: the opening message and the recent tail are kept, the middle is folded into an auditable elision marker in fixed blocks. The result is two text parts: the stable prefix (workspace boot, brief, messages) and the volatile tail (state, lease, cursors, prefix sha256). Those strings are the bytes REST returns with split=true.",
+      "name": "get_thread_context"
+    },
+    {
+      "description": "Freeze the assembled context pack (live or as_of) into the content-addressed artifact store — a tamper-evident, deduped record of exactly what the agent was handed. Same params as get_thread_context; returns the artifact (kind=context_snapshot). Requires artifact:upload. Fetch the bytes via the artifact sha.",
+      "name": "snapshot_thread_context"
+    },
+    {
+      "description": "Pack workspace channels, thread contexts (bounded by thread_limit), and the workspace glossary (once at the top level).",
+      "name": "get_workspace_context"
+    },
+    {
+      "description": "Human-in-the-loop gate: open a durable approval gate and return {status: input_required, gate_id} without blocking. A human resolves it later (accept/decline/cancel) over the /ui; poll get_approval_gate for the outcome. Silence is never consent. Pass thread_id to make it a claim gate — while the gate is pending, claim_next will not hand that thread to an agent.",
+      "name": "request_approval"
+    },
+    {
+      "description": "Poll a durable approval gate by id. Returns the gate — state is pending until a human answers, then accepted/declined/cancelled with any content they supplied — or null if no such gate exists in your workspace. Hosts with MCP Apps show it as an inline approval card.",
+      "name": "get_approval_gate"
+    },
+    {
+      "description": "Decide a pending approval gate: accept or decline, with an optional note. Decline takes effect at once. Accept takes effect at once only for a token holding approval:grant, on a gate below the workspace's confirmation threshold (by default every gate is at or above it). Otherwise you get {status: confirmation_required, confirmation_url}: a one-time link the person opens in the Maidan console and confirms, signed in as themselves. Clients that declare URL-mode elicitation are shown the same link through elicitation. You cannot confirm for the person; do not retry, poll get_approval_gate. Nobody accepts a gate they requested. The decision records which client you used and that a model asked.",
+      "name": "approval_decide"
+    },
+    {
+      "description": "Link a Slack channel to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.",
+      "name": "link_slack_channel"
+    },
+    {
+      "description": "List the Slack channel links in your workspace. Requires workspace:read.",
+      "name": "list_slack_channel_links"
+    },
+    {
+      "description": "Remove a Slack channel link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.",
+      "name": "unlink_slack_channel"
+    },
+    {
+      "description": "Link a GitHub issue/PR to a Maidan thread so the projector bridges messages both ways. The workspace/channel and attribution member come from the authenticated caller and thread. Requires workspace:write + access to the thread.",
+      "name": "link_github_issue"
+    },
+    {
+      "description": "List the GitHub issue/PR links in your workspace. Requires workspace:read.",
+      "name": "list_github_issue_links"
+    },
+    {
+      "description": "Remove a GitHub issue/PR link in your workspace. Returns {unlinked: bool} (false if no such link belongs to your workspace). Requires workspace:write.",
+      "name": "unlink_github_issue"
+    },
+    {
+      "description": "Withdraw a message. Same store path as DELETE /messages/{id}: message:post, plus channel:admin when the caller is not the author.",
+      "name": "tombstone_message"
+    },
+    {
+      "description": "Open a group DM among at least three workspace members. Same store path as POST /workspaces/{wid}/group-dms. Requires workspace:read. This writes a conversation.",
+      "name": "open_group_dm"
+    },
+    {
+      "description": "List group DMs for one member. member_id must be the caller. Requires workspace:read.",
+      "name": "list_group_dms"
+    },
+    {
+      "description": "Fetch one group DM the caller participates in. Requires workspace:read.",
+      "name": "get_group_dm"
+    },
+    {
+      "description": "Post a message into a group DM the caller participates in. Same store path as POST /group-dms/{id}/messages. Requires message:post.",
+      "name": "post_group_dm_message"
+    },
+    {
+      "description": "Remove one dependency edge: thread_id no longer depends on depends_on_thread_id. Requires thread:transition.",
+      "name": "remove_thread_dependency"
+    },
+    {
+      "description": "List threads that depend on this thread. Requires workspace:read.",
+      "name": "list_thread_dependents"
+    },
+    {
+      "description": "Clear the run-lineage row for a thread. NotFound when no row exists. Requires thread:transition.",
+      "name": "clear_thread_lineage"
+    },
+    {
+      "description": "Remove a skill from a member. Governance skills follow the REST self-versus-admin split; routing tags are self-only. Requires workspace:write.",
+      "name": "remove_member_skill"
+    },
+    {
+      "description": "Remove a required skill from a thread. Requires thread:transition.",
+      "name": "remove_thread_required_skill"
+    },
+    {
+      "description": "Delete a memory block by id. A block in another workspace is NotFound. Requires workspace:write.",
+      "name": "delete_memory_block"
+    },
+    {
+      "description": "Delete a glossary term in the caller workspace. Requires workspace:write.",
+      "name": "delete_glossary_term"
+    },
+    {
+      "description": "Delete a recipe. Requires workspace:write.",
+      "name": "delete_recipe"
+    },
+    {
+      "description": "Pause or resume a task schedule. Same store path as PUT /task-schedules/{id}. Requires workspace:write.",
+      "name": "set_task_schedule_active"
+    },
+    {
+      "description": "Delete a task schedule. Requires workspace:write.",
+      "name": "delete_task_schedule"
+    },
+    {
+      "description": "Revoke a slash command. Requires workspace:write.",
+      "name": "revoke_slash_command"
+    },
+    {
+      "description": "Revoke an FSM hook. Requires workspace:write.",
+      "name": "revoke_fsm_hook"
+    },
+    {
+      "description": "Clear a thread review requirement. Requires channel:admin.",
+      "name": "clear_review_requirement"
+    },
+    {
+      "description": "Read the review requirement on a thread. NotFound when unset. Requires workspace:read.",
+      "name": "get_review_requirement"
+    },
+    {
+      "description": "List reviewers on a thread. Requires workspace:read.",
+      "name": "list_reviewers"
+    },
+    {
+      "description": "Remove a reviewer from a thread. Requires channel:admin.",
+      "name": "remove_reviewer"
+    },
+    {
+      "description": "List votes on a message. Requires workspace:read.",
+      "name": "list_votes"
+    },
+    {
+      "description": "List the edit history of a message. A tombstoned message returns an empty list unless the caller bypasses access checks. Requires workspace:read.",
+      "name": "list_message_edits"
+    },
+    {
+      "description": "Mark every notification for this member read. Same store path as POST /members/{id}/notifications/read-all, named beside mark_notification_read. Returns {cleared}. member_id must be the caller. Requires workspace:read.",
+      "name": "mark_all_notifications_read"
+    },
+    {
+      "description": "Ask the configured advisor for a land-gate recommendation. Read-only: it does not write the gate or the requirement. NotFound when no advisor is configured. Requires thread:transition.",
+      "name": "advise_land_gate"
+    },
+    {
+      "description": "Store a named secret in the caller workspace. Returns metadata only; the plaintext is not echoed. Requires secret:admin.",
+      "name": "create_secret"
+    },
+    {
+      "description": "Delete a named secret in the caller workspace. Requires secret:admin.",
+      "name": "delete_secret"
+    },
+    {
+      "description": "Return artifact metadata and content_base64 bytes for a sha256 the caller workspace can access. A missing access ref is NotFound. Requires workspace:read.",
+      "name": "get_artifact"
+    },
+    {
+      "description": "List members of a workspace. Same store path as GET /workspaces/{wid}/members. Requires workspace:read.",
+      "name": "list_members"
+    },
+    {
+      "description": "Fetch one member in the caller workspace. Another workspace is NotFound, same as an unknown id. Requires workspace:read.",
+      "name": "get_member"
+    }
+  ]
+}
