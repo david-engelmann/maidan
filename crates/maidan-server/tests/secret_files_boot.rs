@@ -122,3 +122,75 @@ async fn the_server_boots_on_secrets_read_from_files_and_never_logs_them() {
         "the session secret was logged"
     );
 }
+
+/// Outbound delivery needs only the outbound credentials: a deployment that
+/// posts results to Slack and GitHub and takes nothing back sets the bot token
+/// and the GitHub token, not the signing or webhook secrets. The inbound
+/// routes stay off, and neither credential reaches the logs.
+#[tokio::test]
+async fn egress_runs_on_its_own_credentials_without_the_ingress_secrets() {
+    let dir = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let bot_token = "xoxb-egress-only-token-0123456789";
+    let github_token = "ghp_egress_only_token_0123456789";
+    let mut child = server(dir.path())
+        .env("DATABASE_URL", "sqlite::memory:")
+        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
+        .env(
+            "MAIDAN_SESSION_SECRET",
+            "session-secret-for-the-egress-test-0123",
+        )
+        .env("MAIDAN_SLACK_BOT_TOKEN", bot_token)
+        .env("MAIDAN_GITHUB_TOKEN", github_token)
+        .env("MAIDAN_GITHUB_WRITE_REPOS", "example/app")
+        .env("MAIDAN_BIND", format!("127.0.0.1:{port}"))
+        .env("MAIDAN_LOG", "info,sqlx=warn")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let client = reqwest::Client::new();
+    let base = format!("http://127.0.0.1:{port}");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let ready = loop {
+        if let Ok(response) = client.get(format!("{base}/health/ready")).send().await {
+            if response.status().is_success() {
+                break true;
+            }
+        }
+        if Instant::now() > deadline || child.try_wait().unwrap().is_some() {
+            break false;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+    let mut ingress = Vec::new();
+    if ready {
+        for path in ["/integrations/slack/events", "/integrations/github/events"] {
+            let status = client
+                .post(format!("{base}{path}"))
+                .body("{}")
+                .send()
+                .await
+                .unwrap()
+                .status();
+            ingress.push((path, status));
+        }
+    }
+    let _ = child.kill();
+    let output = child.wait_with_output().unwrap();
+    let logs = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(ready, "server never became ready:\n{logs}");
+    assert!(logs.contains("slack egress configured"), "{logs}");
+    assert!(logs.contains("github egress configured"), "{logs}");
+    assert!(!logs.contains("slack ingress configured"), "{logs}");
+    assert!(!logs.contains("github ingress configured"), "{logs}");
+    for (path, status) in ingress {
+        assert_eq!(status, reqwest::StatusCode::NOT_FOUND, "{path} stays off");
+    }
+    assert!(!logs.contains(bot_token) && !logs.contains(github_token));
+}

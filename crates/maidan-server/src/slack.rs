@@ -44,6 +44,14 @@ pub struct SlackConfig {
     pub bot_token: Option<String>,
 }
 
+/// `MAIDAN_SLACK_BOT_TOKEN`, the egress credential. Read on its own: egress
+/// does not need the signing secret.
+pub fn bot_token_from_env() -> Option<String> {
+    std::env::var("MAIDAN_SLACK_BOT_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
 impl SlackConfig {
     /// Build from the environment, or `None` when `MAIDAN_SLACK_SIGNING_SECRET` is
     /// unset — the projector is then disabled.
