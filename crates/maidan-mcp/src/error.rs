@@ -27,7 +27,16 @@ pub enum McpError {
 
     #[error("rate limited; retry after {retry_after_ms}ms")]
     RateLimited { retry_after_ms: u64 },
+
+    /// A footprint set on a claimed thread overlaps other live claims; nothing
+    /// was stored. `data.conflicts` names each overlapped claim and its lease.
+    #[error("footprint conflict with {} live claim item(s)", .0.len())]
+    FootprintConflict(Vec<maidan_types::FootprintConflict>),
 }
+
+/// JSON-RPC error code for a refused footprint. In the server-defined range; a
+/// client should release its claim and requeue, or narrow the footprint.
+pub const FOOTPRINT_CONFLICT_CODE: i32 = -32009;
 
 /// JSON-RPC error code for backpressure. In the server-defined range
 /// (-32000..=-32099); a client that recognizes it should back off for
@@ -66,6 +75,11 @@ impl McpError {
                 code: -32003,
                 message: format!("forbidden: {msg}"),
                 data: None,
+            },
+            Self::FootprintConflict(conflicts) => JsonRpcError {
+                code: FOOTPRINT_CONFLICT_CODE,
+                message: self.to_string(),
+                data: Some(serde_json::json!({ "conflicts": conflicts })),
             },
             Self::RateLimited { retry_after_ms } => JsonRpcError {
                 code: RATE_LIMITED_CODE,

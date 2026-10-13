@@ -66,6 +66,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
 
+### Claim footprints: a swarm never holds overlapping work
+
+- **Added:** a thread can declare its footprint, the part of a repository its work touches. It is a repository, a mode (`exclusive` or `shared`) and items of kind `path`, `glob`, `crate`, `lane` or `branch` (migration 0168, both backends).
+  - **Matching.** `lane`, `crate` and `branch` match exactly; `path` and `glob` by prefix. A branch is always exclusive.
+  - **Lifetime.** A footprint counts only while its thread holds a live claim, and frees itself when the claim ends.
+  - **Claiming.** `claim_next` skips a thread whose footprint overlaps a live claim, and the queue depth counts it as blocked.
+  - **Refinement.** A footprint set on a claimed thread that would overlap another live claim is refused, with each overlapped claim's holder and `lease_expires_at`: a `409` `footprint-conflict` over REST (`PUT /threads/{id}/footprint`), error `-32009` over MCP (`set_thread_footprint`).
+  - **Listing.** `GET /workspaces/{id}/claims?repo=` and the MCP tool `list_active_claims` list the live claims and their footprints, filtered by the reader's read rule. The repository is normalized from any GitHub clone URL.
+  - **Races.** On Postgres, claims in a workspace that uses footprints take a per-workspace advisory lock, so two claimers cannot take overlapping work at once.
+  - **Docs.** `docs/Swarms.md` is the guide to running a swarm of agents on one queue.
+- **Tests:** `claim_footprints`, on both backends, covers the lane wait, freeing on release and on lapse, mode and kind and repository overlap, refinement refused with the old footprint kept, two tenants, and the read rule. Break-checked: without the queue's skip, three of those tests fail. `claim_footprints_e2e` covers the 409 and `-32009` bodies, the listing on both surfaces, and another tenant's `403`.
+
 ### The notices query seeks to its rows
 
 - **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.

@@ -60,6 +60,10 @@ pub enum ApiError {
         quota_bytes: i64,
         upload_bytes: i64,
     },
+    /// A footprint set on a claimed thread overlaps other live claims. 409
+    /// with each overlapped claim item and its lease, so a client can defer
+    /// until the lease would end.
+    FootprintConflict(Vec<maidan_types::FootprintConflict>),
 }
 
 impl ApiError {
@@ -82,6 +86,7 @@ impl ApiError {
             Self::IdempotencyKeyInFlight => StatusCode::CONFLICT,
             Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
             Self::MediaQuotaExceeded { .. } => StatusCode::CONFLICT,
+            Self::FootprintConflict(_) => StatusCode::CONFLICT,
         }
     }
 
@@ -105,6 +110,7 @@ impl ApiError {
             Self::CursorTooOld { .. } => "Cursor Too Old",
             Self::EventLogBroken { .. } => "Event Log Broken",
             Self::MediaQuotaExceeded { .. } => "Media Quota Exceeded",
+            Self::FootprintConflict(_) => "Footprint Conflict",
         }
     }
 
@@ -161,6 +167,15 @@ impl ApiError {
                  Erase media it no longer needs, or raise the quota.",
                 used_bytes.saturating_add(*upload_bytes)
             ),
+            Self::FootprintConflict(conflicts) => {
+                let held: std::collections::BTreeSet<_> =
+                    conflicts.iter().map(|c| c.thread_id.0).collect();
+                format!(
+                    "the footprint overlaps {} live claim(s); nothing was stored. \
+                     Release this claim and requeue, or narrow the footprint",
+                    held.len()
+                )
+            }
         }
     }
 
@@ -185,6 +200,7 @@ impl ApiError {
             Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
             Self::MediaQuotaExceeded { .. } => "https://maidan.dev/problems/media-quota-exceeded",
+            Self::FootprintConflict(_) => "https://maidan.dev/problems/footprint-conflict",
         }
     }
 
@@ -251,6 +267,10 @@ pub struct ProblemDetails {
     /// On a `media-quota-exceeded` 409: the size of the refused upload.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub upload_bytes: Option<i64>,
+    /// On a `footprint-conflict` 409: the live claim items the footprint
+    /// overlaps, each with its thread, holder and lease.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflicts: Option<Vec<maidan_types::FootprintConflict>>,
 }
 
 impl IntoResponse for ApiError {
@@ -268,6 +288,10 @@ impl IntoResponse for ApiError {
             } => Some((*used_bytes, *quota_bytes, *upload_bytes)),
             _ => None,
         };
+        let conflicts = match &self {
+            Self::FootprintConflict(conflicts) => Some(conflicts.clone()),
+            _ => None,
+        };
         let body = ProblemDetails {
             type_: self.problem_type().to_string(),
             title: self.title().to_string(),
@@ -278,6 +302,7 @@ impl IntoResponse for ApiError {
             used_bytes: quota.map(|(used, _, _)| used),
             quota_bytes: quota.map(|(_, quota, _)| quota),
             upload_bytes: quota.map(|(_, _, upload)| upload),
+            conflicts,
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(

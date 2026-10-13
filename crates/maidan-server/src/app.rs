@@ -220,6 +220,7 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{id}/results",
             get(routes::list_workspace_results),
         )
+        .route("/workspaces/{id}/claims", get(routes::list_active_claims))
         .route(
             "/workspaces/{id}/run-threads",
             get(routes::list_run_threads),
@@ -491,6 +492,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/threads/{id}/result",
             put(routes::set_thread_result).merge(get(routes::get_thread_result)),
+        )
+        .route(
+            "/threads/{id}/footprint",
+            put(routes::set_thread_footprint).merge(get(routes::get_thread_footprint)),
         )
         .route(
             "/threads/{id}/deliveries",
