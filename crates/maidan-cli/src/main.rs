@@ -76,6 +76,17 @@ enum Commands {
         #[arg(long)]
         workspace_id: Option<uuid::Uuid>,
     },
+    /// Rotate a workspace's key: retire it, make a new one, move the
+    /// workspace's message keys under the new key, and destroy the old one.
+    /// No sealed message is rewritten. Run it with the server's database and
+    /// the server's `MAIDAN_CONTENT_KEK`.
+    #[command(name = "rotate-workspace-key")]
+    RotateWorkspaceKey {
+        #[arg(long, env = "DATABASE_URL")]
+        database_url: String,
+        #[arg(long)]
+        workspace_id: uuid::Uuid,
+    },
     /// One-time first-admin bootstrap: create the initial workspace, an admin
     /// member, and an admin bearer token (printed once). Refuses if the database
     /// already has a workspace. Removes the need for public bootstrap HTTP routes
@@ -157,6 +168,10 @@ async fn run() -> anyhow::Result<()> {
             database_url,
             workspace_id,
         } => run_verify_shredding(&database_url, workspace_id).await,
+        Commands::RotateWorkspaceKey {
+            database_url,
+            workspace_id,
+        } => run_rotate_workspace_key(&database_url, workspace_id).await,
         Commands::Init {
             database_url,
             workspace,
@@ -165,15 +180,13 @@ async fn run() -> anyhow::Result<()> {
     }
 }
 
-async fn run_init(
+/// Connect, migrate and open the store with the content keyring.
+async fn open_store(
     database_url: &str,
-    workspace_name: &str,
-    admin_handle: &str,
-) -> anyhow::Result<()> {
-    // Before touching the database: a missing KEK refuses with nothing written.
-    let content_keys = content_keyring()?;
+    content_keys: Arc<maidan_types::ContentKeyring>,
+) -> anyhow::Result<Arc<dyn Store>> {
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
-    let store: Arc<dyn Store> = match dialect {
+    Ok(match dialect {
         Dialect::Sqlite => {
             let pool = SqlitePoolOptions::new()
                 .max_connections(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS)
@@ -199,7 +212,64 @@ async fn run_init(
                 .context("migrate postgres")?;
             Arc::new(PostgresStore::new(pool, content_keys))
         }
-    };
+    })
+}
+
+async fn run_rotate_workspace_key(
+    database_url: &str,
+    workspace_id: uuid::Uuid,
+) -> anyhow::Result<()> {
+    let content_keys = content_keyring()?;
+    let store = open_store(database_url, content_keys).await?;
+    let workspace = store
+        .get_workspace(maidan_types::WorkspaceId(workspace_id))
+        .await
+        .context("find the workspace")?;
+    let (retired, active) = store
+        .rotate_workspace_key(workspace.id)
+        .await
+        .context("rotate the workspace key")?;
+    store
+        .append_audit(maidan_types::NewAuditEvent {
+            scope: maidan_types::AuditScope::Workspace(workspace.id),
+            actor_id: None,
+            action: "workspace_key.rotate".into(),
+            target_kind: Some("workspace_key".into()),
+            target_id: Some(active),
+            metadata: serde_json::json!({ "retired": retired, "active": active, "via": "cli" }),
+        })
+        .await
+        .context("audit the rotation")?;
+    // The rotation is done once its data keys have moved and the old key is
+    // destroyed, which is what the rewrap pass does.
+    let mut moved = 0u64;
+    loop {
+        match store.rewrap_content_keys(500).await.context("rewrap")? {
+            0 => break,
+            n => moved += n,
+        }
+    }
+    match retired {
+        Some(retired) => println!(
+            "workspace {} ({}): key {retired} retired and destroyed, key {active} active; {moved} key rows moved",
+            workspace.name, workspace.id.0
+        ),
+        None => println!(
+            "workspace {} ({}): it had no key; key {active} active; {moved} key rows moved",
+            workspace.name, workspace.id.0
+        ),
+    }
+    Ok(())
+}
+
+async fn run_init(
+    database_url: &str,
+    workspace_name: &str,
+    admin_handle: &str,
+) -> anyhow::Result<()> {
+    // Before touching the database: a missing KEK refuses with nothing written.
+    let content_keys = content_keyring()?;
+    let store = open_store(database_url, content_keys).await?;
 
     // Init is a one-time bootstrap: refuse if the store is already populated so it
     // can never clobber an existing deployment or mint a second root token.

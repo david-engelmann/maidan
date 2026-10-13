@@ -21,7 +21,10 @@
 //! body. That is the redacted state, and it is also exactly the bytes the hash
 //! covers, so a shredded event still verifies.
 
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::RwLock;
+use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chacha20poly1305::{
@@ -49,6 +52,9 @@ const NONCE_LEN: usize = 24;
 const SEAL_DOMAIN: &[u8] = b"maidan.content.seal/1";
 const WRAP_DOMAIN: &[u8] = b"maidan.content-key.wrap/1";
 const KEK_ID_DOMAIN: &[u8] = b"maidan.content-kek.id/1";
+const WORKSPACE_WRAP_DOMAIN: &[u8] = b"maidan.workspace-key.wrap/1";
+/// Prefix of the `kek_id` a data key carries when a workspace key wrapped it.
+const WORKSPACE_KEK_PREFIX: &str = "w:";
 const INSECURE_DEV_KEK_DOMAIN: &[u8] = b"maidan.content-kek.insecure-dev/1";
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -313,6 +319,42 @@ impl Kek {
     fn cipher(&self) -> XChaCha20Poly1305 {
         XChaCha20Poly1305::new(self.key.as_ref().into())
     }
+
+    /// Wrap 32 key bytes under this key, bound to `aad`.
+    fn seal(&self, aad: &[u8], key: &[u8; 32]) -> Result<Vec<u8>, SealError> {
+        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let ciphertext = self
+            .cipher()
+            .encrypt(&nonce, Payload { msg: key, aad })
+            .map_err(|_| SealError::Authentication)?;
+        let mut blob = nonce.to_vec();
+        blob.extend_from_slice(&ciphertext);
+        Ok(blob)
+    }
+
+    /// Open 32 key bytes this key wrapped under `aad`.
+    fn open(&self, aad: &[u8], blob: &[u8]) -> Result<Zeroizing<[u8; 32]>, SealError> {
+        if blob.len() <= NONCE_LEN {
+            return Err(SealError::Malformed);
+        }
+        let (nonce, ciphertext) = blob.split_at(NONCE_LEN);
+        let bytes = Zeroizing::new(
+            self.cipher()
+                .decrypt(
+                    XNonce::from_slice(nonce),
+                    Payload {
+                        msg: ciphertext,
+                        aad,
+                    },
+                )
+                .map_err(|_| SealError::Authentication)?,
+        );
+        let key: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| SealError::Malformed)?;
+        Ok(Zeroizing::new(key))
+    }
 }
 
 /// A data key as stored: which KEK wrapped it, and the wrapped bytes
@@ -323,14 +365,53 @@ pub struct WrappedKey {
     pub blob: Vec<u8>,
 }
 
-/// The server's key-encryption keys: one primary that wraps every new data
-/// key, and the previous ones, kept only to unwrap keys not yet rewrapped.
-/// A KEK is named by a fingerprint of itself, so configuration lists keys and
-/// never ids.
+/// The `kek_id` a data key carries when its workspace's key wrapped it.
+pub fn workspace_kek_id(workspace_key_id: uuid::Uuid) -> String {
+    format!("{WORKSPACE_KEK_PREFIX}{workspace_key_id}")
+}
+
+/// The workspace key a data key's `kek_id` names, or `None` for a data key an
+/// instance KEK wrapped directly (written before workspace keys existed).
+pub fn parse_workspace_kek_id(kek_id: &str) -> Option<uuid::Uuid> {
+    kek_id
+        .strip_prefix(WORKSPACE_KEK_PREFIX)
+        .and_then(|id| id.parse().ok())
+}
+
+/// How long an opened workspace key stays in memory without being opened
+/// again. Each read that needs it reopens it from its row, so this bounds how
+/// long a key an erasure destroyed survives in a replica's memory.
+const WORKSPACE_KEY_TTL: Duration = Duration::from_secs(300);
+
+struct OpenWorkspaceKey {
+    kek: Kek,
+    /// The stored form it was opened from. The row is the truth: a row that
+    /// no longer matches (rewrapped under another instance KEK) is opened
+    /// again, so a keyring that cannot open the row cannot use the key.
+    wrapped: WrappedKey,
+    opened_at: Instant,
+}
+
+/// The key hierarchy that seals message words.
+///
+/// - The **instance KEKs**: one primary and the previous ones, kept only to
+///   unwrap keys not yet rewrapped. A KEK is named by a fingerprint of itself,
+///   so configuration lists keys and never ids.
+/// - A **workspace key** per workspace, stored wrapped by the primary instance
+///   KEK and opened into memory for a few minutes at a time. It wraps that
+///   workspace's data keys, so one workspace's key opens nothing of another's,
+///   erasing a workspace destroys its key, and rotating it rewraps only key
+///   rows.
+/// - A **data key** per message, which seals its words.
+///
+/// A data key written before workspace keys existed is still wrapped by an
+/// instance KEK, and still opens; the rewrap pass moves it under its
+/// workspace's key.
 pub struct ContentKeyring {
     primary: Kek,
     previous: Vec<Kek>,
     insecure_dev: bool,
+    workspace: RwLock<HashMap<uuid::Uuid, OpenWorkspaceKey>>,
 }
 
 impl ContentKeyring {
@@ -339,6 +420,7 @@ impl ContentKeyring {
             primary: Kek::new(primary),
             previous: previous.into_iter().map(Kek::new).collect(),
             insecure_dev: false,
+            workspace: RwLock::default(),
         }
     }
 
@@ -351,6 +433,7 @@ impl ContentKeyring {
             primary: Kek::new(key),
             previous: Vec::new(),
             insecure_dev: true,
+            workspace: RwLock::default(),
         }
     }
 
@@ -370,60 +453,166 @@ impl ContentKeyring {
         aad
     }
 
-    /// Wrap `key` for `subject` under the primary KEK.
+    fn workspace_wrap_aad(workspace_key_id: uuid::Uuid) -> Vec<u8> {
+        let mut aad = WORKSPACE_WRAP_DOMAIN.to_vec();
+        aad.push(0);
+        aad.extend_from_slice(workspace_key_id.as_bytes());
+        aad
+    }
+
+    fn instance_kek(&self, kek_id: &str) -> Result<&Kek, SealError> {
+        std::iter::once(&self.primary)
+            .chain(&self.previous)
+            .find(|kek| kek.id == kek_id)
+            .ok_or_else(|| SealError::UnknownKek(kek_id.to_string()))
+    }
+
+    /// Wrap `key` for `subject` under the primary instance KEK. New data keys
+    /// go under their workspace's key ([`Self::wrap_for_workspace`]); this is
+    /// for a keyring with no workspace key, as in tests.
     pub fn wrap(&self, subject: uuid::Uuid, key: &ContentKey) -> Result<WrappedKey, SealError> {
-        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
-        let ciphertext = self
-            .primary
-            .cipher()
-            .encrypt(
-                &nonce,
-                Payload {
-                    msg: key.as_bytes(),
-                    aad: &Self::wrap_aad(subject),
-                },
-            )
-            .map_err(|_| SealError::Authentication)?;
-        let mut blob = nonce.to_vec();
-        blob.extend_from_slice(&ciphertext);
         Ok(WrappedKey {
             kek_id: self.primary.id.clone(),
-            blob,
+            blob: self
+                .primary
+                .seal(&Self::wrap_aad(subject), key.as_bytes())?,
         })
     }
 
-    /// Unwrap a stored key. The KEK is found by its fingerprint; one this
-    /// keyring does not hold is an error, never a shredded key — a missing
+    /// Wrap `key` for `subject` under workspace key `workspace_key_id`, which
+    /// must be open ([`Self::open_workspace_key`]).
+    pub fn wrap_for_workspace(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        subject: uuid::Uuid,
+        key: &ContentKey,
+    ) -> Result<WrappedKey, SealError> {
+        let kek_id = workspace_kek_id(workspace_key_id);
+        let open = self
+            .workspace
+            .read()
+            .map_err(|_| SealError::UnknownKek(kek_id.clone()))?;
+        let entry = open
+            .get(&workspace_key_id)
+            .ok_or_else(|| SealError::UnknownKek(kek_id.clone()))?;
+        Ok(WrappedKey {
+            blob: entry.kek.seal(&Self::wrap_aad(subject), key.as_bytes())?,
+            kek_id,
+        })
+    }
+
+    /// Unwrap a stored data key. The wrapping key is found by its name: an
+    /// instance KEK's fingerprint, or an open workspace key. One this keyring
+    /// does not hold is an error, never a shredded key — a missing
     /// configuration entry must not read as deliberate destruction.
     pub fn unwrap(
         &self,
         subject: uuid::Uuid,
         wrapped: &WrappedKey,
     ) -> Result<ContentKey, SealError> {
-        let kek = std::iter::once(&self.primary)
-            .chain(&self.previous)
-            .find(|kek| kek.id == wrapped.kek_id)
-            .ok_or_else(|| SealError::UnknownKek(wrapped.kek_id.clone()))?;
-        if wrapped.blob.len() <= NONCE_LEN {
-            return Err(SealError::Malformed);
+        let aad = Self::wrap_aad(subject);
+        let bytes = match parse_workspace_kek_id(&wrapped.kek_id) {
+            Some(workspace_key_id) => {
+                let open = self
+                    .workspace
+                    .read()
+                    .map_err(|_| SealError::UnknownKek(wrapped.kek_id.clone()))?;
+                let entry = open
+                    .get(&workspace_key_id)
+                    .ok_or_else(|| SealError::UnknownKek(wrapped.kek_id.clone()))?;
+                entry.kek.open(&aad, &wrapped.blob)?
+            }
+            None => self
+                .instance_kek(&wrapped.kek_id)?
+                .open(&aad, &wrapped.blob)?,
+        };
+        Ok(ContentKey::from_bytes(*bytes))
+    }
+
+    /// Wrap a new workspace key under the primary instance KEK, bound to its
+    /// id, and open it as that stored form.
+    pub fn wrap_workspace_key(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        key: &ContentKey,
+    ) -> Result<WrappedKey, SealError> {
+        let wrapped = WrappedKey {
+            kek_id: self.primary.id.clone(),
+            blob: self
+                .primary
+                .seal(&Self::workspace_wrap_aad(workspace_key_id), key.as_bytes())?,
+        };
+        self.install(workspace_key_id, *key.as_bytes(), wrapped.clone());
+        Ok(wrapped)
+    }
+
+    /// Open a stored workspace key so data keys under it wrap and unwrap,
+    /// unless it is open already from this same stored form.
+    /// `wrapped.kek_id` names the instance KEK that wrapped it.
+    pub fn open_workspace_key(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &WrappedKey,
+    ) -> Result<(), SealError> {
+        if self.is_open(workspace_key_id, wrapped) {
+            return Ok(());
         }
-        let (nonce, ciphertext) = wrapped.blob.split_at(NONCE_LEN);
-        let bytes = Zeroizing::new(
-            kek.cipher()
-                .decrypt(
-                    XNonce::from_slice(nonce),
-                    Payload {
-                        msg: ciphertext,
-                        aad: &Self::wrap_aad(subject),
-                    },
-                )
-                .map_err(|_| SealError::Authentication)?,
-        );
-        let key: [u8; 32] = bytes
-            .as_slice()
-            .try_into()
-            .map_err(|_| SealError::Malformed)?;
-        Ok(ContentKey::from_bytes(key))
+        let bytes = self
+            .instance_kek(&wrapped.kek_id)?
+            .open(&Self::workspace_wrap_aad(workspace_key_id), &wrapped.blob)?;
+        self.install(workspace_key_id, *bytes, wrapped.clone());
+        Ok(())
+    }
+
+    /// Rewrap a stored workspace key under the primary instance KEK.
+    pub fn rewrap_workspace_key(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &WrappedKey,
+    ) -> Result<WrappedKey, SealError> {
+        let aad = Self::workspace_wrap_aad(workspace_key_id);
+        let bytes = self
+            .instance_kek(&wrapped.kek_id)?
+            .open(&aad, &wrapped.blob)?;
+        Ok(WrappedKey {
+            kek_id: self.primary.id.clone(),
+            blob: self.primary.seal(&aad, &bytes)?,
+        })
+    }
+
+    /// Drop an open workspace key from memory: its row was destroyed.
+    pub fn forget_workspace_key(&self, workspace_key_id: uuid::Uuid) {
+        if let Ok(mut open) = self.workspace.write() {
+            open.remove(&workspace_key_id);
+        }
+    }
+
+    fn is_open(&self, workspace_key_id: uuid::Uuid, wrapped: &WrappedKey) -> bool {
+        self.workspace.read().is_ok_and(|open| {
+            open.get(&workspace_key_id).is_some_and(|entry| {
+                entry.wrapped == *wrapped && entry.opened_at.elapsed() < WORKSPACE_KEY_TTL
+            })
+        })
+    }
+
+    fn install(&self, workspace_key_id: uuid::Uuid, key: [u8; 32], wrapped: WrappedKey) {
+        if let Ok(mut open) = self.workspace.write() {
+            // Expired entries go whenever one is added, so the map holds only
+            // keys used in the last few minutes.
+            open.retain(|_, entry| entry.opened_at.elapsed() < WORKSPACE_KEY_TTL);
+            let kek = Kek {
+                id: workspace_kek_id(workspace_key_id),
+                key: Zeroizing::new(key),
+            };
+            open.insert(
+                workspace_key_id,
+                OpenWorkspaceKey {
+                    kek,
+                    wrapped,
+                    opened_at: Instant::now(),
+                },
+            );
+        }
     }
 }
 
@@ -436,6 +625,10 @@ impl fmt::Debug for ContentKeyring {
                 &self.previous.iter().map(|k| &k.id).collect::<Vec<_>>(),
             )
             .field("insecure_dev", &self.insecure_dev)
+            .field(
+                "open_workspace_keys",
+                &self.workspace.read().map(|open| open.len()).unwrap_or(0),
+            )
             .finish()
     }
 }
