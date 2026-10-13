@@ -1,0 +1,108 @@
+name: deploy dev
+
+# dev.maidan.world runs `main` on Cloudflare Containers (deploy/cloudflare/,
+# docs/Production.md "Hosted on Cloudflare"). Every push to main that changes
+# the server builds the image and deploys it. A pull request that changes the
+# deploy itself builds the image only, so a broken Dockerfile or Worker shows
+# before it reaches main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "migrations/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "deploy/cloudflare/**"
+      - ".github/workflows/deploy-dev.yml"
+  pull_request:
+    paths:
+      - "deploy/cloudflare/**"
+      - ".github/workflows/deploy-dev.yml"
+  workflow_dispatch:
+
+# A newer main supersedes a deploy still building; dev runs the newest.
+concurrency:
+  group: deploy-dev-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: image (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Cloudflare Containers run linux/amd64 only. The release cache scope
+      # warms the dependency layers; the dev scope keeps the rest.
+      - name: build maidan-server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          platforms: linux/amd64
+          tags: maidan-server:${{ github.sha }}
+          outputs: type=docker,dest=${{ runner.temp }}/maidan-server.tar
+          cache-from: |
+            type=gha,scope=maidan-server-dev
+            type=gha,scope=maidan-server-amd64
+          cache-to: type=gha,mode=max,scope=maidan-server-dev
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maidan-server-image
+          path: ${{ runner.temp }}/maidan-server.tar
+          retention-days: 3
+
+  deploy:
+    needs: image
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: dev
+      url: https://dev.maidan.world
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: maidan-server-image
+          path: ${{ runner.temp }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - run: npm ci
+      - name: push the image to the account registry
+        run: |
+          docker load --input "$RUNNER_TEMP/maidan-server.tar"
+          npx wrangler containers push "maidan-server:$GITHUB_SHA"
+      - name: deploy
+        run: |
+          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$GITHUB_SHA"
+          sed -i \
+            -e "s#\"image\": \"../../crates/maidan-server/Dockerfile\"#\"image\": \"$image\"#" \
+            -e '/"image_build_context"/d' \
+            wrangler.jsonc
+          grep -q "\"image\": \"$image\"" wrangler.jsonc
+          npx wrangler deploy
+      - name: dev answers
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -fsS https://dev.maidan.world/health; then exit 0; fi
+            sleep 10
+          done
+          echo "dev.maidan.world did not answer /health after the deploy" >&2
+          exit 1
