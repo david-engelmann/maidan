@@ -32,7 +32,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### OAuth discovery (phase three, first half)
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
-- **Changed:** HTTP responses are gzip-compressed for clients that offer `Accept-Encoding: gzip`. Event streams, protocol upgrades, images and already-encoded responses are never encoded. Nothing changes for clients that do not offer an encoding.
+- **Changed:** HTTP responses are gzip-compressed for clients that offer `Accept-Encoding: gzip`. Event streams, protocol upgrades, images and already-encoded responses are never encoded. Nothing changes for clients that do not offer an encoding. Responses that carry a credential (a minted, rotated or delegated token, an agent's token, a share ticket, a webhook or hook secret, a peer token, an app code exchange) send `Cache-Control: no-store` and are never compressed, so a secret's length cannot be probed beside text the caller chose (BREACH).
 
 ### A change that ends without a commit says why in its one Slack notice
 
