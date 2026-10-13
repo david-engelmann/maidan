@@ -444,7 +444,7 @@ pub async fn change_reply_at(
             change.status
         ));
         // The cause, so the thread gets one end notice that says why. A
-        // producer's own detail wins over its summary, as soundcheck reads it.
+        // producer's own detail wins over its summary, as the consuming app reads it.
         if let Some(reason) = change.error_detail.as_deref().or(change.summary.as_deref()) {
             lines.push(compact_reason(reason));
         }

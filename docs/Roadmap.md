@@ -58,13 +58,13 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    2026-10-03: a `!change` in Slack opens a Maidan thread, Pi does the coding
    without holding any GitHub credential, Maidan commits Pi's diff to the
    named branch at the base commit Pi reports and opens a draft PR, and
-   Soundcheck previews it and marks it ready. Replies stay on the surface the
+   The consuming app previews it and marks it ready. Replies stay on the surface the
    work started on: a Slack thread is answered in Slack, a PR comment on the
    PR. Maidan's `github_branch` delivery, the threaded Slack reply and the
    audited allowlist seed, on David's personal PAT, are on `main` (#1245).
    One instance built from `main` in Pi's dev-tools stack is documented, with
-   secrets read from files (#1247) and app re-install (#1248). The contract is beatgig/soundcheck's
-   `docs/cross-repo/change-flow.md`.
+   secrets read from files (#1247) and app re-install (#1248). The contract is the
+   producer's cross-repo change-flow contract.
 2. **Agents coordinate at workspace scale.** A verdict reaches the worker as an
    event (#1132), a hung agent's time is charged against its budget (#1139),
    the SDKs return typed results and errors (#1129), and stateless MCP

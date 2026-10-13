@@ -37,7 +37,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### A change that ends without a commit says why in its one Slack notice
 
-- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
+- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
 
 ### A result delivered to GitHub links its attached files
 
@@ -64,6 +64,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### The notices query seeks to its rows
 
 - **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
+
+### Public `main` names no internal project
+
+- **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`, with the names in `scripts/internal-names.txt`) fails when a listed name comes back.
 
 ## [413.0.0] — 2026-10-11
 

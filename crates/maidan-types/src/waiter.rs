@@ -802,9 +802,9 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         .unwrap_or_default();
 
     // pi writes the list under the dotted top-level key
-    // `pi.result_attachments` (soundcheck's docs/cross-repo/attachments.md),
-    // which soundcheck also reads, falling back to an unprefixed key. A
-    // nested `pi` object is read last, for a producer that nests it.
+    // `pi.result_attachments` (the cross-repo attachments contract),
+    // which the consuming app also reads, falling back to an unprefixed
+    // key. A nested `pi` object is read last, for a producer that nests it.
     let attachments = obj
         .get("pi.result_attachments")
         .or_else(|| obj.get("result_attachments"))
