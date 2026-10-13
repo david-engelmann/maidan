@@ -23,6 +23,7 @@ pub mod chain_verify;
 pub mod change_flow;
 pub mod change_patch;
 pub mod claim_reaper;
+pub mod compression;
 pub mod config;
 pub mod consistency;
 pub mod content_keys;

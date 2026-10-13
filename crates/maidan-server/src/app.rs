@@ -70,6 +70,21 @@ pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
 /// and curling it; the binary's `main.rs` uses the same router.
 pub fn router(state: AppState) -> Router {
+    // Routes that answer with a credential (a token, a signing secret, a share
+    // ticket) are never stored by a cache and never compressed: compression
+    // skips `no-store`, so a secret's length cannot be probed beside text the
+    // caller chose (BREACH).
+    let no_store = |route: axum::routing::MethodRouter<AppState>| {
+        route.layer(middleware::map_response(
+            |mut response: axum::response::Response| async move {
+                response.headers_mut().insert(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-store"),
+                );
+                response
+            },
+        ))
+    };
     // One budget for every route that buffers an artifact upload, so the
     // bytes they hold together stay bounded.
     let artifact_limit = artifact_max_body_bytes_from_env();
@@ -271,10 +286,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{wid}/search", get(routes::search_messages))
         .route("/workspaces/{wid}/members", get(routes::list_members))
-        .route("/workspaces/{wid}/agents", post(routes::create_agent))
+        .route(
+            "/workspaces/{wid}/agents",
+            no_store(post(routes::create_agent)),
+        )
         .route(
             "/workspaces/{wid}/members/{mid}/tokens",
-            post(routes::mint_api_token).merge(get(routes::list_api_tokens)),
+            no_store(post(routes::mint_api_token).merge(get(routes::list_api_tokens))),
         )
         .route(
             "/workspaces/{wid}/delegation-grants",
@@ -310,7 +328,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/app-installations/{iid}/tokens",
-            post(apps::mint_app_token),
+            no_store(post(apps::mint_app_token)),
         )
         .route("/members/{id}", get(routes::get_member))
         .route(
@@ -694,17 +712,26 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_reference).merge(get(routes::list_references)),
         )
         .route("/tokens/{id}", delete(routes::revoke_api_token))
-        .route("/tokens/{id}/rotate", post(routes::rotate_api_token))
+        .route(
+            "/tokens/{id}/rotate",
+            no_store(post(routes::rotate_api_token)),
+        )
         // On the bearer tree because what it exchanges is the bearer.
         .route(
             "/auth/session/from-token",
-            post(session::session_from_token),
+            no_store(post(session::session_from_token)),
         )
-        .route("/tokens/attenuate", post(routes::attenuate_api_token))
-        .route("/tokens/delegate", post(routes::delegate_api_token))
+        .route(
+            "/tokens/attenuate",
+            no_store(post(routes::attenuate_api_token)),
+        )
+        .route(
+            "/tokens/delegate",
+            no_store(post(routes::delegate_api_token)),
+        )
         .route(
             "/workspaces/{wid}/share-tickets",
-            post(routes::create_share_ticket).merge(get(routes::list_share_tickets)),
+            no_store(post(routes::create_share_ticket).merge(get(routes::list_share_tickets))),
         )
         .route(
             "/workspaces/{wid}/share-tickets/{tid}",
@@ -718,7 +745,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/peers",
-            post(federation::create_peer).merge(get(federation::list_peers)),
+            no_store(post(federation::create_peer).merge(get(federation::list_peers))),
         )
         .route(
             "/workspaces/{wid}/peers/{pid}",
@@ -838,7 +865,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/webhooks",
-            post(webhooks::create_webhook).merge(get(webhooks::list_webhooks)),
+            no_store(post(webhooks::create_webhook).merge(get(webhooks::list_webhooks))),
         )
         .route(
             "/workspaces/{wid}/webhooks/{whid}",
@@ -850,8 +877,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/slash-commands",
-            post(slash_commands::create_slash_command)
-                .merge(get(slash_commands::list_slash_commands)),
+            no_store(
+                post(slash_commands::create_slash_command)
+                    .merge(get(slash_commands::list_slash_commands)),
+            ),
         )
         .route(
             "/workspaces/{wid}/slash-commands/{cid}",
@@ -881,7 +910,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/fsm-hooks",
-            post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks)),
+            no_store(post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks))),
         )
         .route(
             "/workspaces/{wid}/fsm-hooks/{hid}",
@@ -913,7 +942,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operator/audit", get(routes::list_global_audit))
         .route("/operator/legal-holds", get(routes::list_legal_holds))
-        .route("/operator/workspaces", post(routes::provision_workspace))
+        .route(
+            "/operator/workspaces",
+            no_store(post(routes::provision_workspace)),
+        )
         .route("/operator/status", get(crate::status::operator_status))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(
@@ -1125,7 +1157,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/auth/session/mint",
-            post(session::mint_first_admin_token).layer(session_auth.clone()),
+            no_store(post(session::mint_first_admin_token).layer(session_auth.clone())),
         )
         // A model's confirmation link is spent here, by the signed-in person
         // only: the session cookie, never a bearer. The handler checks the
@@ -1331,7 +1363,7 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/api/dm/{id}/messages", post(dm::post_dm_message))
         .route(
             "/ui/api/workspaces/{wid}/slash-commands",
-            post(slash_commands::create_slash_command),
+            no_store(post(slash_commands::create_slash_command)),
         )
         .route(
             "/ui/api/workspaces/{wid}/slash-commands/{cid}",
@@ -1428,7 +1460,10 @@ pub fn router(state: AppState) -> Router {
             "/.well-known/mcp/server-card.json",
             get(server_card::server_card_json),
         )
-        .route("/oauth/app/token", post(app_oauth::exchange_app_code))
+        .route(
+            "/oauth/app/token",
+            no_store(post(app_oauth::exchange_app_code)),
+        )
         // OAuth 2.1 token endpoint (public; the client authenticates with
         // its secret and the PKCE verifier).
         .route("/oauth/token", post(oauth::token::token))
@@ -1482,6 +1517,11 @@ pub fn router(state: AppState) -> Router {
         // route group's own middleware (auth, quota) becomes a 500 problem
         // that the metrics, rate limiter and request id still see.
         .layer(panic_guard::layer())
+        // Compression wraps the panic guard (a panic's 500 problem encodes
+        // like any other body) and sits inside metrics, so the recorded
+        // response is the encoded one that left the server. What it must
+        // never encode — event streams, upgrades — is in compression.rs.
+        .layer(crate::compression::layer())
         .layer(middleware::from_fn(metrics::middleware))
         // Room-LSN sits *inside* the rate limiter: a later `.layer` is the
         // outer one, so this order makes the limiter outermost. It used to wrap
