@@ -1520,9 +1520,23 @@ pub fn router(state: AppState) -> Router {
             "/oauth/app/token",
             no_store(post(app_oauth::exchange_app_code)),
         )
-        // OAuth 2.1 token endpoint (public; the client authenticates with
-        // its secret and the PKCE verifier).
-        .route("/oauth/token", post(oauth::token::token))
+        // OAuth 2.1 token and revocation endpoints (public; the client
+        // authenticates with HTTP Basic, its secret in the form, or PKCE
+        // alone). Both 404 until `MAIDAN_PUBLIC_ORIGIN` is set.
+        .route(
+            "/oauth/token",
+            post(oauth::token::token).layer(middleware::from_fn_with_state(
+                state.clone(),
+                oauth::token::require_public_origin,
+            )),
+        )
+        .route(
+            "/oauth/revoke",
+            post(oauth::revoke::revoke).layer(middleware::from_fn_with_state(
+                state.clone(),
+                oauth::token::require_public_origin,
+            )),
+        )
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.

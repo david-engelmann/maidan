@@ -46,6 +46,10 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<St
 
 const SESSION_SECRET: &[u8] = b"approval-gate-e2e-session-secret-32b";
 
+/// The public origin the OAuth tests run under: the authorization server is
+/// off without one, and its tokens are bound to the MCP endpoint under it.
+const ORIGIN: &str = "https://maidan.example.com";
+
 async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     spawn_with_origin(None).await
 }
@@ -900,10 +904,11 @@ async fn another_workspaces_session_or_approval_grant_cannot_see_or_accept_a_gat
 /// An OAuth-issued token is a token, so it can never accept an approval gate.
 /// The token endpoint strips `approval:grant` at mint, and the authorize
 /// step refuses it as a scope: even a grant for a member who holds the
-/// capability cannot carry it into an OAuth token.
+/// capability cannot carry it into an OAuth token. And the token is bound to
+/// the MCP resource, so the REST gate routes do not accept it at all.
 #[tokio::test]
 async fn an_oauth_token_cannot_accept_a_gate() {
-    let (addr, client, store) = spawn().await;
+    let (addr, client, store) = spawn_with_origin(Some(ORIGIN)).await;
     let api = Api {
         base: format!("http://{addr}"),
         client,
@@ -961,7 +966,7 @@ async fn an_oauth_token_cannot_accept_a_gate() {
         .build()
         .unwrap();
     let auth_url = format!(
-        "{}/oauth/authorize?response_type=code&client_id=test-mcp-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz",
+        "{}/oauth/authorize?response_type=code&client_id=test-mcp-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread%20workspace%3Awrite&state=xyz&resource=https%3A%2F%2Fmaidan.example.com%2Fmcp%2Fstreamable",
         api.base,
         urlencoding::encode("https://client.example/callback"),
         challenge,
@@ -1027,6 +1032,7 @@ async fn an_oauth_token_cannot_accept_a_gate() {
             ("redirect_uri", "https://client.example/callback"),
             ("client_id", "test-mcp-client"),
             ("code_verifier", verifier.as_str()),
+            ("resource", "https://maidan.example.com/mcp/streamable"),
         ])
         .send()
         .await
@@ -1036,20 +1042,27 @@ async fn an_oauth_token_cannot_accept_a_gate() {
     let oauth_token = token_body["access_token"].as_str().unwrap().to_string();
     let oauth_bearer = Cred::Bearer(&oauth_token);
 
-    // The OAuth token cannot accept a gate, even though the human behind it
-    // holds approval:grant. The capability was stripped at mint.
+    // The token is bound to the MCP resource, so the REST gate routes refuse
+    // it outright, before any capability is weighed: it can neither accept
+    // nor decline there.
     let gate = open_gate(store.as_ref(), ws.id, agent).await;
     let state = api.request_state(ws.id, &gate, &human_bearer).await;
-    assert_refused_with(
-        api.answer(&gate, &state, "accept", &oauth_bearer).await,
-        "missing capability: approval:grant",
-    )
-    .await;
+    for action in ["accept", "decline"] {
+        let refused = api.answer(&gate, &state, action, &oauth_bearer).await;
+        assert_eq!(refused.status(), StatusCode::UNAUTHORIZED, "{action}");
+    }
     assert_pending(store.as_ref(), &gate).await;
 
-    // Declining and cancelling are not accepting, and are unchanged.
-    let declined = api.answer(&gate, &state, "decline", &oauth_bearer).await;
-    assert_eq!(declined.status(), StatusCode::OK);
+    // And wherever it is accepted, it carries no approval:grant: the
+    // capability was never in the grant, and the mint strips it besides.
+    let minted = store
+        .get_active_api_token_by_hash(&hash_secret(&oauth_token))
+        .await
+        .unwrap();
+    assert!(minted.oauth_grant_id.is_some());
+    assert!(!minted
+        .capabilities
+        .contains(&capability::APPROVAL_GRANT.to_string()));
 }
 
 /// Two concurrent "Allow" POSTs for one consent request issue exactly one
@@ -1057,7 +1070,7 @@ async fn an_oauth_token_cannot_accept_a_gate() {
 /// gets 404.
 #[tokio::test]
 async fn concurrent_consent_allow_issues_one_code() {
-    let (addr, _client, store) = spawn().await;
+    let (addr, _client, store) = spawn_with_origin(Some(ORIGIN)).await;
     let base = format!("http://{addr}");
     let ws = store
         .create_workspace(NewWorkspace {
@@ -1099,7 +1112,7 @@ async fn concurrent_consent_allow_issues_one_code() {
         .build()
         .unwrap();
     let auth_url = format!(
-        "{base}/oauth/authorize?response_type=code&client_id=race-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        "{base}/oauth/authorize?response_type=code&client_id=race-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz&resource=https%3A%2F%2Fmaidan.example.com%2Fmcp%2Fstreamable",
         urlencoding::encode("https://client.example/callback"),
         challenge,
     );
@@ -1153,7 +1166,7 @@ async fn concurrent_consent_allow_issues_one_code() {
 /// the row stays for the owner.
 #[tokio::test]
 async fn foreign_consent_post_leaves_request_usable() {
-    let (addr, _client, store) = spawn().await;
+    let (addr, _client, store) = spawn_with_origin(Some(ORIGIN)).await;
     let base = format!("http://{addr}");
     let ws = store
         .create_workspace(NewWorkspace {
@@ -1194,7 +1207,7 @@ async fn foreign_consent_post_leaves_request_usable() {
         .build()
         .unwrap();
     let auth_url = format!(
-        "{base}/oauth/authorize?response_type=code&client_id=foreign-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        "{base}/oauth/authorize?response_type=code&client_id=foreign-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz&resource=https%3A%2F%2Fmaidan.example.com%2Fmcp%2Fstreamable",
         urlencoding::encode("https://client.example/callback"),
         challenge,
     );
@@ -1311,7 +1324,7 @@ async fn consent_redirect(
         .build()
         .unwrap();
     let auth_url = format!(
-        "{base}/oauth/authorize?response_type=code&client_id=issuer-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz",
+        "{base}/oauth/authorize?response_type=code&client_id=issuer-client&redirect_uri={}&code_challenge={}&code_challenge_method=S256&scope=workspace%3Aread&state=xyz&resource=https%3A%2F%2Fmaidan.example.com%2Fmcp%2Fstreamable",
         urlencoding::encode("https://client.example/callback"),
         challenge,
     );
@@ -1374,20 +1387,5 @@ async fn the_authorization_response_names_its_issuer_when_a_public_origin_is_set
     assert!(
         denied.contains("&iss=https%3A%2F%2Fmaidan.example.com"),
         "the error response carries the issuer too: {denied}"
-    );
-}
-
-/// With no public origin there is no issuer identifier to assert, and the
-/// response carries none.
-#[tokio::test]
-async fn the_authorization_response_names_no_issuer_without_a_public_origin() {
-    let (addr, _client, store) = spawn().await;
-    let base = format!("http://{addr}");
-    let (ws, human, human_token) = seed_consent_flow(store.as_ref()).await;
-
-    let approved = consent_redirect(&base, store.as_ref(), ws, human, &human_token, true).await;
-    assert!(
-        !approved.contains("iss="),
-        "no issuer is invented without a configured origin: {approved}"
     );
 }

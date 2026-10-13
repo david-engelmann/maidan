@@ -2,7 +2,7 @@
 //! serves no OAuth metadata and challenges nothing. With it set, the MCP
 //! endpoint's RFC 9728 document names the configured origin and the
 //! authorization server behind it, the RFC 8414 document lists only the
-//! flows that exist, a 401 from an MCP route points at the resource
+//! flows and endpoints that exist, a 401 from an MCP route points at the resource
 //! document, and a 401 elsewhere does not.
 
 use std::sync::{atomic::AtomicI64, Arc};
@@ -172,12 +172,26 @@ async fn with_a_public_origin_the_authorization_server_lists_only_the_flows_that
         doc["token_endpoint"],
         "https://maidan.example.com/oauth/token"
     );
+    assert_eq!(
+        doc["revocation_endpoint"],
+        "https://maidan.example.com/oauth/revoke"
+    );
     assert_eq!(doc["response_types_supported"], serde_json::json!(["code"]));
     assert_eq!(
         doc["grant_types_supported"],
-        serde_json::json!(["authorization_code"]),
-        "refresh_token is advertised only once the token endpoint mints refresh tokens: {doc}"
+        serde_json::json!(["authorization_code", "refresh_token"]),
+        "{doc}"
     );
+    for field in [
+        "token_endpoint_auth_methods_supported",
+        "revocation_endpoint_auth_methods_supported",
+    ] {
+        assert_eq!(
+            doc[field],
+            serde_json::json!(["client_secret_basic", "client_secret_post", "none"]),
+            "{field}: {doc}"
+        );
+    }
     assert_eq!(
         doc["code_challenge_methods_supported"],
         serde_json::json!(["S256"])

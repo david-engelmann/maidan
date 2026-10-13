@@ -31,6 +31,18 @@ const REDIRECT_ONLY: &[(&str, &str)] = &[
     ("get", "/oauth/authorize"),
 ];
 
+/// The OAuth token and revocation endpoints answer their own client errors
+/// in the RFC 6749 section 5.2 envelope, because they are called by OAuth
+/// clients that parse it (`crate::oauth::error`). Only these statuses: a 404
+/// with the server off, a 413 and a 429 come from layers in front of the
+/// handler and stay problems.
+const OAUTH_ERROR_ENVELOPE: &[(&str, &str, &str)] = &[
+    ("post", "/oauth/token", "400"),
+    ("post", "/oauth/token", "401"),
+    ("post", "/oauth/revoke", "400"),
+    ("post", "/oauth/revoke", "401"),
+];
+
 fn document() -> Value {
     serde_json::to_value(super::document()).expect("serialize the OpenAPI document")
 }
@@ -239,8 +251,16 @@ fn every_client_error_is_an_rfc_9457_problem() {
                 .as_object()
                 .map(|c| c.keys().collect())
                 .unwrap_or_default();
-            let schema = content[PROBLEM_JSON]["schema"]["$ref"].as_str();
-            if types != [PROBLEM_JSON] || schema != Some("#/components/schemas/ProblemDetails") {
+            let oauth = OAUTH_ERROR_ENVELOPE
+                .iter()
+                .any(|(m, p, s)| *m == method && *p == path && s == status);
+            let (media, expected) = if oauth {
+                ("application/json", "#/components/schemas/OAuthErrorBody")
+            } else {
+                (PROBLEM_JSON, "#/components/schemas/ProblemDetails")
+            };
+            let schema = content[media]["schema"]["$ref"].as_str();
+            if types != [media] || schema != Some(expected) {
                 problems.push(format!(
                     "{} {path} {status}: content {types:?}, schema {schema:?}",
                     method.to_uppercase()

@@ -8,8 +8,9 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiToken, MemberId, NewApiToken, NewOAuthAuthorizationCode, NewOAuthClient, NewOAuthGrant,
-    NewOAuthPendingRequest, OAuthAuthorizationCode, OAuthClient, OAuthGrant, OAuthGrantId,
-    OAuthPendingRequest, OAuthPendingRequestId, WorkspaceId,
+    NewOAuthPendingRequest, NewOAuthRefreshToken, OAuthAuthorizationCode, OAuthClient, OAuthGrant,
+    OAuthGrantId, OAuthLineageRevocation, OAuthPendingRequest, OAuthPendingRequestId,
+    OAuthRefreshOutcome, OAuthRefreshRotation, OAuthRefreshToken, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -18,7 +19,7 @@ use crate::error::StoreError;
 
 const CLIENT_COLUMNS: &str =
     "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at";
-const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at";
+const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at, lineage_id";
 const GRANT_COLUMNS: &str = "id, client_id, member_id, workspace_id, scope, lineage_id, revoked_at";
 
 fn scopes_from(json: &str) -> Result<Vec<String>, StoreError> {
@@ -50,6 +51,7 @@ fn row_to_code(row: &sqlx::postgres::PgRow) -> Result<OAuthAuthorizationCode, St
         resource: row.get("resource"),
         expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
         used_at: row.get::<Option<DateTime<Utc>>, _>("used_at"),
+        lineage_id: row.get::<Option<Uuid>, _>("lineage_id"),
     })
 }
 
@@ -109,8 +111,9 @@ pub async fn insert_code(pool: &PgPool, new: NewOAuthAuthorizationCode) -> Resul
     sqlx::query(
         "INSERT INTO oauth_authorization_codes
             (code_hash, client_id, member_id, workspace_id, redirect_uri,
-             code_challenge, code_challenge_method, scope, resource, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9)",
+             code_challenge, code_challenge_method, scope, resource, expires_at,
+             lineage_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'S256', $7, $8, $9, $10)",
     )
     .bind(&new.code_hash)
     .bind(&new.client_id)
@@ -121,6 +124,7 @@ pub async fn insert_code(pool: &PgPool, new: NewOAuthAuthorizationCode) -> Resul
     .bind(&scope)
     .bind(new.resource.as_deref())
     .bind(new.expires_at)
+    .bind(new.lineage_id)
     .execute(pool)
     .await?;
     Ok(())
@@ -420,4 +424,293 @@ pub async fn consume_pending_request(
     .fetch_optional(pool)
     .await?;
     row.map(|r| row_to_pending(&r)).transpose()
+}
+
+const REFRESH_COLUMNS: &str = "token_hash, grant_id, lineage_id, client_id, resource, created_at, expires_at, used_at, revoked_at";
+
+fn row_to_refresh(row: &sqlx::postgres::PgRow) -> Result<OAuthRefreshToken, StoreError> {
+    Ok(OAuthRefreshToken {
+        token_hash: row.get("token_hash"),
+        grant_id: OAuthGrantId(row.get::<Uuid, _>("grant_id")),
+        lineage_id: row.get::<Uuid, _>("lineage_id"),
+        client_id: row.get("client_id"),
+        resource: row.get("resource"),
+        created_at: row.get::<DateTime<Utc>, _>("created_at"),
+        expires_at: row.get::<DateTime<Utc>, _>("expires_at"),
+        used_at: row.get::<Option<DateTime<Utc>>, _>("used_at"),
+        revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
+    })
+}
+
+async fn insert_refresh_on(
+    conn: &mut sqlx::PgConnection,
+    new: &NewOAuthRefreshToken,
+) -> Result<OAuthRefreshToken, StoreError> {
+    let row = sqlx::query(&format!(
+        "INSERT INTO oauth_refresh_tokens
+            (token_hash, grant_id, lineage_id, client_id, resource, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING {REFRESH_COLUMNS}"
+    ))
+    .bind(&new.token_hash)
+    .bind(new.grant_id.0)
+    .bind(new.lineage_id)
+    .bind(&new.client_id)
+    .bind(&new.resource)
+    .bind(new.expires_at)
+    .fetch_one(&mut *conn)
+    .await?;
+    row_to_refresh(&row)
+}
+
+pub async fn mint_token_pair_audited(
+    pool: &PgPool,
+    access: NewApiToken,
+    grant_id: OAuthGrantId,
+    refresh: NewOAuthRefreshToken,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<ApiToken, StoreError> {
+    if refresh.grant_id != grant_id {
+        return Err(StoreError::InvalidInput(
+            "a refresh token must be issued under the access token's grant".into(),
+        ));
+    }
+    let mut tx = pool.begin().await?;
+    let token = mint_token_on(&mut tx, access, grant_id).await?;
+    insert_refresh_on(&mut tx, &refresh).await?;
+    super::audit::append_on(&mut tx, audit(&token))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(token)
+}
+
+pub async fn get_refresh_token(
+    pool: &PgPool,
+    token_hash: &str,
+) -> Result<Option<OAuthRefreshToken>, StoreError> {
+    let row = sqlx::query(&format!(
+        "SELECT {REFRESH_COLUMNS} FROM oauth_refresh_tokens WHERE token_hash = $1"
+    ))
+    .bind(token_hash)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|r| row_to_refresh(&r)).transpose()
+}
+
+/// Revoke a lineage on an open transaction. The access tokens are revoked as
+/// rows too, not only through their grant, so a lookup that skipped the
+/// grant-liveness join would still refuse them.
+async fn revoke_lineage_on(
+    conn: &mut sqlx::PgConnection,
+    lineage_id: Uuid,
+) -> Result<OAuthLineageRevocation, StoreError> {
+    let workspace_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT workspace_id FROM oauth_grants WHERE lineage_id = $1 LIMIT 1",
+    )
+    .bind(lineage_id)
+    .fetch_optional(&mut *conn)
+    .await?
+    .map(WorkspaceId);
+    let grants_revoked = sqlx::query(
+        "UPDATE oauth_grants SET revoked_at = NOW()
+         WHERE lineage_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(lineage_id)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+    let access_tokens_revoked = sqlx::query(
+        "UPDATE maidan_api_tokens SET revoked_at = NOW()
+         WHERE revoked_at IS NULL
+           AND oauth_grant_id IN (SELECT id FROM oauth_grants WHERE lineage_id = $1)",
+    )
+    .bind(lineage_id)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+    let refresh_tokens_revoked = sqlx::query(
+        "UPDATE oauth_refresh_tokens SET revoked_at = NOW()
+         WHERE lineage_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(lineage_id)
+    .execute(&mut *conn)
+    .await?
+    .rows_affected();
+    Ok(OAuthLineageRevocation {
+        lineage_id,
+        workspace_id,
+        grants_revoked,
+        access_tokens_revoked,
+        refresh_tokens_revoked,
+    })
+}
+
+pub async fn revoke_lineage_audited(
+    pool: &PgPool,
+    lineage_id: Uuid,
+    audit: crate::AuditFor<OAuthLineageRevocation>,
+) -> Result<OAuthLineageRevocation, StoreError> {
+    let mut tx = pool.begin().await?;
+    let revoked = revoke_lineage_on(&mut tx, lineage_id).await?;
+    super::audit::append_on(&mut tx, audit(&revoked))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(revoked)
+}
+
+pub async fn rotate_refresh_token(
+    pool: &PgPool,
+    rotation: OAuthRefreshRotation,
+    mint_audit: crate::AuditFor<ApiToken>,
+    reuse_audit: crate::AuditFor<OAuthLineageRevocation>,
+) -> Result<OAuthRefreshOutcome, StoreError> {
+    let mut tx = pool.begin().await?;
+    // The conditional update is the single-use point: under concurrency the
+    // second presenter waits on the row lock, re-reads used_at, and takes the
+    // reuse branch below.
+    let claimed = sqlx::query(&format!(
+        "UPDATE oauth_refresh_tokens r SET used_at = NOW()
+         WHERE r.token_hash = $1
+           AND r.used_at IS NULL AND r.revoked_at IS NULL AND r.expires_at > NOW()
+           AND EXISTS (
+             SELECT 1 FROM oauth_grants g
+             WHERE g.id = r.grant_id AND g.revoked_at IS NULL
+           )
+         RETURNING {REFRESH_COLUMNS}"
+    ))
+    .bind(&rotation.presented_hash)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(claimed) = claimed else {
+        let presented = sqlx::query(&format!(
+            "SELECT {REFRESH_COLUMNS} FROM oauth_refresh_tokens WHERE token_hash = $1"
+        ))
+        .bind(&rotation.presented_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let Some(presented) = presented.map(|r| row_to_refresh(&r)).transpose()? else {
+            return Ok(OAuthRefreshOutcome::Invalid);
+        };
+        if presented.used_at.is_none() {
+            return Ok(OAuthRefreshOutcome::Invalid);
+        }
+        let revoked = revoke_lineage_on(&mut tx, presented.lineage_id).await?;
+        super::audit::append_on(&mut tx, reuse_audit(&revoked))
+            .await
+            .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+        tx.commit().await?;
+        return Ok(OAuthRefreshOutcome::Reused(revoked));
+    };
+    let claimed = row_to_refresh(&claimed)?;
+    let grant = sqlx::query(&format!(
+        "SELECT {GRANT_COLUMNS} FROM oauth_grants WHERE id = $1"
+    ))
+    .bind(claimed.grant_id.0)
+    .fetch_one(&mut *tx)
+    .await?;
+    let grant = row_to_grant(&grant)?;
+    if rotation
+        .access_capabilities
+        .iter()
+        .any(|c| !grant.scope.contains(c))
+    {
+        return Err(StoreError::InvalidInput(
+            "a refreshed token cannot carry a scope its grant does not".into(),
+        ));
+    }
+    let access = mint_token_on(
+        &mut tx,
+        NewApiToken {
+            workspace_id: grant.workspace_id,
+            member_id: grant.member_id,
+            app_installation_id: None,
+            token_hash: rotation.access_token_hash,
+            label: rotation.access_label,
+            capabilities: rotation.access_capabilities,
+            expires_at: Some(rotation.access_expires_at),
+        },
+        grant.id,
+    )
+    .await?;
+    let refresh = insert_refresh_on(
+        &mut tx,
+        &NewOAuthRefreshToken {
+            token_hash: rotation.refresh_hash,
+            grant_id: grant.id,
+            lineage_id: claimed.lineage_id,
+            client_id: claimed.client_id,
+            resource: claimed.resource,
+            expires_at: rotation.refresh_expires_at,
+        },
+    )
+    .await?;
+    super::audit::append_on(&mut tx, mint_audit(&access))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(OAuthRefreshOutcome::Rotated {
+        access: Box::new(access),
+        refresh: Box::new(refresh),
+    })
+}
+
+pub async fn revoke_lineage_for_used_code(
+    pool: &PgPool,
+    code_hash: &str,
+    audit: crate::AuditFor<OAuthLineageRevocation>,
+) -> Result<Option<OAuthLineageRevocation>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let code = sqlx::query(&format!(
+        "SELECT {CODE_COLUMNS} FROM oauth_authorization_codes
+         WHERE code_hash = $1 AND used_at IS NOT NULL"
+    ))
+    .bind(code_hash)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(code) = code.map(|r| row_to_code(&r)).transpose()? else {
+        return Ok(None);
+    };
+    // The code names its own lineage: a later grant for the same client,
+    // member and scope is not this code's and is left alone.
+    let Some(lineage) = code.lineage_id else {
+        return Ok(None);
+    };
+    let revoked = revoke_lineage_on(&mut tx, lineage).await?;
+    super::audit::append_on(&mut tx, audit(&revoked))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(Some(revoked))
+}
+
+pub async fn revoke_access_token_audited(
+    pool: &PgPool,
+    token_hash: &str,
+    client_id: &str,
+    audit: crate::AuditFor<ApiToken>,
+) -> Result<Option<ApiToken>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "UPDATE maidan_api_tokens SET revoked_at = NOW()
+         WHERE token_hash = $1 AND revoked_at IS NULL
+           AND oauth_grant_id IN (SELECT id FROM oauth_grants WHERE client_id = $2)
+         RETURNING id, workspace_id, member_id, app_installation_id, token_hash, label,
+                   capabilities, created_at, expires_at, revoked_at, delegation_grant_id,
+                   oauth_grant_id",
+    )
+    .bind(token_hash)
+    .bind(client_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let token = crate::postgres::tokens::row_to_token(&row)?;
+    super::audit::append_on(&mut tx, audit(&token))
+        .await
+        .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
+    tx.commit().await?;
+    Ok(Some(token))
 }

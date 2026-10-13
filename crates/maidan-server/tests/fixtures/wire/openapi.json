@@ -854,7 +854,7 @@
         "type": "object"
       },
       "AuthorizationServerMetadata": {
-        "description": "RFC 8414 authorization-server metadata.\n\nOnly the grant, response type and challenge method the server implements\nare listed. `refresh_token` is absent until the token endpoint mints\nrefresh tokens, and there is no `registration_endpoint` because clients\nare pre-registered or carry a client metadata document, never registered\ndynamically.",
+        "description": "RFC 8414 authorization-server metadata.\n\nOnly the grants, response type and challenge method the server implements\nare listed. There is no `registration_endpoint` because clients are\npre-registered or carry a client metadata document, never registered\ndynamically.",
         "properties": {
           "authorization_endpoint": {
             "type": "string"
@@ -887,11 +887,21 @@
             },
             "type": "array"
           },
+          "revocation_endpoint": {
+            "type": "string"
+          },
+          "revocation_endpoint_auth_methods_supported": {
+            "description": "RFC 8414 gives no default for the revocation endpoint, so a client\nlearns only from this list that it authenticates there as at the\ntoken endpoint.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "token_endpoint": {
             "type": "string"
           },
           "token_endpoint_auth_methods_supported": {
-            "description": "Named because the RFC 8414 default is `client_secret_basic`, which\nthe token endpoint does not read: a confidential client sends its\nsecret in the form body, and a public client sends none.",
+            "description": "Named although the RFC 8414 default, `client_secret_basic`, is among\nthem: the list also says a public client may send no secret at all.",
             "items": {
               "type": "string"
             },
@@ -902,10 +912,12 @@
           "issuer",
           "authorization_endpoint",
           "token_endpoint",
+          "revocation_endpoint",
           "response_types_supported",
           "response_modes_supported",
           "grant_types_supported",
           "token_endpoint_auth_methods_supported",
+          "revocation_endpoint_auth_methods_supported",
           "code_challenge_methods_supported"
         ],
         "type": "object"
@@ -4762,44 +4774,123 @@
         ],
         "type": "object"
       },
-      "OAuthTokenRequest": {
+      "OAuthErrorBody": {
+        "description": "The body of an OAuth error response.",
         "properties": {
-          "client_id": {
+          "error": {
+            "description": "The RFC 6749 section 5.2 code, or `invalid_target` (RFC 8707).",
             "type": "string"
           },
-          "client_secret": {
+          "error_description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "type": "object"
+      },
+      "OAuthRevokeRequest": {
+        "properties": {
+          "client_id": {
+            "description": "Required unless the client authenticates with HTTP Basic.",
             "type": [
               "string",
               "null"
             ]
           },
-          "code": {
-            "type": "string"
+          "client_secret": {
+            "description": "`client_secret_post`; never beside an `Authorization` header.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "code_verifier": {
-            "type": "string"
+          "token": {
+            "description": "The access token or refresh token to revoke.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "grant_type": {
-            "type": "string"
-          },
-          "redirect_uri": {
-            "type": "string"
-          },
-          "resource": {
-            "description": "RFC 8707 resource indicator; must match the code's when set.",
+          "token_type_hint": {
+            "description": "`access_token` or `refresh_token`: where to look first. Both kinds are\nlooked up whatever it says (RFC 7009 section 2.1).",
             "type": [
               "string",
               "null"
             ]
           }
         },
-        "required": [
-          "grant_type",
-          "code",
-          "redirect_uri",
-          "client_id",
-          "code_verifier"
-        ],
+        "type": "object"
+      },
+      "OAuthTokenRequest": {
+        "description": "Every parameter either grant reads. All optional, so a missing one is an\n`invalid_request` naming it rather than a deserialization failure.",
+        "properties": {
+          "client_id": {
+            "description": "Required unless the client authenticates with HTTP Basic.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_secret": {
+            "description": "`client_secret_post`; never beside an `Authorization` header.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "description": "The authorization code (`authorization_code`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code_verifier": {
+            "description": "The PKCE verifier (`authorization_code`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "grant_type": {
+            "description": "`authorization_code` or `refresh_token`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "redirect_uri": {
+            "description": "The redirect URI the code was issued for (`authorization_code`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "refresh_token": {
+            "description": "The refresh token (`refresh_token`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resource": {
+            "description": "RFC 8707 resource indicator: must be the MCP endpoint,\n`<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "description": "Space-delimited; on `refresh_token` it may narrow the grant's scope,\nnever widen it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "OAuthTokenResponse": {
@@ -4810,6 +4901,9 @@
           "expires_in": {
             "format": "int64",
             "type": "integer"
+          },
+          "refresh_token": {
+            "type": "string"
           },
           "scope": {
             "type": "string"
@@ -4822,6 +4916,7 @@
           "access_token",
           "token_type",
           "expires_in",
+          "refresh_token",
           "scope"
         ],
         "type": "object"
@@ -17033,10 +17128,10 @@
             }
           },
           {
-            "description": "RFC 8707 resource indicator",
+            "description": "RFC 8707 resource indicator: `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`, the only resource tokens are issued for",
             "in": "query",
             "name": "resource",
-            "required": false,
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -17054,6 +17149,16 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The authorization server is off: no `MAIDAN_PUBLIC_ORIGIN`"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -17076,9 +17181,72 @@
         ]
       }
     },
+    "/oauth/revoke": {
+      "post": {
+        "description": "RFC 7009 token revocation. The client authenticates as at the token\nendpoint. A refresh token revokes its whole lineage (every grant, access\ntoken and refresh token under it); an access token revokes that token\nonly. The answer is 200 with an empty body whether or not the token was\nknown, and a token issued to another client is left alone with the same\n200. Client errors are RFC 6749 section 5.2 errors, not problems. 404\nuntil `MAIDAN_PUBLIC_ORIGIN` is set.",
+        "operationId": "oauth_revoke",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuthRevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Revoked, or nothing of this client's to revoke"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "`invalid_request`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "`invalid_client`; `WWW-Authenticate: Basic` when the client tried HTTP Basic"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Revoke an OAuth access token or refresh token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/oauth/token": {
       "post": {
-        "description": "The OAuth 2.1 token endpoint. The form carries the code, the redirect URI\nit was issued for, the client id, and the PKCE verifier; confidential\nclients also send their secret. The code is validated before it is\nconsumed, so a wrong guess cannot burn the real client's code. The\nminted token is capability-scoped from the member's grant and never\ncarries `approval:grant`.",
+        "description": "The OAuth 2.1 token endpoint, advertised in the RFC 8414 document.\n`grant_type=authorization_code` exchanges a code, its redirect URI and the\nPKCE verifier for an access token and a refresh token. The code is\nvalidated before it is consumed, so a wrong guess cannot burn the real\nclient's code, and a code presented again after use revokes its grant's\nlineage. `grant_type=refresh_token` rotates: the presented refresh token is\nmarked used and a new pair is returned under the same lineage; a reused\nrefresh token revokes the whole lineage. `scope` may narrow a refresh,\nnever widen it. Every request names `resource`, the MCP endpoint, and the\naccess token is accepted on `/mcp/streamable` only (RFC 8707). The client\nauthenticates with HTTP Basic, its secret in the form, or, if public, PKCE\nalone. Client errors are RFC 6749 section 5.2 errors, not problems. 404\nuntil `MAIDAN_PUBLIC_ORIGIN` is set.",
         "operationId": "oauth_token",
         "requestBody": {
           "content": {
@@ -17102,10 +17270,27 @@
             "description": ""
           },
           "400": {
-            "$ref": "#/components/responses/BadRequest"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "`invalid_request`, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope` or `invalid_target`"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthorized"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthErrorBody"
+                }
+              }
+            },
+            "description": "`invalid_client`; `WWW-Authenticate: Basic` when the client tried HTTP Basic"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
@@ -17123,7 +17308,7 @@
         "security": [
           {}
         ],
-        "summary": "Exchange an OAuth authorization code for an access token",
+        "summary": "Exchange an OAuth authorization code or refresh token for tokens",
         "tags": [
           "auth"
         ]
