@@ -55,6 +55,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** the database client was built without TLS, so a `DATABASE_URL` with `sslmode=require`, which every managed Postgres needs (Neon, PlanetScale, RDS, Cloud SQL), failed with "SQLx was built without TLS support" before reaching the server. `sqlx` now carries rustls with bundled Mozilla roots (`tls-rustls-ring-webpki`), which needs no system certificate store, so it works on the distroless image. Verified by booting Maidan against Neon Postgres 17: every migration applied, `/health/ready` 200. `tests/postgres_tls.rs` pins that the TLS client is compiled in.
 
+### The board's live feed is capped
+
+- **Changed:** the Live panel's raw event feed keeps only its newest 500 lines, dropping the oldest as new events arrive, and each line is appended as a text node. A long live session no longer grows the panel's DOM without bound, and an append no longer re-reads and re-writes every line already shown.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
