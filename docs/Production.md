@@ -1173,6 +1173,89 @@ body `{ "workspace_id": "<uuid>" }` scopes to one workspace (`workspace:write`);
 omit `workspace_id` for all workspaces (`operator:global`; before, a workspace's `token:admin` could start and read an instance-wide job). CLI `maidan reindex-embeddings`
 remains for shell/CI. A job runs in-process on the replica that started it; its record is durable (see below), so a replica that dies mid-run leaves it `Running`.
 
+## Hosted on Cloudflare
+
+`dev.maidan.world` runs `main` on Cloudflare Containers. A Worker
+(`deploy/cloudflare/`) takes every request and hands it to one Maidan
+container, which sleeps after 15 minutes without a request and starts again on
+the next one. Nothing the server keeps lives in the container: Postgres is a
+Neon project (it scales to zero too) and artifacts are an R2 bucket through the
+S3 backend. A sleep or a restart drops only presence and open live connections,
+which clients reconnect.
+
+| Piece | Where | Notes |
+|-------|-------|-------|
+| Server | Cloudflare Containers, `basic` (¼ vCPU, 1 GiB), one instance | The bus runs through Postgres, so more instances can run when traffic needs them ([Horizontal scaling](#horizontal-scaling-v10500)) |
+| Front door | The `maidan-dev` Worker on the `dev.maidan.world` custom domain | TLS at Cloudflare; the Worker sets `X-Forwarded-For` to the connecting address, and the server trusts one hop |
+| Postgres | Neon project `maidan-dev`, Postgres 17 with pgvector | Direct connection, not the pooler, because the bus `LISTEN`s |
+| Artifacts | R2 bucket `maidan-artifacts-dev` | `ARTIFACT_BACKEND=s3`, `S3_REGION=auto` |
+| Scheduled work | An hourly cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake |
+
+### Deploying
+
+Every push to `main` that touches the server runs `deploy dev`
+(`.github/workflows/deploy-dev.yml`): it builds the linux/amd64 image with a
+warm cache, pushes it to the account's registry, points `wrangler.jsonc` at it
+and deploys, then waits until `/health` reports the build it deployed
+(`main-<first 8 of the commit>`). The job reads `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` from the `dev` environment, which only `main` may use;
+the token is scoped to Workers scripts, containers and the `maidan.world`
+zone's routes. A pull request that changes the deploy builds the image only.
+
+The very first deploy of an instance creates the Durable Object and the
+container application together, and the application can fail to find the
+namespace (`DURABLE_OBJECT_NOT_FOUND`). The second attempt finds it, so the job
+retries once.
+
+Without local Docker, push a CI-built image with `crane`: download the
+`maidan-server-image` artifact, get a short-lived push credential from
+`POST /accounts/<id>/containers/registries/registry.cloudflare.com/credentials`
+(`{"expiration_minutes": 30, "permissions": ["push", "pull"]}`), `crane push`
+the tarball to `registry.cloudflare.com/<account id>/maidan-server:<tag>`, and
+deploy with that reference as `image`.
+
+From a checkout, `npx wrangler deploy` in `deploy/cloudflare/` builds the image
+from source with local Docker instead, which is slow on a machine that is not
+linux/amd64.
+
+### Secrets
+
+The server's secrets are Worker secrets, set once and kept across deploys:
+
+```sh
+cd deploy/cloudflare
+for name in DATABASE_URL MAIDAN_CONTENT_KEK MAIDAN_SESSION_SECRET \
+            S3_ENDPOINT S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+  npx wrangler secret put "$name"
+done
+```
+
+The Worker passes only the names it lists in `src/index.js` to the container,
+plus the fixed settings there (`MAIDAN_ENV=production`, JSON logs, the bind
+address and the proxy hop). Plain settings (the public origin, the bucket) are
+`vars` in `wrangler.jsonc`.
+
+### The first admin
+
+`maidan init` writes through the store, so it runs from any machine that can
+reach Neon, with the same `DATABASE_URL` and `MAIDAN_CONTENT_KEK` as the
+Worker secrets ([Bootstrap](#bootstrap)).
+
+### What a sleeping instance means
+
+- The first request after a sleep waits for the container to start and the
+  server to boot against Neon, which may itself be waking.
+- Any open request keeps the container awake: a WebSocket, an SSE stream or
+  MCP's notification stream counts until it closes, and the container sleeps
+  15 minutes after the last one does. An agent that stays connected keeps its
+  instance running, and is billed as running.
+- Work a sleeping server would have done waits for the next request or the
+  hourly cron.
+- Any request wakes it, a crawler's too. Scanners find a new domain within
+  hours of its certificate and probe for `/.env`, `/.git/config` and PHP
+  files; the Worker answers paths no Maidan route serves with 404 itself
+  (`src/scanner.js`), so those probes never reach the container.
+
 ## Helm (production)
 
 Charts under `helm/maidan` (server) and `helm/maidan-stack` (the server plus an optional
