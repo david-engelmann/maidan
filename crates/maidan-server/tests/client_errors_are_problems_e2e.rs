@@ -42,6 +42,7 @@ impl Server {
 async fn spawn() -> Server {
     // `router` reads the cap once, at build; every test sets the same value.
     std::env::set_var("MAIDAN_MAX_BODY_BYTES", MAX_BODY_BYTES);
+    std::env::set_var("MAIDAN_ARTIFACT_MAX_BODY_BYTES", MAX_BODY_BYTES);
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -197,7 +198,7 @@ async fn a_body_over_the_limit_is_a_413_problem() {
         StatusCode::PAYLOAD_TOO_LARGE,
     )
     .await;
-    // A raw upload is capped the same way.
+    // An artifact upload has its own limit, and past it answers the same way.
     assert_problem(
         s.client
             .post(s.url("/artifacts?kind=attachment&mime_type=text/plain"))
