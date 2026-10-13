@@ -51,6 +51,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `MAIDAN_ARTIFACT_MAX_BODY_BYTES` caps `POST /artifacts`, `POST /ui/api/artifacts` and each multipart part, default 100 MiB, while every other route keeps `MAIDAN_MAX_BODY_BYTES` (default 2 MiB). A deployment that takes long recordings raises the artifact limit alone, instead of every route's. A single-shot upload is held in memory while it is hashed, so `MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES` (default 256 MiB, `0` off) bounds the upload bytes held at once: each upload is charged its `Content-Length`, or the whole artifact limit when it declares none, and one that does not fit gets `503` with `Retry-After: 1` (`maidan_artifact_upload_budget_refused_total`).
 - **Tests:** `artifact_isolation_e2e` now checks the attachment path between two apps: another member of the uploader's workspace reads the same bytes back, and another tenant's member who knows the sha gets 404 on the bytes and the metadata. A 3 MiB upload succeeds while a 3 MiB JSON body on another route gets 413.
 
+### Maidan connects to managed Postgres over TLS
+
+- **Fixed:** the database client was built without TLS, so a `DATABASE_URL` with `sslmode=require`, which every managed Postgres needs (Neon, PlanetScale, RDS, Cloud SQL), failed with "SQLx was built without TLS support" before reaching the server. `sqlx` now carries rustls with bundled Mozilla roots (`tls-rustls-ring-webpki`), which needs no system certificate store, so it works on the distroless image. Verified by booting Maidan against Neon Postgres 17: every migration applied, `/health/ready` 200. `tests/postgres_tls.rs` pins that the TLS client is compiled in.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
