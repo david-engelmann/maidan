@@ -21,8 +21,8 @@ people in against it. The research behind this plan is archived under
 
 ## Phases
 
-Phase zero is on `main`. Each later phase is its own PR, held to the security
-controls in Next 23.
+Phases zero to three have shipped. Each later phase is its own PR, held to
+the security controls in Next 23.
 
 | Phase | What ships | Acceptance criteria |
 |---|---|---|
@@ -34,9 +34,70 @@ controls in Next 23.
 | P5, hardening | Rate limits on the new endpoints, audit rows, scope contract tests | A contract fails on a grant wider than its member |
 | P6, validation record | The full flow from real MCP clients against a public instance | The record names the commit it ran |
 
-The authorization-server document waits for P3 because RFC 8414 requires
+The authorization-server document waited for P3 because RFC 8414 requires
 `response_types_supported` and an authorization endpoint, and before P3 any
 such document would either be invalid or advertise endpoints that do not exist.
+
+## Phase three controls
+
+P3 shipped. These are its controls and what each one does.
+
+- **Server off without an origin.** With no `MAIDAN_PUBLIC_ORIGIN`,
+  `/oauth/authorize`, `/oauth/token` and `/oauth/revoke` answer 404, like the
+  discovery documents. The token and revocation endpoints check it in a layer,
+  before the body is read.
+- **Resource binding (RFC 8707).** Authorize and token requests must name
+  `resource`, and it must be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`. The code,
+  the refresh token and the minted access token all carry it. The bearer
+  middleware accepts an access token minted under an OAuth grant only when the
+  matched route is `/mcp/streamable`. Everywhere else, `/mcp` included, the
+  token resolves as no token at all and the answer is 401 with
+  `WWW-Authenticate: Bearer error="invalid_token"`. The refusal lives in
+  `maidan_auth::resolve_bearer`, so the WebSocket, gRPC and session-from-token
+  paths refuse it too. Only `resolve_resource_bearer` accepts it.
+- **Client authentication.** `client_secret_basic`, `client_secret_post` and
+  `none`, at the token and revocation endpoints. Two methods in one request is
+  `invalid_request`. A confidential client that sends no secret, or a wrong
+  one, is `invalid_client`, with `WWW-Authenticate: Basic realm="maidan"` when
+  it tried Basic. A public client may not send a secret. Secrets are compared
+  in constant time.
+- **Code exchange.** The code is read and fully validated (client, redirect
+  URI, resource, PKCE verifier) before one atomic statement consumes it. The
+  exchange returns an access token (one hour) and a refresh token (30 days),
+  minted with their audit row in one transaction.
+- **Refresh rotation.** One transaction marks the presented refresh token used,
+  only if it is unused, unrevoked, unexpired and its grant is live, and mints
+  the new access token and refresh token under the same grant and lineage. The
+  new access token's member and workspace come from the grant, never from the
+  request. `scope` may narrow the grant's scope and never widen it
+  (`invalid_scope`). Omitted, it is the grant's scope.
+- **Reuse revokes the lineage.** A refresh token presented after it was used,
+  including the loser of two concurrent rotations, revokes every grant with
+  its lineage id, every access token under those grants and every refresh
+  token of the lineage, in one transaction with an `oauth_lineage.revoke`
+  audit row (reason `refresh_token_reuse`). A code presented again after it
+  was used, with its PKCE verifier, does the same for the live grant matching
+  the code's client, member, workspace and scope (reason `code_reuse`). The
+  code without its verifier is refused and revokes nothing, since anyone who
+  saw the redirect holds it.
+- **A revoked grant stops its tokens and codes.** The bearer lookup refuses a
+  token whose grant is revoked, and a lineage revocation also revokes the
+  token rows themselves, so the next request fails either way. A code whose
+  grant was revoked before the exchange is `invalid_grant`: the exchange never
+  starts a new grant, so a revocation cannot be outrun by a code in flight.
+- **Revocation (RFC 7009).** `POST /oauth/revoke` takes `token` and an
+  optional `token_type_hint`. A refresh token revokes its lineage (reason
+  `client_revocation`), an access token revokes itself (`oauth_token.revoke`).
+  It answers 200 with an empty body for a known token, an unknown one and
+  another client's alike, and leaves another client's token untouched.
+- **A narrowed client stops refreshing.** When an operator narrows a client's
+  allowed scopes, a code exchange or refresh that would carry a scope the
+  client no longer allows is `unauthorized_client`.
+- **RFC 6749 errors.** The token and revocation endpoints answer client errors
+  as `{"error", "error_description"}` with `Cache-Control: no-store`, not as
+  problems, because OAuth clients parse that envelope. A body over the size
+  limit, a 404 and a 429 stay problems: they come from layers in front of the
+  handler.
 
 ## Configuration
 

@@ -6,13 +6,38 @@ use crate::error::AuthError;
 use crate::token::{hash_secret, hashes_equal};
 
 /// Resolve a bearer secret to an [`AuthContext`] via the store.
+///
+/// A token minted by the OAuth authorization server is refused here: it is
+/// bound to the MCP resource (RFC 8707), and only
+/// [`resolve_resource_bearer`] accepts it. Refusing by default means every
+/// surface that resolves a bearer (REST, WebSocket, gRPC, a session made
+/// from a token) is closed to it without each having to remember.
 pub async fn resolve_bearer(store: &dyn Store, bearer: &str) -> Result<AuthContext, AuthError> {
+    let token = active_token(store, bearer).await?;
+    if token.oauth_grant_id.is_some() {
+        return Err(AuthError::Unauthorized);
+    }
+    active_token_context(store, token).await
+}
+
+/// [`resolve_bearer`] for the one route an OAuth token is bound to, the MCP
+/// resource: it also accepts a token minted under an OAuth grant. Call it
+/// only once the request is known to be for that resource.
+pub async fn resolve_resource_bearer(
+    store: &dyn Store,
+    bearer: &str,
+) -> Result<AuthContext, AuthError> {
+    let token = active_token(store, bearer).await?;
+    active_token_context(store, token).await
+}
+
+async fn active_token(store: &dyn Store, bearer: &str) -> Result<ApiToken, AuthError> {
     let computed = hash_secret(bearer);
     let token = store.get_active_api_token_by_hash(&computed).await?;
     if !hashes_equal(&token.token_hash, &computed) {
         return Err(AuthError::Unauthorized);
     }
-    active_token_context(store, token).await
+    Ok(token)
 }
 
 /// Resolve a token by id to the [`AuthContext`] its bearer would get, for a
