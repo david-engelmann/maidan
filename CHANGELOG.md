@@ -73,6 +73,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** the token and revocation endpoints answer client errors as RFC 6749 errors (`invalid_request`, `invalid_client`, `invalid_grant`, `unauthorized_client`, `unsupported_grant_type`, `invalid_scope`, and RFC 8707's `invalid_target`) instead of problems, since OAuth clients parse that envelope.
 - **Changed:** authorize and token requests must name `resource`, the MCP endpoint under `MAIDAN_PUBLIC_ORIGIN`, and an OAuth access token is accepted on `/mcp/streamable` only. Every other route, `/mcp` included, answers it with 401 and `invalid_token`, and it cannot be exchanged for a browser session. Without `MAIDAN_PUBLIC_ORIGIN` the authorize, token and revocation endpoints answer 404. The RFC 8414 document lists the refresh grant, the revocation endpoint and the three client authentication methods.
 
+### The audit log is partitioned by month
+
+- **Changed:** the Postgres audit log is range-partitioned by calendar month of `occurred_at` (migration 0165), the way the event log is (0162). Existing rows stay put in a legacy partition and drain through retention; `prune_audit` drops a month whole when no row in it belongs to a held workspace and deletes inside it otherwise, and boot and every retention sweep keep the current month plus three ahead ready. SQLite keeps one table.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

@@ -151,29 +151,102 @@ pub async fn maintain_partitions(pool: &PgPool, now: DateTime<Utc>) -> Result<u6
     partitions::maintain(pool, now).await
 }
 
+/// Prune the audit log: rows with `occurred_at < cutoff`, outside held
+/// workspaces (instance-level rows, with no workspace, are never held).
+///
+/// The log is partitioned by month of `occurred_at` (migration 0165). A
+/// month that ends by the cutoff is dropped whole when nothing in it is
+/// held; every other partition that may hold a row before the cutoff (a
+/// kept month, the month the cutoff falls in, the pre-partitioning
+/// partition and DEFAULT) gets the batched delete, inside that partition
+/// only, up to `limit` rows in all. A loop over this ends with exactly the
+/// rows the batched delete alone would have left.
+///
+/// Returns the rows removed, dropped ones included, so the caller's loop
+/// runs again after a drop and stops once a call removes fewer than `limit`.
 pub async fn prune_audit(
     pool: &PgPool,
     cutoff: DateTime<Utc>,
     limit: i64,
 ) -> Result<u64, StoreError> {
-    let res = sqlx::query(
-        // A hold keeps its own workspace's rows, as with events. Instance-level
-        // rows (NULL workspace_id) belong to no tenant's hold and still prune.
-        "DELETE FROM maidan_audit
-         WHERE id IN (
-             SELECT id FROM maidan_audit
-             WHERE occurred_at < $1
-               AND (workspace_id IS NULL
-                    OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
-             ORDER BY id ASC
-             LIMIT $2
-         )",
-    )
-    .bind(cutoff)
-    .bind(limit)
-    .execute(pool)
-    .await?;
-    Ok(res.rows_affected())
+    let table = &partitions::AUDIT;
+    let mut total = 0u64;
+    for part in partitions::list(pool, table).await? {
+        if part.ends_by(cutoff) {
+            total += drop_audit_partition(pool, &part).await?;
+        }
+    }
+    let mut left = limit;
+    for part in partitions::list(pool, table).await? {
+        if left <= 0 {
+            break;
+        }
+        if !part.starts_before(cutoff) {
+            continue;
+        }
+        let name = &part.name;
+        let res = sqlx::query(&format!(
+            // A hold keeps its own workspace's rows, as with events.
+            // Instance-level rows (NULL workspace_id) belong to no tenant's
+            // hold and still prune.
+            "DELETE FROM {name}
+             WHERE id IN (
+                 SELECT id FROM {name}
+                 WHERE occurred_at < $1
+                   AND (workspace_id IS NULL
+                        OR workspace_id NOT IN (SELECT workspace_id FROM maidan_legal_holds))
+                 ORDER BY id ASC
+                 LIMIT $2
+             )"
+        ))
+        .bind(cutoff)
+        .bind(left)
+        .execute(pool)
+        .await?;
+        let n = res.rows_affected();
+        total += n;
+        left = left.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+    }
+    Ok(total)
+}
+
+/// Drop one audit-log month that ends by the cutoff, when no row in it
+/// belongs to a held workspace. Returns the rows it held, or 0 when it is
+/// kept (the delete pass then takes its eligible rows) or the table was
+/// too busy to lock.
+async fn drop_audit_partition(
+    pool: &PgPool,
+    part: &partitions::Partition,
+) -> Result<u64, StoreError> {
+    let name = &part.name;
+    let keeps_sql = format!(
+        "EXISTS (SELECT 1 FROM maidan_legal_holds h
+                  WHERE EXISTS (SELECT 1 FROM {name} a WHERE a.workspace_id = h.workspace_id))"
+    );
+    // Pre-check without the lock: a kept partition must not queue an
+    // ACCESS EXCLUSIVE lock on the whole audit log on every batch.
+    let likely_kept: bool = sqlx::query_scalar(&keeps_sql).fetch_one(pool).await?;
+    if likely_kept {
+        return Ok(0);
+    }
+    // Counted before the lock, so the lock is held only for the re-check
+    // and the drop. A row added in between is still checked below.
+    let rows: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {name}"))
+        .fetch_one(pool)
+        .await?;
+    let Some(mut tx) = partitions::begin_drop(pool, &partitions::AUDIT, DROP_LOCK_WAIT).await?
+    else {
+        return Ok(0);
+    };
+    let keeps: bool = sqlx::query_scalar(&keeps_sql).fetch_one(&mut *tx).await?;
+    if keeps {
+        tx.rollback().await?;
+        return Ok(0);
+    }
+    partitions::drop_partition(&mut tx, part).await?;
+    tx.commit().await?;
+    tracing::info!(partition = %name, rows, "retention: dropped audit-log partition");
+    Ok(u64::try_from(rows).unwrap_or(0))
 }
 
 /// Delete up to `limit` read notifications with `created_at < cutoff`.

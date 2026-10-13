@@ -49,6 +49,14 @@ const ALLOWED: &[(&str, &str)] = &[
         "the other half of the entry above",
     ),
     (
+        "unique pg_only maidan_audit(id,occurred_at)",
+        "Postgres partitions the audit log by occurred_at (0165), and a partitioned table's key must include the partition key. Ids still come from one sequence, so id alone stays unique; SQLite keys on id",
+    ),
+    (
+        "unique sqlite_only maidan_audit(id)",
+        "the other half of the entry above",
+    ),
+    (
         "fk sqlite_only maidan_outbox.log_id -> maidan_events",
         "Postgres 0162: a foreign key cannot reference id alone on the partitioned event log. A delete trigger on maidan_events, and retention before it drops a month, delete the outbox rows the ON DELETE CASCADE did",
     ),
