@@ -11,8 +11,8 @@ use maidan_auth::{
         ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, MESSAGE_POST, SEARCH_QUERY, THREAD_TRANSITION,
         WORKSPACE_READ, WORKSPACE_WRITE,
     },
-    record_delegated_authorization, resolve_bearer, resolve_peer_bearer, AuthContext,
-    AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
+    record_delegated_authorization, resolve_bearer, resolve_peer_bearer, resolve_resource_bearer,
+    AuthContext, AuthorizationDecision, AuthorizationOutcome, AuthorizationSurface,
 };
 
 use maidan_types::{AuditScope, NewAuditEvent};
@@ -210,7 +210,15 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         return run_authorized(&state, req, next, ctx).await;
     };
 
-    if let Ok(ctx) = resolve_bearer(state.store.as_ref(), &secret).await {
+    // RFC 8707: a token the OAuth authorization server minted is bound to the
+    // MCP resource. Everywhere else it resolves as no token at all, before any
+    // handler runs.
+    let resolved = if is_oauth_resource(&req) {
+        resolve_resource_bearer(state.store.as_ref(), &secret).await
+    } else {
+        resolve_bearer(state.store.as_ref(), &secret).await
+    };
+    if let Ok(ctx) = resolved {
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
         {
@@ -246,7 +254,28 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     if let Err(response) = crate::rate_limit::enforce_client_key(&state, &ip_key, is_mcp).await {
         return response;
     }
-    ApiError::Unauthorized.into_response()
+    invalid_token()
+}
+
+/// The 401 for a bearer that does not resolve here: unknown, revoked,
+/// expired, or an OAuth token presented off its resource. RFC 6750 names the
+/// case `invalid_token`; the body is the same problem as any other 401.
+fn invalid_token() -> Response {
+    let mut response = ApiError::Unauthorized.into_response();
+    response.headers_mut().insert(
+        header::WWW_AUTHENTICATE,
+        header::HeaderValue::from_static("Bearer error=\"invalid_token\""),
+    );
+    response
+}
+
+/// Whether this request is for the MCP resource an OAuth token is bound to.
+/// The matched route, not the raw path, decides, so only a request the router
+/// dispatches to that route's handlers qualifies.
+fn is_oauth_resource(req: &Request) -> bool {
+    req.extensions()
+        .get::<MatchedPath>()
+        .is_some_and(|matched| matched.as_str() == crate::oauth::metadata::MCP_RESOURCE_PATH)
 }
 
 /// Run a request on the bearer tree as `ctx`, recording a delegated caller's

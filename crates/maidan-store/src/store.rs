@@ -2715,6 +2715,26 @@ pub trait EventStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// [`Store::list_events_after`] with the projector-shape filters applied
+    /// by the database: only rows in `channel_id` / `thread_id` (when set)
+    /// and of one of `kinds` (when non-empty). A filtered read used to page
+    /// `list_events_after` over the whole workspace log and drop non-matching
+    /// rows in Rust — for a channel whose matching events are sparse that is
+    /// hundreds of page queries and a decryption per examined row. Backed by
+    /// `idx_events_workspace_channel_kind` (migration 0164). Row order and
+    /// the `id > after_id` keyset are unchanged, and matching is exactly
+    /// [`ProjectorShape::matches_stored`](maidan_types::ProjectorShape::matches_stored)
+    /// for the filtered fields.
+    async fn list_events_matching(
+        &self,
+        workspace_id: WorkspaceId,
+        channel_id: Option<ChannelId>,
+        thread_id: Option<ThreadId>,
+        kinds: &[EventKind],
+        after_id: i64,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Like [`Store::list_events_after`] but only rows inserted at or before
     /// `stable_before` (the at-least-once reconcile read).
     async fn list_events_after_stable(
@@ -3067,6 +3087,65 @@ pub trait OAuthAsStore: Send + Sync {
         member_id: MemberId,
         workspace_id: WorkspaceId,
     ) -> Result<Option<OAuthPendingRequest>, StoreError>;
+
+    /// Mint an access token and its first refresh token under one grant, with
+    /// the access token's audit row, in one transaction: a client never holds
+    /// one without the other.
+    async fn mint_oauth_token_pair_audited(
+        &self,
+        access: NewApiToken,
+        grant_id: OAuthGrantId,
+        refresh: NewOAuthRefreshToken,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<ApiToken, StoreError>;
+
+    /// A refresh token by its hash, whatever its state.
+    async fn get_oauth_refresh_token(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshToken>, StoreError>;
+
+    /// Rotate a refresh token in one transaction. A live token (unused,
+    /// unrevoked, unexpired, its grant live) is marked used and replaced by a
+    /// new access token and refresh token under the same grant and lineage,
+    /// with `mint_audit`. A token already used is a reuse: every grant,
+    /// access token and refresh token of its lineage is revoked, with
+    /// `reuse_audit`. Anything else changes nothing.
+    async fn rotate_oauth_refresh_token(
+        &self,
+        rotation: OAuthRefreshRotation,
+        mint_audit: crate::AuditFor<ApiToken>,
+        reuse_audit: crate::AuditFor<OAuthLineageRevocation>,
+    ) -> Result<OAuthRefreshOutcome, StoreError>;
+
+    /// Revoke every grant with this lineage id, every access token minted
+    /// under those grants and every refresh token of the lineage, with the
+    /// audit row, in one transaction.
+    async fn revoke_oauth_lineage_audited(
+        &self,
+        lineage_id: uuid::Uuid,
+        audit: crate::AuditFor<OAuthLineageRevocation>,
+    ) -> Result<OAuthLineageRevocation, StoreError>;
+
+    /// For a code presented again after it was used: in one transaction,
+    /// find the live grant for the code's client, member, workspace and scope
+    /// and revoke its lineage, with the audit row. `None` when the code is
+    /// unknown or unused, or no live grant matches.
+    async fn revoke_oauth_lineage_for_used_code(
+        &self,
+        code_hash: &str,
+        audit: crate::AuditFor<OAuthLineageRevocation>,
+    ) -> Result<Option<OAuthLineageRevocation>, StoreError>;
+
+    /// Revoke one access token, with the audit row, but only when it was
+    /// minted under a grant to `client_id`. `None` when no live token of that
+    /// client has this hash.
+    async fn revoke_oauth_access_token_audited(
+        &self,
+        token_hash: &str,
+        client_id: &str,
+        audit: crate::AuditFor<ApiToken>,
+    ) -> Result<Option<ApiToken>, StoreError>;
 }
 
 #[async_trait]

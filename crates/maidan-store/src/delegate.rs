@@ -3250,6 +3250,28 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn list_events_matching(
+                &self,
+                workspace_id: WorkspaceId,
+                channel_id: Option<ChannelId>,
+                thread_id: Option<ThreadId>,
+                kinds: &[EventKind],
+                after_id: i64,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                events::list_matching(
+                    self.pool(),
+                    Some(&self.keys),
+                    workspace_id,
+                    channel_id,
+                    thread_id,
+                    kinds,
+                    after_id,
+                    limit,
+                )
+                .await
+            }
+
             async fn list_events_after_stable(
                 &self,
                 workspace_id: WorkspaceId,
@@ -3687,6 +3709,59 @@ macro_rules! store_delegations {
                     chrono::Utc::now(),
                 )
                 .await
+            }
+
+            async fn mint_oauth_token_pair_audited(
+                &self,
+                access: NewApiToken,
+                grant_id: OAuthGrantId,
+                refresh: NewOAuthRefreshToken,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<ApiToken, StoreError> {
+                oauth_as::mint_token_pair_audited(self.pool(), access, grant_id, refresh, audit)
+                    .await
+            }
+
+            async fn get_oauth_refresh_token(
+                &self,
+                token_hash: &str,
+            ) -> Result<Option<OAuthRefreshToken>, StoreError> {
+                oauth_as::get_refresh_token(self.pool(), token_hash).await
+            }
+
+            async fn rotate_oauth_refresh_token(
+                &self,
+                rotation: OAuthRefreshRotation,
+                mint_audit: crate::AuditFor<ApiToken>,
+                reuse_audit: crate::AuditFor<OAuthLineageRevocation>,
+            ) -> Result<OAuthRefreshOutcome, StoreError> {
+                oauth_as::rotate_refresh_token(self.pool(), rotation, mint_audit, reuse_audit).await
+            }
+
+            async fn revoke_oauth_lineage_audited(
+                &self,
+                lineage_id: uuid::Uuid,
+                audit: crate::AuditFor<OAuthLineageRevocation>,
+            ) -> Result<OAuthLineageRevocation, StoreError> {
+                oauth_as::revoke_lineage_audited(self.pool(), lineage_id, audit).await
+            }
+
+            async fn revoke_oauth_lineage_for_used_code(
+                &self,
+                code_hash: &str,
+                audit: crate::AuditFor<OAuthLineageRevocation>,
+            ) -> Result<Option<OAuthLineageRevocation>, StoreError> {
+                oauth_as::revoke_lineage_for_used_code(self.pool(), code_hash, audit).await
+            }
+
+            async fn revoke_oauth_access_token_audited(
+                &self,
+                token_hash: &str,
+                client_id: &str,
+                audit: crate::AuditFor<ApiToken>,
+            ) -> Result<Option<ApiToken>, StoreError> {
+                oauth_as::revoke_access_token_audited(self.pool(), token_hash, client_id, audit)
+                    .await
             }
         }
     };

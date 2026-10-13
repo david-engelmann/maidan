@@ -189,6 +189,51 @@ pub async fn list_after(
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
+/// [`crate::Store::list_events_matching`]: the shape filters are predicates,
+/// so the (workspace_id, channel_id, kind, id) index from migration 0164
+/// seeks to the matching rows instead of the caller paging the whole log.
+/// SQLite has no array bind, so the kind list is expanded into `IN` marks.
+#[allow(clippy::too_many_arguments)]
+pub async fn list_matching(
+    pool: &SqlitePool,
+    keys: Option<&ContentKeyring>,
+    workspace_id: WorkspaceId,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    kinds: &[maidan_types::EventKind],
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut sql = format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.workspace_id = ? AND e.id > ?"
+    );
+    if channel_id.is_some() {
+        sql.push_str(" AND e.channel_id = ?");
+    }
+    if thread_id.is_some() {
+        sql.push_str(" AND e.thread_id = ?");
+    }
+    if !kinds.is_empty() {
+        let marks = vec!["?"; kinds.len()].join(", ");
+        sql.push_str(&format!(" AND e.kind IN ({marks})"));
+    }
+    sql.push_str(" ORDER BY e.id ASC LIMIT ?");
+    let mut query = sqlx::query(&sql).bind(workspace_id.0).bind(after_id);
+    if let Some(channel_id) = channel_id {
+        query = query.bind(channel_id.0);
+    }
+    if let Some(thread_id) = thread_id {
+        query = query.bind(thread_id.0);
+    }
+    for kind in kinds {
+        query = query.bind(kind.as_str());
+    }
+    let rows = query.bind(limit).fetch_all(pool).await?;
+    rows.iter().map(|row| row_to_stored(row, keys)).collect()
+}
+
 /// Replay rows with `id > after_id` that are **stable** — inserted at or before
 /// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
 /// loop advance a durable cursor without stranding a lower `id` that is still

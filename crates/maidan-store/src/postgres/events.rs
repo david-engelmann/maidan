@@ -189,6 +189,58 @@ pub async fn list_after(
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
+/// [`crate::Store::list_events_matching`]: the shape filters are predicates,
+/// so the (workspace_id, channel_id, kind, id) index from migration 0164
+/// seeks to the matching rows instead of the caller paging the whole log.
+#[allow(clippy::too_many_arguments)]
+pub async fn list_matching(
+    pool: &PgPool,
+    keys: Option<&ContentKeyring>,
+    workspace_id: WorkspaceId,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    kinds: &[maidan_types::EventKind],
+    after_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    // Only the filters that are present become predicates. An `$n IS NULL OR`
+    // form would let a prepared statement settle on a generic plan, which
+    // cannot use the (workspace_id, channel_id, kind, id) index for a filter
+    // that might be absent, and would scan the workspace again.
+    let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
+    let mut sql = format!(
+        "SELECT {EVENT_COLUMNS}
+         FROM {EVENTS_FROM}
+         WHERE e.workspace_id = $1 AND e.id > $2"
+    );
+    let mut next = 3;
+    if channel_id.is_some() {
+        sql.push_str(&format!(" AND e.channel_id = ${next}"));
+        next += 1;
+    }
+    if thread_id.is_some() {
+        sql.push_str(&format!(" AND e.thread_id = ${next}"));
+        next += 1;
+    }
+    if !names.is_empty() {
+        sql.push_str(&format!(" AND e.kind = ANY(${next})"));
+        next += 1;
+    }
+    sql.push_str(&format!(" ORDER BY e.id ASC LIMIT ${next}"));
+    let mut query = sqlx::query(&sql).bind(workspace_id.0).bind(after_id);
+    if let Some(channel_id) = channel_id {
+        query = query.bind(channel_id.0);
+    }
+    if let Some(thread_id) = thread_id {
+        query = query.bind(thread_id.0);
+    }
+    if !names.is_empty() {
+        query = query.bind(names);
+    }
+    let rows = query.bind(limit).fetch_all(pool).await?;
+    rows.iter().map(|row| row_to_stored(row, keys)).collect()
+}
+
 /// Replay rows with `id > after_id` that are **stable** — inserted at or before
 /// `stable_before` — in `id` order. Gating on `inserted_at` lets a reconcile
 /// loop advance a durable cursor without stranding a lower `id` that is still
