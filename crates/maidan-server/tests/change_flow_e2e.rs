@@ -28,8 +28,13 @@ use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
-    egress_worker, github::GithubApiClient, notification_router, slack::SlackError,
-    slack::SlackSender, AppState, FederationRuntime,
+    egress_worker,
+    github::GithubApiClient,
+    linear::{LinearError, LinearIssue, LinearSender, LinearState},
+    notification_router,
+    slack::SlackError,
+    slack::SlackSender,
+    AppState, FederationRuntime,
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
@@ -353,6 +358,94 @@ impl SlackSender for RecordingSlack {
     }
 }
 
+// ---------------------------------------------------------------- Linear
+
+const TEAM: &str = "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b";
+const OTHER_TEAM: &str = "0b9e8d7c-6b5a-4f3e-8d2c-1b0a9f8e7d6c";
+const ISSUE: &str = "ENG-7";
+const ISSUE_ID: &str = "11111111-2222-4333-8444-555555555555";
+const IN_REVIEW: &str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+/// Linear as the worker sees it: issues by identifier, and every write.
+#[derive(Default)]
+struct RecordingLinear {
+    issues: Mutex<HashMap<String, LinearIssue>>,
+    /// `(issue id, comment id, body)`, current bodies.
+    comments: Mutex<Vec<(String, String, String)>>,
+    updates: Mutex<u32>,
+    moves: Mutex<Vec<(String, String)>>,
+}
+
+impl RecordingLinear {
+    fn with_issue(team_id: &str) -> Self {
+        let linear = Self::default();
+        linear.issues.lock().unwrap().insert(
+            ISSUE.into(),
+            LinearIssue {
+                id: ISSUE_ID.into(),
+                identifier: ISSUE.into(),
+                team_id: team_id.into(),
+                states: vec![
+                    LinearState {
+                        id: "99999999-9999-4999-8999-999999999999".into(),
+                        name: "Todo".into(),
+                    },
+                    LinearState {
+                        id: IN_REVIEW.into(),
+                        name: "In Review".into(),
+                    },
+                ],
+            },
+        );
+        linear
+    }
+
+    fn comments(&self) -> Vec<(String, String, String)> {
+        self.comments.lock().unwrap().clone()
+    }
+
+    fn moves(&self) -> Vec<(String, String)> {
+        self.moves.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl LinearSender for RecordingLinear {
+    async fn issue(&self, issue: &str) -> Result<LinearIssue, LinearError> {
+        self.issues
+            .lock()
+            .unwrap()
+            .get(issue)
+            .cloned()
+            .ok_or_else(|| LinearError::NotFound(format!("issue {issue}")))
+    }
+
+    async fn create_comment(&self, issue_id: &str, body: &str) -> Result<String, LinearError> {
+        let mut comments = self.comments.lock().unwrap();
+        let id = format!("cccccccc-0000-4000-8000-{:012}", comments.len() + 1);
+        comments.push((issue_id.into(), id.clone(), body.into()));
+        Ok(id)
+    }
+
+    async fn update_comment(&self, comment_id: &str, body: &str) -> Result<(), LinearError> {
+        let mut comments = self.comments.lock().unwrap();
+        let Some(comment) = comments.iter_mut().find(|c| c.1 == comment_id) else {
+            return Err(LinearError::NotFound(format!("comment {comment_id}")));
+        };
+        comment.2 = body.into();
+        *self.updates.lock().unwrap() += 1;
+        Ok(())
+    }
+
+    async fn move_issue(&self, issue_id: &str, state_id: &str) -> Result<(), LinearError> {
+        self.moves
+            .lock()
+            .unwrap()
+            .push((issue_id.into(), state_id.into()));
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------- harness
 
 struct Tenant {
@@ -367,6 +460,7 @@ struct Harness {
     state: AppState,
     fake: Shared,
     slack: Arc<RecordingSlack>,
+    linear: Arc<RecordingLinear>,
     base_sha: String,
     a: Tenant,
     b: Tenant,
@@ -415,6 +509,10 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
 }
 
 async fn harness() -> Harness {
+    harness_with(RecordingLinear::with_issue(TEAM)).await
+}
+
+async fn harness_with(linear: RecordingLinear) -> Harness {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -461,12 +559,15 @@ async fn harness() -> Harness {
     ));
     let slack = Arc::new(RecordingSlack::default());
     state.attach_slack_sender(slack.clone());
+    let linear = Arc::new(linear);
+    state.attach_linear_sender(linear.clone());
     std::mem::forget(dir);
     Harness {
         store,
         state,
         fake,
         slack,
+        linear,
         base_sha,
         a,
         b,
@@ -1196,4 +1297,208 @@ async fn a_change_reply_stops_waiting_on_a_branch_delivery_that_never_settles() 
     };
     assert!(text.contains("Nothing has landed"), "{text}");
     assert!(text.contains(BRANCH), "{text}");
+}
+
+// ---------------------------------------------------------------- Linear
+
+/// A change whose result also comments on [`ISSUE`] in `team`.
+fn change_to_linear(status: &str, base_sha: &str, team: &str, state: Option<&str>) -> Value {
+    let mut result = change(status, base_sha, BRANCH, DIFF);
+    let mut target = json!({"surface": "linear", "team": team, "issue": ISSUE});
+    if let Some(state) = state {
+        target["state"] = json!(state);
+    }
+    result["deliver_to"].as_array_mut().unwrap().push(target);
+    result
+}
+
+#[tokio::test]
+async fn a_change_comments_on_its_linear_issue_with_the_draft_pr_and_moves_it() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.route(
+        &h.a,
+        &change_to_linear("changed", &h.base_sha, TEAM, Some("In Review")),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    let comments = h.linear.comments();
+    assert_eq!(comments.len(), 1, "{comments:?}");
+    let (issue_id, comment_id, body) = &comments[0];
+    assert_eq!(
+        issue_id, ISSUE_ID,
+        "the comment goes on the issue by its id"
+    );
+    assert!(
+        body.contains(&format!("Draft PR: https://github.com/{REPO}/pull/")),
+        "the comment carries the pull request the branch delivery opened: {body}"
+    );
+    assert_eq!(
+        h.linear.moves(),
+        vec![(ISSUE_ID.to_string(), IN_REVIEW.to_string())]
+    );
+
+    let row = h.delivery(&h.a, "linear").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    assert_eq!(
+        row.reference(),
+        Some(ExternalRef::Linear {
+            comment_id: comment_id.clone()
+        })
+    );
+}
+
+#[tokio::test]
+async fn an_unblessed_linear_team_gets_no_comment() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(
+        &h.a,
+        &change_to_linear("changed", &h.base_sha, TEAM, None),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "linear").await;
+    assert_eq!(row.status, status::SKIPPED);
+    assert!(
+        row.last_error.as_deref().unwrap().contains("allowlist"),
+        "{:?}",
+        row.last_error
+    );
+    assert!(h.linear.comments().is_empty());
+}
+
+#[tokio::test]
+async fn one_workspace_cannot_comment_through_another_workspaces_linear_team() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.b.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.route(
+        &h.a,
+        &change_to_linear("changed", &h.base_sha, TEAM, None),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    assert_eq!(h.delivery(&h.a, "linear").await.status, status::SKIPPED);
+    assert!(h.linear.comments().is_empty());
+}
+
+#[tokio::test]
+async fn an_issue_outside_the_named_team_is_refused_before_any_write() {
+    // The result names a blessed team, but the issue lives in another one.
+    let h = harness_with(RecordingLinear::with_issue(OTHER_TEAM)).await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.route(
+        &h.a,
+        &change_to_linear("no_change", &h.base_sha, TEAM, Some("In Review")),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "linear").await;
+    assert_eq!(row.status, status::SKIPPED);
+    assert!(
+        row.last_error
+            .as_deref()
+            .unwrap()
+            .contains("is not in team"),
+        "{:?}",
+        row.last_error
+    );
+    assert!(h.linear.comments().is_empty());
+    assert!(h.linear.moves().is_empty());
+}
+
+#[tokio::test]
+async fn a_new_result_edits_the_linear_comment_and_a_deleted_one_is_posted_again() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.route(
+        &h.a,
+        &change_to_linear("no_change", &h.base_sha, TEAM, None),
+        1,
+    )
+    .await;
+    h.drain().await;
+    assert_eq!(h.linear.comments().len(), 1);
+
+    let mut second = change_to_linear("seat_error", &h.base_sha, TEAM, None);
+    second["error_detail"] = json!("the seat timed out");
+    h.route(&h.a, &second, 2).await;
+    h.drain().await;
+    let comments = h.linear.comments();
+    assert_eq!(comments.len(), 1, "edited in place: {comments:?}");
+    assert_eq!(*h.linear.updates.lock().unwrap(), 1);
+    assert!(
+        comments[0].2.contains("the seat timed out"),
+        "{}",
+        comments[0].2
+    );
+
+    // Someone deleted the comment in Linear: the next result posts a new one.
+    h.linear.comments.lock().unwrap().clear();
+    h.route(
+        &h.a,
+        &change_to_linear("no_change", &h.base_sha, TEAM, None),
+        3,
+    )
+    .await;
+    h.drain().await;
+    assert_eq!(h.linear.comments().len(), 1);
+    assert_eq!(h.delivery(&h.a, "linear").await.status, status::DELIVERED);
+}
+
+#[tokio::test]
+async fn a_state_the_team_does_not_have_still_lands_the_comment() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.route(
+        &h.a,
+        &change_to_linear("no_change", &h.base_sha, TEAM, Some("Shipped to the moon")),
+        1,
+    )
+    .await;
+    h.drain().await;
+
+    assert_eq!(h.linear.comments().len(), 1);
+    assert!(h.linear.moves().is_empty());
+    assert_eq!(h.delivery(&h.a, "linear").await.status, status::DELIVERED);
+}
+
+#[tokio::test]
+async fn a_status_maidan_has_never_seen_is_answered_like_seat_error_with_its_reason() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    let mut result = change_to_linear("check_failed", &h.base_sha, TEAM, None);
+    result["error_detail"] = json!("cargo test failed: 2 tests");
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let branch = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(branch.status, status::SKIPPED);
+    assert!(
+        h.fake.lock().unwrap().requests.is_empty(),
+        "no GitHub write for a status that is not `changed`"
+    );
+    let posts = h.slack_posts();
+    assert_eq!(posts.len(), 1);
+    let comments = h.linear.comments();
+    assert_eq!(comments.len(), 1);
+    for body in [&posts[0].2, &comments[0].2] {
+        assert!(body.contains("`check_failed`"), "{body}");
+        assert!(body.contains("nothing was committed"), "{body}");
+        assert!(body.contains("cargo test failed: 2 tests"), "{body}");
+    }
 }

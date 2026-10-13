@@ -53,6 +53,7 @@ pub mod health;
 pub mod idempotency;
 pub mod import;
 pub mod land_gate_advisor;
+pub mod linear;
 pub mod load_shed;
 pub mod mail;
 pub mod mail_worker;
@@ -127,5 +128,26 @@ pub fn shutdown_drain_from_env() -> std::time::Duration {
 /// Build the maidan-server git/build version string. Falls back to the
 /// crate version if no `MAIDAN_VERSION` is baked in at compile time.
 pub fn version() -> &'static str {
-    option_env!("MAIDAN_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+    baked_or_crate_version(option_env!("MAIDAN_VERSION"))
+}
+
+/// The image's Dockerfile sets `MAIDAN_VERSION` from a build arg that is empty
+/// unless a tag is given, so an empty value means none was baked in.
+fn baked_or_crate_version(baked: Option<&'static str>) -> &'static str {
+    match baked {
+        Some(version) if !version.is_empty() => version,
+        _ => env!("CARGO_PKG_VERSION"),
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::baked_or_crate_version;
+
+    #[test]
+    fn an_empty_baked_version_reports_the_crate_version() {
+        assert_eq!(baked_or_crate_version(Some("")), env!("CARGO_PKG_VERSION"));
+        assert_eq!(baked_or_crate_version(None), env!("CARGO_PKG_VERSION"));
+        assert_eq!(baked_or_crate_version(Some("v414.0.0")), "v414.0.0");
+    }
 }
