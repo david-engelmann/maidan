@@ -2535,7 +2535,8 @@
         "enum": [
           "slack",
           "github",
-          "github_branch"
+          "github_branch",
+          "linear"
         ],
         "type": "string"
       },
