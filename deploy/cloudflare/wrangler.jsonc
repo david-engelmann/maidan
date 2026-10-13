@@ -1,0 +1,38 @@
+// dev.maidan.world: `main`, on Cloudflare Containers, against Neon and R2.
+// The runbook is docs/Production.md, "Hosted on Cloudflare".
+//
+// `image` is the Dockerfile so a local `wrangler deploy` builds from source.
+// The deploy-dev workflow builds the image with a warm cache instead, pushes it
+// to the account's registry, and swaps this line for that reference.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maidan-dev",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "dev.maidan.world", "custom_domain": true }],
+  "containers": [
+    {
+      "class_name": "MaidanServer",
+      "image": "../../crates/maidan-server/Dockerfile",
+      "image_build_context": "../..",
+      "instance_type": "basic",
+      // One instance until traffic needs more (src/index.js).
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "MAIDAN", "class_name": "MaidanServer" }]
+  },
+  "exports": {
+    "MaidanServer": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "vars": {
+    "MAIDAN_PUBLIC_ORIGIN": "https://dev.maidan.world",
+    "ARTIFACT_BACKEND": "s3",
+    "S3_BUCKET": "maidan-artifacts-dev",
+    "S3_REGION": "auto"
+  },
+  "triggers": { "crons": ["0 * * * *"] },
+  "observability": { "enabled": true }
+}

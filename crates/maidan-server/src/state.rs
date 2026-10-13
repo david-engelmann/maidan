@@ -199,6 +199,10 @@ pub struct AppState {
     /// still works). Set via [`AppState::attach_slack_sender`]; tests inject a
     /// mock.
     pub slack_sender: Option<Arc<dyn crate::slack::SlackSender>>,
+    /// Linear result delivery, set when `MAIDAN_LINEAR_API_KEY` is configured.
+    /// Without one a queued Linear delivery fails each attempt as transient,
+    /// as a missing Slack or GitHub sender does. Tests inject a mock.
+    pub linear_sender: Option<Arc<dyn crate::linear::LinearSender>>,
     /// Git/GitHub projector config, built from `MAIDAN_GITHUB_*` at startup.
     /// `None` when unset — the `/integrations/github/events` route then returns
     /// `404`. Set via [`AppState::attach_github`].
@@ -343,6 +347,7 @@ impl AppState {
             web_push_disabled_reason: Some("vapid_unset".into()),
             slack: None,
             slack_sender: None,
+            linear_sender: None,
             github: None,
             github_sender: None,
             mark_ready_app_id: None,
@@ -420,6 +425,12 @@ impl AppState {
     /// egress.
     pub fn attach_slack_sender(&mut self, sender: Arc<dyn crate::slack::SlackSender>) {
         self.slack_sender = Some(sender);
+    }
+
+    /// Wire the Linear sender. Called by the server binary when
+    /// `MAIDAN_LINEAR_API_KEY` is set; tests inject a mock.
+    pub fn attach_linear_sender(&mut self, sender: Arc<dyn crate::linear::LinearSender>) {
+        self.linear_sender = Some(sender);
     }
 
     /// Wire the Git/GitHub projector config. Called by the server binary when

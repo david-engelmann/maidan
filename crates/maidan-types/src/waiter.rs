@@ -29,7 +29,10 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::egress::{is_branch_name, is_git_sha, is_github_repo, is_slack_ts, EgressTarget};
+use crate::egress::{
+    is_branch_name, is_git_sha, is_github_repo, is_linear_id, is_linear_issue, is_slack_ts,
+    EgressTarget,
+};
 use crate::review::ReviewDecision;
 
 /// The frozen envelope discriminator. A different value is inert, not an error.
@@ -99,6 +102,16 @@ pub enum DeliverTarget {
         branch: String,
         base: String,
     },
+    /// Comment on a Linear issue. `team` is the id of the team the issue is
+    /// in, which the allowlist blesses; `issue` is its identifier (`ENG-123`)
+    /// or id. `state` names a workflow state of that team to move the issue
+    /// to once the comment lands.
+    Linear {
+        team: String,
+        issue: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        state: Option<String>,
+    },
     Unknown(String),
 }
 
@@ -109,6 +122,7 @@ impl DeliverTarget {
             Self::Github { .. } => "github",
             Self::Slack { .. } => "slack",
             Self::GithubBranch { .. } => "github_branch",
+            Self::Linear { .. } => "linear",
             Self::Unknown(surface) => surface,
         }
     }
@@ -151,6 +165,15 @@ impl DeliverTarget {
                 repo: repo.clone(),
                 branch: branch.clone(),
             }),
+            // A blank state is unusable rather than ignored: the producer asked
+            // for a move, and dropping it silently would answer differently.
+            Self::Linear { team, issue, state } => (is_linear_id(team)
+                && is_linear_issue(issue)
+                && state.as_deref().is_none_or(|s| !s.trim().is_empty()))
+            .then(|| EgressTarget::Linear {
+                team_id: team.clone(),
+                issue: issue.clone(),
+            }),
             Self::Unknown(_) => None,
         }
     }
@@ -191,6 +214,7 @@ impl DeliverTarget {
             Self::GithubBranch { repo, branch, .. } => {
                 ("github_branch".into(), format!("{repo}@{branch}"))
             }
+            Self::Linear { team, issue, .. } => ("linear".into(), format!("{team}/{issue}")),
             Self::Unknown(surface) => (surface.clone(), String::new()),
         }
     }
@@ -938,6 +962,17 @@ fn parse_deliver_target(entry: &Value) -> Option<DeliverTarget> {
                 (Some(repo), Some(branch), Some(base)) => {
                     Some(DeliverTarget::GithubBranch { repo, branch, base })
                 }
+                _ => unknown(),
+            }
+        }
+        "linear" => {
+            let field = |key: &str| obj.get(key).and_then(Value::as_str).map(str::to_string);
+            match (field("team"), field("issue")) {
+                (Some(team), Some(issue)) => Some(DeliverTarget::Linear {
+                    team,
+                    issue,
+                    state: field("state"),
+                }),
                 _ => unknown(),
             }
         }
@@ -1822,5 +1857,48 @@ mod tests {
             thread_ts: Some("1.2".into()),
         };
         assert_eq!(slack.allowlist_selector().as_deref(), Some("C0123ABCDEF"));
+    }
+
+    #[test]
+    fn a_linear_target_parses_with_its_optional_state() {
+        let team = "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b";
+        let parsed = parse_deliver_target(
+            &serde_json::json!({"surface": "linear", "team": team, "issue": "ENG-7", "state": "In Review"}),
+        );
+        assert_eq!(
+            parsed,
+            Some(DeliverTarget::Linear {
+                team: team.into(),
+                issue: "ENG-7".into(),
+                state: Some("In Review".into()),
+            })
+        );
+        let target = parsed.unwrap();
+        assert_eq!(target.allowlist_selector().as_deref(), Some(team));
+        assert_eq!(
+            target.skip_fingerprint(),
+            ("linear".into(), format!("{team}/ENG-7"))
+        );
+        // Missing detail is a recorded skip, not a vanished entry.
+        assert_eq!(
+            parse_deliver_target(&serde_json::json!({"surface": "linear", "issue": "ENG-7"})),
+            Some(DeliverTarget::Unknown("linear".into()))
+        );
+    }
+
+    #[test]
+    fn a_linear_target_with_a_team_key_or_a_blank_state_does_not_route() {
+        let key = DeliverTarget::Linear {
+            team: "ENG".into(),
+            issue: "ENG-7".into(),
+            state: None,
+        };
+        assert_eq!(key.to_egress_target(), None);
+        let blank = DeliverTarget::Linear {
+            team: "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b".into(),
+            issue: "ENG-7".into(),
+            state: Some("  ".into()),
+        };
+        assert_eq!(blank.to_egress_target(), None);
     }
 }

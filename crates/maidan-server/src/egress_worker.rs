@@ -234,10 +234,10 @@ async fn deliver_projector(
                 }
             }
         }
-        // Only a result can aim at a branch; a projector row naming one is
-        // corrupt, and no retry fixes that.
-        EgressTarget::GithubBranch { .. } => Err(DeliveryFailure {
-            message: "github_branch is not a projector surface".into(),
+        // Only a result can aim at a branch or a Linear issue; a projector row
+        // naming one is corrupt, and no retry fixes that.
+        EgressTarget::GithubBranch { .. } | EgressTarget::Linear { .. } => Err(DeliveryFailure {
+            message: format!("{} is not a projector surface", target.surface()),
             misconfiguration: true,
         }),
     }
@@ -281,18 +281,124 @@ async fn deliver_result(
         } => {
             let body = match crate::result_delivery::change_reply(state, entry.thread_id).await {
                 crate::result_delivery::ChangeReply::Waiting => return Ok(Sent::Waiting),
-                crate::result_delivery::ChangeReply::Ready(reply) => reply,
+                crate::result_delivery::ChangeReply::Ready(reply) => {
+                    crate::result_delivery::slack_reply_body(&reply)
+                }
                 crate::result_delivery::ChangeReply::NotAChange => body,
             };
             slack_result(state, row.as_ref(), channel_id, thread_ts.as_deref(), &body)
                 .await
                 .map(Sent::Landed)
         }
+        EgressTarget::Linear { team_id, issue } => {
+            let body = match crate::result_delivery::change_reply(state, entry.thread_id).await {
+                crate::result_delivery::ChangeReply::Waiting => return Ok(Sent::Waiting),
+                crate::result_delivery::ChangeReply::Ready(reply) => {
+                    crate::result_delivery::linear_reply_body(&reply)
+                }
+                crate::result_delivery::ChangeReply::NotAChange => body,
+            };
+            linear_result(state, entry, row.as_ref(), team_id, issue, &body).await
+        }
         EgressTarget::GithubBranch { .. } => Err(DeliveryFailure {
             message: "github_branch is delivered by the change flow".into(),
             misconfiguration: true,
         }),
     }
+}
+
+fn linear_failure(err: crate::linear::LinearError) -> DeliveryFailure {
+    DeliveryFailure {
+        message: err.to_string(),
+        misconfiguration: err.is_misconfiguration(),
+    }
+}
+
+/// Comment on the Linear issue, then move it to the state the result asked
+/// for.
+///
+/// The allowlist blessed the team the result names, not the issue, so the
+/// issue is looked up first and refused unless it is in that team: a result
+/// naming a blessed team and another team's issue would otherwise write
+/// wherever the key reaches. A comment posted earlier is edited in place; one
+/// deleted since is posted again. The state move comes after the comment and
+/// never undoes it: a state the team does not have, or a move Linear refuses,
+/// is logged and the comment stands.
+async fn linear_result(
+    state: &AppState,
+    entry: &EgressOutbox,
+    row: Option<&ResultDelivery>,
+    team_id: &str,
+    issue: &str,
+    body: &str,
+) -> Result<Sent, DeliveryFailure> {
+    let Some(sender) = state.linear_sender.as_ref() else {
+        return Err(DeliveryFailure {
+            message: "no linear sender configured".into(),
+            misconfiguration: false,
+        });
+    };
+    let found = sender.issue(issue).await.map_err(linear_failure)?;
+    if found.team_id != team_id {
+        return Ok(Sent::Refused(format!(
+            "{} is not in team {team_id}, the team the result names and the allowlist blessed",
+            found.identifier
+        )));
+    }
+    let edited = match row.and_then(|r| r.reference()) {
+        Some(ExternalRef::Linear { comment_id }) => {
+            match sender.update_comment(&comment_id, body).await {
+                Ok(()) => Some(comment_id),
+                Err(crate::linear::LinearError::NotFound(_)) => None,
+                Err(err) => return Err(linear_failure(err)),
+            }
+        }
+        _ => None,
+    };
+    let comment_id = match edited {
+        Some(id) => id,
+        None => sender
+            .create_comment(&found.id, body)
+            .await
+            .map_err(linear_failure)?,
+    };
+    if let Some(wanted) = requested_linear_state(state, entry.thread_id, team_id, issue).await {
+        match found.state_named(&wanted) {
+            Some(target_state) => {
+                if let Err(err) = sender.move_issue(&found.id, &target_state.id).await {
+                    tracing::warn!(error = %err, issue = %found.identifier, state = %wanted, "linear delivery: the comment landed, the state move failed");
+                }
+            }
+            None => tracing::warn!(
+                issue = %found.identifier,
+                state = %wanted,
+                "linear delivery: the comment landed; the team has no state with that name"
+            ),
+        }
+    }
+    Ok(Sent::Landed(Some(ExternalRef::Linear { comment_id })))
+}
+
+/// The workflow state the result asks this issue to move to, read from the
+/// envelope as it is now.
+async fn requested_linear_state(
+    state: &AppState,
+    thread_id: maidan_types::ThreadId,
+    team_id: &str,
+    issue: &str,
+) -> Option<String> {
+    let waiter = crate::result_delivery::current_waiter(state, thread_id).await?;
+    waiter
+        .deliver_to
+        .into_iter()
+        .find_map(|target| match target {
+            maidan_types::DeliverTarget::Linear {
+                team,
+                issue: i,
+                state: Some(wanted),
+            } if team == team_id && i == issue => Some(wanted),
+            _ => None,
+        })
 }
 
 /// Commit a change result to its branch and open its draft pull request.
@@ -770,8 +876,9 @@ async fn disable_link(state: &AppState, entry: &EgressOutbox, target: &EgressTar
                 .disable_github_issue_link(repo, *issue_number)
                 .await
         }
-        // No link backs a branch target; the dead letter is the whole story.
-        EgressTarget::GithubBranch { .. } => return,
+        // No link backs a branch or a Linear target; the dead letter is the
+        // whole story.
+        EgressTarget::GithubBranch { .. } | EgressTarget::Linear { .. } => return,
     };
     match disabled {
         // Already disabled — another delivery in flight got there first, and the
@@ -950,6 +1057,7 @@ fn egress_host(state: &AppState, target: &EgressTarget) -> String {
         EgressTarget::Github { .. } | EgressTarget::GithubBranch { .. } => {
             state.github_sender.as_ref().map(|s| s.host())
         }
+        EgressTarget::Linear { .. } => state.linear_sender.as_ref().map(|s| s.host()),
     }
     .unwrap_or_else(|| target.surface().as_str().to_string())
 }
@@ -959,7 +1067,10 @@ fn egress_host(state: &AppState, target: &EgressTarget) -> String {
 /// against a deployment that simply has the projector turned off.
 pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
     let mut stats = EgressSweepStats::default();
-    if state.slack_sender.is_none() && state.github_sender.is_none() {
+    if state.slack_sender.is_none()
+        && state.github_sender.is_none()
+        && state.linear_sender.is_none()
+    {
         return stats;
     }
     for _ in 0..MAX_PER_TICK {

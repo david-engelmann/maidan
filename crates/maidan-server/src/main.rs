@@ -730,6 +730,12 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         tracing::info!("slack projector ingress configured");
     }
 
+    // Linear result delivery: outbound only, on when an API key is set.
+    if let Some(linear) = maidan_server::linear::LinearClient::from_env() {
+        state.attach_linear_sender(std::sync::Arc::new(linear));
+        tracing::info!("linear result delivery configured");
+    }
+
     // Git/GitHub projector: wire the ingress config when
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
     // `/integrations/github/events` stays disabled (404). A projector, not a
@@ -827,7 +833,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // configured — which is exactly when the projectors enqueue, so a
     // deployment without one neither queues nor drains. Tick via
     // `MAIDAN_EGRESS_WORKER_TICK_SECS` (default 5s).
-    if state.slack_sender.is_some() || state.github_sender.is_some() {
+    if state.slack_sender.is_some()
+        || state.github_sender.is_some()
+        || state.linear_sender.is_some()
+    {
         let egress_state = state.clone();
         let egress_cfg = maidan_server::egress_worker::config_from_env();
         tokio::spawn(async move {
