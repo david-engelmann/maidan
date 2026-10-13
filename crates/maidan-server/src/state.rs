@@ -254,6 +254,27 @@ pub struct AppState {
     pub retry_budget: Arc<crate::retry_budget::RetryBudget>,
 }
 
+/// The MCP server as every `AppState` builds it. One constructor, so a
+/// rebuild (a cross-replica notifier attached at boot) cannot drop a setting
+/// the first build had: the Postgres path rebuilt without the release
+/// version, and `initialize` reported 0.0.0 there.
+fn mcp_server(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    search: &Arc<dyn Search>,
+    embedding_provider: &Arc<dyn EmbeddingProvider>,
+    bus: &Arc<dyn EventBus>,
+) -> McpServer {
+    McpServer::new(
+        store.clone(),
+        artifacts.clone(),
+        search.clone(),
+        embedding_provider.clone(),
+    )
+    .with_event_bus(bus.clone())
+    .with_server_version(crate::version())
+}
+
 impl AppState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -269,16 +290,13 @@ impl AppState {
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         let presence = Arc::new(PresenceHub::default());
-        let mcp = Arc::new(
-            McpServer::new(
-                store.clone(),
-                artifacts.clone(),
-                search.clone(),
-                embedding_provider.clone(),
-            )
-            .with_event_bus(bus.clone())
-            .with_server_version(crate::version()),
-        );
+        let mcp = Arc::new(mcp_server(
+            &store,
+            &artifacts,
+            &search,
+            &embedding_provider,
+            &bus,
+        ));
         mcp.attach_presence_reader(presence.clone());
         let slash = SlashRuntime::new(None);
         let fsm_hooks = FsmHookRuntime::new(None);
@@ -444,13 +462,13 @@ impl AppState {
     /// this process delivers cross-replica updates to its own SSE subscribers.
     pub fn attach_resource_notifier(&mut self, notifier: Arc<dyn ResourceNotifier>) {
         self.mcp = Arc::new(
-            McpServer::new(
-                self.store.clone(),
-                self.artifacts.clone(),
-                self.search.clone(),
-                self.embedding_provider.clone(),
+            mcp_server(
+                &self.store,
+                &self.artifacts,
+                &self.search,
+                &self.embedding_provider,
+                &self.bus,
             )
-            .with_event_bus(self.bus.clone())
             .with_resource_notifier(notifier),
         );
         self.mcp.attach_presence_reader(self.presence.clone());
