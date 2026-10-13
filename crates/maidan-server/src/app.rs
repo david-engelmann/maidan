@@ -44,7 +44,7 @@ use crate::{
     mcp_notifications, mcp_stream, mcp_streamable, metrics, oauth, oidc, openapi, panic_guard,
     quota, rate_limit, reindex_ops, request_id, room_lsn, routes,
     routing::{delete, get, patch, post, put, ProblemFallbacks},
-    scim, scim_groups, session, share_consumer, slack, slash_commands,
+    scim, scim_groups, server_card, session, share_consumer, slack, slash_commands,
     state::AppState,
     trace_context, trace_redaction, webhooks, ws,
 };
@@ -1515,6 +1515,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/.well-known/oauth-authorization-server",
             get(oauth::oauth_authorization_server),
+        )
+        .route(
+            "/.well-known/mcp/server-card.json",
+            get(server_card::server_card_json),
         )
         .route(
             "/oauth/app/token",
