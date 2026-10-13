@@ -2296,3 +2296,13 @@ On 2026-10-04 the maintainer added three rulings.
 **To revisit.** When an instance outgrows one container (the Postgres bus lets more run behind the same Worker), when Neon's free storage runs out, or if waking on a request is too slow for the launch traffic, which a longer `sleepAfter` answers first.
 
 **Record.** Open Work Next 24.
+
+### Each workspace's message keys are wrapped by a key of its own (2026-10-13)
+
+**Decision.** Message keys are wrapped by a key per workspace, and the workspace keys by the instance KEK (`MAIDAN_CONTENT_KEK`), instead of every message key by the instance KEK. A workspace key is made on the workspace's first sealed message, in that append's transaction. A read opens it from its own row, joined beside the message key, and holds it in memory for at most five minutes and only while the row matches what it opened. Erasing or purging a workspace deletes its keys. Rotating one (`maidan rotate-workspace-key`) retires it and makes a new one, and the rewrap pass moves the workspace's message keys over and then destroys the retired key; no sealed message is rewritten. An instance KEK rotation rewraps one row per workspace. Message keys from before migration 0167 stay readable under the instance KEK until the startup pass moves them.
+
+**Why.** It is the gate thread 52 set before a stranger's data lands on the hosted service (Open Work Next 25). One workspace's key opens nothing of another's, so a workspace's erasure, rotation or future custody choice is its own. Keeping the unwrap synchronous and reading the workspace key from the row a read already joins changes no read path's shape, so the event bus and the outbox relay open words exactly as before.
+
+**To revisit.** A cloud KMS is the next custody: `maidan_workspace_keys.custody` names who wraps each key (`local` today). A KMS unwrap is a network call, so it would open workspace keys in an async step before a read maps its rows, at the same three read sites per backend, and the cache would hold KMS-opened keys under the same rule.
+
+**Record.** Migration 0167, `maidan_types::ContentKeyring`, `maidan_store::content_keys`, `maidan rotate-workspace-key`, [Production](Production.md#crypto-shredding).

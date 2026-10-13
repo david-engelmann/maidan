@@ -42,7 +42,7 @@ pub use query::use_websearch_to_tsquery;
 pub use reindex::{reindex_postgres, reindex_sqlite, ReindexReport};
 pub use score::{
     apply_semantic_scores, fuse_hybrid, normalize_lexical_scores, semantic_score,
-    DEFAULT_HYBRID_WEIGHT,
+    DEFAULT_HYBRID_WEIGHT, HYBRID_FETCH_DEPTH,
 };
 pub use sqlite::SqliteSearch;
 pub use sqlite_vec::{
