@@ -37,6 +37,10 @@ pub const GITHUB_BODY_MAX_CHARS: usize = 65536;
 /// dead-lettering.
 pub const SLACK_BODY_MAX_CHARS: usize = 39_000;
 
+/// A ceiling for a Linear comment body, in characters. Linear does not publish
+/// one; this matches GitHub's, which a result body is already written to fit.
+pub const LINEAR_BODY_MAX_CHARS: usize = 65536;
+
 /// Hidden HTML comment at byte 0 of a result-delivery GitHub body. The recovery
 /// path if the stored `external_ref` is lost: list the issue's comments and
 /// PATCH the one whose body starts with this marker. Matches the land_gate
@@ -540,6 +544,18 @@ pub fn github_result_comment_body(
         "{prefix}{}",
         truncate_with_tail(&safe, budget, tail.as_deref())
     )
+}
+
+/// A Linear result comment: the same Markdown as the GitHub summary, with
+/// mentions defused (a producer's `@name` is not Maidan's to send) and cut to
+/// [`LINEAR_BODY_MAX_CHARS`]. No recovery marker: the comment is addressed by
+/// its id, and a lost id posts a new comment.
+pub fn linear_result_comment_body(rendered: &str, backlink: Option<&str>) -> String {
+    let safe = neutralize_github_mentions(rendered);
+    let tail = backlink
+        .and_then(safe_backlink)
+        .map(|url| format!("\n\n[View in the producer]({url})"));
+    truncate_with_tail(&safe, LINEAR_BODY_MAX_CHARS, tail.as_deref())
 }
 
 /// An inline pull-review comment body: mentions defused, truncated to GitHub's

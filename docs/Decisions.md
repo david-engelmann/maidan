@@ -2286,3 +2286,13 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Record.** Open Work Next 12.
 
+
+### The hosted service runs on Cloudflare Containers, Neon and R2 (2026-10-13)
+
+**Decision.** The maintainer chose the cheapest hosting that runs Maidan whole, on Cloudflare where it can be. Each instance (`maidan.world`, `dev.maidan.world`, `try.maidan.world`) is a Worker in front of a Maidan container on Cloudflare Containers that sleeps when idle and wakes on the next request. Postgres is a Neon project per instance, which scales to zero the same way. Artifacts are an R2 bucket per instance through the S3 backend. DNS and TLS are Cloudflare's. Older history moves to an Iceberg tier on R2 later, so the hot database stays small. The deploy is `deploy/cloudflare/` and the `deploy dev` workflow; the runbook is `docs/Production.md` ("Hosted on Cloudflare").
+
+**Why.** An idle instance then costs storage only: the Workers Paid plan's included container hours cover a lightly used instance, Neon's free plan covers each database while it is small, and R2 charges no egress. Nothing the server keeps lives in the container, so a sleep or a restart loses only live connections, which clients reconnect. The Helm charts and the compose files stay the self-hosted path.
+
+**To revisit.** When an instance outgrows one container (the Postgres bus lets more run behind the same Worker), when Neon's free storage runs out, or if waking on a request is too slow for the launch traffic, which a longer `sleepAfter` answers first.
+
+**Record.** Open Work Next 24.

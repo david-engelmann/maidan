@@ -188,14 +188,15 @@ An array of target objects. Each names a `surface` plus per-surface detail:
   { "surface": "github", "repo": "example/repo", "pr": 3915 },
   { "surface": "slack",  "channel": "C0123ABCDEF" },
   { "surface": "slack",  "channel": "C0123ABCDEF", "thread_ts": "1759500000.000100" },
-  { "surface": "github_branch", "repo": "example/repo", "branch": "feature/agent-fix-1a2b", "base": "dev" }
+  { "surface": "github_branch", "repo": "example/repo", "branch": "feature/agent-fix-1a2b", "base": "dev" },
+  { "surface": "linear", "team": "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b", "issue": "ENG-123", "state": "In Review" }
 ]
 ```
 
 ### Rules
 
 1. **`surface` is a lowercase identifier.** Known values today: `github`,
-   `slack`, `github_branch`.
+   `slack`, `github_branch`, `linear`.
 2. **An unknown `surface` is skipped with a recorded warning, never an error.**
    Partial delivery is the model: one target failing or being unroutable must not
    sink the others.
@@ -214,9 +215,15 @@ An array of target objects. Each names a `surface` plus per-surface detail:
    `github_branch:<repo>@<branch>`. `branch` must match
    `feature/agent-[a-z0-9][a-z0-9-]*`; `base` must be blessed for the
    repository, and is never `prod`.
-6. **An empty or absent list delivers nowhere.** This is a valid, supported
+6. **`linear` requires `team` (the team's id, a UUID) and `issue` (its
+   identifier, `ENG-123`, or its id).** Delivery is a comment on the issue.
+   An optional `state` names a workflow state of that team, by its exact name,
+   to move the issue to once the comment lands. A `team` that is not an id, or
+   a blank `state`, makes the target unusable (a recorded skip). See
+   [Linear](#linear).
+7. **An empty or absent list delivers nowhere.** This is a valid, supported
    outcome — not a misconfiguration.
-7. **New surfaces add new object shapes.** Rule 2 makes that backward-compatible:
+8. **New surfaces add new object shapes.** Rule 2 makes that backward-compatible:
    an older Maidan skips a surface it does not know.
 
 ### Where the producer gets it
@@ -284,7 +291,7 @@ Blessing is idempotent — a re-bless returns the existing entry with its origin
 **The selector is two fields, not one string.** There is no `github:owner/repo`
 target syntax at this boundary: `surface` is the enum (`github` | `slack` |
 `github_branch`) and
-`selector` is the per-surface id. The rules, enforced on every write path
+`selector` is the per-surface id (`linear` is a surface too). The rules, enforced on every write path
 (`400` with the reason on a violation):
 
 | Surface | `selector` | Rejected |
@@ -292,6 +299,7 @@ target syntax at this boundary: `surface` is the enum (`github` | `slack` |
 | `github` | a repository, `owner/name` | anything containing `#` — the blessing is the **repo**, not the issue, so one call covers every PR in it |
 | `github_branch` | a repository and the one base change pull requests may target, `owner/name@base` (one row per base) | a selector without a base, a `prod` base, an agent branch as a base. A separate surface with its own rows: a repository blessed for `github` comments is **not** writable by the change flow |
 | `slack` | a channel id, `C…` or `G…` | `#channel-name` — a name is mutable, and the channel a name points at can change under the blessing |
+| `linear` | a team id, a UUID | a team key (`ENG`) or name — a key can be renamed, and another team can take the old one |
 
 Leading/trailing whitespace is refused on both. The authorization key is coarser
 than the delivery target on GitHub: a result aimed at `example/repo#42` is
@@ -402,7 +410,26 @@ token instead and authored by the app's bot account.
   `view_url` link — **not** `rendered` as-is. A producer that wants precise
   Slack formatting should make `summary` carry the weight.
 
-### Both
+### Linear
+
+- The comment body is the same Markdown a GitHub comment gets (`rendered`, the
+  PR line, attachments and the `view_url` backlink), cut at 65536 characters.
+  A change result instead gets the change reply a Slack thread gets: the
+  commit and draft pull request once the `github_branch` delivery lands, or
+  the status and the producer's reason when nothing was committed. The
+  comment waits for the branch delivery the same way.
+- **The issue must be in the team the result names.** The allowlist blessed
+  the team, not the issue, so the sender looks the issue up first and refuses
+  it (a recorded skip, no write) when it is in another team.
+- A later result for the thread **edits the same comment**. A comment deleted
+  in Linear since is posted again.
+- `state` moves the issue after the comment lands, and every delivery of the
+  result moves it again. A state the team does not have, or a move Linear
+  refuses, is logged; the comment stands and the delivery is `delivered`.
+- The operator sets `MAIDAN_LINEAR_API_KEY` and blesses each team by id:
+  `{"surface":"linear","selector":"<team id>"}`.
+
+### All surfaces
 
 - **Mention sequences are neutralized at the egress boundary.** `rendered` is
   producer-authored but quotes attacker-influenced code; an `@org/team` in a

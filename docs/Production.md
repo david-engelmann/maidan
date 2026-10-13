@@ -47,8 +47,9 @@ period is cut, and clients retry.
 |-----------------|----------|------------------------------------------------------|
 | `DATABASE_URL`  | yes      | Postgres (recommended) or SQLite. A managed Postgres (Neon, PlanetScale, RDS, Cloud SQL) requires TLS: add `?sslmode=require`, or `sslmode=verify-full` to check the server's certificate. The server carries its own root certificates, so this works on the distroless image. |
 |                 |          | SQLite connections enable `foreign_keys`, WAL, and `busy_timeout=5000` ms automatically. |
-| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_APP_PRIVATE_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
+| `<NAME>_FILE`   | no       | A file holding the value of `<NAME>`, for every secret the server reads (a Docker or Kubernetes secret mount). That is `DATABASE_URL`, `MAIDAN_DB_REPLICA_URL`, `MAIDAN_RATE_LIMIT_REDIS_URL`, `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`, `MAIDAN_SESSION_SECRET`, `MAIDAN_SUBSCRIBE_RESUME_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `MAIDAN_EXPORT_SIGNING_KEY`, `MAIDAN_GITHUB_APP_PRIVATE_KEY`, `MAIDAN_GITHUB_TOKEN`, `MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_BOT_TOKEN`, `MAIDAN_SLACK_SIGNING_SECRET`, `MAIDAN_LINEAR_API_KEY`, `MAIDAN_SMTP_PASSWORD`, `MAIDAN_EMBEDDING_API_KEY`, `MAIDAN_VAPID_PRIVATE_KEY`, `FEDERATION_ENCRYPTION_KEY`, `FEDERATION_DECRYPT_KEYS`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. A test fails when the server starts reading a new secret that cannot come from a file, so the container's config holds a path instead of the secret. Read once at boot by the server and by `maidan`, with trailing newlines trimmed. Setting both `<NAME>` and `<NAME>_FILE` refuses boot, as does a file that cannot be read, is empty, or is not UTF-8. The error names the variable and the path, never the value. A `<NAME>` set to the empty string counts as unset. |
 | `MAIDAN_GITHUB_WRITE_REPOS` | with a GitHub token | Comma-separated `owner/name`s, the only repositories the instance's GitHub token may write to (branches, commits, draft and ready pull requests, comments, reviews, check runs). Compared case-insensitively. Unset or empty, every GitHub write is refused and a boot warning says so. A workspace's egress allowlist narrows this list and can never widen it. |
+| `MAIDAN_LINEAR_API_KEY` | for Linear delivery | A Linear API key (a personal key, `lin_api_…`, or an OAuth access token). With it, a result whose `deliver_to` names a Linear issue comments on it and can move it to a workflow state ([Result Delivery](Result%20Delivery.md#linear)). Each team a workspace may write to is blessed in its egress allowlist by team id. Unset, a Linear target is queued and fails each attempt until a key is configured. |
 | `MAIDAN_GITHUB_APP_ID` | with a GitHub App | The GitHub App's id (a number) or client id (`Iv23…`), the issuer of the JWT Maidan signs. With the two below, every outbound GitHub call authenticates as the app instead of with `MAIDAN_GITHUB_TOKEN` (see [Result delivery to GitHub and Slack](#result-delivery-to-github-and-slack)). Setting some of the three but not all refuses boot, naming what is missing. |
 | `MAIDAN_GITHUB_APP_INSTALLATION_ID` | with a GitHub App | The installation the app exchanges its JWT for a token on (the number at the end of the installation's settings URL). A value that is not a positive integer refuses boot. |
 | `MAIDAN_GITHUB_APP_PRIVATE_KEY` | with a GitHub App | The app's private key, PEM, as GitHub downloads it (`RSA PRIVATE KEY`) or PKCS#8 (`PRIVATE KEY`). Newlines written as `\n` are accepted. Prefer `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`. A key that does not parse, or is shorter than 2048 bits, refuses boot; the error names the variable, never the key. |
@@ -1171,6 +1172,89 @@ background job (202 + `job_id`). Poll `GET /operator/reindex-embeddings/:job_id`
 body `{ "workspace_id": "<uuid>" }` scopes to one workspace (`workspace:write`);
 omit `workspace_id` for all workspaces (`operator:global`; before, a workspace's `token:admin` could start and read an instance-wide job). CLI `maidan reindex-embeddings`
 remains for shell/CI. A job runs in-process on the replica that started it; its record is durable (see below), so a replica that dies mid-run leaves it `Running`.
+
+## Hosted on Cloudflare
+
+`dev.maidan.world` runs `main` on Cloudflare Containers. A Worker
+(`deploy/cloudflare/`) takes every request and hands it to one Maidan
+container, which sleeps after 15 minutes without a request and starts again on
+the next one. Nothing the server keeps lives in the container: Postgres is a
+Neon project (it scales to zero too) and artifacts are an R2 bucket through the
+S3 backend. A sleep or a restart drops only presence and open live connections,
+which clients reconnect.
+
+| Piece | Where | Notes |
+|-------|-------|-------|
+| Server | Cloudflare Containers, `basic` (¼ vCPU, 1 GiB), one instance | The bus runs through Postgres, so more instances can run when traffic needs them ([Horizontal scaling](#horizontal-scaling-v10500)) |
+| Front door | The `maidan-dev` Worker on the `dev.maidan.world` custom domain | TLS at Cloudflare; the Worker sets `X-Forwarded-For` to the connecting address, and the server trusts one hop |
+| Postgres | Neon project `maidan-dev`, Postgres 17 with pgvector | Direct connection, not the pooler, because the bus `LISTEN`s |
+| Artifacts | R2 bucket `maidan-artifacts-dev` | `ARTIFACT_BACKEND=s3`, `S3_REGION=auto` |
+| Scheduled work | An hourly cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake |
+
+### Deploying
+
+Every push to `main` that touches the server runs `deploy dev`
+(`.github/workflows/deploy-dev.yml`): it builds the linux/amd64 image with a
+warm cache, pushes it to the account's registry, points `wrangler.jsonc` at it
+and deploys, then waits until `/health` reports the build it deployed
+(`main-<first 8 of the commit>`). The job reads `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` from the `dev` environment, which only `main` may use;
+the token is scoped to Workers scripts, containers and the `maidan.world`
+zone's routes. A pull request that changes the deploy builds the image only.
+
+The very first deploy of an instance creates the Durable Object and the
+container application together, and the application can fail to find the
+namespace (`DURABLE_OBJECT_NOT_FOUND`). The second attempt finds it, so the job
+retries once.
+
+Without local Docker, push a CI-built image with `crane`: download the
+`maidan-server-image` artifact, get a short-lived push credential from
+`POST /accounts/<id>/containers/registries/registry.cloudflare.com/credentials`
+(`{"expiration_minutes": 30, "permissions": ["push", "pull"]}`), `crane push`
+the tarball to `registry.cloudflare.com/<account id>/maidan-server:<tag>`, and
+deploy with that reference as `image`.
+
+From a checkout, `npx wrangler deploy` in `deploy/cloudflare/` builds the image
+from source with local Docker instead, which is slow on a machine that is not
+linux/amd64.
+
+### Secrets
+
+The server's secrets are Worker secrets, set once and kept across deploys:
+
+```sh
+cd deploy/cloudflare
+for name in DATABASE_URL MAIDAN_CONTENT_KEK MAIDAN_SESSION_SECRET \
+            S3_ENDPOINT S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+  npx wrangler secret put "$name"
+done
+```
+
+The Worker passes only the names it lists in `src/index.js` to the container,
+plus the fixed settings there (`MAIDAN_ENV=production`, JSON logs, the bind
+address and the proxy hop). Plain settings (the public origin, the bucket) are
+`vars` in `wrangler.jsonc`.
+
+### The first admin
+
+`maidan init` writes through the store, so it runs from any machine that can
+reach Neon, with the same `DATABASE_URL` and `MAIDAN_CONTENT_KEK` as the
+Worker secrets ([Bootstrap](#bootstrap)).
+
+### What a sleeping instance means
+
+- The first request after a sleep waits for the container to start and the
+  server to boot against Neon, which may itself be waking.
+- Any open request keeps the container awake: a WebSocket, an SSE stream or
+  MCP's notification stream counts until it closes, and the container sleeps
+  15 minutes after the last one does. An agent that stays connected keeps its
+  instance running, and is billed as running.
+- Work a sleeping server would have done waits for the next request or the
+  hourly cron.
+- Any request wakes it, a crawler's too. Scanners find a new domain within
+  hours of its certificate and probe for `/.env`, `/.git/config` and PHP
+  files; the Worker answers paths no Maidan route serves with 404 itself
+  (`src/scanner.js`), so those probes never reach the container.
 
 ## Helm (production)
 

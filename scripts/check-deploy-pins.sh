@@ -13,6 +13,9 @@
 #                                         move with it; they cannot be checked here)
 #   compose.quickstart.yaml               the MAIDAN_VERSION default
 #   k8s/overlays/prod/kustomization.yaml  newTag of maidan-server and maidan-postgres
+#   listings/registry/server.json         its version and its package version
+#   listings/toolhive/server.json,
+#   listings/docker/server.yaml           the image they name
 #   README.md, docs/Production.md         every ghcr.io/david-engelmann/maidan-{server,
 #                                         cli,postgres}:vN.N.N and MAIDAN_TAG=vN.N.N,
 #                                         and README's "pins (`vN.N.N`)" quickstart line
@@ -90,6 +93,15 @@ pin README.md 0 "${image}"
 pin README.md 1 "^MAIDAN_TAG=${v}$"
 pin README.md 1 "pins \(\`${v}\`\)"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
+# The catalog listings under listings/ name the published image too: the
+# registry entry's package version, and the image in ToolHive and Docker.
+pin listings/registry/server.json 1 "\"version\": \"${v}\""
+pin listings/toolhive/server.json 0 "${image}"
+pin listings/docker/server.yaml 0 "${image}"
+# The registry entry's own version is the release without its v.
+registry_version="$(grep -oE '^  "version": "[0-9]+\.[0-9]+\.[0-9]+"' listings/registry/server.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+[[ "v${registry_version}" == "$expected" ]] || \
+  failures+=("listings/registry/server.json version is ${registry_version:-missing}, not ${expected#v}")
 pin docs/Pi.md 0 "${image}"
 pin docs/Pi.md 1 "^MAIDAN_TAG=${v}$"
 pin docs/Pi.md 1 "releases/tag/${v}"

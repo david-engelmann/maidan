@@ -101,15 +101,17 @@ mod tests {
 
     #[tokio::test]
     async fn memory_window_resets() {
+        // The window has to outlast three calls on a loaded machine: at 50 ms
+        // the third call sometimes landed in a fresh window and was allowed.
         let cfg = WindowConfig {
             max: 2,
-            window: Duration::from_millis(50),
+            window: Duration::from_secs(1),
         };
         let key = "mem-test";
         assert!(try_acquire(key, cfg, None).await);
         assert!(try_acquire(key, cfg, None).await);
         assert!(!try_acquire(key, cfg, None).await);
-        tokio::time::sleep(Duration::from_millis(60)).await;
+        tokio::time::sleep(Duration::from_millis(1_100)).await;
         assert!(try_acquire(key, cfg, None).await);
     }
 

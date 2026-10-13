@@ -120,7 +120,9 @@ async fn snapshot_body(
     };
     if waiter.is_reviewed() {
         match target {
-            EgressTarget::Github { .. } => waiter.rendered.unwrap_or_default(),
+            EgressTarget::Github { .. } | EgressTarget::Linear { .. } => {
+                waiter.rendered.unwrap_or_default()
+            }
             EgressTarget::Slack { .. } => waiter
                 .summary
                 .clone()

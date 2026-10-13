@@ -30,6 +30,8 @@ pub enum EgressSurface {
     /// allowlist rows: a repository blessed for comments is not thereby
     /// writable.
     GithubBranch,
+    /// A comment on a Linear issue, blessed per team.
+    Linear,
 }
 
 impl EgressSurface {
@@ -38,6 +40,7 @@ impl EgressSurface {
             Self::Slack => "slack",
             Self::Github => "github",
             Self::GithubBranch => "github_branch",
+            Self::Linear => "linear",
         }
     }
 
@@ -48,6 +51,7 @@ impl EgressSurface {
             "slack" => Some(Self::Slack),
             "github" => Some(Self::Github),
             "github_branch" => Some(Self::GithubBranch),
+            "linear" => Some(Self::Linear),
             _ => None,
         }
     }
@@ -114,6 +118,11 @@ pub enum EgressTarget {
     /// branch and the commit's parent are read from the result envelope at
     /// send time, so they are not part of the stored destination.
     GithubBranch { repo: String, branch: String },
+    /// A comment on a Linear issue. `team_id` is the team the producer says
+    /// the issue is in, and what the allowlist blesses; the sender checks the
+    /// issue really is in that team before it writes. `issue` is an
+    /// identifier (`ENG-123`) or the issue's id.
+    Linear { team_id: String, issue: String },
 }
 
 impl EgressTarget {
@@ -122,11 +131,13 @@ impl EgressTarget {
             Self::Slack { .. } => EgressSurface::Slack,
             Self::Github { .. } => EgressSurface::Github,
             Self::GithubBranch { .. } => EgressSurface::GithubBranch,
+            Self::Linear { .. } => EgressSurface::Linear,
         }
     }
 
     /// The persisted per-surface detail: a Slack channel id (with `/<thread_ts>`
-    /// for a threaded reply), `owner/name#123`, or `owner/name@branch`.
+    /// for a threaded reply), `owner/name#123`, `owner/name@branch`, or a
+    /// Linear `<team id>/<issue>`.
     pub fn selector(&self) -> String {
         match self {
             Self::Slack {
@@ -139,6 +150,7 @@ impl EgressTarget {
             } => format!("{channel_id}/{ts}"),
             Self::Github { repo, issue_number } => format!("{repo}#{issue_number}"),
             Self::GithubBranch { repo, branch } => format!("{repo}@{branch}"),
+            Self::Linear { team_id, issue } => format!("{team_id}/{issue}"),
         }
     }
 
@@ -153,10 +165,14 @@ impl EgressTarget {
     /// [`crate::change_allowlist_selector`]), and the base is not part of this
     /// target, so the bare repository returned here matches no branch row:
     /// authorizing a branch goes through the result's base, and fails closed.
+    ///
+    /// Linear blesses the team, by its id: a team's key can be renamed, and a
+    /// later team could take the old one.
     pub fn allowlist_selector(&self) -> String {
         match self {
             Self::Slack { channel_id, .. } => channel_id.clone(),
             Self::Github { repo, .. } | Self::GithubBranch { repo, .. } => repo.clone(),
+            Self::Linear { team_id, .. } => team_id.clone(),
         }
     }
 
@@ -183,6 +199,13 @@ impl EgressTarget {
                 (is_github_repo(repo) && is_branch_name(branch)).then(|| Self::GithubBranch {
                     repo: repo.to_string(),
                     branch: branch.to_string(),
+                })
+            }
+            EgressSurface::Linear => {
+                let (team_id, issue) = selector.split_once('/')?;
+                (is_linear_id(team_id) && is_linear_issue(issue)).then(|| Self::Linear {
+                    team_id: team_id.to_string(),
+                    issue: issue.to_string(),
                 })
             }
             EgressSurface::Github => {
@@ -231,6 +254,8 @@ pub enum ExternalRef {
         commit_sha: String,
         pull_number: i64,
     },
+    /// A Linear comment, edited by its id alone.
+    Linear { comment_id: String },
 }
 
 impl ExternalRef {
@@ -239,6 +264,7 @@ impl ExternalRef {
             Self::Slack { .. } => EgressSurface::Slack,
             Self::Github { .. } => EgressSurface::Github,
             Self::GithubBranch { .. } => EgressSurface::GithubBranch,
+            Self::Linear { .. } => EgressSurface::Linear,
         }
     }
 
@@ -253,6 +279,7 @@ impl ExternalRef {
                 pull_number,
                 ..
             } => format!("{commit_sha}#{pull_number}"),
+            Self::Linear { comment_id } => comment_id.clone(),
         }
     }
 
@@ -282,8 +309,41 @@ impl ExternalRef {
                     pull_number,
                 })
             }
+            EgressTarget::Linear { .. } => is_linear_id(handle).then(|| Self::Linear {
+                comment_id: handle.to_string(),
+            }),
         }
     }
+}
+
+/// A Linear object id: a UUID, as Linear writes it (lowercase hex, hyphens
+/// at 8-4-4-4-12).
+pub fn is_linear_id(s: &str) -> bool {
+    s.len() == 36
+        && s.char_indices().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_digit() || ('a'..='f').contains(&c),
+        })
+}
+
+/// A Linear issue as a producer names it: its identifier (`ENG-123`, the team
+/// key and the number) or its id.
+pub fn is_linear_issue(s: &str) -> bool {
+    if is_linear_id(s) {
+        return true;
+    }
+    let Some((key, number)) = s.split_once('-') else {
+        return false;
+    };
+    (1..=10).contains(&key.len())
+        && key.starts_with(|c: char| c.is_ascii_uppercase())
+        && key
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && !number.is_empty()
+        && number.len() <= 9
+        && !number.starts_with('0')
+        && number.bytes().all(|b| b.is_ascii_digit())
 }
 
 /// A full git object id: SHA-1 (40 hex) or SHA-256 (64 hex). A short prefix is
@@ -407,6 +467,12 @@ pub fn validate_allowlist_selector(
             }
             if crate::is_change_branch(base) {
                 return Err("an agent branch cannot be a base");
+            }
+            Ok(())
+        }
+        EgressSurface::Linear => {
+            if !is_linear_id(selector) {
+                return Err("linear selector is a team id (a UUID), not a team key or name: a key can be renamed and taken by another team");
             }
             Ok(())
         }
@@ -796,5 +862,49 @@ mod tests {
                 .is_err(),
             "a comment row never names a base"
         );
+    }
+
+    #[test]
+    fn a_linear_blessing_is_a_team_id_never_a_key() {
+        let team = "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b";
+        assert!(validate_allowlist_selector(EgressSurface::Linear, team).is_ok());
+        for refused in [
+            "ENG",
+            "eng",
+            "Engineering",
+            "6A1F1C4E-2F0B-4D5E-9A7B-0C1D2E3F4A5B",
+        ] {
+            assert!(
+                validate_allowlist_selector(EgressSurface::Linear, refused).is_err(),
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_linear_target_round_trips_and_is_authorized_by_its_team() {
+        let target = EgressTarget::Linear {
+            team_id: "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b".into(),
+            issue: "ENG-123".into(),
+        };
+        assert_eq!(
+            EgressTarget::parse(EgressSurface::Linear, &target.selector()),
+            Some(target.clone())
+        );
+        assert_eq!(
+            target.allowlist_selector(),
+            "6a1f1c4e-2f0b-4d5e-9a7b-0c1d2e3f4a5b"
+        );
+        assert_eq!(EgressSurface::parse("linear"), Some(EgressSurface::Linear));
+    }
+
+    #[test]
+    fn a_linear_issue_is_an_identifier_or_an_id() {
+        for ok in ["ENG-1", "A1-42", "11111111-2222-4333-8444-555555555555"] {
+            assert!(is_linear_issue(ok), "{ok}");
+        }
+        for bad in ["eng-1", "ENG-", "ENG-01", "-1", "ENG-1/x", "ENG 1", ""] {
+            assert!(!is_linear_issue(bad), "{bad}");
+        }
     }
 }
