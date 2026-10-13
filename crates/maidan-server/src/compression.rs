@@ -27,7 +27,7 @@ use tower_http::compression::{
 /// and inside the metrics middleware so the recorded response is the one
 /// that actually left the server.
 pub fn layer() -> CompressionLayer<impl Predicate> {
-    CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotAnUpgrade))
+    CompressionLayer::new().compress_when(DefaultPredicate::new().and(NotAnUpgrade).and(NotNoStore))
 }
 
 /// Refuses compression for protocol upgrades: see the module docs.
@@ -40,6 +40,29 @@ impl Predicate for NotAnUpgrade {
         B: Body,
     {
         response.status() != StatusCode::SWITCHING_PROTOCOLS
+    }
+}
+
+/// Refuses compression for a response marked `Cache-Control: no-store`: the
+/// routes that answer with a credential set it, and compressing a secret beside
+/// text the caller chose turns its length into an oracle (BREACH).
+#[derive(Debug, Clone, Copy)]
+struct NotNoStore;
+
+impl Predicate for NotNoStore {
+    fn should_compress<B>(&self, response: &Response<B>) -> bool
+    where
+        B: Body,
+    {
+        !response
+            .headers()
+            .get_all(axum::http::header::CACHE_CONTROL)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .any(|v| {
+                v.split(',')
+                    .any(|d| d.trim().eq_ignore_ascii_case("no-store"))
+            })
     }
 }
 
@@ -80,6 +103,21 @@ mod tests {
             StatusCode::OK,
             Some("text/event-stream"),
             "data: {\"kind\": \"message_posted\"}\n\n",
+        );
+        assert!(!predicate.should_compress(&res));
+    }
+
+    #[test]
+    fn a_no_store_response_never_compresses() {
+        let predicate = DefaultPredicate::new().and(NotAnUpgrade).and(NotNoStore);
+        let mut res = response(
+            StatusCode::CREATED,
+            Some("application/json"),
+            "{\"secret\": \"a long enough credential body to be worth encoding\"}",
+        );
+        res.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("private, no-store"),
         );
         assert!(!predicate.should_compress(&res));
     }

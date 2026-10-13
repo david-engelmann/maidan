@@ -168,3 +168,101 @@ async fn the_agent_card_is_gzipped_when_the_client_asks() {
     let addr = spawn().await;
     assert_gzipped_round_trip(&addr, "/.well-known/agent-card.json", 1).await;
 }
+
+/// A response that carries a credential is never compressed: connecting an
+/// agent answers with its token beside the handle the caller chose, so a
+/// compressed body's length would be an oracle on the secret.
+#[tokio::test]
+async fn a_credential_response_is_no_store_and_never_compressed() {
+    use maidan_auth::{capability, hash_secret, TokenSecret};
+    use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(2)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "acme".into(),
+        })
+        .await
+        .unwrap();
+    let admin = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: admin.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![
+                capability::TOKEN_ADMIN.into(),
+                capability::WORKSPACE_READ.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::new(
+        store,
+        Arc::new(LocalFsStore::new(dir.path())),
+        Arc::new(maidan_bus::InMemoryBus::new()),
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        false,
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    let app = router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let body = format!(
+        "{{\"handle\":\"builder-{}\",\"display_name\":\"a display name long enough to compress well\"}}",
+        "x".repeat(40)
+    );
+    let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+    let request = format!(
+        "POST /workspaces/{}/agents HTTP/1.1\r\nhost: {addr}\r\nconnection: close\r\n\
+         authorization: Bearer {}\r\ncontent-type: application/json\r\n\
+         accept-encoding: gzip\r\ncontent-length: {}\r\n\r\n{body}",
+        ws.id.0,
+        secret.as_str(),
+        body.len()
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).await.unwrap();
+    let head_end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .expect("a header block");
+    let head = String::from_utf8_lossy(&raw[..head_end]).to_lowercase();
+    assert!(head.starts_with("http/1.1 201"), "{head}");
+    assert!(head.contains("cache-control: no-store"), "{head}");
+    assert!(
+        !head.contains("content-encoding"),
+        "a credential response is never compressed: {head}"
+    );
+}
