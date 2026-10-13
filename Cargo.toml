@@ -44,7 +44,9 @@ chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 bytes = "1"
 sha2 = "0.10"
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json", "macros"] }
+# TLS with bundled Mozilla roots: managed Postgres (Neon, PlanetScale, RDS)
+# requires TLS, and the distroless image has no system certificate store.
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "uuid", "chrono", "json", "macros", "tls-rustls-ring-webpki"] }
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "compression-gzip", "catch-panic", "sensitive-headers"] }
