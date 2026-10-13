@@ -32,7 +32,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### OAuth discovery (phase three, first half)
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
-- **Changed:** filtered event-log reads (a projector shape with a channel, thread or kind filter — the board's notices fetch is one) are answered by the database over a new index, `idx_events_workspace_channel_kind` (migration 0164), instead of paging the workspace's whole log and dropping non-matching rows in memory. On a 100,000-row workspace log whose channel holds 300 matching posts, the fetch examined all 100,000 rows before; it now seeks to the matches.
 
 ### A change that ends without a commit says why in its one Slack notice
 
@@ -46,6 +45,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Security:** `thread_access::readable_thread`, the SQL form of the thread read rule behind search, the workspace context, the explorer, A2A task lists, pending gates, `claim_next` and the queue counts, checked only the workspace the query named. A member of another tenant asked for this workspace's rows read its public threads, and only each route's own workspace check stopped it. The predicate now also requires the reader to be a member of the thread's workspace, so it holds on its own. It names the member once, in a one-row derived table, so SQLite search binds the member once instead of a hand-counted three times.
 - **Tests:** `tests/thread_access.rs` adds a reader from another tenant who sees only the workspace's thread-less rows, on both backends. `thread_filter_explorer` now expects another tenant's reader to count none of the workspace's posts.
+
+### Artifact uploads have their own body limit
+
+- **Added:** `MAIDAN_ARTIFACT_MAX_BODY_BYTES` caps `POST /artifacts`, `POST /ui/api/artifacts` and each multipart part, default 100 MiB, while every other route keeps `MAIDAN_MAX_BODY_BYTES` (default 2 MiB). A deployment that takes long recordings raises the artifact limit alone, instead of every route's. A single-shot upload is held in memory while it is hashed, so `MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES` (default 256 MiB, `0` off) bounds the upload bytes held at once: each upload is charged its `Content-Length`, or the whole artifact limit when it declares none, and one that does not fit gets `503` with `Retry-After: 1` (`maidan_artifact_upload_budget_refused_total`).
+- **Tests:** `artifact_isolation_e2e` now checks the attachment path between two apps: another member of the uploader's workspace reads the same bytes back, and another tenant's member who knows the sha gets 404 on the bytes and the metadata. A 3 MiB upload succeeds while a 3 MiB JSON body on another route gets 413.
+
+### Maidan connects to managed Postgres over TLS
+
+- **Fixed:** the database client was built without TLS, so a `DATABASE_URL` with `sslmode=require`, which every managed Postgres needs (Neon, PlanetScale, RDS, Cloud SQL), failed with "SQLx was built without TLS support" before reaching the server. `sqlx` now carries rustls with bundled Mozilla roots (`tls-rustls-ring-webpki`), which needs no system certificate store, so it works on the distroless image. Verified by booting Maidan against Neon Postgres 17: every migration applied, `/health/ready` 200. `tests/postgres_tls.rs` pins that the TLS client is compiled in.
+
+### Boot reads the applied migrations once
+
+- **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
+
+### The notices query seeks to its rows
+
+- **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
 
 ## [413.0.0] — 2026-10-11
 

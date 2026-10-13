@@ -203,25 +203,41 @@ pub async fn list_matching(
     after_id: i64,
     limit: i64,
 ) -> Result<Vec<StoredEvent>, StoreError> {
+    // Only the filters that are present become predicates. An `$n IS NULL OR`
+    // form would let a prepared statement settle on a generic plan, which
+    // cannot use the (workspace_id, channel_id, kind, id) index for a filter
+    // that might be absent, and would scan the workspace again.
     let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
-    let rows = sqlx::query(&format!(
+    let mut sql = format!(
         "SELECT {EVENT_COLUMNS}
          FROM {EVENTS_FROM}
-         WHERE e.workspace_id = $1 AND e.id > $2
-           AND ($3::uuid IS NULL OR e.channel_id = $3)
-           AND ($4::uuid IS NULL OR e.thread_id = $4)
-           AND (cardinality($5) = 0 OR e.kind = ANY($5))
-         ORDER BY e.id ASC
-         LIMIT $6"
-    ))
-    .bind(workspace_id.0)
-    .bind(after_id)
-    .bind(channel_id.map(|c| c.0))
-    .bind(thread_id.map(|t| t.0))
-    .bind(names)
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+         WHERE e.workspace_id = $1 AND e.id > $2"
+    );
+    let mut next = 3;
+    if channel_id.is_some() {
+        sql.push_str(&format!(" AND e.channel_id = ${next}"));
+        next += 1;
+    }
+    if thread_id.is_some() {
+        sql.push_str(&format!(" AND e.thread_id = ${next}"));
+        next += 1;
+    }
+    if !names.is_empty() {
+        sql.push_str(&format!(" AND e.kind = ANY(${next})"));
+        next += 1;
+    }
+    sql.push_str(&format!(" ORDER BY e.id ASC LIMIT ${next}"));
+    let mut query = sqlx::query(&sql).bind(workspace_id.0).bind(after_id);
+    if let Some(channel_id) = channel_id {
+        query = query.bind(channel_id.0);
+    }
+    if let Some(thread_id) = thread_id {
+        query = query.bind(thread_id.0);
+    }
+    if !names.is_empty() {
+        query = query.bind(names);
+    }
+    let rows = query.bind(limit).fetch_all(pool).await?;
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 

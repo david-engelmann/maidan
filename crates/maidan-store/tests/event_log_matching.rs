@@ -299,9 +299,9 @@ async fn the_postgres_filtered_read_uses_the_channel_kind_index() {
     sqlx::query(
         "INSERT INTO maidan_events (kind, workspace_id, channel_id, thread_id, payload, occurred_at)
          SELECT CASE WHEN g % 300 = 0 THEN 'message_posted' ELSE 'thread_state_changed' END,
-                '00000000-0000-0000-0000-0000000000a1',
-                CASE WHEN g % 300 = 0 THEN '00000000-0000-0000-0000-0000000000a2'
-                     ELSE '00000000-0000-0000-0000-0000000000a3' END,
+                '00000000-0000-0000-0000-0000000000a1'::uuid,
+                CASE WHEN g % 300 = 0 THEN '00000000-0000-0000-0000-0000000000a2'::uuid
+                     ELSE '00000000-0000-0000-0000-0000000000a3'::uuid END,
                 NULL, '{}'::jsonb, now()
          FROM generate_series(1, 30000) AS g",
     )
@@ -329,9 +329,18 @@ async fn the_postgres_filtered_read_uses_the_channel_kind_index() {
         .iter()
         .map(|r| r.get::<String, _>("QUERY PLAN"))
         .collect();
+    // The event log is partitioned (#1359), so each partition carries its own
+    // copy of the 0164 index under a generated name. What matters is that the
+    // scan seeks on channel and kind rather than filtering the workspace.
+    let seeks = plan.windows(2).any(|pair| {
+        pair[0].contains("Index")
+            && pair[0].contains("Scan")
+            && pair[1].contains("Index Cond")
+            && pair[1].contains("channel_id =")
+            && pair[1].contains("kind =")
+    });
     assert!(
-        plan.iter()
-            .any(|line| line.contains("idx_events_workspace_channel_kind")),
-        "the filtered read seeks on the 0164 index: {plan:?}"
+        seeks,
+        "the filtered read seeks on the 0164 (workspace, channel, kind, id) index: {plan:?}"
     );
 }
