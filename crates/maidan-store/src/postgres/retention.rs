@@ -391,7 +391,7 @@ async fn drop_delivery_partition(
     // implied by the partition's bound — the outbox partitions on
     // created_at and is cut on published_at.
     let keeps_sql = format!(
-        "EXISTS (SELECT 1 FROM {name} d
+        "SELECT EXISTS (SELECT 1 FROM {name} d
                   WHERE {age} >= $1 OR NOT ({terminal})
                      OR EXISTS (SELECT 1 FROM maidan_legal_holds h
                                 WHERE h.workspace_id = {hold}))"
