@@ -8,6 +8,7 @@
 // in-memory presence and live connections, which clients already reconnect.
 
 import { Container, getContainer } from "@cloudflare/containers";
+import { isScannerProbe } from "./scanner.js";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
@@ -47,6 +48,10 @@ export class MaidanServer extends Container {
 
 export default {
   async fetch(request, env) {
+    // A probe would wake a sleeping container only to be told 404.
+    if (isScannerProbe(new URL(request.url).pathname)) {
+      return new Response("not found\n", { status: 404 });
+    }
     // A client-sent X-Forwarded-For would let it pick the address it is rate
     // limited as; replace it with the address Cloudflare connected from.
     const headers = new Headers(request.headers);

@@ -64,8 +64,25 @@ jobs:
           path: ${{ runner.temp }}/maidan-server.tar
           retention-days: 3
 
+  worker:
+    name: worker tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - run: npm ci
+      - run: npm test
+
   deploy:
-    needs: image
+    needs: [image, worker]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20

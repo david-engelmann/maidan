@@ -1250,6 +1250,10 @@ Worker secrets ([Bootstrap](#bootstrap)).
   instance running, and is billed as running.
 - Work a sleeping server would have done waits for the next request or the
   hourly cron.
+- Any request wakes it, a crawler's too. Scanners find a new domain within
+  hours of its certificate and probe for `/.env`, `/.git/config` and PHP
+  files; the Worker answers paths no Maidan route serves with 404 itself
+  (`src/scanner.js`), so those probes never reach the container.
 
 ## Helm (production)
 
