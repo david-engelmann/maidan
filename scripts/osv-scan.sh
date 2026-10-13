@@ -4,8 +4,9 @@
 #
 # cargo-deny checks the root Cargo.lock against RustSec. Everything else that
 # pins third-party code is scanned here: every tracked lockfile except the root
-# Cargo.lock (fuzz/Cargo.lock, ui-tests/package-lock.json, sdk/go/go.mod), and
-# the Rust SDK resolved fresh, because sdk/rust ignores its Cargo.lock and a new
+# Cargo.lock (fuzz/Cargo.lock, ui-tests/package-lock.json,
+# deploy/cloudflare/package-lock.json, sdk/go/go.mod), and the Rust SDK
+# resolved fresh, because sdk/rust ignores its Cargo.lock and a new
 # user of the crate gets whatever resolves today. The TypeScript and Python
 # SDKs have no runtime dependencies, so there is nothing to lock; the script
 # fails if one gains a dependency without a lockfile beside it.

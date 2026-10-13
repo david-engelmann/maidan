@@ -48,6 +48,18 @@ pub fn oauth_protected_resource_metadata() {}
 )]
 pub fn oauth_authorization_server_metadata() {}
 
+/// The MCP server card a catalog reads before connecting
+#[utoipa::path(
+    get,
+    path = "/.well-known/mcp/server-card.json",
+    tag = "auth",
+    security(()),
+    responses(
+        (status = 200, description = "The MCP server card: serverInfo, the bearer authentication it requires, and its tools/list catalog", body = serde_json::Value),
+    )
+)]
+pub fn mcp_server_card() {}
+
 /// Get a workspace's room card
 #[utoipa::path(
     get,
