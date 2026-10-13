@@ -9778,6 +9778,37 @@
         ]
       }
     },
+    "/.well-known/mcp/server-card.json": {
+      "get": {
+        "operationId": "mcp_server_card",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "The MCP server card: serverInfo, the bearer authentication it requires, and its tools/list catalog"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "The MCP server card a catalog reads before connecting",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/.well-known/oauth-authorization-server": {
       "get": {
         "operationId": "oauth_authorization_server_metadata",
