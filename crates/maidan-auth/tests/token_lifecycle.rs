@@ -184,3 +184,63 @@ async fn resolve_peer_bearer_round_trips_then_rejects_a_forged_secret() {
         .expect_err("forged peer bearer must not resolve");
     assert!(matches!(err, AuthError::Store(StoreError::NotFound)));
 }
+
+/// An OAuth-minted token is bound to the MCP resource (RFC 8707): the general
+/// resolver refuses it, so every surface that resolves a bearer refuses it,
+/// and only the resource resolver accepts it.
+#[tokio::test]
+async fn an_oauth_token_resolves_only_through_the_resource_resolver() {
+    let (store, workspace_id, member_id) = store_with_member().await;
+    store
+        .create_oauth_client(maidan_types::NewOAuthClient {
+            client_id: "bound-client".into(),
+            name: "Bound client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .expect("client");
+    let grant = store
+        .create_oauth_grant(maidan_types::NewOAuthGrant {
+            client_id: "bound-client".into(),
+            member_id,
+            workspace_id,
+            scope: vec!["workspace:read".into()],
+            lineage_id: uuid::Uuid::now_v7(),
+        })
+        .await
+        .expect("grant");
+    let secret = TokenSecret::generate();
+    store
+        .mint_oauth_token(
+            mint(
+                workspace_id,
+                member_id,
+                &secret,
+                vec!["workspace:read".to_string()],
+                None,
+            ),
+            grant.id,
+        )
+        .await
+        .expect("mint");
+
+    let refused = resolve_bearer(&store, secret.as_str())
+        .await
+        .expect_err("the general resolver refuses a resource-bound token");
+    assert!(matches!(refused, AuthError::Unauthorized));
+    let ctx = maidan_auth::resolve_resource_bearer(&store, secret.as_str())
+        .await
+        .expect("the resource resolver accepts it");
+    assert_eq!(ctx.member_id, member_id);
+    assert!(ctx.has_capability("workspace:read"));
+
+    // A revoked grant ends it there too.
+    store.revoke_oauth_grant(grant.id).await.expect("revoke");
+    assert!(
+        maidan_auth::resolve_resource_bearer(&store, secret.as_str())
+            .await
+            .is_err()
+    );
+}

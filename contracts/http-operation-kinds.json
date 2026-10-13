@@ -130,6 +130,7 @@
   {"method":"GET","path":"/metrics","kind":"reads"},
   {"method":"POST","path":"/oauth/app/token","kind":"changes"},
   {"method":"GET","path":"/oauth/authorize","kind":"changes","reason":"Stores a pending authorization request for the consent page. A GET because the client's browser is redirected to it, like /auth/oidc/login."},
+  {"method":"POST","path":"/oauth/revoke","kind":"changes"},
   {"method":"POST","path":"/oauth/token","kind":"changes"},
   {"method":"GET","path":"/openapi.json","kind":"reads"},
   {"method":"GET","path":"/operator/audit","kind":"reads"},

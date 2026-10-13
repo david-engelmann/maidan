@@ -65,11 +65,64 @@ use crate::{
 /// same default origin, which is what `form-action 'self'` allows.
 pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
+/// Every load of the board page or an asset revalidates: `no-cache` lets the
+/// browser keep a copy, and the ETag below turns an unchanged one into a 304
+/// with no body. A max-age would let a browser run cached modules from before a
+/// deploy beside new ones, and the board's ES modules import each other, so a
+/// mixed set can break the page.
+const UI_CACHE_CONTROL: &str = "no-cache";
+
+/// A strong ETag over a static body's bytes, spelled the way the agent
+/// card spells its own: the first 16 bytes of the SHA-256, hex, quoted.
+fn strong_etag(body: &[u8]) -> String {
+    use sha2::Digest as _;
+    format!("\"{}\"", hex::encode(&sha2::Sha256::digest(body)[..16]))
+}
+
+/// Whether an `If-None-Match` header names this ETag (the card's matching
+/// rules: a comma list, weak prefixes tolerated, `*` matches anything).
+fn if_none_match_fresh(headers: &axum::http::HeaderMap, etag: &str) -> bool {
+    headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(',')
+                .map(|t| t.trim().trim_start_matches("W/"))
+                .any(|t| t == "*" || t == etag)
+        })
+}
+
+/// The cache headers a board page or asset answer carries, fresh or 304.
+fn ui_cache_headers(etag: &str) -> [(axum::http::HeaderName, String); 2] {
+    [
+        (
+            axum::http::header::CACHE_CONTROL,
+            UI_CACHE_CONTROL.to_string(),
+        ),
+        (axum::http::header::ETAG, etag.to_string()),
+    ]
+}
+
 /// Build the axum [`Router`] with all routes wired up.
 ///
 /// Tested in `tests/health_e2e.rs` by binding the router to a TCP port
 /// and curling it; the binary's `main.rs` uses the same router.
 pub fn router(state: AppState) -> Router {
+    // Routes that answer with a credential (a token, a signing secret, a share
+    // ticket) are never stored by a cache and never compressed: compression
+    // skips `no-store`, so a secret's length cannot be probed beside text the
+    // caller chose (BREACH).
+    let no_store = |route: axum::routing::MethodRouter<AppState>| {
+        route.layer(middleware::map_response(
+            |mut response: axum::response::Response| async move {
+                response.headers_mut().insert(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-store"),
+                );
+                response
+            },
+        ))
+    };
     // One budget for every route that buffers an artifact upload, so the
     // bytes they hold together stay bounded.
     let artifact_limit = artifact_max_body_bytes_from_env();
@@ -271,10 +324,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{wid}/search", get(routes::search_messages))
         .route("/workspaces/{wid}/members", get(routes::list_members))
-        .route("/workspaces/{wid}/agents", post(routes::create_agent))
+        .route(
+            "/workspaces/{wid}/agents",
+            no_store(post(routes::create_agent)),
+        )
         .route(
             "/workspaces/{wid}/members/{mid}/tokens",
-            post(routes::mint_api_token).merge(get(routes::list_api_tokens)),
+            no_store(post(routes::mint_api_token).merge(get(routes::list_api_tokens))),
         )
         .route(
             "/workspaces/{wid}/delegation-grants",
@@ -310,7 +366,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/app-installations/{iid}/tokens",
-            post(apps::mint_app_token),
+            no_store(post(apps::mint_app_token)),
         )
         .route("/members/{id}", get(routes::get_member))
         .route(
@@ -694,17 +750,26 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_reference).merge(get(routes::list_references)),
         )
         .route("/tokens/{id}", delete(routes::revoke_api_token))
-        .route("/tokens/{id}/rotate", post(routes::rotate_api_token))
+        .route(
+            "/tokens/{id}/rotate",
+            no_store(post(routes::rotate_api_token)),
+        )
         // On the bearer tree because what it exchanges is the bearer.
         .route(
             "/auth/session/from-token",
-            post(session::session_from_token),
+            no_store(post(session::session_from_token)),
         )
-        .route("/tokens/attenuate", post(routes::attenuate_api_token))
-        .route("/tokens/delegate", post(routes::delegate_api_token))
+        .route(
+            "/tokens/attenuate",
+            no_store(post(routes::attenuate_api_token)),
+        )
+        .route(
+            "/tokens/delegate",
+            no_store(post(routes::delegate_api_token)),
+        )
         .route(
             "/workspaces/{wid}/share-tickets",
-            post(routes::create_share_ticket).merge(get(routes::list_share_tickets)),
+            no_store(post(routes::create_share_ticket).merge(get(routes::list_share_tickets))),
         )
         .route(
             "/workspaces/{wid}/share-tickets/{tid}",
@@ -718,7 +783,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/peers",
-            post(federation::create_peer).merge(get(federation::list_peers)),
+            no_store(post(federation::create_peer).merge(get(federation::list_peers))),
         )
         .route(
             "/workspaces/{wid}/peers/{pid}",
@@ -838,7 +903,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/webhooks",
-            post(webhooks::create_webhook).merge(get(webhooks::list_webhooks)),
+            no_store(post(webhooks::create_webhook).merge(get(webhooks::list_webhooks))),
         )
         .route(
             "/workspaces/{wid}/webhooks/{whid}",
@@ -850,8 +915,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/slash-commands",
-            post(slash_commands::create_slash_command)
-                .merge(get(slash_commands::list_slash_commands)),
+            no_store(
+                post(slash_commands::create_slash_command)
+                    .merge(get(slash_commands::list_slash_commands)),
+            ),
         )
         .route(
             "/workspaces/{wid}/slash-commands/{cid}",
@@ -881,7 +948,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/workspaces/{wid}/fsm-hooks",
-            post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks)),
+            no_store(post(fsm_hooks::create_fsm_hook).merge(get(fsm_hooks::list_fsm_hooks))),
         )
         .route(
             "/workspaces/{wid}/fsm-hooks/{hid}",
@@ -913,7 +980,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operator/audit", get(routes::list_global_audit))
         .route("/operator/legal-holds", get(routes::list_legal_holds))
-        .route("/operator/workspaces", post(routes::provision_workspace))
+        .route(
+            "/operator/workspaces",
+            no_store(post(routes::provision_workspace)),
+        )
         .route("/operator/status", get(crate::status::operator_status))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(
@@ -992,24 +1062,35 @@ pub fn router(state: AppState) -> Router {
             share_consumer::middleware,
         ));
 
-    async fn ui_index() -> impl axum::response::IntoResponse {
+    async fn ui_index(headers: axum::http::HeaderMap) -> axum::response::Response {
+        use axum::response::IntoResponse as _;
+        const BODY: &str = include_str!("../static/index.html");
+        // The body is a compile-time constant a few dozen kilobytes long;
+        // hashing it per request is noise next to the round trip.
+        let etag = strong_etag(BODY.as_bytes());
+        if if_none_match_fresh(&headers, &etag) {
+            return (
+                axum::http::StatusCode::NOT_MODIFIED,
+                [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+                ui_cache_headers(&etag),
+            )
+                .into_response();
+        }
         (
             [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
-            axum::response::Html(include_str!("../static/index.html")),
+            ui_cache_headers(&etag),
+            axum::response::Html(BODY),
         )
+            .into_response()
     }
 
     // Board modules next to the page. The name must be one of these files.
     // Anything else is a 404. cargo build does not run a bundler.
     async fn ui_asset(
         crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
-    ) -> Result<
-        (
-            [(axum::http::header::HeaderName, &'static str); 2],
-            &'static str,
-        ),
-        axum::http::StatusCode,
-    > {
+        headers: axum::http::HeaderMap,
+    ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        use axum::response::IntoResponse as _;
         let (content_type, body) = match name.as_str() {
             "board.css" => (
                 "text/css; charset=utf-8",
@@ -1085,13 +1166,24 @@ pub fn router(state: AppState) -> Router {
             ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
+        let etag = strong_etag(body.as_bytes());
+        if if_none_match_fresh(&headers, &etag) {
+            return Ok((
+                axum::http::StatusCode::NOT_MODIFIED,
+                [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+                ui_cache_headers(&etag),
+            )
+                .into_response());
+        }
         Ok((
             [
                 (axum::http::header::CONTENT_TYPE, content_type),
                 (axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP),
             ],
+            ui_cache_headers(&etag),
             body,
-        ))
+        )
+            .into_response())
     }
 
     // The agent-facing index (llmstxt.org): how to connect and the work loop,
@@ -1125,7 +1217,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/auth/session/mint",
-            post(session::mint_first_admin_token).layer(session_auth.clone()),
+            no_store(post(session::mint_first_admin_token).layer(session_auth.clone())),
         )
         // A model's confirmation link is spent here, by the signed-in person
         // only: the session cookie, never a bearer. The handler checks the
@@ -1331,7 +1423,7 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/api/dm/{id}/messages", post(dm::post_dm_message))
         .route(
             "/ui/api/workspaces/{wid}/slash-commands",
-            post(slash_commands::create_slash_command),
+            no_store(post(slash_commands::create_slash_command)),
         )
         .route(
             "/ui/api/workspaces/{wid}/slash-commands/{cid}",
@@ -1424,10 +1516,27 @@ pub fn router(state: AppState) -> Router {
             "/.well-known/oauth-authorization-server",
             get(oauth::oauth_authorization_server),
         )
-        .route("/oauth/app/token", post(app_oauth::exchange_app_code))
-        // OAuth 2.1 token endpoint (public; the client authenticates with
-        // its secret and the PKCE verifier).
-        .route("/oauth/token", post(oauth::token::token))
+        .route(
+            "/oauth/app/token",
+            no_store(post(app_oauth::exchange_app_code)),
+        )
+        // OAuth 2.1 token and revocation endpoints (public; the client
+        // authenticates with HTTP Basic, its secret in the form, or PKCE
+        // alone). Both 404 until `MAIDAN_PUBLIC_ORIGIN` is set.
+        .route(
+            "/oauth/token",
+            post(oauth::token::token).layer(middleware::from_fn_with_state(
+                state.clone(),
+                oauth::token::require_public_origin,
+            )),
+        )
+        .route(
+            "/oauth/revoke",
+            post(oauth::revoke::revoke).layer(middleware::from_fn_with_state(
+                state.clone(),
+                oauth::token::require_public_origin,
+            )),
+        )
         // Slack projector ingress: unauthed — Slack authenticates via its
         // request signature (verified in-handler), not a Maidan bearer. Returns
         // 404 unless the projector is configured.
@@ -1478,6 +1587,11 @@ pub fn router(state: AppState) -> Router {
         // route group's own middleware (auth, quota) becomes a 500 problem
         // that the metrics, rate limiter and request id still see.
         .layer(panic_guard::layer())
+        // Compression wraps the panic guard (a panic's 500 problem encodes
+        // like any other body) and sits inside metrics, so the recorded
+        // response is the encoded one that left the server. What it must
+        // never encode — event streams, upgrades — is in compression.rs.
+        .layer(crate::compression::layer())
         .layer(middleware::from_fn(metrics::middleware))
         // Room-LSN sits *inside* the rate limiter: a later `.layer` is the
         // outer one, so this order makes the limiter outermost. It used to wrap
