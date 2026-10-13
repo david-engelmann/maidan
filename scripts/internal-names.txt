@@ -1,7 +1,0 @@
-# Internal project, team and repository names that must not appear in the
-# public tree. One name per line, matched case-insensitively as a substring.
-# Lines starting with # are comments. The check that reads this file is
-# scripts/check-no-internal-names.sh (the lint job in CI).
-soundcheck
-beatgig
-bgv3

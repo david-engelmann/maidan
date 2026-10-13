@@ -75,7 +75,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Public `main` names no internal project
 
-- **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`, with the names in `scripts/internal-names.txt`) fails when a listed name comes back.
+- **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
 
 ## [413.0.0] — 2026-10-11
 
