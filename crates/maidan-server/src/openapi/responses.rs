@@ -66,9 +66,10 @@ problem_response!(
     "The request conflicts with the resource's current state."
 );
 problem_response!(
-    /// 413: the request body exceeds `MAIDAN_MAX_BODY_BYTES`.
+    /// 413: the request body exceeds `MAIDAN_MAX_BODY_BYTES`, or on an artifact
+    /// upload `MAIDAN_ARTIFACT_MAX_BODY_BYTES`.
     PayloadTooLarge,
-    "The request body exceeds the server's body-size limit (`MAIDAN_MAX_BODY_BYTES`)."
+    "The request body exceeds the server's body-size limit (`MAIDAN_MAX_BODY_BYTES`, or `MAIDAN_ARTIFACT_MAX_BODY_BYTES` for an artifact upload)."
 );
 problem_response!(
     /// 415: a JSON body sent without a JSON `Content-Type`.

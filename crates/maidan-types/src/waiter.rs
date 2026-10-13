@@ -286,6 +286,21 @@ pub struct GithubReviewComment {
     pub body: String,
 }
 
+/// One file a producer attached to its result, under `pi.result_attachments`
+/// in the envelope. The bytes live in Maidan's artifact store; the envelope
+/// carries only the pointer, so a GitHub delivery can link the file instead
+/// of restating it. Extra producer fields on the entry are ignored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ResultAttachment {
+    /// The artifact's SHA-256 — the `{sha}` in its `/artifacts/{sha}` path.
+    pub sha: String,
+    /// Shown when the entry carries no caption.
+    pub filename: String,
+    /// Producer-written label for the file. Untrusted text: a delivery that
+    /// renders it as Markdown must escape it first.
+    pub caption: Option<String>,
+}
+
 /// The routable projection of a producer's result envelope. Everything the
 /// producer carries that Maidan does not route on — `corroboration`,
 /// `per_seat`, `cost_usd`, … — stays in the stored result and is deliberately
@@ -321,6 +336,10 @@ pub struct WaiterResult {
     /// Findings that have a file, a body, and a valid post-image
     /// [`FindingLineRange`]. Malformed entries are skipped, not an error.
     pub findings: Vec<WaiterFinding>,
+    /// Files the producer attached, from `pi.result_attachments`. A GitHub
+    /// delivery links each one; other surfaces ignore them. Malformed
+    /// entries are skipped, not an error.
+    pub attachments: Vec<ResultAttachment>,
 }
 
 impl WaiterResult {
@@ -690,6 +709,9 @@ pub struct ChangeResult {
     pub diff: Option<String>,
     pub title: Option<String>,
     pub summary: Option<String>,
+    /// Why a run that changed nothing ended, as the producer recorded it
+    /// (pi's `error_detail`), preferred over `summary` in the reply.
+    pub error_detail: Option<String>,
 }
 
 impl ChangeResult {
@@ -720,6 +742,7 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
         diff: text("diff"),
         title: text("title"),
         summary: text("summary"),
+        error_detail: text("error_detail"),
     })
 }
 
@@ -778,6 +801,18 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         .map(|entries| entries.iter().filter_map(parse_finding).collect())
         .unwrap_or_default();
 
+    // pi writes the list under the dotted top-level key
+    // `pi.result_attachments` (soundcheck's docs/cross-repo/attachments.md),
+    // which soundcheck also reads, falling back to an unprefixed key. A
+    // nested `pi` object is read last, for a producer that nests it.
+    let attachments = obj
+        .get("pi.result_attachments")
+        .or_else(|| obj.get("result_attachments"))
+        .or_else(|| obj.get("pi").and_then(|pi| pi.get("result_attachments")))
+        .and_then(Value::as_array)
+        .map(|entries| entries.iter().filter_map(parse_result_attachment).collect())
+        .unwrap_or_default();
+
     Some(WaiterResult {
         result_kind,
         status,
@@ -788,6 +823,37 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         pr: string_field("pr"),
         head_sha: obj.get("head_sha").and_then(parse_head_sha),
         findings,
+        attachments,
+    })
+}
+
+/// An attachment entry needs a sha to link and a filename to show when it
+/// has no caption; anything else is skipped, the way findings are. The sha
+/// is spelled `sha256` by the artifact store and `sha` in the link path, so
+/// both spellings are read — and it must be hex the way [`parse_head_sha`]
+/// requires, because it is interpolated into a URL at delivery time and a
+/// non-hex value could never name an artifact anyway.
+fn parse_result_attachment(entry: &Value) -> Option<ResultAttachment> {
+    let obj = entry.as_object()?;
+    let non_empty = |key: &str| {
+        obj.get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+    };
+    // The sha becomes a URL path segment, so only a full lowercase SHA-256
+    // is taken: a short or uppercase one is not an artifact address.
+    let sha = non_empty("sha256")
+        .or_else(|| non_empty("sha"))
+        .filter(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })?;
+    let filename = non_empty("filename")?;
+    Some(ResultAttachment {
+        sha: sha.to_string(),
+        filename: filename.to_string(),
+        caption: non_empty("caption").map(str::to_string),
     })
 }
 
@@ -967,6 +1033,95 @@ mod tests {
             "status": "reviewed"
         });
         assert!(parse_waiter_result(&both).is_some());
+    }
+
+    #[test]
+    fn attachments_are_read_from_pis_dotted_top_level_key() {
+        let value = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": "example.review.result/1",
+            "status": "reviewed",
+            "pi.result_attachments": [
+                { "sha256": "a".repeat(64), "filename": "trace.png", "caption": "The failing run" },
+                { "sha": "b".repeat(64), "filename": "notes.md" },
+                { "sha256": "c".repeat(64), "filename": "extra.bin", "caption": "", "producer_field": 1 }
+            ]
+        });
+        let parsed = parse_waiter_result(&value).expect("envelope parses");
+        assert_eq!(
+            parsed.attachments,
+            vec![
+                ResultAttachment {
+                    sha: "a".repeat(64),
+                    filename: "trace.png".to_string(),
+                    caption: Some("The failing run".to_string()),
+                },
+                ResultAttachment {
+                    sha: "b".repeat(64),
+                    filename: "notes.md".to_string(),
+                    caption: None,
+                },
+                ResultAttachment {
+                    sha: "c".repeat(64),
+                    filename: "extra.bin".to_string(),
+                    caption: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unprefixed_or_nested_attachment_list_is_read_too() {
+        for value in [
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "example.review.result/1",
+                "status": "reviewed",
+                "result_attachments": [{ "sha256": "a".repeat(64), "filename": "a.png" }]
+            }),
+            json!({
+                "schema": WAITER_RESULT_SCHEMA,
+                "result_kind": "example.review.result/1",
+                "status": "reviewed",
+                "pi": { "result_attachments": [{ "sha256": "a".repeat(64), "filename": "a.png" }] }
+            }),
+        ] {
+            let parsed = parse_waiter_result(&value).expect("envelope parses");
+            assert_eq!(parsed.attachments.len(), 1, "{value}");
+        }
+    }
+
+    #[test]
+    fn attachment_entries_without_a_sha_or_a_filename_are_skipped() {
+        let value = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": "example.review.result/1",
+            "status": "reviewed",
+            "pi": {
+                "result_attachments": [
+                    { "filename": "no-sha.png" },
+                    { "sha256": "d".repeat(64) },
+                    { "sha256": "", "filename": "empty-sha.png" },
+                    { "sha256": "not-a-sha", "filename": "forged.png" },
+                    { "sha256": "abc123", "filename": "short.png" },
+                    { "sha256": "E".repeat(64), "filename": "upper.png" },
+                    "not an object",
+                    { "sha256": "e".repeat(64), "filename": "kept.png" }
+                ]
+            }
+        });
+        let parsed = parse_waiter_result(&value).expect("envelope parses");
+        assert_eq!(parsed.attachments.len(), 1);
+        assert_eq!(parsed.attachments[0].filename, "kept.png");
+
+        // No `pi` namespace at all is the normal case, not an error.
+        let bare = json!({
+            "schema": WAITER_RESULT_SCHEMA,
+            "result_kind": "example.review.result/1",
+            "status": "reviewed"
+        });
+        let parsed = parse_waiter_result(&bare).expect("envelope parses");
+        assert!(parsed.attachments.is_empty());
     }
 
     #[test]
