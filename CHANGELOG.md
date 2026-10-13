@@ -105,6 +105,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
 
+### Hybrid search ranks a deeper candidate pool
+
+- **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
