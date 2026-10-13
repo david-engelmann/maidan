@@ -39,7 +39,8 @@ pub struct AuthorizeQuery {
     /// allowed when omitted.
     pub scope: Option<String>,
     pub state: String,
-    /// RFC 8707 resource indicator the grant is bound to.
+    /// RFC 8707 resource indicator the grant is bound to. Required, and must
+    /// be `<MAIDAN_PUBLIC_ORIGIN>/mcp/streamable`.
     pub resource: Option<String>,
     /// OAuth 2.1 requires `response_type=code`.
     pub response_type: String,
@@ -52,6 +53,9 @@ pub async fn authorize(
     Extension(auth): Extension<AuthContext>,
     ApiQuery(query): ApiQuery<AuthorizeQuery>,
 ) -> ApiResult<impl IntoResponse> {
+    // The authorization server is off until the deployment names its origin,
+    // which the resource every grant is bound to is built from.
+    let origin = state.public_origin.as_deref().ok_or(ApiError::NotFound)?;
     // Authorizing a client lends the member's authority; a credential that
     // cannot read the workspace has none worth lending.
     crate::routes::cap(&auth, capability::WORKSPACE_READ)?;
@@ -115,9 +119,20 @@ pub async fn authorize(
     scope.sort();
     scope.dedup();
 
-    if let Some(resource) = query.resource.as_deref() {
-        if resource.trim().is_empty() {
-            return Err(ApiError::BadRequest("resource must not be blank".into()));
+    // RFC 8707: every grant is for the MCP resource and names it, so the code
+    // and every token minted from it carry the one resource they are bound to.
+    let expected = super::metadata::mcp_resource(origin);
+    match query.resource.as_deref() {
+        Some(resource) if resource == expected => {}
+        Some(_) => {
+            return Err(ApiError::BadRequest(format!(
+                "invalid_target: this server issues tokens only for the resource {expected}"
+            )))
+        }
+        None => {
+            return Err(ApiError::BadRequest(format!(
+                "invalid_target: resource is required and must be {expected}"
+            )))
         }
     }
 
