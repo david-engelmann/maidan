@@ -379,6 +379,17 @@ impl McpServer {
         self
     }
 
+    /// Replace the version `initialize` reports as this server's (embedders;
+    /// the standalone default is this crate's version). The workspace crates
+    /// are versioned 0.0.0 and releases are baked in by the embedder, so the
+    /// server crate passes its own release version through here — a
+    /// connected client should see the release it is talking to.
+    #[must_use]
+    pub fn with_server_version(mut self, version: impl Into<String>) -> Self {
+        self.server_version = version.into();
+        self
+    }
+
     /// The ceiling both REST and MCP check a workspace's retention against.
     pub fn instance_retention(&self) -> maidan_types::RetentionDays {
         self.instance_retention
@@ -9548,6 +9559,24 @@ mod tests {
             .handle(request(2, "notifications/initialized", json!({})), &auth)
             .await;
         assert!(ack.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn initialize_reports_the_configured_server_version() {
+        // The embedder's release version, threaded through with_server_version:
+        // without it, initialize reports this crate's version (0.0.0).
+        let (server, _thread, _member) = mk_server().await;
+        let server = server.with_server_version("413.0.0-test");
+        let auth = AuthContext::bypass();
+        let init = server
+            .handle(
+                request(1, "initialize", json!({ "protocolVersion": "2026-07-28" })),
+                &auth,
+            )
+            .await;
+        let result = init.result.unwrap();
+        assert_eq!(result["serverInfo"]["name"], "maidan");
+        assert_eq!(result["serverInfo"]["version"], "413.0.0-test");
     }
 
     #[tokio::test]
