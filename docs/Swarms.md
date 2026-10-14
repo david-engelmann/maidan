@@ -107,13 +107,16 @@ The calls:
 
 | | REST | MCP |
 |---|---|---|
-| Declare or replace (no items clears) | `PUT /threads/{id}/footprint` | `set_thread_footprint` |
+| Declare at intake, with the thread (`workspace:write`) | `POST /channels/{cid}/threads` with `footprint` | `create_thread` with `footprint` |
+| Refine or replace (no items clears; `thread:transition`) | `PUT /threads/{id}/footprint` | `set_thread_footprint` |
 | Read one | `GET /threads/{id}/footprint` | (in the thread's context) |
 | The live claims and their footprints | `GET /workspaces/{id}/claims?repo=` | `list_active_claims` |
 
 **How they fit together.** A producer that knows the lane declares the
-footprint when it creates the thread, and the queue then defers that thread
-until the lane is free; a deferred thread counts as blocked in the queue
+footprint in the call that creates the thread. The two commit together, so
+the queue applies the footprint from the first claim, and the producer needs
+only the `workspace:write` it creates threads with, not the `thread:transition`
+a worker holds. The queue then defers that thread until the lane is free; a deferred thread counts as blocked in the queue
 depth, not ready. A worker that learns more after claiming refines the
 footprint. When the refined footprint overlaps another live claim, the call
 is refused (`409` with problem type `footprint-conflict`, or MCP error
@@ -124,11 +127,68 @@ after that lease would end.
 **A cheap win.** Declaring `{"kind": "branch", "value": <the agent branch>}`
 on every change task gives one agent per branch with no other setup.
 
+### Workers bound to one repository
+
+A worker whose checkout is one repository passes `repo` when it claims
+(`claim_next_thread` or `claim_next_workspace_thread` over MCP, or the
+`claim-next` routes' body, in any spelling a footprint accepts). It is then
+handed only threads whose footprint names that repository, so it never claims
+work it would have to release. A thread without a footprint is never handed
+to a worker that names a repository, so producers declare `repo` at intake.
+
+### Build slots
+
+Compiling and testing bind long before tokens do, so a swarm on one machine
+admits work by build capacity. A footprint item `{"kind": "slot", "value":
+"rust-build"}` names a shared resource instead of part of the repository.
+Slots are counted across the whole workspace, whatever the repository or
+mode, and their names compare case-insensitively.
+
+| | REST |
+|---|---|
+| Set a capacity (`token:admin`) | `PUT /workspaces/{id}/slots` with `{"slot": "rust-build", "capacity": 3}` |
+| Remove it (`token:admin`); `404` when it had none | `DELETE /workspaces/{id}/slots?slot=rust-build` |
+| List capacities and use (`workspace:read`) | `GET /workspaces/{id}/slots` |
+
+With a capacity of N, `claim_next` hands out a thread holding the slot only
+while fewer than N live claims hold it. The rest wait in order, counted as
+blocked, and the next one goes out when a holder finishes, releases or lets
+its lease lapse. A refinement onto a full slot is refused like an overlap,
+naming the slot's holders. A slot without a capacity limits nothing but is
+still listed with its use, so an operator can see the load before capping
+it. Setting and removing a capacity are audited (`slot.capacity.set`,
+`slot.capacity.clear`).
+
+Pick slots for what actually contends: one per heavy toolchain (`rust-build`,
+`docker`), sized to the cores and memory each build needs. Lanes stay for
+what must not be edited twice; slots are for what must not run too many
+times at once.
+
+### Pausing a repository
+
+An operator can stop the swarm taking new work in one repository (during a
+deploy freeze, a broken `main`, or an incident) without stopping the rest:
+
+| | REST |
+|---|---|
+| Pause (`token:admin`), with an optional reason | `PUT /workspaces/{id}/repo-pauses` with `{"repo": "example/app", "reason": "deploy freeze"}` |
+| Resume (`token:admin`); `404` when it was not paused | `DELETE /workspaces/{id}/repo-pauses?repo=example/app` |
+| List (`workspace:read`) | `GET /workspaces/{id}/repo-pauses` |
+
+While a repository is paused, `claim_next` defers every thread whose footprint
+names it, exactly as it defers an overlapping one: the thread keeps its place
+and counts as blocked. Claims already held run on, so work in flight finishes.
+A thread with no footprint is never paused, so a producer that wants the
+pause to apply declares `repo` when it creates the thread, not after the claim.
+A pause binds one workspace, and both the pause and the resume are audited
+(`repo.pause`, `repo.resume`).
+
 ## Scaling notes
 
 - **Admit by build capacity, not by agent count.** Compiling and testing bind
-  long before tokens do. Run as many workers as you have build slots, and let
-  the rest of the queue wait.
+  long before tokens do. Give heavy work a `slot` item and the slot a
+  capacity (above), run as many workers as you like, and let the rest of the
+  queue wait.
 - **Keep lanes coarse.** A lane per crate or area that can change in parallel
   is enough; a footprint per file costs more than it saves.
 - **Keep the claim lease short and renew it.** A lease of a few minutes,

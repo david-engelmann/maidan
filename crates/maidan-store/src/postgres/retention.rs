@@ -294,6 +294,9 @@ struct TerminalRows {
     /// The workspace a row belongs to, as SQL over the row, for a workspace's
     /// own retention.
     owner: &'static str,
+    /// The table's monthly partitions (migration 0166), when it has them.
+    /// The egress outbox has none on purpose: its dedup index is global.
+    partitioned: Option<&'static partitions::PartitionedTable>,
 }
 
 const TERMINAL_ROWS: &[TerminalRows] = &[
@@ -303,6 +306,7 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
         hold: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = d.subscription_id)",
         owner: "(SELECT s.workspace_id FROM maidan_webhook_subscriptions s WHERE s.id = subscription_id)",
+        partitioned: Some(&partitions::WEBHOOK_DELIVERIES),
     },
     TerminalRows {
         table: "maidan_automation_deliveries",
@@ -310,6 +314,7 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         terminal: "(delivered_at IS NOT NULL OR quarantined_at IS NOT NULL)",
         hold: "d.workspace_id",
         owner: "workspace_id",
+        partitioned: Some(&partitions::AUTOMATION_DELIVERIES),
     },
     TerminalRows {
         table: "maidan_outbox",
@@ -317,6 +322,7 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         terminal: "published_at IS NOT NULL",
         hold: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = d.log_id)",
         owner: "(SELECT e.workspace_id FROM maidan_events e WHERE e.id = log_id)",
+        partitioned: Some(&partitions::OUTBOX),
     },
     TerminalRows {
         table: "maidan_egress_outbox",
@@ -324,6 +330,7 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         terminal: "status = 'delivered'",
         hold: "d.workspace_id",
         owner: "workspace_id",
+        partitioned: None,
     },
     TerminalRows {
         table: "maidan_mail_outbox",
@@ -331,6 +338,7 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         terminal: "status = 'delivered'",
         hold: "d.workspace_id",
         owner: "workspace_id",
+        partitioned: Some(&partitions::MAIL_OUTBOX),
     },
     TerminalRows {
         table: "maidan_agent_work_dlq",
@@ -338,6 +346,7 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
         terminal: "TRUE",
         hold: "d.workspace_id",
         owner: "workspace_id",
+        partitioned: Some(&partitions::AGENT_WORK_DLQ),
     },
 ];
 
@@ -345,6 +354,15 @@ const TERMINAL_ROWS: &[TerminalRows] = &[
 /// table; see [`TERMINAL_ROWS`] for what terminal means per table. A held
 /// workspace keeps its rows in every table, including webhook, automation
 /// and transactional-outbox rows, whose workspace is not a column of the row.
+///
+/// The partitioned tables (0166) are pruned the way the event and audit
+/// logs are: a month that ends by the cutoff is dropped whole when every
+/// row in it is one this delete would take (checked row by row — a table's
+/// age column and its partition key are not always the same column, the
+/// outbox being the case in point), and every other partition gets the
+/// batched delete inside it. The budget stays `limit` deleted rows per
+/// table, and dropped rows count toward the return value, so a caller's
+/// loop over this ends with exactly the rows the delete alone would leave.
 pub async fn prune_deliveries(
     pool: &PgPool,
     cutoff: DateTime<Utc>,
@@ -352,35 +370,134 @@ pub async fn prune_deliveries(
 ) -> Result<u64, StoreError> {
     let mut total = 0u64;
     for rows in TERMINAL_ROWS {
-        let TerminalRows {
-            table,
-            age,
-            terminal,
-            hold,
-            ..
-        } = rows;
-        // `hold` is SQL over alias `d`. A NULL workspace matches no hold, so
-        // those rows still prune, as instance-level audit rows do.
-        let sql = format!(
-            "DELETE FROM {table}
-             WHERE id IN (
-                 SELECT d.id FROM {table} d
-                 WHERE {age} < $1 AND {terminal}
-                   AND NOT EXISTS (
-                       SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = {hold}
-                   )
-                 ORDER BY {age} ASC
-                 LIMIT $2
-             )"
-        );
-        let res = sqlx::query(&sql)
-            .bind(cutoff)
-            .bind(limit)
-            .execute(pool)
-            .await?;
-        total += res.rows_affected();
+        total += prune_delivery_table(pool, rows, cutoff, limit).await?;
     }
     Ok(total)
+}
+
+async fn prune_delivery_table(
+    pool: &PgPool,
+    rows: &TerminalRows,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    let Some(table) = rows.partitioned else {
+        return delete_terminal_batch(pool, rows, rows.table, cutoff, limit).await;
+    };
+    let mut total = 0u64;
+    for part in partitions::list(pool, table).await? {
+        if part.ends_by(cutoff) {
+            total += drop_delivery_partition(pool, rows, table, &part, cutoff).await?;
+        }
+    }
+    let mut left = limit;
+    for part in partitions::list(pool, table).await? {
+        if left <= 0 {
+            break;
+        }
+        if !part.starts_before(cutoff) {
+            continue;
+        }
+        let n = delete_terminal_batch(pool, rows, &part.name, cutoff, left).await?;
+        total += n;
+        left = left.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+    }
+    Ok(total)
+}
+
+/// The batched delete itself, against one table or one partition of it.
+async fn delete_terminal_batch(
+    pool: &PgPool,
+    rows: &TerminalRows,
+    table: &str,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<u64, StoreError> {
+    let TerminalRows {
+        age,
+        terminal,
+        hold,
+        ..
+    } = *rows;
+    // `hold` is SQL over alias `d`. A NULL workspace matches no hold, so
+    // those rows still prune, as instance-level audit rows do.
+    let sql = format!(
+        "DELETE FROM {table}
+         WHERE id IN (
+             SELECT d.id FROM {table} d
+             WHERE {age} < $1 AND {terminal}
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_legal_holds h WHERE h.workspace_id = {hold}
+               )
+             ORDER BY {age} ASC
+             LIMIT $2
+         )"
+    );
+    let res = sqlx::query(&sql)
+        .bind(cutoff)
+        .bind(limit)
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected())
+}
+
+/// Drop one delivery partition that ends by the cutoff, when every row in
+/// it is one the batched delete would take. Returns the rows it held, or
+/// 0 when it is kept (the delete pass then takes its eligible rows) or
+/// the table was too busy to lock.
+async fn drop_delivery_partition(
+    pool: &PgPool,
+    rows: &TerminalRows,
+    table: &partitions::PartitionedTable,
+    part: &partitions::Partition,
+    cutoff: DateTime<Utc>,
+) -> Result<u64, StoreError> {
+    let TerminalRows {
+        age,
+        terminal,
+        hold,
+        ..
+    } = *rows;
+    let name = &part.name;
+    // A row keeps its partition when the delete would keep it: not old
+    // enough, not terminal, or its workspace is held. The age test is not
+    // implied by the partition's bound — the outbox partitions on
+    // created_at and is cut on published_at.
+    let keeps_sql = format!(
+        "SELECT EXISTS (SELECT 1 FROM {name} d
+                  WHERE {age} >= $1 OR NOT ({terminal})
+                     OR EXISTS (SELECT 1 FROM maidan_legal_holds h
+                                WHERE h.workspace_id = {hold}))"
+    );
+    // Pre-check without the lock: a kept partition must not queue an
+    // ACCESS EXCLUSIVE lock on the whole table on every batch.
+    let likely_kept: bool = sqlx::query_scalar(&keeps_sql)
+        .bind(cutoff)
+        .fetch_one(pool)
+        .await?;
+    if likely_kept {
+        return Ok(0);
+    }
+    // Counted before the lock, so the lock is held only for the re-check
+    // and the drop. A row added in between is still checked below.
+    let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {name}"))
+        .fetch_one(pool)
+        .await?;
+    let Some(mut tx) = partitions::begin_drop(pool, table, DROP_LOCK_WAIT).await? else {
+        return Ok(0);
+    };
+    let keeps: bool = sqlx::query_scalar(&keeps_sql)
+        .bind(cutoff)
+        .fetch_one(&mut *tx)
+        .await?;
+    if keeps {
+        tx.rollback().await?;
+        return Ok(0);
+    }
+    partitions::drop_partition(&mut tx, part).await?;
+    tx.commit().await?;
+    tracing::info!(partition = %name, table = table.parent, rows = count, "retention: dropped delivery partition");
+    Ok(u64::try_from(count).unwrap_or(0))
 }
 
 /// Delete up to `limit` of one workspace's event-log rows older than `cutoff`,

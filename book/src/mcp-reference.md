@@ -605,6 +605,54 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "format": "uuid",
       "type": "string"
     },
+    "footprint": {
+      "description": "the task's claim footprint, stored with the thread so the claim queue never sees it without one (the shape set_thread_footprint takes, without thread_id)",
+      "properties": {
+        "items": {
+          "items": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "path",
+                  "glob",
+                  "crate",
+                  "lane",
+                  "branch",
+                  "slot"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "exclusive",
+            "shared"
+          ],
+          "type": "string"
+        },
+        "repo": {
+          "description": "owner/name, or a GitHub clone URL",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "mode"
+      ],
+      "type": "object"
+    },
     "parent_thread_id": {
       "format": "uuid",
       "type": "string"
@@ -2112,6 +2160,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "maximum": 604800,
       "minimum": 1,
       "type": "integer"
+    },
+    "repo": {
+      "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work",
+      "type": "string"
     }
   },
   "required": [
@@ -2137,6 +2189,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "maximum": 604800,
       "minimum": 1,
       "type": "integer"
+    },
+    "repo": {
+      "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work",
+      "type": "string"
     },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
@@ -2260,12 +2316,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "items": {
         "properties": {
           "kind": {
+            "description": "slot names a shared resource such as a build slot (rust-build), counted across the workspace against the capacity an operator set; the others name part of the repository",
             "enum": [
               "path",
               "glob",
               "crate",
               "lane",
-              "branch"
+              "branch",
+              "slot"
             ],
             "type": "string"
           },

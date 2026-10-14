@@ -1409,6 +1409,15 @@ pub trait ThreadStore: Send + Sync {
         &self,
         new: NewThread,
     ) -> Result<(Thread, StoredEvent), StoreError>;
+    /// [`create_thread_with_event`](Self::create_thread_with_event) with the
+    /// thread's claim footprint stored in the same transaction, so the claim
+    /// queue never sees the thread without it. An invalid footprint creates
+    /// nothing.
+    async fn create_thread_with_footprint(
+        &self,
+        new: NewThread,
+        footprint: Option<maidan_types::Footprint>,
+    ) -> Result<(Thread, StoredEvent), StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
@@ -1998,12 +2007,15 @@ pub trait AssignmentStore: Send + Sync {
     /// took over an expired lease (the previous holder's claim lapsed), or a
     /// `ClaimFailed` when charging that claim's worked time put the thread
     /// over budget (see [`reap_expired_claims`](Self::reap_expired_claims)).
-    /// Empty vec when nothing was claimed.
+    /// Empty vec when nothing was claimed. With `repo` (normalized
+    /// `owner/name`), only a thread whose footprint names that repository is
+    /// claimed, for a worker whose checkout is that repository.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
+        repo: Option<&str>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2014,6 +2026,7 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         member_id: MemberId,
         lease_secs: Option<i64>,
+        repo: Option<&str>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When
@@ -2039,6 +2052,55 @@ pub trait AssignmentStore: Send + Sync {
         repo: Option<String>,
         readable_by: Option<MemberId>,
     ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError>;
+    /// Pause `repo` (lowercase `owner/name`) in a workspace: the claim queue
+    /// defers every thread whose footprint names it until it is resumed.
+    /// Pausing a paused repository restates it. The audit row commits with
+    /// the pause.
+    async fn pause_repo_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        paused_by: MemberId,
+        reason: Option<&str>,
+        audit: crate::AuditFor<maidan_types::RepoPause>,
+    ) -> Result<maidan_types::RepoPause, StoreError>;
+    /// Lift a pause. `false`, and nothing recorded, when `repo` was not paused.
+    async fn resume_repo_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// The repositories paused in a workspace.
+    async fn list_repo_pauses(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<maidan_types::RepoPause>, StoreError>;
+    /// The slots in a workspace: each with a capacity, and each in use, with
+    /// how many live claims hold it.
+    async fn list_slots(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<maidan_types::SlotUsage>, StoreError>;
+    /// Set how many live claims may hold `slot` (normalized) at once; the
+    /// claim queue defers a thread whose slot is full. The audit row commits
+    /// with it.
+    async fn set_slot_capacity_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        slot: &str,
+        capacity: i64,
+        updated_by: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// Remove a slot's capacity. `false`, and nothing recorded, when it had
+    /// none.
+    async fn clear_slot_capacity_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        slot: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same

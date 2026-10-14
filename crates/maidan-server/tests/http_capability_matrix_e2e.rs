@@ -343,6 +343,12 @@ fn apply_route_defaults(
     if path == "/references" && method == "GET" {
         b = b.query(&[("src_kind", "message"), ("src_id", f.message.as_str())]);
     }
+    if path == "/workspaces/{id}/slots" && method == "DELETE" {
+        b = b.query(&[("slot", "rust-build")]);
+    }
+    if path == "/workspaces/{id}/repo-pauses" && method == "DELETE" {
+        b = b.query(&[("repo", "example/app")]);
+    }
     if path.ends_with("/dm") && method == "GET" {
         b = b.query(&[("member_id", f.member.as_str())]);
     }
@@ -602,6 +608,12 @@ fn apply_route_defaults(
     }
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true } }));
+    }
+    if path == "/workspaces/{id}/slots" && method == "PUT" {
+        return b.json(&json!({ "slot": "rust-build", "capacity": 2 }));
+    }
+    if path == "/workspaces/{id}/repo-pauses" && method == "PUT" {
+        return b.json(&json!({ "repo": "example/app" }));
     }
     if path == "/threads/{id}/footprint" && method == "PUT" {
         return b.json(&json!({

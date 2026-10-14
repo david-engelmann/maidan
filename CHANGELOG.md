@@ -135,6 +135,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST`, `GET` and `DELETE /operator/github/enqueue`: the mark-ready app adds, reads and removes a repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`, `owner/name=label`) on a ready agent pull request. Enqueue runs the mark-ready guards on one read and also requires the head to be the commit the change flow last delivered, naming both SHAs when it is not; dequeue skips the head comparison, since the queue rebases.
 - **Changed:** the change flow refuses a delivery to a pull request that carries its repository's merge-queue label, before any write, so nothing lands apart from the head the queue took.
 
+### An operator pauses one repository's work
+
+- **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.
+
+### The delivery tables are partitioned by month
+
+- **Changed:** the Postgres delivery tables are range-partitioned by calendar month (migration 0166), the way the event log is (0162): webhook and automation deliveries and the outbox by `created_at`, mail by `updated_at`, the dead-letter queue by `failed_at`. `prune_deliveries` drops a month whole when every row in it is one the batched delete would take, and deletes inside the rest. The egress outbox is deliberately not partitioned — its dedup index is global, and a partition key inside it would weaken enqueue idempotency to per-month — and neither is `maidan_result_deliveries`, an updated-in-place state table retention never age-prunes. SQLite keeps one table each.
+
+### A worker claims only its repository's work
+
+- **Added:** `repo` on `claim_next_thread` and `claim_next_workspace_thread` (MCP) and on the `claim-next` routes (HTTP). With it, only a thread whose footprint names that repository is claimed, so a worker bound to one repository's checkout never takes work it would have to release. Omitted, claiming is unchanged.
+
+### Build slots admit work by capacity
+
+- **Added:** a `slot` footprint kind and `PUT`, `GET` and `DELETE /workspaces/{id}/slots`. A slot names a shared resource such as a build slot, counted across the workspace whatever the repository. With a capacity of N, `claim_next` defers a thread holding the slot while N live claims hold it (counted as blocked), and a refinement onto a full slot is refused naming its holders. Setting a capacity takes `token:admin` and is audited; listing shows each slot's capacity and use. Migration 0173.
+
+### A producer declares the footprint at intake
+
+- **Added:** `footprint` on `POST /channels/{cid}/threads` and the MCP `create_thread` tool. The footprint commits with the thread, so the claim queue applies it from the first claim, and a producer declares it under the `workspace:write` that creating the thread already needs. A separate `PUT /threads/{id}/footprint` needed `thread:transition`, which a producer should not hold. An invalid footprint is a `400` and creates nothing.
+
 ### The audit log is partitioned by month
 
 - **Changed:** the Postgres audit log is range-partitioned by calendar month of `occurred_at` (migration 0165), the way the event log is (0162). Existing rows stay put in a legacy partition and drain through retention; `prune_audit` drops a month whole when no row in it belongs to a held workspace and deletes inside it otherwise, and boot and every retention sweep keep the current month plus three ahead ready. SQLite keeps one table.
