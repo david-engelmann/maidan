@@ -40,6 +40,20 @@ pub async fn create_with_event(
     pool: &PgPool,
     new: NewThread,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    create_with_footprint(pool, new, None).await
+}
+
+/// [`create_with_event`], storing `footprint` with the thread in the same
+/// transaction, so no claimer ever sees the thread without it.
+pub async fn create_with_footprint(
+    pool: &PgPool,
+    new: NewThread,
+    footprint: Option<maidan_types::Footprint>,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    let footprint = footprint
+        .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
+        .transpose()?
+        .filter(|footprint| !footprint.items.is_empty());
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::now_v7();
@@ -68,6 +82,9 @@ pub async fn create_with_event(
         channel_id: new.channel_id,
         thread: thread.clone(),
     };
+    if let Some(footprint) = &footprint {
+        super::footprints::insert_items_on(&mut tx, thread.id, workspace_id, footprint).await?;
+    }
     let stored = events::append_in_tx(&mut tx, &event).await?;
     tx.commit().await?;
     Ok((thread, stored))
@@ -711,6 +728,7 @@ async fn claim_next_in_tx(
     scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
+    repo: Option<&str>,
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
@@ -723,6 +741,7 @@ async fn claim_next_in_tx(
             member: "$1",
             scope: "$2",
             dm_channel: "$5",
+            repo: "$6::text",
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (cand.assignment_expires_at - cand.work_started_at)))::bigint) ELSE 0 END",
@@ -741,6 +760,7 @@ async fn claim_next_in_tx(
     .bind(expires)
     .bind(ClaimLeaseId::new().0)
     .bind(DM_CHANNEL_NAME)
+    .bind(repo)
     .fetch_optional(&mut **tx)
     .await?;
     row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
@@ -765,6 +785,7 @@ pub async fn claim_next(
         ClaimScope::Channel(channel_id),
         member_id,
         lease_secs,
+        None,
     )
     .await?
     else {
@@ -848,9 +869,11 @@ pub(crate) async fn claim_next_with_event(
     scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
+    repo: Option<&str>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    let Some((thread, lapsed)) = claim_next_in_tx(&mut tx, scope, member_id, lease_secs).await?
+    let Some((thread, lapsed)) =
+        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo).await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
