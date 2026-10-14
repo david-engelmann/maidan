@@ -115,6 +115,7 @@ pub mod content_keyring;
 mod content_keys;
 pub mod context_pack;
 mod delegation_grants;
+mod footprints;
 #[macro_use]
 mod delegate;
 pub mod dialect;

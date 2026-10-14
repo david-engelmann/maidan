@@ -2555,6 +2555,42 @@ pub fn remove_thread_required_skill() {}
     ))]
 pub fn set_thread_result() {}
 
+/// Set a thread's claim footprint
+#[utoipa::path(put, path = "/threads/{id}/footprint", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = Footprint,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Option<Footprint>),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn set_thread_footprint() {}
+
+/// Get a thread's claim footprint
+#[utoipa::path(get, path = "/threads/{id}/footprint", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Footprint),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_thread_footprint() {}
+
+/// List a workspace's live claims and their footprints
+#[utoipa::path(get, path = "/workspaces/{id}/claims", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id"), ActiveClaimsQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [ActiveClaim]),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_active_claims() {}
+
 /// Get a thread's result
 #[utoipa::path(get, path = "/threads/{id}/result", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

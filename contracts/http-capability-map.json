@@ -810,6 +810,24 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/footprint",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/footprint",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/claims",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/threads/{id}/result",
     "capability": "workspace:read",
@@ -1400,6 +1418,27 @@
   {
     "method": "POST",
     "path": "/operator/github/mark-ready",
+    "capability": "app:mark-ready",
+    "surface": "http",
+    "gate": "app-installation"
+  },
+  {
+    "method": "POST",
+    "path": "/operator/github/enqueue",
+    "capability": "app:mark-ready",
+    "surface": "http",
+    "gate": "app-installation"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/github/enqueue",
+    "capability": "app:mark-ready",
+    "surface": "http",
+    "gate": "app-installation"
+  },
+  {
+    "method": "DELETE",
+    "path": "/operator/github/enqueue",
     "capability": "app:mark-ready",
     "surface": "http",
     "gate": "app-installation"

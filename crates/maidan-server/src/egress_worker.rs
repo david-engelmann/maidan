@@ -510,6 +510,7 @@ async fn github_branch_result(
         thread_id: entry.thread_id,
         change: &change,
         opening_message: opening.as_deref(),
+        merge_queue_label: state.merge_queue_labels.label_for(repo),
     };
     match crate::change_flow::deliver_change(git, &request).await {
         Ok(crate::change_flow::ChangeOutcome::Committed { commit_sha, pull }) => {

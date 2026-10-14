@@ -1,0 +1,186 @@
+//! Claim footprints on Postgres; the rules are in [`crate::footprints`].
+//!
+//! Claims and footprint changes in a workspace that uses footprints take one
+//! transaction-scoped advisory lock per workspace, so two claimers cannot each
+//! see the other's overlapping work as free before either commits.
+
+use maidan_types::{
+    ActiveClaim, Footprint, FootprintConflict, MemberId, ThreadId, WorkspaceId, DM_CHANNEL_NAME,
+};
+use sqlx::{PgPool, Postgres, Row, Transaction};
+use uuid::Uuid;
+
+use crate::claim_next::ClaimScope;
+use crate::error::StoreError;
+use crate::footprints::{
+    conflict_from_row, footprint_from_rows, group_active, live_claim, ItemRow,
+};
+
+fn item_row(row: &sqlx::postgres::PgRow) -> ItemRow {
+    ItemRow {
+        thread_id: row.get("thread_id"),
+        assignee_id: row.try_get("assignee_id").ok().flatten(),
+        lease_expires_at: row.try_get("assignment_expires_at").ok().flatten(),
+        repo: row.get("repo"),
+        mode: row.get("mode"),
+        kind: row.get("kind"),
+        value: row.get("value"),
+    }
+}
+
+async fn lock_workspace(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace_id: Uuid,
+) -> Result<(), StoreError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1168))")
+        .bind(format!("maidan.footprints.{workspace_id}"))
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
+}
+
+/// Before a claim in `scope`: serialize with other claims and footprint
+/// changes in the workspace, when it has footprints at all. A workspace that
+/// declares none claims exactly as before.
+pub(crate) async fn lock_for_claim(
+    tx: &mut Transaction<'_, Postgres>,
+    scope: ClaimScope,
+) -> Result<(), StoreError> {
+    let workspace_id: Option<Uuid> = match scope {
+        ClaimScope::Workspace(id) => Some(id.0),
+        ClaimScope::Channel(id) => {
+            sqlx::query_scalar("SELECT workspace_id FROM maidan_channels WHERE id = $1")
+                .bind(id.0)
+                .fetch_optional(&mut **tx)
+                .await?
+        }
+    };
+    let Some(workspace_id) = workspace_id else {
+        return Ok(());
+    };
+    let declared: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM maidan_thread_footprints WHERE workspace_id = $1)",
+    )
+    .bind(workspace_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    if declared {
+        lock_workspace(tx, workspace_id).await?;
+    }
+    Ok(())
+}
+
+/// Replace `thread_id`'s footprint (`None` clears it). Returns the live claims
+/// it would overlap when the thread is itself claimed, and then stores
+/// nothing; an empty list means it was stored.
+pub async fn set(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    footprint: Option<Footprint>,
+) -> Result<Vec<FootprintConflict>, StoreError> {
+    let footprint = footprint
+        .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
+        .transpose()?
+        .filter(|footprint| !footprint.items.is_empty());
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(&format!(
+        "SELECT ch.workspace_id, {} AS live
+         FROM maidan_threads t JOIN maidan_channels ch ON ch.id = t.channel_id
+         WHERE t.id = $1
+         FOR UPDATE OF t",
+        live_claim("t", "NOW()")
+    ))
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let workspace_id: Uuid = row.get("workspace_id");
+    let live: bool = row.get("live");
+    lock_workspace(&mut tx, workspace_id).await?;
+    sqlx::query("DELETE FROM maidan_thread_footprints WHERE thread_id = $1")
+        .bind(thread_id.0)
+        .execute(&mut *tx)
+        .await?;
+    let Some(footprint) = footprint else {
+        tx.commit().await?;
+        return Ok(Vec::new());
+    };
+    for item in &footprint.items {
+        sqlx::query(
+            "INSERT INTO maidan_thread_footprints
+                 (thread_id, workspace_id, repo, mode, kind, value, match_namespace, match_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(thread_id.0)
+        .bind(workspace_id)
+        .bind(&footprint.repo)
+        .bind(footprint.mode.as_str())
+        .bind(item.kind.as_str())
+        .bind(&item.value)
+        .bind(item.kind.namespace())
+        .bind(item.key())
+        .execute(&mut *tx)
+        .await?;
+    }
+    if live {
+        let rows = sqlx::query(&crate::footprints::conflicts_select("$1", "NOW()"))
+            .bind(thread_id.0)
+            .fetch_all(&mut *tx)
+            .await?;
+        if !rows.is_empty() {
+            tx.rollback().await?;
+            return rows
+                .iter()
+                .map(|row| conflict_from_row(item_row(row)))
+                .collect();
+        }
+    }
+    tx.commit().await?;
+    Ok(Vec::new())
+}
+
+/// `thread_id`'s declared footprint, claimed or not.
+pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<Option<Footprint>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT thread_id, repo, mode, kind, value FROM maidan_thread_footprints
+         WHERE thread_id = $1
+         ORDER BY kind, value",
+    )
+    .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?;
+    footprint_from_rows(rows.iter().map(item_row).collect())
+}
+
+/// The live claims in `workspace_id` with their footprints, in `repo` when
+/// given, limited to threads `readable_by` may read when given.
+pub async fn list_active(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: Option<String>,
+    readable_by: Option<MemberId>,
+) -> Result<Vec<ActiveClaim>, StoreError> {
+    let repo = repo
+        .map(|repo| maidan_types::normalize_repo(&repo).map_err(StoreError::InvalidInput))
+        .transpose()?;
+    let readable = crate::thread_access::readable_thread("held.id", "$1", "$3::uuid", "$4");
+    let rows = sqlx::query(&format!(
+        "SELECT f.thread_id, held.assignee_id, held.assignment_expires_at,
+                f.repo, f.mode, f.kind, f.value
+         FROM maidan_thread_footprints f
+         JOIN maidan_threads held ON held.id = f.thread_id
+         WHERE f.workspace_id = $1
+           AND ($2::text IS NULL OR f.repo = $2)
+           AND {}
+           AND ($3::uuid IS NULL OR {readable})
+         ORDER BY held.assignment_expires_at ASC NULLS LAST, f.thread_id, f.kind, f.value",
+        live_claim("held", "NOW()")
+    ))
+    .bind(workspace_id.0)
+    .bind(repo)
+    .bind(readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
+    .fetch_all(pool)
+    .await?;
+    group_active(rows.iter().map(item_row).collect())
+}

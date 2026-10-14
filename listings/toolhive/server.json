@@ -79,6 +79,8 @@
     "renew_claim",
     "acknowledge_claim",
     "release_claim",
+    "set_thread_footprint",
+    "list_active_claims",
     "add_thread_dependency",
     "list_thread_dependencies",
     "get_queue_depth",

@@ -713,21 +713,20 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         });
     }
 
-    // Slack projector: wire the ingress config when
-    // `MAIDAN_SLACK_SIGNING_SECRET` is set — otherwise
-    // `/integrations/slack/events` stays disabled (404). A projector, not a
+    // Slack: egress (posting results and projected messages) needs only the
+    // bot token, and ingress (`/integrations/slack/events`, 404 until then)
+    // only the signing secret. A deployment that delivers results to Slack
+    // and takes nothing back from it sets the token alone. A projector, not a
     // bot: no LLM in Maidan.
+    if let Some(bot_token) = maidan_server::slack::bot_token_from_env() {
+        state.attach_slack_sender(std::sync::Arc::new(
+            maidan_server::slack::SlackWebClient::new(bot_token),
+        ));
+        tracing::info!("slack egress configured");
+    }
     if let Some(slack_cfg) = maidan_server::slack::SlackConfig::from_env() {
-        // Egress needs a bot token for chat.postMessage; ingress works without
-        // one. The egress runs on the notification-router bus consumer.
-        if let Some(bot_token) = slack_cfg.bot_token.clone() {
-            state.attach_slack_sender(std::sync::Arc::new(
-                maidan_server::slack::SlackWebClient::new(bot_token),
-            ));
-            tracing::info!("slack projector egress configured");
-        }
         state.attach_slack(std::sync::Arc::new(slack_cfg));
-        tracing::info!("slack projector ingress configured");
+        tracing::info!("slack ingress configured");
     }
 
     // Linear result delivery: outbound only, on when an API key is set.
@@ -747,45 +746,49 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     let github_app = maidan_server::github_app::GithubAppAuth::from_env()
         .map_err(|e| anyhow::anyhow!(e))?
         .map(std::sync::Arc::new);
-    if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
-        // Egress needs a credential for issue-comment posts; ingress works
-        // without one. The egress runs on the notification-router bus consumer.
-        let client = match (github_app.clone(), github_cfg.api_token.clone()) {
-            (Some(app), token) => {
-                if token.is_some() {
-                    tracing::warn!(
-                        "MAIDAN_GITHUB_TOKEN is set but a GitHub App is configured: \
-                         GitHub calls authenticate as the app and the token is unused"
-                    );
-                }
-                tracing::info!(
-                    installation_id = app.installation_id(),
-                    "github egress authenticates as a GitHub App"
-                );
-                Some(maidan_server::github::GithubApiClient::with_app(app))
-            }
-            (None, Some(token)) => Some(maidan_server::github::GithubApiClient::new(token)),
-            (None, None) => None,
-        };
-        if let Some(client) = client {
-            state.attach_github_sender(std::sync::Arc::new(
-                client.with_write_repos(github_cfg.write_repos.clone()),
-            ));
-            if github_cfg.write_repos.is_empty() {
+    // GitHub: egress (comments, reviews, check runs, branch commits and
+    // draft pull requests) needs a credential, a GitHub App or
+    // `MAIDAN_GITHUB_TOKEN`; ingress (`/integrations/github/events`, 404 until
+    // then) needs `MAIDAN_GITHUB_WEBHOOK_SECRET`. Either runs without the
+    // other. A GitHub App, when named, authenticates the egress instead of the
+    // token; a partial app config or a key that does not parse refuses boot
+    // rather than falling back to the token without a word.
+    let github_write_repos = maidan_server::github::write_repos_from_env();
+    let github_client = match (
+        github_app.clone(),
+        maidan_server::github::api_token_from_env(),
+    ) {
+        (Some(app), token) => {
+            if token.is_some() {
                 tracing::warn!(
-                    "github egress configured with no MAIDAN_GITHUB_WRITE_REPOS: every GitHub write is refused"
+                    "MAIDAN_GITHUB_TOKEN is set but a GitHub App is configured: \
+                     GitHub calls authenticate as the app and the token is unused"
                 );
-            } else {
-                tracing::info!(repos = ?github_cfg.write_repos, "github projector egress configured");
             }
+            tracing::info!(
+                installation_id = app.installation_id(),
+                "github egress authenticates as a GitHub App"
+            );
+            Some(maidan_server::github::GithubApiClient::with_app(app))
         }
+        (None, Some(token)) => Some(maidan_server::github::GithubApiClient::new(token)),
+        (None, None) => None,
+    };
+    if let Some(client) = github_client {
+        state.attach_github_sender(std::sync::Arc::new(
+            client.with_write_repos(github_write_repos.clone()),
+        ));
+        if github_write_repos.is_empty() {
+            tracing::warn!(
+                "github egress configured with no MAIDAN_GITHUB_WRITE_REPOS: every GitHub write is refused"
+            );
+        } else {
+            tracing::info!(repos = ?github_write_repos, "github egress configured");
+        }
+    }
+    if let Some(github_cfg) = maidan_server::github::GithubConfig::from_env() {
         state.attach_github(std::sync::Arc::new(github_cfg));
-        tracing::info!("github projector ingress configured");
-    } else if github_app.is_some() {
-        tracing::warn!(
-            "a GitHub App is configured but MAIDAN_GITHUB_WEBHOOK_SECRET is unset: \
-             the GitHub projector is off and the app is unused"
-        );
+        tracing::info!("github ingress configured");
     }
 
     // The one app whose installations may mark agent pull requests ready.
@@ -813,6 +816,15 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
                 .map(|(repo, base)| format!("{repo}={base}"))
                 .collect();
             tracing::info!(?bases, "mark-ready base pins configured");
+        }
+    }
+    // The label each repository's merge queue takes ready agent pull requests
+    // by. A malformed value refuses boot rather than enqueueing nothing, or
+    // the wrong repository, without a word.
+    if let Ok(raw) = std::env::var(maidan_types::MERGE_QUEUE_LABELS_ENV) {
+        state.merge_queue_labels = maidan_types::MergeQueueLabels::parse(&raw)?;
+        if !state.merge_queue_labels.is_empty() {
+            tracing::info!("merge-queue labels configured");
         }
     }
     // Not a boot refusal: no pins is a valid setup. But a deploy that names the

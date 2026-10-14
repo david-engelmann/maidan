@@ -45,6 +45,17 @@ function makeEl() {
       children.push(child);
       return child;
     },
+    removeChild(child) {
+      const i = children.indexOf(child);
+      if (i >= 0) children.splice(i, 1);
+      return child;
+    },
+    get childNodes() {
+      return children;
+    },
+    get firstChild() {
+      return children[0] || null;
+    },
     replaceChildren() {
       children.length = 0;
     },
@@ -88,6 +99,9 @@ globalThis.document = {
     el.tagName = String(tag).toUpperCase();
     return el;
   },
+  createTextNode(text) {
+    return { nodeType: 3, textContent: String(text) };
+  },
   body: makeEl(),
 };
 globalThis.window = {
@@ -116,6 +130,7 @@ Object.defineProperty(globalThis, "navigator", {
 
 const { apiReadPath, apiWritePath, requireBearer } = await import("./api.js");
 const { humanError, showError } = await import("./feedback.js");
+const { appendLive } = await import("./feedback.js");
 const { setIdentityMode } = await import("./feedback.js");
 const { trimImageCache } = await import("./artifacts.js");
 const { registerBrowserPush } = await import("./push.js");
@@ -607,5 +622,34 @@ describe("browser web push registration", { concurrency: 1 }, () => {
     assert.match(posts[0].url, /\/members\/mem_1\/push-subscriptions$/);
     assert.equal(posts[0].body.endpoint, "https://push.example/device");
     assert.deepEqual(posts[0].body.keys, { p256dh: "k", auth: "a" });
+  });
+});
+
+describe("the live feed", { concurrency: 1 }, () => {
+  test("the feed keeps only the newest 500 lines, appended as text nodes", () => {
+    const feed = document.getElementById("live-feed");
+    feed.children.length = 0;
+    const count = document.getElementById("live-count");
+    const before = Number(count.textContent || 0);
+    for (let i = 1; i <= 600; i += 1) appendLive(`line ${i}`);
+    assert.equal(feed.childNodes.length, 500);
+    assert.equal(feed.childNodes[0].textContent, "line 101\n");
+    assert.equal(feed.childNodes[499].textContent, "line 600\n");
+    assert.ok(
+      feed.childNodes.every((node) => node.nodeType === 3),
+      "every line is a text node, not a rewrite of the ones before it",
+    );
+    assert.equal(Number(count.textContent), before + 600);
+  });
+
+  test("under the cap nothing is dropped", () => {
+    const feed = document.getElementById("live-feed");
+    feed.children.length = 0;
+    appendLive("first");
+    appendLive("second");
+    assert.deepEqual(
+      feed.childNodes.map((node) => node.textContent),
+      ["first\n", "second\n"],
+    );
   });
 });
