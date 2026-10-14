@@ -130,6 +130,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** the Live panel's raw event feed keeps only its newest 500 lines, dropping the oldest as new events arrive, and each line is appended as a text node. A long live session no longer grows the panel's DOM without bound, and an append no longer re-reads and re-writes every line already shown.
 
+### An operator pauses one repository's work
+
+- **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

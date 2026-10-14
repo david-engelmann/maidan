@@ -222,6 +222,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/claims", get(routes::list_active_claims))
         .route(
+            "/workspaces/{id}/repo-pauses",
+            get(routes::list_repo_pauses)
+                .merge(put(routes::pause_repo))
+                .merge(delete(routes::resume_repo)),
+        )
+        .route(
             "/workspaces/{id}/run-threads",
             get(routes::list_run_threads),
         )

@@ -53,6 +53,21 @@ async fn spawn() -> (String, Arc<dyn Store>) {
 }
 
 async fn agent(store: &dyn Store, ws: WorkspaceId, handle: &str) -> (MemberId, String) {
+    member_with(
+        store,
+        ws,
+        handle,
+        &[capability::WORKSPACE_READ, capability::THREAD_TRANSITION],
+    )
+    .await
+}
+
+async fn member_with(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    handle: &str,
+    capabilities: &[&str],
+) -> (MemberId, String) {
     let member = store
         .create_member(NewMember {
             workspace_id: ws,
@@ -70,10 +85,7 @@ async fn agent(store: &dyn Store, ws: WorkspaceId, handle: &str) -> (MemberId, S
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![
-                capability::WORKSPACE_READ.into(),
-                capability::THREAD_TRANSITION.into(),
-            ],
+            capabilities: capabilities.iter().map(|c| (*c).to_string()).collect(),
             expires_at: None,
         })
         .await
@@ -269,4 +281,162 @@ async fn a_second_agent_on_held_work_is_told_who_holds_it_and_until_when() {
         "{}",
         foreign_thread.status()
     );
+}
+
+#[tokio::test]
+async fn an_operator_pauses_a_repository_and_the_queue_holds_its_work() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let (_, worker) = agent(store.as_ref(), ws.id, "worker").await;
+    let (_, operator) = member_with(
+        store.as_ref(),
+        ws.id,
+        "operator",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let (_, stranger) = member_with(
+        store.as_ref(),
+        other.id,
+        "stranger",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("bridge".into()),
+            description: None,
+        })
+        .await
+        .unwrap();
+    let http = reqwest::Client::new();
+    let declared = http
+        .put(format!("{base}/threads/{}/footprint", thread.id.0))
+        .bearer_auth(&worker)
+        .json(&lane("bridge"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(declared.status(), StatusCode::OK);
+
+    let pauses = format!("{base}/workspaces/{}/repo-pauses", ws.id.0);
+    let body = json!({ "repo": "git@github.com:Example/App.git", "reason": "deploy freeze" });
+    let by_worker = http
+        .put(&pauses)
+        .bearer_auth(&worker)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_worker.status(),
+        StatusCode::FORBIDDEN,
+        "pausing takes token:admin"
+    );
+    let by_stranger = http
+        .put(&pauses)
+        .bearer_auth(&stranger)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_stranger.status(),
+        StatusCode::FORBIDDEN,
+        "another tenant cannot pause"
+    );
+    let paused = http
+        .put(&pauses)
+        .bearer_auth(&operator)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(paused.status(), StatusCode::OK);
+    let paused: Value = paused.json().await.unwrap();
+    assert_eq!(paused["repo"], "example/app");
+    assert_eq!(paused["reason"], "deploy freeze");
+
+    let listed: Value = http
+        .get(&pauses)
+        .bearer_auth(&worker)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        listed[0]["repo"], "example/app",
+        "a worker may read the pauses"
+    );
+
+    let claimed = tool(
+        &base,
+        &worker,
+        "claim_next_thread",
+        json!({ "channel_id": channel.id.0, "lease_secs": 600 }),
+    )
+    .await;
+    let claimed = tool_result(&claimed);
+    assert!(
+        claimed.is_null() || claimed["thread"].is_null(),
+        "the paused repository's thread is held back: {claimed}"
+    );
+
+    let resume = format!("{pauses}?repo=example/app");
+    let by_stranger = http
+        .delete(&resume)
+        .bearer_auth(&stranger)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(by_stranger.status(), StatusCode::FORBIDDEN);
+    let resumed = http
+        .delete(&resume)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resumed.status(), StatusCode::NO_CONTENT);
+    let again = http
+        .delete(&resume)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+    assert_eq!(claim(&base, &worker, channel.id).await, thread.id);
+
+    let audit: Vec<String> = store
+        .list_audit_for_workspace(ws.id, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|event| event.action)
+        .filter(|action| action.starts_with("repo."))
+        .collect();
+    assert_eq!(audit.len(), 2, "one pause and one resume: {audit:?}");
 }
