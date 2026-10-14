@@ -4,9 +4,9 @@
 # The names are kept as digests in scripts/internal-names.sha256 (a length and
 # the SHA-256 of the lowercased name), so the list does not name them either.
 # Every tracked file is split into lowercase runs of letters and digits; a run
-# that is a listed name, or starts or ends with one (a name run into a
-# camelCase identifier, or behind a prefix), fails the check with its file and
-# line.
+# that is a listed name, or contains one anywhere inside it (a name run into a
+# camelCase identifier, behind a prefix, or between other letters), fails the
+# check with its file and line.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -44,8 +44,8 @@ def names_in(token):
     for length, digests in listed.items():
         if len(token) < length:
             continue
-        for part in {token[:length], token[-length:]}:
-            if digest(part) in digests:
+        for start in range(len(token) - length + 1):
+            if digest(token[start : start + length]) in digests:
                 return True
     return False
 
