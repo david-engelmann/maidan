@@ -2505,6 +2505,34 @@ macro_rules! store_delegations {
                 footprints::list_active(self.pool(), workspace_id, repo, readable_by).await
             }
 
+            async fn pause_repo_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                paused_by: MemberId,
+                reason: Option<&str>,
+                audit: crate::AuditFor<maidan_types::RepoPause>,
+            ) -> Result<maidan_types::RepoPause, StoreError> {
+                footprints::pause_repo(self.pool(), workspace_id, repo, paused_by, reason, audit)
+                    .await
+            }
+
+            async fn resume_repo_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                footprints::resume_repo(self.pool(), workspace_id, repo, audit).await
+            }
+
+            async fn list_repo_pauses(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<maidan_types::RepoPause>, StoreError> {
+                footprints::list_repo_pauses(self.pool(), workspace_id).await
+            }
+
             async fn reap_expired_claims(
                 &self,
                 now: chrono::DateTime<chrono::Utc>,

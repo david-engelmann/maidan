@@ -52,6 +52,27 @@ pub(crate) fn conflicts_with_live_claims(thread: &str, now: &str) -> String {
     format!("EXISTS (SELECT 1 {})", overlapping(thread, now))
 }
 
+/// True when `thread`'s footprint names a repository paused in its
+/// workspace ([`maidan_types::RepoPause`]).
+pub(crate) fn repo_paused(thread: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM maidan_thread_footprints pf
+                 JOIN maidan_repo_pauses rp
+                      ON rp.workspace_id = pf.workspace_id AND rp.repo = pf.repo
+                 WHERE pf.thread_id = {thread})"
+    )
+}
+
+/// True when the claim queue holds `thread` back for its footprint: it
+/// overlaps a live claim, or it names a paused repository.
+pub(crate) fn deferred(thread: &str, now: &str) -> String {
+    format!(
+        "({} OR {})",
+        conflicts_with_live_claims(thread, now),
+        repo_paused(thread)
+    )
+}
+
 /// `SELECT` of the live-claim items `thread`'s footprint overlaps, as
 /// [`conflict_from_columns`] reads them.
 pub(crate) fn conflicts_select(thread: &str, now: &str) -> String {

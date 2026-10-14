@@ -135,6 +135,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST`, `GET` and `DELETE /operator/github/enqueue`: the mark-ready app adds, reads and removes a repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`, `owner/name=label`) on a ready agent pull request. Enqueue runs the mark-ready guards on one read and also requires the head to be the commit the change flow last delivered, naming both SHAs when it is not; dequeue skips the head comparison, since the queue rebases.
 - **Changed:** the change flow refuses a delivery to a pull request that carries its repository's merge-queue label, before any write, so nothing lands apart from the head the queue took.
 
+### An operator pauses one repository's work
+
+- **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.
+
 ### The delivery tables are partitioned by month
 
 - **Changed:** the Postgres delivery tables are range-partitioned by calendar month (migration 0166), the way the event log is (0162): webhook and automation deliveries and the outbox by `created_at`, mail by `updated_at`, the dead-letter queue by `failed_at`. `prune_deliveries` drops a month whole when every row in it is one the batched delete would take, and deletes inside the rest. The egress outbox is deliberately not partitioned — its dedup index is global, and a partition key inside it would weaken enqueue idempotency to per-month — and neither is `maidan_result_deliveries`, an updated-in-place state table retention never age-prunes. SQLite keeps one table each.

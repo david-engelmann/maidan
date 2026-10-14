@@ -383,6 +383,126 @@ macro_rules! on_both_backends {
     };
 }
 
+/// A paused repository's work waits in the queue, counted as blocked, while
+/// other repositories, threads without a footprint and claims already held
+/// carry on; resuming frees it. A pause in one workspace binds no other.
+async fn a_paused_repository_hands_out_none_of_its_work(store: Arc<dyn Store>) {
+    let other_room = room(store.as_ref(), "not-paused", 1).await;
+    let room = room(store.as_ref(), "paused", 4).await;
+    let held = task(store.as_ref(), room.channel, "held").await;
+    let waits = task(store.as_ref(), room.channel, "waits").await;
+    let elsewhere = task(store.as_ref(), room.channel, "elsewhere").await;
+    let plain = task(store.as_ref(), room.channel, "plain").await;
+    declare(
+        store.as_ref(),
+        held,
+        footprint(
+            FootprintMode::Exclusive,
+            &[(FootprintKind::Lane, "gateway")],
+        ),
+    )
+    .await;
+    declare(
+        store.as_ref(),
+        waits,
+        footprint(FootprintMode::Exclusive, &[(FootprintKind::Lane, "bridge")]),
+    )
+    .await;
+    let mut other_repo = footprint(FootprintMode::Exclusive, &[(FootprintKind::Lane, "bridge")]);
+    other_repo.repo = "example/other".into();
+    declare(store.as_ref(), elsewhere, other_repo).await;
+    assert_eq!(claim(store.as_ref(), &room, 0).await.unwrap().id, held);
+
+    let pause = store
+        .pause_repo_audited(
+            room.ws,
+            REPO,
+            room.agents[3],
+            Some("deploy freeze"),
+            audit_for(room.ws, "repo.pause"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(pause.repo, REPO);
+    assert_eq!(pause.paused_by, room.agents[3]);
+    assert_eq!(
+        store.list_repo_pauses(room.ws).await.unwrap(),
+        vec![pause.clone()]
+    );
+    assert!(store
+        .list_repo_pauses(other_room.ws)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let depth = store.channel_queue_depth(room.channel, None).await.unwrap();
+    assert_eq!(
+        (depth.assigned, depth.ready, depth.blocked),
+        (1, 2, 1),
+        "the paused repository's waiting thread is blocked; the held one runs on"
+    );
+    let mut handed = vec![
+        claim(store.as_ref(), &room, 1).await.unwrap().id,
+        claim(store.as_ref(), &room, 2).await.unwrap().id,
+    ];
+    handed.sort_by_key(|id| id.0);
+    let mut expected = vec![elsewhere, plain];
+    expected.sort_by_key(|id| id.0);
+    assert_eq!(handed, expected);
+    assert!(
+        claim(store.as_ref(), &room, 3).await.is_none(),
+        "nothing in the paused repository is handed out"
+    );
+    let active = store
+        .list_active_claims(room.ws, Some(REPO.into()), None)
+        .await
+        .unwrap();
+    assert_eq!(active.len(), 1, "the claim held before the pause stands");
+    assert_eq!(active[0].thread_id, held);
+
+    // The same repository in another workspace is not paused.
+    let theirs = task(store.as_ref(), other_room.channel, "theirs").await;
+    declare(
+        store.as_ref(),
+        theirs,
+        footprint(FootprintMode::Exclusive, &[(FootprintKind::Lane, "bridge")]),
+    )
+    .await;
+    assert_eq!(
+        claim(store.as_ref(), &other_room, 0).await.unwrap().id,
+        theirs
+    );
+
+    assert!(store
+        .resume_repo_audited(room.ws, REPO, audit(room.ws, "repo.resume"))
+        .await
+        .unwrap());
+    assert_eq!(claim(store.as_ref(), &room, 3).await.unwrap().id, waits);
+    assert!(
+        !store
+            .resume_repo_audited(room.ws, REPO, audit(room.ws, "repo.resume"))
+            .await
+            .unwrap(),
+        "a repository that is not paused has nothing to resume"
+    );
+}
+
+fn audit(ws: WorkspaceId, action: &str) -> NewAuditEvent {
+    NewAuditEvent {
+        scope: AuditScope::Workspace(ws),
+        actor_id: None,
+        action: action.into(),
+        target_kind: Some("repo".into()),
+        target_id: None,
+        metadata: serde_json::json!({}),
+    }
+}
+
+fn audit_for(ws: WorkspaceId, action: &str) -> maidan_store::AuditFor<RepoPause> {
+    let event = audit(ws, action);
+    Box::new(move |_| event)
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -428,4 +548,5 @@ on_both_backends!(
     a_footprint_refined_after_claiming_is_refused_on_overlap,
     workspaces_never_block_each_other,
     the_claims_list_keeps_to_the_read_rule,
+    a_paused_repository_hands_out_none_of_its_work,
 );

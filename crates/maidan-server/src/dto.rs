@@ -393,6 +393,14 @@ pub struct ActiveClaimsQuery {
     pub repo: Option<String>,
 }
 
+/// Query params for lifting a repository pause.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RepoPauseQuery {
+    /// `owner/name` (or a GitHub clone URL).
+    pub repo: String,
+}
+
 /// Query params for workspace run-lineage reads.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
