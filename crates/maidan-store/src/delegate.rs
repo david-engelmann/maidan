@@ -1318,6 +1318,21 @@ macro_rules! store_delegations {
                 result_deliveries::list_for_thread(self.pool(), thread_id).await
             }
 
+            async fn delivered_change_head(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<String>, StoreError> {
+                result_deliveries::delivered_change_head(
+                    self.pool(),
+                    workspace_id,
+                    repo,
+                    pull_number,
+                )
+                .await
+            }
+
             async fn get_result_delivery_by_id(
                 &self,
                 thread_id: ThreadId,
@@ -2464,6 +2479,30 @@ macro_rules! store_delegations {
                     lease_secs,
                 )
                 .await
+            }
+
+            async fn set_thread_footprint(
+                &self,
+                thread_id: ThreadId,
+                footprint: Option<maidan_types::Footprint>,
+            ) -> Result<Vec<maidan_types::FootprintConflict>, StoreError> {
+                footprints::set(self.pool(), thread_id, footprint).await
+            }
+
+            async fn get_thread_footprint(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<maidan_types::Footprint>, StoreError> {
+                footprints::get(self.pool(), thread_id).await
+            }
+
+            async fn list_active_claims(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: Option<String>,
+                readable_by: Option<MemberId>,
+            ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError> {
+                footprints::list_active(self.pool(), workspace_id, repo, readable_by).await
             }
 
             async fn reap_expired_claims(

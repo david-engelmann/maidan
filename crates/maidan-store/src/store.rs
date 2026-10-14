@@ -1114,6 +1114,16 @@ pub trait EgressStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ResultDelivery>, StoreError>;
+    /// The commit the change flow last delivered to pull request
+    /// `pull_number` of `repo` (`owner/name`, any case), from a thread in
+    /// `workspace_id`: the newest delivered `github_branch` result whose
+    /// handle names that pull request. `None` when Maidan delivered none.
+    async fn delivered_change_head(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<String>, StoreError>;
     /// The delivery-status API's point read: this id on this thread, or `None`.
     /// Thread-scoped so a guessed UUID cannot read another thread's row.
     async fn get_result_delivery_by_id(
@@ -2005,6 +2015,30 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
+
+    /// Replace a thread's claim footprint (`None` or no items clears it). When
+    /// the thread holds a live claim and the footprint would overlap another
+    /// live claim in its workspace and repository, nothing is stored and the
+    /// overlapped claim items come back; an empty list means it was stored.
+    /// See [`maidan_types::footprint`].
+    async fn set_thread_footprint(
+        &self,
+        thread_id: ThreadId,
+        footprint: Option<maidan_types::Footprint>,
+    ) -> Result<Vec<maidan_types::FootprintConflict>, StoreError>;
+    /// A thread's declared footprint, claimed or not.
+    async fn get_thread_footprint(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<maidan_types::Footprint>, StoreError>;
+    /// The live claims in a workspace with their footprints, in one repository
+    /// when given, and only threads `readable_by` may read when given.
+    async fn list_active_claims(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: Option<String>,
+        readable_by: Option<MemberId>,
+    ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same

@@ -1326,3 +1326,53 @@ pub fn unlink_github_issue() {}
     )
 )]
 pub fn mark_pull_ready() {}
+
+/// Label a ready agent pull request for its repository's merge queue (mark-ready app only)
+#[utoipa::path(
+    post,
+    path = "/operator/github/enqueue",
+    tag = "operator",
+    request_body = crate::routes::EnqueueRequest,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The pull request carries the merge-queue label", body = crate::routes::EnqueueResponse),
+        (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Not the mark-ready app, no label for the repository, or the PR fails a guard (draft, fork, base, allowlist, or a head that is not the delivered commit)", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "GitHub is unreachable or errored", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn enqueue_pull() {}
+
+/// Whether a pull request carries its repository's merge-queue label (mark-ready app only)
+#[utoipa::path(
+    get,
+    path = "/operator/github/enqueue",
+    tag = "operator",
+    params(crate::routes::EnqueueRequest),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Whether the label is applied", body = crate::routes::EnqueueResponse),
+        (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Not the mark-ready app, or no label for the repository", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn enqueue_status() {}
+
+/// Take a pull request out of its repository's merge queue (mark-ready app only)
+#[utoipa::path(
+    delete,
+    path = "/operator/github/enqueue",
+    tag = "operator",
+    params(crate::routes::EnqueueRequest),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The label is off; `reason` says when it was not on", body = crate::routes::EnqueueResponse),
+        (status = 400, description = "Bad repo or pull number", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, description = "Not the mark-ready app, no label for the repository, or the PR fails a guard", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "No such pull request", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 502, description = "GitHub is unreachable or errored", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn dequeue_pull() {}

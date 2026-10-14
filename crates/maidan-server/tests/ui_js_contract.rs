@@ -3781,6 +3781,13 @@ function makeEl(tag) {
       return el.children.find((c) => c.tag !== "#text") || null;
     },
   });
+  // The live feed appends text nodes and drops the oldest past its cap.
+  Object.defineProperty(el, "childNodes", { get() { return el.children; } });
+  Object.defineProperty(el, "firstChild", { get() { return el.children[0] || null; } });
+  el.removeChild = (child) => {
+    child.remove();
+    return child;
+  };
   el.matches = (sel) => sel.split(",").some((part) => matchSimple(el, part.trim()));
   el.querySelector = (sel) => query(el, sel)[0] || null;
   el.querySelectorAll = (sel) => query(el, sel);
@@ -3855,6 +3862,11 @@ const documentStub = {
   visibilityState: "hidden",
   getElementById: getById,
   createElement: makeEl,
+  createTextNode: (text) => {
+    const node = makeEl("#text");
+    node._text = String(text);
+    return node;
+  },
   querySelector: (sel) => query(null, sel)[0] || null,
   querySelectorAll: (sel) => query(null, sel),
   addEventListener() {},

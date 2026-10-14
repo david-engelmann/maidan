@@ -2245,6 +2245,95 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `set_thread_footprint`
+
+**Set thread footprint.** Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.
+
+**Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "items": {
+      "items": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "path",
+              "glob",
+              "crate",
+              "lane",
+              "branch"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "type": "object"
+      },
+      "maxItems": 200,
+      "type": "array"
+    },
+    "mode": {
+      "enum": [
+        "exclusive",
+        "shared"
+      ],
+      "type": "string"
+    },
+    "repo": {
+      "description": "owner/name, or a GitHub clone URL",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "repo",
+    "mode"
+  ],
+  "type": "object"
+}
+```
+
+### `list_active_claims`
+
+**List active claims.** List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "repo": {
+      "description": "owner/name, or a GitHub clone URL",
+      "type": "string"
+    },
+    "workspace_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `add_thread_dependency`
 
 **Add thread dependency.** Add a task-dependency edge: the thread depends on depends_on_thread_id and stays blocked (won't be handed out by claim_next) until that dependency reaches a terminal state. Both threads must be in the same workspace.
