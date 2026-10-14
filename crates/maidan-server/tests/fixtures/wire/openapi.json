@@ -2360,6 +2360,40 @@
         ],
         "type": "string"
       },
+      "DeferralReason": {
+        "description": "Why the claim queue is holding a thread back.",
+        "enum": [
+          "overlap",
+          "repo_paused",
+          "slot_full"
+        ],
+        "type": "string"
+      },
+      "DeferredThread": {
+        "description": "A thread the claim queue would otherwise hand out, and why it waits.",
+        "properties": {
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/DeferralReason"
+            },
+            "type": "array"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "thread_id",
+          "reasons"
+        ],
+        "type": "object"
+      },
       "DelegateToken": {
         "additionalProperties": false,
         "properties": {
@@ -28022,6 +28056,65 @@
           }
         ],
         "summary": "List a workspace's live claims and their footprints",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/workspaces/{id}/deferred": {
+      "get": {
+        "operationId": "list_deferred_threads",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeferredThread"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List the threads the claim queue is holding back, and why",
         "tags": [
           "threads"
         ]

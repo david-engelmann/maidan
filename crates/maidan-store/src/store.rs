@@ -2076,6 +2076,14 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<maidan_types::RepoPause>, StoreError>;
+    /// The open threads the claim queue is holding back for their footprint,
+    /// oldest first, each with why (an overlap, a paused repository, a full
+    /// slot); only threads `readable_by` may read when given. At most 200.
+    async fn list_deferred_threads(
+        &self,
+        workspace_id: WorkspaceId,
+        readable_by: Option<MemberId>,
+    ) -> Result<Vec<maidan_types::DeferredThread>, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.
     async fn list_slots(

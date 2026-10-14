@@ -258,6 +258,28 @@ pub struct FootprintConflict {
     pub mode: FootprintMode,
 }
 
+/// Why the claim queue is holding a thread back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum DeferralReason {
+    /// Its footprint overlaps another thread's live claim.
+    Overlap,
+    /// Its footprint names a paused repository.
+    RepoPaused,
+    /// One of its slots is at capacity.
+    SlotFull,
+}
+
+/// A thread the claim queue would otherwise hand out, and why it waits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeferredThread {
+    pub thread_id: ThreadId,
+    pub title: Option<String>,
+    pub reasons: Vec<DeferralReason>,
+}
+
 /// A slot's name as it is stored and compared: trimmed and lowercase, at most
 /// 512 characters, no control characters.
 pub fn normalize_slot(raw: &str) -> Result<String, String> {

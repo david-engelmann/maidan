@@ -111,6 +111,7 @@ The calls:
 | Refine or replace (no items clears; `thread:transition`) | `PUT /threads/{id}/footprint` | `set_thread_footprint` |
 | Read one | `GET /threads/{id}/footprint` | (in the thread's context) |
 | The live claims and their footprints | `GET /workspaces/{id}/claims?repo=` | `list_active_claims` |
+| The threads waiting, and why (overlap, paused repository, full slot) | `GET /workspaces/{id}/deferred` | — |
 
 **How they fit together.** A producer that knows the lane declares the
 footprint in the call that creates the thread. The two commit together, so

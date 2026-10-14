@@ -159,6 +159,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
 
+### The queue says why work waits
+
+- **Added:** `GET /workspaces/{id}/deferred` (`workspace:read`): the open threads the claim queue is holding back for their footprint, oldest first, each with its reasons (`overlap`, `repo_paused`, `slot_full`), limited to threads the caller may read. It answers "why isn't this being picked up" during a swarm ramp.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

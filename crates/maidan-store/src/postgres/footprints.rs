@@ -381,3 +381,32 @@ pub(crate) async fn insert_items_on(
     }
     Ok(())
 }
+
+/// The threads the claim queue defers in `workspace_id`, with why; only those
+/// `readable_by` may read when given.
+pub async fn list_deferred(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    readable_by: Option<MemberId>,
+) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
+    let rows = sqlx::query(&crate::footprints::deferred_select(
+        "$1", "$2::uuid", "$3", "NOW()",
+    ))
+    .bind(workspace_id.0)
+    .bind(readable_by.map(|m| m.0))
+    .bind(DM_CHANNEL_NAME)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| maidan_types::DeferredThread {
+            thread_id: ThreadId(row.get("thread_id")),
+            title: row.get("title"),
+            reasons: crate::footprints::deferral_reasons(
+                row.get("overlap"),
+                row.get("repo_paused"),
+                row.get("slot_full"),
+            ),
+        })
+        .collect())
+}
