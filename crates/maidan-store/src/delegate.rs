@@ -3721,6 +3721,14 @@ macro_rules! store_delegations {
                 oauth_as::get_client_by_client_id(self.pool(), client_id).await
             }
 
+            async fn upsert_oauth_metadata_client(
+                &self,
+                new: NewOAuthClient,
+                metadata_url: &str,
+            ) -> Result<Option<OAuthClient>, StoreError> {
+                oauth_as::upsert_metadata_client(self.pool(), new, metadata_url).await
+            }
+
             async fn create_oauth_authorization_code(
                 &self,
                 new: NewOAuthAuthorizationCode,

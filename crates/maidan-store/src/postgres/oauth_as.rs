@@ -17,8 +17,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const CLIENT_COLUMNS: &str =
-    "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at";
+const CLIENT_COLUMNS: &str = "id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, revoked_at, metadata_url";
 const CODE_COLUMNS: &str = "code_hash, client_id, member_id, workspace_id, redirect_uri, code_challenge, scope, resource, expires_at, used_at, lineage_id";
 const GRANT_COLUMNS: &str = "id, client_id, member_id, workspace_id, scope, lineage_id, revoked_at";
 
@@ -36,6 +35,7 @@ fn row_to_client(row: &sqlx::postgres::PgRow) -> Result<OAuthClient, StoreError>
         client_secret_hash: row.get("client_secret_hash"),
         allowed_scopes: scopes_from(&row.get::<String, _>("allowed_scopes"))?,
         revoked_at: row.get::<Option<DateTime<Utc>>, _>("revoked_at"),
+        metadata_url: row.get("metadata_url"),
     })
 }
 
@@ -97,6 +97,42 @@ pub async fn get_client_by_client_id(
          WHERE client_id = $1 AND revoked_at IS NULL"
     ))
     .bind(client_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|r| row_to_client(&r)).transpose()
+}
+
+/// Insert a metadata-document client's row, or refresh a live one from the
+/// document just fetched. The conflict path is fenced to marked, live
+/// rows: a revoked row stays revoked and a pre-registered row stays the
+/// operator's, and both come back as `None`.
+pub async fn upsert_metadata_client(
+    pool: &PgPool,
+    new: NewOAuthClient,
+    metadata_url: &str,
+) -> Result<Option<OAuthClient>, StoreError> {
+    let id = Uuid::now_v7();
+    let redirect_uris = serde_json::to_string(&new.redirect_uris)?;
+    let allowed_scopes = serde_json::to_string(&new.allowed_scopes)?;
+    let row = sqlx::query(&format!(
+        "INSERT INTO oauth_clients
+            (id, client_id, name, redirect_uris, client_secret_hash, allowed_scopes, metadata_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (client_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            redirect_uris = EXCLUDED.redirect_uris,
+            allowed_scopes = EXCLUDED.allowed_scopes
+         WHERE oauth_clients.revoked_at IS NULL
+            AND oauth_clients.metadata_url IS NOT NULL
+         RETURNING {CLIENT_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(&new.client_id)
+    .bind(&new.name)
+    .bind(&redirect_uris)
+    .bind(new.client_secret_hash.as_deref())
+    .bind(&allowed_scopes)
+    .bind(metadata_url)
     .fetch_optional(pool)
     .await?;
     row.map(|r| row_to_client(&r)).transpose()

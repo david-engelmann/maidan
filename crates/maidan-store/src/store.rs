@@ -3086,6 +3086,19 @@ pub trait OAuthAsStore: Send + Sync {
         client_id: &str,
     ) -> Result<Option<OAuthClient>, StoreError>;
 
+    /// Insert the row for a client identified by a client metadata
+    /// document, or refresh it from the document just fetched: on a
+    /// `client_id` conflict with a live metadata-document row, its name,
+    /// redirect URIs and allowed scopes are replaced. The row's id is
+    /// stable across refreshes. `None` when the conflicting row is
+    /// revoked or pre-registered — a document never resurrects a revoked
+    /// client and never overwrites an operator's registration.
+    async fn upsert_oauth_metadata_client(
+        &self,
+        new: NewOAuthClient,
+        metadata_url: &str,
+    ) -> Result<Option<OAuthClient>, StoreError>;
+
     /// Persist an OAuth 2.1 authorization code. Only the SHA-256 hash of the
     /// code is stored; the plaintext is shown once, in the redirect.
     async fn create_oauth_authorization_code(
