@@ -151,6 +151,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a `slot` footprint kind and `PUT`, `GET` and `DELETE /workspaces/{id}/slots`. A slot names a shared resource such as a build slot, counted across the workspace whatever the repository. With a capacity of N, `claim_next` defers a thread holding the slot while N live claims hold it (counted as blocked), and a refinement onto a full slot is refused naming its holders. Setting a capacity takes `token:admin` and is audited; listing shows each slot's capacity and use. Migration 0173.
 
+### A producer declares the footprint at intake
+
+- **Added:** `footprint` on `POST /channels/{cid}/threads` and the MCP `create_thread` tool. The footprint commits with the thread, so the claim queue applies it from the first claim, and a producer declares it under the `workspace:write` that creating the thread already needs. A separate `PUT /threads/{id}/footprint` needed `thread:transition`, which a producer should not hold. An invalid footprint is a `400` and creates nothing.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

@@ -375,7 +375,28 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
                     "title": {"type": "string"},
-                    "parent_thread_id": {"type": "string", "format": "uuid"}
+                    "parent_thread_id": {"type": "string", "format": "uuid"},
+                    "footprint": {
+                        "type": "object",
+                        "description": "the task's claim footprint, stored with the thread so the claim queue never sees it without one (the shape set_thread_footprint takes, without thread_id)",
+                        "properties": {
+                            "repo": {"type": "string", "description": "owner/name, or a GitHub clone URL"},
+                            "mode": {"type": "string", "enum": ["exclusive", "shared"]},
+                            "items": {
+                                "type": "array",
+                                "maxItems": 200,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["path", "glob", "crate", "lane", "branch", "slot"]},
+                                        "value": {"type": "string"}
+                                    },
+                                    "required": ["kind", "value"]
+                                }
+                            }
+                        },
+                        "required": ["repo", "mode"]
+                    }
                 },
                 "required": ["channel_id"]
             }

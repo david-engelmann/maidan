@@ -107,23 +107,7 @@ pub async fn set(
         tx.commit().await?;
         return Ok(Vec::new());
     };
-    for item in &footprint.items {
-        sqlx::query(
-            "INSERT INTO maidan_thread_footprints
-                 (thread_id, workspace_id, repo, mode, kind, value, match_namespace, match_key)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        )
-        .bind(thread_id.0)
-        .bind(workspace_id)
-        .bind(&footprint.repo)
-        .bind(footprint.mode.as_str())
-        .bind(item.kind.as_str())
-        .bind(&item.value)
-        .bind(item.kind.namespace())
-        .bind(item.key())
-        .execute(&mut *tx)
-        .await?;
-    }
+    insert_items_on(&mut tx, thread_id, workspace_id, &footprint).await?;
     if live {
         let rows = sqlx::query(&crate::footprints::conflicts_select("$1", "NOW()"))
             .bind(thread_id.0)
@@ -368,4 +352,32 @@ pub async fn clear_slot_capacity(
     }
     tx.commit().await?;
     Ok(removed)
+}
+
+/// Store `footprint`'s items for `thread_id` on the caller's connection. The
+/// footprint is already validated and the thread has none.
+pub(crate) async fn insert_items_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+    workspace_id: Uuid,
+    footprint: &Footprint,
+) -> Result<(), StoreError> {
+    for item in &footprint.items {
+        sqlx::query(
+            "INSERT INTO maidan_thread_footprints
+                 (thread_id, workspace_id, repo, mode, kind, value, match_namespace, match_key)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(thread_id.0)
+        .bind(workspace_id)
+        .bind(&footprint.repo)
+        .bind(footprint.mode.as_str())
+        .bind(item.kind.as_str())
+        .bind(&item.value)
+        .bind(item.kind.namespace())
+        .bind(item.key())
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
 }

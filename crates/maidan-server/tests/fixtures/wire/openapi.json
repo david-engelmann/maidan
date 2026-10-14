@@ -2206,6 +2206,17 @@
               "null"
             ]
           },
+          "footprint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Footprint",
+                "description": "The task's claim footprint, stored with the thread so the claim queue\nnever sees it without one: the producer declares it at intake under\nthe `workspace:write` that creating the thread needs. Refining it\nlater is `PUT /threads/{id}/footprint`."
+              }
+            ]
+          },
           "parent_thread_id": {
             "format": "uuid",
             "type": [

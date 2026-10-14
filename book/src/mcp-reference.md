@@ -605,6 +605,54 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "format": "uuid",
       "type": "string"
     },
+    "footprint": {
+      "description": "the task's claim footprint, stored with the thread so the claim queue never sees it without one (the shape set_thread_footprint takes, without thread_id)",
+      "properties": {
+        "items": {
+          "items": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "path",
+                  "glob",
+                  "crate",
+                  "lane",
+                  "branch",
+                  "slot"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "value"
+            ],
+            "type": "object"
+          },
+          "maxItems": 200,
+          "type": "array"
+        },
+        "mode": {
+          "enum": [
+            "exclusive",
+            "shared"
+          ],
+          "type": "string"
+        },
+        "repo": {
+          "description": "owner/name, or a GitHub clone URL",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "mode"
+      ],
+      "type": "object"
+    },
     "parent_thread_id": {
       "format": "uuid",
       "type": "string"
