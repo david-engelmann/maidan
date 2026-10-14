@@ -603,6 +603,13 @@ fn apply_route_defaults(
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true } }));
     }
+    if path == "/threads/{id}/footprint" && method == "PUT" {
+        return b.json(&json!({
+            "repo": "example/app",
+            "mode": "exclusive",
+            "items": [{ "kind": "lane", "value": "bridge" }]
+        }));
+    }
     if path == "/threads/{id}/steer" && method == "PUT" {
         return b.json(&json!({ "steer": "focus on the failing test first" }));
     }

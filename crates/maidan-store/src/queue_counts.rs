@@ -50,15 +50,17 @@ pub(crate) struct QueueSql<'a> {
 pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
     let held = held(sql.now);
     let available = available(sql.now);
+    // Footprint-deferred work is blocked, not ready: claim_next skips it.
+    let deferred = crate::footprints::conflicts_with_live_claims("cand.id", sql.now);
     format!(
         "SELECT
              COUNT(*) AS open_count,
              COALESCE(SUM(CASE WHEN {held} THEN 1 ELSE 0 END), 0) AS assigned_count,
              COALESCE(SUM(CASE WHEN {available} AND NOT {PARKED}
-                       AND NOT {BLOCKED} AND NOT {WAITING}
+                       AND NOT {BLOCKED} AND NOT {WAITING} AND NOT {deferred}
                      THEN 1 ELSE 0 END), 0) AS ready_count,
              COALESCE(SUM(CASE WHEN {available} AND NOT {PARKED}
-                       AND ({BLOCKED} OR {WAITING})
+                       AND ({BLOCKED} OR {WAITING} OR {deferred})
                      THEN 1 ELSE 0 END), 0) AS blocked_count,
              COALESCE(SUM(CASE WHEN {available} AND {PARKED}
                      THEN 1 ELSE 0 END), 0) AS unclaimable_count
@@ -74,6 +76,7 @@ pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> Strin
 pub(crate) fn occupancy_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
     let held = held(sql.now);
     let available = available(sql.now);
+    let deferred = crate::footprints::conflicts_with_live_claims("cand.id", sql.now);
     format!(
         "SELECT
              COUNT(*) AS open_count,
@@ -82,8 +85,9 @@ pub(crate) fn occupancy_select(scope: QueueScope, sql: &QueueSql<'_>) -> String 
              COALESCE(SUM(CASE WHEN {held} AND cand.work_started_at IS NOT NULL
                      THEN 1 ELSE 0 END), 0) AS working_count,
              COALESCE(SUM(CASE WHEN {available} AND NOT {BLOCKED} AND NOT {WAITING}
+                       AND NOT {deferred}
                      THEN 1 ELSE 0 END), 0) AS queued_count,
-             COALESCE(SUM(CASE WHEN {available} AND ({BLOCKED} OR {WAITING})
+             COALESCE(SUM(CASE WHEN {available} AND ({BLOCKED} OR {WAITING} OR {deferred})
                      THEN 1 ELSE 0 END), 0) AS blocked_count
          {}",
         open_threads(scope, sql)
