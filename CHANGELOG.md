@@ -37,7 +37,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### A change that ends without a commit says why in its one Slack notice
 
-- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
+- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
 
 ### A result delivered to GitHub links its attached files
 
@@ -158,6 +158,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### rustls advisories of 2026-10
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
+
+### Public `main` names no internal project
+
+- **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
 
 ## [413.0.0] — 2026-10-11
 
