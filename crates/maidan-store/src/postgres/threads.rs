@@ -712,6 +712,8 @@ async fn claim_next_in_tx(
     member_id: MemberId,
     lease_secs: Option<i64>,
 ) -> Result<Option<Claimed>, StoreError> {
+    // Before the candidate is read, so it reads every claim committed ahead.
+    super::footprints::lock_for_claim(tx, scope).await?;
     let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
     let candidate = claim_next::candidate_select(
         scope,

@@ -48,6 +48,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Security:** `thread_access::readable_thread`, the SQL form of the thread read rule behind search, the workspace context, the explorer, A2A task lists, pending gates, `claim_next` and the queue counts, checked only the workspace the query named. A member of another tenant asked for this workspace's rows read its public threads, and only each route's own workspace check stopped it. The predicate now also requires the reader to be a member of the thread's workspace, so it holds on its own. It names the member once, in a one-row derived table, so SQLite search binds the member once instead of a hand-counted three times.
 - **Tests:** `tests/thread_access.rs` adds a reader from another tenant who sees only the workspace's thread-less rows, on both backends. `thread_filter_explorer` now expects another tenant's reader to count none of the workspace's posts.
 
+### Outbound delivery no longer needs the inbound webhook secrets
+
+- **Fixed:** the Slack sender was built only when `MAIDAN_SLACK_SIGNING_SECRET` was set, and the GitHub sender only when `MAIDAN_GITHUB_WEBHOOK_SECRET` was. A deployment that delivers results to Slack or GitHub and takes nothing back had to configure secrets for routes it did not use. Each sender now needs only its outbound credential (`MAIDAN_SLACK_BOT_TOKEN`; `MAIDAN_GITHUB_TOKEN` or a GitHub App), and the inbound secrets only turn on the webhook routes. Boot logs now say `slack egress configured`, `github egress configured`, `slack ingress configured` and `github ingress configured` separately.
+- **Tests:** `secret_files_boot` boots the real binary with only the outbound credentials. Both senders are configured, both webhook routes answer 404, and neither credential reaches the logs. Break-checked: re-coupling the Slack sender to its signing secret fails it.
+
 ### Artifact uploads have their own body limit
 
 - **Added:** `MAIDAN_ARTIFACT_MAX_BODY_BYTES` caps `POST /artifacts`, `POST /ui/api/artifacts` and each multipart part, default 100 MiB, while every other route keeps `MAIDAN_MAX_BODY_BYTES` (default 2 MiB). A deployment that takes long recordings raises the artifact limit alone, instead of every route's. A single-shot upload is held in memory while it is hashed, so `MAIDAN_ARTIFACT_UPLOAD_BUDGET_BYTES` (default 256 MiB, `0` off) bounds the upload bytes held at once: each upload is charged its `Content-Length`, or the whole artifact limit when it declares none, and one that does not fit gets `503` with `Retry-After: 1` (`maidan_artifact_upload_budget_refused_total`).
@@ -79,6 +84,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** every boot asked the database, one query per migration, whether each of about 170 migrations had run. Against a database across a network (a hosted Postgres, an instance that sleeps and wakes), that was a round trip per migration before the server answered. Boot now reads the applied set with one `SELECT` once the migration lock is held, on both backends, and applies only what is missing. A warm boot against Neon from outside its region went from about 15 s to about 4 s.
 
+### Claim footprints: a swarm never holds overlapping work
+
+- **Added:** a thread can declare its footprint, the part of a repository its work touches. It is a repository, a mode (`exclusive` or `shared`) and items of kind `path`, `glob`, `crate`, `lane` or `branch` (migration 0168, both backends).
+  - **Matching.** `lane`, `crate` and `branch` match exactly; `path` and `glob` by prefix. A branch is always exclusive.
+  - **Lifetime.** A footprint counts only while its thread holds a live claim, and frees itself when the claim ends.
+  - **Claiming.** `claim_next` skips a thread whose footprint overlaps a live claim, and the queue depth counts it as blocked.
+  - **Refinement.** A footprint set on a claimed thread that would overlap another live claim is refused, with each overlapped claim's holder and `lease_expires_at`: a `409` `footprint-conflict` over REST (`PUT /threads/{id}/footprint`), error `-32009` over MCP (`set_thread_footprint`).
+  - **Listing.** `GET /workspaces/{id}/claims?repo=` and the MCP tool `list_active_claims` list the live claims and their footprints, filtered by the reader's read rule. The repository is normalized from any GitHub clone URL.
+  - **Races.** On Postgres, claims in a workspace that uses footprints take a per-workspace advisory lock, so two claimers cannot take overlapping work at once.
+  - **Docs.** `docs/Swarms.md` is the guide to running a swarm of agents on one queue.
+- **Tests:** `claim_footprints`, on both backends, covers the lane wait, freeing on release and on lapse, mode and kind and repository overlap, refinement refused with the old footprint kept, two tenants, and the read rule. Break-checked: without the queue's skip, three of those tests fail. `claim_footprints_e2e` covers the 409 and `-32009` bodies, the listing on both surfaces, and another tenant's `403`.
+
 ### The notices query seeks to its rows
 
 - **Changed:** a projector shape filtered by channel and kind (the notices surface) paged the workspace's whole event log and filtered in Rust, decrypting every row it walked. `Store::list_events_matching` filters in SQL over a new `(workspace_id, channel_id, kind, id)` index (migration 0164, both backends), and only the filters that are present become predicates, so a prepared statement never settles on a plan that cannot use the index.
@@ -108,6 +125,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Hybrid search ranks a deeper candidate pool
 
 - **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)
+
+### The board's live feed is capped
+
+- **Changed:** the Live panel's raw event feed keeps only its newest 500 lines, dropping the oldest as new events arrive, and each line is appended as a text node. A long live session no longer grows the panel's DOM without bound, and an append no longer re-reads and re-writes every line already shown.
+
+### The merge queue takes a ready agent pull request
+
+- **Added:** `POST`, `GET` and `DELETE /operator/github/enqueue`: the mark-ready app adds, reads and removes a repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`, `owner/name=label`) on a ready agent pull request. Enqueue runs the mark-ready guards on one read and also requires the head to be the commit the change flow last delivered, naming both SHAs when it is not; dequeue skips the head comparison, since the queue rebases.
+- **Changed:** the change flow refuses a delivery to a pull request that carries its repository's merge-queue label, before any write, so nothing lands apart from the head the queue took.
 
 ### The delivery tables are partitioned by month
 

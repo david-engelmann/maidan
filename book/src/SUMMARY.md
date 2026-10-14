@@ -5,6 +5,7 @@
 # Integrate
 
 - [Integrating with Maidan](docs/Integration.md)
+- [Running an agent swarm](docs/Swarms.md)
 - [Capability map](docs/Capability-Map.md)
 - [Provider matrix](docs/Providers.md)
 - [Integration protocols](docs/Protocols.md)

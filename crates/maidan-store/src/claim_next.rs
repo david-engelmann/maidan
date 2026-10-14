@@ -9,8 +9,10 @@
 //! A thread is claimable when it is open and live, unheld or its lease lapsed,
 //! every dependency is finished, the claimer holds every skill it requires, it
 //! has no pending approval gate, it is neither parked unclaimable nor blocked,
-//! the claimer is not frozen, and the thread is not already over any budget
-//! (tokens, usd, turns, or wall, counting the time a lapsed claim worked).
+//! the claimer is not frozen, the thread is not already over any budget
+//! (tokens, usd, turns, or wall, counting the time a lapsed claim worked), and
+//! its footprint overlaps no live claim ([`crate::footprints`]): a swarm
+//! claiming from one queue is never handed two pieces of the same work.
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
@@ -75,6 +77,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
+    let footprint_conflict = crate::footprints::conflicts_with_live_claims("cand.id", now);
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
@@ -119,6 +122,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
                        AND b.used_wall_secs + ({lapsed_worked_secs}) >= b.max_wall_secs)
                  )
            )
+           AND NOT {footprint_conflict}
            AND {readable}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC
          LIMIT 1"

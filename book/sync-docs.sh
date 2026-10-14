@@ -36,7 +36,7 @@ mkdir -p "$src_docs/Gates" "$src_docs/Clusters" "$src_docs/Retros" "$src_docs/as
 # deliberately stays out of the published book. Space-named sources are staged
 # under hyphenated names (space -> hyphen).
 top_pages=(
-  "Integration" "Capability Map" "Result Delivery"
+  "Integration" "Swarms" "Capability Map" "Result Delivery"
   "Production" "Benchmark" "Embeddings" "Deploy" "Pi" "Threat-Model" "Glossary"
   "FAQ" "Comparison"
   "Architecture" "Architecture-history" "Capabilities" "Decisions" "Conventions" "Operations"

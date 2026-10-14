@@ -697,6 +697,77 @@ impl MarkReadyBases {
     }
 }
 
+/// The environment variable that names each repository's merge-queue label.
+pub const MERGE_QUEUE_LABELS_ENV: &str = "MAIDAN_MERGE_QUEUE_LABELS";
+
+/// GitHub's ceiling on a label name, in characters.
+const LABEL_MAX_CHARS: usize = 50;
+
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum MergeQueueLabelsError {
+    #[error("{MERGE_QUEUE_LABELS_ENV}: `{0}` is not `owner/name=label`")]
+    NotAPair(String),
+    #[error("{MERGE_QUEUE_LABELS_ENV}: `{0}` is not an `owner/name` repository")]
+    BadRepo(String),
+    #[error("{MERGE_QUEUE_LABELS_ENV}: `{repo}` names an empty or over-long label")]
+    BadLabel { repo: String },
+    #[error("{MERGE_QUEUE_LABELS_ENV}: `{0}` is listed twice")]
+    Duplicate(String),
+}
+
+/// The label that enters a ready agent pull request into each repository's
+/// merge queue (`MAIDAN_MERGE_QUEUE_LABELS`, `owner/name=label` pairs). A
+/// repository not listed is never enqueued, so a repository whose changes a
+/// person merges is simply left out.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MergeQueueLabels {
+    labels: std::collections::BTreeMap<String, String>,
+}
+
+impl MergeQueueLabels {
+    /// Read comma-separated `owner/name=label` pairs; whitespace around each
+    /// part is trimmed and blank entries are skipped, as for
+    /// `MAIDAN_MARK_READY_BASES`.
+    pub fn parse(raw: &str) -> Result<Self, MergeQueueLabelsError> {
+        let mut labels = std::collections::BTreeMap::new();
+        for entry in raw.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+            let Some((repo, label)) = entry.split_once('=') else {
+                return Err(MergeQueueLabelsError::NotAPair(entry.to_string()));
+            };
+            let (repo, label) = (repo.trim(), label.trim());
+            if !is_github_repo(repo) {
+                return Err(MergeQueueLabelsError::BadRepo(repo.to_string()));
+            }
+            if label.is_empty()
+                || label.chars().count() > LABEL_MAX_CHARS
+                || label.chars().any(char::is_control)
+            {
+                return Err(MergeQueueLabelsError::BadLabel {
+                    repo: repo.to_string(),
+                });
+            }
+            if labels
+                .insert(repo.to_ascii_lowercase(), label.to_string())
+                .is_some()
+            {
+                return Err(MergeQueueLabelsError::Duplicate(repo.to_string()));
+            }
+        }
+        Ok(Self { labels })
+    }
+
+    /// The label `repo` (`owner/name`) enqueues with, if it is listed.
+    pub fn label_for(&self, repo: &str) -> Option<&str> {
+        self.labels
+            .get(&repo.to_ascii_lowercase())
+            .map(String::as_str)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.labels.is_empty()
+    }
+}
+
 /// The mark-ready half of the base guard: the shape rules from
 /// [`check_change_target`], plus the operator's per-repository base map. A
 /// repository listed in `bases` flips only into its listed base; a repository
@@ -1900,5 +1971,24 @@ mod tests {
             state: Some("  ".into()),
         };
         assert_eq!(blank.to_egress_target(), None);
+    }
+
+    #[test]
+    fn a_merge_queue_label_map_names_one_label_per_repository() {
+        let labels =
+            MergeQueueLabels::parse(" example/app=merge-queue , Example/Other = ship it ").unwrap();
+        assert_eq!(labels.label_for("EXAMPLE/APP"), Some("merge-queue"));
+        assert_eq!(labels.label_for("example/other"), Some("ship it"));
+        assert_eq!(labels.label_for("example/human-merged"), None);
+        assert!(MergeQueueLabels::parse("").unwrap().is_empty());
+        for bad in [
+            "example/app",
+            "app=queue",
+            "example/app=",
+            "example/app=a,example/app=b",
+            &format!("example/app={}", "x".repeat(51)),
+        ] {
+            assert!(MergeQueueLabels::parse(bad).is_err(), "{bad}");
+        }
     }
 }

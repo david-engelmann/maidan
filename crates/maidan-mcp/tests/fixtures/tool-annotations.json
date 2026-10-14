@@ -8,7 +8,18 @@
     "name": "snake_case of at most 64 characters, the bound Claude and OpenAI clients put on a tool name, and short enough that Claude Code's mcp__maidan__ prefix still fits it. The leading word is a verb that says whether the tool writes: one of read_verbs means read-only and any other means a write, and no name joins two verbs with _or_ or _and_.",
     "mixed": "A write whose result the caller then reads as data, not just an echo of the write, so a model could reach for it to look something up. Each one stays a single tool, is never read-only, and its description names the write in the words given here."
   },
-  "read_verbs": ["advise", "catch", "get", "list", "parse", "search", "usage", "verify", "wait", "whoami"],
+  "read_verbs": [
+    "advise",
+    "catch",
+    "get",
+    "list",
+    "parse",
+    "search",
+    "usage",
+    "verify",
+    "wait",
+    "whoami"
+  ],
   "mixed": {
     "claim_next_thread": {
       "returns": "the claimed thread and its content-addressed pin",
@@ -1907,6 +1918,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "confined to Maidan's database"
+      }
+    },
+    "list_active_claims": {
+      "title": "List active claims",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "one SELECT of live claims and their footprint rows"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "reads only"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "reads only"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
       }
     },
     "list_assigned_threads": {
@@ -3978,6 +4008,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "store upsert only"
+      }
+    },
+    "set_thread_footprint": {
+      "title": "Set thread footprint",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "set_thread_footprint deletes and inserts maidan_thread_footprints rows"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "replaces the footprint the thread had declared, or clears it"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "the same footprint again stores the same rows; a refusal stores nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
       }
     },
     "set_thread_lineage": {

@@ -24,6 +24,7 @@ pub mod events;
 mod evidence;
 mod explorer;
 mod follows;
+mod footprints;
 mod fsm_hooks;
 mod github_links;
 mod glossary;

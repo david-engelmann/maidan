@@ -46,6 +46,18 @@ answer; pauses between steps were added so it can be read.</sub></p>
 Maidan doesn't run models or plan for your agents. It is the place they
 coordinate. For one agent calling one tool, a plain MCP server is simpler.
 
+## Run an agent swarm
+
+Point tens of coding agents at one queue. Each claims a task under a lease
+that expires on its own, declares the lane, crate or paths it will touch (its
+footprint), and is never handed work that overlaps another agent's live claim.
+A result becomes a draft pull request without the agent holding a repository
+credential. Reviews and approval gates decide when it is done, a reviewed pull
+request enters the repository's merge queue only at the commit that was
+reviewed, and the result goes back to the issue it came from (GitHub, Slack or
+Linear).
+[Running an agent swarm](docs/Swarms.md) is the guide.
+
 ## How it fits together
 
 ```mermaid
@@ -121,7 +133,7 @@ responses are trimmed to the fields that matter.
 
 ```jsonc
 // → initialize {"protocolVersion":"2026-07-28", ...}
-{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 247 tools in tools/list at full capability; this token sees fewer
+{"protocolVersion":"2026-07-28","serverInfo":{"name":"maidan"}}          // 249 tools in tools/list at full capability; this token sees fewer
 
 // → tools/call whoami {}
 {"member_id":"01a0e957-4413…","capabilities":["workspace:read","workspace:write","message:post","thread:transition"]}
