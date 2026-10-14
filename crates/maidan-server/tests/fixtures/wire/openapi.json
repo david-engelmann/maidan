@@ -237,6 +237,45 @@
         ],
         "type": "object"
       },
+      "ActiveClaim": {
+        "description": "A live claim and the footprint it holds.",
+        "properties": {
+          "assignee_id": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FootprintItem"
+            },
+            "type": "array"
+          },
+          "lease_expires_at": {
+            "description": "`None` for a claim taken without a lease, which holds until released.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FootprintMode"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        "required": [
+          "thread_id",
+          "assignee_id",
+          "repo",
+          "mode",
+          "items"
+        ],
+        "type": "object"
+      },
       "AddChannelMember": {
         "properties": {
           "member_id": {
@@ -2784,6 +2823,101 @@
           "thread_id"
         ],
         "type": "object"
+      },
+      "Footprint": {
+        "description": "A thread's footprint as declared.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FootprintItem"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FootprintMode"
+          },
+          "repo": {
+            "description": "`owner/name`, lowercase; a GitHub clone URL is accepted and reduced to it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "mode",
+          "items"
+        ],
+        "type": "object"
+      },
+      "FootprintConflict": {
+        "description": "One item of a live claim that a footprint would overlap.",
+        "properties": {
+          "assignee_id": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FootprintKind"
+          },
+          "lease_expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FootprintMode"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "assignee_id",
+          "repo",
+          "kind",
+          "value",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "FootprintItem": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FootprintKind"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "type": "object"
+      },
+      "FootprintKind": {
+        "enum": [
+          "path",
+          "glob",
+          "crate",
+          "lane",
+          "branch"
+        ],
+        "type": "string"
+      },
+      "FootprintMode": {
+        "enum": [
+          "exclusive",
+          "shared"
+        ],
+        "type": "string"
       },
       "FreezeMember": {
         "description": "Freeze a member — the kill-switch. `reason` is an optional audit note.",
@@ -5353,6 +5487,16 @@
       "ProblemDetails": {
         "description": "RFC 9457 problem details (`application/problem+json`; 9457 obsoletes 7807\nand keeps its format).",
         "properties": {
+          "conflicts": {
+            "description": "On a `footprint-conflict` 409: the live claim items the footprint\noverlaps, each with its thread, holder and lease.",
+            "items": {
+              "$ref": "#/components/schemas/FootprintConflict"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "detail": {
             "type": "string"
           },
@@ -21022,6 +21166,162 @@
         ]
       }
     },
+    "/threads/{id}/footprint": {
+      "get": {
+        "operationId": "get_thread_footprint",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Footprint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a thread's claim footprint",
+        "tags": [
+          "threads"
+        ]
+      },
+      "put": {
+        "operationId": "set_thread_footprint",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Footprint"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Footprint"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set a thread's claim footprint",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/threads/{id}/land-gate": {
       "delete": {
         "operationId": "clear_land_gate",
@@ -27187,6 +27487,74 @@
         "summary": "Set a workspace's approval policy",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/claims": {
+      "get": {
+        "operationId": "list_active_claims",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`owner/name` (or a GitHub clone URL); omitted lists every repository.",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActiveClaim"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a workspace's live claims and their footprints",
+        "tags": [
+          "threads"
         ]
       }
     },

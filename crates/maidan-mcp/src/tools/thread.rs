@@ -1047,6 +1047,71 @@ pub(super) async fn release_claim(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct SetThreadFootprintArgs {
+    thread_id: uuid::Uuid,
+    repo: String,
+    mode: FootprintMode,
+    #[serde(default)]
+    items: Vec<FootprintItem>,
+}
+
+/// Declare what part of a repository a thread's work touches; no items clears
+/// it. On a claimed thread, a footprint that overlaps another live claim is
+/// refused with [`McpError::FootprintConflict`] and nothing is stored. Thread
+/// access is enforced pre-dispatch. The MCP twin of `PUT
+/// /threads/:id/footprint`.
+pub(super) async fn set_thread_footprint(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadFootprintArgs = crate::tools::parse_args(args)?;
+    let thread_id = ThreadId(a.thread_id);
+    let footprint = Footprint {
+        repo: a.repo,
+        mode: a.mode,
+        items: a.items,
+    }
+    .validated()
+    .map_err(McpError::InvalidParams)?;
+    let footprint = (!footprint.items.is_empty()).then_some(footprint);
+    let conflicts = store.set_thread_footprint(thread_id, footprint).await?;
+    if !conflicts.is_empty() {
+        return Err(McpError::FootprintConflict(conflicts));
+    }
+    Ok(content_json(&store.get_thread_footprint(thread_id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListActiveClaimsArgs {
+    workspace_id: uuid::Uuid,
+    #[serde(default)]
+    repo: Option<String>,
+}
+
+/// The workspace's live claims with their footprints, in one repository when
+/// `repo` is given, limited to threads the caller may read. The MCP twin of
+/// `GET /workspaces/:wid/claims`.
+pub(super) async fn list_active_claims(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ListActiveClaimsArgs = crate::tools::parse_args(args)?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
+    let repo = a
+        .repo
+        .map(|repo| normalize_repo(&repo).map_err(McpError::InvalidParams))
+        .transpose()?;
+    let claims = store
+        .list_active_claims(workspace_id, repo, queue_reader(auth))
+        .await?;
+    Ok(content_json(&claims))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct AddThreadDependencyArgs {
     thread_id: uuid::Uuid,
     depends_on_thread_id: uuid::Uuid,

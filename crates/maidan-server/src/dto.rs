@@ -385,6 +385,14 @@ pub struct SetThreadLineage {
     pub parent_run_id: String,
 }
 
+/// Query params for the live-claims list.
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ActiveClaimsQuery {
+    /// `owner/name` (or a GitHub clone URL); omitted lists every repository.
+    pub repo: Option<String>,
+}
+
 /// Query params for workspace run-lineage reads.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
