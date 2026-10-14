@@ -139,6 +139,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.
 
+### A worker claims only its repository's work
+
+- **Added:** `repo` on `claim_next_thread` and `claim_next_workspace_thread` (MCP) and on the `claim-next` routes (HTTP). With it, only a thread whose footprint names that repository is claimed, so a worker bound to one repository's checkout never takes work it would have to release. Omitted, claiming is unchanged.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

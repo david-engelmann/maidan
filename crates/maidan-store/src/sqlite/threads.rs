@@ -523,6 +523,7 @@ async fn claim_next_candidate(
     scope: ClaimScope,
     member_id: MemberId,
     now: DateTime<Utc>,
+    repo: Option<&str>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
     let sql = claim_next::candidate_select(
         scope,
@@ -532,6 +533,7 @@ async fn claim_next_candidate(
             scope: "?2",
             now: "?3",
             dm_channel: "?4",
+            repo: "?5",
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN MAX(0, CAST(strftime('%s', cand.assignment_expires_at) AS INTEGER) - CAST(strftime('%s', cand.work_started_at) AS INTEGER)) ELSE 0 END",
@@ -542,6 +544,7 @@ async fn claim_next_candidate(
         .bind(scope.id())
         .bind(now.to_rfc3339())
         .bind(DM_CHANNEL_NAME)
+        .bind(repo)
         .fetch_optional(&mut **tx)
         .await?)
 }
@@ -787,8 +790,14 @@ pub async fn claim_next(
     // race-free. The transaction exists so the worker record commits with the
     // claim.
     let mut tx = pool.begin().await?;
-    let Some(candidate) =
-        claim_next_candidate(&mut tx, ClaimScope::Channel(channel_id), member_id, now).await?
+    let Some(candidate) = claim_next_candidate(
+        &mut tx,
+        ClaimScope::Channel(channel_id),
+        member_id,
+        now,
+        None,
+    )
+    .await?
     else {
         tx.commit().await?;
         return Ok(None);
@@ -876,6 +885,7 @@ pub(crate) async fn claim_next_with_event(
     scope: ClaimScope,
     member_id: MemberId,
     lease_secs: Option<i64>,
+    repo: Option<&str>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let now = Utc::now();
@@ -883,7 +893,7 @@ pub(crate) async fn claim_next_with_event(
     // The candidate row keeps its pre-update claim, so a reclaim of an expired
     // lease can end the dead holder's claim (RETURNING would only give the
     // post-update row).
-    let Some(candidate) = claim_next_candidate(&mut tx, scope, member_id, now).await? else {
+    let Some(candidate) = claim_next_candidate(&mut tx, scope, member_id, now, repo).await? else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
     };

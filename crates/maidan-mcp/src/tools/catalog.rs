@@ -1293,7 +1293,8 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
-                    "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"}
+                    "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"},
+                    "repo": {"type": "string", "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work"}
                 },
                 "required": ["channel_id"]
             }
@@ -1312,7 +1313,8 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"},
-                    "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"}
+                    "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"},
+                    "repo": {"type": "string", "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work"}
                 },
                 "required": ["workspace_id"]
             }

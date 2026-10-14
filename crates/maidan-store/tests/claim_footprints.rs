@@ -503,6 +503,59 @@ fn audit_for(ws: WorkspaceId, action: &str) -> maidan_store::AuditFor<RepoPause>
     Box::new(move |_| event)
 }
 
+/// A worker serving one repository is handed only that repository's work:
+/// a thread whose footprint names another repository, or no repository, is
+/// left for others, in either claim scope.
+async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "per-repo", 2).await;
+    let plain = task(store.as_ref(), room.channel, "plain").await;
+    let other = task(store.as_ref(), room.channel, "other").await;
+    let mine = task(store.as_ref(), room.channel, "mine").await;
+    let mut other_repo = footprint(FootprintMode::Shared, &[(FootprintKind::Lane, "x")]);
+    other_repo.repo = "example/other".into();
+    declare(store.as_ref(), other, other_repo).await;
+    declare(
+        store.as_ref(),
+        mine,
+        footprint(FootprintMode::Shared, &[(FootprintKind::Lane, "x")]),
+    )
+    .await;
+
+    let (claimed, _) = store
+        .claim_next_thread_with_event(room.channel, room.agents[0], Some(600), Some(REPO))
+        .await
+        .unwrap();
+    assert_eq!(
+        claimed.map(|t| t.id),
+        Some(mine),
+        "the oldest work is skipped: it is not this repository's"
+    );
+    let (claimed, _) = store
+        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), Some(REPO))
+        .await
+        .unwrap();
+    assert!(claimed.is_none(), "nothing else names the repository");
+    let (claimed, _) = store
+        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        claimed.map(|t| t.id),
+        Some(plain),
+        "without a repository, any work"
+    );
+    let (claimed, _) = store
+        .claim_next_thread_with_event(
+            room.channel,
+            room.agents[1],
+            Some(600),
+            Some("example/other"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(claimed.map(|t| t.id), Some(other));
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -549,4 +602,5 @@ on_both_backends!(
     workspaces_never_block_each_other,
     the_claims_list_keeps_to_the_read_rule,
     a_paused_repository_hands_out_none_of_its_work,
+    a_claimer_serving_one_repository_takes_only_its_work,
 );
