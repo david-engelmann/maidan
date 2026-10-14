@@ -23,6 +23,7 @@ pub mod authorize;
 pub mod client_auth;
 pub mod consent;
 pub mod error;
+pub mod grants;
 pub mod metadata;
 pub mod registry;
 pub mod revoke;

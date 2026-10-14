@@ -32,5 +32,10 @@
     "path": "/workspaces/{workspace_id}/channels",
     "capability": "workspace:write",
     "json": { "name": "general" }
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{workspace_id}/oauth-grants",
+    "capability": "workspace:read"
   }
 ]

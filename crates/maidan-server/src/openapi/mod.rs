@@ -346,6 +346,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::create_delegation_grant,
         paths::list_delegation_grants,
         paths::revoke_delegation_grant,
+        paths::list_oauth_grants,
+        paths::revoke_oauth_grant,
         paths::create_share_ticket,
         paths::list_share_tickets,
         paths::revoke_share_ticket,

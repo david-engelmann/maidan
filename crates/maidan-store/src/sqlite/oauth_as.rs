@@ -301,6 +301,23 @@ pub async fn find_grant(
     row.map(|r| row_to_grant(&r)).transpose()
 }
 
+pub async fn list_grants(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+) -> Result<Vec<OAuthGrant>, StoreError> {
+    let rows = sqlx::query(&format!(
+        "SELECT {GRANT_COLUMNS} FROM oauth_grants
+         WHERE workspace_id = ? AND member_id = ? AND revoked_at IS NULL
+         ORDER BY created_at, id"
+    ))
+    .bind(workspace_id.0)
+    .bind(member_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_grant).collect()
+}
+
 pub async fn revoke_grant(pool: &SqlitePool, grant_id: OAuthGrantId) -> Result<(), StoreError> {
     sqlx::query("UPDATE oauth_grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
         .bind(Utc::now())
