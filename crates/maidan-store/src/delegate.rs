@@ -1730,6 +1730,14 @@ macro_rules! store_delegations {
                 threads::create_with_event(self.pool(), new).await
             }
 
+            async fn create_thread_with_footprint(
+                &self,
+                new: NewThread,
+                footprint: Option<maidan_types::Footprint>,
+            ) -> Result<(Thread, StoredEvent), StoreError> {
+                threads::create_with_footprint(self.pool(), new, footprint).await
+            }
+
             async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
                 threads::get(self.read_pool(), id).await
             }
@@ -2456,12 +2464,14 @@ macro_rules! store_delegations {
                 channel_id: ChannelId,
                 member_id: MemberId,
                 lease_secs: Option<i64>,
+                repo: Option<&str>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
                     ClaimScope::Channel(channel_id),
                     member_id,
                     lease_secs,
+                    repo,
                 )
                 .await
             }
@@ -2471,12 +2481,14 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 member_id: MemberId,
                 lease_secs: Option<i64>,
+                repo: Option<&str>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
                     ClaimScope::Workspace(workspace_id),
                     member_id,
                     lease_secs,
+                    repo,
                 )
                 .await
             }
@@ -2503,6 +2515,69 @@ macro_rules! store_delegations {
                 readable_by: Option<MemberId>,
             ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError> {
                 footprints::list_active(self.pool(), workspace_id, repo, readable_by).await
+            }
+
+            async fn pause_repo_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                paused_by: MemberId,
+                reason: Option<&str>,
+                audit: crate::AuditFor<maidan_types::RepoPause>,
+            ) -> Result<maidan_types::RepoPause, StoreError> {
+                footprints::pause_repo(self.pool(), workspace_id, repo, paused_by, reason, audit)
+                    .await
+            }
+
+            async fn resume_repo_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                footprints::resume_repo(self.pool(), workspace_id, repo, audit).await
+            }
+
+            async fn list_repo_pauses(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<maidan_types::RepoPause>, StoreError> {
+                footprints::list_repo_pauses(self.pool(), workspace_id).await
+            }
+
+            async fn list_slots(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<maidan_types::SlotUsage>, StoreError> {
+                footprints::list_slots(self.pool(), workspace_id).await
+            }
+
+            async fn set_slot_capacity_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                slot: &str,
+                capacity: i64,
+                updated_by: MemberId,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                footprints::set_slot_capacity(
+                    self.pool(),
+                    workspace_id,
+                    slot,
+                    capacity,
+                    updated_by,
+                    audit,
+                )
+                .await
+            }
+
+            async fn clear_slot_capacity_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                slot: &str,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                footprints::clear_slot_capacity(self.pool(), workspace_id, slot, audit).await
             }
 
             async fn reap_expired_claims(

@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use maidan_types::{
     ApiTokenId, AppId, AppInstallationId, ApprovalGate, ApprovalGateId, ApprovalRisk, ArtifactKind,
     BlockedReason, ChannelId, ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId,
-    EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, FsmHookId, LandColor,
+    EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, Footprint, FsmHookId, LandColor,
     LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
     RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency,
     ThreadId, TokenPolicy, TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
@@ -105,6 +105,12 @@ pub struct CreateThread {
     /// What the task is about, in the creator's words.
     pub description: Option<String>,
     pub parent_thread_id: Option<uuid::Uuid>,
+    /// The task's claim footprint, stored with the thread so the claim queue
+    /// never sees it without one: the producer declares it at intake under
+    /// the `workspace:write` that creating the thread needs. Refining it
+    /// later is `PUT /threads/{id}/footprint`.
+    #[serde(default)]
+    pub footprint: Option<Footprint>,
 }
 
 /// Actions a caller may name on `POST /threads/{id}`.
@@ -171,6 +177,11 @@ pub struct ClaimNextThread {
     #[serde(default)]
     #[schema(minimum = 1, maximum = 604800)]
     pub lease_secs: Option<i64>,
+    /// Only claim a thread whose footprint names this repository
+    /// (`owner/name` or a GitHub clone URL), for a worker whose checkout is
+    /// that repository. A thread without a footprint is then never claimed.
+    #[serde(default)]
+    pub repo: Option<String>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the
@@ -391,6 +402,22 @@ pub struct SetThreadLineage {
 pub struct ActiveClaimsQuery {
     /// `owner/name` (or a GitHub clone URL); omitted lists every repository.
     pub repo: Option<String>,
+}
+
+/// Query params for removing a slot's capacity.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct SlotQuery {
+    /// The slot's name.
+    pub slot: String,
+}
+
+/// Query params for lifting a repository pause.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RepoPauseQuery {
+    /// `owner/name` (or a GitHub clone URL).
+    pub repo: String,
 }
 
 /// Query params for workspace run-lineage reads.

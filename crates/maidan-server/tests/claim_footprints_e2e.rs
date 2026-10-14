@@ -53,6 +53,21 @@ async fn spawn() -> (String, Arc<dyn Store>) {
 }
 
 async fn agent(store: &dyn Store, ws: WorkspaceId, handle: &str) -> (MemberId, String) {
+    member_with(
+        store,
+        ws,
+        handle,
+        &[capability::WORKSPACE_READ, capability::THREAD_TRANSITION],
+    )
+    .await
+}
+
+async fn member_with(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    handle: &str,
+    capabilities: &[&str],
+) -> (MemberId, String) {
     let member = store
         .create_member(NewMember {
             workspace_id: ws,
@@ -70,10 +85,7 @@ async fn agent(store: &dyn Store, ws: WorkspaceId, handle: &str) -> (MemberId, S
             app_installation_id: None,
             token_hash: hash_secret(secret.as_str()),
             label: None,
-            capabilities: vec![
-                capability::WORKSPACE_READ.into(),
-                capability::THREAD_TRANSITION.into(),
-            ],
+            capabilities: capabilities.iter().map(|c| (*c).to_string()).collect(),
             expires_at: None,
         })
         .await
@@ -269,4 +281,512 @@ async fn a_second_agent_on_held_work_is_told_who_holds_it_and_until_when() {
         "{}",
         foreign_thread.status()
     );
+}
+
+#[tokio::test]
+async fn an_operator_pauses_a_repository_and_the_queue_holds_its_work() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let (_, worker) = agent(store.as_ref(), ws.id, "worker").await;
+    let (_, operator) = member_with(
+        store.as_ref(),
+        ws.id,
+        "operator",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let (_, stranger) = member_with(
+        store.as_ref(),
+        other.id,
+        "stranger",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("bridge".into()),
+            description: None,
+        })
+        .await
+        .unwrap();
+    let http = reqwest::Client::new();
+    let declared = http
+        .put(format!("{base}/threads/{}/footprint", thread.id.0))
+        .bearer_auth(&worker)
+        .json(&lane("bridge"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(declared.status(), StatusCode::OK);
+
+    let pauses = format!("{base}/workspaces/{}/repo-pauses", ws.id.0);
+    let body = json!({ "repo": "git@github.com:Example/App.git", "reason": "deploy freeze" });
+    let by_worker = http
+        .put(&pauses)
+        .bearer_auth(&worker)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_worker.status(),
+        StatusCode::FORBIDDEN,
+        "pausing takes token:admin"
+    );
+    let by_stranger = http
+        .put(&pauses)
+        .bearer_auth(&stranger)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_stranger.status(),
+        StatusCode::FORBIDDEN,
+        "another tenant cannot pause"
+    );
+    let paused = http
+        .put(&pauses)
+        .bearer_auth(&operator)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(paused.status(), StatusCode::OK);
+    let paused: Value = paused.json().await.unwrap();
+    assert_eq!(paused["repo"], "example/app");
+    assert_eq!(paused["reason"], "deploy freeze");
+
+    let listed: Value = http
+        .get(&pauses)
+        .bearer_auth(&worker)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        listed[0]["repo"], "example/app",
+        "a worker may read the pauses"
+    );
+
+    let claimed = tool(
+        &base,
+        &worker,
+        "claim_next_thread",
+        json!({ "channel_id": channel.id.0, "lease_secs": 600 }),
+    )
+    .await;
+    let claimed = tool_result(&claimed);
+    assert!(
+        claimed.is_null() || claimed["thread"].is_null(),
+        "the paused repository's thread is held back: {claimed}"
+    );
+
+    let resume = format!("{pauses}?repo=example/app");
+    let by_stranger = http
+        .delete(&resume)
+        .bearer_auth(&stranger)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(by_stranger.status(), StatusCode::FORBIDDEN);
+    let resumed = http
+        .delete(&resume)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resumed.status(), StatusCode::NO_CONTENT);
+    let again = http
+        .delete(&resume)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+    assert_eq!(claim(&base, &worker, channel.id).await, thread.id);
+
+    let audit: Vec<String> = store
+        .list_audit_for_workspace(ws.id, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|event| event.action)
+        .filter(|action| action.starts_with("repo."))
+        .collect();
+    assert_eq!(audit.len(), 2, "one pause and one resume: {audit:?}");
+}
+
+#[tokio::test]
+async fn a_worker_serving_one_repository_claims_only_its_work() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    let (_, worker) = agent(store.as_ref(), ws.id, "worker").await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let mut threads = Vec::new();
+    for title in ["plain", "app"] {
+        threads.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: channel.id,
+                    parent_thread_id: None,
+                    title: Some(title.into()),
+                    description: None,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let http = reqwest::Client::new();
+    let declared = http
+        .put(format!("{base}/threads/{}/footprint", threads[1].0))
+        .bearer_auth(&worker)
+        .json(&lane("bridge"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(declared.status(), StatusCode::OK);
+
+    // Over HTTP, another repository finds nothing although work is waiting.
+    let none = http
+        .post(format!("{base}/workspaces/{}/threads/claim-next", ws.id.0))
+        .bearer_auth(&worker)
+        .json(&json!({ "repo": "example/other" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(none.status(), StatusCode::OK);
+    assert!(none.json::<Value>().await.unwrap().is_null());
+    let bad = http
+        .post(format!("{base}/workspaces/{}/threads/claim-next", ws.id.0))
+        .bearer_auth(&worker)
+        .json(&json!({ "repo": "not a repo" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    // Over MCP, the repository in any spelling takes its own work, skipping
+    // the older thread that names no repository.
+    let claimed = tool_result(
+        &tool(
+            &base,
+            &worker,
+            "claim_next_thread",
+            json!({
+                "channel_id": channel.id.0,
+                "repo": "git@github.com:Example/App.git",
+            }),
+        )
+        .await,
+    );
+    let id = claimed["thread"]["id"]
+        .as_str()
+        .or_else(|| claimed["id"].as_str())
+        .unwrap_or_else(|| panic!("no thread claimed: {claimed}"));
+    assert_eq!(id, threads[1].0.to_string());
+}
+
+#[tokio::test]
+async fn an_operator_caps_a_build_slot_and_workers_read_its_use() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let (_, worker) = agent(store.as_ref(), ws.id, "worker").await;
+    let (_, operator) = member_with(
+        store.as_ref(),
+        ws.id,
+        "operator",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let (_, stranger) = member_with(
+        store.as_ref(),
+        other.id,
+        "stranger",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let http = reqwest::Client::new();
+    let slots = format!("{base}/workspaces/{}/slots", ws.id.0);
+    let body = json!({ "slot": " Rust-Build ", "capacity": 1 });
+
+    let by_worker = http
+        .put(&slots)
+        .bearer_auth(&worker)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_worker.status(),
+        StatusCode::FORBIDDEN,
+        "capping takes token:admin"
+    );
+    let by_stranger = http
+        .put(&slots)
+        .bearer_auth(&stranger)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_stranger.status(),
+        StatusCode::FORBIDDEN,
+        "another tenant cannot cap"
+    );
+    let zero = http
+        .put(&slots)
+        .bearer_auth(&operator)
+        .json(&json!({ "slot": "rust-build", "capacity": 0 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(zero.status(), StatusCode::BAD_REQUEST);
+    let set = http
+        .put(&slots)
+        .bearer_auth(&operator)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(set.status(), StatusCode::OK);
+    let set: Value = set.json().await.unwrap();
+    assert_eq!(
+        set,
+        json!({ "slot": "rust-build", "capacity": 1, "in_use": 0 })
+    );
+
+    // One worker claims a build; the slot reads as full.
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("build".into()),
+            description: None,
+        })
+        .await
+        .unwrap();
+    let declared = http
+        .put(format!("{base}/threads/{}/footprint", thread.id.0))
+        .bearer_auth(&worker)
+        .json(&json!({
+            "repo": "example/app",
+            "mode": "shared",
+            "items": [{ "kind": "slot", "value": "rust-build" }]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(declared.status(), StatusCode::OK);
+    assert_eq!(claim(&base, &worker, channel.id).await, thread.id);
+    let listed: Value = http
+        .get(&slots)
+        .bearer_auth(&worker)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        listed,
+        json!([{ "slot": "rust-build", "capacity": 1, "in_use": 1 }])
+    );
+
+    let clear = format!("{slots}?slot=RUST-BUILD");
+    let by_stranger = http
+        .delete(&clear)
+        .bearer_auth(&stranger)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(by_stranger.status(), StatusCode::FORBIDDEN);
+    let cleared = http
+        .delete(&clear)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared.status(), StatusCode::NO_CONTENT);
+    let again = http
+        .delete(&clear)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+
+    let audit: Vec<String> = store
+        .list_audit_for_workspace(ws.id, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|event| event.action)
+        .filter(|action| action.starts_with("slot."))
+        .collect();
+    assert_eq!(audit.len(), 2, "one set and one clear: {audit:?}");
+}
+
+#[tokio::test]
+async fn a_producer_declares_the_footprint_when_it_creates_the_task() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    // A producer creates tasks; it cannot claim or transition them.
+    let (_, producer) = member_with(
+        store.as_ref(),
+        ws.id,
+        "producer",
+        &[capability::WORKSPACE_READ, capability::WORKSPACE_WRITE],
+    )
+    .await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let http = reqwest::Client::new();
+    let threads = format!("{base}/channels/{}/threads", channel.id.0);
+
+    let created = http
+        .post(&threads)
+        .bearer_auth(&producer)
+        .json(&json!({ "title": "bridge retry", "footprint": lane("bridge") }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let id = created.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let stored: Value = http
+        .get(format!("{base}/threads/{id}/footprint"))
+        .bearer_auth(&producer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(stored["repo"], "example/app");
+    assert_eq!(stored["items"][0]["value"], "bridge");
+
+    // Refining after the fact stays the worker's (thread:transition).
+    let refine = http
+        .put(format!("{base}/threads/{id}/footprint"))
+        .bearer_auth(&producer)
+        .json(&lane("gateway"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refine.status(), StatusCode::FORBIDDEN);
+
+    // An invalid footprint is a 400, and no thread is created.
+    let before = store.list_threads(channel.id).await.unwrap().len();
+    let bad = http
+        .post(&threads)
+        .bearer_auth(&producer)
+        .json(&json!({
+            "title": "bad",
+            "footprint": {
+                "repo": "example/app",
+                "mode": "exclusive",
+                "items": [{ "kind": "path", "value": "../outside" }]
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(store.list_threads(channel.id).await.unwrap().len(), before);
+
+    // MCP create_thread takes the same footprint.
+    let created = tool_result(
+        &tool(
+            &base,
+            &producer,
+            "create_thread",
+            json!({
+                "channel_id": channel.id.0,
+                "title": "over mcp",
+                "footprint": {
+                    "repo": "Example/App",
+                    "mode": "shared",
+                    "items": [{ "kind": "slot", "value": "rust-build" }]
+                }
+            }),
+        )
+        .await,
+    );
+    let id = ThreadId(created["id"].as_str().unwrap().parse().unwrap());
+    let fp = store.get_thread_footprint(id).await.unwrap().unwrap();
+    assert_eq!(fp.repo, "example/app");
+    assert_eq!(fp.items[0].kind, maidan_types::FootprintKind::Slot);
 }

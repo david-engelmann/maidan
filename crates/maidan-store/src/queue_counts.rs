@@ -50,8 +50,9 @@ pub(crate) struct QueueSql<'a> {
 pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
     let held = held(sql.now);
     let available = available(sql.now);
-    // Footprint-deferred work is blocked, not ready: claim_next skips it.
-    let deferred = crate::footprints::conflicts_with_live_claims("cand.id", sql.now);
+    // Footprint-deferred work (an overlap or a paused repository) is blocked,
+    // not ready: claim_next skips it.
+    let deferred = crate::footprints::deferred("cand.id", sql.now);
     format!(
         "SELECT
              COUNT(*) AS open_count,
@@ -76,7 +77,7 @@ pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> Strin
 pub(crate) fn occupancy_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
     let held = held(sql.now);
     let available = available(sql.now);
-    let deferred = crate::footprints::conflicts_with_live_claims("cand.id", sql.now);
+    let deferred = crate::footprints::deferred("cand.id", sql.now);
     format!(
         "SELECT
              COUNT(*) AS open_count,

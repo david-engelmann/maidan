@@ -35,6 +35,7 @@ fn overlapping(thread: &str, now: &str) -> String {
              AND theirs.thread_id <> mine.thread_id
          JOIN maidan_threads held ON held.id = theirs.thread_id
          WHERE mine.thread_id = {thread}
+           AND mine.match_namespace <> 'slot'
            AND {live}
            AND (mine.mode = 'exclusive' OR theirs.mode = 'exclusive'
                 OR mine.match_namespace = 'branch')
@@ -52,15 +53,104 @@ pub(crate) fn conflicts_with_live_claims(thread: &str, now: &str) -> String {
     format!("EXISTS (SELECT 1 {})", overlapping(thread, now))
 }
 
-/// `SELECT` of the live-claim items `thread`'s footprint overlaps, as
-/// [`conflict_from_columns`] reads them.
-pub(crate) fn conflicts_select(thread: &str, now: &str) -> String {
+/// How many other threads hold slot `key` in workspace `ws` under a live
+/// claim, `thread` excluded. Slots count across repositories and modes.
+fn slot_in_use(ws: &str, key: &str, thread: &str, now: &str) -> String {
+    let live = live_claim("sheld", now);
     format!(
-        "SELECT DISTINCT theirs.thread_id, held.assignee_id, held.assignment_expires_at,
-                theirs.repo, theirs.kind, theirs.value, theirs.mode
-         {}
-         ORDER BY theirs.thread_id, theirs.kind, theirs.value",
-        overlapping(thread, now)
+        "(SELECT COUNT(DISTINCT sf.thread_id) FROM maidan_thread_footprints sf
+          JOIN maidan_threads sheld ON sheld.id = sf.thread_id
+          WHERE sf.workspace_id = {ws} AND sf.match_namespace = 'slot'
+            AND sf.match_key = {key} AND sf.thread_id <> {thread}
+            AND {live})"
+    )
+}
+
+/// The joins and predicates that pick the slot items of `thread` (`slots`)
+/// whose capacity (`cap`) other live claims already fill.
+fn full_slots(thread: &str, now: &str) -> String {
+    let in_use = slot_in_use(
+        "slots.workspace_id",
+        "slots.match_key",
+        "slots.thread_id",
+        now,
+    );
+    format!(
+        "FROM maidan_thread_footprints slots
+         JOIN maidan_slot_capacities cap
+              ON cap.workspace_id = slots.workspace_id AND cap.slot = slots.match_key
+         WHERE slots.thread_id = {thread} AND slots.match_namespace = 'slot'
+           AND cap.capacity <= {in_use}"
+    )
+}
+
+/// True when one of `thread`'s slots is at capacity.
+pub(crate) fn slot_full(thread: &str, now: &str) -> String {
+    format!("EXISTS (SELECT 1 {})", full_slots(thread, now))
+}
+
+/// True when `thread`'s footprint names a repository paused in its
+/// workspace ([`maidan_types::RepoPause`]).
+pub(crate) fn repo_paused(thread: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM maidan_thread_footprints pf
+                 JOIN maidan_repo_pauses rp
+                      ON rp.workspace_id = pf.workspace_id AND rp.repo = pf.repo
+                 WHERE pf.thread_id = {thread})"
+    )
+}
+
+/// True when the claim queue holds `thread` back for its footprint: it
+/// overlaps a live claim, it names a paused repository, or one of its slots
+/// is at capacity.
+pub(crate) fn deferred(thread: &str, now: &str) -> String {
+    format!(
+        "({} OR {} OR {})",
+        conflicts_with_live_claims(thread, now),
+        repo_paused(thread),
+        slot_full(thread, now)
+    )
+}
+
+/// The joins and predicates that pair each full slot of `thread` (`slots`)
+/// with the live claims holding it (`theirs`, on thread `held`).
+fn full_slot_holders(thread: &str, now: &str) -> String {
+    let live = live_claim("held", now);
+    let in_use = slot_in_use(
+        "slots.workspace_id",
+        "slots.match_key",
+        "slots.thread_id",
+        now,
+    );
+    format!(
+        "FROM maidan_thread_footprints slots
+         JOIN maidan_slot_capacities cap
+              ON cap.workspace_id = slots.workspace_id AND cap.slot = slots.match_key
+         JOIN maidan_thread_footprints theirs
+              ON theirs.workspace_id = slots.workspace_id
+             AND theirs.match_namespace = 'slot'
+             AND theirs.match_key = slots.match_key
+             AND theirs.thread_id <> slots.thread_id
+         JOIN maidan_threads held ON held.id = theirs.thread_id
+         WHERE slots.thread_id = {thread} AND slots.match_namespace = 'slot'
+           AND {live}
+           AND cap.capacity <= {in_use}"
+    )
+}
+
+/// `SELECT` of the live-claim items that keep `thread` from its footprint:
+/// the items it overlaps, and the holders of each of its slots at capacity,
+/// as [`conflict_from_row`] reads them.
+pub(crate) fn conflicts_select(thread: &str, now: &str) -> String {
+    let columns = "theirs.thread_id, held.assignee_id, held.assignment_expires_at,
+                theirs.repo, theirs.kind, theirs.value, theirs.mode";
+    format!(
+        "SELECT {columns} {}
+         UNION
+         SELECT {columns} {}
+         ORDER BY 1, 5, 6",
+        overlapping(thread, now),
+        full_slot_holders(thread, now)
     )
 }
 
