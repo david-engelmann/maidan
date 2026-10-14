@@ -60,17 +60,26 @@ impl GithubConfig {
         let webhook_secret = std::env::var("MAIDAN_GITHUB_WEBHOOK_SECRET")
             .ok()
             .filter(|s| !s.is_empty())?;
-        let api_token = std::env::var("MAIDAN_GITHUB_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty());
-        let write_repos =
-            parse_write_repos(&std::env::var("MAIDAN_GITHUB_WRITE_REPOS").unwrap_or_default());
         Some(GithubConfig {
             webhook_secret,
-            api_token,
-            write_repos,
+            api_token: api_token_from_env(),
+            write_repos: write_repos_from_env(),
         })
     }
+}
+
+/// `MAIDAN_GITHUB_TOKEN`, the egress credential when no GitHub App is
+/// configured. Read on its own: egress does not need the webhook secret.
+pub fn api_token_from_env() -> Option<String> {
+    std::env::var("MAIDAN_GITHUB_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty())
+}
+
+/// `MAIDAN_GITHUB_WRITE_REPOS`: the only repositories GitHub egress may write
+/// to.
+pub fn write_repos_from_env() -> Vec<String> {
+    parse_write_repos(&std::env::var("MAIDAN_GITHUB_WRITE_REPOS").unwrap_or_default())
 }
 
 /// `POST /integrations/github/events` — the GitHub webhook ingress. Returns

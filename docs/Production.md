@@ -989,10 +989,13 @@ take N times the rate, and a restart starts every host's budget full.
 
 Result delivery and the GitHub projector post with `MAIDAN_GITHUB_TOKEN`, or
 as a GitHub App (below), and
-the egress worker runs only when a Slack or GitHub sender is configured: the
-GitHub sender needs `MAIDAN_GITHUB_WEBHOOK_SECRET` and either
-`MAIDAN_GITHUB_TOKEN` or the three `MAIDAN_GITHUB_APP_*` variables,
-the Slack sender its bot token. They are read from the server's environment,
+the egress worker runs only when a Slack, GitHub or Linear sender is configured.
+Each sender needs only its outbound credential: the GitHub sender
+`MAIDAN_GITHUB_TOKEN` or the three `MAIDAN_GITHUB_APP_*` variables, the Slack
+sender `MAIDAN_SLACK_BOT_TOKEN`. The inbound secrets
+(`MAIDAN_GITHUB_WEBHOOK_SECRET`, `MAIDAN_SLACK_SIGNING_SECRET`) turn on only the
+webhook routes, so a deployment that delivers results and takes nothing back
+leaves them unset. They are read from the server's environment,
 or from the files `MAIDAN_GITHUB_TOKEN_FILE` and the rest name (see
 [Environment](#environment)); set them through your platform's secret
 mechanism like every other secret. Maidan never logs the token, and cuts it out of any error text
