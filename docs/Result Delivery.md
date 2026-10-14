@@ -332,6 +332,7 @@ envelope fields, Maidan reads:
 | `diff` | A git diff that applies with `git apply` to `base_sha`. |
 | `error_detail` | Optional. Why a run that changed nothing ended. The Slack reply to a status other than `changed` gives it after the status, in place of `summary`, with a cause repeated across retries said once and the whole cut at 600 characters. Without it the reply gives `summary`. |
 | `title`, `summary` | Optional. The commit subject and the draft pull request's title, and the commit and pull request body; mentions in `summary` are defused. Without `title`, Maidan uses the thread's opening message (the `!change` instructions), first line, cut at a word to 72 characters (the branch name if there is none). Without `summary`, the body names the Maidan thread and the commit SHA. Missing text never stops a delivery. |
+| `pr_state` | Optional, `{title, body}`. `body` describes the whole branch against its base as it stands after this round (where `title` and `summary` describe this round). Maidan keeps it in one section of the pull request body, between `<!-- pi:current-state -->` and `<!-- /pi:current-state -->`, replacing only that section on each delivery and appending it when the markers are missing, so edits people and review bots make elsewhere in the body stay. Mentions are defused and the section is capped at 20,000 characters. `pr_state.title` is not read: a title people fixed is never reverted. A failed body edit never fails the delivery. |
 
 **What a `changed` result does**, per `github_branch` target the workspace has
 blessed:

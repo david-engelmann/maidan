@@ -474,6 +474,8 @@ pub struct GithubPull {
     pub base: String,
     /// The label names it carries.
     pub labels: Vec<String>,
+    /// Its description; empty when it has none.
+    pub body: String,
 }
 
 /// A pull request as read for the mark-ready guard: head, base, draft flag
@@ -576,6 +578,15 @@ pub trait GithubGit: Send + Sync {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError>;
+    /// `PATCH /repos/{repo}/pulls/{n}` with a new `body`. The change flow
+    /// calls it only for the agent pull request it delivers to, to keep the
+    /// branch's current-state section current.
+    async fn update_pull_body(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        body: &str,
+    ) -> Result<(), GithubError>;
     /// `GET /repos/{repo}/pulls/{n}`: head ref, base ref, draft flag and node
     /// id, for the mark-ready guard. A read, so no guard applies; the caller
     /// enforces the change-flow rules before acting on what it returns.
@@ -1083,6 +1094,11 @@ fn pull_from(value: &serde_json::Value) -> Result<GithubPull, GithubError> {
         html_url: field(value, "/html_url")?,
         base: field(value, "/base/ref")?,
         labels: label_names(value),
+        body: value
+            .get("body")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 
@@ -1296,6 +1312,25 @@ impl GithubGit for GithubApiClient {
                 "draft": true,
             }));
         pull_from(&self.send_json(request).await?)
+    }
+
+    async fn update_pull_body(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        body: &str,
+    ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
+        let request = self
+            .request(
+                reqwest::Method::PATCH,
+                repo,
+                &format!("/pulls/{pull_number}"),
+            )
+            .await?
+            .json(&serde_json::json!({ "body": body }));
+        self.send_json(request).await?;
+        Ok(())
     }
 
     async fn pull_brief(

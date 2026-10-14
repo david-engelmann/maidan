@@ -159,6 +159,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
 
+### An agent pull request's description stays current
+
+- **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

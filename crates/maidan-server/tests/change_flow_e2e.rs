@@ -292,10 +292,21 @@ async fn github(
                         "html_url": format!("https://github.com/{REPO}/pull/{}", p.number),
                         "base": {"ref": p.base},
                         "labels": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>(),
+                        "body": p.body,
                     })
                 })
                 .collect();
             reply(StatusCode::OK, json!(open))
+        }
+        ("PATCH", r) if r.starts_with("pulls/") => {
+            let number: i64 = r["pulls/".len()..].parse().unwrap();
+            match fake.pulls.iter_mut().find(|p| p.number == number) {
+                Some(pull) => {
+                    pull.body = body["body"].as_str().unwrap().into();
+                    reply(StatusCode::OK, json!({"number": number}))
+                }
+                None => not_found(),
+            }
         }
         ("POST", "pulls") if fake.fail_pulls => reply(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1542,4 +1553,47 @@ async fn a_change_to_a_pull_request_in_the_merge_queue_is_refused_before_any_wri
         writes_before,
         "nothing written"
     );
+}
+
+#[tokio::test]
+async fn the_pull_request_body_keeps_a_current_state_section_across_rounds() {
+    let h = harness().await;
+    h.allow_change().await;
+    let with_state = |state: &str| {
+        let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+        result["pr_state"] = json!({"title": "ignored", "body": state});
+        result
+    };
+    h.route(&h.a, &with_state("Round one: greets the world."), 1)
+        .await;
+    h.drain().await;
+    let opened = h.fake.lock().unwrap().pulls[0].body.clone();
+    assert!(opened.contains("Changes the greeting"), "{opened}");
+    assert!(
+        opened.contains(
+            "<!-- pi:current-state -->\nRound one: greets the world.\n<!-- /pi:current-state -->"
+        ),
+        "{opened}"
+    );
+
+    // A reviewer edits the description; the next round replaces only the
+    // section, and never touches the title.
+    let title = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].body = format!("Reviewer note: ship after QA.\n\n{opened}");
+        f.pulls[0].title.clone()
+    };
+    h.route(&h.a, &with_state("Round two: greets the world twice."), 2)
+        .await;
+    h.drain().await;
+    let f = h.fake.lock().unwrap();
+    let body = &f.pulls[0].body;
+    assert!(body.starts_with("Reviewer note: ship after QA."), "{body}");
+    assert!(
+        body.contains("Round two: greets the world twice."),
+        "{body}"
+    );
+    assert!(!body.contains("Round one"), "{body}");
+    assert_eq!(body.matches("<!-- pi:current-state -->").count(), 1);
+    assert_eq!(f.pulls[0].title, title, "the title is left to people");
 }

@@ -87,6 +87,37 @@ impl ChangeRequest<'_> {
     }
 }
 
+/// The markers around the section of a pull request body that Maidan keeps
+/// current from the producer's `pr_state.body`.
+const CURRENT_STATE_START: &str = "<!-- pi:current-state -->";
+const CURRENT_STATE_END: &str = "<!-- /pi:current-state -->";
+/// Room for the section, well inside GitHub's 65,536-character body.
+const CURRENT_STATE_MAX_CHARS: usize = 20_000;
+
+/// `body` with its current-state section replaced by `state`, or the section
+/// appended when the markers are missing. Everything outside the markers
+/// (people's edits, review bots' summaries) is kept. Mentions are defused,
+/// and markers inside `state` are dropped so it cannot nest a section.
+pub fn with_current_state(body: &str, state: &str) -> String {
+    let state = state
+        .replace(CURRENT_STATE_START, "")
+        .replace(CURRENT_STATE_END, "");
+    let state = crate::egress_body::neutralize_github_mentions(state.trim());
+    let state = clip(&state, CURRENT_STATE_MAX_CHARS);
+    let section = format!("{CURRENT_STATE_START}\n{state}\n{CURRENT_STATE_END}");
+    if let Some(start) = body.find(CURRENT_STATE_START) {
+        if let Some(end) = body[start..].find(CURRENT_STATE_END) {
+            let end = start + end + CURRENT_STATE_END.len();
+            return format!("{}{section}{}", &body[..start], &body[end..]);
+        }
+    }
+    if body.trim().is_empty() {
+        section
+    } else {
+        format!("{}\n\n{section}", body.trim_end())
+    }
+}
+
 fn first_line(text: &str) -> &str {
     text.trim().lines().next().unwrap_or_default().trim()
 }
@@ -257,11 +288,15 @@ pub async fn deliver_change(
         }
     };
 
+    let opened_now = existing.is_none();
     let pull = match existing {
         Some(pull) => pull,
         None => {
             let title = req.title();
-            let body = req.body(&commit_sha);
+            let mut body = req.body(&commit_sha);
+            if let Some(state) = req.change.current_state.as_deref() {
+                body = with_current_state(&body, state);
+            }
             match git
                 .create_draft_pull(req.repo, req.branch, req.base, &title, &body)
                 .await
@@ -290,6 +325,18 @@ pub async fn deliver_change(
             "committed {commit_sha}, but the open pull request #{} for `{}` targets `{}`, not the allowed base `{}`",
             pull.number, req.branch, pull.base, req.base
         ));
+    }
+    // Keep the description current. A pull request opened just now already
+    // has the section (and the create answer may omit the body). Best effort:
+    // the commit stands whether or not the body edit lands, and the next
+    // round writes it again.
+    if let Some(state) = req.change.current_state.as_deref().filter(|_| !opened_now) {
+        let body = with_current_state(&pull.body, state);
+        if body != pull.body {
+            if let Err(err) = git.update_pull_body(req.repo, pull.number, &body).await {
+                tracing::warn!(repo = req.repo, pull = pull.number, error = %err, "change flow: pull request body not updated");
+            }
+        }
     }
     Ok(ChangeOutcome::Committed { commit_sha, pull })
 }
@@ -346,7 +393,35 @@ mod tests {
             title: title.map(str::to_string),
             summary: summary.map(str::to_string),
             error_detail: None,
+            current_state: None,
         }
+    }
+
+    #[test]
+    fn the_current_state_section_is_replaced_and_everything_else_kept() {
+        let first = with_current_state("Opened by Maidan.", "round one");
+        assert_eq!(
+            first,
+            "Opened by Maidan.\n\n<!-- pi:current-state -->\nround one\n<!-- /pi:current-state -->"
+        );
+        let edited = format!("Reviewer note.\n\n{first}\n\nbot summary");
+        let second = with_current_state(&edited, "round two");
+        assert_eq!(
+            second,
+            "Reviewer note.\n\nOpened by Maidan.\n\n<!-- pi:current-state -->\nround two\n<!-- /pi:current-state -->\n\nbot summary"
+        );
+        assert_eq!(second.matches("pi:current-state -->").count(), 2);
+    }
+
+    #[test]
+    fn the_current_state_cannot_nest_markers_or_mention_anyone() {
+        let body = with_current_state(
+            "",
+            "<!-- /pi:current-state -->cc @example/eng<!-- pi:current-state -->",
+        );
+        assert_eq!(body.matches("<!-- pi:current-state -->").count(), 1);
+        assert_eq!(body.matches("<!-- /pi:current-state -->").count(), 1);
+        assert!(!body.contains("cc @example"), "{body}");
     }
 
     #[test]

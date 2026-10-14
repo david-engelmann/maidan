@@ -807,6 +807,12 @@ pub struct ChangeResult {
     /// Why a run that changed nothing ended, as the producer recorded it
     /// (pi's `error_detail`), preferred over `summary` in the reply.
     pub error_detail: Option<String>,
+    /// `pr_state.body`: the pull request as it stands after this round,
+    /// describing the whole branch against its base (where `title` and
+    /// `summary` describe this round). Kept in one marked section of the
+    /// pull request body. `pr_state.title` is not read: a title people fixed
+    /// must not be reverted each round.
+    pub current_state: Option<String>,
 }
 
 impl ChangeResult {
@@ -838,6 +844,12 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
         title: text("title"),
         summary: text("summary"),
         error_detail: text("error_detail"),
+        current_state: obj
+            .get("pr_state")
+            .and_then(|state| state.get("body"))
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_string),
     })
 }
 
