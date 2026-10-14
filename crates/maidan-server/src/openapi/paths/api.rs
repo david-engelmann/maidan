@@ -250,6 +250,31 @@ pub fn list_delegation_grants() {}
     ))]
 pub fn revoke_delegation_grant() {}
 
+/// List the caller's OAuth grants in a workspace
+#[utoipa::path(get, path = "/workspaces/{wid}/oauth-grants", tag = "tokens",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = ["workspace:read"])),
+    responses(
+        (status = 200, body = Vec<crate::routes::OAuthGrantView>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_oauth_grants() {}
+
+/// Revoke one of the caller's OAuth grants, ending its token lineage
+#[utoipa::path(post, path = "/workspaces/{wid}/oauth-grants/{gid}/revoke", tag = "tokens",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("gid" = Uuid, Path, description = "OAuth grant id"),
+    ),
+    security(("bearerAuth" = ["workspace:write"])),
+    responses(
+        (status = 200, body = crate::routes::RevokeOAuthGrantResponse),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn revoke_oauth_grant() {}
+
 /// Create a share ticket
 #[utoipa::path(post, path = "/workspaces/{wid}/share-tickets", tag = "share",
     params(("wid" = Uuid, Path, description = "Workspace id")),

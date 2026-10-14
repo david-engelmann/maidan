@@ -3101,6 +3101,15 @@ pub trait OAuthAsStore: Send + Sync {
         scope: &[String],
     ) -> Result<Option<OAuthGrant>, StoreError>;
 
+    /// A member's live grants in one workspace, oldest first — the list
+    /// behind grant management, where the member sees which clients hold
+    /// their consent and ends it. Revoked grants are history and stay out.
+    async fn list_oauth_grants(
+        &self,
+        workspace_id: WorkspaceId,
+        member_id: MemberId,
+    ) -> Result<Vec<OAuthGrant>, StoreError>;
+
     /// Revoke a grant. Tokens minted under it stop authenticating on their
     /// next use (see the grant-liveness check in `get_active_by_hash`).
     async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError>;

@@ -3727,6 +3727,14 @@ macro_rules! store_delegations {
                 oauth_as::find_grant(self.pool(), client_id, member_id, workspace_id, scope).await
             }
 
+            async fn list_oauth_grants(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<OAuthGrant>, StoreError> {
+                oauth_as::list_grants(self.pool(), workspace_id, member_id).await
+            }
+
             async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError> {
                 oauth_as::revoke_grant(self.pool(), grant_id).await
             }

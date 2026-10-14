@@ -122,6 +122,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
 
+### OAuth grant management
+
+- **Added:** a member can list the OAuth grants clients hold on them in a workspace and revoke one — `GET /workspaces/{wid}/oauth-grants`, `POST /workspaces/{wid}/oauth-grants/{gid}/revoke`, and the console page at `/ui/oauth/grants`. Every read is scoped to the caller's own workspace and member, so another tenant's grant is a 404. Revoking ends the grant's whole lineage, access and refresh tokens alike, through the audited lineage revocation.
+
 ### Hybrid search ranks a deeper candidate pool
 
 - **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)

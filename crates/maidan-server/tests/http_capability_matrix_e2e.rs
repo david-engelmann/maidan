@@ -727,6 +727,12 @@ fn apply_route_defaults(
             "handler_target": "https://example.com/slash"
         }));
     }
+    // No body: the grant being revoked is named in the path. The clause
+    // exists so this probe's shape is chosen here, not inherited from the
+    // default fallthrough below.
+    if path.contains("/oauth-grants/") && method == "POST" {
+        return b.json(&json!({}));
+    }
     // A valid selector, so the extractor passes and it is `cap()` that answers.
     if path.contains("/egress-targets") && method == "POST" {
         return b.json(&json!({ "surface": "slack", "selector": "C0123ABCDEF" }));
