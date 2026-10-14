@@ -261,17 +261,13 @@ async fn retention_drops_a_month_past_the_cutoff_and_deletes_inside_the_legacy_p
         month_rows
             .push(insert_at(&pg.pool, Some(alice.workspace_id), month(1) + days(1 + i)).await);
     }
-    // Rows in the legacy partition on both sides of a cutoff inside it.
-    let old = insert_at(&pg.pool, Some(alice.workspace_id), Utc::now() - days(90)).await;
-    let recent = insert_at(&pg.pool, Some(alice.workspace_id), Utc::now() - days(1)).await;
-
     let removed = prune_all(&pg.store, month(2), 100).await;
     assert_eq!(
         removed,
         u64::try_from(month_rows.len()).expect("count"),
         "the dropped month's rows are counted"
     );
-    assert_eq!(audit_ids(&pg.pool).await, vec![old, recent]);
+    assert!(audit_ids(&pg.pool).await.is_empty());
     assert!(
         !partition_names(&pg.pool)
             .await
@@ -279,8 +275,11 @@ async fn retention_drops_a_month_past_the_cutoff_and_deletes_inside_the_legacy_p
         "the month past the cutoff is dropped, not emptied"
     );
 
-    // A cutoff inside the legacy partition deletes there, batch by batch,
-    // and leaves the newer rows.
+    // Rows on both sides of a cutoff that falls inside the partition holding
+    // them: the delete takes the older one and leaves the newer.
+    let old = insert_at(&pg.pool, Some(alice.workspace_id), Utc::now() - days(90)).await;
+    let recent = insert_at(&pg.pool, Some(alice.workspace_id), Utc::now() - days(1)).await;
+    assert_eq!(audit_ids(&pg.pool).await, vec![old, recent]);
     let removed = prune_all(&pg.store, Utc::now() - days(30), 100).await;
     assert_eq!(removed, 1);
     assert_eq!(audit_ids(&pg.pool).await, vec![recent]);
