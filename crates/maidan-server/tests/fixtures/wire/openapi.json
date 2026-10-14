@@ -276,19 +276,6 @@
         ],
         "type": "object"
       },
-      "ActiveClaimsQuery": {
-        "description": "Query params for the live-claims list.",
-        "properties": {
-          "repo": {
-            "description": "`owner/name` (or a GitHub clone URL); omitted lists every repository.",
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "type": "object"
-      },
       "AddChannelMember": {
         "properties": {
           "member_id": {

@@ -881,7 +881,6 @@ fn requires_credential(op: &Operation) -> bool {
         FootprintMode,
         FootprintConflict,
         ActiveClaim,
-        ActiveClaimsQuery,
         SetThreadLineage,
         ThreadLineage,
         RunOccupancy,
