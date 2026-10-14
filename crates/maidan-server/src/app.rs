@@ -1183,6 +1183,10 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_str!("../static/ui/tools.js"),
             ),
+            "swarm.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/swarm.js"),
+            ),
             "palette.js" => (
                 "text/javascript; charset=utf-8",
                 include_str!("../static/ui/palette.js"),

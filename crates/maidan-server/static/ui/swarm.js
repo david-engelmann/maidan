@@ -1,0 +1,221 @@
+// @ts-check
+import { api, base, headers, token, wid, writeApi } from "./api.js";
+import { escapeHtml } from "./artifacts.js";
+import { responseError, showError, unreachable } from "./feedback.js";
+import { ago, leaseLeft, loadMembers, memberName } from "./people.js";
+
+// The swarm panel: what the workers in this workspace hold, what waits and
+// why, which slots are full, and which repositories are paused. It reads
+// only the four footprint lists the server already serves; like peers and
+// token minting it stays on the bearer tree, so a signed-in session without
+// a pasted token is told so in a sentence instead of reading raw errors.
+
+const REASON_LABELS = {
+  overlap: "A live claim overlaps its footprint",
+  repo_paused: "Its repository is paused",
+  slot_full: "A slot it needs is at capacity",
+};
+
+/** @param {string} id */
+function box(id) {
+  return document.getElementById(id);
+}
+
+/** @param {string} id @param {string} html */
+function setBox(id, html) {
+  const el = box(id);
+  if (el) el.innerHTML = html;
+}
+
+/** @param {unknown} e */
+function sectionError(id, e) {
+  setBox(id, `<p class="muted">Could not load this list. ${escapeHtml(e instanceof Error ? e.message : String(e))}</p>`);
+}
+
+/**
+ * One GET against the bearer tree, parsed as JSON. The URL is built from
+ * base() directly, not through the read/write path helpers: those promise
+ * a session-proxy twin these lists do not have.
+ * @param {string} suffix
+ * @returns {Promise<any>}
+ */
+async function fetchList(suffix) {
+  const res = await api(`${base()}${suffix}`, { headers: headers(), credentials: "include" });
+  if (!res.ok) throw new Error(await responseError(res, "The server refused the list"));
+  return res.json();
+}
+
+/** @param {any[]} claims */
+function renderClaims(claims) {
+  if (!claims.length) {
+    setBox("swarm-claims", `<p class="muted">No live claims. Nothing is being worked on right now.</p>`);
+    return;
+  }
+  const rows = claims
+    .map((c) => {
+      const items = (c.items || [])
+        .map((i) => `<li><code>${escapeHtml(i.kind)}</code> ${escapeHtml(i.value)}</li>`)
+        .join("");
+      const lease = c.lease_expires_at ? escapeHtml(leaseLeft(c.lease_expires_at)) : "no lease";
+      return `<li class="swarm-row">
+        <div><strong>${escapeHtml(memberName(c.assignee_id))}</strong> holds <code>${escapeHtml(c.repo)}</code>
+        <span class="muted">(${escapeHtml(c.mode)}, ${lease})</span></div>
+        ${items ? `<ul class="swarm-items">${items}</ul>` : ""}
+      </li>`;
+    })
+    .join("");
+  setBox("swarm-claims", `<ul class="swarm-list">${rows}</ul>`);
+}
+
+/** @param {any[]} deferred */
+function renderDeferred(deferred) {
+  if (!deferred.length) {
+    setBox("swarm-deferred", `<p class="muted">Nothing is waiting. Every queued thread can be claimed.</p>`);
+    return;
+  }
+  const rows = deferred
+    .map((d) => {
+      const title = d.title ? escapeHtml(d.title) : `thread ${escapeHtml(String(d.thread_id).slice(0, 8))}`;
+      const why = (d.reasons || [])
+        .map((r) => escapeHtml(REASON_LABELS[r] || r))
+        .join("; ");
+      return `<li class="swarm-row"><div><strong>${title}</strong></div><div class="muted">${why}</div></li>`;
+    })
+    .join("");
+  setBox("swarm-deferred", `<ul class="swarm-list">${rows}</ul>`);
+}
+
+/** @param {any[]} slots */
+function renderSlots(slots) {
+  if (!slots.length) {
+    setBox("swarm-slots", `<p class="muted">No slots in use.</p>`);
+    return;
+  }
+  const rows = slots
+    .map((s) => {
+      const cap = s.capacity == null ? "no limit set" : `of ${s.capacity} allowed`;
+      const full = s.capacity != null && s.in_use >= s.capacity ? ` <strong>Full.</strong>` : "";
+      return `<li class="swarm-row"><code>${escapeHtml(s.slot)}</code> <span class="muted">${s.in_use} in use ${escapeHtml(cap)}</span>${full}</li>`;
+    })
+    .join("");
+  setBox("swarm-slots", `<ul class="swarm-list">${rows}</ul>`);
+}
+
+/** @param {any[]} pauses */
+function renderPauses(pauses) {
+  if (!pauses.length) {
+    setBox("swarm-pauses", `<p class="muted">No repositories are paused.</p>`);
+    return;
+  }
+  const rows = pauses
+    .map((p) => {
+      const reason = p.reason ? ` <span class="muted">${escapeHtml(p.reason)}</span>` : "";
+      return `<li class="swarm-row">
+        <div><code>${escapeHtml(p.repo)}</code> <span class="muted">paused by ${escapeHtml(memberName(p.paused_by))}, ${escapeHtml(ago(p.paused_at))}</span>${reason}</div>
+        <button type="button" class="ghost" data-resume="${escapeHtml(p.repo)}">Resume</button>
+      </li>`;
+    })
+    .join("");
+  setBox("swarm-pauses", `<ul class="swarm-list">${rows}</ul>`);
+  box("swarm-pauses")
+    ?.querySelectorAll("button[data-resume]")
+    .forEach((btn) => {
+      btn.addEventListener("click", () => resumeRepo(/** @type {HTMLElement} */ (btn).dataset.resume || "", /** @type {HTMLButtonElement} */ (btn)));
+    });
+}
+
+async function loadSwarm() {
+  if (!wid()) {
+    ["swarm-claims", "swarm-deferred", "swarm-slots", "swarm-pauses"].forEach((id) =>
+      setBox(id, `<p class="muted">Set a workspace first.</p>`),
+    );
+    return;
+  }
+  if (!token()) {
+    const note = `<p class="muted">This panel reads the bearer API, like peers and token minting. Paste a token under Connect this browser to use it.</p>`;
+    ["swarm-claims", "swarm-deferred", "swarm-slots", "swarm-pauses"].forEach((id) => setBox(id, note));
+    return;
+  }
+  // Names first, so holders and pausers render as people, not raw ids.
+  await loadMembers();
+  const id = wid();
+  const jobs = [
+    ["swarm-claims", `/workspaces/${id}/claims`, renderClaims],
+    ["swarm-deferred", `/workspaces/${id}/deferred`, renderDeferred],
+    ["swarm-slots", `/workspaces/${id}/slots`, renderSlots],
+    ["swarm-pauses", `/workspaces/${id}/repo-pauses`, renderPauses],
+  ];
+  // Each list lands on its own: one failing list must not blank the rest.
+  await Promise.all(
+    jobs.map(async ([boxId, suffix, render]) => {
+      try {
+        render(await fetchList(/** @type {string} */ (suffix)));
+      } catch (e) {
+        sectionError(/** @type {string} */ (boxId), e);
+      }
+    }),
+  );
+}
+
+/** @param {string} repo @param {HTMLButtonElement} button */
+async function resumeRepo(repo, button) {
+  if (!repo) return;
+  let res;
+  try {
+    res = await writeApi(button, `${base()}/workspaces/${wid()}/repo-pauses?repo=${encodeURIComponent(repo)}`, {
+      method: "DELETE",
+      headers: headers(),
+      credentials: "include",
+    });
+  } catch (e) {
+    showError(unreachable(e));
+    return;
+  }
+  if (!res.ok) {
+    showError(await responseError(res, "Could not resume that repository"));
+    return;
+  }
+  await loadSwarm();
+}
+
+async function pauseRepo() {
+  const input = /** @type {HTMLInputElement | null} */ (box("swarm-pause-repo"));
+  const reasonInput = /** @type {HTMLInputElement | null} */ (box("swarm-pause-reason"));
+  const button = /** @type {HTMLButtonElement | null} */ (box("swarm-pause-submit"));
+  const repo = (input?.value || "").trim();
+  if (!repo) {
+    showError("Name the repository to pause, as owner/name.");
+    return;
+  }
+  let res;
+  try {
+    res = await writeApi(button, `${base()}/workspaces/${wid()}/repo-pauses`, {
+      method: "PUT",
+      headers: headers(true),
+      credentials: "include",
+      body: JSON.stringify({ repo, reason: (reasonInput?.value || "").trim() || undefined }),
+    });
+  } catch (e) {
+    showError(unreachable(e));
+    return;
+  }
+  if (!res.ok) {
+    showError(await responseError(res, "Could not pause that repository"));
+    return;
+  }
+  if (input) input.value = "";
+  if (reasonInput) reasonInput.value = "";
+  await loadSwarm();
+}
+
+function initSwarm() {
+  box("swarm-refresh")?.addEventListener("click", () => loadSwarm());
+  box("swarm-pause-submit")?.addEventListener("click", () => pauseRepo());
+  // While the panel is open it stays current on the board's own cadence;
+  // a closed panel costs no requests.
+  setInterval(() => {
+    if (box("panel-swarm")?.classList.contains("active")) loadSwarm();
+  }, 30000);
+}
+
+export { initSwarm, loadSwarm };

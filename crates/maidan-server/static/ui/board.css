@@ -623,3 +623,8 @@
 .card-status-needs_review { background: #f3e5f5; color: #6a1b9a; }
 .card-status-blocked { background: #ffebee; color: #c62828; }
 .card-status-done { background: #e8f5e9; color: #2e7d32; }
+
+/* Swarm panel: one row per claim, waiting thread, slot or paused repo. */
+.swarm-list { list-style: none; margin: 0.25rem 0 0.75rem; padding: 0; }
+.swarm-row { padding: 0.35rem 0; border-bottom: 1px solid var(--line, #ddd); }
+.swarm-items { margin: 0.15rem 0 0.15rem 1rem; padding: 0; }
