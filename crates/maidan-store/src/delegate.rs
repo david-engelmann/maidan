@@ -1318,6 +1318,21 @@ macro_rules! store_delegations {
                 result_deliveries::list_for_thread(self.pool(), thread_id).await
             }
 
+            async fn delivered_change_head(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<String>, StoreError> {
+                result_deliveries::delivered_change_head(
+                    self.pool(),
+                    workspace_id,
+                    repo,
+                    pull_number,
+                )
+                .await
+            }
+
             async fn get_result_delivery_by_id(
                 &self,
                 thread_id: ThreadId,
