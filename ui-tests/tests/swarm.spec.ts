@@ -36,7 +36,7 @@ test("the swarm panel shows claims, waiting threads, slots and pauses for the wo
   const waitingThread = await mkThread("Swarm waiting task");
 
   // The deployer claims the holder; the queue hands out the oldest first.
-  const claim = await request.post(`${fx.base_url}/channels/${channelId}/claim-next`, {
+  const claim = await request.post(`${fx.base_url}/channels/${channelId}/threads/claim-next`, {
     headers: bearer,
     data: { lease_secs: 900 },
   });
