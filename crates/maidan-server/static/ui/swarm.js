@@ -150,6 +150,7 @@ async function loadSwarm() {
   const current = () => gen === swarmLoadGen && wid() === id;
   // Names first, so holders and pausers render as people, not raw ids.
   await loadMembers();
+  /** @type {[string, string, (rows: any[]) => void][]} */
   const jobs = [
     ["swarm-claims", `/workspaces/${id}/claims`, renderClaims],
     ["swarm-deferred", `/workspaces/${id}/deferred`, renderDeferred],
