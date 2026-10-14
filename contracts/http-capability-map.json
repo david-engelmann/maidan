@@ -847,6 +847,24 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/slots",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/slots",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/workspaces/{id}/slots",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/threads/{id}/result",
     "capability": "workspace:read",
     "surface": "http"

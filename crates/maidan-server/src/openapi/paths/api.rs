@@ -2625,6 +2625,40 @@ pub fn pause_repo() {}
     ))]
 pub fn resume_repo() {}
 
+/// List a workspace's slots: capacities and how many live claims hold each
+#[utoipa::path(get, path = "/workspaces/{id}/slots", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [SlotUsage]),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_slots() {}
+
+/// Set a slot's capacity: the claim queue defers a thread whose slot is full
+#[utoipa::path(put, path = "/workspaces/{id}/slots", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SetSlotCapacity,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = SlotUsage),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn set_slot_capacity() {}
+
+/// Remove a slot's capacity
+#[utoipa::path(delete, path = "/workspaces/{id}/slots", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id"), SlotQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Removed"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn clear_slot_capacity() {}
+
 /// Get a thread's result
 #[utoipa::path(get, path = "/threads/{id}/result", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

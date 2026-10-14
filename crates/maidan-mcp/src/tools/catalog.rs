@@ -1399,7 +1399,7 @@ pub fn catalog() -> Vec<Value> {
                         "items": {
                             "type": "object",
                             "properties": {
-                                "kind": {"type": "string", "enum": ["path", "glob", "crate", "lane", "branch"]},
+                                "kind": {"type": "string", "enum": ["path", "glob", "crate", "lane", "branch", "slot"], "description": "slot names a shared resource such as a build slot (rust-build), counted across the workspace against the capacity an operator set; the others name part of the repository"},
                                 "value": {"type": "string"}
                             },
                             "required": ["kind", "value"]

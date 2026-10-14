@@ -2268,12 +2268,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "items": {
         "properties": {
           "kind": {
+            "description": "slot names a shared resource such as a build slot (rust-build), counted across the workspace against the capacity an operator set; the others name part of the repository",
             "enum": [
               "path",
               "glob",
               "crate",
               "lane",
-              "branch"
+              "branch",
+              "slot"
             ],
             "type": "string"
           },

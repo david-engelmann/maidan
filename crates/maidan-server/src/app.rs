@@ -228,6 +228,12 @@ pub fn router(state: AppState) -> Router {
                 .merge(delete(routes::resume_repo)),
         )
         .route(
+            "/workspaces/{id}/slots",
+            get(routes::list_slots)
+                .merge(put(routes::set_slot_capacity))
+                .merge(delete(routes::clear_slot_capacity)),
+        )
+        .route(
             "/workspaces/{id}/run-threads",
             get(routes::list_run_threads),
         )

@@ -5,8 +5,8 @@
 //! see the other's overlapping work as free before either commits.
 
 use maidan_types::{
-    ActiveClaim, Footprint, FootprintConflict, MemberId, NewAuditEvent, RepoPause, ThreadId,
-    WorkspaceId, DM_CHANNEL_NAME,
+    ActiveClaim, Footprint, FootprintConflict, MemberId, NewAuditEvent, RepoPause, SlotUsage,
+    ThreadId, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -266,4 +266,106 @@ pub async fn list_repo_pauses(
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(pause_row).collect())
+}
+
+/// The slots in use or with a capacity in `workspace_id`, by name.
+pub async fn list_slots(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<SlotUsage>, StoreError> {
+    let mut slots: std::collections::BTreeMap<String, SlotUsage> =
+        std::collections::BTreeMap::new();
+    let capacities =
+        sqlx::query("SELECT slot, capacity FROM maidan_slot_capacities WHERE workspace_id = $1")
+            .bind(workspace_id.0)
+            .fetch_all(pool)
+            .await?;
+    for row in &capacities {
+        let slot: String = row.get("slot");
+        slots.insert(
+            slot.clone(),
+            SlotUsage {
+                slot,
+                capacity: Some(row.get::<i64, _>("capacity")),
+                in_use: 0,
+            },
+        );
+    }
+    let in_use = sqlx::query(&format!(
+        "SELECT f.match_key AS slot, COUNT(DISTINCT f.thread_id) AS in_use
+         FROM maidan_thread_footprints f
+         JOIN maidan_threads held ON held.id = f.thread_id
+         WHERE f.workspace_id = $1 AND f.match_namespace = 'slot' AND {}
+         GROUP BY f.match_key",
+        live_claim("held", "NOW()")
+    ))
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    for row in &in_use {
+        let slot: String = row.get("slot");
+        let count: i64 = row.get("in_use");
+        slots
+            .entry(slot.clone())
+            .or_insert(SlotUsage {
+                slot,
+                capacity: None,
+                in_use: 0,
+            })
+            .in_use = count;
+    }
+    Ok(slots.into_values().collect())
+}
+
+/// Set `slot`'s capacity (already normalized) in `workspace_id`; the audit
+/// row commits with it (D-A).
+pub async fn set_slot_capacity(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    slot: &str,
+    capacity: i64,
+    updated_by: MemberId,
+    audit: NewAuditEvent,
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO maidan_slot_capacities (workspace_id, slot, capacity, updated_at, updated_by)
+         VALUES ($1, $2, $3, NOW(), $4)
+         ON CONFLICT (workspace_id, slot) DO UPDATE SET
+             capacity = excluded.capacity, updated_at = excluded.updated_at,
+             updated_by = excluded.updated_by",
+    )
+    .bind(workspace_id.0)
+    .bind(slot)
+    .bind(capacity)
+    .bind(updated_by.0)
+    .execute(&mut *tx)
+    .await?;
+    super::audit::append_counted(&mut tx, audit).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Remove `slot`'s capacity, so it limits nothing. `false`, and nothing
+/// recorded, when it had none.
+pub async fn clear_slot_capacity(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    slot: &str,
+    audit: NewAuditEvent,
+) -> Result<bool, StoreError> {
+    let mut tx = pool.begin().await?;
+    let removed =
+        sqlx::query("DELETE FROM maidan_slot_capacities WHERE workspace_id = $1 AND slot = $2")
+            .bind(workspace_id.0)
+            .bind(slot)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+            > 0;
+    if removed {
+        super::audit::append_counted(&mut tx, audit).await?;
+    }
+    tx.commit().await?;
+    Ok(removed)
 }

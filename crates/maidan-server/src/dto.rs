@@ -398,6 +398,14 @@ pub struct ActiveClaimsQuery {
     pub repo: Option<String>,
 }
 
+/// Query params for removing a slot's capacity.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct SlotQuery {
+    /// The slot's name.
+    pub slot: String,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

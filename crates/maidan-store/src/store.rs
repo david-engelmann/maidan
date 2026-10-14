@@ -2067,6 +2067,31 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<maidan_types::RepoPause>, StoreError>;
+    /// The slots in a workspace: each with a capacity, and each in use, with
+    /// how many live claims hold it.
+    async fn list_slots(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<maidan_types::SlotUsage>, StoreError>;
+    /// Set how many live claims may hold `slot` (normalized) at once; the
+    /// claim queue defers a thread whose slot is full. The audit row commits
+    /// with it.
+    async fn set_slot_capacity_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        slot: &str,
+        capacity: i64,
+        updated_by: MemberId,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// Remove a slot's capacity. `false`, and nothing recorded, when it had
+    /// none.
+    async fn clear_slot_capacity_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        slot: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same

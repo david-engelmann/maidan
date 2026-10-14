@@ -147,6 +147,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `repo` on `claim_next_thread` and `claim_next_workspace_thread` (MCP) and on the `claim-next` routes (HTTP). With it, only a thread whose footprint names that repository is claimed, so a worker bound to one repository's checkout never takes work it would have to release. Omitted, claiming is unchanged.
 
+### Build slots admit work by capacity
+
+- **Added:** a `slot` footprint kind and `PUT`, `GET` and `DELETE /workspaces/{id}/slots`. A slot names a shared resource such as a build slot, counted across the workspace whatever the repository. With a capacity of N, `claim_next` defers a thread holding the slot while N live claims hold it (counted as blocked), and a refinement onto a full slot is refused naming its holders. Setting a capacity takes `token:admin` and is audited; listing shows each slot's capacity and use. Migration 0173.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
