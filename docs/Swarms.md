@@ -124,6 +124,25 @@ after that lease would end.
 **A cheap win.** Declaring `{"kind": "branch", "value": <the agent branch>}`
 on every change task gives one agent per branch with no other setup.
 
+### Pausing a repository
+
+An operator can stop the swarm taking new work in one repository (during a
+deploy freeze, a broken `main`, or an incident) without stopping the rest:
+
+| | REST |
+|---|---|
+| Pause (`token:admin`), with an optional reason | `PUT /workspaces/{id}/repo-pauses` with `{"repo": "example/app", "reason": "deploy freeze"}` |
+| Resume (`token:admin`); `404` when it was not paused | `DELETE /workspaces/{id}/repo-pauses?repo=example/app` |
+| List (`workspace:read`) | `GET /workspaces/{id}/repo-pauses` |
+
+While a repository is paused, `claim_next` defers every thread whose footprint
+names it, exactly as it defers an overlapping one: the thread keeps its place
+and counts as blocked. Claims already held run on, so work in flight finishes.
+A thread with no footprint is never paused, so a producer that wants the
+pause to apply declares `repo` when it creates the thread, not after the claim.
+A pause binds one workspace, and both the pause and the resume are audited
+(`repo.pause`, `repo.resume`).
+
 ## Scaling notes
 
 - **Admit by build capacity, not by agent count.** Compiling and testing bind

@@ -2591,6 +2591,40 @@ pub fn get_thread_footprint() {}
     ))]
 pub fn list_active_claims() {}
 
+/// List a workspace's paused repositories
+#[utoipa::path(get, path = "/workspaces/{id}/repo-pauses", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [RepoPause]),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_repo_pauses() {}
+
+/// Pause a repository: the claim queue defers every thread whose footprint names it
+#[utoipa::path(put, path = "/workspaces/{id}/repo-pauses", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = PauseRepo,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = RepoPause),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn pause_repo() {}
+
+/// Lift a repository pause
+#[utoipa::path(delete, path = "/workspaces/{id}/repo-pauses", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id"), RepoPauseQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 204, description = "Resumed"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn resume_repo() {}
+
 /// Get a thread's result
 #[utoipa::path(get, path = "/threads/{id}/result", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

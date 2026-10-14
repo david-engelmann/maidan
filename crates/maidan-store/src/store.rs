@@ -2039,6 +2039,30 @@ pub trait AssignmentStore: Send + Sync {
         repo: Option<String>,
         readable_by: Option<MemberId>,
     ) -> Result<Vec<maidan_types::ActiveClaim>, StoreError>;
+    /// Pause `repo` (lowercase `owner/name`) in a workspace: the claim queue
+    /// defers every thread whose footprint names it until it is resumed.
+    /// Pausing a paused repository restates it. The audit row commits with
+    /// the pause.
+    async fn pause_repo_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        paused_by: MemberId,
+        reason: Option<&str>,
+        audit: crate::AuditFor<maidan_types::RepoPause>,
+    ) -> Result<maidan_types::RepoPause, StoreError>;
+    /// Lift a pause. `false`, and nothing recorded, when `repo` was not paused.
+    async fn resume_repo_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// The repositories paused in a workspace.
+    async fn list_repo_pauses(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<maidan_types::RepoPause>, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same

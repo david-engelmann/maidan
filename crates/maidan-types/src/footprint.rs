@@ -15,11 +15,16 @@
 //! `src/gateway`. A path never conflicts with a crate: nothing here knows
 //! which crate a path is in, so a producer that wants that safety names the
 //! lane as well.
+//!
+//! An operator can pause a repository in a workspace ([`RepoPause`]): the
+//! claim queue then defers every thread whose footprint names it, as it
+//! defers an overlapping one. A pause gates new claims only; work already
+//! claimed runs on, and a thread without a footprint is never paused.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{MemberId, ThreadId};
+use crate::ids::{MemberId, ThreadId, WorkspaceId};
 
 /// The most items one footprint may list.
 pub const FOOTPRINT_MAX_ITEMS: usize = 200;
@@ -237,6 +242,30 @@ pub struct FootprintConflict {
     pub kind: FootprintKind,
     pub value: String,
     pub mode: FootprintMode,
+}
+
+/// A repository paused in one workspace: no thread whose footprint names it
+/// is claimed until the pause is lifted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RepoPause {
+    pub workspace_id: WorkspaceId,
+    /// Lowercase `owner/name`, as footprints store it.
+    pub repo: String,
+    pub paused_at: DateTime<Utc>,
+    pub paused_by: MemberId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// The body of a pause: the repository, in any spelling [`normalize_repo`]
+/// accepts, and an optional note for the audit trail.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PauseRepo {
+    pub repo: String,
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[cfg(test)]

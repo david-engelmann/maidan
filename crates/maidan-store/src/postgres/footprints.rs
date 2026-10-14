@@ -5,7 +5,8 @@
 //! see the other's overlapping work as free before either commits.
 
 use maidan_types::{
-    ActiveClaim, Footprint, FootprintConflict, MemberId, ThreadId, WorkspaceId, DM_CHANNEL_NAME,
+    ActiveClaim, Footprint, FootprintConflict, MemberId, NewAuditEvent, RepoPause, ThreadId,
+    WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -15,6 +16,7 @@ use crate::error::StoreError;
 use crate::footprints::{
     conflict_from_row, footprint_from_rows, group_active, live_claim, ItemRow,
 };
+use crate::AuditFor;
 
 fn item_row(row: &sqlx::postgres::PgRow) -> ItemRow {
     ItemRow {
@@ -183,4 +185,85 @@ pub async fn list_active(
     .fetch_all(pool)
     .await?;
     group_active(rows.iter().map(item_row).collect())
+}
+
+fn pause_row(row: &sqlx::postgres::PgRow) -> RepoPause {
+    RepoPause {
+        workspace_id: WorkspaceId(row.get("workspace_id")),
+        repo: row.get("repo"),
+        paused_at: row.get("paused_at"),
+        paused_by: MemberId(row.get("paused_by")),
+        reason: row.get("reason"),
+    }
+}
+
+const PAUSE_COLS: &str = "workspace_id, repo, paused_at, paused_by, reason";
+
+/// Pause `repo` (already normalized) in `workspace_id`, or restate a pause
+/// with a new reason; the audit row commits with it (D-A).
+pub async fn pause_repo(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    paused_by: MemberId,
+    reason: Option<&str>,
+    audit_for: AuditFor<RepoPause>,
+) -> Result<RepoPause, StoreError> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(&format!(
+        "INSERT INTO maidan_repo_pauses (workspace_id, repo, paused_at, paused_by, reason)
+         VALUES ($1, $2, NOW(), $3, $4)
+         ON CONFLICT (workspace_id, repo) DO UPDATE SET
+             paused_at = excluded.paused_at, paused_by = excluded.paused_by,
+             reason = excluded.reason
+         RETURNING {PAUSE_COLS}"
+    ))
+    .bind(workspace_id.0)
+    .bind(repo)
+    .bind(paused_by.0)
+    .bind(reason)
+    .fetch_one(&mut *tx)
+    .await?;
+    let pause = pause_row(&row);
+    super::audit::append_counted(&mut tx, audit_for(&pause)).await?;
+    tx.commit().await?;
+    Ok(pause)
+}
+
+/// Lift the pause on `repo` in `workspace_id`. `false`, and nothing
+/// recorded, when it was not paused.
+pub async fn resume_repo(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    audit: NewAuditEvent,
+) -> Result<bool, StoreError> {
+    let mut tx = pool.begin().await?;
+    let removed =
+        sqlx::query("DELETE FROM maidan_repo_pauses WHERE workspace_id = $1 AND repo = $2")
+            .bind(workspace_id.0)
+            .bind(repo)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+            > 0;
+    if removed {
+        super::audit::append_counted(&mut tx, audit).await?;
+    }
+    tx.commit().await?;
+    Ok(removed)
+}
+
+/// The repositories paused in `workspace_id`, by repository.
+pub async fn list_repo_pauses(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<RepoPause>, StoreError> {
+    let rows = sqlx::query(&format!(
+        "SELECT {PAUSE_COLS} FROM maidan_repo_pauses WHERE workspace_id = $1 ORDER BY repo"
+    ))
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(pause_row).collect())
 }
