@@ -508,11 +508,14 @@ async fn maintenance_keeps_months_ahead_and_moves_rows_out_of_default() {
 
 /// Mark 0162 applied before the first run, so the log is built unpartitioned
 /// and filled the way an older server filled it; then unmark it and migrate.
+/// 0166 is marked with it: 0166 renames `idx_outbox_log_id`, which 0162
+/// creates, so with 0162 skipped the rename has nothing to rename and the
+/// migration run fails on this fixture.
 const SKIP_0162: &str = "CREATE TABLE maidan_migrations (
         version BIGINT PRIMARY KEY,
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    INSERT INTO maidan_migrations (version) VALUES (162);";
+    INSERT INTO maidan_migrations (version) VALUES (162), (166);";
 
 #[tokio::test]
 async fn the_migration_keeps_every_existing_row_in_order() {
