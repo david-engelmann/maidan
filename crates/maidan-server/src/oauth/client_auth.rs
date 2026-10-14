@@ -110,7 +110,9 @@ fn form_decode(raw: &str) -> Option<String> {
 }
 
 /// A pre-registered client, authenticated; `None` when the id names no
-/// pre-registered client (it may name a client metadata document).
+/// pre-registered client (it may name a client metadata document). A row
+/// marked with a metadata URL is not pre-registered either: the client
+/// resolves from its document, refreshed, in `authenticate_in`.
 ///
 /// A confidential client must send its secret, compared in constant time. A
 /// public client must not send one: a secret it does not have proves
@@ -126,6 +128,9 @@ pub async fn authenticate_preregistered(
     else {
         return Ok(None);
     };
+    if client.metadata_url.is_some() {
+        return Ok(None);
+    }
     check_secret(&client, creds)?;
     Ok(Some(client))
 }

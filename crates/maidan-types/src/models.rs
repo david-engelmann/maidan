@@ -3162,6 +3162,13 @@ pub struct OAuthClient {
     pub client_secret_hash: Option<String>,
     pub allowed_scopes: Vec<String>,
     pub revoked_at: Option<DateTime<Utc>>,
+    /// The client metadata document this client was resolved from, for a
+    /// client identified by one (its `client_id` is that URL). `None` for
+    /// a pre-registered client. A marked row is a cache of the document
+    /// and the anchor for its codes' and grants' foreign keys — it never
+    /// makes the client pre-registered: resolution always re-fetches the
+    /// document through the egress guard and refreshes the row.
+    pub metadata_url: Option<String>,
 }
 
 /// An OAuth 2.1 authorization code. Only the SHA-256 hash of the code is
