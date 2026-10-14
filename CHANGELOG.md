@@ -155,6 +155,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `footprint` on `POST /channels/{cid}/threads` and the MCP `create_thread` tool. The footprint commits with the thread, so the claim queue applies it from the first claim, and a producer declares it under the `workspace:write` that creating the thread already needs. A separate `PUT /threads/{id}/footprint` needed `thread:transition`, which a producer should not hold. An invalid footprint is a `400` and creates nothing.
 
+### rustls advisories of 2026-10
+
+- **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
