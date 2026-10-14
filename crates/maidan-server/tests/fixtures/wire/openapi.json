@@ -4972,7 +4972,7 @@
         "type": "object"
       },
       "OAuthGrantView": {
-        "description": "One grant as the member sees it. `client_name` is set only when the\nclient is in the registry; a client identified by a metadata document\nhas no registry row and shows by its client id alone.",
+        "description": "One grant as the member sees it. `client_name` comes from the\nclient's registry row (a metadata-document client gets its row on\nfirst use at `/authorize`); it is absent only for a row that predates\nthe name being recorded, and then the grant shows by client id alone.",
         "properties": {
           "client_id": {
             "type": "string"
