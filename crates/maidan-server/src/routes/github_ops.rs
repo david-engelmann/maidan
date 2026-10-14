@@ -147,7 +147,7 @@ pub async fn flip_pull_ready_guarded(
 /// token, a session, another app's token, or an app that merely shares the
 /// designated app's slug in another workspace is refused, whatever
 /// capabilities it carries. No designated app refuses every call.
-async fn require_mark_ready_app(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
+pub(super) async fn require_mark_ready_app(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
     let refused = || {
         ApiError::Forbidden("only the operator-designated app may mark pull requests ready".into())
     };
@@ -174,7 +174,7 @@ async fn require_mark_ready_app(state: &AppState, auth: &AuthContext) -> ApiResu
 }
 
 /// A GitHub failure as an HTTP status.
-fn github_api_error(err: GithubError) -> ApiError {
+pub(super) fn github_api_error(err: GithubError) -> ApiError {
     match err {
         GithubError::Api { status: 404, .. } => ApiError::NotFound,
         GithubError::Refused(reason) => ApiError::Forbidden(reason),
@@ -221,7 +221,7 @@ async fn audit_mark_ready(
 /// `owner/name`, each side one or more of `[A-Za-z0-9_.-]`. Anything else is
 /// a 400: GitHub would reject it, and a path-shaped value must never reach
 /// the URL builder unvalidated.
-fn valid_repo_shape(repo: &str) -> bool {
+pub(super) fn valid_repo_shape(repo: &str) -> bool {
     let mut parts = repo.split('/');
     let part_ok = |p: &str| {
         !p.is_empty()

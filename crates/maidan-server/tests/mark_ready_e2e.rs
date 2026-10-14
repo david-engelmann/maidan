@@ -121,7 +121,7 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
     let pull_json = |p: &FakePull| {
         json!({
             "number": p.number,
-            "head": {"ref": p.head, "repo": {"full_name": p.head_repo}},
+            "head": {"ref": p.head, "sha": "1111111111111111111111111111111111111111", "repo": {"full_name": p.head_repo}},
             "base": {"ref": p.base, "repo": {"full_name": "o/repo"}},
             "draft": p.draft,
             "state": if p.open { "open" } else { "closed" },

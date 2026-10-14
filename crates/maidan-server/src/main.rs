@@ -818,6 +818,15 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
             tracing::info!(?bases, "mark-ready base pins configured");
         }
     }
+    // The label each repository's merge queue takes ready agent pull requests
+    // by. A malformed value refuses boot rather than enqueueing nothing, or
+    // the wrong repository, without a word.
+    if let Ok(raw) = std::env::var(maidan_types::MERGE_QUEUE_LABELS_ENV) {
+        state.merge_queue_labels = maidan_types::MergeQueueLabels::parse(&raw)?;
+        if !state.merge_queue_labels.is_empty() {
+            tracing::info!("merge-queue labels configured");
+        }
+    }
     // Not a boot refusal: no pins is a valid setup. But a deploy that names the
     // mark-ready app and drops the bases (they were built in until #1315) lets
     // every flip follow the workspace allowlist alone, and nothing says so.

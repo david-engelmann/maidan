@@ -472,6 +472,8 @@ pub struct GithubPull {
     pub html_url: String,
     /// The branch it merges into.
     pub base: String,
+    /// The label names it carries.
+    pub labels: Vec<String>,
 }
 
 /// A pull request as read for the mark-ready guard: head, base, draft flag
@@ -494,6 +496,11 @@ pub struct GithubPullBrief {
     /// Whether the pull request is open. A closed draft cannot be marked
     /// ready, so the flip refuses it plainly instead of failing at GitHub.
     pub open: bool,
+    /// The head commit, from the same read: the enqueue guard compares it with
+    /// the commit Maidan delivered.
+    pub head_sha: String,
+    /// The label names the pull request carries.
+    pub labels: Vec<String>,
 }
 
 /// What flipping a pull request to ready did.
@@ -604,6 +611,27 @@ pub trait GithubGit: Send + Sync {
         node_id: &str,
         _pass: MarkReadyGuardPass,
     ) -> Result<(), GithubError>;
+    /// Add `label` to a pull request: the label the repository's merge queue
+    /// takes ready work from. No guards here, as for [`Self::set_pull_ready`]:
+    /// the `_pass` is mintable only by the enqueue guard path
+    /// ([`crate::routes::enqueue_pull_guarded`]), which ran every guard on the
+    /// same read first.
+    async fn add_pull_label(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        label: &str,
+        _pass: crate::routes::EnqueueGuardPass,
+    ) -> Result<(), GithubError>;
+    /// Remove `label` from a pull request; `Ok(false)` when it was not there.
+    /// Guarded by the dequeue path, as [`Self::add_pull_label`] is by enqueue.
+    async fn remove_pull_label(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        label: &str,
+        _pass: crate::routes::EnqueueGuardPass,
+    ) -> Result<bool, GithubError>;
 }
 
 /// One issue/PR comment as GitHub returns it. Only `id` and `body` are needed
@@ -1054,7 +1082,23 @@ fn pull_from(value: &serde_json::Value) -> Result<GithubPull, GithubError> {
         number,
         html_url: field(value, "/html_url")?,
         base: field(value, "/base/ref")?,
+        labels: label_names(value),
     })
+}
+
+/// The `labels[].name` of an issue or pull request as GitHub returns it.
+fn label_names(value: &serde_json::Value) -> Vec<String> {
+    value
+        .get("labels")
+        .and_then(serde_json::Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(|label| label.get("name").and_then(serde_json::Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Percent-encode each segment of a path or branch, keeping its slashes.
@@ -1301,7 +1345,69 @@ impl GithubGit for GithubApiClient {
                 _ => false,
             },
             open: value.get("state").and_then(serde_json::Value::as_str) == Some("open"),
+            head_sha: field(&value, "/head/sha")?,
+            labels: label_names(&value),
         })
+    }
+
+    async fn add_pull_label(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        label: &str,
+        _pass: crate::routes::EnqueueGuardPass,
+    ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
+        let request = self
+            .request(
+                reqwest::Method::POST,
+                repo,
+                &format!("/issues/{pull_number}/labels"),
+            )
+            .await?
+            .json(&serde_json::json!({ "labels": [label] }));
+        let value = self.send_json(request).await?;
+        // The answer is the issue's labels after the write; the label counts
+        // as applied only when it is among them.
+        let applied = value.as_array().is_some_and(|labels| {
+            labels
+                .iter()
+                .any(|l| l.get("name").and_then(serde_json::Value::as_str) == Some(label))
+        });
+        if applied {
+            Ok(())
+        } else {
+            Err(GithubError::Http(format!(
+                "github label unverified: `{label}` not on {repo}#{pull_number} after the write"
+            )))
+        }
+    }
+
+    async fn remove_pull_label(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        label: &str,
+        _pass: crate::routes::EnqueueGuardPass,
+    ) -> Result<bool, GithubError> {
+        self.ensure_writable(repo)?;
+        let request = self
+            .request(
+                reqwest::Method::DELETE,
+                repo,
+                &format!(
+                    "/issues/{pull_number}/labels/{}",
+                    urlencoding::encode(label)
+                ),
+            )
+            .await?;
+        match self.send_json(request).await {
+            Ok(_) => Ok(true),
+            // GitHub answers 404 when the label is not on the issue: already
+            // dequeued, which is the state the caller asked for.
+            Err(GithubError::Api { status: 404, .. }) => Ok(false),
+            Err(err) => Err(err),
+        }
     }
 
     async fn set_pull_ready(

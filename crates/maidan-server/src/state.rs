@@ -222,6 +222,9 @@ pub struct AppState {
     /// (`MAIDAN_MARK_READY_BASES`). Empty pins nothing: every flip is then
     /// decided by the workspace egress allowlist alone.
     pub mark_ready_bases: maidan_types::MarkReadyBases,
+    /// Each repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`). A
+    /// repository not listed is never enqueued.
+    pub merge_queue_labels: maidan_types::MergeQueueLabels,
     /// A2A Agent Card transport advertisement config: public origin for
     /// absolute interface URLs + the advertised gRPC address. Default empty
     /// (host-relative URLs, no gRPC interface); the server binary sets it from
@@ -371,6 +374,7 @@ impl AppState {
             github_sender: None,
             mark_ready_app_id: None,
             mark_ready_bases: maidan_types::MarkReadyBases::default(),
+            merge_queue_labels: maidan_types::MergeQueueLabels::default(),
             a2a_card: crate::a2a_agent::A2aCardConfig::default(),
             read_replica_enabled: false,
             read_routing_metrics: None,

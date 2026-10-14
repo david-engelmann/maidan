@@ -130,6 +130,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** the Live panel's raw event feed keeps only its newest 500 lines, dropping the oldest as new events arrive, and each line is appended as a text node. A long live session no longer grows the panel's DOM without bound, and an append no longer re-reads and re-writes every line already shown.
 
+### The merge queue takes a ready agent pull request
+
+- **Added:** `POST`, `GET` and `DELETE /operator/github/enqueue`: the mark-ready app adds, reads and removes a repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`, `owner/name=label`) on a ready agent pull request. Enqueue runs the mark-ready guards on one read and also requires the head to be the commit the change flow last delivered, naming both SHAs when it is not; dequeue skips the head comparison, since the queue rebases.
+- **Changed:** the change flow refuses a delivery to a pull request that carries its repository's merge-queue label, before any write, so nothing lands apart from the head the queue took.
+
 ### An operator pauses one repository's work
 
 - **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.

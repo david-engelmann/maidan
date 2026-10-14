@@ -55,6 +55,7 @@ period is cut, and clients retry.
 | `MAIDAN_GITHUB_APP_PRIVATE_KEY` | with a GitHub App | The app's private key, PEM, as GitHub downloads it (`RSA PRIVATE KEY`) or PKCS#8 (`PRIVATE KEY`). Newlines written as `\n` are accepted. Prefer `MAIDAN_GITHUB_APP_PRIVATE_KEY_FILE`. A key that does not parse, or is shorter than 2048 bits, refuses boot; the error names the variable, never the key. |
 | `MAIDAN_MARK_READY_APP_ID` | for mark-ready | The id of the one app whose installations may call `POST /operator/github/mark-ready`: the **mark-ready app**, the client in the change flow that asks Maidan to flip its draft pull requests to ready. An app id is unique across the instance; an app slug is not, so the slug is never trusted. Unset, every mark-ready call is refused. A value that is not a UUID refuses boot. |
 | `MAIDAN_MARK_READY_BASES` | no | Comma-separated `owner/name=branch` pairs: the only base each listed repository's agent pull requests may be marked ready into, for example `example-org/example-repo=dev,example-org/example-skills=main`. Repository names compare case-insensitively, as in `MAIDAN_GITHUB_WRITE_REPOS`. A repository not listed is pinned to no base; the workspace egress allowlist (`owner/name@base`) decides its flips alone. Blank entries are skipped. An entry that is not `owner/name=branch`, a branch name git would refuse, `prod`, or a repository listed twice refuses boot. With `MAIDAN_MARK_READY_APP_ID` set and no pins, boot logs a warning. |
+| `MAIDAN_MERGE_QUEUE_LABELS` | no | Comma-separated `owner/name=label` pairs: the label that enters a ready agent pull request into each listed repository's merge queue, for example `example-org/example-repo=ready-to-merge`. Only the mark-ready app may add or remove it (`/operator/github/enqueue`), and the change flow refuses to push to a pull request that carries it. A repository not listed is never enqueued, so leave out any repository whose changes a person merges. Repository names compare case-insensitively. An entry that is not `owner/name=label`, a label that is empty or longer than 50 characters, or a repository listed twice refuses boot. |
 | `MAIDAN_ENV`    | no       | Set to `production` to forbid `AUTH_DISABLED` outright.       |
 | `MAIDAN_PUBLIC_ORIGIN` | no | This instance's public origin, such as `https://maidan.example.com` (`https`, or `http` on a loopback host, with no path). OAuth identifiers are built from it. Unset, the instance serves no OAuth metadata. A malformed value refuses boot. See [OAuth](OAuth.md). |
 | `MAIDAN_ALLOWED_HOSTS` | no | Comma-separated host names, without ports, that a request with no credential may name under `AUTH_DISABLED` or the anonymous MCP reader, besides loopback names and IP addresses. A public dev instance lists its own name. See "DNS rebinding". |
@@ -468,7 +469,10 @@ let the mark-ready app mark agent pull requests ready, set `MAIDAN_MARK_READY_AP
 to the id of that app (`GET /workspaces/{wid}/apps` lists it). To pin a
 repository's flips to one base whatever its allowlist blesses, list it in
 `MAIDAN_MARK_READY_BASES`, for example
-`MAIDAN_MARK_READY_BASES=example/app=dev,example/skills=main`.
+`MAIDAN_MARK_READY_BASES=example/app=dev,example/skills=main`. To let the
+same app put a ready pull request into a repository's merge queue, name the
+queue's label in `MAIDAN_MERGE_QUEUE_LABELS`, for example
+`MAIDAN_MERGE_QUEUE_LABELS=example/app=ready-to-merge`.
 
 **4. The services.** Auth is on: nothing sets `AUTH_DISABLED`, and
 `MAIDAN_ENV=production` refuses it and the development KEK outright. With
