@@ -64,6 +64,14 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    once the workspace has allowed it: a GitHub pull request or comment, a
    Slack thread, a Linear issue comment (with an optional state move). See
    [Result Delivery](Result%20Delivery.md).
+9. **Merge queue.** Once checks and reviews pass, the client that marks agent
+   pull requests ready can enqueue one (`POST /operator/github/enqueue`): Maidan
+   adds the repository's merge-queue label, and only when the pull request's
+   head is still the commit Maidan delivered, so nothing pushed after review
+   reaches the queue. While a pull request is queued, Maidan refuses to push
+   another change to it; dequeue first (`DELETE`). The queue itself (a label
+   driven one, such as Graphite's) does the merging. A repository a person
+   merges is left out of `MAIDAN_MERGE_QUEUE_LABELS` and is never enqueued.
 
 ## Claim footprints
 
