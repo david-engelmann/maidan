@@ -37,7 +37,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### A change that ends without a commit says why in its one Slack notice
 
-- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
+- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
 
 ### A result delivered to GitHub links its attached files
 
@@ -122,9 +122,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
 
+### OAuth grant management
+
+- **Added:** a member can list the OAuth grants clients hold on them in a workspace and revoke one — `GET /workspaces/{wid}/oauth-grants`, `POST /workspaces/{wid}/oauth-grants/{gid}/revoke`, and the console page at `/ui/oauth/grants`. Every read is scoped to the caller's own workspace and member, so another tenant's grant is a 404. Revoking ends the grant's whole lineage, access and refresh tokens alike, through the audited lineage revocation.
+
 ### Hybrid search ranks a deeper candidate pool
 
 - **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)
+
+### Metadata-document clients get a registry row
+
+- **Fixed:** a client identified by a client metadata document could never finish the authorization flow: its authorization codes and grants reference `oauth_clients` by foreign key, and such a client was never stored there, so the first code insert failed. On first use a resolved metadata-document client is now persisted in `oauth_clients`, marked with its metadata URL (migration 0172). The row is a cache and the foreign keys' anchor — deleting it still cascades to the client's codes and grants — and it never makes the client pre-registered: every resolution re-fetches the document through the egress guard and refreshes the row, and a revoked or pre-registered row is never overwritten by a fetched document.
 
 ### The board's live feed is capped
 
@@ -158,6 +166,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### rustls advisories of 2026-10
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
+
+### Public `main` names no internal project
+
+- **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
 
 ### The audit log is partitioned by month
 

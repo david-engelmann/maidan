@@ -9,9 +9,15 @@
 //!    in the workspace's egress allowlist. This is the egress guard: a
 //!    client cannot make the server fetch an arbitrary URL.
 //!
-//! A CIMD client is used ephemerally for the request; it is not persisted.
-//! Its redirect URIs and scopes are validated the same way as a
-//! pre-registered client's.
+//! A resolved CIMD client is persisted as a row in `oauth_clients`,
+//! marked with its metadata URL (migration 0172): its codes and grants
+//! need the row for their foreign keys, and deleting the row still
+//! cascades to them. The row is a cache, never an authority — a marked
+//! row is never served as pre-registered. Every resolution re-fetches
+//! the document through the egress guard and refreshes the row from it,
+//! so its redirect URIs and scopes are validated against the live
+//! document the same way as a pre-registered client's are against the
+//! operator's record.
 
 use maidan_types::{NewOAuthClient, OAuthClient, WorkspaceId};
 use serde::Deserialize;
@@ -106,20 +112,25 @@ fn validate_redirect_uris(uris: &[String]) -> ApiResult<()> {
 }
 
 /// Resolve a `client_id` to a client.
-/// 1. Pre-registered (DB) — exact match, not revoked.
+/// 1. Pre-registered (DB) — exact match, not revoked, unmarked.
 /// 2. CIMD: if `client_id` is an HTTPS URL, fetch the document through the
-///    egress guard and validate it.
+///    egress guard and validate it. A metadata-document client's row is
+///    refreshed from the document, never served from the cache: a marked
+///    row in the DB takes this path too.
 pub async fn resolve_client(
     state: &AppState,
     workspace_id: WorkspaceId,
     client_id: &str,
 ) -> ApiResult<OAuthClient> {
-    // Pre-registered first.
+    // Pre-registered first. A row marked with a metadata URL is not
+    // pre-registered, however fresh: it falls through to the fetch.
     if let Some(client) = state.store.get_oauth_client_by_client_id(client_id).await? {
-        if client.revoked_at.is_none() {
+        if client.revoked_at.is_some() {
+            return Err(ApiError::BadRequest("client is revoked".into()));
+        }
+        if client.metadata_url.is_none() {
             return Ok(client);
         }
-        return Err(ApiError::BadRequest("client is revoked".into()));
     }
 
     // CIMD: client_id must be an HTTPS URL.
@@ -168,23 +179,32 @@ pub async fn resolve_client(
     }
     validate_redirect_uris(&doc.redirect_uris)?;
 
-    // Ephemeral client: not persisted. The caller validates redirect URI
-    // and scopes against these.
-    Ok(OAuthClient {
-        id: uuid::Uuid::now_v7(),
-        client_id: client_id.to_string(),
-        name: doc.client_name.unwrap_or_else(|| client_id.to_string()),
-        redirect_uris: doc.redirect_uris,
-        client_secret_hash: None, // CIMD clients are public (PKCE only)
-        allowed_scopes: doc
-            .scope
-            .map(|s| {
-                s.split(' ')
-                    .filter(|c| !c.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default(),
-        revoked_at: None,
-    })
+    // Persist the document's client as a marked row (or refresh the live
+    // one): the codes and grants this client goes on to mint reference
+    // the row through their foreign keys. `None` means the row that
+    // carries this client_id is revoked or pre-registered — neither may
+    // be replaced by a fetched document.
+    let client = state
+        .store
+        .upsert_oauth_metadata_client(
+            NewOAuthClient {
+                client_id: client_id.to_string(),
+                name: doc.client_name.unwrap_or_else(|| client_id.to_string()),
+                redirect_uris: doc.redirect_uris,
+                client_secret_hash: None, // CIMD clients are public (PKCE only)
+                allowed_scopes: doc
+                    .scope
+                    .map(|s| {
+                        s.split(' ')
+                            .filter(|c| !c.is_empty())
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            },
+            client_id,
+        )
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("client is revoked".into()))?;
+    Ok(client)
 }

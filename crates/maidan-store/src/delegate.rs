@@ -3721,6 +3721,14 @@ macro_rules! store_delegations {
                 oauth_as::get_client_by_client_id(self.pool(), client_id).await
             }
 
+            async fn upsert_oauth_metadata_client(
+                &self,
+                new: NewOAuthClient,
+                metadata_url: &str,
+            ) -> Result<Option<OAuthClient>, StoreError> {
+                oauth_as::upsert_metadata_client(self.pool(), new, metadata_url).await
+            }
+
             async fn create_oauth_authorization_code(
                 &self,
                 new: NewOAuthAuthorizationCode,
@@ -3772,6 +3780,14 @@ macro_rules! store_delegations {
                 scope: &[String],
             ) -> Result<Option<OAuthGrant>, StoreError> {
                 oauth_as::find_grant(self.pool(), client_id, member_id, workspace_id, scope).await
+            }
+
+            async fn list_oauth_grants(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<OAuthGrant>, StoreError> {
+                oauth_as::list_grants(self.pool(), workspace_id, member_id).await
             }
 
             async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError> {

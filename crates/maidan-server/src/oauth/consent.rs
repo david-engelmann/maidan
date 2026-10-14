@@ -118,7 +118,7 @@ pub async fn consent_page(
     ))
 }
 
-fn html_escape(s: &str) -> String {
+pub(super) fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

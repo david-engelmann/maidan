@@ -1,0 +1,10 @@
+# Internal project, team and repository names that must not appear in the
+# public tree, kept as digests so this file does not name them either. One
+# per line: the name's length in characters, then the SHA-256 of the name in
+# lowercase. scripts/check-no-internal-names.sh reads it (the lint job in CI).
+#
+# To add a name:  printf %s 'name' | tr '[:upper:]' '[:lower:]' | shasum -a 256
+# and prepend its length.
+10 7aaaa3946f3f4de633bda31fc85970434577eb3b0d4540b00879727861012586
+7 973bd1dfb5d6c2b6f9f903e831d81c62e217bb83d43a543eb31abfcfb13e0a31
+4 c0e7feb9b63504a7b059f2914e25fe660d8fc5d952307641d8fb13adfcc6f5aa

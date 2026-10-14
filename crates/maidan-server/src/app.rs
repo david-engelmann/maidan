@@ -354,6 +354,14 @@ pub fn router(state: AppState) -> Router {
             delete(routes::revoke_delegation_grant),
         )
         .route(
+            "/workspaces/{wid}/oauth-grants",
+            get(routes::list_oauth_grants),
+        )
+        .route(
+            "/workspaces/{wid}/oauth-grants/{gid}/revoke",
+            post(routes::revoke_oauth_grant),
+        )
+        .route(
             "/workspaces/{wid}/apps",
             post(apps::register_app).merge(get(apps::list_apps)),
         )
@@ -1587,7 +1595,19 @@ pub fn router(state: AppState) -> Router {
         // session. Consumes the pending request (single use).
         .route(
             "/ui/api/oauth/consent",
-            post(oauth::consent::decide_consent).layer(session_auth),
+            post(oauth::consent::decide_consent).layer(session_auth.clone()),
+        )
+        // Grant management page: the member sees which clients hold
+        // their consent in this workspace. Signed-in session only.
+        .route(
+            "/ui/oauth/grants",
+            get(oauth::grants::grants_page).layer(session_auth.clone()),
+        )
+        // Grant revoke: same-origin POST on the signed-in session.
+        // Ends the grant's whole token lineage.
+        .route(
+            "/ui/api/oauth/grants/{gid}/revoke",
+            post(oauth::grants::revoke_grant).layer(session_auth),
         )
         .route("/llms.txt", get(llms_txt))
         .merge({
