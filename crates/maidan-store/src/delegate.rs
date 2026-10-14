@@ -2533,6 +2533,41 @@ macro_rules! store_delegations {
                 footprints::list_repo_pauses(self.pool(), workspace_id).await
             }
 
+            async fn list_slots(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<maidan_types::SlotUsage>, StoreError> {
+                footprints::list_slots(self.pool(), workspace_id).await
+            }
+
+            async fn set_slot_capacity_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                slot: &str,
+                capacity: i64,
+                updated_by: MemberId,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                footprints::set_slot_capacity(
+                    self.pool(),
+                    workspace_id,
+                    slot,
+                    capacity,
+                    updated_by,
+                    audit,
+                )
+                .await
+            }
+
+            async fn clear_slot_capacity_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                slot: &str,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                footprints::clear_slot_capacity(self.pool(), workspace_id, slot, audit).await
+            }
+
             async fn reap_expired_claims(
                 &self,
                 now: chrono::DateTime<chrono::Utc>,

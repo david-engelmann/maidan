@@ -16,6 +16,13 @@
 //! which crate a path is in, so a producer that wants that safety names the
 //! lane as well.
 //!
+//! A `slot` item names a shared resource rather than part of the repository,
+//! such as a build slot (`rust-build`). Slots are counted across the whole
+//! workspace, whatever the repository or mode: when an operator sets a
+//! capacity for a slot ([`SlotUsage`]), the claim queue defers a thread whose
+//! slot already has that many live claims, so N agents build at once and the
+//! rest wait their turn. A slot without a capacity limits nothing.
+//!
 //! An operator can pause a repository in a workspace ([`RepoPause`]): the
 //! claim queue then defers every thread whose footprint names it, as it
 //! defers an overlapping one. A pause gates new claims only; work already
@@ -65,6 +72,7 @@ pub enum FootprintKind {
     Crate,
     Lane,
     Branch,
+    Slot,
 }
 
 impl FootprintKind {
@@ -75,6 +83,7 @@ impl FootprintKind {
             Self::Crate => "crate",
             Self::Lane => "lane",
             Self::Branch => "branch",
+            Self::Slot => "slot",
         }
     }
 
@@ -85,6 +94,7 @@ impl FootprintKind {
             "crate" => Some(Self::Crate),
             "lane" => Some(Self::Lane),
             "branch" => Some(Self::Branch),
+            "slot" => Some(Self::Slot),
             _ => None,
         }
     }
@@ -156,6 +166,10 @@ impl Footprint {
         }
         for item in &mut self.items {
             item.value = item.value.trim().to_string();
+            // Slot names compare across the workspace, so one spelling.
+            if item.kind == FootprintKind::Slot {
+                item.value = item.value.to_ascii_lowercase();
+            }
             if item.value.chars().count() > VALUE_MAX_CHARS {
                 return Err(format!(
                     "a footprint value is at most {VALUE_MAX_CHARS} characters"
@@ -242,6 +256,41 @@ pub struct FootprintConflict {
     pub kind: FootprintKind,
     pub value: String,
     pub mode: FootprintMode,
+}
+
+/// A slot's name as it is stored and compared: trimmed and lowercase, at most
+/// 512 characters, no control characters.
+pub fn normalize_slot(raw: &str) -> Result<String, String> {
+    let slot = raw.trim().to_ascii_lowercase();
+    if slot.is_empty() {
+        return Err("a slot needs a name".into());
+    }
+    if slot.chars().count() > VALUE_MAX_CHARS || slot.chars().any(char::is_control) {
+        return Err(format!(
+            "a slot name is at most {VALUE_MAX_CHARS} characters, with no control characters"
+        ));
+    }
+    Ok(slot)
+}
+
+/// A slot in a workspace: its capacity, when an operator set one, and how
+/// many live claims hold it now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SlotUsage {
+    pub slot: String,
+    /// `None` for a slot in use that has no capacity, which limits nothing.
+    pub capacity: Option<i64>,
+    pub in_use: i64,
+}
+
+/// The body that sets a slot's capacity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SetSlotCapacity {
+    pub slot: String,
+    /// At least 1: how many live claims may hold the slot at once.
+    pub capacity: i64,
 }
 
 /// A repository paused in one workspace: no thread whose footprint names it

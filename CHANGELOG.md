@@ -139,6 +139,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.
 
+### Build slots admit work by capacity
+
+- **Added:** a `slot` footprint kind and `PUT`, `GET` and `DELETE /workspaces/{id}/slots`. A slot names a shared resource such as a build slot, counted across the workspace whatever the repository. With a capacity of N, `claim_next` defers a thread holding the slot while N live claims hold it (counted as blocked), and a refinement onto a full slot is refused naming its holders. Setting a capacity takes `token:admin` and is audited; listing shows each slot's capacity and use. Migration 0173.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

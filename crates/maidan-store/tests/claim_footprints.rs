@@ -503,6 +503,98 @@ fn audit_for(ws: WorkspaceId, action: &str) -> maidan_store::AuditFor<RepoPause>
     Box::new(move |_| event)
 }
 
+/// A slot with a capacity admits that many live claims across the whole
+/// workspace, whatever their repository: the next thread holding it waits,
+/// counted as blocked, a refinement onto the full slot is refused naming its
+/// holders, and a release lets the waiting thread through.
+async fn a_full_slot_holds_work_until_a_holder_finishes(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "slots", 3).await;
+    let build = |lane: &str, repo: &str| {
+        let mut fp = footprint(
+            FootprintMode::Shared,
+            &[
+                (FootprintKind::Lane, lane),
+                (FootprintKind::Slot, "Rust-Build"),
+            ],
+        );
+        fp.repo = repo.into();
+        fp
+    };
+    let first = task(store.as_ref(), room.channel, "first").await;
+    let second = task(store.as_ref(), room.channel, "second").await;
+    let third = task(store.as_ref(), room.channel, "third").await;
+    let free = task(store.as_ref(), room.channel, "free").await;
+    declare(store.as_ref(), first, build("a", REPO)).await;
+    declare(store.as_ref(), second, build("b", "example/other")).await;
+    declare(store.as_ref(), third, build("c", REPO)).await;
+    store
+        .set_slot_capacity_audited(
+            room.ws,
+            "rust-build",
+            2,
+            room.agents[0],
+            audit(room.ws, "slot.capacity.set"),
+        )
+        .await
+        .unwrap();
+
+    let held = claim(store.as_ref(), &room, 0).await.unwrap();
+    assert_eq!(held.id, first);
+    assert_eq!(claim(store.as_ref(), &room, 1).await.unwrap().id, second);
+    assert_eq!(
+        claim(store.as_ref(), &room, 2).await.unwrap().id,
+        free,
+        "the slot is full across repositories, so the third build waits"
+    );
+    let depth = store.channel_queue_depth(room.channel, None).await.unwrap();
+    assert_eq!((depth.assigned, depth.ready, depth.blocked), (3, 0, 1));
+    assert_eq!(
+        store.list_slots(room.ws).await.unwrap(),
+        vec![SlotUsage {
+            slot: "rust-build".into(),
+            capacity: Some(2),
+            in_use: 2,
+        }]
+    );
+
+    let refused = store
+        .set_thread_footprint(
+            free,
+            Some(footprint(
+                FootprintMode::Shared,
+                &[(FootprintKind::Slot, "rust-build")],
+            )),
+        )
+        .await
+        .unwrap();
+    let mut holders: Vec<_> = refused.iter().map(|c| c.thread_id.0).collect();
+    holders.sort();
+    let mut expected = vec![first.0, second.0];
+    expected.sort();
+    assert_eq!(holders, expected, "the refusal names the slot's holders");
+    assert!(refused.iter().all(|c| c.kind == FootprintKind::Slot));
+
+    store
+        .release_claim(first, room.agents[0], held.claim_lease_id.unwrap())
+        .await
+        .unwrap();
+    assert_eq!(claim(store.as_ref(), &room, 0).await.unwrap().id, third);
+
+    assert!(store
+        .clear_slot_capacity_audited(room.ws, "rust-build", audit(room.ws, "slot.capacity.clear"))
+        .await
+        .unwrap());
+    assert!(!store
+        .clear_slot_capacity_audited(room.ws, "rust-build", audit(room.ws, "slot.capacity.clear"))
+        .await
+        .unwrap());
+    assert_eq!(
+        store.list_slots(room.ws).await.unwrap()[0].capacity,
+        None,
+        "a slot in use without a capacity is listed and limits nothing"
+    );
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -549,4 +641,5 @@ on_both_backends!(
     workspaces_never_block_each_other,
     the_claims_list_keeps_to_the_read_rule,
     a_paused_repository_hands_out_none_of_its_work,
+    a_full_slot_holds_work_until_a_holder_finishes,
 );

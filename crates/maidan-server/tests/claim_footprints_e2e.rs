@@ -440,3 +440,163 @@ async fn an_operator_pauses_a_repository_and_the_queue_holds_its_work() {
         .collect();
     assert_eq!(audit.len(), 2, "one pause and one resume: {audit:?}");
 }
+
+#[tokio::test]
+async fn an_operator_caps_a_build_slot_and_workers_read_its_use() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    let other = store
+        .create_workspace(NewWorkspace {
+            name: "other".into(),
+        })
+        .await
+        .unwrap();
+    let (_, worker) = agent(store.as_ref(), ws.id, "worker").await;
+    let (_, operator) = member_with(
+        store.as_ref(),
+        ws.id,
+        "operator",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let (_, stranger) = member_with(
+        store.as_ref(),
+        other.id,
+        "stranger",
+        &[capability::WORKSPACE_READ, capability::TOKEN_ADMIN],
+    )
+    .await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let http = reqwest::Client::new();
+    let slots = format!("{base}/workspaces/{}/slots", ws.id.0);
+    let body = json!({ "slot": " Rust-Build ", "capacity": 1 });
+
+    let by_worker = http
+        .put(&slots)
+        .bearer_auth(&worker)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_worker.status(),
+        StatusCode::FORBIDDEN,
+        "capping takes token:admin"
+    );
+    let by_stranger = http
+        .put(&slots)
+        .bearer_auth(&stranger)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        by_stranger.status(),
+        StatusCode::FORBIDDEN,
+        "another tenant cannot cap"
+    );
+    let zero = http
+        .put(&slots)
+        .bearer_auth(&operator)
+        .json(&json!({ "slot": "rust-build", "capacity": 0 }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(zero.status(), StatusCode::BAD_REQUEST);
+    let set = http
+        .put(&slots)
+        .bearer_auth(&operator)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(set.status(), StatusCode::OK);
+    let set: Value = set.json().await.unwrap();
+    assert_eq!(
+        set,
+        json!({ "slot": "rust-build", "capacity": 1, "in_use": 0 })
+    );
+
+    // One worker claims a build; the slot reads as full.
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("build".into()),
+            description: None,
+        })
+        .await
+        .unwrap();
+    let declared = http
+        .put(format!("{base}/threads/{}/footprint", thread.id.0))
+        .bearer_auth(&worker)
+        .json(&json!({
+            "repo": "example/app",
+            "mode": "shared",
+            "items": [{ "kind": "slot", "value": "rust-build" }]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(declared.status(), StatusCode::OK);
+    assert_eq!(claim(&base, &worker, channel.id).await, thread.id);
+    let listed: Value = http
+        .get(&slots)
+        .bearer_auth(&worker)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        listed,
+        json!([{ "slot": "rust-build", "capacity": 1, "in_use": 1 }])
+    );
+
+    let clear = format!("{slots}?slot=RUST-BUILD");
+    let by_stranger = http
+        .delete(&clear)
+        .bearer_auth(&stranger)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(by_stranger.status(), StatusCode::FORBIDDEN);
+    let cleared = http
+        .delete(&clear)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared.status(), StatusCode::NO_CONTENT);
+    let again = http
+        .delete(&clear)
+        .bearer_auth(&operator)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+
+    let audit: Vec<String> = store
+        .list_audit_for_workspace(ws.id, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|event| event.action)
+        .filter(|action| action.starts_with("slot."))
+        .collect();
+    assert_eq!(audit.len(), 2, "one set and one clear: {audit:?}");
+}
