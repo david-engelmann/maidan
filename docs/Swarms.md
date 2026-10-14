@@ -183,6 +183,28 @@ pause to apply declares `repo` when it creates the thread, not after the claim.
 A pause binds one workspace, and both the pause and the resume are audited
 (`repo.pause`, `repo.resume`).
 
+## Measuring the ramp
+
+`GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
+`?rounds_limit=`, `?behind_limit=`) gives, for each agent pull request the
+change flow opened:
+- its rounds (commit, diff lines, and how many commits its base was behind);
+- time to ready and time to merge;
+- whether it merged at the commit Maidan delivered (`merged_without_edits`);
+- the thread's model cost from the usage ledger;
+- two flags.
+
+`non_converging` means still open after the round limit (3), or a diff that
+grew in each of the last three rounds: reroute it to a session. `stale_base`
+means a round was built on a base 50 or more commits behind.
+
+Each repository gets a rollup: tasks, merged, merged without edits, closed
+unmerged, flagged, mean rounds, median time to ready, and cost per merged
+change. These are the numbers each ramp step is gated on.
+
+The read refreshes up to 25 open pull requests from GitHub first, so merges
+count on a stack that receives no webhooks.
+
 ## Scaling notes
 
 - **Admit by build capacity, not by agent count.** Compiling and testing bind

@@ -1227,6 +1227,40 @@
         ],
         "type": "object"
       },
+      "ChangeRound": {
+        "description": "A recorded round.",
+        "properties": {
+          "base_behind": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "commit_sha": {
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "diff_lines": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "round": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "round",
+          "commit_sha",
+          "diff_lines",
+          "delivered_at"
+        ],
+        "type": "object"
+      },
       "Channel": {
         "properties": {
           "created_at": {
@@ -6355,6 +6389,63 @@
         ],
         "type": "object"
       },
+      "RepoRollup": {
+        "description": "One repository's rollup.",
+        "properties": {
+          "closed_unmerged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cost_usd_micros_per_merged": {
+            "description": "Total cost of the repository's tasks over its merged ones; `None`\nbefore the first merge.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "flagged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mean_rounds": {
+            "format": "double",
+            "type": "number"
+          },
+          "median_time_to_ready_secs": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "merged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "merged_without_edits": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "tasks": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "repo",
+          "tasks",
+          "merged",
+          "merged_without_edits",
+          "closed_unmerged",
+          "flagged",
+          "mean_rounds"
+        ],
+        "type": "object"
+      },
       "ResultDelivery": {
         "description": "One `(thread, target)` delivery's durable state.",
         "properties": {
@@ -8027,6 +8118,125 @@
             "type": "object"
           }
         ]
+      },
+      "SwarmMetrics": {
+        "description": "The ramp metrics for a workspace.",
+        "properties": {
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/RepoRollup"
+            },
+            "type": "array"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskMetrics"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tasks",
+          "repos"
+        ],
+        "type": "object"
+      },
+      "TaskFlag": {
+        "description": "Why a task needs a look.",
+        "enum": [
+          "non_converging",
+          "stale_base"
+        ],
+        "type": "string"
+      },
+      "TaskMetrics": {
+        "description": "One task's numbers.",
+        "properties": {
+          "closed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cost_usd_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "flags": {
+            "items": {
+              "$ref": "#/components/schemas/TaskFlag"
+            },
+            "type": "array"
+          },
+          "merged_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "merged_without_edits": {
+            "description": "Whether the merged head was the last commit the change flow\ndelivered, so nobody else pushed to it; `None` until merged.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "opened_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ready_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repo": {
+            "type": "string"
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeRound"
+            },
+            "type": "array"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "time_to_merge_secs": {
+            "description": "Opened to merged, in seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "time_to_ready_secs": {
+            "description": "Opened to ready, in seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "thread_id",
+          "repo",
+          "pull_number",
+          "opened_at",
+          "rounds",
+          "cost_usd_micros",
+          "flags"
+        ],
+        "type": "object"
       },
       "TaskSchedule": {
         "description": "A schedule that materializes a task thread when due. A one-shot\n(`interval_secs == None`) fires once then deactivates; a recurring schedule\n(`interval_secs == Some(n)`) re-arms `next_run_at += n s` after each firing.\nThe background sweeper (a later cluster) creates a thread titled `title` in\n`channel_id` when `active && next_run_at <= now`.",
@@ -29918,6 +30128,101 @@
         "summary": "Set a workspace's spawn budget",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/swarm-metrics": {
+      "get": {
+        "operationId": "get_swarm_metrics",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`owner/name` (or a GitHub clone URL); omitted, every repository.",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only pull requests opened at or after this time (RFC 3339).",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rounds after which an unmerged task is flagged non-converging (default 3).",
+            "in": "query",
+            "name": "rounds_limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Commits behind at which a round's base is flagged stale (default 50).",
+            "in": "query",
+            "name": "behind_limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwarmMetrics"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Swarm ramp metrics: per agent pull request and per repository",
+        "tags": [
+          "threads"
         ]
       }
     },

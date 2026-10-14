@@ -175,6 +175,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** the Postgres audit log is range-partitioned by calendar month of `occurred_at` (migration 0165), the way the event log is (0162). Existing rows stay put in a legacy partition and drain through retention; `prune_audit` drops a month whole when no row in it belongs to a held workspace and deletes inside it otherwise, and boot and every retention sweep keep the current month plus three ahead ready. SQLite keeps one table.
 
+### Swarm ramp metrics
+
+- **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

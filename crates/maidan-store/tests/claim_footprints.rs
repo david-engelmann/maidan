@@ -798,6 +798,69 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
         .is_empty());
 }
 
+/// The change-metrics rows: a round per delivered commit (a retry adds none),
+/// the ready time stamped once, a close recorded once, and only open pull
+/// requests listed for a refresh.
+async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "metrics", 1).await;
+    let thread = task(store.as_ref(), room.channel, "change").await;
+    let round = |sha: &str, lines: i64| NewChangeRound {
+        workspace_id: room.ws,
+        thread_id: thread,
+        repo: "Example/App".into(),
+        pull_number: 7,
+        commit_sha: sha.into(),
+        base_sha: "a".repeat(40),
+        base_behind: Some(3),
+        diff_lines: lines,
+    };
+    store.record_change_round(round("c1", 10)).await.unwrap();
+    store.record_change_round(round("c1", 10)).await.unwrap();
+    store.record_change_round(round("c2", 4)).await.unwrap();
+    let ready = chrono::Utc::now();
+    store
+        .mark_change_pull_ready("example/app", 7, ready)
+        .await
+        .unwrap();
+    store
+        .mark_change_pull_ready("example/app", 7, ready + chrono::Duration::hours(1))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.list_open_change_pulls(room.ws, 10).await.unwrap(),
+        vec![("example/app".to_string(), 7)]
+    );
+    store
+        .close_change_pull("example/app", 7, Some(ready), Some("C2"), ready)
+        .await
+        .unwrap();
+    assert!(store
+        .list_open_change_pulls(room.ws, 10)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let pulls = store.list_change_pulls(room.ws, None, None).await.unwrap();
+    assert_eq!(pulls.len(), 1);
+    let rounds: Vec<_> = pulls[0]
+        .rounds
+        .iter()
+        .map(|r| (r.round, r.diff_lines))
+        .collect();
+    assert_eq!(rounds, vec![(1, 10), (2, 4)]);
+    assert_eq!(
+        pulls[0].ready_at.map(|at| at.timestamp()),
+        Some(ready.timestamp()),
+        "the first ready time stands"
+    );
+    assert_eq!(pulls[0].merged_head_sha.as_deref(), Some("c2"));
+    assert!(store
+        .list_change_pulls(room.ws, Some("example/other"), None)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -848,4 +911,5 @@ on_both_backends!(
     a_full_slot_holds_work_until_a_holder_finishes,
     a_footprint_declared_at_creation_binds_the_first_claim,
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
+    change_rounds_ready_and_close_are_recorded_once,
 );

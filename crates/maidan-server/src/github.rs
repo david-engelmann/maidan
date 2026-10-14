@@ -501,6 +501,10 @@ pub struct GithubPullBrief {
     pub head_sha: String,
     /// The label names the pull request carries.
     pub labels: Vec<String>,
+    /// When it merged, if it has.
+    pub merged_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When it closed, merged or not.
+    pub closed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// What flipping a pull request to ready did.
@@ -576,6 +580,14 @@ pub trait GithubGit: Send + Sync {
         title: &str,
         body: &str,
     ) -> Result<GithubPull, GithubError>;
+    /// `GET /repos/{repo}/compare/{base_sha}...{branch}`: how many commits
+    /// `branch` has gained since `base_sha`, for the stale-base warning.
+    async fn commits_behind(
+        &self,
+        repo: &str,
+        base_sha: &str,
+        branch: &str,
+    ) -> Result<i64, GithubError>;
     /// `GET /repos/{repo}/pulls/{n}`: head ref, base ref, draft flag and node
     /// id, for the mark-ready guard. A read, so no guard applies; the caller
     /// enforces the change-flow rules before acting on what it returns.
@@ -1347,7 +1359,43 @@ impl GithubGit for GithubApiClient {
             open: value.get("state").and_then(serde_json::Value::as_str) == Some("open"),
             head_sha: field(&value, "/head/sha")?,
             labels: label_names(&value),
+            merged_at: timestamp(&value, "/merged_at"),
+            closed_at: timestamp(&value, "/closed_at"),
         })
+    }
+
+    async fn commits_behind(
+        &self,
+        repo: &str,
+        base_sha: &str,
+        branch: &str,
+    ) -> Result<i64, GithubError> {
+        // A read, so no branch policy applies; the name only has to be safe
+        // in the URL.
+        let safe = !branch.is_empty()
+            && !branch.contains("..")
+            && branch
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'));
+        if !safe || !maidan_types::is_git_sha(base_sha) {
+            return Err(GithubError::Refused(format!(
+                "cannot compare `{base_sha}` with `{branch}`"
+            )));
+        }
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/compare/{base_sha}...{branch}"),
+                )
+                .await?,
+            )
+            .await?;
+        value
+            .get("ahead_by")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or_else(|| GithubError::Http("github compare has no ahead_by".into()))
     }
 
     async fn add_pull_label(
@@ -1649,6 +1697,15 @@ pub async fn unlink_github_issue(
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+/// An RFC 3339 timestamp at `pointer`, or `None` when absent or null.
+fn timestamp(value: &serde_json::Value, pointer: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_str)
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .map(|at| at.with_timezone(&chrono::Utc))
 }
 
 #[cfg(test)]

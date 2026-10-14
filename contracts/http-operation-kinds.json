@@ -375,6 +375,7 @@
   {"method":"PUT","path":"/workspaces/{id}/slots","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/spawn-budget","kind":"reads"},
   {"method":"PUT","path":"/workspaces/{id}/spawn-budget","kind":"changes"},
+  {"method":"GET","path":"/workspaces/{id}/swarm-metrics","kind":"changes","reason":"Before reading, records the close of tracked agent pull requests GitHub now reports closed, so merges count on a stack that receives no webhooks."},
   {"method":"GET","path":"/workspaces/{id}/tombstones","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/usage","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/usage-rollup","kind":"reads"},

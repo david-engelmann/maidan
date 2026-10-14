@@ -2076,6 +2076,42 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<maidan_types::RepoPause>, StoreError>;
+    /// Record a round the change flow delivered to an agent pull request, and
+    /// the pull request the first time. A retried delivery of the same commit
+    /// adds nothing.
+    async fn record_change_round(
+        &self,
+        round: maidan_types::NewChangeRound,
+    ) -> Result<(), StoreError>;
+    /// Stamp when a tracked agent pull request was made ready.
+    async fn mark_change_pull_ready(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+    /// Record that a tracked agent pull request closed, merged or not.
+    async fn close_change_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        merged_at: Option<chrono::DateTime<chrono::Utc>>,
+        merged_head_sha: Option<&str>,
+        closed_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+    /// Tracked agent pull requests in a workspace not yet seen closed.
+    async fn list_open_change_pulls(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<(String, i64)>, StoreError>;
+    /// Tracked agent pull requests in a workspace with their rounds and cost.
+    async fn list_change_pulls(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: Option<&str>,
+        since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.
     async fn list_slots(
