@@ -55,6 +55,20 @@ pub const EVENTS: PartitionedTable = PartitionedTable {
     ],
 };
 
+/// The audit log (0165). Append-only like the event log and read newest
+/// first, so it takes the same settings: freeze a month soon after it fills
+/// rather than in one anti-wraparound pass much later, and keep the newest
+/// month's statistics fresh for the operator audit's range reads.
+pub const AUDIT: PartitionedTable = PartitionedTable {
+    parent: "maidan_audit",
+    key: "occurred_at",
+    reloptions: &[
+        "autovacuum_vacuum_scale_factor=0.05",
+        "autovacuum_vacuum_insert_scale_factor=0.05",
+        "autovacuum_analyze_scale_factor=0.02",
+    ],
+};
+
 /// The delivery tables (0166): the retention sweep's terminal-rows set,
 /// each partitioned on the time column its rows stop moving at — creation
 /// for the webhook, automation and outbox logs, last update for mail
@@ -110,6 +124,7 @@ pub const AGENT_WORK_DLQ: PartitionedTable = PartitionedTable {
 /// Every partitioned table [`maintain`] looks after.
 pub const TABLES: &[&PartitionedTable] = &[
     &EVENTS,
+    &AUDIT,
     &WEBHOOK_DELIVERIES,
     &AUTOMATION_DELIVERIES,
     &OUTBOX,
