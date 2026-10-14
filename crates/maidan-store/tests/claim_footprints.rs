@@ -779,6 +779,97 @@ async fn the_deferred_list_names_why_each_thread_waits(store: Arc<dyn Store>) {
         .is_empty());
 }
 
+async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<dyn Store>) {
+    const AGENTS: usize = 12;
+    const ROUNDS: usize = 6;
+    const CAPACITY: i64 = 3;
+    let room = Arc::new(room(store.as_ref(), "contention", AGENTS).await);
+    for i in 0..40 {
+        let thread = task(store.as_ref(), room.channel, &format!("task {i}")).await;
+        let lane = format!("lane{}", i % 5);
+        let mut items = vec![(FootprintKind::Lane, lane.as_str())];
+        if i % 2 == 0 {
+            items.push((FootprintKind::Slot, "rust-build"));
+        }
+        declare(
+            store.as_ref(),
+            thread,
+            footprint(FootprintMode::Exclusive, &items),
+        )
+        .await;
+    }
+    store
+        .set_slot_capacity_audited(
+            room.ws,
+            "rust-build",
+            CAPACITY,
+            room.agents[0],
+            audit(room.ws, "slot.capacity.set"),
+        )
+        .await
+        .unwrap();
+
+    let mut workers = Vec::new();
+    for agent in 0..AGENTS {
+        let store = store.clone();
+        let room = room.clone();
+        workers.push(tokio::spawn(async move {
+            let mut claimed = 0;
+            for _ in 0..ROUNDS {
+                let (thread, _) = store
+                    .claim_next_thread_with_event(room.channel, room.agents[agent], Some(600), None)
+                    .await
+                    .unwrap();
+                let Some(thread) = thread else {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    continue;
+                };
+                claimed += 1;
+                let live = store.list_active_claims(room.ws, None, None).await.unwrap();
+                let mut lanes = std::collections::HashSet::new();
+                let mut in_slot = 0;
+                for claim in &live {
+                    for item in &claim.items {
+                        match item.kind {
+                            FootprintKind::Lane => assert!(
+                                lanes.insert(item.value.clone()),
+                                "lane {} held twice: {live:?}",
+                                item.value
+                            ),
+                            FootprintKind::Slot => in_slot += 1,
+                            _ => {}
+                        }
+                    }
+                }
+                assert!(
+                    in_slot <= CAPACITY,
+                    "{in_slot} claims hold a slot of {CAPACITY}"
+                );
+                tokio::time::sleep(Duration::from_millis(2)).await;
+                store
+                    .release_claim(
+                        thread.id,
+                        room.agents[agent],
+                        thread.claim_lease_id.unwrap(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            claimed
+        }));
+    }
+    let mut total = 0;
+    for worker in workers {
+        total += worker.await.unwrap();
+    }
+    assert!(total >= ROUNDS, "the swarm made progress: {total} claims");
+    assert!(store
+        .list_active_claims(room.ws, None, None)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 async fn room_with_one(store: &dyn Store) -> MemberId {
     room(store, "outsider", 1).await.agents[0]
 }
@@ -833,4 +924,5 @@ on_both_backends!(
     a_full_slot_holds_work_until_a_holder_finishes,
     a_footprint_declared_at_creation_binds_the_first_claim,
     the_deferred_list_names_why_each_thread_waits,
+    concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
 );

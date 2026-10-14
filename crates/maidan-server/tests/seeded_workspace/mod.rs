@@ -21,7 +21,10 @@ use maidan_artifacts::LocalFsStore;
 use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
+use maidan_types::{
+    MemberId, MemberKind, NewApiToken, NewMember, NewOAuthClient, NewOAuthGrant, NewWorkspace,
+    WorkspaceId,
+};
 use reqwest::Method;
 use serde_json::{json, Value};
 use sqlx::{
@@ -449,6 +452,33 @@ pub async fn seed_victim(h: &Harness, doc: &Value) -> Victim {
     for alias in ["member-follows", "reviewers"] {
         victim.ids.insert(alias.into(), other.0.to_string());
     }
+    // An OAuth grant is made by consent, not by any operation the
+    // schema-driven seeding below can call, so it is seeded by hand:
+    // the isolation probe needs a real grant of the victim's to address.
+    h.store
+        .create_oauth_client(NewOAuthClient {
+            client_id: "tenant-b-client".into(),
+            name: "Tenant B Client".into(),
+            redirect_uris: vec!["https://client.example/callback".into()],
+            client_secret_hash: None,
+            allowed_scopes: vec!["workspace:read".into()],
+        })
+        .await
+        .unwrap();
+    let grant = h
+        .store
+        .create_oauth_grant(NewOAuthGrant {
+            client_id: "tenant-b-client".into(),
+            member_id: owner,
+            workspace_id: ws,
+            scope: vec!["workspace:read".into()],
+            lineage_id: Uuid::new_v4(),
+        })
+        .await
+        .unwrap();
+    victim
+        .ids
+        .insert("oauth-grants".into(), grant.id.0.to_string());
     let third = member(h.store.as_ref(), ws, "b-third", MemberKind::Human).await;
 
     let channel = h
