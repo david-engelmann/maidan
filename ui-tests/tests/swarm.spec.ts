@@ -73,7 +73,9 @@ test("the swarm panel shows claims, waiting threads, slots and pauses for the wo
   });
   expect(pause.ok()).toBeTruthy();
 
-  await signIn(page, fx.workspace_id, fx.token);
+  // The panel reads with workspace:read, and Resume needs the token:admin
+  // the admin token holds; the operator's everyday token does not.
+  await signIn(page, fx.workspace_id, fx.admin_token);
   await openMoreTools(page);
   await page.click('.tabs button[data-tab="swarm"]');
 
@@ -102,7 +104,8 @@ test("the swarm panel shows claims, waiting threads, slots and pauses for the wo
     "axe on the swarm panel",
   ).toEqual([]);
 
-  // Resuming from the panel removes the pause.
-  await pauses.locator("button[data-resume]").click();
-  await expect(pauses).toContainText("No repositories are paused.");
+  // Resuming from the panel removes this test's pause (scoped to its repo:
+  // the shared workspace may hold pauses from other state).
+  await pauses.locator(`button[data-resume="${pausedRepo}"]`).click();
+  await expect(pauses).not.toContainText(pausedRepo);
 });

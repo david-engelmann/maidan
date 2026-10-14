@@ -70,7 +70,7 @@ function renderClaims(claims) {
 /** @param {any[]} deferred */
 function renderDeferred(deferred) {
   if (!deferred.length) {
-    setBox("swarm-deferred", `<p class="muted">Nothing is waiting. Every queued thread can be claimed.</p>`);
+    setBox("swarm-deferred", `<p class="muted">No thread is being held back by its footprint. Threads waiting for other reasons are not listed here.</p>`);
     return;
   }
   const rows = deferred
@@ -101,8 +101,8 @@ function renderSlots(slots) {
   setBox("swarm-slots", `<ul class="swarm-list">${rows}</ul>`);
 }
 
-/** @param {any[]} pauses */
-function renderPauses(pauses) {
+/** @param {any[]} pauses @param {string} workspace */
+function renderPauses(pauses, workspace) {
   if (!pauses.length) {
     setBox("swarm-pauses", `<p class="muted">No repositories are paused.</p>`);
     return;
@@ -112,7 +112,7 @@ function renderPauses(pauses) {
       const reason = p.reason ? ` <span class="muted">${escapeHtml(p.reason)}</span>` : "";
       return `<li class="swarm-row">
         <div><code>${escapeHtml(p.repo)}</code> <span class="muted">paused by ${escapeHtml(memberName(p.paused_by))}, ${escapeHtml(ago(p.paused_at))}</span>${reason}</div>
-        <button type="button" class="ghost" data-resume="${escapeHtml(p.repo)}">Resume</button>
+        <button type="button" class="ghost" data-resume="${escapeHtml(p.repo)}" data-resume-workspace="${escapeHtml(workspace)}">Resume</button>
       </li>`;
     })
     .join("");
@@ -120,9 +120,18 @@ function renderPauses(pauses) {
   box("swarm-pauses")
     ?.querySelectorAll("button[data-resume]")
     .forEach((btn) => {
-      btn.addEventListener("click", () => resumeRepo(/** @type {HTMLElement} */ (btn).dataset.resume || "", /** @type {HTMLButtonElement} */ (btn)));
+      const el = /** @type {HTMLElement} */ (btn);
+      btn.addEventListener("click", () =>
+        resumeRepo(el.dataset.resume || "", el.dataset.resumeWorkspace || "", /** @type {HTMLButtonElement} */ (btn)),
+      );
     });
 }
+
+// Loads overlap (tab click, refresh timer, a pause or resume finishing). A
+// load may only paint while it is still the newest one and the workspace
+// it read for is still the selected one; otherwise its rows would be a
+// stale snapshot, or another workspace's.
+let swarmLoadGen = 0;
 
 async function loadSwarm() {
   if (!wid()) {
@@ -136,30 +145,41 @@ async function loadSwarm() {
     ["swarm-claims", "swarm-deferred", "swarm-slots", "swarm-pauses"].forEach((id) => setBox(id, note));
     return;
   }
+  const gen = ++swarmLoadGen;
+  const id = wid();
+  const current = () => gen === swarmLoadGen && wid() === id;
   // Names first, so holders and pausers render as people, not raw ids.
   await loadMembers();
-  const id = wid();
   const jobs = [
     ["swarm-claims", `/workspaces/${id}/claims`, renderClaims],
     ["swarm-deferred", `/workspaces/${id}/deferred`, renderDeferred],
     ["swarm-slots", `/workspaces/${id}/slots`, renderSlots],
-    ["swarm-pauses", `/workspaces/${id}/repo-pauses`, renderPauses],
+    ["swarm-pauses", `/workspaces/${id}/repo-pauses`, (rows) => renderPauses(rows, id)],
   ];
   // Each list lands on its own: one failing list must not blank the rest.
   await Promise.all(
     jobs.map(async ([boxId, suffix, render]) => {
       try {
-        render(await fetchList(/** @type {string} */ (suffix)));
+        const rows = await fetchList(/** @type {string} */ (suffix));
+        if (current()) render(rows);
       } catch (e) {
-        sectionError(/** @type {string} */ (boxId), e);
+        if (current()) sectionError(/** @type {string} */ (boxId), e);
       }
     }),
   );
 }
 
-/** @param {string} repo @param {HTMLButtonElement} button */
-async function resumeRepo(repo, button) {
+/** @param {string} repo @param {string} workspace @param {HTMLButtonElement} button */
+async function resumeRepo(repo, workspace, button) {
   if (!repo) return;
+  // The row names the workspace it was loaded for. Resuming acts on the
+  // workspace selected now, so a row left over from another workspace
+  // must not fire: reload for the selected workspace instead.
+  if (workspace !== wid()) {
+    showError("The workspace changed since this list loaded. It has been reloaded for the workspace now selected.");
+    await loadSwarm();
+    return;
+  }
   let res;
   try {
     res = await writeApi(button, `${base()}/workspaces/${wid()}/repo-pauses?repo=${encodeURIComponent(repo)}`, {
