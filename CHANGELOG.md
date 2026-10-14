@@ -139,6 +139,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `PUT`, `GET` and `DELETE /workspaces/{id}/repo-pauses`. While a repository is paused in a workspace, `claim_next` defers every thread whose footprint names it (counted as blocked, as an overlapping thread is), claims already held run on, and threads without a footprint are untouched. Pausing and resuming take `token:admin` and are audited (`repo.pause`, `repo.resume`); listing takes `workspace:read`. Migration 0171.
 
+### The delivery tables are partitioned by month
+
+- **Changed:** the Postgres delivery tables are range-partitioned by calendar month (migration 0166), the way the event log is (0162): webhook and automation deliveries and the outbox by `created_at`, mail by `updated_at`, the dead-letter queue by `failed_at`. `prune_deliveries` drops a month whole when every row in it is one the batched delete would take, and deletes inside the rest. The egress outbox is deliberately not partitioned — its dedup index is global, and a partition key inside it would weaken enqueue idempotency to per-month — and neither is `maidan_result_deliveries`, an updated-in-place state table retention never age-prunes. SQLite keeps one table each.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

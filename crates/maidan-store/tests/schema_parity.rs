@@ -53,6 +53,46 @@ const ALLOWED: &[(&str, &str)] = &[
         "Postgres 0162: a foreign key cannot reference id alone on the partitioned event log. A delete trigger on maidan_events, and retention before it drops a month, delete the outbox rows the ON DELETE CASCADE did",
     ),
     (
+        "unique pg_only maidan_webhook_deliveries(created_at,id)",
+        "Postgres partitions the delivery tables by month (0166: webhook and automation deliveries and the outbox by created_at, mail by updated_at, the dead-letter queue by failed_at), and a partitioned table's key must include the partition key. Webhook, automation and outbox ids still come from one sequence each, so id alone stays unique; SQLite keys on id",
+    ),
+    (
+        "unique sqlite_only maidan_webhook_deliveries(id)",
+        "the other half of the entry above",
+    ),
+    (
+        "unique pg_only maidan_automation_deliveries(created_at,id)",
+        "the delivery-tables entry above (0166)",
+    ),
+    (
+        "unique sqlite_only maidan_automation_deliveries(id)",
+        "the other half of the entry above",
+    ),
+    (
+        "unique pg_only maidan_outbox(created_at,id)",
+        "the delivery-tables entry above (0166)",
+    ),
+    (
+        "unique sqlite_only maidan_outbox(id)",
+        "the other half of the entry above",
+    ),
+    (
+        "unique pg_only maidan_mail_outbox(id,updated_at)",
+        "the delivery-tables entry above (0166)",
+    ),
+    (
+        "unique sqlite_only maidan_mail_outbox(id)",
+        "the other half of the entry above",
+    ),
+    (
+        "unique pg_only maidan_agent_work_dlq(failed_at,id)",
+        "the delivery-tables entry above (0166)",
+    ),
+    (
+        "unique sqlite_only maidan_agent_work_dlq(id)",
+        "the other half of the entry above",
+    ),
+    (
         "fk pg_only maidan_task_schedules.recipe_id -> maidan_recipes",
         "SQLite cannot add an FK to an existing column (migration 0074); the scheduler treats a dangling recipe_id as a plain schedule",
     ),

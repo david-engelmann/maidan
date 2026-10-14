@@ -451,10 +451,14 @@ async fn maintenance_keeps_months_ahead_and_moves_rows_out_of_default() {
         0
     );
 
-    // Four months on, months 4 to 7 are created, and month 6 takes the row
-    // DEFAULT held for it, with its outbox row (a move is not a delete).
+    // Four months on, months 4 to 7 are created for every partitioned table,
+    // and month 6 takes the row DEFAULT held for it, with its outbox row (a
+    // move is not a delete).
     let later = month(4) + days(1);
-    assert_eq!(pg.store.maintain_partitions(later).await.expect("later"), 4);
+    assert_eq!(
+        pg.store.maintain_partitions(later).await.expect("later"),
+        4 * partitions::TABLES.len() as u64
+    );
     assert_eq!(home(&pg.pool, far).await, partition_name(&EVENTS, month(6)));
     assert_eq!(outbox_log_ids(&pg.pool).await, vec![far]);
     let in_default: i64 = sqlx::query_scalar("SELECT count(*) FROM maidan_events_default")
@@ -504,11 +508,14 @@ async fn maintenance_keeps_months_ahead_and_moves_rows_out_of_default() {
 
 /// Mark 0162 applied before the first run, so the log is built unpartitioned
 /// and filled the way an older server filled it; then unmark it and migrate.
+/// 0166 is marked with it: 0166 renames `idx_outbox_log_id`, which 0162
+/// creates, so with 0162 skipped the rename has nothing to rename and the
+/// migration run fails on this fixture.
 const SKIP_0162: &str = "CREATE TABLE maidan_migrations (
         version BIGINT PRIMARY KEY,
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    INSERT INTO maidan_migrations (version) VALUES (162);";
+    INSERT INTO maidan_migrations (version) VALUES (162), (166);";
 
 #[tokio::test]
 async fn the_migration_keeps_every_existing_row_in_order() {
