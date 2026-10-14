@@ -1730,6 +1730,14 @@ macro_rules! store_delegations {
                 threads::create_with_event(self.pool(), new).await
             }
 
+            async fn create_thread_with_footprint(
+                &self,
+                new: NewThread,
+                footprint: Option<maidan_types::Footprint>,
+            ) -> Result<(Thread, StoredEvent), StoreError> {
+                threads::create_with_footprint(self.pool(), new, footprint).await
+            }
+
             async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
                 threads::get(self.read_pool(), id).await
             }

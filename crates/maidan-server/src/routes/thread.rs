@@ -43,14 +43,21 @@ pub async fn create_thread(
     // (transactional outbox); `publish_stored` then notifies the bus. A spawn
     // the budget refuses is recorded as `ThreadSpawnDenied` on the way to the
     // 409.
+    let footprint = body
+        .footprint
+        .map(|footprint| footprint.validated().map_err(ApiError::BadRequest))
+        .transpose()?;
     let created = state
         .store
-        .create_thread_with_event(NewThread {
-            channel_id: ChannelId(channel_id),
-            parent_thread_id: body.parent_thread_id.map(ThreadId),
-            title: body.title,
-            description: body.description,
-        })
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: ChannelId(channel_id),
+                parent_thread_id: body.parent_thread_id.map(ThreadId),
+                title: body.title,
+                description: body.description,
+            },
+            footprint,
+        )
         .await;
     let actor = (!auth.bypass).then_some(auth.member_id);
     let (t, stored) = observe_spawn_denial(&state, actor, created).await?;

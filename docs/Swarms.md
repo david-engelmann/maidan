@@ -107,13 +107,16 @@ The calls:
 
 | | REST | MCP |
 |---|---|---|
-| Declare or replace (no items clears) | `PUT /threads/{id}/footprint` | `set_thread_footprint` |
+| Declare at intake, with the thread (`workspace:write`) | `POST /channels/{cid}/threads` with `footprint` | `create_thread` with `footprint` |
+| Refine or replace (no items clears; `thread:transition`) | `PUT /threads/{id}/footprint` | `set_thread_footprint` |
 | Read one | `GET /threads/{id}/footprint` | (in the thread's context) |
 | The live claims and their footprints | `GET /workspaces/{id}/claims?repo=` | `list_active_claims` |
 
 **How they fit together.** A producer that knows the lane declares the
-footprint when it creates the thread, and the queue then defers that thread
-until the lane is free; a deferred thread counts as blocked in the queue
+footprint in the call that creates the thread. The two commit together, so
+the queue applies the footprint from the first claim, and the producer needs
+only the `workspace:write` it creates threads with, not the `thread:transition`
+a worker holds. The queue then defers that thread until the lane is free; a deferred thread counts as blocked in the queue
 depth, not ready. A worker that learns more after claiming refines the
 footprint. When the refined footprint overlaps another live claim, the call
 is refused (`409` with problem type `footprint-conflict`, or MCP error

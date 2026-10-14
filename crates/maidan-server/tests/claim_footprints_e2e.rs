@@ -684,3 +684,109 @@ async fn an_operator_caps_a_build_slot_and_workers_read_its_use() {
         .collect();
     assert_eq!(audit.len(), 2, "one set and one clear: {audit:?}");
 }
+
+#[tokio::test]
+async fn a_producer_declares_the_footprint_when_it_creates_the_task() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    // A producer creates tasks; it cannot claim or transition them.
+    let (_, producer) = member_with(
+        store.as_ref(),
+        ws.id,
+        "producer",
+        &[capability::WORKSPACE_READ, capability::WORKSPACE_WRITE],
+    )
+    .await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let http = reqwest::Client::new();
+    let threads = format!("{base}/channels/{}/threads", channel.id.0);
+
+    let created = http
+        .post(&threads)
+        .bearer_auth(&producer)
+        .json(&json!({ "title": "bridge retry", "footprint": lane("bridge") }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let id = created.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let stored: Value = http
+        .get(format!("{base}/threads/{id}/footprint"))
+        .bearer_auth(&producer)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(stored["repo"], "example/app");
+    assert_eq!(stored["items"][0]["value"], "bridge");
+
+    // Refining after the fact stays the worker's (thread:transition).
+    let refine = http
+        .put(format!("{base}/threads/{id}/footprint"))
+        .bearer_auth(&producer)
+        .json(&lane("gateway"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refine.status(), StatusCode::FORBIDDEN);
+
+    // An invalid footprint is a 400, and no thread is created.
+    let before = store.list_threads(channel.id).await.unwrap().len();
+    let bad = http
+        .post(&threads)
+        .bearer_auth(&producer)
+        .json(&json!({
+            "title": "bad",
+            "footprint": {
+                "repo": "example/app",
+                "mode": "exclusive",
+                "items": [{ "kind": "path", "value": "../outside" }]
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(store.list_threads(channel.id).await.unwrap().len(), before);
+
+    // MCP create_thread takes the same footprint.
+    let created = tool_result(
+        &tool(
+            &base,
+            &producer,
+            "create_thread",
+            json!({
+                "channel_id": channel.id.0,
+                "title": "over mcp",
+                "footprint": {
+                    "repo": "Example/App",
+                    "mode": "shared",
+                    "items": [{ "kind": "slot", "value": "rust-build" }]
+                }
+            }),
+        )
+        .await,
+    );
+    let id = ThreadId(created["id"].as_str().unwrap().parse().unwrap());
+    let fp = store.get_thread_footprint(id).await.unwrap().unwrap();
+    assert_eq!(fp.repo, "example/app");
+    assert_eq!(fp.items[0].kind, maidan_types::FootprintKind::Slot);
+}

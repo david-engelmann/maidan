@@ -106,6 +106,9 @@ struct CreateThreadArgs {
     title: Option<String>,
     #[serde(default)]
     parent_thread_id: Option<uuid::Uuid>,
+    /// Stored with the thread, so the claim queue never sees it without one.
+    #[serde(default)]
+    footprint: Option<maidan_types::Footprint>,
 }
 
 /// Create a thread. `workspace:write` plus channel access, same as
@@ -118,14 +121,25 @@ pub(super) async fn create_thread(
 ) -> Result<Value, McpError> {
     let a: CreateThreadArgs = crate::tools::parse_args(args)?;
     let actor = (!auth.bypass).then_some(auth.member_id);
+    let footprint = a
+        .footprint
+        .map(|footprint| {
+            footprint
+                .validated()
+                .map_err(|e| McpError::InvalidParams(format!("footprint: {e}")))
+        })
+        .transpose()?;
     let created = server
         .store
-        .create_thread_with_event(NewThread {
-            channel_id: ChannelId(a.channel_id),
-            parent_thread_id: a.parent_thread_id.map(ThreadId),
-            title: a.title,
-            description: None,
-        })
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: ChannelId(a.channel_id),
+                parent_thread_id: a.parent_thread_id.map(ThreadId),
+                title: a.title,
+                description: None,
+            },
+            footprint,
+        )
         .await;
     let (thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
     server.publish_stored(&stored).await;

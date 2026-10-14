@@ -654,6 +654,55 @@ async fn a_full_slot_holds_work_until_a_holder_finishes(store: Arc<dyn Store>) {
     );
 }
 
+/// A producer declares the footprint as it creates the thread: both commit
+/// together, so the queue applies it from the first claim; an invalid
+/// footprint creates nothing.
+async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "intake", 2).await;
+    let lane = footprint(FootprintMode::Exclusive, &[(FootprintKind::Lane, "bridge")]);
+    let held = task(store.as_ref(), room.channel, "held").await;
+    declare(store.as_ref(), held, lane.clone()).await;
+    assert_eq!(claim(store.as_ref(), &room, 0).await.unwrap().id, held);
+
+    let new = |title: &str| NewThread {
+        channel_id: room.channel,
+        parent_thread_id: None,
+        title: Some(title.into()),
+        description: None,
+    };
+    let (created, _) = store
+        .create_thread_with_footprint(new("intake"), Some(lane))
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .get_thread_footprint(created.id)
+            .await
+            .unwrap()
+            .map(|f| f.repo),
+        Some(REPO.to_string())
+    );
+    assert!(
+        claim(store.as_ref(), &room, 1).await.is_none(),
+        "the lane is held from the first claim"
+    );
+
+    let before = store.list_threads(room.channel).await.unwrap().len();
+    let bad = footprint(
+        FootprintMode::Exclusive,
+        &[(FootprintKind::Path, "../outside")],
+    );
+    assert!(store
+        .create_thread_with_footprint(new("bad"), Some(bad))
+        .await
+        .is_err());
+    assert_eq!(
+        store.list_threads(room.channel).await.unwrap().len(),
+        before,
+        "an invalid footprint creates no thread"
+    );
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -702,4 +751,5 @@ on_both_backends!(
     a_paused_repository_hands_out_none_of_its_work,
     a_claimer_serving_one_repository_takes_only_its_work,
     a_full_slot_holds_work_until_a_holder_finishes,
+    a_footprint_declared_at_creation_binds_the_first_claim,
 );

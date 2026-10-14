@@ -44,6 +44,20 @@ pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewThread,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    create_with_footprint(pool, new, None).await
+}
+
+/// [`create_with_event`], storing `footprint` with the thread in the same
+/// transaction, so no claimer ever sees the thread without it.
+pub async fn create_with_footprint(
+    pool: &SqlitePool,
+    new: NewThread,
+    footprint: Option<maidan_types::Footprint>,
+) -> Result<(Thread, StoredEvent), StoreError> {
+    let footprint = footprint
+        .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
+        .transpose()?
+        .filter(|footprint| !footprint.items.is_empty());
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::now_v7();
@@ -75,6 +89,9 @@ pub async fn create_with_event(
         channel_id: new.channel_id,
         thread: thread.clone(),
     };
+    if let Some(footprint) = &footprint {
+        super::footprints::insert_items_on(&mut tx, thread.id, workspace_id, footprint).await?;
+    }
     let stored = events::append_in_tx(&mut tx, &event).await?;
     tx.commit().await?;
     Ok((thread, stored))

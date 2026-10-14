@@ -1409,6 +1409,15 @@ pub trait ThreadStore: Send + Sync {
         &self,
         new: NewThread,
     ) -> Result<(Thread, StoredEvent), StoreError>;
+    /// [`create_thread_with_event`](Self::create_thread_with_event) with the
+    /// thread's claim footprint stored in the same transaction, so the claim
+    /// queue never sees the thread without it. An invalid footprint creates
+    /// nothing.
+    async fn create_thread_with_footprint(
+        &self,
+        new: NewThread,
+        footprint: Option<maidan_types::Footprint>,
+    ) -> Result<(Thread, StoredEvent), StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
