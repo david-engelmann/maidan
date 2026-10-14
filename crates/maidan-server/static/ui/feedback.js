@@ -164,9 +164,18 @@ export { setIdentityMode };
 
       let liveCount = 0;
 
+      // A live session can stream for hours. The feed keeps only the
+      // newest lines and drops the oldest past the cap: uncapped, the
+      // panel's DOM grows until the tab crawls, and appending through
+      // textContent re-reads and re-writes every line already there.
+      const LIVE_FEED_MAX_LINES = 500;
+
       function appendLive(line) {
         const el = document.getElementById("live-feed");
-        el.textContent += line + "\n";
+        el.appendChild(document.createTextNode(line + "\n"));
+        while (el.childNodes.length > LIVE_FEED_MAX_LINES) {
+          el.removeChild(el.firstChild);
+        }
         el.scrollTop = el.scrollHeight;
         liveCount += 1;
         document.getElementById("live-count").textContent = String(liveCount);
