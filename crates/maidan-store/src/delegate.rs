@@ -2456,12 +2456,14 @@ macro_rules! store_delegations {
                 channel_id: ChannelId,
                 member_id: MemberId,
                 lease_secs: Option<i64>,
+                repo: Option<&str>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
                     ClaimScope::Channel(channel_id),
                     member_id,
                     lease_secs,
+                    repo,
                 )
                 .await
             }
@@ -2471,12 +2473,14 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 member_id: MemberId,
                 lease_secs: Option<i64>,
+                repo: Option<&str>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
                     ClaimScope::Workspace(workspace_id),
                     member_id,
                     lease_secs,
+                    repo,
                 )
                 .await
             }

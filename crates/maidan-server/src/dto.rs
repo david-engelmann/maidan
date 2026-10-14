@@ -171,6 +171,11 @@ pub struct ClaimNextThread {
     #[serde(default)]
     #[schema(minimum = 1, maximum = 604800)]
     pub lease_secs: Option<i64>,
+    /// Only claim a thread whose footprint names this repository
+    /// (`owner/name` or a GitHub clone URL), for a worker whose checkout is
+    /// that repository. A thread without a footprint is then never claimed.
+    #[serde(default)]
+    pub repo: Option<String>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the

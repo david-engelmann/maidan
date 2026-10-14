@@ -271,7 +271,7 @@ async fn a_lapsed_claim_is_charged_once(store: &dyn Store) {
         "a second sweep finds nothing"
     );
     let (taken, events) = store
-        .claim_next_thread_with_event(q.channel, q.next, Some(60))
+        .claim_next_thread_with_event(q.channel, q.next, Some(60), None)
         .await
         .unwrap();
     assert_eq!(taken.map(|t| t.id), Some(q.thread));
@@ -298,7 +298,7 @@ async fn a_reclaim_by_claim_next_charges_as_the_reaper_would(store: &dyn Store) 
     .await;
 
     let (taken, events) = store
-        .claim_next_thread_with_event(q.channel, q.next, Some(3600))
+        .claim_next_thread_with_event(q.channel, q.next, Some(3600), None)
         .await
         .unwrap();
     assert!(taken.is_none(), "a thread over budget is not handed out");
@@ -323,7 +323,7 @@ async fn a_reclaim_by_claim_next_charges_as_the_reaper_would(store: &dyn Store) 
     );
 
     let (still, _) = store
-        .claim_next_thread_with_event(q.channel, q.next, Some(3600))
+        .claim_next_thread_with_event(q.channel, q.next, Some(3600), None)
         .await
         .unwrap();
     assert!(still.is_none(), "the charge left it over budget");
@@ -339,7 +339,7 @@ async fn a_reclaim_by_claim_next_charges_as_the_reaper_would(store: &dyn Store) 
         .await
         .unwrap();
     let (raised, events) = store
-        .claim_next_thread_with_event(q.channel, q.next, Some(3600))
+        .claim_next_thread_with_event(q.channel, q.next, Some(3600), None)
         .await
         .unwrap();
     assert_eq!(

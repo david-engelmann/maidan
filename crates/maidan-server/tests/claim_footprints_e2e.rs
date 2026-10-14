@@ -442,6 +442,90 @@ async fn an_operator_pauses_a_repository_and_the_queue_holds_its_work() {
 }
 
 #[tokio::test]
+async fn a_worker_serving_one_repository_claims_only_its_work() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "swarm".into(),
+        })
+        .await
+        .unwrap();
+    let (_, worker) = agent(store.as_ref(), ws.id, "worker").await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let mut threads = Vec::new();
+    for title in ["plain", "app"] {
+        threads.push(
+            store
+                .create_thread(NewThread {
+                    channel_id: channel.id,
+                    parent_thread_id: None,
+                    title: Some(title.into()),
+                    description: None,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let http = reqwest::Client::new();
+    let declared = http
+        .put(format!("{base}/threads/{}/footprint", threads[1].0))
+        .bearer_auth(&worker)
+        .json(&lane("bridge"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(declared.status(), StatusCode::OK);
+
+    // Over HTTP, another repository finds nothing although work is waiting.
+    let none = http
+        .post(format!("{base}/workspaces/{}/threads/claim-next", ws.id.0))
+        .bearer_auth(&worker)
+        .json(&json!({ "repo": "example/other" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(none.status(), StatusCode::OK);
+    assert!(none.json::<Value>().await.unwrap().is_null());
+    let bad = http
+        .post(format!("{base}/workspaces/{}/threads/claim-next", ws.id.0))
+        .bearer_auth(&worker)
+        .json(&json!({ "repo": "not a repo" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), StatusCode::BAD_REQUEST);
+
+    // Over MCP, the repository in any spelling takes its own work, skipping
+    // the older thread that names no repository.
+    let claimed = tool_result(
+        &tool(
+            &base,
+            &worker,
+            "claim_next_thread",
+            json!({
+                "channel_id": channel.id.0,
+                "repo": "git@github.com:Example/App.git",
+            }),
+        )
+        .await,
+    );
+    let id = claimed["thread"]["id"]
+        .as_str()
+        .or_else(|| claimed["id"].as_str())
+        .unwrap_or_else(|| panic!("no thread claimed: {claimed}"));
+    assert_eq!(id, threads[1].0.to_string());
+}
+
+#[tokio::test]
 async fn an_operator_caps_a_build_slot_and_workers_read_its_use() {
     let (base, store) = spawn().await;
     let ws = store

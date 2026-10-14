@@ -1398,6 +1398,13 @@
               "integer",
               "null"
             ]
+          },
+          "repo": {
+            "description": "Only claim a thread whose footprint names this repository\n(`owner/name` or a GitHub clone URL), for a worker whose checkout is\nthat repository. A thread without a footprint is then never claimed.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "type": "object"
