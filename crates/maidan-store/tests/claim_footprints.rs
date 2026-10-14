@@ -506,7 +506,7 @@ fn audit_for(ws: WorkspaceId, action: &str) -> maidan_store::AuditFor<RepoPause>
 /// A slot with a capacity admits that many live claims across the whole
 /// workspace, whatever their repository: the next thread holding it waits,
 /// counted as blocked, a refinement onto the full slot is refused naming its
-/// holders, and a release lets the waiting thread through.
+/// holders, and a release frees exactly one place.
 async fn a_full_slot_holds_work_until_a_holder_finishes(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "slots", 3).await;
     let build = |lane: &str, repo: &str| {
@@ -578,7 +578,13 @@ async fn a_full_slot_holds_work_until_a_holder_finishes(store: Arc<dyn Store>) {
         .release_claim(first, room.agents[0], held.claim_lease_id.unwrap())
         .await
         .unwrap();
-    assert_eq!(claim(store.as_ref(), &room, 0).await.unwrap().id, third);
+    // The release frees one place: the released thread, now the oldest
+    // waiting, takes it, and the slot is full again.
+    assert_eq!(claim(store.as_ref(), &room, 0).await.unwrap().id, first);
+    assert!(
+        claim(store.as_ref(), &room, 2).await.is_none(),
+        "the third build still waits for a place"
+    );
 
     assert!(store
         .clear_slot_capacity_audited(room.ws, "rust-build", audit(room.ws, "slot.capacity.clear"))
