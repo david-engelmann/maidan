@@ -1002,6 +1002,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operator/github/mark-ready", post(routes::mark_pull_ready))
         .route(
+            "/operator/github/enqueue",
+            post(routes::enqueue_pull)
+                .merge(get(routes::enqueue_status))
+                .merge(delete(routes::dequeue_pull)),
+        )
+        .route(
             "/workspaces/{wid}/automation/dlq",
             get(automation_deliveries::list_quarantined_automation_deliveries),
         )

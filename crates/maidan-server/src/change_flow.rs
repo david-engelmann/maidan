@@ -55,6 +55,9 @@ pub struct ChangeRequest<'a> {
     /// The thread's opening message (the `!change` instructions): the title
     /// when the result carries none.
     pub opening_message: Option<&'a str>,
+    /// The repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`), if
+    /// it has one.
+    pub merge_queue_label: Option<&'a str>,
 }
 
 impl ChangeRequest<'_> {
@@ -167,6 +170,17 @@ pub async fn deliver_change(
             "the open pull request #{} for `{}` targets `{}`, not the allowed base `{}`",
             pull.number, req.branch, pull.base, req.base
         ));
+    }
+    // A queued pull request lands the head it was queued with as soon as its
+    // checks pass, so a commit pushed now would land separately, or not at
+    // all. The caller dequeues it first (`DELETE /operator/github/enqueue`).
+    if let (Some(label), Some(pull)) = (req.merge_queue_label, existing.as_ref()) {
+        if pull.labels.iter().any(|name| name == label) {
+            return refused(format!(
+                "pull request #{} carries `{label}` and is in the merge queue; dequeue it before pushing another commit",
+                pull.number
+            ));
+        }
     }
     let head = git.branch_head(req.repo, req.branch).await?;
     let commit_sha = match head {
@@ -319,6 +333,7 @@ mod tests {
             thread_id: ThreadId::new(),
             change,
             opening_message: opening,
+            merge_queue_label: None,
         }
     }
 

@@ -219,3 +219,36 @@ fn row_to_delivery(row: &sqlx::sqlite::SqliteRow) -> ResultDelivery {
         updated_at: row.get("updated_at"),
     }
 }
+
+/// The commit last delivered to a pull request by the change flow; see
+/// `Store::delivered_change_head`. A `github_branch` row's selector is
+/// `owner/name@branch` and its handle `<commit_sha>#<pull_number>`.
+pub async fn delivered_change_head(
+    pool: &sqlx::SqlitePool,
+    workspace_id: maidan_types::WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+) -> Result<Option<String>, StoreError> {
+    let handle: Option<String> = sqlx::query_scalar(
+        "SELECT rd.external_ref FROM maidan_result_deliveries rd
+         JOIN maidan_threads t ON t.id = rd.thread_id
+         JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE c.workspace_id = ?1
+           AND rd.surface = 'github_branch' AND rd.status = 'delivered'
+           AND lower(substr(rd.selector, 1, length(?2) + 1)) = lower(?2) || '@'
+           AND rd.external_ref LIKE '%#' || ?3
+         ORDER BY rd.updated_at DESC
+         LIMIT 1",
+    )
+    .bind(workspace_id.0)
+    .bind(repo)
+    .bind(pull_number.to_string())
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+    Ok(handle.and_then(|handle| {
+        let (sha, number) = handle.split_once('#')?;
+        (number == pull_number.to_string() && maidan_types::is_git_sha(sha))
+            .then(|| sha.to_string())
+    }))
+}

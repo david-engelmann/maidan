@@ -2607,6 +2607,51 @@
         ],
         "type": "object"
       },
+      "EnqueueRequest": {
+        "properties": {
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "`owner/name`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "pull_number"
+        ],
+        "type": "object"
+      },
+      "EnqueueResponse": {
+        "properties": {
+          "applied": {
+            "description": "Whether the pull request carries the label now.",
+            "type": "boolean"
+          },
+          "label": {
+            "description": "The repository's merge-queue label.",
+            "type": "string"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "number",
+          "label",
+          "applied"
+        ],
+        "type": "object"
+      },
       "EraseWorkspace": {
         "properties": {
           "confirm_workspace_id": {
@@ -17727,6 +17772,318 @@
           }
         ],
         "summary": "Get the operator export public key",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/operator/github/enqueue": {
+      "delete": {
+        "operationId": "dequeue_pull",
+        "parameters": [
+          {
+            "description": "`owner/name`.",
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pull_number",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnqueueResponse"
+                }
+              }
+            },
+            "description": "The label is off; `reason` says when it was not on"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad repo or pull number"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not the mark-ready app, no label for the repository, or the PR fails a guard"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No such pull request"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "GitHub is unreachable or errored"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Take a pull request out of its repository's merge queue (mark-ready app only)",
+        "tags": [
+          "operator"
+        ]
+      },
+      "get": {
+        "operationId": "enqueue_status",
+        "parameters": [
+          {
+            "description": "`owner/name`.",
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pull_number",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnqueueResponse"
+                }
+              }
+            },
+            "description": "Whether the label is applied"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad repo or pull number"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not the mark-ready app, or no label for the repository"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No such pull request"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Whether a pull request carries its repository's merge-queue label (mark-ready app only)",
+        "tags": [
+          "operator"
+        ]
+      },
+      "post": {
+        "operationId": "enqueue_pull",
+        "parameters": [
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnqueueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnqueueResponse"
+                }
+              }
+            },
+            "description": "The pull request carries the merge-queue label"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad repo or pull number"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not the mark-ready app, no label for the repository, or the PR fails a guard (draft, fork, base, allowlist, or a head that is not the delivered commit)"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No such pull request"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "GitHub is unreachable or errored"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Label a ready agent pull request for its repository's merge queue (mark-ready app only)",
         "tags": [
           "operator"
         ]

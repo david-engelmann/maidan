@@ -68,6 +68,7 @@ struct FakePull {
     title: String,
     body: String,
     draft: bool,
+    labels: Vec<String>,
 }
 
 type Tree = BTreeMap<String, (String, String)>;
@@ -290,6 +291,7 @@ async fn github(
                         "number": p.number,
                         "html_url": format!("https://github.com/{REPO}/pull/{}", p.number),
                         "base": {"ref": p.base},
+                        "labels": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>(),
                     })
                 })
                 .collect();
@@ -308,6 +310,7 @@ async fn github(
                 title: body["title"].as_str().unwrap().into(),
                 body: body["body"].as_str().unwrap().into(),
                 draft: body["draft"].as_bool().unwrap(),
+                labels: Vec::new(),
             });
             reply(
                 StatusCode::CREATED,
@@ -1132,6 +1135,7 @@ async fn an_open_pull_request_into_prod_refuses_the_change_before_any_write() {
             title: "someone else's".into(),
             body: String::new(),
             draft: false,
+            labels: Vec::new(),
         });
     }
     h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
@@ -1501,4 +1505,41 @@ async fn a_status_maidan_has_never_seen_is_answered_like_seat_error_with_its_rea
         assert!(body.contains("nothing was committed"), "{body}");
         assert!(body.contains("cargo test failed: 2 tests"), "{body}");
     }
+}
+
+#[tokio::test]
+async fn a_change_to_a_pull_request_in_the_merge_queue_is_refused_before_any_write() {
+    let mut h = harness().await;
+    h.state.merge_queue_labels =
+        maidan_types::MergeQueueLabels::parse(&format!("{REPO}=ready-to-merge")).unwrap();
+    h.allow_change().await;
+    let result = change("changed", &h.base_sha, BRANCH, DIFF);
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+    assert_eq!(
+        h.delivery(&h.a, "github_branch").await.status,
+        status::DELIVERED
+    );
+
+    // The pull request is queued; a later delivery to its branch would land
+    // apart from the head the queue took.
+    let writes_before = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].labels.push("ready-to-merge".into());
+        f.writes().len()
+    };
+    h.route(&h.a, &result, 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.contains("merge queue") && reason.contains("ready-to-merge"),
+        "{reason}"
+    );
+    assert_eq!(
+        h.fake.lock().unwrap().writes().len(),
+        writes_before,
+        "nothing written"
+    );
 }
