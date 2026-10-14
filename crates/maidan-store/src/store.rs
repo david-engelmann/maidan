@@ -1998,12 +1998,15 @@ pub trait AssignmentStore: Send + Sync {
     /// took over an expired lease (the previous holder's claim lapsed), or a
     /// `ClaimFailed` when charging that claim's worked time put the thread
     /// over budget (see [`reap_expired_claims`](Self::reap_expired_claims)).
-    /// Empty vec when nothing was claimed.
+    /// Empty vec when nothing was claimed. With `repo` (normalized
+    /// `owner/name`), only a thread whose footprint names that repository is
+    /// claimed, for a worker whose checkout is that repository.
     async fn claim_next_thread_with_event(
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
+        repo: Option<&str>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2014,6 +2017,7 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         member_id: MemberId,
         lease_secs: Option<i64>,
+        repo: Option<&str>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When

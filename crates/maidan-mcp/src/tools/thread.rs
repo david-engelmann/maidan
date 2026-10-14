@@ -875,6 +875,18 @@ struct ClaimNextThreadArgs {
     /// lapses. Omitted, the server's default lease applies.
     #[serde(default)]
     lease_secs: Option<i64>,
+    /// Only a thread whose footprint names this repository.
+    #[serde(default)]
+    repo: Option<String>,
+}
+
+/// The repository a claimer serves, normalized as footprints store it.
+fn claim_repo(repo: Option<&str>) -> Result<Option<String>, McpError> {
+    repo.map(|repo| {
+        maidan_types::normalize_repo(repo)
+            .map_err(|e| McpError::InvalidParams(format!("repo: {e}")))
+    })
+    .transpose()
 }
 
 /// Atomically claim the oldest claimable thread in a channel. Channel access is
@@ -887,6 +899,7 @@ pub(super) async fn claim_next_thread(
 ) -> Result<Value, McpError> {
     let a: ClaimNextThreadArgs = crate::tools::parse_args(args)?;
     let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
+    let repo = claim_repo(a.repo.as_deref())?;
     let member_id = auth.member_id;
     // WIP limit: a capped member is dispatched nothing (null), the same shape
     // as an empty queue.
@@ -900,7 +913,12 @@ pub(super) async fn claim_next_thread(
     // non-event path dropped ClaimExpired entirely on the agent surface.
     let claimed = server
         .store
-        .claim_next_thread_with_event(ChannelId(a.channel_id), member_id, Some(lease_secs))
+        .claim_next_thread_with_event(
+            ChannelId(a.channel_id),
+            member_id,
+            Some(lease_secs),
+            repo.as_deref(),
+        )
         .await?;
     publish_claim(server, claimed).await
 }
@@ -911,6 +929,8 @@ struct ClaimNextWorkspaceThreadArgs {
     workspace_id: uuid::Uuid,
     #[serde(default)]
     lease_secs: Option<i64>,
+    #[serde(default)]
+    repo: Option<String>,
 }
 
 /// `claim_next_thread` across every channel of the caller's workspace it may
@@ -925,6 +945,7 @@ pub(super) async fn claim_next_workspace_thread(
 ) -> Result<Value, McpError> {
     let a: ClaimNextWorkspaceThreadArgs = crate::tools::parse_args(args)?;
     let lease_secs = server.claim_lease_policy().lease_for(a.lease_secs)?;
+    let repo = claim_repo(a.repo.as_deref())?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
     if at_wip_limit(server.store.as_ref(), workspace_id, auth.member_id).await? {
@@ -932,7 +953,12 @@ pub(super) async fn claim_next_workspace_thread(
     }
     let claimed = server
         .store
-        .claim_next_workspace_thread_with_event(workspace_id, auth.member_id, Some(lease_secs))
+        .claim_next_workspace_thread_with_event(
+            workspace_id,
+            auth.member_id,
+            Some(lease_secs),
+            repo.as_deref(),
+        )
         .await?;
     publish_claim(server, claimed).await
 }

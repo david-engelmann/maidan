@@ -124,6 +124,15 @@ after that lease would end.
 **A cheap win.** Declaring `{"kind": "branch", "value": <the agent branch>}`
 on every change task gives one agent per branch with no other setup.
 
+### Workers bound to one repository
+
+A worker whose checkout is one repository passes `repo` when it claims
+(`claim_next_thread` or `claim_next_workspace_thread` over MCP, or the
+`claim-next` routes' body, in any spelling a footprint accepts). It is then
+handed only threads whose footprint names that repository, so it never claims
+work it would have to release. A thread without a footprint is never handed
+to a worker that names a repository, so producers declare `repo` at intake.
+
 ### Pausing a repository
 
 An operator can stop the swarm taking new work in one repository (during a

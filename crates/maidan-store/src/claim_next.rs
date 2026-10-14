@@ -13,7 +13,9 @@
 //! (tokens, usd, turns, or wall, counting the time a lapsed claim worked), and
 //! its footprint overlaps no live claim and names no paused repository
 //! ([`crate::footprints`]): a swarm claiming from one queue is never handed
-//! two pieces of the same work.
+//! two pieces of the same work. A claimer that serves one repository (a
+//! worker whose checkout is that repository) can ask for work whose footprint
+//! names it; a thread without a footprint is then never handed to it.
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
@@ -58,6 +60,9 @@ pub(crate) struct ClaimSql<'a> {
     /// Seconds a lapsed claim on `cand` worked, acknowledgement to deadline,
     /// or 0 when that claim was never acknowledged or the thread is free.
     pub lapsed_worked_secs: &'a str,
+    /// Placeholder bound to the repository (`owner/name`, normalized) the
+    /// claimer serves, or NULL for any work.
+    pub repo: &'a str,
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
@@ -72,6 +77,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         now,
         hours_waiting,
         lapsed_worked_secs,
+        repo,
     } = sql;
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
@@ -124,6 +130,10 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
                  )
            )
            AND NOT {footprint_conflict}
+           AND ({repo} IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_thread_footprints rf
+               WHERE rf.thread_id = cand.id AND rf.repo = {repo}
+           ))
            AND {readable}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC
          LIMIT 1"

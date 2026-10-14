@@ -85,7 +85,7 @@ async fn a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store: &dyn Store
 
     tokio::time::sleep(Duration::from_millis(1500)).await;
     let (taken, events) = store
-        .claim_next_thread_with_event(channel, next, Some(30))
+        .claim_next_thread_with_event(channel, next, Some(30), None)
         .await
         .unwrap();
     let taken = taken.expect("the lapsed claim returns to the queue");

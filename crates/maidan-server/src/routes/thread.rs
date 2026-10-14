@@ -1367,6 +1367,12 @@ pub async fn claim_next_thread(
 ) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
     let lease_secs = state.mcp.claim_lease_policy().lease_for(body.lease_secs)?;
+    let repo = body
+        .repo
+        .as_deref()
+        .map(maidan_types::normalize_repo)
+        .transpose()
+        .map_err(ApiError::BadRequest)?;
     let channel = state.store.get_channel(ChannelId(cid)).await?;
     ensure_workspace(&auth, channel.workspace_id)?;
     maidan_auth::ensure_channel_access(state.store.as_ref(), &auth, channel.id).await?;
@@ -1380,7 +1386,7 @@ pub async fn claim_next_thread(
     }
     let claimed = state
         .store
-        .claim_next_thread_with_event(channel.id, member_id, Some(lease_secs))
+        .claim_next_thread_with_event(channel.id, member_id, Some(lease_secs), repo.as_deref())
         .await?;
     publish_claim(&state, claimed).await.map(Json)
 }
@@ -1399,6 +1405,12 @@ pub async fn claim_next_workspace_thread(
 ) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
     let lease_secs = state.mcp.claim_lease_policy().lease_for(body.lease_secs)?;
+    let repo = body
+        .repo
+        .as_deref()
+        .map(maidan_types::normalize_repo)
+        .transpose()
+        .map_err(ApiError::BadRequest)?;
     let workspace_id = WorkspaceId(wid);
     ensure_workspace(&auth, workspace_id)?;
     if super::at_wip_limit(state.store.as_ref(), workspace_id, auth.member_id).await? {
@@ -1406,7 +1418,12 @@ pub async fn claim_next_workspace_thread(
     }
     let claimed = state
         .store
-        .claim_next_workspace_thread_with_event(workspace_id, auth.member_id, Some(lease_secs))
+        .claim_next_workspace_thread_with_event(
+            workspace_id,
+            auth.member_id,
+            Some(lease_secs),
+            repo.as_deref(),
+        )
         .await?;
     publish_claim(&state, claimed).await.map(Json)
 }
