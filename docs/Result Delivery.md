@@ -380,6 +380,26 @@ opened. A retry makes neither a second commit nor a second pull request.
 **A follow-up** is a new result whose `base_sha` is the branch head the last
 change left: it commits on top and finds the pull request already open.
 
+**The merge queue.** For a repository listed in `MAIDAN_MERGE_QUEUE_LABELS`,
+the mark-ready app may enter a ready agent pull request into the merge queue
+by asking Maidan to add the queue's label (`POST /operator/github/enqueue`
+with `repo` and `pull_number`), read whether it is labelled (`GET`), and take
+the label off (`DELETE`). Enqueue reads the pull request once and refuses
+unless every check holds on that read: a label is configured for the
+repository; the pull request is open, not a draft and not from a fork; its
+head is a `feature/agent-*` branch into the pinned base and on the workspace
+allowlist; and its head is the commit the change flow last delivered to it.
+The last check keeps a commit pushed after the review out of the queue: the
+refusal names both SHAs. Dequeue skips that comparison, since the queue may
+have rebased the head, and a pull request already without the label is
+answered "was not labelled". Both are recorded in the audit log as
+`github.enqueue`.
+
+While a pull request carries its repository's queue label, the change flow
+refuses a delivery to its branch before any write: the queue merges the head
+it took, and a later commit would land apart from what was reviewed. Dequeue
+first, then deliver the follow-up.
+
 **Credentials.** The commit and the pull request are made with
 `MAIDAN_GITHUB_TOKEN` (see [Production](Production.md#result-delivery-to-github-and-slack)),
 so they are authored by that token's owner. The token needs `contents:write`

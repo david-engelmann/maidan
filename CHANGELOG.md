@@ -114,6 +114,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)
 
+### The merge queue takes a ready agent pull request
+
+- **Added:** `POST`, `GET` and `DELETE /operator/github/enqueue`: the mark-ready app adds, reads and removes a repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`, `owner/name=label`) on a ready agent pull request. Enqueue runs the mark-ready guards on one read and also requires the head to be the commit the change flow last delivered, naming both SHAs when it is not; dequeue skips the head comparison, since the queue rebases.
+- **Changed:** the change flow refuses a delivery to a pull request that carries its repository's merge-queue label, before any write, so nothing lands apart from the head the queue took.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
