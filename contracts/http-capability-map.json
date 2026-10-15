@@ -1230,6 +1230,24 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/operator/waitlist",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/waitlist/export",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/operator/waitlist/{id}/invite",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/operator/workspaces",
     "capability": "operator:global",

@@ -15,7 +15,7 @@ pub async fn create(pool: &PgPool, new: NewMaidanSession) -> Result<MaidanSessio
     create_on(&mut conn, new).await
 }
 
-async fn create_on(
+pub(crate) async fn create_on(
     conn: &mut sqlx::PgConnection,
     new: NewMaidanSession,
 ) -> Result<MaidanSession, StoreError> {

@@ -136,6 +136,49 @@ fn resolve_oauth_ip(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&OAUTH_IP, default_on)
 }
 
+/// Per-address limit for the launch surface: the waitlist form, the
+/// sign-up start and the operator's invite mint. These are human-paced
+/// endpoints — nobody legitimately joins a waitlist thirty times an hour —
+/// and they are the instance's public spam and enumeration surface, so the
+/// bucket is an hourly one: 30 / 3600 s.
+const SIGNUP_IP: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_SIGNUP_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 30,
+        window: Duration::from_secs(3600),
+    },
+};
+
+/// Per-email-domain limit for the waitlist form alone: 100 / 3600 s. One
+/// address can rotate local parts all day; the domain bucket is what keeps
+/// a single domain's flood from filling the list, while a large provider's
+/// genuine sign-ups still fit under it.
+const WAITLIST_DOMAIN: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 100,
+        window: Duration::from_secs(3600),
+    },
+};
+
+fn resolve_signup_ip(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&SIGNUP_IP, default_on)
+}
+
+fn resolve_waitlist_domain(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&WAITLIST_DOMAIN, default_on)
+}
+
+/// The launch surface the sign-up limits guard: the public waitlist form,
+/// the sign-up start, and the operator's invite mint inside its path.
+fn signup_surface(path: &str) -> bool {
+    path == "/waitlist"
+        || path == "/auth/oidc/signup"
+        || (path.starts_with("/operator/waitlist/") && path.ends_with("/invite"))
+}
+
 /// The authorization-server surface the OAuth limits guard: the token and
 /// revoke endpoints, the authorize endpoint, and the consent page and its
 /// decision POST.
@@ -493,7 +536,15 @@ pub async fn middleware(
     let oauth_client_cfg = resolve_oauth_client(state.rate_limit_default_on);
     let oauth_ip_cfg = resolve_oauth_ip(state.rate_limit_default_on);
     let oauth = oauth_surface(req.uri().path());
-    if (global.is_none() && !workspace_on && oauth_client_cfg.is_none() && oauth_ip_cfg.is_none())
+    let signup_ip_cfg = resolve_signup_ip(state.rate_limit_default_on);
+    let waitlist_domain_cfg = resolve_waitlist_domain(state.rate_limit_default_on);
+    let signup = signup_surface(req.uri().path());
+    if (global.is_none()
+        && !workspace_on
+        && oauth_client_cfg.is_none()
+        && oauth_ip_cfg.is_none()
+        && signup_ip_cfg.is_none()
+        && waitlist_domain_cfg.is_none())
         || exempt_path(req.uri().path())
     {
         return next.run(req).await;
@@ -571,6 +622,62 @@ pub async fn middleware(
                 let key = format!("oauth-client:{client_id}:{}", ip_client_key(&req));
                 if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
                     return too_many(cfg.window, cfg.max, false);
+                }
+            }
+        }
+    }
+    if signup {
+        if let Some(cfg) = signup_ip_cfg {
+            let key = format!("signup:{}", ip_client_key(&req));
+            if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+                return too_many(cfg.window, cfg.max, false);
+            }
+        }
+        // The waitlist form is also charged per email domain. The domain
+        // rides in the JSON body, so a small declared body is buffered,
+        // read, and put back untouched for the handler, the same bargain
+        // the OAuth client bucket makes with form bodies.
+        if req.uri().path() == "/waitlist" && req.method() == Method::POST {
+            if let Some(cfg) = waitlist_domain_cfg {
+                let small_json = req
+                    .headers()
+                    .get(header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .is_some_and(|v| v.starts_with("application/json"))
+                    && req
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .is_some_and(|len| len <= 16_384);
+                if small_json {
+                    let (parts, body) = req.into_parts();
+                    match axum::body::to_bytes(body, 16_384).await {
+                        Ok(bytes) => {
+                            let domain = serde_json::from_slice::<serde_json::Value>(&bytes)
+                                .ok()
+                                .and_then(|v| {
+                                    v.get("email").and_then(|e| e.as_str()).map(str::to_string)
+                                })
+                                .and_then(|email| {
+                                    email
+                                        .rsplit_once('@')
+                                        .map(|(_, d)| d.to_lowercase())
+                                        .filter(|d| !d.is_empty())
+                                });
+                            req = Request::from_parts(parts, Body::from(bytes));
+                            if let Some(domain) = domain {
+                                let key = format!("waitlist-domain:{domain}");
+                                if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+                                    return too_many(cfg.window, cfg.max, false);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            return ApiError::BadRequest("request body could not be read".into())
+                                .into_response();
+                        }
+                    }
                 }
             }
         }

@@ -154,6 +154,15 @@
             <p class="first-run-note">A token comes from <code>maidan init</code> on the server, or from an admin in Tokens. This browser exchanges it for a session and does not keep the token, so use your own device.</p>
             <p class="first-run-note" id="storage-warning">The workspace id and the live resume token stay in localStorage as plaintext. Any script on this page can read them. The sign-in token itself is not stored there.</p>
             <div class="row" id="first-run-oidc" hidden><button id="login" type="button" class="primary">Sign in with your identity provider</button> <span>or paste a token</span></div>
+            <div class="waitlist" id="waitlist-block">
+              <h4>New here</h4>
+              <p class="first-run-note">This server signs people in by invite. Join the waitlist and an operator can invite you.</p>
+              <label>Email <input id="waitlist-email" type="email" autocomplete="email" /></label>
+              <label>What would you use Maidan for <input id="waitlist-use" autocomplete="off" /></label>
+              <label class="waitlist-consent"><input id="waitlist-consent" type="checkbox" /> You may email me about my place on the list</label>
+              <button id="waitlist-join" type="button" class="ghost">Join the waitlist</button>
+              <p class="first-run-note" id="waitlist-state" role="status" hidden></p>
+            </div>
           </section>
           <div id="board-head">
             <h2 id="board-title">Board</h2>

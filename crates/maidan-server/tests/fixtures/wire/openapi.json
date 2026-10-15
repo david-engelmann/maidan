@@ -3526,6 +3526,53 @@
         },
         "type": "object"
       },
+      "InviteMintedView": {
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/WaitlistEntryView"
+          },
+          "invite_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "invite_token": {
+            "description": "The invite token, shown exactly once. Only its hash is stored.",
+            "type": "string"
+          },
+          "signup_path": {
+            "description": "Where the invite link points, on this instance's origin.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry",
+          "invite_token",
+          "signup_path",
+          "invite_expires_at"
+        ],
+        "type": "object"
+      },
+      "JoinWaitlistRequest": {
+        "properties": {
+          "consent": {
+            "description": "The visitor agreed to be contacted about a place. A join without\nconsent is refused: the consent timestamp is the point of the row.",
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "use_case": {
+            "description": "What the visitor would use Maidan for, in their own words.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "use_case",
+          "consent"
+        ],
+        "type": "object"
+      },
       "KindCensus": {
         "description": "EventKind distribution for a workspace (optionally narrowed to a channel\nor thread). Zero-count kinds are omitted; [`KindCensus::total`] is the\ndenominator.",
         "properties": {
@@ -9825,6 +9872,60 @@
         ],
         "type": "string"
       },
+      "WaitlistEntryId": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "WaitlistEntryView": {
+        "properties": {
+          "consented_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/WaitlistEntryId"
+          },
+          "invite_expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "use_case": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WorkspaceId"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "use_case",
+          "consented_at",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "WebhookResponse": {
         "properties": {
           "created_at": {
@@ -11569,6 +11670,75 @@
           {}
         ],
         "summary": "Start an OIDC login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/oidc/signup": {
+      "get": {
+        "description": "Creates a workspace for someone who is not a member anywhere yet. The\n`invite` names the waitlist invite the operator minted; without one, the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. 404 unless sign-up is enabled on the instance.",
+        "operationId": "oidc_signup",
+        "parameters": [
+          {
+            "description": "The invite token from the operator's invite link. Optional: an\naddress in the instance's sign-up domain list needs none.",
+            "in": "query",
+            "name": "invite",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "307": {
+            "description": "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "OIDC disabled, the invite is unknown, spent or expired, or sign-up here is by invite only"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Sign-up is not enabled on this instance"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Start an invited sign-up",
         "tags": [
           "auth"
         ]
@@ -19049,6 +19219,192 @@
           }
         ],
         "summary": "Get operator status",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/operator/waitlist": {
+      "get": {
+        "operationId": "list_waitlist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WaitlistEntryView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Every waitlist entry, oldest first; invite hashes are never shown"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Missing operator:global capability"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List the waitlist",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/operator/waitlist/export": {
+      "get": {
+        "operationId": "export_waitlist",
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "The waitlist as a CSV download"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Missing operator:global capability"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Export the waitlist as CSV",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/operator/waitlist/{id}/invite": {
+      "post": {
+        "description": "Mints the invite token and shows it exactly once; only its hash is\nstored. The invite is bound to the entry's address and lasts 30 days.\nMinting again replaces the previous invite.",
+        "operationId": "invite_waitlist_entry",
+        "parameters": [
+          {
+            "description": "Waitlist entry id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteMintedView"
+                }
+              }
+            },
+            "description": "The entry, now invited, with the invite token shown once"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Missing operator:global capability"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "The entry already signed up"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Turn a waitlist entry into an invite",
         "tags": [
           "operator"
         ]
@@ -27674,6 +28030,59 @@
         "summary": "Search a workspace's messages (console)",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/waitlist": {
+      "post": {
+        "description": "Public and unauthenticated: an address, what the visitor would use\nMaidan for, and an explicit consent. The answer is the same whether the\naddress was already waiting, so the list cannot be probed for who is on\nit. Rate limited per address and per email domain.",
+        "operationId": "join_waitlist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinWaitlistRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Waiting; the same answer for an address already on the list"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Rate limited for this address or this email domain"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Join the waitlist",
+        "tags": [
+          "operator"
         ]
       }
     },

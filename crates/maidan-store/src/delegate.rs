@@ -1548,6 +1548,49 @@ macro_rules! store_delegations {
                 oidc::take_pending(self.pool(), state).await
             }
 
+            async fn insert_waitlist_entry(
+                &self,
+                new: NewWaitlistEntry,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::insert_waitlist_entry(self.pool(), new).await
+            }
+
+            async fn list_waitlist_entries(&self) -> Result<Vec<WaitlistEntry>, StoreError> {
+                oidc::list_waitlist_entries(self.pool()).await
+            }
+
+            async fn get_waitlist_entry(
+                &self,
+                id: WaitlistEntryId,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::get_waitlist_entry(self.pool(), id).await
+            }
+
+            async fn get_waitlist_entry_by_invite_hash(
+                &self,
+                token_hash: &str,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::get_waitlist_entry_by_invite_hash(self.pool(), token_hash).await
+            }
+
+            async fn set_waitlist_invite(
+                &self,
+                id: WaitlistEntryId,
+                token_hash: String,
+                expires_at: DateTime<Utc>,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::set_waitlist_invite(self.pool(), id, token_hash, expires_at).await
+            }
+
+            async fn complete_oidc_signup(
+                &self,
+                new: NewOidcSignup,
+                signup_audit: crate::AuditFor<OidcSignupCore>,
+                session_audit: crate::AuditFor<MaidanSession>,
+            ) -> Result<OidcSignupOutcome, StoreError> {
+                oidc::complete_signup(self.pool(), new, signup_audit, session_audit).await
+            }
+
             async fn create_session(
                 &self,
                 new: NewMaidanSession,

@@ -22,8 +22,8 @@ use maidan_auth::{capability, hash_secret, TokenSecret};
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    MemberId, MemberKind, NewApiToken, NewMember, NewOAuthClient, NewOAuthGrant, NewWorkspace,
-    WorkspaceId,
+    MemberId, MemberKind, NewApiToken, NewMember, NewOAuthClient, NewOAuthGrant, NewWaitlistEntry,
+    NewWorkspace, WorkspaceId,
 };
 use reqwest::Method;
 use serde_json::{json, Value};
@@ -479,6 +479,20 @@ pub async fn seed_victim(h: &Harness, doc: &Value) -> Victim {
     victim
         .ids
         .insert("oauth-grants".into(), grant.id.0.to_string());
+    // A waitlist entry is seeded by hand too: the operation that creates one
+    // is the public join, whose answer names no id to capture.
+    let waitlist = h
+        .store
+        .insert_waitlist_entry(NewWaitlistEntry {
+            email: "victim@example.com".into(),
+            use_case: "tenant isolation seed".into(),
+            consented_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    victim
+        .ids
+        .insert("waitlist".into(), waitlist.id.0.to_string());
     let third = member(h.store.as_ref(), ws, "b-third", MemberKind::Human).await;
 
     let channel = h

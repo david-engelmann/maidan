@@ -20,6 +20,7 @@ fn pending(state: &str, target: OidcPendingTarget) -> NewOidcPendingAuth {
         pkce_verifier: "verifier".into(),
         return_to: Some("/ui/".into()),
         expires_at: Utc::now() + Duration::minutes(10),
+        invite_entry_id: None,
     }
 }
 
@@ -161,12 +162,13 @@ async fn front_door_store_sqlite() {
         .await
         .expect("pragma");
     run_sqlite_migrations(&pool).await.expect("migrate");
-    // The CHECK refuses a front-door row naming a workspace, and a sign-in row
-    // naming none.
+    // The CHECK refuses a front-door row naming a workspace, a sign-in row
+    // naming none, and a sign-up row naming one (a sign-up names none; its
+    // workspace is created when the callback consumes it).
     for (kind, ws) in [
         ("front_door", Some(uuid::Uuid::new_v4().to_string())),
         ("sign_in", None),
-        ("sign_up", None),
+        ("sign_up", Some(uuid::Uuid::new_v4().to_string())),
     ] {
         let res = sqlx::query(
             "INSERT INTO maidan_oidc_pending
@@ -217,7 +219,7 @@ async fn front_door_store_postgres() {
     for (kind, ws) in [
         ("front_door", Some(uuid::Uuid::new_v4())),
         ("sign_in", None),
-        ("sign_up", None),
+        ("sign_up", Some(uuid::Uuid::new_v4())),
     ] {
         let res = sqlx::query(
             "INSERT INTO maidan_oidc_pending

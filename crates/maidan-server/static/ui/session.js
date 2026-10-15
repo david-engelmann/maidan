@@ -348,6 +348,45 @@ import { tokenKey, wsResumeKey } from "./state.js";
         signInWithToken();
       });
 
+      // The waitlist is the signed-out door: no credential, just an address,
+      // what the visitor would use Maidan for, and their consent to be
+      // emailed. The server answers the same for an address already waiting.
+      async function joinWaitlist() {
+        const state = document.getElementById("waitlist-state");
+        const email = document.getElementById("waitlist-email").value.trim();
+        const useCase = document.getElementById("waitlist-use").value.trim();
+        const consent = document.getElementById("waitlist-consent").checked;
+        state.hidden = false;
+        if (!email || !useCase) {
+          state.textContent = "Add your email and a line about what you would use Maidan for.";
+          return;
+        }
+        if (!consent) {
+          state.textContent = "Tick the box so an operator may email you about your place on the list.";
+          return;
+        }
+        let res;
+        try {
+          res = await writeApi("waitlist-join", `${base()}/waitlist`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ email, use_case: useCase, consent: true }),
+          });
+        } catch (e) {
+          state.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          state.textContent = await responseError(res, "Could not join the waitlist");
+          return;
+        }
+        state.textContent = "You are on the list. An operator can turn your place into an invite.";
+      }
+
+      document.getElementById("waitlist-join").addEventListener("click", () => {
+        joinWaitlist();
+      });
+
 
       // Sets the workspace display name. The id in the workspace field stays.
       async function saveWorkspaceName() {

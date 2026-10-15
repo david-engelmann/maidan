@@ -13,6 +13,7 @@ use openidconnect::{
     PkceCodeChallenge, PkceCodeVerifier, PostLogoutRedirectUrl, Scope, TokenResponse,
 };
 use rand::RngCore;
+use sha2::Digest;
 
 use crate::dto::{OidcCallbackQuery, OidcLoginQuery};
 use crate::error::ApiError;
@@ -23,6 +24,8 @@ use crate::state::AppState;
 
 /// The audit action of signing in.
 pub const SESSION_CREATE: &str = "session.create";
+/// The audit action of a sign-up creating its workspace.
+pub const WORKSPACE_SIGNUP: &str = "workspace.signup";
 /// The audit action of signing out.
 pub const SESSION_DELETE: &str = "session.delete";
 
@@ -87,9 +90,21 @@ pub async fn login(
             pkce_verifier: pkce_secret.clone(),
             return_to: q.return_to.clone(),
             expires_at,
+            invite_entry_id: None,
         })
         .await?;
 
+    authorize_redirect(oidc, state_token, nonce, &pkce_verifier)
+}
+
+/// The provider round trip both flows share: in mock mode a bounce
+/// straight to the callback, otherwise the authorize URL with PKCE.
+fn authorize_redirect(
+    oidc: &crate::oidc::OidcRuntime,
+    state_token: String,
+    nonce: String,
+    pkce_verifier: &PkceCodeVerifier,
+) -> Result<Response, ApiError> {
     if oidc.settings.mock {
         let mut url = format!(
             "/auth/oidc/callback?state={}",
@@ -104,7 +119,7 @@ pub async fn login(
         .as_ref()
         .ok_or_else(|| ApiError::Internal("OIDC client is not configured".into()))?;
 
-    let pkce_challenge = PkceCodeChallenge::from_code_verifier_sha256(&pkce_verifier);
+    let pkce_challenge = PkceCodeChallenge::from_code_verifier_sha256(pkce_verifier);
     let scopes: Vec<Scope> = std::env::var("MAIDAN_OIDC_SCOPES")
         .unwrap_or_else(|_| "openid profile email".to_string())
         .split_whitespace()
@@ -113,8 +128,8 @@ pub async fn login(
 
     let mut req = client.authorize_url(
         CoreAuthenticationFlow::AuthorizationCode,
-        || openidconnect::CsrfToken::new(state_token),
-        || Nonce::new(nonce),
+        move || openidconnect::CsrfToken::new(state_token),
+        move || Nonce::new(nonce),
     );
     req = req.set_pkce_challenge(pkce_challenge);
     for scope in scopes {
@@ -122,6 +137,235 @@ pub async fn login(
     }
     let (auth_url, _csrf, _nonce) = req.url();
     Ok(Redirect::temporary(auth_url.as_str()).into_response())
+}
+
+/// `GET /auth/oidc/signup` — start an invited sign-up. The route answers
+/// 404 unless the instance turned sign-up on (`MAIDAN_SIGNUP`), so a
+/// self-hosted deployment that never opted in has no sign-up surface at
+/// all. An invite token names its waitlist entry here; the entry's
+/// liveness and the email match are checked again at the callback and
+/// inside the sign-up transaction itself, because an invite can be
+/// consumed or expire while the provider round trip runs.
+pub async fn signup(
+    State(state): State<AppState>,
+    ApiQuery(q): ApiQuery<crate::dto::OidcSignupQuery>,
+) -> Result<Response, ApiError> {
+    let oidc = state
+        .oidc
+        .as_ref()
+        .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
+    if !oidc.settings.signup {
+        return Err(ApiError::NotFound);
+    }
+
+    let invite_entry_id = match q.invite.as_deref() {
+        Some(token) => {
+            let hash = hex::encode(sha2::Sha256::digest(token.as_bytes()));
+            let entry = state
+                .store
+                .get_waitlist_entry_by_invite_hash(&hash)
+                .await
+                .map_err(|err| match err {
+                    maidan_store::StoreError::NotFound => {
+                        ApiError::Forbidden("invite not recognized".into())
+                    }
+                    other => other.into(),
+                })?;
+            if entry.status != maidan_types::WaitlistStatus::Invited
+                || entry
+                    .invite_expires_at
+                    .is_none_or(|e| e <= chrono::Utc::now())
+            {
+                return Err(ApiError::Forbidden("the invite is no longer valid".into()));
+            }
+            Some(entry.id)
+        }
+        None => {
+            // Without an invite only a domain-listed address can finish,
+            // and that is decided at the callback from the verified email.
+            // With no domain list either, there is nothing to start.
+            if oidc.settings.signup_email_domains.is_empty() {
+                return Err(ApiError::Forbidden("sign-up is by invite".into()));
+            }
+            None
+        }
+    };
+
+    let state_token = random_token();
+    let nonce = random_token();
+    let pkce_verifier = PkceCodeVerifier::new(random_token());
+    let pkce_secret = pkce_verifier.secret().to_string();
+    let expires_at = Utc::now() + Duration::seconds(oidc.settings.pending_ttl_secs as i64);
+
+    state
+        .store
+        .insert_oidc_pending(NewOidcPendingAuth {
+            state: state_token.clone(),
+            target: OidcPendingTarget::SignUp,
+            nonce: nonce.clone(),
+            pkce_verifier: pkce_secret.clone(),
+            return_to: q.return_to.clone(),
+            expires_at,
+            invite_entry_id,
+        })
+        .await?;
+
+    authorize_redirect(oidc, state_token, nonce, &pkce_verifier)
+}
+
+/// How a sign-up was gated, for the audit row.
+enum SignupGate {
+    Invite,
+    Domain,
+}
+
+/// Finish a sign-up at the callback: gate on the verified email, then let
+/// the store create the workspace, its admin member, the identity and the
+/// session in one transaction. A sign-up never resolves into an existing
+/// workspace — there is deliberately no member lookup here at all.
+#[allow(clippy::too_many_arguments)]
+async fn complete_signup(
+    state: &AppState,
+    oidc: &crate::oidc::OidcRuntime,
+    pending: &maidan_types::OidcPendingAuth,
+    issuer: String,
+    subject: String,
+    email: Option<String>,
+    email_verified: bool,
+    headers_in: &HeaderMap,
+) -> Result<Response, ApiError> {
+    let Some(email) = email.filter(|_| email_verified) else {
+        return Err(ApiError::Forbidden("sign-up needs a verified email".into()));
+    };
+
+    let gate = match pending.invite_entry_id {
+        Some(entry_id) => {
+            let entry =
+                state
+                    .store
+                    .get_waitlist_entry(entry_id)
+                    .await
+                    .map_err(|err| match err {
+                        maidan_store::StoreError::NotFound => {
+                            ApiError::Forbidden("the invite is no longer valid".into())
+                        }
+                        other => other.into(),
+                    })?;
+            if !entry.email.eq_ignore_ascii_case(&email) {
+                return Err(ApiError::Forbidden(
+                    "the invite was issued to a different email".into(),
+                ));
+            }
+            SignupGate::Invite
+        }
+        None => {
+            let domain = email
+                .rsplit_once('@')
+                .map(|(_, d)| d.to_lowercase())
+                .unwrap_or_default();
+            if !oidc.settings.signup_email_domains.contains(&domain) {
+                return Err(ApiError::Forbidden(
+                    "this email domain may not sign up".into(),
+                ));
+            }
+            SignupGate::Domain
+        }
+    };
+
+    let handle = crate::oidc::member::handle_from_claims(&subject, Some(&email));
+    let workspace_name = format!("{handle}'s workspace");
+    let session_expires_at = Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64);
+    let outcome = state
+        .store
+        .complete_oidc_signup(
+            maidan_types::NewOidcSignup {
+                workspace_name,
+                handle,
+                issuer: issuer.clone(),
+                subject,
+                email: email.clone(),
+                invite_entry_id: pending.invite_entry_id,
+                session_expires_at,
+            },
+            Box::new(move |core| NewAuditEvent {
+                scope: AuditScope::Workspace(core.workspace.id),
+                actor_id: Some(core.member.id),
+                action: WORKSPACE_SIGNUP.into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(core.workspace.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": core.workspace.id.0,
+                    "issuer": issuer,
+                    "via": match gate {
+                        SignupGate::Invite => "invite",
+                        SignupGate::Domain => "domain",
+                    },
+                }),
+            }),
+            Box::new(move |session| NewAuditEvent {
+                scope: AuditScope::Workspace(session.workspace_id),
+                actor_id: Some(session.member_id),
+                action: SESSION_CREATE.into(),
+                target_kind: Some("member".into()),
+                target_id: Some(session.member_id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": session.workspace_id.0,
+                    "member": "signup",
+                    "expires_at": session.expires_at,
+                }),
+            }),
+        )
+        .await
+        .map_err(|err| match err {
+            maidan_store::StoreError::Conflict(_) | maidan_store::StoreError::NotFound => {
+                ApiError::Forbidden("the invite is no longer valid".into())
+            }
+            other => other.into(),
+        })?;
+    let session = outcome.session;
+
+    // This browser's previous session, if any, ends now that the new one
+    // exists, as at sign-in; a failed end is reported, not hidden.
+    if let Some(previous) = parse_session_cookie(headers_in, oidc.session_secret.as_ref())
+        .filter(|previous| *previous != session.id)
+    {
+        let ended = state
+            .store
+            .delete_session_audited(
+                previous,
+                Box::new(|ended| NewAuditEvent {
+                    scope: AuditScope::Workspace(ended.workspace_id),
+                    actor_id: Some(ended.member_id),
+                    action: SESSION_DELETE.into(),
+                    target_kind: Some("member".into()),
+                    target_id: Some(ended.member_id.0),
+                    metadata: serde_json::json!({
+                        "workspace_id": ended.workspace_id.0,
+                        "reason": "replaced",
+                    }),
+                }),
+            )
+            .await;
+        match ended {
+            Ok(_) | Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    let mut headers = HeaderMap::new();
+    set_session_cookie(
+        &mut headers,
+        session.id,
+        oidc.settings.session_ttl_secs,
+        oidc.settings.cookie_secure,
+        oidc.session_secret.as_ref(),
+    )
+    .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let location = safe_return_to(pending.return_to.as_deref());
+    let mut response = Redirect::temporary(&location).into_response();
+    response.headers_mut().extend(headers);
+    Ok(response)
 }
 
 pub async fn callback(
@@ -185,6 +429,23 @@ pub async fn callback(
         (oidc.settings.issuer.clone(), sub, email, email_verified)
     };
 
+    // A sign-up creates its workspace instead of landing in one. The
+    // pending kind decides, so a sign-in `state` can never reach this
+    // branch or a sign-up `state` the member resolution below.
+    if pending.target == OidcPendingTarget::SignUp {
+        return complete_signup(
+            &state,
+            oidc,
+            &pending,
+            issuer,
+            subject,
+            email,
+            email_verified,
+            &headers_in,
+        )
+        .await;
+    }
+
     // Which workspace this sign-in lands in, and whether the console should
     // offer the chooser afterwards.
     let (workspace_id, choose) = match pending.target {
@@ -221,6 +482,12 @@ pub async fn callback(
                     return Ok(Redirect::temporary(&location).into_response());
                 }
             }
+        }
+        // Handled by the branch above; a sign-up never resolves a member.
+        OidcPendingTarget::SignUp => {
+            return Err(ApiError::Internal(
+                "sign-up pending reached the sign-in resolution".into(),
+            ))
         }
     };
     // A front-door sign-in never links by email and never provisions: it can

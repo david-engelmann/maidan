@@ -86,6 +86,7 @@ async fn oidc_pending_is_single_use() {
             pkce_verifier: "verifier".to_string(),
             return_to: Some("/ui/".to_string()),
             expires_at: Utc::now() + Duration::minutes(10),
+            invite_entry_id: None,
         })
         .await
         .expect("insert");

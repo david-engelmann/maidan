@@ -1078,6 +1078,72 @@ pub fn replay_unified_delivery() {}
 )]
 pub fn list_global_audit() {}
 
+/// Join the waitlist
+///
+/// Public and unauthenticated: an address, what the visitor would use
+/// Maidan for, and an explicit consent. The answer is the same whether the
+/// address was already waiting, so the list cannot be probed for who is on
+/// it. Rate limited per address and per email domain.
+#[utoipa::path(
+    post,
+    path = "/waitlist",
+    tag = "operator",
+    request_body = JoinWaitlistRequest,
+    security(()),
+    responses(
+        (status = 201, description = "Waiting; the same answer for an address already on the list"),
+        (status = 400, response = BadRequest),
+        (status = 429, description = "Rate limited for this address or this email domain", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn join_waitlist() {}
+
+/// List the waitlist
+#[utoipa::path(
+    get,
+    path = "/operator/waitlist",
+    tag = "operator",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Vec<WaitlistEntryView>, description = "Every waitlist entry, oldest first; invite hashes are never shown"),
+        (status = 403, description = "Missing operator:global capability", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn list_waitlist() {}
+
+/// Export the waitlist as CSV
+#[utoipa::path(
+    get,
+    path = "/operator/waitlist/export",
+    tag = "operator",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The waitlist as a CSV download", content_type = "text/csv"),
+        (status = 403, description = "Missing operator:global capability", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn export_waitlist() {}
+
+/// Turn a waitlist entry into an invite
+///
+/// Mints the invite token and shows it exactly once; only its hash is
+/// stored. The invite is bound to the entry's address and lasts 30 days.
+/// Minting again replaces the previous invite.
+#[utoipa::path(
+    post,
+    path = "/operator/waitlist/{id}/invite",
+    tag = "operator",
+    params(("id" = Uuid, Path, description = "Waitlist entry id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = InviteMintedView, description = "The entry, now invited, with the invite token shown once"),
+        (status = 403, description = "Missing operator:global capability", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, response = NotFound),
+        (status = 409, description = "The entry already signed up", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn invite_waitlist_entry() {}
+
 /// Start an embeddings reindex
 #[utoipa::path(
     post,

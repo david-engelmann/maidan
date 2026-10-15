@@ -546,6 +546,11 @@
       .cx-links a.button, .cx-links button { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border: 1px solid var(--line); border-radius: 0.4rem; color: var(--ink); text-decoration: none; font-size: 0.8rem; background: #fff; }
       .onboard { grid-column: 1 / -1; padding: 1.6rem 1.4rem; border: 1px dashed #cbd5e1; border-radius: 0.8rem; background: #fff; text-align: left; }
       .onboard h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+      .waitlist { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; display: grid; gap: 0.5rem; max-width: 26rem; }
+      .waitlist h4 { margin: 0; font-size: 0.9rem; }
+      .waitlist label { display: grid; gap: 0.25rem; font-size: 0.85rem; }
+      .waitlist .waitlist-consent { display: flex; gap: 0.5rem; align-items: baseline; }
+      .waitlist button { justify-self: start; }
       .onboard p { margin: 0 0 0.8rem; color: var(--muted); font-size: 0.85rem; max-width: 42rem; }
       .onboard ol { margin: 0 0 1rem; padding-left: 1.2rem; font-size: 0.85rem; color: var(--ink); display: grid; gap: 0.3rem; }
       .onboard code { font-size: 0.78rem; }
