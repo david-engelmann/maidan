@@ -85,6 +85,18 @@ struct ListThreadsArgs {
     /// Exclusive keyset cursor: the prior page's last thread id.
     #[serde(default)]
     cursor: Option<uuid::Uuid>,
+    /// "oldest" (default) or "newest": the direction of the keyset walk.
+    #[serde(default)]
+    order: Option<String>,
+    /// Only threads created at or after this RFC 3339 instant.
+    #[serde(default)]
+    since: Option<String>,
+    /// Only threads whose stored result carries this `result_kind`.
+    #[serde(default)]
+    result_kind: Option<String>,
+    /// Only threads whose declared status is this one.
+    #[serde(default)]
+    status: Option<String>,
 }
 
 pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result<Value, McpError> {
@@ -92,8 +104,47 @@ pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result
     // Keyset-paginated (was unbounded). Default 100, clamp 1..=500.
     let limit = a.limit.unwrap_or(100).clamp(1, 500);
     let after = a.cursor.map(ThreadId);
+    let newest_first = match a.order.as_deref() {
+        None | Some("oldest") => false,
+        Some("newest") => true,
+        Some(other) => {
+            return Err(McpError::InvalidParams(format!(
+                "order must be \"oldest\" or \"newest\", not {other:?}"
+            )));
+        }
+    };
+    let since = a
+        .since
+        .as_deref()
+        .map(|raw| {
+            chrono::DateTime::parse_from_rfc3339(raw)
+                .map(|d| d.with_timezone(&chrono::Utc))
+                .map_err(|_| {
+                    McpError::InvalidParams(format!("since {raw:?} is not an RFC 3339 instant"))
+                })
+        })
+        .transpose()?;
+    let status = a
+        .status
+        .as_deref()
+        .map(|raw| {
+            maidan_types::DeclaredStatus::parse(raw).ok_or_else(|| {
+                McpError::InvalidParams(format!("status {raw:?} is not a declared status"))
+            })
+        })
+        .transpose()?;
     let threads = store
-        .page_threads_for_channel(ChannelId(a.channel_id), after, limit)
+        .page_threads_for_channel(
+            ChannelId(a.channel_id),
+            maidan_store::store::ThreadPageQuery {
+                after,
+                limit,
+                newest_first,
+                since,
+                result_kind: a.result_kind,
+                status,
+            },
+        )
         .await?;
     Ok(content_json(&threads))
 }

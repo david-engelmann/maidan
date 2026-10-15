@@ -842,11 +842,20 @@ pub struct ListMessagesQuery {
 /// Query for `GET /channels/:cid/threads` — keyset pagination over a channel's
 /// live threads, `(created_at, id)` ascending. `limit` defaults to 100 (clamped
 /// 1..=500); `cursor` is the prior page's last thread id (exclusive).
+/// `order=newest` reverses the walk (the cursor then continues it newest
+/// first). `since` keeps threads created at or after the RFC 3339 instant;
+/// `result_kind` keeps threads whose stored result carries that kind;
+/// `status` keeps threads whose declared status is the named one. Filters
+/// apply before the limit.
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ListThreadsQuery {
     pub limit: Option<i64>,
     pub cursor: Option<uuid::Uuid>,
+    pub order: Option<String>,
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
+    pub result_kind: Option<String>,
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

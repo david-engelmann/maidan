@@ -333,7 +333,7 @@ async fn assert_channel_thread_pagination(store: &dyn Store) {
         .id;
 
     let full: Vec<ThreadId> = store
-        .page_threads_for_channel(ch.id, None, 100)
+        .page_threads_for_channel(ch.id, ThreadPageQuery::unfiltered(None, 100))
         .await
         .unwrap()
         .iter()
@@ -351,7 +351,7 @@ async fn assert_channel_thread_pagination(store: &dyn Store) {
     let mut cursor: Option<ThreadId> = None;
     for _ in 0..10 {
         let page = store
-            .page_threads_for_channel(ch.id, cursor, 2)
+            .page_threads_for_channel(ch.id, ThreadPageQuery::unfiltered(cursor, 2))
             .await
             .unwrap();
         if page.is_empty() {
@@ -365,7 +365,10 @@ async fn assert_channel_thread_pagination(store: &dyn Store) {
     }
     assert_eq!(walk, full, "keyset walk reproduces the order once each");
     assert!(store
-        .page_threads_for_channel(ch.id, full.last().copied(), 100)
+        .page_threads_for_channel(
+            ch.id,
+            ThreadPageQuery::unfiltered(full.last().copied(), 100)
+        )
         .await
         .unwrap()
         .is_empty());

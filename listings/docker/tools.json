@@ -81,7 +81,7 @@
       "name": "create_thread"
     },
     {
-      "description": "List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.",
+      "description": "List a channel's live threads, oldest first by default or newest first with order=newest, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page. since (RFC 3339), result_kind and status filter in the query, before the limit.",
       "name": "list_threads"
     },
     {
