@@ -56,6 +56,38 @@ pub struct CreatedAgent {
     pub event: StoredEvent,
 }
 
+/// How one page of a channel's threads is selected by
+/// [`ThreadStore::page_threads_for_channel`]. The order is `(created_at,
+/// id)`, ascending unless `newest_first`; `after` is an exclusive keyset
+/// cursor in that order (the prior page's last thread id), `None` starts
+/// from the first thread. `since` keeps threads created at or after the
+/// instant. `result_kind` keeps threads whose stored result carries that
+/// `result_kind`; `status` keeps threads whose current declared status is
+/// the given one. Filters apply in the query, before the limit, so a
+/// filtered page is a full page of matches rather than the matches that
+/// happened to fall in an unfiltered one.
+#[derive(Clone, Debug, Default)]
+pub struct ThreadPageQuery {
+    pub after: Option<ThreadId>,
+    pub limit: i64,
+    pub newest_first: bool,
+    pub since: Option<DateTime<Utc>>,
+    pub result_kind: Option<String>,
+    pub status: Option<DeclaredStatus>,
+}
+
+impl ThreadPageQuery {
+    /// The unfiltered keyset page the list endpoints served before the
+    /// filters existed: oldest first, from `after`, `limit` rows.
+    pub fn unfiltered(after: Option<ThreadId>, limit: i64) -> Self {
+        ThreadPageQuery {
+            after,
+            limit,
+            ..Default::default()
+        }
+    }
+}
+
 #[async_trait]
 pub trait WorkspaceStore: Send + Sync {
     /// Insert a whole workspace content graph — members, channels, threads,
@@ -1446,17 +1478,15 @@ pub trait ThreadStore: Send + Sync {
         reader_id: Option<MemberId>,
     ) -> Result<Vec<Thread>, StoreError>;
 
-    /// One keyset page of a channel's **live** threads, ordered `(created_at,
-    /// id)` ascending. `after` is an exclusive cursor (the prior page's last
-    /// thread id); `None` starts from the beginning. The channel-scoped twin of
+    /// One keyset page of a channel's **live** threads, selected by
+    /// [`ThreadPageQuery`]. The channel-scoped twin of
     /// [`page_threads_for_workspace`](Self::page_threads_for_workspace) —
     /// bounds the previously-unbounded [`list_threads`](Self::list_threads)
     /// (kept for internal full-list callers).
     async fn page_threads_for_channel(
         &self,
         channel_id: ChannelId,
-        after: Option<ThreadId>,
-        limit: i64,
+        query: ThreadPageQuery,
     ) -> Result<Vec<Thread>, StoreError>;
 
     /// A parent thread's child threads, collapsed with a message count each.

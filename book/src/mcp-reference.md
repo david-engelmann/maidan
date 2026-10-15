@@ -670,7 +670,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_threads`
 
-**List threads.** List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.
+**List threads.** List a channel's live threads, oldest first by default or newest first with order=newest, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page. since (RFC 3339), result_kind and status filter in the query, before the limit.
 
 **Capability:** `workspace:read`
 
@@ -692,6 +692,27 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "default": 100,
       "description": "Max threads to return (clamped 1..=500).",
       "type": "integer"
+    },
+    "order": {
+      "description": "Direction of the keyset walk (default oldest).",
+      "enum": [
+        "oldest",
+        "newest"
+      ],
+      "type": "string"
+    },
+    "result_kind": {
+      "description": "Only threads whose stored result carries this result_kind.",
+      "type": "string"
+    },
+    "since": {
+      "description": "Only threads created at or after this RFC 3339 instant.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "status": {
+      "description": "Only threads whose declared status is this one (working, needs_input, needs_review, blocked, done).",
+      "type": "string"
     }
   },
   "required": [

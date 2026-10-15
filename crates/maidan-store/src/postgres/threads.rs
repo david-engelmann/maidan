@@ -13,6 +13,7 @@ use crate::postgres::budget;
 use crate::postgres::events;
 use crate::postgres::thread_workers;
 use crate::queue_counts::{self, QueueScope, QueueSql};
+use crate::store::ThreadPageQuery;
 use crate::thread_access::readable_row;
 
 pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError> {
@@ -1150,18 +1151,23 @@ pub async fn page_for_workspace(
     rows.iter().map(row_to_thread).collect()
 }
 
-/// One keyset page of a channel's **live** threads, ordered `(created_at, id)`
-/// ascending. `after` is an exclusive cursor (the prior page's last thread id);
-/// `None` starts from the beginning. The channel-scoped twin of
+/// One keyset page of a channel's **live** threads, selected by
+/// [`ThreadPageQuery`]: `(created_at, id)` in the query's direction, the
+/// cursor exclusive in that direction, and the `since`, `result_kind` and
+/// `status` filters applied before the limit. The channel-scoped twin of
 /// [`page_for_workspace`] — bounds the previously-unbounded channel thread
 /// list.
 pub async fn page_for_channel(
     pool: &PgPool,
     channel_id: ChannelId,
-    after: Option<ThreadId>,
-    limit: i64,
+    query: ThreadPageQuery,
 ) -> Result<Vec<Thread>, StoreError> {
-    let rows = sqlx::query(
+    let (direction, beyond) = if query.newest_first {
+        ("DESC", "<")
+    } else {
+        ("ASC", ">")
+    };
+    let sql = format!(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state,
                 t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id,
                 (t.state IN ('closed', 'archived') AND NOT EXISTS (
@@ -1171,17 +1177,30 @@ pub async fn page_for_channel(
          FROM maidan_threads t
          WHERE t.channel_id = $1
            AND t.tombstoned_at IS NULL
-           AND ($2::uuid IS NULL OR (t.created_at, t.id) > (
+           AND ($2::uuid IS NULL OR (t.created_at, t.id) {beyond} (
                  SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = $2
                ))
-         ORDER BY t.created_at ASC, t.id ASC
-         LIMIT $3",
-    )
-    .bind(channel_id.0)
-    .bind(after.map(|t| t.0))
-    .bind(limit.max(0))
-    .fetch_all(pool)
-    .await?;
+           AND ($3::timestamptz IS NULL OR t.created_at >= $3)
+           AND ($4::text IS NULL OR EXISTS (
+                 SELECT 1 FROM maidan_thread_results r
+                 WHERE r.thread_id = t.id AND r.result_kind = $4
+               ))
+           AND ($5::text IS NULL OR EXISTS (
+                 SELECT 1 FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id AND s.status = $5
+               ))
+         ORDER BY t.created_at {direction}, t.id {direction}
+         LIMIT $6"
+    );
+    let rows = sqlx::query(&sql)
+        .bind(channel_id.0)
+        .bind(query.after.map(|t| t.0))
+        .bind(query.since)
+        .bind(query.result_kind)
+        .bind(query.status.map(|s| s.as_str()))
+        .bind(query.limit.max(0))
+        .fetch_all(pool)
+        .await?;
     rows.iter().map(row_to_board_thread).collect()
 }
 

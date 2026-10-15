@@ -448,8 +448,7 @@ async fn run_closed_without_review_suite(store: &dyn Store) {
     let page = store
         .page_threads_for_channel(
             store.get_thread(bare).await.expect("bare").channel_id,
-            None,
-            10,
+            ThreadPageQuery::unfiltered(None, 10),
         )
         .await
         .expect("page");

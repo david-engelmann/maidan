@@ -403,7 +403,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "list_threads",
-            "description": "List a channel's live threads, oldest first, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page.",
+            "description": "List a channel's live threads, oldest first by default or newest first with order=newest, keyset-paginated. Default 100 (max 500); pass cursor=<last thread id of the prior page> for the next page. since (RFC 3339), result_kind and status filter in the query, before the limit.",
             "annotations": {
                 "title": "List threads",
                 "readOnlyHint": true,
@@ -416,7 +416,11 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
                     "limit": {"type": "integer", "default": 100, "description": "Max threads to return (clamped 1..=500)."},
-                    "cursor": {"type": "string", "format": "uuid", "description": "Exclusive keyset cursor: the prior page's last thread id."}
+                    "cursor": {"type": "string", "format": "uuid", "description": "Exclusive keyset cursor: the prior page's last thread id."},
+                    "order": {"type": "string", "enum": ["oldest", "newest"], "description": "Direction of the keyset walk (default oldest)."},
+                    "since": {"type": "string", "format": "date-time", "description": "Only threads created at or after this RFC 3339 instant."},
+                    "result_kind": {"type": "string", "description": "Only threads whose stored result carries this result_kind."},
+                    "status": {"type": "string", "description": "Only threads whose declared status is this one (working, needs_input, needs_review, blocked, done)."}
                 },
                 "required": ["channel_id"]
             }

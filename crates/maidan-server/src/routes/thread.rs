@@ -78,9 +78,34 @@ pub async fn list_threads(
     // Keyset-paginated (was unbounded). Default 100, clamp 1..=500.
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
     let after = q.cursor.map(ThreadId);
+    let newest_first = match q.order.as_deref() {
+        None | Some("oldest") => false,
+        Some("newest") => true,
+        Some(other) => {
+            return Err(ApiError::BadRequest(format!(
+                "order must be \"oldest\" or \"newest\", not {other:?}"
+            )));
+        }
+    };
+    let status = match q.status.as_deref() {
+        None => None,
+        Some(raw) => Some(maidan_types::DeclaredStatus::parse(raw).ok_or_else(|| {
+            ApiError::BadRequest(format!("status {raw:?} is not a declared status"))
+        })?),
+    };
     let mut threads = state
         .store
-        .page_threads_for_channel(ChannelId(channel_id), after, limit)
+        .page_threads_for_channel(
+            ChannelId(channel_id),
+            maidan_store::store::ThreadPageQuery {
+                after,
+                limit,
+                newest_first,
+                since: q.since,
+                result_kind: q.result_kind,
+                status,
+            },
+        )
         .await?;
     // The board marks a blocked card from `Thread.block`, which the store's
     // thread rows leave unset: attach blocks for exactly this page's threads.

@@ -201,7 +201,10 @@ pub async fn list_threads(
     let limit = page_limit(query.limit);
     let mut rows = state
         .store
-        .page_threads_for_channel(context.0.channel_id, query.cursor.map(ThreadId), limit + 1)
+        .page_threads_for_channel(
+            context.0.channel_id,
+            maidan_store::store::ThreadPageQuery::unfiltered(query.cursor.map(ThreadId), limit + 1),
+        )
         .await?;
     let next_cursor = if rows.len() as i64 > limit {
         rows.truncate(limit as usize);
