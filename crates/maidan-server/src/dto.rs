@@ -700,6 +700,15 @@ pub struct SetDelegationPolicy {
     pub max_grant_days: Option<i64>,
 }
 
+/// Body for `POST /threads/:id/cancel`: why the task is being cancelled, 1 to
+/// 500 characters after trimming. It is posted on the thread and kept as the
+/// dispatch park's reason.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelThread {
+    pub reason: String,
+}
+
 /// Body for `PUT /threads/:id/unclaimable` — park a thread from dispatch with a
 /// reason (must be non-empty).
 #[derive(Debug, Deserialize, ToSchema)]

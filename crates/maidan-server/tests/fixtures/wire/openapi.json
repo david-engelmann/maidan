@@ -1093,6 +1093,35 @@
         ],
         "type": "object"
       },
+      "CancelThread": {
+        "additionalProperties": false,
+        "description": "Body for `POST /threads/:id/cancel`: why the task is being cancelled, 1 to\n500 characters after trimming. It is posted on the thread and kept as the\ndispatch park's reason.",
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CancelledThread": {
+        "description": "A cancelled thread: the closed row and why it was cancelled.",
+        "properties": {
+          "cancellation": {
+            "$ref": "#/components/schemas/ThreadCancellation"
+          },
+          "thread": {
+            "$ref": "#/components/schemas/Thread"
+          }
+        },
+        "required": [
+          "thread",
+          "cancellation"
+        ],
+        "type": "object"
+      },
       "CapabilitySetView": {
         "properties": {
           "capabilities": {
@@ -2768,6 +2797,7 @@
           "thread_assignment_changed",
           "thread_ready",
           "thread_result_set",
+          "thread_cancelled",
           "approval_requested",
           "thread_blocked",
           "blocked_resolved",
@@ -8449,6 +8479,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "created_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberId",
+                "description": "The member who created this thread, if a member did. Unlike\n[`Thread::owner_id`] it never changes; it is the producer whose own\ntask this is, so it may cancel it without `thread:transition`."
+              }
+            ]
+          },
           "description": {
             "description": "What the task is about, in the creator's words. Set at creation;\n`None` on threads created before descriptions existed.",
             "type": [
@@ -8722,6 +8763,31 @@
           "used_turns",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "ThreadCancellation": {
+        "description": "The record of a cancel, kept so a repeat answers with the first one.",
+        "properties": {
+          "cancelled_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cancelled_by": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        "required": [
+          "thread_id",
+          "reason",
+          "cancelled_by",
+          "cancelled_at"
         ],
         "type": "object"
       },
@@ -21251,6 +21317,99 @@
           }
         ],
         "summary": "Replace a thread's budget",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/cancel": {
+      "post": {
+        "description": "Closes the task without its work being done, parks it from dispatch with the\nreason, ends any live claim (the holder's next renew is refused) and posts\nthe reason on the thread. Needs `workspace:write`; with it a caller may\ncancel a thread it created, and with `thread:transition` as well any thread\nit can reach. A repeat answers 200 with the first cancel.",
+        "operationId": "cancel_thread",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelThread"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledThread"
+                }
+              }
+            },
+            "description": "The cancelled thread and why"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Cancel a thread",
         "tags": [
           "threads"
         ]

@@ -924,6 +924,25 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "cancel_thread",
+            "description": "Cancel a task: close it without its work being done, park it from dispatch with the reason, and end any live claim, so the worker's next renew_claim is refused. The reason (1 to 500 characters) is posted on the thread. Requires workspace:write; without thread:transition only the member that created the thread may cancel it. Cancelling an already-cancelled thread returns the first cancel; a thread closed some other way is refused. The REST twin is POST /threads/{id}/cancel.",
+            "annotations": {
+                "title": "Cancel thread",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "reason": {"type": "string", "minLength": 1, "maxLength": 500, "description": "why the task is cancelled, posted on the thread"}
+                },
+                "required": ["thread_id", "reason"]
+            }
+        }),
+        json!({
             "name": "mark_claimable",
             "description": "Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.",
             "annotations": {
