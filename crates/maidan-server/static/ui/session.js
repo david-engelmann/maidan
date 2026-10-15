@@ -254,6 +254,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
       // spending the token twice.
       let signingIn = null;
       const SIGNING_IN = "Signing in…";
+      const SIGNING_IN_LINE_MS = 700;
 
       function signInWithToken() {
         if (!signingIn) {
@@ -263,10 +264,16 @@ import { tokenKey, wsResumeKey } from "./state.js";
           const status = document.getElementById("session-status");
           button.textContent = SIGNING_IN;
           button.setAttribute("aria-busy", "true");
-          status.hidden = false;
-          status.className = "muted";
-          status.textContent = SIGNING_IN;
+          // The status line pushes the page down when it appears. A fast
+          // sign-in never shows it, so a click landing as the field blurs is
+          // not moved off its target.
+          const slow = setTimeout(() => {
+            status.hidden = false;
+            status.className = "muted";
+            status.textContent = SIGNING_IN;
+          }, SIGNING_IN_LINE_MS);
           signingIn = trySignIn().finally(() => {
+            clearTimeout(slow);
             signingIn = null;
             document.getElementById("token").disabled = false;
             button.disabled = false;
