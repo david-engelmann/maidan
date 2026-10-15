@@ -1144,6 +1144,44 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
     );
     assert!(unsettled_order(store.as_ref(), r.ws).await.is_empty());
 
+    // A merge that waited on a sibling still lands when the sibling closes
+    // without merging, and the landing names the merge.
+    let sibling = task(store.as_ref(), r.channel, "sibling").await;
+    store
+        .set_thread_result(sibling, agent, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    for n in [6, 7] {
+        store
+            .record_change_round(round_for(r.ws, sibling, n))
+            .await
+            .unwrap();
+    }
+    store
+        .close_change_pull(REPO, 6, Some(at(6)), Some("c6"), at(6))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.settle_change_pull(REPO, 6).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    store
+        .close_change_pull(REPO, 7, None, None, at(7))
+        .await
+        .unwrap();
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 7).await.unwrap() else {
+        panic!("the earlier merge lands the thread once nothing is open");
+    };
+    let landed = stored
+        .iter()
+        .find(|e| e.kind == EventKind::ThreadLanded)
+        .unwrap();
+    assert_eq!(landed.payload["pr_number"], 6);
+    assert_eq!(
+        store.get_thread(sibling).await.unwrap().state,
+        ThreadState::Closed
+    );
+
     assert_eq!(
         store.get_thread(foreign).await.unwrap().state,
         ThreadState::Open

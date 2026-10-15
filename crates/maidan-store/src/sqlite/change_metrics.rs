@@ -224,13 +224,6 @@ pub async fn settle(
         tx.commit().await?;
         return Ok(ChangeSettlement::Unchanged);
     };
-    if !row.get::<bool, _>("merged") {
-        tx.commit().await?;
-        return Ok(ChangeSettlement::ClosedUnmerged {
-            thread_id,
-            author_id: actor,
-        });
-    }
     let another_open = sqlx::query(
         "SELECT 1 FROM maidan_change_pulls WHERE thread_id = ?1 AND closed_at IS NULL LIMIT 1",
     )
@@ -238,11 +231,48 @@ pub async fn settle(
     .fetch_optional(&mut *tx)
     .await?
     .is_some();
-    if another_open {
+    // The thread lands once none of its pull requests is still open, on its
+    // latest merge, whichever of them closed last: a merge that waited on a
+    // sibling is not lost when the sibling then closes without merging.
+    let merged = if another_open {
+        None
+    } else {
+        sqlx::query(
+            "SELECT repo, pull_number FROM maidan_change_pulls
+             WHERE thread_id = ?1 AND merged_at IS NOT NULL
+             ORDER BY merged_at DESC, repo, pull_number LIMIT 1",
+        )
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .map(|row| {
+            (
+                row.get::<String, _>("repo"),
+                row.get::<i64, _>("pull_number"),
+            )
+        })
+    };
+    let Some((landed_repo, landed_pull)) = merged else {
         tx.commit().await?;
-        return Ok(ChangeSettlement::Unchanged);
-    }
-    match land_in_tx(&mut tx, thread_id, actor, from_open, &repo, pull_number).await {
+        return Ok(if row.get::<bool, _>("merged") {
+            ChangeSettlement::Unchanged
+        } else {
+            ChangeSettlement::ClosedUnmerged {
+                thread_id,
+                author_id: actor,
+            }
+        });
+    };
+    match land_in_tx(
+        &mut tx,
+        thread_id,
+        actor,
+        from_open,
+        &landed_repo,
+        landed_pull,
+    )
+    .await
+    {
         Ok(stored) => {
             tx.commit().await?;
             Ok(ChangeSettlement::Landed(stored))
