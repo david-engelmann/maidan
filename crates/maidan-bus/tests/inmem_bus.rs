@@ -49,6 +49,7 @@ fn thread(channel_id: ChannelId) -> Thread {
         status: None,
         block: None,
         closed_without_review: false,
+        notices: Vec::new(),
     }
 }
 

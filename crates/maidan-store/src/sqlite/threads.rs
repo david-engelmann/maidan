@@ -1378,5 +1378,6 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         status: None,
         block: None,
         closed_without_review: false,
+        notices: Vec::new(),
     })
 }

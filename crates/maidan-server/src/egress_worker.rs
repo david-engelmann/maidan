@@ -1250,9 +1250,36 @@ async fn record_change_round(
             .as_deref()
             .map(maidan_types::diff_lines)
             .unwrap_or(0),
+        paths: request
+            .change
+            .diff
+            .as_deref()
+            .map(maidan_types::diff_paths)
+            .unwrap_or_default(),
+        base_branch: Some(request.base.to_string()),
     };
     if let Err(err) = state.store.record_change_round(round).await {
         tracing::warn!(repo = request.repo, pull_number, error = %err, "change flow: round not recorded");
+    }
+    let Some(behind) =
+        base_behind.filter(|b| *b >= crate::change_sweep::stale_base_commits_from_env())
+    else {
+        return;
+    };
+    let notice = maidan_types::NewStaleBaseNotice {
+        thread_id: entry.thread_id,
+        repo: request.repo.to_ascii_lowercase(),
+        pull_number,
+        commit_sha: commit_sha.to_string(),
+        base_branch: Some(request.base.to_string()),
+        base_behind: behind,
+    };
+    match state.store.add_stale_base_notice(notice).await {
+        Ok(Some(posted)) => crate::change_sweep::post_notice(state, posted).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(repo = request.repo, pull_number, error = %err, "change flow: stale-base notice not recorded");
+        }
     }
 }
 

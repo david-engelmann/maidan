@@ -91,10 +91,15 @@ async fn build_live(
     thread_id: ThreadId,
     limits: ThreadContextLimits,
 ) -> Result<ThreadContext, StoreError> {
-    let thread = store.get_thread(thread_id).await?;
+    let mut thread = store.get_thread(thread_id).await?;
     if thread.tombstoned_at.is_some() {
         return Err(StoreError::NotFound);
     }
+    // The live pack only: the notices table keeps no history to rebuild an
+    // as-of pack's notices from.
+    thread.notices = store
+        .list_thread_notices(thread_id, maidan_types::THREAD_NOTICE_LIMIT)
+        .await?;
     let channel = store.get_channel(thread.channel_id).await?;
     let workspace_id = channel.workspace_id;
     let page = store
