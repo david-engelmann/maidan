@@ -2222,6 +2222,27 @@ pub trait AssignmentStore: Send + Sync {
         repo: &str,
         pull_number: i64,
     ) -> Result<maidan_types::ChangeSettlement, StoreError>;
+    /// Notify the merges in a workspace not yet noticed, at most `limit`:
+    /// each live claim in the same workspace and repository whose footprint
+    /// covers a merged path gets one `rebase_needed` notice, its
+    /// `ThreadNotice` event committed with it. Each merge is noticed once.
+    async fn notify_change_merges(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// Record a `stale_base` notice on the thread a round was delivered on,
+    /// with its `ThreadNotice` event; `None` when that commit already had one.
+    async fn add_stale_base_notice(
+        &self,
+        notice: maidan_types::NewStaleBaseNotice,
+    ) -> Result<Option<maidan_types::PostedNotice>, StoreError>;
+    /// A thread's change notices, newest first, at most `limit`.
+    async fn list_thread_notices(
+        &self,
+        thread_id: ThreadId,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::ThreadNotice>, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.
     async fn list_slots(

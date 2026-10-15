@@ -184,6 +184,32 @@ pause to apply declares `repo` when it creates the thread, not after the claim.
 A pause binds one workspace, and both the pause and the resume are audited
 (`repo.pause`, `repo.resume`).
 
+### Change notices
+
+At three to five workers the pain is stale bases: one agent's change merges
+over files another is still editing, and the second finds out in review.
+Maidan tells it first, with a **notice** on its thread: a `ThreadNotice`
+event and one message saying the same in a sentence.
+
+- **`rebase_needed`.** When the change sweep sees an agent pull request
+  merged, it takes the files every round of it touched (each round records
+  its diff's paths, at most 500) and looks for live claims in the same
+  workspace and repository whose footprint covers one, by the footprint
+  rules: a `path` or `glob` item matches by prefix; lane, crate, branch and
+  slot items say nothing about files and never match. Each such thread gets
+  one notice naming the repository, the pull request, the base branch and
+  the covered paths (at most 20). A merge notifies once, whatever the sweep
+  does after; another workspace's claims are never told.
+- **`stale_base`.** When the change flow delivers a round whose base is
+  `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind its branch,
+  that thread gets a notice, once per delivered commit.
+
+A worker reads them on its next turn: the last 10, newest first, are the
+`notices` of `GET /threads/{id}` and of the context pack (MCP
+`get_thread_context`, `GET /threads/{id}/context`), in the pack's tail so the
+cached prefix does not change. Maidan does not rebase anything or tell GitHub
+to; the worker does.
+
 ## Cancelling a task
 
 A producer that no longer needs a task (the plan changed, the issue closed, a

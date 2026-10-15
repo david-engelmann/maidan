@@ -111,6 +111,7 @@ pub const REVIEW_LOWER_REFUSAL: &str =
     "lowering a review requirement needs the channel:admin capability";
 mod attestation;
 pub mod automation_deliveries;
+mod change_notices;
 mod claim_next;
 pub mod content_keyring;
 mod content_keys;

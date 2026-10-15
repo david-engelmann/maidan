@@ -32,6 +32,7 @@
     "maidan.event.thread_cancelled/1",
     "maidan.event.thread_created/1",
     "maidan.event.thread_landed/1",
+    "maidan.event.thread_notice/1",
     "maidan.event.thread_ready/1",
     "maidan.event.thread_result_set/1",
     "maidan.event.thread_spawn_denied/1",

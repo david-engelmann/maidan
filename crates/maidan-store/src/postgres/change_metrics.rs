@@ -6,13 +6,16 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    ChangePull, ChangeRound, ChangeSettlement, Event, MemberId, NewChangeRound, StoredEvent,
-    ThreadId, ThreadState, WorkspaceId,
+    ChangePull, ChangeRound, ChangeSettlement, Event, MemberId, NewChangeRound, NewStaleBaseNotice,
+    PostedNotice, StoredEvent, ThreadId, ThreadNotice, ThreadNoticeKind, ThreadState, WorkspaceId,
+    NOTICE_PATH_LIMIT,
 };
+use sqlx::types::Json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::{events, thread_transitions};
+use crate::change_notices::merged_paths;
 use crate::error::StoreError;
 
 /// Record a delivered round, and the pull request the first time. A retried
@@ -33,8 +36,9 @@ pub async fn record_round(pool: &PgPool, new: NewChangeRound) -> Result<(), Stor
     .await?;
     sqlx::query(
         "INSERT INTO maidan_change_rounds
-             (repo, pull_number, commit_sha, round, base_sha, base_behind, diff_lines, delivered_at)
-         SELECT $1, $2, $3, COALESCE(MAX(round), 0) + 1, $4, $5, $6, NOW()
+             (repo, pull_number, commit_sha, round, base_sha, base_behind, diff_lines, delivered_at,
+              paths, base_branch)
+         SELECT $1, $2, $3, COALESCE(MAX(round), 0) + 1, $4, $5, $6, NOW(), $7, $8
          FROM maidan_change_rounds WHERE repo = $1 AND pull_number = $2
          ON CONFLICT (repo, pull_number, commit_sha) DO NOTHING",
     )
@@ -44,6 +48,8 @@ pub async fn record_round(pool: &PgPool, new: NewChangeRound) -> Result<(), Stor
     .bind(&new.base_sha)
     .bind(new.base_behind)
     .bind(new.diff_lines)
+    .bind(Json(&new.paths))
+    .bind(&new.base_branch)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -144,6 +150,7 @@ pub async fn list_sweep_workspaces(
     let rows = sqlx::query(
         "SELECT DISTINCT workspace_id FROM maidan_change_pulls
          WHERE closed_at IS NULL OR settled_at IS NULL
+            OR (merged_at IS NOT NULL AND noticed_at IS NULL)
          ORDER BY workspace_id LIMIT $1",
     )
     .bind(limit)
@@ -349,6 +356,243 @@ async fn land_in_tx(
     };
     stored.push(events::append_in_tx(tx, &landed).await?);
     Ok(stored)
+}
+
+/// Notify the merges in `workspace_id` not yet noticed, oldest merge first,
+/// at most `limit`: each live claim in the same workspace and repository
+/// whose footprint covers a path the merged pull request touched gets one
+/// `rebase_needed` notice. See [`notify_merge`].
+pub async fn notify_merges(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<PostedNotice>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT repo, pull_number FROM maidan_change_pulls
+         WHERE workspace_id = $1 AND merged_at IS NOT NULL AND noticed_at IS NULL
+         ORDER BY merged_at, repo, pull_number
+         LIMIT $2",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    let mut posted = Vec::new();
+    for row in &rows {
+        let repo: String = row.get("repo");
+        posted.extend(notify_merge(pool, &repo, row.get("pull_number")).await?);
+    }
+    Ok(posted)
+}
+
+/// Notify one merge, once: the pull request is stamped noticed in the same
+/// transaction that records its notices, so two replicas sweeping at once
+/// notify it once, and a failure leaves it for the next pass.
+async fn notify_merge(
+    pool: &PgPool,
+    repo: &str,
+    pull_number: i64,
+) -> Result<Vec<PostedNotice>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let claimed = sqlx::query(
+        "UPDATE maidan_change_pulls SET noticed_at = $3
+         WHERE repo = $1 AND pull_number = $2 AND merged_at IS NOT NULL AND noticed_at IS NULL",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .bind(Utc::now())
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if claimed == 0 {
+        return Ok(Vec::new());
+    }
+    let pull = sqlx::query(
+        "SELECT workspace_id, thread_id FROM maidan_change_pulls WHERE repo = $1 AND pull_number = $2",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .fetch_one(&mut *tx)
+    .await?;
+    let workspace_id: Uuid = pull.get("workspace_id");
+    let own_thread: Uuid = pull.get("thread_id");
+    let rounds = sqlx::query(
+        "SELECT paths, base_branch FROM maidan_change_rounds
+         WHERE repo = $1 AND pull_number = $2 ORDER BY round",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .fetch_all(&mut *tx)
+    .await?;
+    let (paths, base_branch) = merged_paths(rounds.iter().map(|row| {
+        (
+            row.get::<Json<Vec<String>>, _>("paths").0,
+            row.get::<Option<String>, _>("base_branch"),
+        )
+    }));
+    if paths.is_empty() {
+        tx.commit().await?;
+        return Ok(Vec::new());
+    }
+    let keys = sqlx::query(&crate::footprints::live_path_keys_select(
+        "$1", "$2", "$3", "NOW()",
+    ))
+    .bind(workspace_id)
+    .bind(repo)
+    .bind(own_thread)
+    .fetch_all(&mut *tx)
+    .await?
+    .iter()
+    .map(|row| (row.get("thread_id"), row.get("match_key")))
+    .collect();
+    let mut posted = Vec::new();
+    for (thread, keys) in crate::footprints::keys_by_thread(keys) {
+        let covered = crate::footprints::covered_paths(&keys, &paths, NOTICE_PATH_LIMIT);
+        if covered.is_empty() {
+            continue;
+        }
+        let notice = ThreadNotice {
+            kind: ThreadNoticeKind::RebaseNeeded,
+            repo: repo.to_string(),
+            pull_number,
+            paths: covered,
+            base_branch: base_branch.clone(),
+            base_behind: None,
+            created_at: Utc::now(),
+        };
+        let key = format!("rebase_needed:{repo}#{pull_number}");
+        if let Some(p) = insert_notice_in_tx(&mut tx, ThreadId(thread), notice, &key).await? {
+            posted.push(p);
+        }
+    }
+    tx.commit().await?;
+    Ok(posted)
+}
+
+/// Record a stale-base notice on the thread a round was delivered on, once
+/// per delivered commit. `None` when it was already given.
+pub async fn add_stale_base_notice(
+    pool: &PgPool,
+    new: NewStaleBaseNotice,
+) -> Result<Option<PostedNotice>, StoreError> {
+    let repo = new.repo.to_ascii_lowercase();
+    let key = format!(
+        "stale_base:{repo}#{}@{}",
+        new.pull_number,
+        new.commit_sha.to_ascii_lowercase()
+    );
+    let notice = ThreadNotice {
+        kind: ThreadNoticeKind::StaleBase,
+        repo,
+        pull_number: new.pull_number,
+        paths: Vec::new(),
+        base_branch: new.base_branch,
+        base_behind: Some(new.base_behind),
+        created_at: Utc::now(),
+    };
+    let mut tx = pool.begin().await?;
+    let posted = insert_notice_in_tx(&mut tx, new.thread_id, notice, &key).await?;
+    tx.commit().await?;
+    Ok(posted)
+}
+
+async fn insert_notice_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    notice: ThreadNotice,
+    dedupe_key: &str,
+) -> Result<Option<PostedNotice>, StoreError> {
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
+    let inserted = sqlx::query(
+        "INSERT INTO maidan_thread_notices
+             (id, workspace_id, thread_id, kind, repo, pull_number, paths, base_branch,
+              base_behind, dedupe_key, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (thread_id, dedupe_key) DO NOTHING",
+    )
+    .bind(Uuid::now_v7())
+    .bind(workspace_id.0)
+    .bind(thread_id.0)
+    .bind(notice.kind.as_str())
+    .bind(&notice.repo)
+    .bind(notice.pull_number)
+    .bind(Json(&notice.paths))
+    .bind(&notice.base_branch)
+    .bind(notice.base_behind)
+    .bind(dedupe_key)
+    .bind(notice.created_at)
+    .execute(&mut **tx)
+    .await?
+    .rows_affected();
+    if inserted == 0 {
+        return Ok(None);
+    }
+    let event = events::append_in_tx(
+        tx,
+        &Event::ThreadNotice {
+            occurred_at: notice.created_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            notice: notice.kind,
+            repo: notice.repo.clone(),
+            pr_number: notice.pull_number,
+            paths: notice.paths.clone(),
+            base_branch: notice.base_branch.clone(),
+            base_behind: notice.base_behind,
+        },
+    )
+    .await?;
+    let author_id = sqlx::query(
+        "SELECT COALESCE(t.owner_id, t.assignee_id, r.produced_by) AS author
+         FROM maidan_threads t
+         LEFT JOIN maidan_thread_results r ON r.thread_id = t.id
+         WHERE t.id = $1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?
+    .and_then(|row| row.get::<Option<Uuid>, _>("author"))
+    .map(MemberId);
+    Ok(Some(PostedNotice {
+        thread_id,
+        notice,
+        event,
+        author_id,
+    }))
+}
+
+/// A thread's notices, newest first, at most `limit`.
+pub async fn list_notices(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    limit: i64,
+) -> Result<Vec<ThreadNotice>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at
+         FROM maidan_thread_notices WHERE thread_id = $1
+         ORDER BY created_at DESC, id DESC LIMIT $2",
+    )
+    .bind(thread_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .map(|row| {
+            let kind: String = row.get("kind");
+            Ok(ThreadNotice {
+                kind: ThreadNoticeKind::parse(&kind).ok_or_else(|| {
+                    StoreError::InvalidInput(format!("unknown notice kind `{kind}`"))
+                })?,
+                repo: row.get("repo"),
+                pull_number: row.get("pull_number"),
+                paths: row.get::<Json<Vec<String>>, _>("paths").0,
+                base_branch: row.get("base_branch"),
+                base_behind: row.get("base_behind"),
+                created_at: row.get::<DateTime<Utc>, _>("created_at"),
+            })
+        })
+        .collect()
 }
 
 /// The tracked pull requests in `workspace_id`, in `repo` and opened since

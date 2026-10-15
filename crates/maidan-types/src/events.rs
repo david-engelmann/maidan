@@ -175,6 +175,7 @@ pub enum EventKind {
     ClaimFailed,
     UsageReported,
     ThreadLanded,
+    ThreadNotice,
     ReviewSubmitted,
     WaitTimedOut,
     ScheduleSkipped,
@@ -218,6 +219,7 @@ impl EventKind {
             Self::ClaimFailed => "claim_failed",
             Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
+            Self::ThreadNotice => "thread_notice",
             Self::ReviewSubmitted => "review_submitted",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
@@ -261,6 +263,7 @@ impl EventKind {
             "claim_failed" => Some(Self::ClaimFailed),
             "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
+            "thread_notice" => Some(Self::ThreadNotice),
             "review_submitted" => Some(Self::ReviewSubmitted),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
@@ -329,6 +332,7 @@ impl EventKind {
         Self::ClaimFailed,
         Self::UsageReported,
         Self::ThreadLanded,
+        Self::ThreadNotice,
         Self::ReviewSubmitted,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
@@ -417,6 +421,10 @@ impl EventKind {
             // A "landed" fact is derived from *this* deployment's GitHub
             // projector webhook; a peer must not inject one for our threads.
             Self::ThreadLanded => false,
+            // A change notice reads this deployment's claims against this
+            // deployment's change sweep; a peer must not tell our workers to
+            // rebase.
+            Self::ThreadNotice => false,
             // A verdict is this deployment's governance record: the reviews
             // table is what the close-gate reads, and a peer must not announce
             // a verdict nobody gave here.
@@ -634,6 +642,31 @@ pub enum Event {
         stamp: PayerStamp,
         turns: i64,
         budget: ThreadBudget,
+    },
+    /// The change flow told a thread's worker something about its base: a
+    /// merged pull request touched paths its claim's footprint covers
+    /// (`rebase_needed`), or a round it delivered was built on a base far
+    /// behind its branch (`stale_base`). Each is said once. Locally derived:
+    /// not federatable.
+    ThreadNotice {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        notice: crate::change_metrics::ThreadNoticeKind,
+        /// Lowercase `owner/name`.
+        repo: String,
+        /// The merged pull request (`rebase_needed`) or the one the stale
+        /// round went to (`stale_base`).
+        pr_number: i64,
+        /// The merged paths the claim's footprint covers, at most 20.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        paths: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_branch: Option<String>,
+        /// Commits the stale round's base was behind its branch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_behind: Option<i64>,
     },
     /// The GitHub PR linked to a thread was **merged** — the work landed. A
     /// derived fact projected from an inbound `pull_request` (`action=closed`,
@@ -919,6 +952,7 @@ impl Event {
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
+            Self::ThreadNotice { .. } => EventKind::ThreadNotice,
             Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
@@ -962,6 +996,7 @@ impl Event {
             | Self::ClaimFailed { occurred_at, .. }
             | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
+            | Self::ThreadNotice { occurred_at, .. }
             | Self::ReviewSubmitted { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
@@ -1005,6 +1040,7 @@ impl Event {
             | Self::ClaimFailed { workspace_id, .. }
             | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
+            | Self::ThreadNotice { workspace_id, .. }
             | Self::ReviewSubmitted { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
@@ -1042,6 +1078,7 @@ impl Event {
             | Self::ClaimFailed { channel_id, .. }
             | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
+            | Self::ThreadNotice { channel_id, .. }
             | Self::ReviewSubmitted { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
@@ -1074,6 +1111,7 @@ impl Event {
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
+            Self::ThreadNotice { thread_id, .. } => Some(*thread_id),
             Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
@@ -1499,6 +1537,7 @@ mod kind_tests {
                 | EventKind::ClaimFailed
                 | EventKind::UsageReported
                 | EventKind::ThreadLanded
+                | EventKind::ThreadNotice
                 | EventKind::ReviewSubmitted
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
@@ -1584,6 +1623,7 @@ mod kind_tests {
             EventKind::ClaimUnacknowledged,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
+            EventKind::ThreadNotice,
             EventKind::ReviewSubmitted,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,

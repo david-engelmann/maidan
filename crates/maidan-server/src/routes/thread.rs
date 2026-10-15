@@ -176,6 +176,10 @@ pub async fn get_thread(
     // attach the thread's active declaration when one exists.
     let mut thread = thread;
     thread.status = state.store.get_thread_status(ThreadId(id)).await?;
+    thread.notices = state
+        .store
+        .list_thread_notices(ThreadId(id), maidan_types::THREAD_NOTICE_LIMIT)
+        .await?;
     Ok(Json(thread))
 }
 

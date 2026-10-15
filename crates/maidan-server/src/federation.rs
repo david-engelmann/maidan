@@ -551,6 +551,31 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             merge_commit_sha,
             title,
         },
+        // Non-federatable (a locally-derived change notice) — never actually
+        // ingested/remapped, but the exhaustive match must classify it.
+        ThreadNotice {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            notice,
+            repo,
+            pr_number,
+            paths,
+            base_branch,
+            base_behind,
+        } => ThreadNotice {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            notice,
+            repo,
+            pr_number,
+            paths,
+            base_branch,
+            base_behind,
+        },
         // Non-federatable (a locally-derived wait-timer signal) — never
         // actually ingested/remapped, but the exhaustive match must classify
         // it.

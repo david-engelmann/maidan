@@ -196,6 +196,12 @@
     "note": "A verified GitHub projector webhook derives this fact; clients cannot assert it."
   },
   {
+    "kind": "thread_notice",
+    "disposition": "internal_only",
+    "internal_evidence": "crates/maidan-server/tests/change_flow_e2e.rs#a_merge_tells_the_agent_holding_its_paths_to_rebase_once",
+    "note": "The change sweep derives a rebase_needed notice from a merge, and the egress worker a stale_base notice from a delivery; clients cannot assert one."
+  },
+  {
     "kind": "thread_ready",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/thread_ready_e2e.rs#closing_last_dependency_publishes_thread_ready",

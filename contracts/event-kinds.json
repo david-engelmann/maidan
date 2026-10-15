@@ -26,6 +26,7 @@
   "thread_cancelled",
   "thread_created",
   "thread_landed",
+  "thread_notice",
   "thread_ready",
   "thread_result_set",
   "thread_spawn_denied",

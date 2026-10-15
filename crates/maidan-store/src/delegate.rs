@@ -2679,6 +2679,29 @@ macro_rules! store_delegations {
                 change_metrics::settle(self.pool(), repo, pull_number).await
             }
 
+            async fn notify_change_merges(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::notify_merges(self.pool(), workspace_id, limit).await
+            }
+
+            async fn add_stale_base_notice(
+                &self,
+                notice: maidan_types::NewStaleBaseNotice,
+            ) -> Result<Option<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::add_stale_base_notice(self.pool(), notice).await
+            }
+
+            async fn list_thread_notices(
+                &self,
+                thread_id: ThreadId,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::ThreadNotice>, StoreError> {
+                change_metrics::list_notices(self.read_pool(), thread_id, limit).await
+            }
+
             async fn list_slots(
                 &self,
                 workspace_id: WorkspaceId,

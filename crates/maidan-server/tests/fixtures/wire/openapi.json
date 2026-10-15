@@ -1828,6 +1828,13 @@
               "null"
             ]
           },
+          "notices": {
+            "description": "The thread's change notices, newest first, at most 10. In the tail\nbecause a merge elsewhere adds one without touching the thread's own\nhistory, and the prefix must stay cache-stable.",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNotice"
+            },
+            "type": "array"
+          },
           "prefix_bytes": {
             "description": "Length of that prefix JSON, in bytes.",
             "format": "int64",
@@ -2807,6 +2814,7 @@
           "claim_failed",
           "usage_reported",
           "thread_landed",
+          "thread_notice",
           "review_submitted",
           "wait_timed_out",
           "schedule_skipped",
@@ -8500,6 +8508,13 @@
           "id": {
             "$ref": "#/components/schemas/ThreadId"
           },
+          "notices": {
+            "description": "The change notices on the thread, newest first, at most 10. Read by a\nsingle-thread read, so a worker sees \"rebase before you deliver\" with\nthe thread; empty on the list reads.",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNotice"
+            },
+            "type": "array"
+          },
           "owner_id": {
             "oneOf": [
               {
@@ -8904,6 +8919,62 @@
           "set_at"
         ],
         "type": "object"
+      },
+      "ThreadNotice": {
+        "description": "A change notice on a thread.",
+        "properties": {
+          "base_behind": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "base_branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ThreadNoticeKind"
+          },
+          "paths": {
+            "description": "The merged paths the claim covers, at most 20 ([`NOTICE_PATH_LIMIT`]).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "pull_number": {
+            "description": "The merged pull request (`rebase_needed`) or the one the stale round\nwent to (`stale_base`).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Lowercase `owner/name`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "repo",
+          "pull_number",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ThreadNoticeKind": {
+        "description": "What a change notice tells a thread's worker.",
+        "enum": [
+          "rebase_needed",
+          "stale_base"
+        ],
+        "type": "string"
       },
       "ThreadPriority": {
         "description": "A thread's dispatch priority. Higher = more urgent; the default (no row) is\n`0` (normal). `claim_next` orders by an effective rank = `priority` aged\nupward the longer a thread has waited, so a high-priority task jumps the\nqueue while a long-waiting normal task is never starved. One priority per\nthread.",
