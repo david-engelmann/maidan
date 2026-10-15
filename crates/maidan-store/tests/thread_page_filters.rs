@@ -81,16 +81,14 @@ async fn assert_thread_page_filters(store: &dyn Store) {
             .unwrap();
     }
 
-    let page = |query: ThreadPageQuery| {
-        async move {
-            store
-                .page_threads_for_channel(ch.id, query)
-                .await
-                .unwrap()
-                .iter()
-                .map(|t| t.id)
-                .collect::<Vec<_>>()
-        }
+    let page = |query: ThreadPageQuery| async move {
+        store
+            .page_threads_for_channel(ch.id, query)
+            .await
+            .unwrap()
+            .iter()
+            .map(|t| t.id)
+            .collect::<Vec<_>>()
     };
 
     // The default walk is the creation order, unchanged.
