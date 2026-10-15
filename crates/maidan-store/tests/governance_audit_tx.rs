@@ -73,6 +73,7 @@ where
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let t = store.create_thread(thread("t")).await.unwrap().id;
     let app = store

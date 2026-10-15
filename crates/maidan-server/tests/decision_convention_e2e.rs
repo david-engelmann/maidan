@@ -115,6 +115,7 @@ async fn decision_supersession_and_ack_conventions_work_over_the_api() {
                     parent_thread_id: None,
                     title: Some(title),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .unwrap()

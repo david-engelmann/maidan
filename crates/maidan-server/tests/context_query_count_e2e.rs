@@ -137,6 +137,7 @@ async fn thread_context_query_count_is_independent_of_message_count() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -148,6 +149,7 @@ async fn thread_context_query_count_is_independent_of_message_count() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

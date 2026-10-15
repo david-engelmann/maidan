@@ -145,6 +145,7 @@ async fn tenant(store: &Arc<dyn Store>, name: &str) -> Tenant {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()
@@ -382,6 +383,7 @@ async fn a_change_request_is_not_routed_to_a_member_who_should_not_hear_it() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

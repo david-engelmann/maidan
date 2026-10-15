@@ -160,6 +160,7 @@ async fn the_thread_list_orders_and_filters_over_rest() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

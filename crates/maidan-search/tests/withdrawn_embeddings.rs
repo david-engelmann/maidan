@@ -46,6 +46,7 @@ async fn post(store: &dyn Store) -> (MessageId, MessageId) {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

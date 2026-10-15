@@ -6,6 +6,7 @@
 pub mod a2a;
 pub mod approval_policy;
 pub mod attribution;
+mod cancel;
 
 /// The audit row an authority-changing store call writes in its own
 /// transaction (D-A), built from what the call produced — a new token's id,

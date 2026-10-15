@@ -146,6 +146,7 @@ async fn upsert_replaces_existing_embedding() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

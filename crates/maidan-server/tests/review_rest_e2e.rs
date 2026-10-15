@@ -143,6 +143,7 @@ async fn required_reviewers_over_http() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -323,6 +324,7 @@ async fn decision_history_over_http() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

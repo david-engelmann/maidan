@@ -63,6 +63,7 @@ async fn run_dag_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let task = store.create_thread(mk("task")).await.expect("task");
     let dep1 = store.create_thread(mk("dep1")).await.expect("dep1");
@@ -192,6 +193,7 @@ async fn run_readiness_claim_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     // `blocked` is created first (oldest), but depends on `dep`.
     let blocked = store.create_thread(mk("blocked")).await.expect("blocked");
@@ -260,6 +262,7 @@ async fn run_cycle_prevention_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let a = store.create_thread(mk("a")).await.expect("a");
     let b = store.create_thread(mk("b")).await.expect("b");
@@ -344,6 +347,7 @@ async fn run_ready_dependents_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let task = store.create_thread(mk("task")).await.expect("task");
     let dep1 = store.create_thread(mk("dep1")).await.expect("dep1");
@@ -426,6 +430,7 @@ async fn run_queue_depth_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
 
     // Empty channel: all zero.
@@ -531,6 +536,7 @@ async fn run_occupancy_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
 
     // Empty channel: all zero.

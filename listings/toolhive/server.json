@@ -52,6 +52,7 @@
     "set_priority",
     "get_priority",
     "mark_unclaimable",
+    "cancel_thread",
     "mark_claimable",
     "list_unclaimable",
     "set_thread_block",

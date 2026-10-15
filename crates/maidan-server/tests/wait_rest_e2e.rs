@@ -84,6 +84,7 @@ async fn thread_wait_set_get_cancel_over_rest() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

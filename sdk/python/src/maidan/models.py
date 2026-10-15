@@ -165,6 +165,8 @@ class Thread(Model):
     title: Optional[str] = None
     assignee_id: Optional[str] = None
     owner_id: Optional[str] = None
+    #: The member that created it; that member may cancel it.
+    created_by: Optional[str] = None
     assignment_expires_at: Optional[str] = None
     #: The fencing token :meth:`Client.renew_claim` takes.
     claim_lease_id: Optional[str] = None

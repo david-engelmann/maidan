@@ -201,6 +201,7 @@ mod tests {
                 parent_thread_id: None,
                 title: Some("review".into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

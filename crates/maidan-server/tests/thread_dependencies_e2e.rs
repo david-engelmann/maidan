@@ -80,6 +80,7 @@ async fn dependency_management_add_list_ready_dependents_remove() {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let task = store.create_thread(mk("task")).await.unwrap();
     let dep = store.create_thread(mk("dep")).await.unwrap();

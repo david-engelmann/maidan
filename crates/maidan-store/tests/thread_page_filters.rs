@@ -51,6 +51,7 @@ async fn assert_thread_page_filters(store: &dyn Store) {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

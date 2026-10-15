@@ -57,6 +57,7 @@ async fn run_owner_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -141,6 +142,7 @@ async fn run_sod_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -209,6 +211,7 @@ async fn run_steer_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -276,6 +279,7 @@ async fn run_rename_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("old title".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

@@ -90,6 +90,7 @@ async fn main() {
             parent_thread_id: None,
             title: Some("Deploy v9".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -138,6 +139,7 @@ async fn main() {
                     parent_thread_id: None,
                     title: Some(title.into()),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .expect("board thread")
@@ -236,6 +238,7 @@ async fn main() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .expect("desk thread");
@@ -281,6 +284,7 @@ async fn main() {
                     parent_thread_id: None,
                     title: Some(title.into()),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .expect("floor thread"),
@@ -319,6 +323,7 @@ async fn main() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .expect("triage thread");
@@ -360,6 +365,7 @@ async fn main() {
             parent_thread_id: None,
             title: Some("Held up: the signing key needs a person".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("hold thread");
@@ -386,6 +392,7 @@ async fn main() {
             parent_thread_id: None,
             title: Some("Asked: where the replica runs".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("ask thread");
@@ -431,6 +438,7 @@ async fn main() {
             parent_thread_id: None,
             title: Some("Afar: the second workspace's blocked task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("second thread");
@@ -502,6 +510,7 @@ async fn main() {
             parent_thread_id: None,
             title: Some(format!("Title {XSS}")),
             description: None,
+            created_by: None,
         })
         .await
         .expect("lab thread");
@@ -630,6 +639,7 @@ async fn main() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .expect("proof thread");
@@ -677,6 +687,7 @@ async fn main() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .expect("proof thread");
@@ -837,6 +848,7 @@ async fn main() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .expect("tier thread");
@@ -903,6 +915,7 @@ async fn main() {
             parent_thread_id: None,
             title: Some("Neighbour: the outsider's own account".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("yard thread");

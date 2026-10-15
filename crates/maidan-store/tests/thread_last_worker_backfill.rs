@@ -62,6 +62,7 @@ async fn seed(store: &dyn Store) -> Seeded {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let held = store.create_thread(thread("held")).await.expect("held").id;
     let unheld = store

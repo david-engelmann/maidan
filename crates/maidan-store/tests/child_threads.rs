@@ -49,6 +49,7 @@ async fn run_child_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("parent".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("parent");
@@ -57,6 +58,7 @@ async fn run_child_suite(store: &dyn Store) {
         parent_thread_id: Some(parent.id),
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let child1 = store.create_thread(mk_child("c1")).await.expect("c1");
     let child2 = store.create_thread(mk_child("c2")).await.expect("c2");
@@ -124,6 +126,7 @@ async fn run_bump_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let t1 = store.create_thread(mk("t1")).await.expect("t1");
     let t2 = store.create_thread(mk("t2")).await.expect("t2");

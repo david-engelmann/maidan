@@ -67,6 +67,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("t1".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("th1");
@@ -76,6 +77,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("t2".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("th2");

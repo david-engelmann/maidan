@@ -43,6 +43,7 @@ async fn thread(store: &dyn Store, channel_id: ChannelId) -> ThreadId {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()

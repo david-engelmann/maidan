@@ -131,6 +131,7 @@ async fn skills_crud_over_http() {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

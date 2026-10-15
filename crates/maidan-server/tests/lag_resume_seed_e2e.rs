@@ -70,6 +70,7 @@ async fn state_with_history(events: usize) -> Fixture {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

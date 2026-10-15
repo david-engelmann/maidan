@@ -111,6 +111,7 @@ async fn ui_api_lists_and_answers_an_approval_gate() {
             parent_thread_id: None,
             title: Some("deploy".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
