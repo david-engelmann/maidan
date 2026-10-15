@@ -108,7 +108,7 @@ pub struct ThreadNotice {
     /// The merged pull request (`rebase_needed`) or the one the stale round
     /// went to (`stale_base`).
     pub pull_number: i64,
-    /// The merged paths the claim covers, at most [`NOTICE_PATH_LIMIT`].
+    /// The merged paths the claim covers, at most 20 ([`NOTICE_PATH_LIMIT`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
