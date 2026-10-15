@@ -19,7 +19,9 @@ const REFRESH_LIMIT: i64 = 25;
 
 /// The workspace's ramp metrics. Before computing them, pull requests not yet
 /// seen closed are read from GitHub, oldest first, so a merge counts without
-/// a webhook (a local stack may receive none). `workspace:read`.
+/// a webhook (a local stack may receive none). That refresh fills in what
+/// the read reports (a merge time GitHub already holds), with no event or
+/// audit row, so the route is classified a read. `workspace:read`.
 pub async fn get_swarm_metrics(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
