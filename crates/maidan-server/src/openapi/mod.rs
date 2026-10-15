@@ -566,6 +566,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::remove_thread_required_skill,
         paths::set_thread_result,
         paths::set_thread_footprint,
+        paths::set_thread_attributes,
         paths::get_thread_footprint,
         paths::list_active_claims,
         paths::list_deferred_threads,

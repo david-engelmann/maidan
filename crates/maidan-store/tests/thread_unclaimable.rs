@@ -194,7 +194,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
 
     // claim_next skips the older parked t1 and claims t2.
     let claimed = store
-        .claim_next_thread(channel.id, member.id, None)
+        .claim_next_thread(channel.id, member.id, None, None)
         .await
         .expect("claim_next")
         .expect("claimed something");
@@ -203,7 +203,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
     // Un-park t1 → it becomes claimable.
     assert!(store.mark_thread_claimable(t1.id).await.expect("unpark"));
     let claimed2 = store
-        .claim_next_thread(channel.id, member.id, None)
+        .claim_next_thread(channel.id, member.id, None, None)
         .await
         .expect("claim_next")
         .expect("claimed something");

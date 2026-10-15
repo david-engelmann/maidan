@@ -40,6 +40,7 @@ pub const WORKER_TOOLS: &[&str] = &[
     "renew_claim",
     "report_usage",
     "request_approval",
+    "set_thread_attributes",
     "set_thread_footprint",
     "set_thread_result",
     "transition_thread",

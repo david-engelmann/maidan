@@ -199,6 +199,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
 
+### Task attributes for the swarm
+
+- **Added:** task attributes on a thread (migration 0175): a `kind` (`change`, `plan` or `review`), an `engine` the work is routed to (`pi`, `session` or `human`), and a `threat_model` flag. They are set at intake on thread creation (`POST /channels/{cid}/threads`, MCP `create_thread`) in the create transaction, replaced later with `PUT /threads/{id}/attributes` or MCP `set_thread_attributes`, and read on the thread, its context pack and each `list_active_claims` entry. A thread nobody described reads as a change with no engine.
+- **Added:** `claim_next` (HTTP and MCP, channel and workspace) takes an optional `engine` and then hands over only work routed to that engine, so a Pi worker is never handed session or human work. `GET /workspaces/{id}/swarm-metrics` takes `?engine=` and `?kind=` filters, each task carries its attributes, and each repository rollup splits tasks and merges by engine (`by_engine`).
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

@@ -184,10 +184,36 @@ pause to apply declares `repo` when it creates the thread, not after the claim.
 A pause binds one workspace, and both the pause and the resume are audited
 (`repo.pause`, `repo.resume`).
 
+## Task attributes
+
+A thread can carry attributes that say what kind of work it is, who or what
+should do it, and whether it needs a threat model:
+
+```json
+{ "kind": "change", "engine": "pi", "threat_model": false }
+```
+
+`kind` is `change` (the default), `plan` or `review`. `engine` is `pi`,
+`session` or `human`, or absent when nobody has routed the work yet.
+`threat_model` marks work that needs one.
+
+They are set at intake, on `POST /channels/{cid}/threads` or MCP
+`create_thread`, in the same transaction as the thread, and replaced later
+with `PUT /threads/{id}/attributes` or MCP `set_thread_attributes`
+(`thread:transition`). They ride on `GET /threads/{id}`, on the thread
+context, and on each `list_active_claims` entry. A thread nobody described
+reads as a change with no engine and no threat model.
+
+Claiming respects the engine. `claim_next` (HTTP and MCP, channel and
+workspace) takes an optional `engine`, and a claimer that names one is
+handed only work routed to it. A Pi worker that passes `engine: "pi"` is
+never handed session or human work, and work nobody routed waits for a
+claim that names no engine.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
-`?rounds_limit=`, `?behind_limit=`) gives, for each agent pull request the
+`?rounds_limit=`, `?behind_limit=`, `?engine=`, `?kind=`) gives, for each agent pull request the
 change flow opened:
 - its rounds (commit, diff lines, and how many commits its base was behind);
 - time to ready and time to merge;
@@ -201,7 +227,10 @@ means a round was built on a base 50 or more commits behind.
 
 Each repository gets a rollup: tasks, merged, merged without edits, closed
 unmerged, flagged, mean rounds, median time to ready, and cost per merged
-change. These are the numbers each ramp step is gated on.
+change. The rollup also splits its tasks and merges by the engine each task
+was routed to (`by_engine`), and each task carries its attributes, so the
+ramp can be read per kind of worker. `?engine=` and `?kind=` narrow the
+whole report to one slice. These are the numbers each ramp step is gated on.
 
 The read refreshes up to 25 open pull requests from GitHub first, so merges
 count on a stack that receives no webhooks.

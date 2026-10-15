@@ -1442,14 +1442,31 @@ pub trait ThreadStore: Send + Sync {
         new: NewThread,
     ) -> Result<(Thread, StoredEvent), StoreError>;
     /// [`create_thread_with_event`](Self::create_thread_with_event) with the
-    /// thread's claim footprint stored in the same transaction, so the claim
-    /// queue never sees the thread without it. An invalid footprint creates
-    /// nothing.
+    /// thread's claim footprint and task attributes stored in the same
+    /// transaction, so the claim queue never sees the thread without them.
+    /// An invalid footprint creates nothing.
     async fn create_thread_with_footprint(
         &self,
         new: NewThread,
         footprint: Option<maidan_types::Footprint>,
+        attributes: Option<maidan_types::TaskAttributes>,
     ) -> Result<(Thread, StoredEvent), StoreError>;
+
+    /// A thread's task attributes; the defaults when it was never
+    /// described. Not an error for a missing thread: attributes are a view
+    /// of the thread, and the thread read itself reports the miss.
+    async fn get_thread_attributes(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<maidan_types::TaskAttributes, StoreError>;
+
+    /// Replace a thread's task attributes whole. `NotFound` when the
+    /// thread does not exist.
+    async fn set_thread_attributes(
+        &self,
+        thread_id: ThreadId,
+        attributes: maidan_types::TaskAttributes,
+    ) -> Result<maidan_types::TaskAttributes, StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
@@ -2030,6 +2047,7 @@ pub trait AssignmentStore: Send + Sync {
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<Option<Thread>, StoreError>;
     /// Claim the next thread, appending its events atomically **iff** a thread
     /// was claimed. The returned events are the reclaim's
@@ -2046,6 +2064,7 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
         repo: Option<&str>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2057,6 +2076,7 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
         repo: Option<&str>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When
@@ -2149,6 +2169,8 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         repo: Option<&str>,
         since: Option<chrono::DateTime<chrono::Utc>>,
+        engine: Option<maidan_types::TaskEngine>,
+        kind: Option<maidan_types::TaskKind>,
     ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.

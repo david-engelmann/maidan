@@ -65,7 +65,7 @@ async fn claim(
     lease: Option<i64>,
 ) -> Thread {
     store
-        .claim_next_thread(channel, member, lease)
+        .claim_next_thread(channel, member, lease, None)
         .await
         .unwrap()
         .expect("a claimable thread")
@@ -125,7 +125,7 @@ async fn a_lapsed_lease_is_reaped_once_and_the_holder_fenced(store: &dyn Store) 
         .unwrap()
         .is_empty());
     let (taken, claim_events) = store
-        .claim_next_thread_with_event(channel, next, Some(60), None)
+        .claim_next_thread_with_event(channel, next, Some(60), None, None)
         .await
         .unwrap();
     assert_eq!(

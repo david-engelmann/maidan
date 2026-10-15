@@ -25,6 +25,7 @@ fn thread(state: ThreadState, tombstoned: bool, age_secs: i64) -> Thread {
         tombstoned_at: if tombstoned { Some(now) } else { None },
         status: None,
         block: None,
+        attributes: None,
         closed_without_review: false,
     }
 }

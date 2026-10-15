@@ -562,6 +562,34 @@
       "description": "Create a thread in a channel. Requires workspace:write and access to the channel, the same rule as POST /channels/{cid}/threads. title and parent_thread_id are optional. A spawn the budget refuses is refused here too.",
       "inputSchema": {
         "properties": {
+          "attributes": {
+            "description": "the task's attributes, stored with the thread (the shape set_thread_attributes takes, without thread_id)",
+            "properties": {
+              "engine": {
+                "enum": [
+                  "pi",
+                  "session",
+                  "human"
+                ],
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "change",
+                  "plan",
+                  "review"
+                ],
+                "type": "string"
+              },
+              "threat_model": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
           "channel_id": {
             "format": "uuid",
             "type": "string"
@@ -2137,6 +2165,15 @@
             "format": "uuid",
             "type": "string"
           },
+          "engine": {
+            "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
+            "enum": [
+              "pi",
+              "session",
+              "human"
+            ],
+            "type": "string"
+          },
           "lease_secs": {
             "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
             "maximum": 604800,
@@ -2166,6 +2203,15 @@
       "description": "Atomically claim the oldest claimable thread across every channel of the workspace you may read (claim_next_thread for the whole workspace), so an agent serving the whole workspace makes one call instead of one per channel. The same filters (open, dependencies finished, skills held, no pending approval gate, not blocked or parked unclaimable, you not frozen), order, lease and fencing token. A private channel's threads go only to its members and a DM's only to its participants. Returns the claimed thread with a content-addressed pin {uri, content_hash}, or null when there is no claimable work.",
       "inputSchema": {
         "properties": {
+          "engine": {
+            "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
+            "enum": [
+              "pi",
+              "session",
+              "human"
+            ],
+            "type": "string"
+          },
           "lease_secs": {
             "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
             "maximum": 604800,
@@ -2289,6 +2335,50 @@
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Set thread attributes"
+      },
+      "description": "Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.",
+      "inputSchema": {
+        "properties": {
+          "engine": {
+            "description": "omit to leave the work unrouted",
+            "enum": [
+              "pi",
+              "session",
+              "human"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "change",
+              "plan",
+              "review"
+            ],
+            "type": "string"
+          },
+          "thread_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "threat_model": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "thread_id",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "name": "set_thread_attributes"
+    },
+    {
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Set thread footprint"
       },
       "description": "Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.",
@@ -2355,7 +2445,7 @@
         "readOnlyHint": true,
         "title": "List active claims"
       },
-      "description": "List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.",
+      "description": "List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items, attributes), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.",
       "inputSchema": {
         "properties": {
           "repo": {

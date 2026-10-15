@@ -80,7 +80,7 @@ async fn run_suite(store: &dyn Store) {
     // While the gate is pending, claim_next skips the thread — the human must act.
     assert!(
         store
-            .claim_next_thread(channel.id, agent.id, None)
+            .claim_next_thread(channel.id, agent.id, None, None)
             .await
             .expect("claim while gated")
             .is_none(),
@@ -94,7 +94,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("resolve")
         .expect("was pending");
     let claimed = store
-        .claim_next_thread(channel.id, agent.id, None)
+        .claim_next_thread(channel.id, agent.id, None, None)
         .await
         .expect("claim after resolve")
         .expect("now claimable");
@@ -156,7 +156,7 @@ async fn run_decline_unblocks(store: &dyn Store) {
         .expect("was pending");
     assert!(
         store
-            .claim_next_thread(channel.id, agent.id, None)
+            .claim_next_thread(channel.id, agent.id, None, None)
             .await
             .expect("claim after decline")
             .is_some(),

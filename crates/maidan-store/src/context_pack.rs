@@ -91,10 +91,14 @@ async fn build_live(
     thread_id: ThreadId,
     limits: ThreadContextLimits,
 ) -> Result<ThreadContext, StoreError> {
-    let thread = store.get_thread(thread_id).await?;
+    let mut thread = store.get_thread(thread_id).await?;
     if thread.tombstoned_at.is_some() {
         return Err(StoreError::NotFound);
     }
+    // The pack reports the thread's task attributes, as the thread read
+    // does; the as-of rebuild does not (they are current routing state,
+    // not history).
+    thread.attributes = Some(store.get_thread_attributes(thread_id).await?);
     let channel = store.get_channel(thread.channel_id).await?;
     let workspace_id = channel.workspace_id;
     let page = store

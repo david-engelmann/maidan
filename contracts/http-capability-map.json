@@ -811,6 +811,12 @@
   },
   {
     "method": "PUT",
+    "path": "/threads/{id}/attributes",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
     "path": "/threads/{id}/footprint",
     "capability": "thread:transition",
     "surface": "http"

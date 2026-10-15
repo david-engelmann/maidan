@@ -206,6 +206,7 @@
   "set_review_requirement": "thread:transition",
   "set_spawn_budget": "workspace:write",
   "set_task_schedule_active": "workspace:write",
+  "set_thread_attributes": "thread:transition",
   "set_thread_block": "thread:transition",
   "set_thread_budget": "thread:transition",
   "set_thread_footprint": "thread:transition",

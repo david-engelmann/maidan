@@ -10,8 +10,9 @@ use maidan_types::{
     BlockedReason, ChannelId, ChannelMemberRole, ContentBlock, DeclaredStatus, DelegationGrantId,
     EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, Footprint, FsmHookId, LandColor,
     LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
-    RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, ThreadDependency,
-    ThreadId, TokenPolicy, TokenQuota, VoteKind, WebhookSubscriptionId, Workspace, WorkspaceId,
+    RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, TaskAttributes,
+    TaskEngine, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind,
+    WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -111,6 +112,11 @@ pub struct CreateThread {
     /// later is `PUT /threads/{id}/footprint`.
     #[serde(default)]
     pub footprint: Option<Footprint>,
+    /// The task's attributes: what kind of work it is, who or what should
+    /// do it, and whether it needs a threat model. Stored with the thread;
+    /// replaced later by `PUT /threads/{id}/attributes`.
+    #[serde(default)]
+    pub attributes: Option<TaskAttributes>,
 }
 
 /// Actions a caller may name on `POST /threads/{id}`.
@@ -182,6 +188,11 @@ pub struct ClaimNextThread {
     /// that repository. A thread without a footprint is then never claimed.
     #[serde(default)]
     pub repo: Option<String>,
+    /// Only claim a thread routed to this engine (`pi`, `session` or
+    /// `human`), for a worker that serves one kind of work. A thread routed
+    /// to another engine, or not routed at all, is then never claimed.
+    #[serde(default)]
+    pub engine: Option<TaskEngine>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the
@@ -424,6 +435,11 @@ pub struct SwarmMetricsQuery {
     pub rounds_limit: Option<i64>,
     /// Commits behind at which a round's base is flagged stale (default 50).
     pub behind_limit: Option<i64>,
+    /// Only tasks routed to this engine (`pi`, `session` or `human`).
+    pub engine: Option<TaskEngine>,
+    /// Only tasks of this kind (`change`, `plan` or `review`); a task never
+    /// described counts as a change.
+    pub kind: Option<maidan_types::TaskKind>,
 }
 
 /// Query params for lifting a repository pause.

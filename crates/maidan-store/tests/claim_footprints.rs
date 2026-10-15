@@ -92,7 +92,7 @@ async fn declare(store: &dyn Store, thread: ThreadId, fp: Footprint) {
 
 async fn claim(store: &dyn Store, room: &Room, agent: usize) -> Option<Thread> {
     store
-        .claim_next_thread(room.channel, room.agents[agent], Some(600))
+        .claim_next_thread(room.channel, room.agents[agent], Some(600), None)
         .await
         .unwrap()
 }
@@ -151,7 +151,7 @@ async fn a_lapsed_lease_frees_its_footprint(store: Arc<dyn Store>) {
 
     // Branches are exclusive even when both sides say shared.
     let lapsing = store
-        .claim_next_thread(room.channel, room.agents[0], Some(1))
+        .claim_next_thread(room.channel, room.agents[0], Some(1), None)
         .await
         .unwrap()
         .unwrap();
@@ -343,7 +343,7 @@ async fn the_claims_list_keeps_to_the_read_rule(store: Arc<dyn Store>) {
     )
     .await;
     store
-        .claim_next_thread(private.id, room.agents[0], Some(600))
+        .claim_next_thread(private.id, room.agents[0], Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -522,7 +522,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
     .await;
 
     let (claimed, _) = store
-        .claim_next_thread_with_event(room.channel, room.agents[0], Some(600), Some(REPO))
+        .claim_next_thread_with_event(room.channel, room.agents[0], Some(600), Some(REPO), None)
         .await
         .unwrap();
     assert_eq!(
@@ -531,12 +531,18 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
         "the oldest work is skipped: it is not this repository's"
     );
     let (claimed, _) = store
-        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), Some(REPO))
+        .claim_next_workspace_thread_with_event(
+            room.ws,
+            room.agents[1],
+            Some(600),
+            Some(REPO),
+            None,
+        )
         .await
         .unwrap();
     assert!(claimed.is_none(), "nothing else names the repository");
     let (claimed, _) = store
-        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), None)
+        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -550,6 +556,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             room.agents[1],
             Some(600),
             Some("example/other"),
+            None,
         )
         .await
         .unwrap();
@@ -671,7 +678,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         description: None,
     };
     let (created, _) = store
-        .create_thread_with_footprint(new("intake"), Some(lane))
+        .create_thread_with_footprint(new("intake"), Some(lane), None)
         .await
         .unwrap();
     assert_eq!(
@@ -693,7 +700,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         &[(FootprintKind::Path, "../outside")],
     );
     assert!(store
-        .create_thread_with_footprint(new("bad"), Some(bad))
+        .create_thread_with_footprint(new("bad"), Some(bad), None)
         .await
         .is_err());
     assert_eq!(
@@ -817,7 +824,13 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
             let mut claimed = 0;
             for _ in 0..ROUNDS {
                 let (thread, _) = store
-                    .claim_next_thread_with_event(room.channel, room.agents[agent], Some(600), None)
+                    .claim_next_thread_with_event(
+                        room.channel,
+                        room.agents[agent],
+                        Some(600),
+                        None,
+                        None,
+                    )
                     .await
                     .unwrap();
                 let Some(thread) = thread else {
@@ -916,7 +929,10 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         .unwrap()
         .is_empty());
 
-    let pulls = store.list_change_pulls(room.ws, None, None).await.unwrap();
+    let pulls = store
+        .list_change_pulls(room.ws, None, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(pulls.len(), 1);
     let rounds: Vec<_> = pulls[0]
         .rounds
@@ -931,7 +947,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
     );
     assert_eq!(pulls[0].merged_head_sha.as_deref(), Some("c2"));
     assert!(store
-        .list_change_pulls(room.ws, Some("example/other"), None)
+        .list_change_pulls(room.ws, Some("example/other"), None, None, None)
         .await
         .unwrap()
         .is_empty());

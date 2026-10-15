@@ -1734,8 +1734,24 @@ macro_rules! store_delegations {
                 &self,
                 new: NewThread,
                 footprint: Option<maidan_types::Footprint>,
+                attributes: Option<maidan_types::TaskAttributes>,
             ) -> Result<(Thread, StoredEvent), StoreError> {
-                threads::create_with_footprint(self.pool(), new, footprint).await
+                threads::create_with_footprint(self.pool(), new, footprint, attributes).await
+            }
+
+            async fn get_thread_attributes(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<maidan_types::TaskAttributes, StoreError> {
+                thread_attributes::get(self.read_pool(), thread_id).await
+            }
+
+            async fn set_thread_attributes(
+                &self,
+                thread_id: ThreadId,
+                attributes: maidan_types::TaskAttributes,
+            ) -> Result<maidan_types::TaskAttributes, StoreError> {
+                thread_attributes::set(self.pool(), thread_id, attributes).await
             }
 
             async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
@@ -2454,8 +2470,9 @@ macro_rules! store_delegations {
                 channel_id: ChannelId,
                 member_id: MemberId,
                 lease_secs: Option<i64>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<Option<Thread>, StoreError> {
-                threads::claim_next(self.pool(), channel_id, member_id, lease_secs).await
+                threads::claim_next(self.pool(), channel_id, member_id, lease_secs, engine).await
             }
 
             async fn claim_next_thread_with_event(
@@ -2464,6 +2481,7 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2471,6 +2489,7 @@ macro_rules! store_delegations {
                     member_id,
                     lease_secs,
                     repo,
+                    engine,
                 )
                 .await
             }
@@ -2481,6 +2500,7 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2488,6 +2508,7 @@ macro_rules! store_delegations {
                     member_id,
                     lease_secs,
                     repo,
+                    engine,
                 )
                 .await
             }
@@ -2600,8 +2621,10 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 repo: Option<&str>,
                 since: Option<chrono::DateTime<chrono::Utc>>,
+                engine: Option<maidan_types::TaskEngine>,
+                kind: Option<maidan_types::TaskKind>,
             ) -> Result<Vec<maidan_types::ChangePull>, StoreError> {
-                change_metrics::list(self.pool(), workspace_id, repo, since).await
+                change_metrics::list(self.pool(), workspace_id, repo, since, engine, kind).await
             }
 
             async fn list_slots(

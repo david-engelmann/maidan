@@ -160,6 +160,10 @@ struct CreateThreadArgs {
     /// Stored with the thread, so the claim queue never sees it without one.
     #[serde(default)]
     footprint: Option<maidan_types::Footprint>,
+    /// The task's attributes, stored with the thread: its kind, the engine
+    /// it is routed to, and whether it needs a threat model.
+    #[serde(default)]
+    attributes: Option<maidan_types::TaskAttributes>,
 }
 
 /// Create a thread. `workspace:write` plus channel access, same as
@@ -190,9 +194,11 @@ pub(super) async fn create_thread(
                 description: None,
             },
             footprint,
+            a.attributes,
         )
         .await;
-    let (thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
+    let (mut thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
+    thread.attributes = Some(a.attributes.unwrap_or_default());
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
@@ -943,6 +949,10 @@ struct ClaimNextThreadArgs {
     /// Only a thread whose footprint names this repository.
     #[serde(default)]
     repo: Option<String>,
+    /// Only a thread routed to this engine; a thread routed to another
+    /// engine, or not routed at all, is never handed over.
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
 }
 
 /// The repository a claimer serves, normalized as footprints store it.
@@ -983,6 +993,7 @@ pub(super) async fn claim_next_thread(
             member_id,
             Some(lease_secs),
             repo.as_deref(),
+            a.engine,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -996,6 +1007,8 @@ struct ClaimNextWorkspaceThreadArgs {
     lease_secs: Option<i64>,
     #[serde(default)]
     repo: Option<String>,
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
 }
 
 /// `claim_next_thread` across every channel of the caller's workspace it may
@@ -1023,6 +1036,7 @@ pub(super) async fn claim_next_workspace_thread(
             auth.member_id,
             Some(lease_secs),
             repo.as_deref(),
+            a.engine,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -1170,6 +1184,39 @@ pub(super) async fn set_thread_footprint(
         return Err(McpError::FootprintConflict(conflicts));
     }
     Ok(content_json(&store.get_thread_footprint(thread_id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetThreadAttributesArgs {
+    thread_id: uuid::Uuid,
+    kind: maidan_types::TaskKind,
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
+    #[serde(default)]
+    threat_model: bool,
+}
+
+/// Replace a thread's task attributes whole: what kind of work it is, who
+/// or what it is routed to, and whether it needs a threat model. Thread
+/// access is enforced pre-dispatch. The MCP twin of
+/// `PUT /threads/:id/attributes`.
+pub(super) async fn set_thread_attributes(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadAttributesArgs = crate::tools::parse_args(args)?;
+    let stored = store
+        .set_thread_attributes(
+            ThreadId(a.thread_id),
+            maidan_types::TaskAttributes {
+                kind: a.kind,
+                engine: a.engine,
+                threat_model: a.threat_model,
+            },
+        )
+        .await?;
+    Ok(content_json(&stored))
 }
 
 #[derive(Deserialize)]

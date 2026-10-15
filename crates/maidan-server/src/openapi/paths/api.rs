@@ -2594,6 +2594,19 @@ pub fn set_thread_result() {}
     ))]
 pub fn set_thread_footprint() {}
 
+/// Set a thread's task attributes
+#[utoipa::path(put, path = "/threads/{id}/attributes", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = TaskAttributes,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = TaskAttributes),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_thread_attributes() {}
+
 /// Get a thread's claim footprint
 #[utoipa::path(get, path = "/threads/{id}/footprint", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

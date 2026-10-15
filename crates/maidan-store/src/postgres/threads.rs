@@ -41,15 +41,17 @@ pub async fn create_with_event(
     pool: &PgPool,
     new: NewThread,
 ) -> Result<(Thread, StoredEvent), StoreError> {
-    create_with_footprint(pool, new, None).await
+    create_with_footprint(pool, new, None, None).await
 }
 
-/// [`create_with_event`], storing `footprint` with the thread in the same
-/// transaction, so no claimer ever sees the thread without it.
+/// [`create_with_event`], storing `footprint` and the task `attributes`
+/// with the thread in the same transaction, so no claimer ever sees the
+/// thread without them.
 pub async fn create_with_footprint(
     pool: &PgPool,
     new: NewThread,
     footprint: Option<maidan_types::Footprint>,
+    attributes: Option<maidan_types::TaskAttributes>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let footprint = footprint
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
@@ -85,6 +87,9 @@ pub async fn create_with_footprint(
     };
     if let Some(footprint) = &footprint {
         super::footprints::insert_items_on(&mut tx, thread.id, workspace_id, footprint).await?;
+    }
+    if let Some(attributes) = &attributes {
+        super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
     }
     let stored = events::append_in_tx(&mut tx, &event).await?;
     tx.commit().await?;
@@ -730,6 +735,7 @@ async fn claim_next_in_tx(
     member_id: MemberId,
     lease_secs: Option<i64>,
     repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
@@ -743,6 +749,7 @@ async fn claim_next_in_tx(
             scope: "$2",
             dm_channel: "$5",
             repo: "$6::text",
+            engine: "$7::text",
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (cand.assignment_expires_at - cand.work_started_at)))::bigint) ELSE 0 END",
@@ -762,6 +769,7 @@ async fn claim_next_in_tx(
     .bind(ClaimLeaseId::new().0)
     .bind(DM_CHANNEL_NAME)
     .bind(repo)
+    .bind(engine.map(|engine| engine.as_str()))
     .fetch_optional(&mut **tx)
     .await?;
     row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
@@ -775,6 +783,7 @@ pub async fn claim_next(
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<Option<Thread>, StoreError> {
     // Claimable = unassigned OR the lease has expired (dead-agent recovery).
     // The explicit transaction exists so the worker record commits with the
@@ -787,6 +796,7 @@ pub async fn claim_next(
         member_id,
         lease_secs,
         None,
+        engine,
     )
     .await?
     else {
@@ -871,10 +881,11 @@ pub(crate) async fn claim_next_with_event(
     member_id: MemberId,
     lease_secs: Option<i64>,
     repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let Some((thread, lapsed)) =
-        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo).await?
+        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo, engine).await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
@@ -1318,6 +1329,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
         status: None,
         block: None,
+        attributes: None,
         closed_without_review: false,
     })
 }

@@ -615,6 +615,13 @@ fn apply_route_defaults(
     if path == "/workspaces/{id}/repo-pauses" && method == "PUT" {
         return b.json(&json!({ "repo": "example/app" }));
     }
+    if path == "/threads/{id}/attributes" && method == "PUT" {
+        return b.json(&json!({
+            "kind": "review",
+            "engine": "pi",
+            "threat_model": true
+        }));
+    }
     if path == "/threads/{id}/footprint" && method == "PUT" {
         return b.json(&json!({
             "repo": "example/app",

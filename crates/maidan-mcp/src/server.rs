@@ -7126,7 +7126,7 @@ mod tests {
         // agent). The tools refuse a lease under a second, so the store
         // writes it directly.
         let claimed1 = store
-            .claim_next_thread(ch.id, m1.id, Some(-1))
+            .claim_next_thread(ch.id, m1.id, Some(-1), None)
             .await
             .unwrap();
         assert!(claimed1.is_some(), "m1 claimed the thread");
@@ -8222,7 +8222,7 @@ mod tests {
             .await
             .unwrap();
         let claimed = store
-            .claim_next_thread(channel.id, worker, Some(60))
+            .claim_next_thread(channel.id, worker, Some(60), None)
             .await
             .unwrap()
             .unwrap();

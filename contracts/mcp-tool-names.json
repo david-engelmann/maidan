@@ -206,6 +206,7 @@
   "set_review_requirement",
   "set_spawn_budget",
   "set_task_schedule_active",
+  "set_thread_attributes",
   "set_thread_block",
   "set_thread_budget",
   "set_thread_footprint",

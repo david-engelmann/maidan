@@ -488,6 +488,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "acknowledge_claim"
         | "release_claim"
         | "set_thread_footprint"
+        | "set_thread_attributes"
         | "add_thread_dependency"
         | "add_thread_required_skill"
         | "set_thread_result"
@@ -798,6 +799,7 @@ async fn enforce_channel_access(
         | "acknowledge_claim"
         | "release_claim"
         | "set_thread_footprint"
+        | "set_thread_attributes"
         | "add_thread_dependency"
         | "list_thread_dependencies"
         | "remove_thread_dependency"
@@ -1004,6 +1006,7 @@ pub async fn dispatch(
         "acknowledge_claim" => thread::acknowledge_claim(server, auth, args).await,
         "release_claim" => thread::release_claim(server, auth, args).await,
         "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
+        "set_thread_attributes" => thread::set_thread_attributes(store, args).await,
         "list_active_claims" => thread::list_active_claims(store, auth, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
         "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,

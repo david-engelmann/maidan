@@ -135,7 +135,7 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
         .await
         .unwrap();
     store
-        .claim_next_thread(review_ch.id, agent.id, Some(60))
+        .claim_next_thread(review_ch.id, agent.id, Some(60), None)
         .await
         .unwrap()
         .expect("claimable");
@@ -175,7 +175,7 @@ async fn waiting_inbox_composes_assigned_threads_review_requests_and_open_gates(
         .await
         .unwrap();
     store
-        .claim_next_thread(secret_ch.id, agent.id, Some(60))
+        .claim_next_thread(secret_ch.id, agent.id, Some(60), None)
         .await
         .unwrap()
         .expect("claimable");

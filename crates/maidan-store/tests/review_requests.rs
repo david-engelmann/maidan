@@ -62,7 +62,7 @@ async fn handed_to_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) 
         .await
         .expect("thread");
     let claimed = store
-        .claim_next_thread(channel, worker, Some(60))
+        .claim_next_thread(channel, worker, Some(60), None)
         .await
         .expect("claim")
         .expect("claimable");

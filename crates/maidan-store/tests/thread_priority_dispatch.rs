@@ -64,7 +64,7 @@ async fn mk(store: &dyn Store, channel: ChannelId, title: &str) -> ThreadId {
 
 async fn claim(store: &dyn Store, fx: &Fixture) -> Option<ThreadId> {
     store
-        .claim_next_thread(fx.channel, fx.member, None)
+        .claim_next_thread(fx.channel, fx.member, None, None)
         .await
         .expect("claim")
         .map(|t| t.id)

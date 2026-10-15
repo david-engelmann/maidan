@@ -84,6 +84,7 @@ mod spawn;
 mod status;
 mod tap_cursor;
 mod task_schedules;
+mod thread_attributes;
 mod thread_deps;
 mod thread_lineage;
 mod thread_results;

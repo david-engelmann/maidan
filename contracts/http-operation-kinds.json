@@ -178,6 +178,7 @@
   {"method":"DELETE","path":"/threads/{id}/assignee","kind":"changes"},
   {"method":"PUT","path":"/threads/{id}/assignee","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/assignee/claim","kind":"changes"},
+  {"method":"PUT","path":"/threads/{id}/attributes","kind":"changes"},
   {"method":"DELETE","path":"/threads/{id}/block","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/block","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/block","kind":"changes"},

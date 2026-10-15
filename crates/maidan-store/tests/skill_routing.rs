@@ -87,7 +87,7 @@ async fn run_suite(store: &dyn Store) {
     // bob can't do `review` (lacks code-review), so despite it being older he
     // claims `open`.
     let b = store
-        .claim_next_thread(channel.id, bob.id, None)
+        .claim_next_thread(channel.id, bob.id, None, None)
         .await
         .expect("bob claim")
         .expect("bob gets work");
@@ -95,7 +95,7 @@ async fn run_suite(store: &dyn Store) {
 
     // alice has code-review, so she claims `review`.
     let a = store
-        .claim_next_thread(channel.id, alice.id, None)
+        .claim_next_thread(channel.id, alice.id, None, None)
         .await
         .expect("alice claim")
         .expect("alice gets work");
@@ -103,7 +103,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Nothing claimable now.
     assert!(store
-        .claim_next_thread(channel.id, alice.id, None)
+        .claim_next_thread(channel.id, alice.id, None, None)
         .await
         .expect("empty")
         .is_none());
@@ -116,7 +116,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("req quantum");
     assert!(store
-        .claim_next_thread(channel.id, alice.id, None)
+        .claim_next_thread(channel.id, alice.id, None, None)
         .await
         .expect("blocked")
         .is_none());
@@ -125,7 +125,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("drop req"));
     let a2 = store
-        .claim_next_thread(channel.id, alice.id, None)
+        .claim_next_thread(channel.id, alice.id, None, None)
         .await
         .expect("after drop")
         .expect("now claimable");

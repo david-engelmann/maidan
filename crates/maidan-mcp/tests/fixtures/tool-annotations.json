@@ -4010,6 +4010,25 @@
         "reason": "store upsert only"
       }
     },
+    "set_thread_attributes": {
+      "title": "Set thread attributes",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "set_thread_attributes upserts the thread's maidan_thread_attributes row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "replaces the attributes the thread had, in full"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "the same attributes again store the same row"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; no outbound call"
+      }
+    },
     "set_thread_footprint": {
       "title": "Set thread footprint",
       "readOnlyHint": {

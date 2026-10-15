@@ -188,7 +188,7 @@ async fn run(ops: Vec<Op>) {
                 let lease = leased.then_some(3600);
                 let got = w
                     .store
-                    .claim_next_thread(w.channel, w.members[member], lease)
+                    .claim_next_thread(w.channel, w.members[member], lease, None)
                     .await
                     .unwrap();
                 let expected = (0..THREADS).find(|t| model.claimable(*t));

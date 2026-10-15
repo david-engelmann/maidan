@@ -84,7 +84,7 @@ enum Handover {
 async fn the_new_holder_keeps_the_thread(store: &dyn Store, handover: Handover) {
     let w = world(store).await;
     let leased = store
-        .claim_next_thread(w.channel, w.leaser, Some(LEASE_SECS))
+        .claim_next_thread(w.channel, w.leaser, Some(LEASE_SECS), None)
         .await
         .unwrap()
         .expect("the thread is claimable");
@@ -116,7 +116,7 @@ async fn the_new_holder_keeps_the_thread(store: &dyn Store, handover: Handover) 
     // Well past the old lease.
     tokio::time::sleep(Duration::from_millis(1_500)).await;
     let (taken, events) = store
-        .claim_next_thread_with_event(w.channel, w.claimer, Some(LEASE_SECS), None)
+        .claim_next_thread_with_event(w.channel, w.claimer, Some(LEASE_SECS), None, None)
         .await
         .unwrap();
     assert!(

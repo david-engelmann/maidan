@@ -77,6 +77,7 @@ mod tests {
                     tombstoned_at: None,
                     status: None,
                     block: None,
+                    attributes: None,
                     closed_without_review: false,
                 },
                 Thread {
@@ -96,6 +97,7 @@ mod tests {
                     tombstoned_at: None,
                     status: None,
                     block: None,
+                    attributes: None,
                     closed_without_review: false,
                 },
             ],

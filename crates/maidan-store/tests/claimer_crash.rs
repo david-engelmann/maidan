@@ -67,7 +67,7 @@ async fn a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store: &dyn Store
     let (dead, next) = (members[0], members[1]);
 
     let claimed = store
-        .claim_next_thread(channel, dead, Some(LEASE_SECS))
+        .claim_next_thread(channel, dead, Some(LEASE_SECS), None)
         .await
         .unwrap()
         .expect("the thread is claimable");
@@ -76,7 +76,7 @@ async fn a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store: &dyn Store
 
     assert!(
         store
-            .claim_next_thread(channel, next, Some(LEASE_SECS))
+            .claim_next_thread(channel, next, Some(LEASE_SECS), None)
             .await
             .unwrap()
             .is_none(),
@@ -85,7 +85,7 @@ async fn a_crashed_claim_lapses_and_the_dead_claimer_is_fenced(store: &dyn Store
 
     tokio::time::sleep(Duration::from_millis(1500)).await;
     let (taken, events) = store
-        .claim_next_thread_with_event(channel, next, Some(30), None)
+        .claim_next_thread_with_event(channel, next, Some(30), None, None)
         .await
         .unwrap();
     let taken = taken.expect("the lapsed claim returns to the queue");
@@ -143,7 +143,7 @@ async fn crashing_claimers_never_double_hold_a_thread(store: Arc<dyn Store>) {
         first_round.push(tokio::spawn(async move {
             let mut held = Vec::new();
             if let Some(t) = store
-                .claim_next_thread(channel, member, Some(LEASE_SECS))
+                .claim_next_thread(channel, member, Some(LEASE_SECS), None)
                 .await
                 .unwrap()
             {
@@ -186,7 +186,7 @@ async fn crashing_claimers_never_double_hold_a_thread(store: Arc<dyn Store>) {
         second_round.push(tokio::spawn(async move {
             let mut held = Vec::new();
             while let Some(t) = store
-                .claim_next_thread(channel, member, Some(60))
+                .claim_next_thread(channel, member, Some(60), None)
                 .await
                 .unwrap()
             {
