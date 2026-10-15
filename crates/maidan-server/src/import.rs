@@ -78,6 +78,7 @@ mod tests {
                     status: None,
                     block: None,
                     closed_without_review: false,
+                    notices: Vec::new(),
                 },
                 Thread {
                     id: child,
@@ -97,6 +98,7 @@ mod tests {
                     status: None,
                     block: None,
                     closed_without_review: false,
+                    notices: Vec::new(),
                 },
             ],
             messages: vec![Message {

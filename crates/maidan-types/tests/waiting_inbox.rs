@@ -26,6 +26,7 @@ fn thread(state: ThreadState, tombstoned: bool, age_secs: i64) -> Thread {
         status: None,
         block: None,
         closed_without_review: false,
+        notices: Vec::new(),
     }
 }
 

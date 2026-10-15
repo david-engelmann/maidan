@@ -56,6 +56,111 @@ pub struct NewChangeRound {
     pub base_behind: Option<i64>,
     /// Added plus removed lines in the round's diff.
     pub diff_lines: i64,
+    /// The files the round's diff touched ([`diff_paths`]).
+    pub paths: Vec<String>,
+    /// The branch the pull request merges into.
+    pub base_branch: Option<String>,
+}
+
+/// What a change notice tells a thread's worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ThreadNoticeKind {
+    /// A merged pull request touched paths the thread's claim covers.
+    RebaseNeeded,
+    /// A round delivered for the thread was built on a base at least
+    /// `MAIDAN_STALE_BASE_COMMITS` behind its branch.
+    StaleBase,
+}
+
+impl ThreadNoticeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RebaseNeeded => "rebase_needed",
+            Self::StaleBase => "stale_base",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "rebase_needed" => Some(Self::RebaseNeeded),
+            "stale_base" => Some(Self::StaleBase),
+            _ => None,
+        }
+    }
+}
+
+/// Overlapping paths a `rebase_needed` notice names, at most.
+pub const NOTICE_PATH_LIMIT: usize = 20;
+/// Paths a round records, at most.
+pub const ROUND_PATH_LIMIT: usize = 500;
+/// Notices a thread read shows, newest first.
+pub const THREAD_NOTICE_LIMIT: i64 = 10;
+
+/// A change notice on a thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadNotice {
+    pub kind: ThreadNoticeKind,
+    /// Lowercase `owner/name`.
+    pub repo: String,
+    /// The merged pull request (`rebase_needed`) or the one the stale round
+    /// went to (`stale_base`).
+    pub pull_number: i64,
+    /// The merged paths the claim covers, at most 20 ([`NOTICE_PATH_LIMIT`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_behind: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl ThreadNotice {
+    /// The notice as one sentence, for the message posted with it.
+    pub fn sentence(&self) -> String {
+        let base = self.base_branch.as_deref().unwrap_or("its base branch");
+        match self.kind {
+            ThreadNoticeKind::RebaseNeeded => format!(
+                "Rebase needed: {}#{} merged into {base} and touched {} that your claim covers: {}.",
+                self.repo,
+                self.pull_number,
+                if self.paths.len() == 1 { "a path" } else { "paths" },
+                self.paths.join(", ")
+            ),
+            ThreadNoticeKind::StaleBase => format!(
+                "Stale base: the round delivered to {}#{} was built {} commits behind {base}; rebase before the next delivery.",
+                self.repo,
+                self.pull_number,
+                self.base_behind.unwrap_or_default()
+            ),
+        }
+    }
+}
+
+/// A notice the store recorded, with its event to publish and who posts
+/// the message that says it (the thread's owner, else its claim holder, else
+/// whoever produced its result; `None` when the thread has none of them).
+#[derive(Debug, Clone)]
+pub struct PostedNotice {
+    pub thread_id: ThreadId,
+    pub notice: ThreadNotice,
+    pub event: StoredEvent,
+    pub author_id: Option<MemberId>,
+}
+
+/// A stale-base notice for the thread a round was delivered on, said once per
+/// delivered commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewStaleBaseNotice {
+    pub thread_id: ThreadId,
+    pub repo: String,
+    pub pull_number: i64,
+    pub commit_sha: String,
+    pub base_branch: Option<String>,
+    pub base_behind: i64,
 }
 
 /// A recorded round.
@@ -263,6 +368,32 @@ pub fn diff_lines(diff: &str) -> i64 {
         .count() as i64
 }
 
+/// The files a git diff touches: each `--- a/` and `+++ b/` path except
+/// `/dev/null`, first seen first, deduplicated, at most
+/// [`ROUND_PATH_LIMIT`].
+pub fn diff_paths(diff: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut paths = Vec::new();
+    for line in diff.lines() {
+        let Some(path) = line
+            .strip_prefix("--- a/")
+            .or_else(|| line.strip_prefix("+++ b/"))
+        else {
+            continue;
+        };
+        // git appends a tab before a timestamp on some diffs.
+        let path = path.split('\t').next().unwrap_or(path).trim_end();
+        if path.is_empty() || !seen.insert(path.to_string()) {
+            continue;
+        }
+        paths.push(path.to_string());
+        if paths.len() == ROUND_PATH_LIMIT {
+            break;
+        }
+    }
+    paths
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +474,21 @@ mod tests {
         assert!(m.tasks[3].flags.is_empty(), "a merged task is done");
         assert_eq!(m.tasks[4].flags, vec![TaskFlag::StaleBase]);
         assert_eq!(m.repos[0].flagged, 3);
+    }
+
+    #[test]
+    fn diff_paths_name_each_touched_file_once_and_skip_dev_null() {
+        let diff = "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1 +1 @@\n-a\n+b\n\
+                    --- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1 @@\n+c\n\
+                    --- a/src/gone.rs\n+++ /dev/null\n@@ -1 +0,0 @@\n-d\n";
+        assert_eq!(
+            diff_paths(diff),
+            vec!["src/x.rs", "src/new.rs", "src/gone.rs"]
+        );
+        let many: String = (0..600)
+            .map(|n| format!("--- a/f{n}\n+++ b/f{n}\n"))
+            .collect();
+        assert_eq!(diff_paths(&many).len(), ROUND_PATH_LIMIT);
     }
 
     #[test]

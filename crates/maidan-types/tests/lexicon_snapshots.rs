@@ -79,6 +79,7 @@ fn thread() -> Thread {
         status: None,
         block: None,
         closed_without_review: false,
+        notices: Vec::new(),
     }
 }
 
@@ -304,6 +305,18 @@ fn sample_event(kind: EventKind) -> Event {
             merge_commit_sha: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()),
             title: Some("land".into()),
         },
+        EventKind::ThreadNotice => Event::ThreadNotice {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            notice: maidan_types::ThreadNoticeKind::RebaseNeeded,
+            repo: "example/repo".into(),
+            pr_number: 1,
+            paths: vec!["src/bridge/x.rs".into()],
+            base_branch: Some("main".into()),
+            base_behind: None,
+        },
         EventKind::ReviewSubmitted => Event::ReviewSubmitted {
             occurred_at,
             workspace_id,
@@ -507,6 +520,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ClaimFailed
             | EventKind::UsageReported
             | EventKind::ThreadLanded
+            | EventKind::ThreadNotice
             | EventKind::ReviewSubmitted
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped

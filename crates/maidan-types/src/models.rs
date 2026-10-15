@@ -2010,6 +2010,11 @@ pub struct Thread {
     /// list reads.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub closed_without_review: bool,
+    /// The change notices on the thread, newest first, at most 10. Read by a
+    /// single-thread read, so a worker sees "rebase before you deliver" with
+    /// the thread; empty on the list reads.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<crate::change_metrics::ThreadNotice>,
 }
 
 #[derive(Debug, Clone)]
