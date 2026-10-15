@@ -113,7 +113,7 @@ async fn get_json(client: &reqwest::Client, url: &str, auth: &str) -> (StatusCod
     (status, resp.json().await.unwrap_or(Value::Null))
 }
 
-fn card<'a>(page: &'a Value, thread: ThreadId) -> &'a Value {
+fn card(page: &Value, thread: ThreadId) -> &Value {
     page.as_array()
         .unwrap()
         .iter()
