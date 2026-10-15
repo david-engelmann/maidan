@@ -412,6 +412,20 @@ pub struct SlotQuery {
     pub slot: String,
 }
 
+/// Query params for the swarm ramp metrics.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct SwarmMetricsQuery {
+    /// `owner/name` (or a GitHub clone URL); omitted, every repository.
+    pub repo: Option<String>,
+    /// Only pull requests opened at or after this time (RFC 3339).
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
+    /// Rounds after which an unmerged task is flagged non-converging (default 3).
+    pub rounds_limit: Option<i64>,
+    /// Commits behind at which a round's base is flagged stale (default 50).
+    pub behind_limit: Option<i64>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

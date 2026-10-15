@@ -2553,6 +2553,58 @@ macro_rules! store_delegations {
                 footprints::list_deferred(self.read_pool(), workspace_id, readable_by).await
             }
 
+            async fn record_change_round(
+                &self,
+                round: maidan_types::NewChangeRound,
+            ) -> Result<(), StoreError> {
+                change_metrics::record_round(self.pool(), round).await
+            }
+
+            async fn mark_change_pull_ready(
+                &self,
+                repo: &str,
+                pull_number: i64,
+                at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                change_metrics::mark_ready(self.pool(), repo, pull_number, at).await
+            }
+
+            async fn close_change_pull(
+                &self,
+                repo: &str,
+                pull_number: i64,
+                merged_at: Option<chrono::DateTime<chrono::Utc>>,
+                merged_head_sha: Option<&str>,
+                closed_at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                change_metrics::close(
+                    self.pool(),
+                    repo,
+                    pull_number,
+                    merged_at,
+                    merged_head_sha,
+                    closed_at,
+                )
+                .await
+            }
+
+            async fn list_open_change_pulls(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<(String, i64)>, StoreError> {
+                change_metrics::list_open(self.pool(), workspace_id, limit).await
+            }
+
+            async fn list_change_pulls(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: Option<&str>,
+                since: Option<chrono::DateTime<chrono::Utc>>,
+            ) -> Result<Vec<maidan_types::ChangePull>, StoreError> {
+                change_metrics::list(self.pool(), workspace_id, repo, since).await
+            }
+
             async fn list_slots(
                 &self,
                 workspace_id: WorkspaceId,

@@ -4,6 +4,7 @@
 //! Artifact, AuditEvent, plus typed IDs. Other crates depend on this one
 //! for shared schema; nothing here depends on other Maidan crates.
 
+pub mod change_metrics;
 pub mod content_seal;
 pub mod cursor;
 pub mod delegation;
@@ -43,6 +44,7 @@ pub mod waiter;
 pub mod wasi;
 pub mod workspace_import;
 
+pub use change_metrics::*;
 pub use content_seal::*;
 pub use cursor::*;
 pub use delegation::*;

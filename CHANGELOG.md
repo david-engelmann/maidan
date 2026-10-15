@@ -187,6 +187,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `GET /workspaces/{id}/deferred` (`workspace:read`): the open threads the claim queue is holding back for their footprint, oldest first, each with its reasons (`overlap`, `repo_paused`, `slot_full`), limited to threads the caller may read. It answers "why isn't this being picked up" during a swarm ramp.
 
+### Swarm ramp metrics
+
+- **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
+
 ### An agent pull request's description stays current
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.

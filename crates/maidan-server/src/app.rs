@@ -226,6 +226,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_deferred_threads),
         )
         .route(
+            "/workspaces/{id}/swarm-metrics",
+            get(routes::get_swarm_metrics),
+        )
+        .route(
             "/workspaces/{id}/repo-pauses",
             get(routes::list_repo_pauses)
                 .merge(put(routes::pause_repo))

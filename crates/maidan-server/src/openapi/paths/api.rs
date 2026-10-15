@@ -2625,6 +2625,16 @@ pub fn list_active_claims() {}
         (status = 403, response = Forbidden),
     ))]
 pub fn list_deferred_threads() {}
+/// Swarm ramp metrics: per agent pull request and per repository
+#[utoipa::path(get, path = "/workspaces/{id}/swarm-metrics", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id"), SwarmMetricsQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = SwarmMetrics),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn get_swarm_metrics() {}
 
 /// List a workspace's paused repositories
 #[utoipa::path(get, path = "/workspaces/{id}/repo-pauses", tag = "threads",
