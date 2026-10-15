@@ -176,6 +176,13 @@
     "note": "Setting an explicit dispatch block is available over REST and MCP; emits ThreadBlocked."
   },
   {
+    "kind": "thread_cancelled",
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/thread_cancel_e2e.rs#a_producer_cancels_its_claimed_task_over_http",
+    "mcp_evidence": "crates/maidan-server/tests/thread_cancel_e2e.rs#a_producer_cancels_its_task_over_mcp",
+    "note": "POST /threads/{id}/cancel and the MCP cancel_thread tool share the store cancel, which commits the event with the close."
+  },
+  {
     "kind": "thread_created",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/event_emission_e2e.rs#http_mutations_publish_matching_events",

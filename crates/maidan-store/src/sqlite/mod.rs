@@ -11,6 +11,7 @@ mod audit;
 mod automation_deliveries;
 mod blocks;
 mod budget;
+mod cancel;
 mod change_metrics;
 mod channel_members;
 mod channels;

@@ -2336,6 +2336,22 @@ pub trait AssignmentStore: Send + Sync {
     /// caps.
     async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError>;
 
+    /// Cancel a thread in one transaction: close it without the transition
+    /// gates (a cancel lands nothing), park it from dispatch with `reason`,
+    /// end any live claim so the holder's next renew is refused, and append
+    /// `ThreadStateChanged`, `ThreadCancelled` and a notice message posted by
+    /// `actor`. Under [`CancelAuthority::Creator`] only the thread's
+    /// `created_by` may. A repeat answers with the first cancel and changes
+    /// nothing. `reason` is the caller's to validate
+    /// ([`validated_cancel_reason`]). `NotFound` when the thread is gone.
+    async fn cancel_thread(
+        &self,
+        thread_id: ThreadId,
+        actor: MemberId,
+        reason: &str,
+        authority: CancelAuthority,
+    ) -> Result<CancelOutcome, StoreError>;
+
     /// Park a thread from dispatch: while marked, `claim_next` skips it and an
     /// explicit claim is refused. Upserts the reason/actor.
     async fn mark_thread_unclaimable(
