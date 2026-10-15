@@ -218,6 +218,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST /threads/{id}/cancel` with `{"reason"}` (1 to 500 characters) and the MCP tool `cancel_thread` (250 tools). In one transaction a cancel closes the thread without the review, land or parent gates, parks it from dispatch with the reason, ends any live claim (the holder's next `renew_claim` is refused), appends `ThreadStateChanged` and the new `ThreadCancelled` event, and posts the reason on the thread (`metadata.notice = "cancelled"`). It needs `workspace:write`; without `thread:transition` as well, only the member that created the thread may. A repeat answers `200` with the first cancel; a thread already closed some other way is `409`.
 - **Added:** `Thread.created_by`, the member that created a thread, recorded on every create path (REST, MCP `create_thread`, seeded threads, A2A conversations, recipes and schedules). Migration 0180 adds `maidan_threads.created_by` and `maidan_thread_cancellations` on both backends.
 
+### Sign-in says it is working
+
+- **Fixed:** while a pasted token is exchanged and checked, the web UI's Sign in button reads "Signing in…" and is marked `aria-busy`, and the status line (a polite live region) says the same, where before the field just went disabled. The audit timed a slow-3G sign-in at 21 s with no feedback. A refused token replaces the line with its reason, and a success clears it. From the 2026-10-03 UI audit (P2, outage UX).
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
