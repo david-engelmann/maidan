@@ -213,6 +213,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a thread is told when its base goes stale, with a `ThreadNotice` event (new event kind `thread_notice`) and one message. When the change sweep sees an agent pull request merged, each live claim in the same workspace and repository whose footprint covers a path the pull request touched (`path` and `glob` items, by prefix) gets one `rebase_needed` notice naming the repository, the pull request, the base branch and up to 20 covered paths; a merge notifies once. A round delivered on a base `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind gets one `stale_base` notice. The last 10 notices, newest first, are in `GET /threads/{id}` and the context pack's tail (MCP `get_thread_context`). Migration 0176 adds `maidan_change_rounds.paths` and `base_branch`, `maidan_change_pulls.noticed_at`, and `maidan_thread_notices`.
 
+### Touch targets on phones
+
+- **Fixed:** on a touch screen every button, select, input, disclosure and channel row in the web UI is at least 44px tall (buttons also 44px wide; checkboxes 1.5rem), the size WCAG 2.5.5 asks of a fingertip, where the new-channel "+" was 27x33. The Ctrl K / ⌘K hint and the command palette's key legend are hidden there, since there is no keyboard to press them on. Keyed on `pointer: coarse`, so a desktop with a mouse is unchanged. From the 2026-10-03 UI audit (P2, mobile).
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
