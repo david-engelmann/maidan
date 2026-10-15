@@ -1013,6 +1013,12 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/operator/audit", get(routes::list_global_audit))
         .route("/operator/legal-holds", get(routes::list_legal_holds))
+        .route("/operator/waitlist", get(routes::list_waitlist))
+        .route("/operator/waitlist/export", get(routes::export_waitlist))
+        .route(
+            "/operator/waitlist/{id}/invite",
+            no_store(post(routes::invite_waitlist_entry)),
+        )
         .route(
             "/operator/workspaces",
             no_store(post(routes::provision_workspace)),
@@ -1245,7 +1251,13 @@ pub fn router(state: AppState) -> Router {
 
     let auth_routes = Router::new()
         .route("/auth/oidc/login", get(oidc::login))
+        // Invited sign-up through the same front door; the handler 404s
+        // unless the instance turned sign-up on.
+        .route("/auth/oidc/signup", get(oidc::signup))
         .route("/auth/oidc/callback", get(oidc::callback))
+        // The public waitlist form's POST: signed-out by design, charged
+        // per address and per email domain by the rate-limit middleware.
+        .route("/waitlist", post(routes::join_waitlist))
         .route("/auth/logout", post(oidc::logout))
         .route(
             "/auth/session",

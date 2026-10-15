@@ -258,6 +258,8 @@ const POSTGRES_UP_V172: &str =
     include_str!("../../../migrations/postgres/0172_oauth_client_metadata_url.sql");
 const POSTGRES_UP_V173: &str = include_str!("../../../migrations/postgres/0173_claim_slots.sql");
 const POSTGRES_UP_V174: &str = include_str!("../../../migrations/postgres/0174_change_metrics.sql");
+const POSTGRES_UP_V178: &str =
+    include_str!("../../../migrations/postgres/0178_waitlist_and_signup.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -459,6 +461,8 @@ const SQLITE_UP_V172: &str =
     include_str!("../../../migrations/sqlite/0172_oauth_client_metadata_url.sql");
 const SQLITE_UP_V173: &str = include_str!("../../../migrations/sqlite/0173_claim_slots.sql");
 const SQLITE_UP_V174: &str = include_str!("../../../migrations/sqlite/0174_change_metrics.sql");
+const SQLITE_UP_V178: &str =
+    include_str!("../../../migrations/sqlite/0178_waitlist_and_signup.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -686,6 +690,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 172, POSTGRES_UP_V172).await?;
     apply_postgres(pool, &applied, 173, POSTGRES_UP_V173).await?;
     apply_postgres(pool, &applied, 174, POSTGRES_UP_V174).await?;
+    apply_postgres(pool, &applied, 178, POSTGRES_UP_V178).await?;
     // The partitioned tables need their months ready before the first write,
     // or rows land in DEFAULT until the first retention sweep.
     crate::postgres::partitions::maintain(pool, chrono::Utc::now()).await?;
@@ -868,6 +873,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 172, SQLITE_UP_V172).await?;
     apply_sqlite(pool, &applied, 173, SQLITE_UP_V173).await?;
     apply_sqlite(pool, &applied, 174, SQLITE_UP_V174).await?;
+    apply_sqlite(pool, &applied, 178, SQLITE_UP_V178).await?;
     Ok(())
 }
 

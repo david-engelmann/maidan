@@ -90,6 +90,8 @@ async fn spawn_oidc() -> Harness {
             post_logout_redirect_uri: None,
             first_admin_mint: true,
             auto_mint: false,
+            signup: false,
+            signup_email_domains: Vec::new(),
         },
         session_secret: Arc::from(TEST_SESSION_SECRET),
         client: None,

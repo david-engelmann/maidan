@@ -1318,6 +1318,50 @@ pub trait SessionStore: Send + Sync {
     async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError>;
     async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError>;
 
+    /// Add one waitlist entry. A second entry for the same email (matched
+    /// case-insensitively) is a `Conflict`: the list holds one row per
+    /// address, so a repeat sign-up updates nothing and mints nothing.
+    async fn insert_waitlist_entry(
+        &self,
+        new: NewWaitlistEntry,
+    ) -> Result<WaitlistEntry, StoreError>;
+    /// Every waitlist entry, oldest first: the operator's list and export.
+    async fn list_waitlist_entries(&self) -> Result<Vec<WaitlistEntry>, StoreError>;
+    async fn get_waitlist_entry(&self, id: WaitlistEntryId) -> Result<WaitlistEntry, StoreError>;
+    /// The entry an invite token belongs to, by the token's SHA-256 hex.
+    /// Entries are returned whatever their status; liveness (invited,
+    /// unexpired, unconsumed) is the caller's and the sign-up
+    /// transaction's check.
+    async fn get_waitlist_entry_by_invite_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<WaitlistEntry, StoreError>;
+    /// Mint (or replace) the entry's invite: status becomes `invited` and
+    /// the token hash and expiry are stored. `Conflict` once the entry has
+    /// signed up.
+    async fn set_waitlist_invite(
+        &self,
+        id: WaitlistEntryId,
+        token_hash: String,
+        expires_at: DateTime<Utc>,
+    ) -> Result<WaitlistEntry, StoreError>;
+
+    /// Complete an invited or domain-listed sign-up in ONE transaction: the
+    /// workspace, its human admin member, the OIDC identity row and the
+    /// session are created together, both audit rows are appended in the
+    /// same transaction, and the waitlist bookkeeping lands with them (the
+    /// invite is consumed, or a waiting entry with the same email is marked
+    /// signed up). Every id is minted inside the transaction, so a sign-up
+    /// can never land in a workspace that existed before it. With an
+    /// invite, the transaction refuses (`Conflict`) unless the entry is
+    /// still `invited`, unexpired and addressed to the sign-up's email.
+    async fn complete_oidc_signup(
+        &self,
+        new: NewOidcSignup,
+        signup_audit: crate::AuditFor<OidcSignupCore>,
+        session_audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<OidcSignupOutcome, StoreError>;
+
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
     async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;

@@ -959,6 +959,10 @@ pub struct WellKnownAuth {
     /// Where OIDC sign-in starts (with `?workspace_id=`), when it is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_login: Option<String>,
+    /// Where invited sign-up starts, when the instance has it enabled. The
+    /// board shows its waitlist form only when this is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_signup: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -993,6 +997,11 @@ pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
             oidc,
             sessions,
             oidc_login: oidc.then(|| "/auth/oidc/login".to_string()),
+            oidc_signup: state
+                .oidc
+                .as_ref()
+                .filter(|runtime| runtime.settings.signup)
+                .map(|_| "/auth/oidc/signup".to_string()),
         },
     })
 }

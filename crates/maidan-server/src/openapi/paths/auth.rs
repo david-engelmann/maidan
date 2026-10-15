@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::dto::{
     ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
-    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, PeerResponse, RenameWorkspace,
-    SearchQuery, SessionResponse, SessionWorkspaces,
+    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupQuery, PeerResponse,
+    RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
@@ -38,6 +38,29 @@ use maidan_types::{
     )
 )]
 pub fn oidc_login() {}
+
+/// Start an invited sign-up
+///
+/// Creates a workspace for someone who is not a member anywhere yet. The
+/// `invite` names the waitlist invite the operator minted; without one, the
+/// address the identity provider later verifies must sit in the instance's
+/// sign-up domain list. The callback consumes the pending sign-up and
+/// creates the workspace, its first member, the identity and the session in
+/// one transaction. 404 unless sign-up is enabled on the instance.
+#[utoipa::path(
+    get,
+    path = "/auth/oidc/signup",
+    tag = "auth",
+    params(OidcSignupQuery),
+    security(()),
+    responses(
+        (status = 307, description = "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"),
+        (status = 400, response = BadRequest),
+        (status = 403, description = "OIDC disabled, the invite is unknown, spent or expired, or sign-up here is by invite only", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn oidc_signup() {}
 
 /// Finish an OIDC login
 #[utoipa::path(

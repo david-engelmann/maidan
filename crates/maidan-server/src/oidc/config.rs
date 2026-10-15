@@ -56,6 +56,12 @@ pub struct OidcSettings {
     pub first_admin_mint: bool,
     /// When true, redirect to `/ui/?auto_mint=1` after login if no `token:admin` yet.
     pub auto_mint: bool,
+    /// When true, `GET /auth/oidc/signup` starts an invited sign-up. Off by
+    /// default; boot refuses it beside OIDC auto-provisioning.
+    pub signup: bool,
+    /// Email domains (lower-cased) whose verified addresses may sign up
+    /// without an invite. Empty unless `MAIDAN_SIGNUP_EMAIL_DOMAINS` is set.
+    pub signup_email_domains: Vec<String>,
 }
 
 impl OidcSettings {
@@ -110,6 +116,27 @@ impl OidcSettings {
         );
         let auto_mint = env_flag("MAIDAN_OIDC_AUTO_MINT") && first_admin_mint;
 
+        // Sign-up and auto-provisioning are opposite answers to "who may
+        // become a member": an invite list, or anyone the provider
+        // authenticates. Running both would let the open door bypass the
+        // list, so boot refuses the pair. The mock's synthetic
+        // auto-provision is not the operator's flag and does not count.
+        let signup = env_flag("MAIDAN_SIGNUP");
+        if signup && env_flag("MAIDAN_OIDC_AUTO_PROVISION") {
+            return Err(ConfigError::Invalid(
+                "MAIDAN_SIGNUP",
+                "cannot be set together with MAIDAN_OIDC_AUTO_PROVISION".into(),
+            ));
+        }
+        let signup_email_domains = std::env::var("MAIDAN_SIGNUP_EMAIL_DOMAINS")
+            .map(|raw| {
+                raw.split(',')
+                    .map(|d| d.trim().to_lowercase())
+                    .filter(|d| !d.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(Some(Self {
             enabled: true,
             mock,
@@ -123,6 +150,8 @@ impl OidcSettings {
             post_logout_redirect_uri,
             first_admin_mint,
             auto_mint,
+            signup,
+            signup_email_domains,
         }))
     }
 }

@@ -257,6 +257,8 @@ async fn world(sessions: Sessions) -> World {
                     post_logout_redirect_uri: None,
                     first_admin_mint: true,
                     auto_mint: false,
+                    signup: false,
+                    signup_email_domains: Vec::new(),
                 },
                 session_secret: Arc::from(SESSION_SECRET),
                 client: None,
