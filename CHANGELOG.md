@@ -151,6 +151,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** the Postgres delivery tables are range-partitioned by calendar month (migration 0166), the way the event log is (0162): webhook and automation deliveries and the outbox by `created_at`, mail by `updated_at`, the dead-letter queue by `failed_at`. `prune_deliveries` drops a month whole when every row in it is one the batched delete would take, and deletes inside the rest. The egress outbox is deliberately not partitioned — its dedup index is global, and a partition key inside it would weaken enqueue idempotency to per-month — and neither is `maidan_result_deliveries`, an updated-in-place state table retention never age-prunes. SQLite keeps one table each.
 
+### The OAuth endpoints carry their own rate limits
+
+- **Added:** per-client and per-IP rate limits on the authorization server's surface: `POST /oauth/token`, `POST /oauth/revoke`, `GET /oauth/authorize` and the consent page and its decision POST. One bucket is charged per client id and address pair (120 requests a minute by default; the id is unauthenticated at that layer, so pair keying keeps one address from spending a named client's budget), the id read from the Basic username, the authorize query or a small form body; the other per address across all client ids (600 a minute). A limited request answers 429 with `Retry-After`. The buckets tune or disable with `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX`, `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS`, `MAIDAN_OAUTH_IP_RATE_LIMIT_MAX` and `MAIDAN_OAUTH_IP_RATE_LIMIT_WINDOW_SECS`. A contract test now pins that no grant, by code exchange or refresh, carries a scope beyond what the member holds, the client allows and the delegatable set contains.
+
 ### A worker claims only its repository's work
 
 - **Added:** `repo` on `claim_next_thread` and `claim_next_workspace_thread` (MCP) and on the `claim-next` routes (HTTP). With it, only a thread whose footprint names that repository is claimed, so a worker bound to one repository's checkout never takes work it would have to release. Omitted, claiming is unchanged.
