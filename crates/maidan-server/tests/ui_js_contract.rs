@@ -1776,8 +1776,10 @@ fn ui_js_state_is_a_word_not_a_pill() {
         "renderBoard puts the sessionChrome label in the card foot and does not paint a badge"
     );
     assert!(
-        board.contains("card.setAttribute(\"aria-label\", `${title}: ${stateLabel}`)"),
-        "the card's accessible name uses the same state word"
+        board.contains(
+            "card.setAttribute(\"aria-label\", `${title}: ${stateLabel}${th.stalled ? \", stalled\" : \"\"}`)"
+        ),
+        "the card's accessible name uses the same state word, then says when it is stalled"
     );
     let header = function_body(js, "renderThreadHeader");
     assert!(
@@ -5151,8 +5153,8 @@ fn every_inline_harness_runs_with_the_write_guard() {
         rest = &rest[at + probe.len()..];
     }
     assert_eq!(
-        harnesses, 8,
-        "the seven page harnesses and run_bare_harness each go through with_prelude"
+        harnesses, 9,
+        "the eight page harnesses and run_bare_harness each go through with_prelude"
     );
 }
 
