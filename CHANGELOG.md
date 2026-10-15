@@ -205,6 +205,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
 
+### A change task closes when its pull request merges
+
+- **Added:** a background change sweep (`MAIDAN_CHANGE_SWEEP_SECS`, every 120 s by default, `0` off). Per workspace it reads from GitHub the agent pull requests not yet seen closed, at most 25 a pass, the longest unread first (migration 0177 adds `checked_at`, and `settled_at` so each close acts once). A merge closes the change's thread through the store's transition path, with a `ThreadLanded` event in the same transaction, so a task that depends on it becomes claimable without a webhook or a person closing it by hand. A thread with another open pull request, or already closed, is left alone. A close without a merge leaves the thread open and posts one message, "#N closed without merging". The swarm-metrics read shares the refresh but still only records closes.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

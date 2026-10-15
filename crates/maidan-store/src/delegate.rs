@@ -2647,6 +2647,38 @@ macro_rules! store_delegations {
                 change_metrics::list(self.pool(), workspace_id, repo, since).await
             }
 
+            async fn mark_change_pull_checked(
+                &self,
+                repo: &str,
+                pull_number: i64,
+                at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                change_metrics::mark_checked(self.pool(), repo, pull_number, at).await
+            }
+
+            async fn list_change_sweep_workspaces(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<WorkspaceId>, StoreError> {
+                change_metrics::list_sweep_workspaces(self.pool(), limit).await
+            }
+
+            async fn list_unsettled_change_pulls(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<(String, i64)>, StoreError> {
+                change_metrics::list_unsettled(self.pool(), workspace_id, limit).await
+            }
+
+            async fn settle_change_pull(
+                &self,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<maidan_types::ChangeSettlement, StoreError> {
+                change_metrics::settle(self.pool(), repo, pull_number).await
+            }
+
             async fn list_slots(
                 &self,
                 workspace_id: WorkspaceId,

@@ -2181,7 +2181,8 @@ pub trait AssignmentStore: Send + Sync {
         merged_head_sha: Option<&str>,
         closed_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
-    /// Tracked agent pull requests in a workspace not yet seen closed.
+    /// Tracked agent pull requests in a workspace not yet seen closed, the
+    /// longest unread first (never read before all).
     async fn list_open_change_pulls(
         &self,
         workspace_id: WorkspaceId,
@@ -2194,6 +2195,33 @@ pub trait AssignmentStore: Send + Sync {
         repo: Option<&str>,
         since: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
+    /// Stamp when a tracked agent pull request was last read from GitHub.
+    async fn mark_change_pull_checked(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+    /// Workspaces with a tracked agent pull request still to read or settle.
+    async fn list_change_sweep_workspaces(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<WorkspaceId>, StoreError>;
+    /// Tracked agent pull requests in a workspace seen closed and not yet
+    /// settled, oldest close first.
+    async fn list_unsettled_change_pulls(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<(String, i64)>, StoreError>;
+    /// Settle a tracked agent pull request seen closed, once: a merge closes
+    /// its thread through the transition path with `ThreadLanded` in the same
+    /// transaction. See [`maidan_types::ChangeSettlement`].
+    async fn settle_change_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<maidan_types::ChangeSettlement, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.
     async fn list_slots(

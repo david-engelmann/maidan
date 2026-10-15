@@ -28,7 +28,7 @@ use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
-    egress_worker,
+    change_sweep, egress_worker,
     github::GithubApiClient,
     linear::{LinearError, LinearIssue, LinearSender, LinearState},
     notification_router,
@@ -38,9 +38,9 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    status, ChannelId, EgressSurface, EgressTarget, Event, ExternalRef, MemberId, MemberKind,
-    NewChannel, NewEgressTarget, NewMember, NewMessage, NewThread, NewWorkspace, ResultDelivery,
-    ThreadId, WorkspaceId, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
+    status, ChannelId, EgressSurface, EgressTarget, Event, EventKind, ExternalRef, MemberId,
+    MemberKind, NewChannel, NewEgressTarget, NewMember, NewMessage, NewThread, NewWorkspace,
+    ResultDelivery, ThreadId, ThreadState, WorkspaceId, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -71,6 +71,8 @@ struct FakePull {
     labels: Vec<String>,
     /// Set by a test to report the pull request merged.
     merged_at: Option<String>,
+    /// Set by a test to report the pull request closed without merging.
+    closed_at: Option<String>,
 }
 
 type Tree = BTreeMap<String, (String, String)>;
@@ -311,10 +313,10 @@ async fn github(
                         "head": {"ref": p.head, "sha": fake.refs.get(&p.head).cloned().unwrap_or_default(), "repo": {"full_name": REPO}},
                         "base": {"ref": p.base, "repo": {"full_name": REPO}},
                         "draft": p.draft,
-                        "state": if p.merged_at.is_some() { "closed" } else { "open" },
+                        "state": if p.merged_at.is_some() || p.closed_at.is_some() { "closed" } else { "open" },
                         "node_id": format!("PR_{}", p.number),
                         "merged_at": p.merged_at,
-                        "closed_at": p.merged_at,
+                        "closed_at": p.closed_at.clone().or_else(|| p.merged_at.clone()),
                     }),
                 ),
                 None => not_found(),
@@ -345,6 +347,7 @@ async fn github(
                 draft: body["draft"].as_bool().unwrap(),
                 labels: Vec::new(),
                 merged_at: None,
+                closed_at: None,
             });
             reply(
                 StatusCode::CREATED,
@@ -1171,6 +1174,7 @@ async fn an_open_pull_request_into_prod_refuses_the_change_before_any_write() {
             draft: false,
             labels: Vec::new(),
             merged_at: None,
+            closed_at: None,
         });
     }
     h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
@@ -1641,6 +1645,163 @@ async fn each_delivered_round_counts_toward_the_swarm_metrics() {
     assert_eq!(task["merged_without_edits"], true, "{metrics}");
     assert_eq!(task["rounds"].as_array().unwrap().len(), 1);
     assert_eq!(metrics["repos"][0]["merged"], 1);
+
+    // The read only recorded the close; the sweep still lands the thread.
+    assert_eq!(change_sweep::sweep_once(&h.state).await.landed, 1);
+    assert_eq!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+}
+
+/// A merged pull request closes its task on the next sweep, with
+/// `ThreadLanded`, and the task waiting on it becomes claimable. Another
+/// workspace's tracked pull request on the same repository, still open, is
+/// left alone.
+#[tokio::test]
+async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let dependent = h
+        .store
+        .create_thread(NewThread {
+            channel_id: h.a.channel_id,
+            parent_thread_id: None,
+            title: Some("after the change".into()),
+            description: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    h.store
+        .add_thread_dependency(dependent, h.a.thread_id)
+        .await
+        .unwrap();
+    h.store
+        .set_thread_result(h.b.thread_id, h.b.member_id, &json!({"summary": "theirs"}))
+        .await
+        .unwrap();
+    h.store
+        .record_change_round(maidan_types::NewChangeRound {
+            workspace_id: h.b.workspace_id,
+            thread_id: h.b.thread_id,
+            repo: REPO.into(),
+            pull_number: 999,
+            commit_sha: "f".repeat(40),
+            base_sha: h.base_sha.clone(),
+            base_behind: None,
+            diff_lines: 1,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats::default(),
+        "nothing has closed yet"
+    );
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].merged_at = Some("2026-10-15T12:00:00Z".into());
+        f.pulls[0].number
+    };
+    assert_eq!(change_sweep::sweep_once(&h.state).await.landed, 1);
+    assert_eq!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let events = h
+        .store
+        .list_events_after(h.a.workspace_id, 0, 500)
+        .await
+        .unwrap();
+    let landed: Vec<_> = events
+        .iter()
+        .filter(|e| e.kind == EventKind::ThreadLanded)
+        .collect();
+    assert_eq!(landed.len(), 1);
+    assert_eq!(landed[0].thread_id, Some(h.a.thread_id));
+    assert_eq!(landed[0].payload["repo"], REPO);
+    assert_eq!(landed[0].payload["pr_number"], number);
+    let claimed = h
+        .store
+        .claim_next_thread(h.a.channel_id, h.a.member_id, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        claimed.map(|t| t.id),
+        Some(dependent),
+        "the task waiting on the change is claimable"
+    );
+
+    assert_eq!(
+        h.store.get_thread(h.b.thread_id).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert!(!h
+        .store
+        .list_events_after(h.b.workspace_id, 0, 500)
+        .await
+        .unwrap()
+        .iter()
+        .any(|e| e.kind == EventKind::ThreadLanded));
+    assert_eq!(
+        h.store
+            .list_open_change_pulls(h.b.workspace_id, 10)
+            .await
+            .unwrap(),
+        vec![(REPO.to_string(), 999)]
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.landed,
+        0,
+        "a merge lands its thread once"
+    );
+}
+
+/// A pull request closed without merging leaves its task open, with one
+/// notice that a second sweep does not repeat.
+#[tokio::test]
+async fn a_pull_request_closed_without_merging_leaves_its_task_open_with_one_notice() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].closed_at = Some("2026-10-15T12:00:00Z".into());
+        f.pulls[0].number
+    };
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats {
+            landed: 0,
+            noticed: 1
+        }
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats::default(),
+        "the notice is not repeated"
+    );
+    assert_ne!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let notices: Vec<_> = h
+        .store
+        .list_messages_after(h.a.thread_id, None, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.body == format!("#{number} closed without merging"))
+        .collect();
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].metadata["github"]["closed_unmerged"], true);
 }
 
 #[tokio::test]
