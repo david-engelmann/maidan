@@ -195,6 +195,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
 
+### An agent pull request's description stays current
+
+- **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
