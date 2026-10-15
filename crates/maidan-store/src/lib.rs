@@ -139,6 +139,7 @@ pub mod retention_policy;
 mod share_tickets;
 pub mod shred_residue;
 pub mod sqlite;
+mod stall;
 pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

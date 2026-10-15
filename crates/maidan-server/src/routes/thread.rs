@@ -134,6 +134,8 @@ pub async fn list_threads(
             thread.status = by_thread.get(&thread.id).cloned();
         }
     }
+    // After the declarations: a holder that said it is waiting is not stalled.
+    crate::stall::mark(threads.iter_mut());
     Ok(Json(threads))
 }
 
@@ -180,6 +182,7 @@ pub async fn get_thread(
         .store
         .list_thread_notices(ThreadId(id), maidan_types::THREAD_NOTICE_LIMIT)
         .await?;
+    crate::stall::mark(std::iter::once(&mut thread));
     Ok(Json(thread))
 }
 

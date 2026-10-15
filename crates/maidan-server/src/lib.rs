@@ -91,6 +91,7 @@ pub mod session;
 pub mod share_consumer;
 pub mod slack;
 pub mod slash_commands;
+pub mod stall;
 pub mod state;
 pub mod status;
 pub mod stream_guard;
