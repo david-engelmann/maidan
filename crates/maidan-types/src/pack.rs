@@ -975,6 +975,7 @@ mod tests {
             status: None,
             block: None,
             closed_without_review: false,
+            created_by: None,
         }
     }
 
@@ -1251,6 +1252,7 @@ mod tests {
             status: None,
             block: None,
             closed_without_review: false,
+            created_by: None,
         }
     }
 

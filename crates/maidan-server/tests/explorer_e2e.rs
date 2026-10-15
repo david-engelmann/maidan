@@ -101,6 +101,7 @@ async fn explorer_rest_lists_tombstones_backlinks_and_census() {
             parent_thread_id: None,
             title: Some("pub".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -110,6 +111,7 @@ async fn explorer_rest_lists_tombstones_backlinks_and_census() {
             parent_thread_id: None,
             title: Some("secret".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

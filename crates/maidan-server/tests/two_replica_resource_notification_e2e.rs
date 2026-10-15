@@ -96,6 +96,7 @@ async fn resource_update_on_one_replica_reaches_subscriber_on_another() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

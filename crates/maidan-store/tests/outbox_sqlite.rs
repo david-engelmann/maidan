@@ -144,6 +144,7 @@ async fn claimed_rows_open_live_words_and_not_shredded_ones() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

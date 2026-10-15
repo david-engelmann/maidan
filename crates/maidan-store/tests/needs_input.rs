@@ -24,6 +24,7 @@ async fn thread_with_status(
             parent_thread_id: None,
             title: Some(title.into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

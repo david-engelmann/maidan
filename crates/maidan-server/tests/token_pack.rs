@@ -93,6 +93,7 @@ async fn token_pack_evidence() {
                 parent_thread_id: None,
                 title: Some(format!("investigation-{t}")),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

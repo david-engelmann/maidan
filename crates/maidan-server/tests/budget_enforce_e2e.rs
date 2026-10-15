@@ -58,6 +58,7 @@ async fn report_usage_over_budget_stops_and_dead_letters() {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

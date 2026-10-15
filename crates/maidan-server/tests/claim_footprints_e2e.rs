@@ -172,6 +172,7 @@ async fn a_second_agent_on_held_work_is_told_who_holds_it_and_until_when() {
                 parent_thread_id: None,
                 title: Some(title.into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();
@@ -328,6 +329,7 @@ async fn an_operator_pauses_a_repository_and_the_queue_holds_its_work() {
             parent_thread_id: None,
             title: Some("bridge".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -469,6 +471,7 @@ async fn a_worker_serving_one_repository_claims_only_its_work() {
                     parent_thread_id: None,
                     title: Some(title.into()),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .unwrap()
@@ -621,6 +624,7 @@ async fn an_operator_caps_a_build_slot_and_workers_read_its_use() {
             parent_thread_id: None,
             title: Some("build".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

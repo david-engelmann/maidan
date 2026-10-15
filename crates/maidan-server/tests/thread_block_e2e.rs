@@ -102,6 +102,7 @@ async fn blocked_reason_parks_a_thread_from_dispatch_and_emits_on_clear() {
                     parent_thread_id: None,
                     title: Some(title),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .unwrap()

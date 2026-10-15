@@ -70,6 +70,7 @@ async fn glossary_rides_the_context_pack() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

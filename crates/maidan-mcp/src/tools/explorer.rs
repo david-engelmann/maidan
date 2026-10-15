@@ -228,6 +228,7 @@ mod tests {
                 parent_thread_id: None,
                 title: Some("pub".into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();
@@ -237,6 +238,7 @@ mod tests {
                 parent_thread_id: None,
                 title: Some("secret".into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

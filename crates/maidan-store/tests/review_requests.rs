@@ -58,6 +58,7 @@ async fn handed_to_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) 
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -358,6 +359,7 @@ async fn run_result_gate_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let gated = store
         .create_thread(new_thread("gated"))

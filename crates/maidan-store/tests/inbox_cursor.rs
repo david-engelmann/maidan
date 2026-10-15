@@ -61,6 +61,7 @@ async fn inbox_unread_count_and_mark_read_on_sqlite() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

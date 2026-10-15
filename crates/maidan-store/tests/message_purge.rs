@@ -44,6 +44,7 @@ async fn purge_removes_only_tombstoned_messages() {
             title: None,
             description: None,
             parent_thread_id: None,
+            created_by: None,
         })
         .await
         .expect("thread");

@@ -188,6 +188,7 @@ pub(super) async fn create_thread(
                 parent_thread_id: a.parent_thread_id.map(ThreadId),
                 title: a.title,
                 description: None,
+                created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
         )

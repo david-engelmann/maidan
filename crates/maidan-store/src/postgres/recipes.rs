@@ -99,16 +99,18 @@ async fn insert_thread(
     workspace_id: WorkspaceId,
     parent: Option<ThreadId>,
     title: &str,
+    created_by: MemberId,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let row = sqlx::query(
-        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id",
+        "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, created_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(Uuid::now_v7())
     .bind(channel_id.0)
     .bind(parent.map(|p| p.0))
     .bind(title)
+    .bind(created_by.0)
     .fetch_one(&mut **tx)
     .await?;
     let thread = threads::row_to_thread(&row)?;
@@ -143,6 +145,7 @@ pub async fn instantiate(
         recipe.workspace_id,
         None,
         &recipe.name,
+        actor,
     )
     .await?;
     events_out.push(parent_ev);
@@ -156,6 +159,7 @@ pub async fn instantiate(
             recipe.workspace_id,
             Some(parent.id),
             &child.title,
+            actor,
         )
         .await?;
         events_out.push(ev);

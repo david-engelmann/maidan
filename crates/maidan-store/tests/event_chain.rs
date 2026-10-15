@@ -375,6 +375,7 @@ async fn assert_exponent_numbers_survive_the_round_trip(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("numbers".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

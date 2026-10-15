@@ -72,6 +72,7 @@ async fn server() -> (
             parent_thread_id: None,
             title: Some("a".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -81,6 +82,7 @@ async fn server() -> (
             parent_thread_id: None,
             title: Some("b".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

@@ -46,6 +46,7 @@ async fn resolve_thread_and_message_chain_match_channel_workspace() {
             title: None,
             description: None,
             parent_thread_id: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -114,6 +115,7 @@ async fn a_mention_folds_the_handle_case() {
             title: None,
             description: None,
             parent_thread_id: None,
+            created_by: None,
         })
         .await
         .unwrap();

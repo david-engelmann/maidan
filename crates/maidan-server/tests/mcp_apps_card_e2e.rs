@@ -536,6 +536,7 @@ async fn the_gate_result_carries_requester_and_review_evidence_tiers() {
             parent_thread_id: None,
             title: Some("deploy".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

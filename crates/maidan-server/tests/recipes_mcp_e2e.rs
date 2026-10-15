@@ -166,6 +166,7 @@ async fn the_deploy_recipe_opens_and_reads_its_gate_over_mcp_2026_07_28() {
             parent_thread_id: None,
             title: Some("Deploy v9 to production".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -321,6 +322,7 @@ async fn a_failed_lease_renewal_stops_the_deploy_before_anything_is_deployed() {
             parent_thread_id: None,
             title: Some("Deploy v9 to production".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

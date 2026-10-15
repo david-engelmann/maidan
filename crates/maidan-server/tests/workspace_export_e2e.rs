@@ -92,6 +92,7 @@ async fn export_requires_token_admin_and_returns_the_content_graph() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

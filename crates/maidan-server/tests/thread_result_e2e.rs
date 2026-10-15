@@ -92,6 +92,7 @@ async fn set_get_result_over_http_and_event() {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

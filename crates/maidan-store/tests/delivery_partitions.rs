@@ -119,6 +119,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             parent_thread_id: None,
             title: Some("work".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

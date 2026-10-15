@@ -61,6 +61,7 @@ async fn verify_shredding_reports_words_a_withdrawal_left() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

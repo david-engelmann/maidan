@@ -50,6 +50,7 @@ async fn reactions_add_list_remove() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -115,6 +116,7 @@ async fn pin_message_requires_same_thread() {
             parent_thread_id: None,
             title: Some("t1".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -124,6 +126,7 @@ async fn pin_message_requires_same_thread() {
             parent_thread_id: None,
             title: Some("t2".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

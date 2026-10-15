@@ -73,6 +73,7 @@ async fn as_of_replay_reconstructs_the_thread_at_a_point() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

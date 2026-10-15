@@ -94,6 +94,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
             parent_thread_id: None,
             title: Some("review".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -111,6 +112,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
             parent_thread_id: None,
             title: Some("plan".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -128,6 +130,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
             parent_thread_id: None,
             title: Some("secret review".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

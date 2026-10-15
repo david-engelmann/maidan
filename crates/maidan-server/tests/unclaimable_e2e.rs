@@ -92,6 +92,7 @@ async fn unclaimable_parks_a_thread_from_dispatch() {
                     parent_thread_id: None,
                     title: Some(title),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .unwrap()

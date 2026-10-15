@@ -55,6 +55,7 @@ pub async fn create_thread(
                 parent_thread_id: body.parent_thread_id.map(ThreadId),
                 title: body.title,
                 description: body.description,
+                created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
         )

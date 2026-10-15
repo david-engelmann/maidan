@@ -143,6 +143,7 @@ async fn build_corpus(bodies: &[&str]) -> Corpus {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
