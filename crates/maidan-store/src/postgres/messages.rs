@@ -437,7 +437,7 @@ pub async fn tombstone_with_event(
     Ok(stored)
 }
 
-fn row_to_message(row: &sqlx::postgres::PgRow) -> Message {
+pub(super) fn row_to_message(row: &sqlx::postgres::PgRow) -> Message {
     Message {
         id: MessageId(row.get::<Uuid, _>("id")),
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),

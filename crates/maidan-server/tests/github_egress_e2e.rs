@@ -152,6 +152,7 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
             parent_thread_id: None,
             title: Some("issue-42".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -223,6 +224,7 @@ async fn egress_relays_a_linked_thread_message_and_skips_github_sourced() {
             parent_thread_id: None,
             title: Some("other".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

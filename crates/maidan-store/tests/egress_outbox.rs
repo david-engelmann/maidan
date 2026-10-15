@@ -59,6 +59,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("egress".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -213,6 +214,7 @@ async fn run_dedup_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("dedup".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -365,6 +367,7 @@ async fn run_dlq_scope_suite(store: &dyn Store) {
                 parent_thread_id: None,
                 title: Some("t".into()),
                 description: None,
+                created_by: None,
             })
             .await
             .expect("thread");

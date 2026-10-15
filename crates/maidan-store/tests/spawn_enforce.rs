@@ -60,6 +60,7 @@ async fn run_suite(store: &dyn Store) {
                     parent_thread_id: parent,
                     title: Some("t".into()),
                     description: None,
+                    created_by: None,
                 })
                 .await
         }

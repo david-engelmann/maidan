@@ -47,6 +47,7 @@ async fn workspace(store: &dyn Store, name: &str) -> (WorkspaceId, MemberId, Thr
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread")

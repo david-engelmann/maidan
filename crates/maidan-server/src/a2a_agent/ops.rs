@@ -583,6 +583,7 @@ async fn new_thread(state: &AppState, auth: &AuthContext) -> Result<ThreadScope,
             parent_thread_id: None,
             title: Some("A2A conversation".into()),
             description: None,
+            created_by: auth.attribution().map(|a| a.subject_id),
         })
         .await;
     let (thread, stored) = spawn_checked(state, auth, created).await?;

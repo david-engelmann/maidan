@@ -185,6 +185,7 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -220,6 +221,7 @@ async fn the_event_log_hides_what_the_reader_cannot_see() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

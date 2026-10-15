@@ -23,6 +23,7 @@
   "review_submitted",
   "schedule_skipped",
   "thread_assignment_changed",
+  "thread_cancelled",
   "thread_created",
   "thread_landed",
   "thread_notice",

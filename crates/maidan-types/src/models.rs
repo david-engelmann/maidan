@@ -1991,6 +1991,11 @@ pub struct Thread {
     /// designated owner (unrestricted).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<MemberId>,
+    /// The member who created this thread, if a member did. Unlike
+    /// [`Thread::owner_id`] it never changes; it is the producer whose own
+    /// task this is, so it may cancel it without `thread:transition`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
@@ -2023,6 +2028,10 @@ pub struct NewThread {
     pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
     pub description: Option<String>,
+    /// The member who created the thread: the authenticated caller on every
+    /// create path, `None` only for threads the system makes itself. It is
+    /// what lets a producer cancel its own task without `thread:transition`.
+    pub created_by: Option<MemberId>,
 }
 
 /// A child thread collapsed under its parent: the child thread plus a live

@@ -116,6 +116,7 @@ async fn scope(store: &dyn Store) -> (WorkspaceId, ThreadId) {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

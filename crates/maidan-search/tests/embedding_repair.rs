@@ -119,6 +119,7 @@ async fn post(store: &dyn Store, n: usize) -> Vec<(Message, Event)> {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

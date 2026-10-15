@@ -119,6 +119,7 @@ async fn seed(ctx: &Ctx, ws: WorkspaceId, member: MemberId, private: bool) -> Th
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

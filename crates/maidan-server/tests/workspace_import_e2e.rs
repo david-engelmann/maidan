@@ -95,6 +95,7 @@ async fn import_remaps_in_new_mode_and_restores_ids_with_conflict_and_force() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

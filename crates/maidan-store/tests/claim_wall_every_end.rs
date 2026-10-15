@@ -66,6 +66,7 @@ async fn task(store: &dyn Store, channel: ChannelId, title: &str) -> ThreadId {
             parent_thread_id: None,
             title: Some(title.into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()

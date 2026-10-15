@@ -50,6 +50,7 @@ async fn run_usage_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("th");
@@ -85,6 +86,7 @@ async fn run_usage_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("th2");

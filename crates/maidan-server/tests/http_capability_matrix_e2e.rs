@@ -422,6 +422,9 @@ fn apply_route_defaults(
     if path.ends_with("/spawn-budget") && method == "PUT" {
         return b.json(&json!({ "max_children": 4, "max_depth": 3, "max_tools": 64 }));
     }
+    if path.ends_with("/cancel") && method == "POST" {
+        return b.json(&json!({ "reason": "cap matrix" }));
+    }
     if path.ends_with("/unclaimable") && method == "PUT" {
         return b.json(&json!({ "reason": "cap matrix" }));
     }

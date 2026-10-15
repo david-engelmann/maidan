@@ -60,6 +60,7 @@ async fn wait_sweeper_fires_due_waits_parks_and_notifies() {
             parent_thread_id: None,
             title: Some("waiting".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

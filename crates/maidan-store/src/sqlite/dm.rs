@@ -106,6 +106,7 @@ pub async fn open(
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         },
     )
     .await?;

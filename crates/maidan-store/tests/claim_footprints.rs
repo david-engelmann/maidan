@@ -65,6 +65,7 @@ async fn task(store: &dyn Store, channel: ChannelId, title: &str) -> ThreadId {
             parent_thread_id: None,
             title: Some(title.into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()
@@ -669,6 +670,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let (created, _) = store
         .create_thread_with_footprint(new("intake"), Some(lane))

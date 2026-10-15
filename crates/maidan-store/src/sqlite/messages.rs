@@ -453,7 +453,7 @@ pub async fn tombstone_with_event(
     Ok(stored)
 }
 
-fn row_to_message(row: &sqlx::sqlite::SqliteRow) -> Result<Message, StoreError> {
+pub(super) fn row_to_message(row: &sqlx::sqlite::SqliteRow) -> Result<Message, StoreError> {
     let metadata_text: String = row.get("metadata");
     let metadata = serde_json::from_str(&metadata_text)?;
     Ok(Message {

@@ -132,6 +132,7 @@ async fn operator_lists_and_requeues_a_dead_projector_delivery() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

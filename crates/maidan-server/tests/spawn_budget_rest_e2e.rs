@@ -104,6 +104,7 @@ async fn spawn_budget_config_over_http_drives_the_gate() {
             parent_thread_id: None,
             title: Some("parent".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

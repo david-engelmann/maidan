@@ -214,6 +214,7 @@ async fn digest_leads_with_buried_decisions() {
             parent_thread_id: None,
             title: Some("the rollout".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

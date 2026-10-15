@@ -48,6 +48,7 @@ async fn child_cannot_advance_beyond_open_parent() {
             parent_thread_id: None,
             title: Some("parent".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("parent");
@@ -57,6 +58,7 @@ async fn child_cannot_advance_beyond_open_parent() {
             parent_thread_id: Some(parent.id),
             title: Some("child".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("child");

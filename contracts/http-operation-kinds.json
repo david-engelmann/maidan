@@ -188,6 +188,7 @@
   {"method":"GET","path":"/threads/{id}/budget","kind":"reads"},
   {"method":"PATCH","path":"/threads/{id}/budget","kind":"changes"},
   {"method":"PUT","path":"/threads/{id}/budget","kind":"changes"},
+  {"method":"POST","path":"/threads/{id}/cancel","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/children","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/claim/acknowledge","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/claim/release","kind":"changes"},

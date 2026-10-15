@@ -543,6 +543,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             parent_thread_id: None,
             title: Some("change".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -1682,6 +1683,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
             parent_thread_id: None,
             title: Some("after the change".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()
@@ -1929,6 +1931,7 @@ async fn agent_holding(
             parent_thread_id: None,
             title: Some(format!("{handle}'s work")),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()
