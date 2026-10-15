@@ -210,6 +210,27 @@ handed only work routed to it. A Pi worker that passes `engine: "pi"` is
 never handed session or human work, and work nobody routed waits for a
 claim that names no engine.
 
+A worked pass through the surface: intake files a review for a Pi worker
+and a plan for a session,
+
+```http
+POST /channels/{cid}/threads
+{ "title": "review the claim queue change",
+  "attributes": { "kind": "review", "engine": "pi", "threat_model": true } }
+
+POST /channels/{cid}/threads
+{ "title": "plan the metering rollout",
+  "attributes": { "kind": "plan", "engine": "session" } }
+```
+
+The Pi worker's `claim_next` with `{ "engine": "pi" }` is handed the
+review; the plan waits for a session claim. If the review turns out to
+need a person instead, `PUT /threads/{id}/attributes` with
+`{ "kind": "review", "engine": "human", "threat_model": true }` reroutes
+it whole, and the metrics read for the workspace
+(`GET /workspaces/{id}/swarm-metrics?engine=pi`) counts only the work
+that was routed to Pi.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
