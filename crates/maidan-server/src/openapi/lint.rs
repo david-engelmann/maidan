@@ -26,6 +26,7 @@ const NO_CLIENT_ERROR: &[(&str, &str)] = &[
 /// The browser login handshake answers with a redirect, never a 2xx.
 const REDIRECT_ONLY: &[(&str, &str)] = &[
     ("get", "/auth/oidc/login"),
+    ("get", "/auth/oidc/signup"),
     ("get", "/auth/oidc/callback"),
     ("post", "/auth/logout"),
     ("get", "/oauth/authorize"),
