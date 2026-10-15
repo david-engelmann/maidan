@@ -213,6 +213,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a thread is told when its base goes stale, with a `ThreadNotice` event (new event kind `thread_notice`) and one message. When the change sweep sees an agent pull request merged, each live claim in the same workspace and repository whose footprint covers a path the pull request touched (`path` and `glob` items, by prefix) gets one `rebase_needed` notice naming the repository, the pull request, the base branch and up to 20 covered paths; a merge notifies once. A round delivered on a base `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind gets one `stale_base` notice. The last 10 notices, newest first, are in `GET /threads/{id}` and the context pack's tail (MCP `get_thread_context`). Migration 0176 adds `maidan_change_rounds.paths` and `base_branch`, `maidan_change_pulls.noticed_at`, and `maidan_thread_notices`.
 
+### Reaction buttons say what they do
+
+- **Fixed:** a reaction button on a message was titled only "React", so a screen reader read out a bare emoji name without the action. Each quick-reaction button now says "React with thumbs up" (or heart, check mark, party popper, eyes). Each chip says whether it adds or removes the reaction and how many there are so far, and marks whether it is yours with `aria-pressed`. From the 2026-10-03 UI audit (P2, keyboard and accessibility).
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
