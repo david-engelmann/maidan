@@ -315,6 +315,8 @@ import { loadMessages } from "./thread.js";
         });
         const nextSeen = new Map();
         const agents = new Set();
+        let stalledCount = 0;
+        let blockedCount = 0;
         threads.forEach((th) => {
           const chrome = sessionChrome(th, gates[th.id]);
           const title = th.title || th.id.slice(0, 8);
@@ -326,7 +328,7 @@ import { loadMessages } from "./thread.js";
           card.setAttribute("role", "button");
           // The review gate is opt-in: a close with no approval says so.
           const stateLabel = th.closed_without_review ? "closed without review" : chrome.label;
-          card.setAttribute("aria-label", `${title}: ${stateLabel}`);
+          card.setAttribute("aria-label", `${title}: ${stateLabel}${th.stalled ? ", stalled" : ""}`);
           if (th.id === selectedThreadId) card.classList.add("selected");
           const sig = `${chrome.label}|${th.assignee_id || ""}`;
           if (boardSeen.size && boardSeen.get(th.id) !== sig) card.classList.add("fresh");
@@ -348,6 +350,21 @@ import { loadMessages } from "./thread.js";
             s.textContent = th.status.status.replace(/_/g, " ");
             s.title = th.status.note || `Agent status: ${th.status.status}`;
             foot.appendChild(s);
+          }
+          // System-computed: the agent holds the work but has gone quiet,
+          // which neither the lease nor the agent's own status would show.
+          if (th.stalled) {
+            const st = document.createElement("span");
+            st.className = "card-stalled";
+            st.textContent = "stalled";
+            st.title = th.last_progress_at
+              ? `Last progress from its agent: ${ago(th.last_progress_at)}`
+              : "No recent progress from its agent";
+            foot.appendChild(st);
+            stalledCount += 1;
+          }
+          if (chrome.column !== "done" && (th.block || (th.status && th.status.status === "blocked"))) {
+            blockedCount += 1;
           }
           if (th.block) {
             const b = document.createElement("span");
@@ -411,8 +428,13 @@ import { loadMessages } from "./thread.js";
           [cols.review.n, "waiting on review"],
           [cols.done.n, "done"],
         ];
-        facts.forEach(([n, label]) => {
+        // Health only when there is something wrong: a strip of zeros would
+        // train the eye to skip it.
+        if (stalledCount) facts.push([stalledCount, "stalled", "health-alert"]);
+        if (blockedCount) facts.push([blockedCount, "blocked", "health-alert"]);
+        facts.forEach(([n, label, cls]) => {
           const span = document.createElement("span");
+          if (cls) span.className = cls;
           const b = document.createElement("b");
           b.textContent = String(n);
           span.append(b, ` ${label}`);
