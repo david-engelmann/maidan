@@ -207,7 +207,7 @@ pub async fn settle(
         return Ok(ChangeSettlement::Unchanged);
     };
     // Claimed before acting, so two replicas sweeping at once settle it once.
-    if mark_settled(&mut *tx, &repo, pull_number).await? == 0 {
+    if mark_settled(&mut tx, &repo, pull_number).await? == 0 {
         return Ok(ChangeSettlement::Unchanged);
     }
     let thread_id = ThreadId(row.get("thread_id"));
@@ -252,7 +252,7 @@ pub async fn settle(
             // The merge stands whatever the thread's gates say, so the close
             // is settled now and the refusal said once, not retried each tick.
             let mut tx = pool.begin().await?;
-            let claimed = mark_settled(&mut *tx, &repo, pull_number).await?;
+            let claimed = mark_settled(&mut tx, &repo, pull_number).await?;
             tx.commit().await?;
             if claimed == 0 {
                 return Ok(ChangeSettlement::Unchanged);
