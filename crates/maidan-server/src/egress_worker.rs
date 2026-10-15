@@ -515,6 +515,7 @@ async fn github_branch_result(
     match crate::change_flow::deliver_change(git, &request).await {
         Ok(crate::change_flow::ChangeOutcome::Committed { commit_sha, pull }) => {
             crate::metrics::record_github_egress("sent");
+            record_change_round(state, git, entry, &request, &commit_sha, pull.number).await;
             Ok(Sent::Landed(Some(ExternalRef::GithubBranch {
                 repo: repo.to_string(),
                 commit_sha,
@@ -1214,6 +1215,44 @@ pub async fn run(state: AppState, cfg: EgressWorkerConfig) {
     loop {
         sweep_once(&state).await;
         tokio::time::sleep(cfg.tick).await;
+    }
+}
+
+/// Record the round for the swarm ramp metrics: the commit, its diff size,
+/// and how far its base had fallen behind the base branch. Best effort: a
+/// failed read or write never undoes a delivered commit.
+async fn record_change_round(
+    state: &AppState,
+    git: &dyn crate::github::GithubGit,
+    entry: &EgressOutbox,
+    request: &crate::change_flow::ChangeRequest<'_>,
+    commit_sha: &str,
+    pull_number: i64,
+) {
+    let Some(base_sha) = request.change.base_sha.clone() else {
+        return;
+    };
+    let base_behind = git
+        .commits_behind(request.repo, &base_sha, request.base)
+        .await
+        .ok();
+    let round = maidan_types::NewChangeRound {
+        workspace_id: entry.workspace_id,
+        thread_id: entry.thread_id,
+        repo: request.repo.to_ascii_lowercase(),
+        pull_number,
+        commit_sha: commit_sha.to_string(),
+        base_sha,
+        base_behind,
+        diff_lines: request
+            .change
+            .diff
+            .as_deref()
+            .map(maidan_types::diff_lines)
+            .unwrap_or(0),
+    };
+    if let Err(err) = state.store.record_change_round(round).await {
+        tracing::warn!(repo = request.repo, pull_number, error = %err, "change flow: round not recorded");
     }
 }
 

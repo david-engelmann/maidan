@@ -69,6 +69,8 @@ struct FakePull {
     body: String,
     draft: bool,
     labels: Vec<String>,
+    /// Set by a test to report the pull request merged.
+    merged_at: Option<String>,
 }
 
 type Tree = BTreeMap<String, (String, String)>;
@@ -297,6 +299,26 @@ async fn github(
                 .collect();
             reply(StatusCode::OK, json!(open))
         }
+        ("GET", r) if r.starts_with("compare/") => reply(StatusCode::OK, json!({"ahead_by": 2})),
+        ("GET", r) if r.starts_with("pulls/") => {
+            let number: i64 = r["pulls/".len()..].parse().unwrap();
+            match fake.pulls.iter().find(|p| p.number == number) {
+                Some(p) => reply(
+                    StatusCode::OK,
+                    json!({
+                        "number": p.number,
+                        "head": {"ref": p.head, "sha": fake.refs.get(&p.head).cloned().unwrap_or_default(), "repo": {"full_name": REPO}},
+                        "base": {"ref": p.base, "repo": {"full_name": REPO}},
+                        "draft": p.draft,
+                        "state": if p.merged_at.is_some() { "closed" } else { "open" },
+                        "node_id": format!("PR_{}", p.number),
+                        "merged_at": p.merged_at,
+                        "closed_at": p.merged_at,
+                    }),
+                ),
+                None => not_found(),
+            }
+        }
         ("POST", "pulls") if fake.fail_pulls => reply(
             StatusCode::INTERNAL_SERVER_ERROR,
             json!({"message": format!("upstream rejected bearer {TOKEN}")}),
@@ -311,6 +333,7 @@ async fn github(
                 body: body["body"].as_str().unwrap().into(),
                 draft: body["draft"].as_bool().unwrap(),
                 labels: Vec::new(),
+                merged_at: None,
             });
             reply(
                 StatusCode::CREATED,
@@ -1136,6 +1159,7 @@ async fn an_open_pull_request_into_prod_refuses_the_change_before_any_write() {
             body: String::new(),
             draft: false,
             labels: Vec::new(),
+            merged_at: None,
         });
     }
     h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
@@ -1542,4 +1566,68 @@ async fn a_change_to_a_pull_request_in_the_merge_queue_is_refused_before_any_wri
         writes_before,
         "nothing written"
     );
+}
+
+#[tokio::test]
+async fn each_delivered_round_counts_toward_the_swarm_metrics() {
+    let h = harness().await;
+    h.allow_change().await;
+    let result = change("changed", &h.base_sha, BRANCH, DIFF);
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+    // A retried delivery of the same commit is not another round.
+    h.route(&h.a, &result, 2).await;
+    h.drain().await;
+    let pulls = h
+        .store
+        .list_change_pulls(h.a.workspace_id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(pulls.len(), 1);
+    assert_eq!(pulls[0].rounds.len(), 1);
+    assert_eq!(
+        pulls[0].rounds[0].base_behind,
+        Some(2),
+        "from GitHub's compare"
+    );
+    assert!(pulls[0].rounds[0].diff_lines > 0);
+
+    // GitHub reports it merged at the delivered head; the metrics read sees it.
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].merged_at = Some("2026-10-14T12:00:00Z".into());
+        f.pulls[0].number
+    };
+    let secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id: h.a.workspace_id,
+            member_id: h.a.member_id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![maidan_auth::capability::WORKSPACE_READ.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::get(format!("/workspaces/{}/swarm-metrics", h.a.workspace_id.0))
+            .header("authorization", format!("Bearer {}", secret.as_str()))
+            .body(axum::body::Body::empty())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let metrics: Value = serde_json::from_slice(&bytes).unwrap();
+    let task = &metrics["tasks"][0];
+    assert_eq!(task["pull_number"], number);
+    assert_eq!(task["merged_without_edits"], true, "{metrics}");
+    assert_eq!(task["rounds"].as_array().unwrap().len(), 1);
+    assert_eq!(metrics["repos"][0]["merged"], 1);
 }

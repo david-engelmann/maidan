@@ -835,6 +835,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/swarm-metrics",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{id}/repo-pauses",
     "capability": "workspace:read",
     "surface": "http"
