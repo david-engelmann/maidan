@@ -209,7 +209,7 @@ settings are:
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on; permits the first-admin session mint. Set `0` to disable. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` adds the UI `auto_mint=1` hint when the workspace has no active `token:admin`; requires first-admin mint. |
 | `MAIDAN_OIDC_PENDING_TTL_SECS` | no | Pending login lifetime (default `600`). |
-| `MAIDAN_SIGNUP` | no | `1` enables invited sign-up at `/auth/oidc/signup`; default off. Boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. |
+| `MAIDAN_SIGNUP` | no | `1` enables the waitlist and invited sign-up at `/auth/oidc/signup`; default off, and the whole surface 404s while off. Boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. |
 | `MAIDAN_SIGNUP_EMAIL_DOMAINS` | no | Comma-separated email domains that may sign up without an invite when sign-up is on. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered redirect used when the provider exposes `end_session_endpoint`. |
 | `MAIDAN_SESSION_SECRET` | OIDC | HMAC key for signed `maidan_session` cookies and resume tokens. |

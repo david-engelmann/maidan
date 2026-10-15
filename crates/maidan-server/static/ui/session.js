@@ -172,9 +172,11 @@ import { tokenKey, wsResumeKey } from "./state.js";
         oidcLoginPath = null;
         serverOffersSessions = null;
         document.getElementById("first-run-oidc").hidden = true;
+        document.getElementById("waitlist-block").hidden = true;
         let answered = false;
         let loginPath = null;
         let sessions = null;
+        let signupPath = null;
         try {
           const res = await api(`${base()}/.well-known/maidan.json`, {
             signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
@@ -183,6 +185,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
             const auth = (await res.json()).auth;
             if (auth && auth.oidc && auth.oidc_login) loginPath = auth.oidc_login;
             if (auth && typeof auth.sessions === "boolean") sessions = auth.sessions;
+            if (auth && auth.oidc_signup) signupPath = auth.oidc_signup;
             answered = true;
           } else if (res.status < 500 && res.status !== 429) {
             // No discovery document: a token is the only path offered.
@@ -195,6 +198,9 @@ import { tokenKey, wsResumeKey } from "./state.js";
         oidcLoginPath = loginPath;
         serverOffersSessions = sessions;
         document.getElementById("first-run-oidc").hidden = !oidcLoginPath;
+        // The waitlist form shows only where the instance runs sign-up;
+        // elsewhere the surface does not exist at all.
+        document.getElementById("waitlist-block").hidden = !signupPath;
         if (!answered && attempt < DISCOVERY_RETRY_MS.length) {
           discoveryRetry = setTimeout(() => discoverServerAuth(attempt + 1), DISCOVERY_RETRY_MS[attempt]);
         }

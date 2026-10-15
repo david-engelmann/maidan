@@ -639,18 +639,17 @@ pub async fn middleware(
         // the OAuth client bucket makes with form bodies.
         if req.uri().path() == "/waitlist" && req.method() == Method::POST {
             if let Some(cfg) = waitlist_domain_cfg {
-                let small_json = req
+                // A declared length is no part of this: a chunked request
+                // carries none and must be charged the same. The buffer cap
+                // below bounds the read, and a body past it is refused,
+                // which the handler would do anyway (its fields are capped
+                // far below the buffer).
+                let json = req
                     .headers()
                     .get(header::CONTENT_TYPE)
                     .and_then(|v| v.to_str().ok())
-                    .is_some_and(|v| v.starts_with("application/json"))
-                    && req
-                        .headers()
-                        .get(header::CONTENT_LENGTH)
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.parse::<usize>().ok())
-                        .is_some_and(|len| len <= 16_384);
-                if small_json {
+                    .is_some_and(|v| v.starts_with("application/json"));
+                if json {
                     let (parts, body) = req.into_parts();
                     match axum::body::to_bytes(body, 16_384).await {
                         Ok(bytes) => {
@@ -660,9 +659,13 @@ pub async fn middleware(
                                     v.get("email").and_then(|e| e.as_str()).map(str::to_string)
                                 })
                                 .and_then(|email| {
+                                    // Normalized the way the handler
+                                    // normalizes it, so padding an address
+                                    // cannot mint a fresh bucket.
                                     email
+                                        .trim()
                                         .rsplit_once('@')
-                                        .map(|(_, d)| d.to_lowercase())
+                                        .map(|(_, d)| d.trim().to_lowercase())
                                         .filter(|d| !d.is_empty())
                                 });
                             req = Request::from_parts(parts, Body::from(bytes));

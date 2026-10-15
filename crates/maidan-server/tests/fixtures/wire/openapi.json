@@ -10015,6 +10015,13 @@
               "null"
             ]
           },
+          "oidc_signup": {
+            "description": "Where invited sign-up starts, when the instance has it enabled. The\nboard shows its waitlist form only when this is present.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "sessions": {
             "description": "Whether this server issues a browser session (OIDC, or a pasted token\nexchanged for a cookie). Sign out posts `/auth/logout` when this is\ntrue, even if the page has not cached a member id.",
             "type": "boolean"
@@ -19254,6 +19261,16 @@
             },
             "description": "Missing operator:global capability"
           },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Sign-up is not enabled on this instance"
+          },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
           },
@@ -19297,6 +19314,16 @@
               }
             },
             "description": "Missing operator:global capability"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Sign-up is not enabled on this instance"
           },
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
@@ -19374,7 +19401,14 @@
             "description": "Missing operator:global capability"
           },
           "404": {
-            "$ref": "#/components/responses/NotFound"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No such entry, or sign-up is not enabled on this instance"
           },
           "409": {
             "content": {
@@ -28053,6 +28087,16 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Sign-up is not enabled on this instance"
           },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"

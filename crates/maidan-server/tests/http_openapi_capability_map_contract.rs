@@ -196,6 +196,11 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
     ("GET", "/.well-known/mcp/server-card.json"),
     ("GET", "/auth/oidc/login"),
     ("GET", "/auth/oidc/callback"),
+    // Sign-up: the waitlist join is a public form post, and the sign-up
+    // start is the login handshake's sibling. Both answer 404 unless
+    // sign-up is switched on.
+    ("POST", "/waitlist"),
+    ("GET", "/auth/oidc/signup"),
     ("POST", "/auth/logout"),
     // The OAuth 2.1 token and revocation endpoints: public by design, like
     // the OIDC callback. The client authenticates with HTTP Basic, its secret

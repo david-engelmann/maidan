@@ -38,6 +38,22 @@ fn invite_hash(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
 }
 
+/// The whole waitlist surface is part of sign-up: an instance that never
+/// enabled it collects nothing and shows nothing. 404, the same answer the
+/// sign-up start gives there.
+fn require_signup(state: &AppState) -> ApiResult<()> {
+    let enabled = state
+        .oidc
+        .as_ref()
+        .map(|oidc| oidc.settings.signup)
+        .unwrap_or(false);
+    if enabled {
+        Ok(())
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
 /// A plausible email shape: one `@`, non-empty local part and domain, a
 /// dot in the domain, no spaces. Deliverability is the provider's problem
 /// at sign-up; this only keeps the list free of shapes that are not
@@ -66,6 +82,7 @@ pub async fn join_waitlist(
     State(state): State<AppState>,
     ApiJson(body): ApiJson<JoinWaitlistRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    require_signup(&state)?;
     if !body.consent {
         return Err(ApiError::BadRequest(
             "joining the waitlist needs consent to be contacted".into(),
@@ -105,6 +122,7 @@ pub async fn list_waitlist(
     Extension(auth): Extension<AuthContext>,
 ) -> ApiResult<Json<Vec<WaitlistEntryView>>> {
     cap(&auth, OPERATOR_GLOBAL)?;
+    require_signup(&state)?;
     let entries = state.store.list_waitlist_entries().await?;
     Ok(Json(
         entries.into_iter().map(WaitlistEntryView::from).collect(),
@@ -112,10 +130,16 @@ pub async fn list_waitlist(
 }
 
 fn csv_field(value: &str) -> String {
+    // A visitor wrote this cell; a spreadsheet must not run it as a formula.
+    let value = if value.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{value}")
+    } else {
+        value.to_string()
+    };
     if value.contains(['"', ',', '\n', '\r']) {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
-        value.to_string()
+        value
     }
 }
 
@@ -127,6 +151,7 @@ pub async fn export_waitlist(
     Extension(auth): Extension<AuthContext>,
 ) -> ApiResult<Response> {
     cap(&auth, OPERATOR_GLOBAL)?;
+    require_signup(&state)?;
     let entries = state.store.list_waitlist_entries().await?;
     let mut csv = String::from(
         "id,email,use_case,consented_at,status,invite_expires_at,workspace_id,created_at\n",
@@ -181,6 +206,7 @@ pub async fn invite_waitlist_entry(
     ApiPath(entry_id): ApiPath<uuid::Uuid>,
 ) -> ApiResult<Json<InviteMintedView>> {
     cap(&auth, OPERATOR_GLOBAL)?;
+    require_signup(&state)?;
     let token = random_token();
     let expires_at = Utc::now() + Duration::days(INVITE_TTL_DAYS);
     let entry: WaitlistEntry = state

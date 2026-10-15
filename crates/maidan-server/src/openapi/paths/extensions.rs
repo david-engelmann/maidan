@@ -1093,6 +1093,7 @@ pub fn list_global_audit() {}
     responses(
         (status = 201, description = "Waiting; the same answer for an address already on the list"),
         (status = 400, response = BadRequest),
+        (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 429, description = "Rate limited for this address or this email domain", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
@@ -1107,6 +1108,7 @@ pub fn join_waitlist() {}
     responses(
         (status = 200, body = Vec<WaitlistEntryView>, description = "Every waitlist entry, oldest first; invite hashes are never shown"),
         (status = 403, description = "Missing operator:global capability", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn list_waitlist() {}
@@ -1120,6 +1122,7 @@ pub fn list_waitlist() {}
     responses(
         (status = 200, description = "The waitlist as a CSV download", content_type = "text/csv"),
         (status = 403, description = "Missing operator:global capability", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]
 pub fn export_waitlist() {}
@@ -1138,7 +1141,7 @@ pub fn export_waitlist() {}
     responses(
         (status = 200, body = InviteMintedView, description = "The entry, now invited, with the invite token shown once"),
         (status = 403, description = "Missing operator:global capability", body = ProblemDetails, content_type = "application/problem+json"),
-        (status = 404, response = NotFound),
+        (status = 404, description = "No such entry, or sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 409, description = "The entry already signed up", body = ProblemDetails, content_type = "application/problem+json"),
     )
 )]

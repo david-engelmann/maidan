@@ -272,6 +272,21 @@ async fn complete_signup(
         }
     };
 
+    // Sign-up is for someone with no workspace on this instance. An
+    // identity that already has one signs in at the front door instead;
+    // without this, a repeat visit (or a second invite under another
+    // address) would mint a fresh workspace on every pass.
+    if !state
+        .store
+        .list_subject_workspaces(&issuer, &subject, 1)
+        .await?
+        .is_empty()
+    {
+        return Err(ApiError::Forbidden(
+            "this identity already has a workspace here; sign in instead".into(),
+        ));
+    }
+
     let handle = crate::oidc::member::handle_from_claims(&subject, Some(&email));
     let workspace_name = format!("{handle}'s workspace");
     let session_expires_at = Utc::now() + Duration::seconds(oidc.settings.session_ttl_secs as i64);

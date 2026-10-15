@@ -288,6 +288,25 @@ async fn operator_reads_exports_and_invites_the_waitlist() {
     let csv = res.text().await.unwrap();
     assert!(csv.contains("ada@example.com"), "{csv}");
     assert!(csv.contains("grace@example.com"), "{csv}");
+    // A use case written as a spreadsheet formula is exported inert.
+    env.join(
+        "mallory@example.com",
+        "=HYPERLINK(\"https://x.example\")",
+        true,
+    )
+    .await;
+    let res = env
+        .client
+        .get(format!("{}/operator/waitlist/export", env.base))
+        .header(reqwest::header::AUTHORIZATION, &op)
+        .send()
+        .await
+        .unwrap();
+    let csv = res.text().await.unwrap();
+    assert!(
+        csv.contains("'=HYPERLINK"),
+        "formula cells must be prefixed inert: {csv}"
+    );
 
     // The invite mints a token shown once, with the sign-up path.
     let entry_id = entries[0]["id"].as_str().unwrap().to_string();
@@ -423,6 +442,13 @@ async fn signup_start_is_not_found_until_the_instance_enables_it() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    // The whole surface is dark while sign-up is off: no join is collected
+    // and the operator list does not exist either.
+    let (status, _) = env.join("ada@example.com", "swarms", true).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let op = env.token(&["operator:global"]).await;
+    let (status, _) = env.operator_list(&op).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
     // Without an invite and no domain list, an enabled instance refuses.
     let env = spawn(true, vec![]).await;
     let res = env
@@ -454,6 +480,16 @@ async fn a_listed_domain_signs_up_without_an_invite() {
         .await;
     assert_eq!(callback.status(), StatusCode::TEMPORARY_REDIRECT);
     session_cookie(&callback);
+    // The same identity cannot sign up a second time; it has a workspace
+    // now and belongs at the front door.
+    let callback = env
+        .signup_roundtrip(
+            format!("{}/auth/oidc/signup", env.base),
+            "sub-ada",
+            "ada@example.org",
+        )
+        .await;
+    assert_eq!(callback.status(), StatusCode::FORBIDDEN);
     // An unlisted domain is refused at the callback.
     let callback = env
         .signup_roundtrip(
