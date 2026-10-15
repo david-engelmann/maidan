@@ -95,13 +95,15 @@ P3 shipped. These are its controls and what each one does.
   client no longer allows is `unauthorized_client`.
 - **Rate limits.** The token, revocation, authorize and consent endpoints
   are charged under two buckets of their own, tighter than the API at
-  large. One bucket is per client id (120 requests a minute by default),
-  the other per address across all client ids (600 a minute). The client
-  id is read from the Basic username, the authorize query, or a small
-  form body, and it names a bucket only; it is unauthenticated at that
-  layer, which is why the address bucket sits beside it. A limited
-  request answers 429 with `Retry-After`. Operators tune or disable the
-  buckets with `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX`,
+  large. One bucket is per client id and address pair (120 requests a
+  minute by default), the other per address across all client ids (600 a
+  minute). The client id is read from the Basic username, the authorize
+  query, or a small form body. It is unauthenticated at that layer, which
+  is why the client bucket is keyed by the pair; a bucket named by the id
+  alone would let any address spend a named client's budget and lock
+  that client out. A limited request answers 429 with `Retry-After`.
+  Operators tune or disable the buckets with
+  `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX`,
   `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS`,
   `MAIDAN_OAUTH_IP_RATE_LIMIT_MAX` and
   `MAIDAN_OAUTH_IP_RATE_LIMIT_WINDOW_SECS`.

@@ -88,11 +88,16 @@ const WORKSPACE: LimitSpec = LimitSpec {
 };
 
 /// Per-client limit for the OAuth authorization-server surface: one client
-/// id's calls to the token, revoke, authorize and consent endpoints. These
-/// endpoints are the credential-guessing surface of the server, so they get
-/// a tighter bucket than the API at large: 120 requests / 60 s, two a second
-/// sustained — far above any real client's refresh cadence on one instance,
-/// far below an online secret-guessing loop.
+/// id's calls to the token, revoke, authorize and consent endpoints, charged
+/// per (client id, address) pair. These endpoints are the credential-
+/// guessing surface of the server, so they get a tighter bucket than the
+/// API at large: 120 requests / 60 s, two a second sustained — far above
+/// any real client's refresh cadence on one instance, far below an online
+/// secret-guessing loop from one address. The pair keying matters because
+/// the id is unauthenticated at this layer: a bucket named by the id alone
+/// would let any address spend a named client's budget and lock that
+/// client out of the surface, so a client's budget is only ever spent from
+/// the address its own traffic uses.
 const OAUTH_CLIENT: LimitSpec = LimitSpec {
     max_var: "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX",
     window_var: "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS",
@@ -563,7 +568,7 @@ pub async fn middleware(
                 }
             }
             if let Some(client_id) = client_id {
-                let key = format!("oauth-client:{client_id}");
+                let key = format!("oauth-client:{client_id}:{}", ip_client_key(&req));
                 if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
                     return too_many(cfg.window, cfg.max, false);
                 }

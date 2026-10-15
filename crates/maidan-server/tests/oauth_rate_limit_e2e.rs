@@ -166,7 +166,7 @@ async fn an_address_meets_the_oauth_ip_limit_across_clients() {
 }
 
 #[tokio::test]
-async fn a_body_client_id_names_the_client_bucket() {
+async fn a_client_bucket_belongs_to_the_client_and_address_pair() {
     let base = spawn().await;
     let client = reqwest::Client::new();
     let revoke = |xff: &str| {
@@ -185,8 +185,11 @@ async fn a_body_client_id_names_the_client_bucket() {
         revoke("10.9.3.1").send().await.unwrap().status(),
         StatusCode::TOO_MANY_REQUESTS
     );
-    // The client bucket is not per-address: a fresh address changes nothing.
-    assert_eq!(
+    // The bucket is charged per (client, address) pair: the id is
+    // unauthenticated, so a bucket named by the id alone would let any
+    // address spend a named client's budget. A fresh address has its own
+    // pair bucket and is answered on its own terms.
+    assert_ne!(
         revoke("10.9.3.2").send().await.unwrap().status(),
         StatusCode::TOO_MANY_REQUESTS
     );
