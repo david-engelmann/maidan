@@ -214,6 +214,8 @@ export interface Thread {
   state: ThreadState;
   assignee_id?: MemberId | null;
   owner_id?: MemberId | null;
+  /** The member that created it; that member may cancel it. */
+  created_by?: MemberId | null;
   assignment_expires_at?: string | null;
   /** The fencing token {@link Client.renewClaim} takes. */
   claim_lease_id?: string | null;
