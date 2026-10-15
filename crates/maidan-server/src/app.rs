@@ -222,6 +222,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/claims", get(routes::list_active_claims))
         .route(
+            "/workspaces/{id}/deferred",
+            get(routes::list_deferred_threads),
+        )
+        .route(
             "/workspaces/{id}/repo-pauses",
             get(routes::list_repo_pauses)
                 .merge(put(routes::pause_repo))
@@ -352,6 +356,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/{wid}/delegation-grants/{gid}",
             delete(routes::revoke_delegation_grant),
+        )
+        .route(
+            "/workspaces/{wid}/oauth-grants",
+            get(routes::list_oauth_grants),
+        )
+        .route(
+            "/workspaces/{wid}/oauth-grants/{gid}/revoke",
+            post(routes::revoke_oauth_grant),
         )
         .route(
             "/workspaces/{wid}/apps",
@@ -1171,6 +1183,10 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_str!("../static/ui/tools.js"),
             ),
+            "swarm.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/swarm.js"),
+            ),
             "palette.js" => (
                 "text/javascript; charset=utf-8",
                 include_str!("../static/ui/palette.js"),
@@ -1587,7 +1603,19 @@ pub fn router(state: AppState) -> Router {
         // session. Consumes the pending request (single use).
         .route(
             "/ui/api/oauth/consent",
-            post(oauth::consent::decide_consent).layer(session_auth),
+            post(oauth::consent::decide_consent).layer(session_auth.clone()),
+        )
+        // Grant management page: the member sees which clients hold
+        // their consent in this workspace. Signed-in session only.
+        .route(
+            "/ui/oauth/grants",
+            get(oauth::grants::grants_page).layer(session_auth.clone()),
+        )
+        // Grant revoke: same-origin POST on the signed-in session.
+        // Ends the grant's whole token lineage.
+        .route(
+            "/ui/api/oauth/grants/{gid}/revoke",
+            post(oauth::grants::revoke_grant).layer(session_auth),
         )
         .route("/llms.txt", get(llms_txt))
         .merge({

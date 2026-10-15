@@ -2545,6 +2545,14 @@ macro_rules! store_delegations {
                 footprints::list_repo_pauses(self.pool(), workspace_id).await
             }
 
+            async fn list_deferred_threads(
+                &self,
+                workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
+            ) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
+                footprints::list_deferred(self.read_pool(), workspace_id, readable_by).await
+            }
+
             async fn list_slots(
                 &self,
                 workspace_id: WorkspaceId,
@@ -3721,6 +3729,14 @@ macro_rules! store_delegations {
                 oauth_as::get_client_by_client_id(self.pool(), client_id).await
             }
 
+            async fn upsert_oauth_metadata_client(
+                &self,
+                new: NewOAuthClient,
+                metadata_url: &str,
+            ) -> Result<Option<OAuthClient>, StoreError> {
+                oauth_as::upsert_metadata_client(self.pool(), new, metadata_url).await
+            }
+
             async fn create_oauth_authorization_code(
                 &self,
                 new: NewOAuthAuthorizationCode,
@@ -3772,6 +3788,14 @@ macro_rules! store_delegations {
                 scope: &[String],
             ) -> Result<Option<OAuthGrant>, StoreError> {
                 oauth_as::find_grant(self.pool(), client_id, member_id, workspace_id, scope).await
+            }
+
+            async fn list_oauth_grants(
+                &self,
+                workspace_id: WorkspaceId,
+                member_id: MemberId,
+            ) -> Result<Vec<OAuthGrant>, StoreError> {
+                oauth_as::list_grants(self.pool(), workspace_id, member_id).await
             }
 
             async fn revoke_oauth_grant(&self, grant_id: OAuthGrantId) -> Result<(), StoreError> {

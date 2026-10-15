@@ -2360,6 +2360,40 @@
         ],
         "type": "string"
       },
+      "DeferralReason": {
+        "description": "Why the claim queue is holding a thread back.",
+        "enum": [
+          "overlap",
+          "repo_paused",
+          "slot_full"
+        ],
+        "type": "string"
+      },
+      "DeferredThread": {
+        "description": "A thread the claim queue would otherwise hand out, and why it waits.",
+        "properties": {
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/DeferralReason"
+            },
+            "type": "array"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "thread_id",
+          "reasons"
+        ],
+        "type": "object"
+      },
       "DelegateToken": {
         "additionalProperties": false,
         "properties": {
@@ -4990,6 +5024,41 @@
         ],
         "type": "object"
       },
+      "OAuthGrantView": {
+        "description": "One grant as the member sees it. `client_name` comes from the\nclient's registry row (a metadata-document client gets its row on\nfirst use at `/authorize`); it is absent only for a row that predates\nthe name being recorded, and then the grant shows by client id alone.",
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lineage_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "client_id",
+          "scope",
+          "lineage_id"
+        ],
+        "type": "object"
+      },
       "OAuthRevokeRequest": {
         "properties": {
           "client_id": {
@@ -6613,6 +6682,36 @@
           "reviewer_id",
           "decision",
           "recorded_at"
+        ],
+        "type": "object"
+      },
+      "RevokeOAuthGrantResponse": {
+        "description": "What a revoke ended, counted by the lineage revocation itself.",
+        "properties": {
+          "access_tokens_revoked": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "grant_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lineage_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "refresh_tokens_revoked": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "grant_id",
+          "lineage_id",
+          "access_tokens_revoked",
+          "refresh_tokens_revoked"
         ],
         "type": "object"
       },
@@ -28027,6 +28126,65 @@
         ]
       }
     },
+    "/workspaces/{id}/deferred": {
+      "get": {
+        "operationId": "list_deferred_threads",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeferredThread"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List the threads the claim queue is holding back, and why",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/workspaces/{id}/delegation-policy": {
       "get": {
         "operationId": "get_delegation_policy",
@@ -34530,6 +34688,158 @@
         "summary": "Set a workspace's mention webhook",
         "tags": [
           "webhooks"
+        ]
+      }
+    },
+    "/workspaces/{wid}/oauth-grants": {
+      "get": {
+        "operationId": "list_oauth_grants",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OAuthGrantView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "workspace:read"
+            ]
+          }
+        ],
+        "summary": "List the caller's OAuth grants in a workspace",
+        "tags": [
+          "tokens"
+        ]
+      }
+    },
+    "/workspaces/{wid}/oauth-grants/{gid}/revoke": {
+      "post": {
+        "operationId": "revoke_oauth_grant",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "OAuth grant id",
+            "in": "path",
+            "name": "gid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeOAuthGrantResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "workspace:write"
+            ]
+          }
+        ],
+        "summary": "Revoke one of the caller's OAuth grants, ending its token lineage",
+        "tags": [
+          "tokens"
         ]
       }
     },

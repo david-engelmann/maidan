@@ -381,11 +381,22 @@ pub(super) fn lineage_audit(
     reason: &'static str,
     client_id: String,
 ) -> maidan_store::AuditFor<OAuthLineageRevocation> {
+    lineage_audit_as(reason, client_id, None)
+}
+
+/// [`lineage_audit`] naming the member who ended the lineage, for the
+/// member-facing grant management surface: a client revoking its own
+/// token has no member actor; a member revoking a grant does.
+pub(crate) fn lineage_audit_as(
+    reason: &'static str,
+    client_id: String,
+    actor_id: Option<maidan_types::MemberId>,
+) -> maidan_store::AuditFor<OAuthLineageRevocation> {
     Box::new(move |revoked| NewAuditEvent {
         scope: revoked
             .workspace_id
             .map_or(AuditScope::Instance, AuditScope::Workspace),
-        actor_id: None,
+        actor_id,
         action: "oauth_lineage.revoke".into(),
         target_kind: Some("oauth_lineage".into()),
         target_id: Some(revoked.lineage_id),

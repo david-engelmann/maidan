@@ -829,6 +829,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/deferred",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{id}/repo-pauses",
     "capability": "workspace:read",
     "surface": "http"
@@ -2107,6 +2113,18 @@
     "method": "DELETE",
     "path": "/workspaces/{wid}/delegation-grants/{gid}",
     "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{wid}/oauth-grants",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/workspaces/{wid}/oauth-grants/{gid}/revoke",
+    "capability": "workspace:write",
     "surface": "http"
   },
   {

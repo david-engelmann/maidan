@@ -37,7 +37,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### A change that ends without a commit says why in its one Slack notice
 
-- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and soundcheck posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so soundcheck can drop its own notice. `ChangeResult` gains `error_detail`.
+- **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
 
 ### A result delivered to GitHub links its attached files
 
@@ -122,9 +122,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** an MCP client's `initialize` saw the server's version as 0.0.0 — the workspace crate's version, while releases are baked in separately. The server now passes the release version it reports everywhere else into the MCP server (`with_server_version`), and `initialize` reports it.
 
+### OAuth grant management
+
+- **Added:** a member can list the OAuth grants clients hold on them in a workspace and revoke one — `GET /workspaces/{wid}/oauth-grants`, `POST /workspaces/{wid}/oauth-grants/{gid}/revoke`, and the console page at `/ui/oauth/grants`. Every read is scoped to the caller's own workspace and member, so another tenant's grant is a 404. Revoking ends the grant's whole lineage, access and refresh tokens alike, through the audited lineage revocation.
+
 ### Hybrid search ranks a deeper candidate pool
 
 - **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)
+
+### Metadata-document clients get a registry row
+
+- **Fixed:** a client identified by a client metadata document could never finish the authorization flow: its authorization codes and grants reference `oauth_clients` by foreign key, and such a client was never stored there, so the first code insert failed. On first use a resolved metadata-document client is now persisted in `oauth_clients`, marked with its metadata URL (migration 0172). The row is a cache and the foreign keys' anchor — deleting it still cascades to the client's codes and grants — and it never makes the client pre-registered: every resolution re-fetches the document through the egress guard and refreshes the row, and a revoked or pre-registered row is never overwritten by a fetched document.
 
 ### The board's live feed is capped
 
@@ -143,6 +151,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** the Postgres delivery tables are range-partitioned by calendar month (migration 0166), the way the event log is (0162): webhook and automation deliveries and the outbox by `created_at`, mail by `updated_at`, the dead-letter queue by `failed_at`. `prune_deliveries` drops a month whole when every row in it is one the batched delete would take, and deletes inside the rest. The egress outbox is deliberately not partitioned — its dedup index is global, and a partition key inside it would weaken enqueue idempotency to per-month — and neither is `maidan_result_deliveries`, an updated-in-place state table retention never age-prunes. SQLite keeps one table each.
 
+### The OAuth endpoints carry their own rate limits
+
+- **Added:** per-client and per-IP rate limits on the authorization server's surface: `POST /oauth/token`, `POST /oauth/revoke`, `GET /oauth/authorize` and the consent page and its decision POST. One bucket is charged per client id and address pair (120 requests a minute by default; the id is unauthenticated at that layer, so pair keying keeps one address from spending a named client's budget), the id read from the Basic username, the authorize query or a small form body; the other per address across all client ids (600 a minute). A limited request answers 429 with `Retry-After`. The buckets tune or disable with `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX`, `MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS`, `MAIDAN_OAUTH_IP_RATE_LIMIT_MAX` and `MAIDAN_OAUTH_IP_RATE_LIMIT_WINDOW_SECS`. A contract test now pins that no grant, by code exchange or refresh, carries a scope beyond what the member holds, the client allows and the delegatable set contains.
+
 ### A worker claims only its repository's work
 
 - **Added:** `repo` on `claim_next_thread` and `claim_next_workspace_thread` (MCP) and on the `claim-next` routes (HTTP). With it, only a thread whose footprint names that repository is claimed, so a worker bound to one repository's checkout never takes work it would have to release. Omitted, claiming is unchanged.
@@ -158,6 +170,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### rustls advisories of 2026-10
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
+
+### Public `main` names no internal project
+
+- **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
+
+### The console shows the swarm at work
+
+- **Added:** a Swarm tab in the `/ui` console for one workspace. It lists the live claims with their holder, lease and footprint items, the threads the claim queue is holding back with their reasons, each slot's capacity and use, and the paused repositories, refreshing while it is open. An operator with `token:admin` can pause a repository from the panel and resume a paused one; everything else is a read over the existing footprint endpoints, and no route is new.
+
+### The audit log is partitioned by month
+
+- **Changed:** the Postgres audit log is range-partitioned by calendar month of `occurred_at` (migration 0165), the way the event log is (0162). Existing rows stay put in a legacy partition and drain through retention; `prune_audit` drops a month whole when no row in it belongs to a held workspace and deletes inside it otherwise, and boot and every retention sweep keep the current month plus three ahead ready. SQLite keeps one table.
+
+### The queue says why work waits
+
+- **Added:** `GET /workspaces/{id}/deferred` (`workspace:read`): the open threads the claim queue is holding back for their footprint, oldest first, each with its reasons (`overlap`, `repo_paused`, `slot_full`), limited to threads the caller may read. It answers "why isn't this being picked up" during a swarm ramp.
 
 ### An agent pull request's description stays current
 
