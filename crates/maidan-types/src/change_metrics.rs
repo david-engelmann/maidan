@@ -3,7 +3,8 @@
 //! The change flow records every round it delivers to an agent pull request
 //! ([`NewChangeRound`]): the commit, how large its diff was, and how far its
 //! base had fallen behind the base branch. Mark-ready stamps when the pull
-//! request was made ready, and a read refreshes whether it merged. The
+//! request was made ready, and the change sweep refreshes whether it merged
+//! (and settles its thread: [`ChangeSettlement`]). The
 //! metrics a swarm's ramp is gated on (rounds per task, time to ready,
 //! merged without anyone else's commits, cost per merged change) and two
 //! warnings (a task that is not converging, a round built on a stale base)
@@ -12,7 +13,33 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{ThreadId, WorkspaceId};
+use crate::events::StoredEvent;
+use crate::ids::{MemberId, ThreadId, WorkspaceId};
+
+/// What settling a closed agent pull request did to its thread. Each close
+/// is settled once.
+#[derive(Debug)]
+pub enum ChangeSettlement {
+    /// It merged and the thread closed. The transitions' `ThreadStateChanged`
+    /// events and the `ThreadLanded`, committed with the close, to publish.
+    Landed(Vec<StoredEvent>),
+    /// It closed without merging. The thread stays open for a person or the
+    /// planner to decide, and `author_id` posts the one notice.
+    ClosedUnmerged {
+        thread_id: ThreadId,
+        author_id: MemberId,
+    },
+    /// It merged, but the thread's close was refused (a review requirement
+    /// not met, say). The thread stays open and `reason` is posted once.
+    CloseRefused {
+        thread_id: ThreadId,
+        author_id: MemberId,
+        reason: String,
+    },
+    /// Nothing to do: settled already, the thread is closed or gone, or
+    /// another of its pull requests is still open.
+    Unchanged,
+}
 
 /// One round the change flow delivered.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -937,6 +937,261 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         .is_empty());
 }
 
+fn round_for(ws: WorkspaceId, thread: ThreadId, pull_number: i64) -> NewChangeRound {
+    NewChangeRound {
+        workspace_id: ws,
+        thread_id: thread,
+        repo: REPO.into(),
+        pull_number,
+        commit_sha: format!("{pull_number:040x}"),
+        base_sha: "a".repeat(40),
+        base_behind: None,
+        diff_lines: 1,
+    }
+}
+
+async fn open_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
+    store
+        .list_open_change_pulls(ws, 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect()
+}
+
+async fn unsettled_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
+    store
+        .list_unsettled_change_pulls(ws, 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect()
+}
+
+/// The change sweep's refresh reads the pull requests read longest ago
+/// first, never-read ones before all, and only its own workspace's.
+async fn the_refresh_reads_the_longest_unread_pull_first(store: Arc<dyn Store>) {
+    let mine = room(store.as_ref(), "sweep", 1).await;
+    let theirs = room(store.as_ref(), "sweep-other", 1).await;
+    let thread = task(store.as_ref(), mine.channel, "change").await;
+    let other_thread = task(store.as_ref(), theirs.channel, "change").await;
+    for n in 1..=3 {
+        store
+            .record_change_round(round_for(mine.ws, thread, n))
+            .await
+            .unwrap();
+    }
+    store
+        .record_change_round(round_for(theirs.ws, other_thread, 9))
+        .await
+        .unwrap();
+    assert_eq!(open_order(store.as_ref(), mine.ws).await, vec![1, 2, 3]);
+
+    let t0 = chrono::Utc::now();
+    store.mark_change_pull_checked(REPO, 1, t0).await.unwrap();
+    assert_eq!(
+        open_order(store.as_ref(), mine.ws).await,
+        vec![2, 3, 1],
+        "a pull request never read goes before one read"
+    );
+    store
+        .mark_change_pull_checked(REPO, 3, t0 + chrono::Duration::seconds(1))
+        .await
+        .unwrap();
+    store
+        .mark_change_pull_checked(REPO, 2, t0 + chrono::Duration::seconds(2))
+        .await
+        .unwrap();
+    assert_eq!(
+        open_order(store.as_ref(), mine.ws).await,
+        vec![1, 3, 2],
+        "then the one read longest ago"
+    );
+    assert_eq!(open_order(store.as_ref(), theirs.ws).await, vec![9]);
+
+    let mut swept = store.list_change_sweep_workspaces(10).await.unwrap();
+    swept.sort_by_key(|ws| ws.0);
+    let mut both = vec![mine.ws, theirs.ws];
+    both.sort_by_key(|ws| ws.0);
+    assert_eq!(swept, both);
+}
+
+/// A merged pull request lands its thread once, through the transition path,
+/// with `ThreadLanded` in the same transaction; a close without a merge is
+/// reported once and closes nothing; a thread with another open pull request
+/// waits for it; another workspace's close is not touched.
+async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "settle", 1).await;
+    let other = room(store.as_ref(), "settle-other", 1).await;
+    let agent = r.agents[0];
+    let lands = task(store.as_ref(), r.channel, "lands").await;
+    let unmerged = task(store.as_ref(), r.channel, "unmerged").await;
+    let waits = task(store.as_ref(), r.channel, "waits").await;
+    let foreign = task(store.as_ref(), other.channel, "foreign").await;
+    for (thread, by) in [
+        (lands, agent),
+        (unmerged, agent),
+        (waits, agent),
+        (foreign, other.agents[0]),
+    ] {
+        store
+            .set_thread_result(thread, by, &serde_json::json!({"summary": "done"}))
+            .await
+            .unwrap();
+    }
+    for (thread, ws, n) in [
+        (lands, r.ws, 1),
+        (unmerged, r.ws, 2),
+        (waits, r.ws, 3),
+        (waits, r.ws, 4),
+        (foreign, other.ws, 5),
+    ] {
+        store
+            .record_change_round(round_for(ws, thread, n))
+            .await
+            .unwrap();
+    }
+    let t0 = chrono::Utc::now();
+    let at = |secs: i64| t0 + chrono::Duration::seconds(secs);
+    store
+        .close_change_pull(REPO, 1, Some(at(1)), Some("c1"), at(1))
+        .await
+        .unwrap();
+    store
+        .close_change_pull(REPO, 2, None, None, at(2))
+        .await
+        .unwrap();
+    store
+        .close_change_pull(REPO, 3, Some(at(3)), Some("c3"), at(3))
+        .await
+        .unwrap();
+    store
+        .close_change_pull(REPO, 5, Some(at(4)), Some("c5"), at(4))
+        .await
+        .unwrap();
+    assert_eq!(unsettled_order(store.as_ref(), r.ws).await, vec![1, 2, 3]);
+    assert_eq!(unsettled_order(store.as_ref(), other.ws).await, vec![5]);
+
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 1).await.unwrap() else {
+        panic!("a merge lands its thread");
+    };
+    let kinds: Vec<EventKind> = stored.iter().map(|e| e.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            EventKind::ThreadStateChanged,
+            EventKind::ThreadStateChanged,
+            EventKind::ThreadLanded
+        ],
+        "open to review to closed, then the landing"
+    );
+    assert!(stored.iter().all(|e| e.thread_id == Some(lands)));
+    assert_eq!(
+        store.get_thread(lands).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let transitions = store.list_thread_transitions(lands, 10).await.unwrap();
+    assert_eq!(transitions.len(), 2);
+    assert!(transitions.iter().all(|t| t.actor_id == agent));
+    assert!(
+        matches!(
+            store.settle_change_pull(REPO, 1).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "a close settles once"
+    );
+
+    match store.settle_change_pull(REPO, 2).await.unwrap() {
+        ChangeSettlement::ClosedUnmerged {
+            thread_id,
+            author_id,
+        } => assert_eq!((thread_id, author_id), (unmerged, agent)),
+        other => panic!("a close without a merge owes a notice, got {other:?}"),
+    }
+    assert!(matches!(
+        store.settle_change_pull(REPO, 2).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    assert_eq!(
+        store.get_thread(unmerged).await.unwrap().state,
+        ThreadState::Open
+    );
+
+    assert!(
+        matches!(
+            store.settle_change_pull(REPO, 3).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "pull request 4 is still open on the same thread"
+    );
+    assert_eq!(
+        store.get_thread(waits).await.unwrap().state,
+        ThreadState::Open
+    );
+    store
+        .close_change_pull(REPO, 4, Some(at(5)), Some("c4"), at(5))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.settle_change_pull(REPO, 4).await.unwrap(),
+        ChangeSettlement::Landed(_)
+    ));
+    assert_eq!(
+        store.get_thread(waits).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert!(unsettled_order(store.as_ref(), r.ws).await.is_empty());
+
+    // A merge that waited on a sibling still lands when the sibling closes
+    // without merging, and the landing names the merge.
+    let sibling = task(store.as_ref(), r.channel, "sibling").await;
+    store
+        .set_thread_result(sibling, agent, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    for n in [6, 7] {
+        store
+            .record_change_round(round_for(r.ws, sibling, n))
+            .await
+            .unwrap();
+    }
+    store
+        .close_change_pull(REPO, 6, Some(at(6)), Some("c6"), at(6))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.settle_change_pull(REPO, 6).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    store
+        .close_change_pull(REPO, 7, None, None, at(7))
+        .await
+        .unwrap();
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 7).await.unwrap() else {
+        panic!("the earlier merge lands the thread once nothing is open");
+    };
+    let landed = stored
+        .iter()
+        .find(|e| e.kind == EventKind::ThreadLanded)
+        .unwrap();
+    assert_eq!(landed.payload["pr_number"], 6);
+    assert_eq!(
+        store.get_thread(sibling).await.unwrap().state,
+        ThreadState::Closed
+    );
+
+    assert_eq!(
+        store.get_thread(foreign).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert_eq!(unsettled_order(store.as_ref(), other.ws).await, vec![5]);
+    let swept = store.list_change_sweep_workspaces(10).await.unwrap();
+    assert!(swept.contains(&other.ws));
+    assert!(!swept.contains(&r.ws), "nothing left to read or settle");
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -989,4 +1244,6 @@ on_both_backends!(
     the_deferred_list_names_why_each_thread_waits,
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
     change_rounds_ready_and_close_are_recorded_once,
+    the_refresh_reads_the_longest_unread_pull_first,
+    a_closed_pull_settles_its_thread_once,
 );

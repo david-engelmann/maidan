@@ -924,6 +924,16 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         });
     }
 
+    // Change sweep: on by default (`MAIDAN_CHANGE_SWEEP_SECS`, 120 s; `0`
+    // off). A local stack gets no GitHub webhooks, so without it a merged
+    // agent pull request never closes its task and its dependents wait.
+    if let Some(interval) = maidan_server::change_sweep::config_from_env() {
+        let sweep_state = state.clone();
+        tokio::spawn(async move {
+            maidan_server::change_sweep::run(sweep_state, interval).await;
+        });
+    }
+
     // Background wait-timer sweeper: opt-in via `MAIDAN_WAIT_SWEEP_TICK_SECS`.
     // Fires each thread wait past its deadline — emitting `WaitTimedOut` and
     // (per policy) parking the thread.

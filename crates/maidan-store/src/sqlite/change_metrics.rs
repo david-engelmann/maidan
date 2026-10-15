@@ -3,10 +3,15 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use maidan_types::{ChangePull, ChangeRound, NewChangeRound, ThreadId, WorkspaceId};
+use maidan_fsm::ThreadAction;
+use maidan_types::{
+    ChangePull, ChangeRound, ChangeSettlement, Event, MemberId, NewChangeRound, StoredEvent,
+    ThreadId, ThreadState, WorkspaceId,
+};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
+use super::{events, thread_transitions};
 use crate::error::StoreError;
 
 /// Record a delivered round, and the pull request the first time. A retried
@@ -89,8 +94,9 @@ pub async fn close(
     Ok(())
 }
 
-/// The tracked pull requests in `workspace_id` not yet seen closed, oldest
-/// first, at most `limit`.
+/// The tracked pull requests in `workspace_id` not yet seen closed, at most
+/// `limit`: the longest unread first, never read before all, so a workspace
+/// with more than `limit` is read in full over a few passes.
 pub async fn list_open(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -99,7 +105,8 @@ pub async fn list_open(
     let rows = sqlx::query(
         "SELECT repo, pull_number FROM maidan_change_pulls
          WHERE workspace_id = ?1 AND closed_at IS NULL
-         ORDER BY opened_at LIMIT ?2",
+         ORDER BY checked_at IS NOT NULL, checked_at, opened_at, repo, pull_number
+         LIMIT ?2",
     )
     .bind(workspace_id.0)
     .bind(limit)
@@ -109,6 +116,239 @@ pub async fn list_open(
         .iter()
         .map(|row| (row.get("repo"), row.get("pull_number")))
         .collect())
+}
+
+/// Stamp when a tracked pull request was last read from GitHub.
+pub async fn mark_checked(
+    pool: &SqlitePool,
+    repo: &str,
+    pull_number: i64,
+    at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "UPDATE maidan_change_pulls SET checked_at = ?3
+         WHERE repo = ?1 AND pull_number = ?2",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(at.to_rfc3339())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// The workspaces with a tracked pull request still to read or to settle.
+pub async fn list_sweep_workspaces(
+    pool: &SqlitePool,
+    limit: i64,
+) -> Result<Vec<WorkspaceId>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT DISTINCT workspace_id FROM maidan_change_pulls
+         WHERE closed_at IS NULL OR settled_at IS NULL
+         ORDER BY workspace_id LIMIT ?1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| WorkspaceId(row.get("workspace_id")))
+        .collect())
+}
+
+/// The tracked pull requests in `workspace_id` seen closed and not yet
+/// settled, oldest close first, at most `limit`.
+pub async fn list_unsettled(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<(String, i64)>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT repo, pull_number FROM maidan_change_pulls
+         WHERE workspace_id = ?1 AND closed_at IS NOT NULL AND settled_at IS NULL
+         ORDER BY closed_at, repo, pull_number
+         LIMIT ?2",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| (row.get("repo"), row.get("pull_number")))
+        .collect())
+}
+
+/// Settle a tracked pull request seen closed, once. A merge lands its thread:
+/// closed through the transition path, with `ThreadLanded` in the same
+/// transaction. A close without a merge leaves the thread open and owes one
+/// notice. See [`ChangeSettlement`].
+pub async fn settle(
+    pool: &SqlitePool,
+    repo: &str,
+    pull_number: i64,
+) -> Result<ChangeSettlement, StoreError> {
+    let repo = repo.to_ascii_lowercase();
+    let mut tx = pool.begin().await?;
+    let Some(row) = sqlx::query(
+        "SELECT p.thread_id, p.merged_at IS NOT NULL AS merged, t.state,
+                t.tombstoned_at IS NOT NULL AS tombstoned, t.owner_id, r.produced_by
+         FROM maidan_change_pulls p
+         JOIN maidan_threads t ON t.id = p.thread_id
+         LEFT JOIN maidan_thread_results r ON r.thread_id = p.thread_id
+         WHERE p.repo = ?1 AND p.pull_number = ?2
+           AND p.closed_at IS NOT NULL AND p.settled_at IS NULL",
+    )
+    .bind(&repo)
+    .bind(pull_number)
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(ChangeSettlement::Unchanged);
+    };
+    // Claimed before acting, so two replicas sweeping at once settle it once.
+    if mark_settled(&mut tx, &repo, pull_number).await? == 0 {
+        return Ok(ChangeSettlement::Unchanged);
+    }
+    let thread_id = ThreadId(row.get("thread_id"));
+    // The owner first, so separation of duties never refuses the landing; a
+    // thread without one is landed by whoever produced the delivered result.
+    let actor = row
+        .get::<Option<Uuid>, _>("owner_id")
+        .or_else(|| row.get::<Option<Uuid>, _>("produced_by"))
+        .map(MemberId);
+    let state: String = row.get("state");
+    let from_open = state == ThreadState::Open.as_str();
+    let live = from_open || state == ThreadState::InReview.as_str();
+    let (Some(actor), true, false) = (actor, live, row.get::<bool, _>("tombstoned")) else {
+        tx.commit().await?;
+        return Ok(ChangeSettlement::Unchanged);
+    };
+    let another_open = sqlx::query(
+        "SELECT 1 FROM maidan_change_pulls WHERE thread_id = ?1 AND closed_at IS NULL LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .is_some();
+    // The thread lands once none of its pull requests is still open, on its
+    // latest merge, whichever of them closed last: a merge that waited on a
+    // sibling is not lost when the sibling then closes without merging.
+    let merged = if another_open {
+        None
+    } else {
+        sqlx::query(
+            "SELECT repo, pull_number FROM maidan_change_pulls
+             WHERE thread_id = ?1 AND merged_at IS NOT NULL
+             ORDER BY merged_at DESC, repo, pull_number LIMIT 1",
+        )
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .map(|row| {
+            (
+                row.get::<String, _>("repo"),
+                row.get::<i64, _>("pull_number"),
+            )
+        })
+    };
+    let Some((landed_repo, landed_pull)) = merged else {
+        tx.commit().await?;
+        return Ok(if row.get::<bool, _>("merged") {
+            ChangeSettlement::Unchanged
+        } else {
+            ChangeSettlement::ClosedUnmerged {
+                thread_id,
+                author_id: actor,
+            }
+        });
+    };
+    match land_in_tx(
+        &mut tx,
+        thread_id,
+        actor,
+        from_open,
+        &landed_repo,
+        landed_pull,
+    )
+    .await
+    {
+        Ok(stored) => {
+            tx.commit().await?;
+            Ok(ChangeSettlement::Landed(stored))
+        }
+        Err(StoreError::Conflict(reason)) => {
+            tx.rollback().await?;
+            // The merge stands whatever the thread's gates say, so the close
+            // is settled now and the refusal said once, not retried each tick.
+            let mut tx = pool.begin().await?;
+            let claimed = mark_settled(&mut tx, &repo, pull_number).await?;
+            tx.commit().await?;
+            if claimed == 0 {
+                return Ok(ChangeSettlement::Unchanged);
+            }
+            Ok(ChangeSettlement::CloseRefused {
+                thread_id,
+                author_id: actor,
+                reason,
+            })
+        }
+        Err(err) => Err(err),
+    }
+}
+
+async fn mark_settled(
+    conn: &mut <sqlx::Sqlite as sqlx::Database>::Connection,
+    repo: &str,
+    pull_number: i64,
+) -> Result<u64, StoreError> {
+    Ok(sqlx::query(
+        "UPDATE maidan_change_pulls SET settled_at = ?3
+         WHERE repo = ?1 AND pull_number = ?2 AND settled_at IS NULL",
+    )
+    .bind(repo)
+    .bind(pull_number)
+    .bind(Utc::now().to_rfc3339())
+    .execute(conn)
+    .await?
+    .rows_affected())
+}
+
+async fn land_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    actor: MemberId,
+    from_open: bool,
+    repo: &str,
+    pull_number: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut stored = Vec::new();
+    // The thread machine has no edge from open to closed. A merged change was
+    // reviewed on GitHub, so it passes through review on its way, and the
+    // review and close gates still apply.
+    if from_open {
+        let review =
+            thread_transitions::transition_in_tx(tx, thread_id, actor, ThreadAction::StartReview)
+                .await?;
+        stored.push(thread_transitions::state_changed_in_tx(tx, actor, &review).await?);
+    }
+    let closed =
+        thread_transitions::transition_in_tx(tx, thread_id, actor, ThreadAction::Close).await?;
+    stored.push(thread_transitions::state_changed_in_tx(tx, actor, &closed).await?);
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
+    let landed = Event::ThreadLanded {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id,
+        repo: repo.to_string(),
+        pr_number: pull_number,
+        merged_by: None,
+        merge_commit_sha: None,
+        title: None,
+    };
+    stored.push(events::append_in_tx(tx, &landed).await?);
+    Ok(stored)
 }
 
 /// The tracked pull requests in `workspace_id`, in `repo` and opened since
