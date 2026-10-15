@@ -112,6 +112,48 @@ pub(crate) fn deferred(thread: &str, now: &str) -> String {
     )
 }
 
+/// `SELECT` of the open, unheld threads in workspace `ws` that the claim
+/// queue defers for their footprint, oldest first, with one flag per reason;
+/// only threads `reader` may read when it is not NULL. At most 200.
+pub(crate) fn deferred_select(ws: &str, reader: &str, dm_channel: &str, now: &str) -> String {
+    let readable = crate::thread_access::readable_thread("cand.id", ws, reader, dm_channel);
+    format!(
+        "SELECT cand.id AS thread_id, cand.title,
+                {} AS overlap, {} AS repo_paused, {} AS slot_full
+         FROM maidan_threads cand
+         JOIN maidan_channels ch ON ch.id = cand.channel_id
+         WHERE ch.workspace_id = {ws}
+           AND cand.state = 'open' AND cand.tombstoned_at IS NULL
+           AND (cand.assignee_id IS NULL
+                OR (cand.assignment_expires_at IS NOT NULL AND cand.assignment_expires_at < {now}))
+           AND {}
+           AND ({reader} IS NULL OR {readable})
+         ORDER BY cand.created_at, cand.id
+         LIMIT 200",
+        conflicts_with_live_claims("cand.id", now),
+        repo_paused("cand.id"),
+        slot_full("cand.id", now),
+        deferred("cand.id", now),
+    )
+}
+
+/// The reasons a [`deferred_select`] row carries.
+pub(crate) fn deferral_reasons(
+    overlap: bool,
+    paused: bool,
+    slot_full: bool,
+) -> Vec<maidan_types::DeferralReason> {
+    use maidan_types::DeferralReason::*;
+    [
+        (overlap, Overlap),
+        (paused, RepoPaused),
+        (slot_full, SlotFull),
+    ]
+    .into_iter()
+    .filter_map(|(on, reason)| on.then_some(reason))
+    .collect()
+}
+
 /// The joins and predicates that pair each full slot of `thread` (`slots`)
 /// with the live claims holding it (`theirs`, on thread `held`).
 fn full_slot_holders(thread: &str, now: &str) -> String {

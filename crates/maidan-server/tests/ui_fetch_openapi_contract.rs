@@ -157,6 +157,7 @@ fn script() -> &'static str {
             include_str!("../static/ui/dm.js"),
             include_str!("../static/ui/artifacts.js"),
             include_str!("../static/ui/tools.js"),
+            include_str!("../static/ui/swarm.js"),
             include_str!("../static/ui/palette.js"),
             include_str!("../static/ui/realtime.js"),
             include_str!("../static/ui/push.js"),

@@ -225,6 +225,7 @@
         <button type="button" data-tab="events">Events (HTTP)</button>
         <button type="button" data-tab="presence">Presence</button>
         <button type="button" data-tab="work">Work</button>
+        <button type="button" data-tab="swarm">Swarm</button>
         <button type="button" data-tab="prefs">Prefs</button>
         <button type="button" data-tab="glass">Looking glass</button>
         <button type="button" data-tab="notifications">Notifications</button>
@@ -384,6 +385,29 @@
         <ul id="work-schedule-list" class="muted">
           <li>Load a workspace to see its schedules.</li>
         </ul>
+      </section>
+      <section id="panel-swarm" class="panel" aria-labelledby="swarm-heading">
+        <h2 id="swarm-heading" class="panel-h">Swarm</h2>
+        <p class="muted">
+          What the workers in this workspace hold, what is waiting and why, which
+          slots are full, and which repositories are paused. It refreshes while
+          open, and reads the bearer API like peers and token minting, so it
+          needs a pasted token.
+        </p>
+        <button id="swarm-refresh" type="button">Refresh</button>
+        <h4>Live claims</h4>
+        <div id="swarm-claims"><p class="muted">Open this tab to load the live claims.</p></div>
+        <h4>Waiting threads</h4>
+        <div id="swarm-deferred"><p class="muted">Open this tab to load the waiting threads.</p></div>
+        <h4>Slots</h4>
+        <div id="swarm-slots"><p class="muted">Open this tab to load the slots.</p></div>
+        <h4>Paused repositories</h4>
+        <div id="swarm-pauses"><p class="muted">Open this tab to load the paused repositories.</p></div>
+        <div>
+          <label>Repository <input id="swarm-pause-repo" placeholder="owner/name" /></label>
+          <label>Reason (optional) <input id="swarm-pause-reason" /></label>
+          <button id="swarm-pause-submit" type="button">Pause repository</button>
+        </div>
       </section>
       <section id="panel-prefs" class="panel">
         <p class="muted">

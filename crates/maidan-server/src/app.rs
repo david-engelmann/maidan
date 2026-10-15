@@ -222,6 +222,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/claims", get(routes::list_active_claims))
         .route(
+            "/workspaces/{id}/deferred",
+            get(routes::list_deferred_threads),
+        )
+        .route(
             "/workspaces/{id}/swarm-metrics",
             get(routes::get_swarm_metrics),
         )
@@ -1182,6 +1186,10 @@ pub fn router(state: AppState) -> Router {
             "tools.js" => (
                 "text/javascript; charset=utf-8",
                 include_str!("../static/ui/tools.js"),
+            ),
+            "swarm.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/ui/swarm.js"),
             ),
             "palette.js" => (
                 "text/javascript; charset=utf-8",

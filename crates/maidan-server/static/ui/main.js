@@ -10,6 +10,7 @@ import { registerBrowserPush } from "./push.js";
 import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./realtime.js";
 import { initWorkspaceSwitcher, loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
+import { initSwarm, loadSwarm } from "./swarm.js";
 import { loadMessages } from "./thread.js";
 import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
 
@@ -28,6 +29,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
           if (btn.dataset.tab === "work") loadWork();
+          if (btn.dataset.tab === "swarm") loadSwarm();
           if (btn.dataset.tab === "prefs") loadPrefs();
           if (btn.dataset.tab === "glass") loadGlass();
           if (btn.dataset.tab === "notifications") loadNotifications();
@@ -38,6 +40,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       });
 
       initTablist();
+      initSwarm();
 
       document.querySelectorAll("[data-open-connect]").forEach((b) => (b.onclick = openConnect));
 

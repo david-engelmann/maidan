@@ -2545,6 +2545,14 @@ macro_rules! store_delegations {
                 footprints::list_repo_pauses(self.pool(), workspace_id).await
             }
 
+            async fn list_deferred_threads(
+                &self,
+                workspace_id: WorkspaceId,
+                readable_by: Option<MemberId>,
+            ) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
+                footprints::list_deferred(self.read_pool(), workspace_id, readable_by).await
+            }
+
             async fn record_change_round(
                 &self,
                 round: maidan_types::NewChangeRound,

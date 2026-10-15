@@ -87,12 +87,135 @@ const WORKSPACE: LimitSpec = LimitSpec {
     },
 };
 
+/// Per-client limit for the OAuth authorization-server surface: one client
+/// id's calls to the token, revoke, authorize and consent endpoints, charged
+/// per (client id, address) pair. These endpoints are the credential-
+/// guessing surface of the server, so they get a tighter bucket than the
+/// API at large: 120 requests / 60 s, two a second sustained — far above
+/// any real client's refresh cadence on one instance, far below an online
+/// secret-guessing loop from one address. The pair keying matters because
+/// the id is unauthenticated at this layer: a bucket named by the id alone
+/// would let any address spend a named client's budget and lock that
+/// client out of the surface, so a client's budget is only ever spent from
+/// the address its own traffic uses.
+const OAUTH_CLIENT: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_OAUTH_CLIENT_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 120,
+        window: Duration::from_secs(60),
+    },
+};
+
+/// Per-IP limit for the same surface, shared across client ids: 600 / 60 s.
+/// It binds when many client ids (or none) come from one address — a public
+/// client's id is unauthenticated, so the address is the only identity a
+/// body-only or anonymous caller can be charged under.
+const OAUTH_IP: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_OAUTH_IP_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_OAUTH_IP_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 600,
+        window: Duration::from_secs(60),
+    },
+};
+
 fn resolve_global(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&GLOBAL, default_on)
 }
 
 fn resolve_workspace(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&WORKSPACE, default_on)
+}
+
+fn resolve_oauth_client(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&OAUTH_CLIENT, default_on)
+}
+
+fn resolve_oauth_ip(default_on: bool) -> Option<RateLimitConfig> {
+    resolve_env(&OAUTH_IP, default_on)
+}
+
+/// The authorization-server surface the OAuth limits guard: the token and
+/// revoke endpoints, the authorize endpoint, and the consent page and its
+/// decision POST.
+fn oauth_surface(path: &str) -> bool {
+    matches!(
+        path,
+        "/oauth/token"
+            | "/oauth/revoke"
+            | "/oauth/authorize"
+            | "/ui/oauth/consent"
+            | "/ui/api/oauth/consent"
+    )
+}
+
+/// Percent-decode the way form parsing decodes it (`+` is a space).
+/// `None` when the encoding is malformed.
+fn form_decode(raw: &str) -> Option<String> {
+    let mut out = Vec::with_capacity(raw.len());
+    let bytes = raw.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => out.push(b' '),
+            b'%' => {
+                let hex = bytes.get(i + 1..i + 3)?;
+                let hex = std::str::from_utf8(hex).ok()?;
+                out.push(u8::from_str_radix(hex, 16).ok()?);
+                i += 2;
+            }
+            b => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8(out).ok()
+}
+
+/// A form field's value in an `application/x-www-form-urlencoded` body or
+/// query string, percent-decoded. `None` when the field is absent or its
+/// encoding is malformed.
+fn form_field(data: &str, field: &str) -> Option<String> {
+    data.split('&').find_map(|pair| {
+        let (name, value) = pair.split_once('=')?;
+        (form_decode(name)? == field)
+            .then(|| form_decode(value))
+            .flatten()
+    })
+}
+
+/// The OAuth client id a request asserts, from the places a client
+/// authenticates or identifies itself without the server having parsed the
+/// request yet: the Basic username (`client_secret_basic`), the `client_id`
+/// query parameter (the authorize endpoint), or — filled in by the
+/// middleware after buffering a small form body — the `client_id` form
+/// field (`client_secret_post`, public clients). The id is unauthenticated
+/// at this layer; it names a bucket, never an authorization.
+fn client_id_from_headers_and_query(req: &Request<Body>) -> Option<String> {
+    if let Some(header_value) = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Some(encoded) = header_value
+            .strip_prefix("Basic ")
+            .or_else(|| header_value.strip_prefix("basic "))
+        {
+            use base64::Engine;
+            if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
+                if let Ok(pair) = String::from_utf8(decoded) {
+                    // The username is form-encoded (RFC 6749 section 2.3.1).
+                    let user = pair.split(':').next().unwrap_or_default();
+                    let user = form_decode(user).unwrap_or_else(|| user.to_string());
+                    if !user.is_empty() {
+                        return Some(user);
+                    }
+                }
+            }
+        }
+    }
+    let query = req.uri().query()?;
+    form_field(query, "client_id").filter(|id| !id.is_empty())
 }
 
 fn resolve_env(spec: &LimitSpec, default_on: bool) -> Option<RateLimitConfig> {
@@ -362,12 +485,17 @@ pub(crate) async fn enforce_workspace(
 
 pub async fn middleware(
     State(state): State<crate::state::AppState>,
-    req: Request<Body>,
+    mut req: Request<Body>,
     next: Next,
 ) -> Response {
     let global = resolve_global(state.rate_limit_default_on);
     let workspace_on = resolve_workspace(state.rate_limit_default_on).is_some();
-    if (global.is_none() && !workspace_on) || exempt_path(req.uri().path()) {
+    let oauth_client_cfg = resolve_oauth_client(state.rate_limit_default_on);
+    let oauth_ip_cfg = resolve_oauth_ip(state.rate_limit_default_on);
+    let oauth = oauth_surface(req.uri().path());
+    if (global.is_none() && !workspace_on && oauth_client_cfg.is_none() && oauth_ip_cfg.is_none())
+        || exempt_path(req.uri().path())
+    {
         return next.run(req).await;
     }
     let redis = state.rate_limit_redis.clone();
@@ -391,6 +519,59 @@ pub async fn middleware(
             let key = format!("global:{client}");
             if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
                 return too_many(cfg.window, cfg.max, is_mcp);
+            }
+        }
+    }
+    if oauth {
+        // The OAuth surface is charged per address first: an address flooding
+        // any mix of client ids meets this bucket whatever it asserts.
+        if let Some(cfg) = oauth_ip_cfg {
+            let key = format!("oauth:{}", ip_client_key(&req));
+            if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+                return too_many(cfg.window, cfg.max, false);
+            }
+        }
+        if let Some(cfg) = oauth_client_cfg {
+            let mut client_id = client_id_from_headers_and_query(&req);
+            if client_id.is_none() {
+                // A token/revoke POST may carry its client id only in the
+                // form body. Buffer a small declared body, read the field,
+                // and put the bytes back untouched for the handler.
+                let small_form = req.method() == Method::POST
+                    && matches!(req.uri().path(), "/oauth/token" | "/oauth/revoke")
+                    && req
+                        .headers()
+                        .get(header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .is_some_and(|v| v.starts_with("application/x-www-form-urlencoded"))
+                    && req
+                        .headers()
+                        .get(header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.parse::<usize>().ok())
+                        .is_some_and(|len| len <= 16_384);
+                if small_form {
+                    let (parts, body) = req.into_parts();
+                    match axum::body::to_bytes(body, 16_384).await {
+                        Ok(bytes) => {
+                            client_id = std::str::from_utf8(&bytes)
+                                .ok()
+                                .and_then(|text| form_field(text, "client_id"))
+                                .filter(|id| !id.is_empty());
+                            req = Request::from_parts(parts, Body::from(bytes));
+                        }
+                        Err(_) => {
+                            return ApiError::BadRequest("request body could not be read".into())
+                                .into_response();
+                        }
+                    }
+                }
+            }
+            if let Some(client_id) = client_id {
+                let key = format!("oauth-client:{client_id}:{}", ip_client_key(&req));
+                if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+                    return too_many(cfg.window, cfg.max, false);
+                }
             }
         }
     }
@@ -472,6 +653,64 @@ mod tests {
         assert!(exempt_path("/health/ready"));
         assert!(exempt_path("/metrics"));
         assert!(!exempt_path("/workspaces/abc/search"));
+    }
+
+    #[test]
+    fn the_oauth_surface_is_the_five_authorization_server_paths() {
+        for path in [
+            "/oauth/token",
+            "/oauth/revoke",
+            "/oauth/authorize",
+            "/ui/oauth/consent",
+            "/ui/api/oauth/consent",
+        ] {
+            assert!(oauth_surface(path), "{path}");
+        }
+        for path in ["/oauth/app/token", "/oauth/grants", "/ui/oauth", "/tokens"] {
+            assert!(!oauth_surface(path), "{path}");
+        }
+    }
+
+    #[test]
+    fn form_fields_decode_like_a_form_parser() {
+        assert_eq!(
+            form_field(
+                "grant_type=refresh_token&client_id=my%20client+x",
+                "client_id"
+            ),
+            Some("my client x".into())
+        );
+        assert_eq!(form_field("client_id=", "client_id"), Some(String::new()));
+        assert_eq!(form_field("other=1", "client_id"), None);
+        assert_eq!(form_field("client_id=%zz", "client_id"), None);
+    }
+
+    #[test]
+    fn the_client_id_comes_from_basic_auth_then_the_query() {
+        use base64::Engine;
+        let basic = base64::engine::general_purpose::STANDARD.encode("my-client:s3cret");
+        let req = Request::builder()
+            .uri("/oauth/token?client_id=from-query")
+            .header(header::AUTHORIZATION, format!("Basic {basic}"))
+            .body(Body::empty())
+            .expect("request");
+        assert_eq!(
+            client_id_from_headers_and_query(&req),
+            Some("my-client".into())
+        );
+        let req = Request::builder()
+            .uri("/oauth/authorize?client_id=from-query&response_type=code")
+            .body(Body::empty())
+            .expect("request");
+        assert_eq!(
+            client_id_from_headers_and_query(&req),
+            Some("from-query".into())
+        );
+        let req = Request::builder()
+            .uri("/oauth/authorize")
+            .body(Body::empty())
+            .expect("request");
+        assert_eq!(client_id_from_headers_and_query(&req), None);
     }
 
     #[test]

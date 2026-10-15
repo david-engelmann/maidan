@@ -2616,6 +2616,15 @@ pub fn get_thread_footprint() {}
     ))]
 pub fn list_active_claims() {}
 
+/// List the threads the claim queue is holding back, and why
+#[utoipa::path(get, path = "/workspaces/{id}/deferred", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [DeferredThread]),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_deferred_threads() {}
 /// Swarm ramp metrics: per agent pull request and per repository
 #[utoipa::path(get, path = "/workspaces/{id}/swarm-metrics", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SwarmMetricsQuery),

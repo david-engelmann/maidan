@@ -829,6 +829,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/deferred",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{id}/swarm-metrics",
     "capability": "workspace:read",
     "surface": "http"

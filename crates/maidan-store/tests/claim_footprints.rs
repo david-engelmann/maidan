@@ -703,10 +703,82 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
     );
 }
 
-/// A dozen agents claiming and releasing at once never break the swarm's two
-/// rules, in any snapshot of the live claims: no exclusive lane is held
-/// twice, and no slot holds more claims than its capacity. On Postgres this
-/// is the advisory lock at work; SQLite serializes writers.
+/// The deferred list says why each waiting thread waits: an overlap with a
+/// live claim, a paused repository, a full slot, or several at once; work
+/// that is free to claim is not listed.
+async fn the_deferred_list_names_why_each_thread_waits(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "deferred", 2).await;
+    let fp = |items: &[(FootprintKind, &str)]| footprint(FootprintMode::Exclusive, items);
+    let held = task(store.as_ref(), room.channel, "held").await;
+    let overlap = task(store.as_ref(), room.channel, "overlap").await;
+    let both = task(store.as_ref(), room.channel, "both").await;
+    let free = task(store.as_ref(), room.channel, "free").await;
+    declare(
+        store.as_ref(),
+        held,
+        fp(&[(FootprintKind::Lane, "a"), (FootprintKind::Slot, "build")]),
+    )
+    .await;
+    declare(store.as_ref(), overlap, fp(&[(FootprintKind::Lane, "a")])).await;
+    declare(
+        store.as_ref(),
+        both,
+        fp(&[(FootprintKind::Lane, "b"), (FootprintKind::Slot, "build")]),
+    )
+    .await;
+    let mut elsewhere = fp(&[(FootprintKind::Lane, "c")]);
+    elsewhere.repo = "example/other".into();
+    declare(store.as_ref(), free, elsewhere).await;
+    store
+        .set_slot_capacity_audited(
+            room.ws,
+            "build",
+            1,
+            room.agents[0],
+            audit(room.ws, "slot.capacity.set"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(claim(store.as_ref(), &room, 0).await.unwrap().id, held);
+    store
+        .pause_repo_audited(
+            room.ws,
+            REPO,
+            room.agents[0],
+            None,
+            audit_for(room.ws, "repo.pause"),
+        )
+        .await
+        .unwrap();
+
+    let deferred = store.list_deferred_threads(room.ws, None).await.unwrap();
+    let reasons: Vec<_> = deferred
+        .iter()
+        .map(|d| (d.thread_id, d.reasons.clone()))
+        .collect();
+    assert_eq!(
+        reasons,
+        vec![
+            (
+                overlap,
+                vec![DeferralReason::Overlap, DeferralReason::RepoPaused]
+            ),
+            (
+                both,
+                vec![DeferralReason::RepoPaused, DeferralReason::SlotFull]
+            ),
+        ],
+        "the held thread and the free one are not listed"
+    );
+    // A member of another workspace sees none of it.
+    let other = room_with_one(store.as_ref()).await;
+    assert!(store
+        .list_deferred_threads(room.ws, Some(other))
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<dyn Store>) {
     const AGENTS: usize = 12;
     const ROUNDS: usize = 6;
@@ -796,6 +868,10 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
         .await
         .unwrap()
         .is_empty());
+}
+
+async fn room_with_one(store: &dyn Store) -> MemberId {
+    room(store, "outsider", 1).await.agents[0]
 }
 
 /// The change-metrics rows: a round per delivered commit (a retry adds none),
@@ -910,6 +986,7 @@ on_both_backends!(
     a_claimer_serving_one_repository_takes_only_its_work,
     a_full_slot_holds_work_until_a_holder_finishes,
     a_footprint_declared_at_creation_binds_the_first_claim,
+    the_deferred_list_names_why_each_thread_waits,
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
     change_rounds_ready_and_close_are_recorded_once,
 );

@@ -7,8 +7,8 @@ use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::capability::{THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ};
 use maidan_auth::AuthContext;
 use maidan_types::{
-    ActiveClaim, AuditScope, Footprint, NewAuditEvent, PauseRepo, RepoPause, SetSlotCapacity,
-    SlotUsage, ThreadId, WorkspaceId,
+    ActiveClaim, AuditScope, DeferredThread, Footprint, NewAuditEvent, PauseRepo, RepoPause,
+    SetSlotCapacity, SlotUsage, ThreadId, WorkspaceId,
 };
 
 use crate::dto::{ActiveClaimsQuery, RepoPauseQuery, SlotQuery};
@@ -263,4 +263,25 @@ pub async fn clear_slot_capacity(
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+/// The open threads the claim queue is holding back for their footprint,
+/// oldest first, each with why: an overlap with a live claim, a paused
+/// repository, or a full slot. Only threads the caller may read are listed.
+/// `workspace:read`.
+pub async fn list_deferred_threads(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<DeferredThread>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let workspace_id = WorkspaceId(id);
+    ensure_workspace(&auth, workspace_id)?;
+    let readable_by = (!auth.bypass).then_some(auth.member_id);
+    Ok(Json(
+        state
+            .store
+            .list_deferred_threads(workspace_id, readable_by)
+            .await?,
+    ))
 }
