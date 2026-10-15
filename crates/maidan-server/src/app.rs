@@ -674,6 +674,7 @@ pub fn router(state: AppState) -> Router {
             post(routes::report_thread_usage_otel),
         )
         .route("/threads/{id}/assignee/claim", post(routes::claim_thread))
+        .route("/threads/{id}/cancel", post(routes::cancel_thread))
         .route(
             "/threads/{id}/unclaimable",
             put(routes::mark_thread_unclaimable).merge(delete(routes::mark_thread_claimable)),

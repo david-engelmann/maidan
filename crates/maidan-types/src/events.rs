@@ -165,6 +165,7 @@ pub enum EventKind {
     ThreadAssignmentChanged,
     ThreadReady,
     ThreadResultSet,
+    ThreadCancelled,
     ApprovalRequested,
     ThreadBlocked,
     BlockedResolved,
@@ -208,6 +209,7 @@ impl EventKind {
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
+            Self::ThreadCancelled => "thread_cancelled",
             Self::ApprovalRequested => "approval_requested",
             Self::ThreadBlocked => "thread_blocked",
             Self::BlockedResolved => "blocked_resolved",
@@ -251,6 +253,7 @@ impl EventKind {
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
+            "thread_cancelled" => Some(Self::ThreadCancelled),
             "approval_requested" => Some(Self::ApprovalRequested),
             "thread_blocked" => Some(Self::ThreadBlocked),
             "blocked_resolved" => Some(Self::BlockedResolved),
@@ -319,6 +322,7 @@ impl EventKind {
         Self::ThreadAssignmentChanged,
         Self::ThreadReady,
         Self::ThreadResultSet,
+        Self::ThreadCancelled,
         Self::ApprovalRequested,
         Self::ThreadBlocked,
         Self::BlockedResolved,
@@ -388,6 +392,9 @@ impl EventKind {
             Self::ThreadReady => false,
             // A task result is produced locally; a peer must not inject one.
             Self::ThreadResultSet => false,
+            // A cancel is this deployment's decision about its own queue; a
+            // peer must not end a claim here.
+            Self::ThreadCancelled => false,
             // Approval gates are local human-control state.
             Self::ApprovalRequested => false,
             // A block is *this* deployment's dispatch decision; a peer must
@@ -513,6 +520,18 @@ pub enum Event {
         channel_id: ChannelId,
         thread_id: ThreadId,
         produced_by: MemberId,
+    },
+    /// A thread was cancelled: closed without its work being done, parked from
+    /// dispatch, and any live claim ended, so the holder's next renew is
+    /// refused. The `ThreadStateChanged` committed with it carries the row.
+    /// Locally decided: not federatable.
+    ThreadCancelled {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        reason: String,
+        cancelled_by: MemberId,
     },
     /// A durable human-approval gate was opened. The optional thread/channel
     /// context is absent for workspace-level questions. Locally derived: a
@@ -923,6 +942,7 @@ impl Event {
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
+            Self::ThreadCancelled { .. } => EventKind::ThreadCancelled,
             Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
             Self::ThreadBlocked { .. } => EventKind::ThreadBlocked,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
@@ -966,6 +986,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
+            | Self::ThreadCancelled { occurred_at, .. }
             | Self::ApprovalRequested { occurred_at, .. }
             | Self::ThreadBlocked { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
@@ -1009,6 +1030,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
+            | Self::ThreadCancelled { workspace_id, .. }
             | Self::ApprovalRequested { workspace_id, .. }
             | Self::ThreadBlocked { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
@@ -1049,6 +1071,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::ThreadReady { channel_id, .. }
             | Self::ThreadResultSet { channel_id, .. }
+            | Self::ThreadCancelled { channel_id, .. }
             | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimUnacknowledged { channel_id, .. }
@@ -1080,6 +1103,7 @@ impl Event {
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
+            Self::ThreadCancelled { thread_id, .. } => Some(*thread_id),
             Self::ApprovalRequested { thread_id, .. } => *thread_id,
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
@@ -1128,6 +1152,7 @@ impl Event {
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
+            Self::ThreadCancelled { cancelled_by, .. } => Some(*cancelled_by),
             Self::ApprovalRequested { requested_by, .. } => Some(*requested_by),
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
@@ -1503,6 +1528,7 @@ mod kind_tests {
                 | EventKind::ThreadAssignmentChanged
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
+                | EventKind::ThreadCancelled
                 | EventKind::ApprovalRequested
                 | EventKind::ThreadBlocked
                 | EventKind::BlockedResolved
@@ -1589,6 +1615,7 @@ mod kind_tests {
             EventKind::ArtifactUpserted,
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
+            EventKind::ThreadCancelled,
             EventKind::ApprovalRequested,
             EventKind::ThreadBlocked,
             EventKind::BlockedResolved,

@@ -50,6 +50,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

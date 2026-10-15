@@ -74,6 +74,7 @@ async fn wip_limit_blocks_claim_and_claim_next_over_the_cap() {
                     parent_thread_id: None,
                     title: Some(title),
                     description: None,
+                    created_by: None,
                 })
                 .await
                 .unwrap()

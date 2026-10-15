@@ -162,6 +162,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
                 parent_thread_id: None,
                 title: Some("Ship it".into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap()

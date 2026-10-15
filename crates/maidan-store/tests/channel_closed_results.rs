@@ -75,6 +75,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("ship postgres".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("closed");
@@ -91,6 +92,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("still working".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("open");
@@ -106,6 +108,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("closed with nothing".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("closed empty");
@@ -118,6 +121,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("other channel".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("elsewhere");
@@ -134,6 +138,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("old call".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("archived");

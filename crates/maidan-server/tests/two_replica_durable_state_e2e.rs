@@ -197,6 +197,7 @@ async fn oauth_code_and_reindex_job_cross_replicas() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

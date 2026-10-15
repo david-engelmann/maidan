@@ -307,6 +307,7 @@ async fn worker_preset_can_claim_post_and_transition() {
             parent_thread_id: None,
             title: Some("Fix the flaky login test".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

@@ -51,6 +51,7 @@ async fn transition_thread_advances_state_and_logs_row() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

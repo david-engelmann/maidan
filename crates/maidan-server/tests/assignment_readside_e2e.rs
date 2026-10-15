@@ -86,6 +86,7 @@ async fn claim_next_then_list_mine_then_empty() {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

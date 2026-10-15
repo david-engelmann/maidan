@@ -90,6 +90,7 @@ async fn a_rotation_moves_the_keys_destroys_the_old_one_and_the_words_still_open
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

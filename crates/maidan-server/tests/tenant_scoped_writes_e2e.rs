@@ -44,6 +44,7 @@ async fn tenant(h: &Harness, name: &str) -> Tenant {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

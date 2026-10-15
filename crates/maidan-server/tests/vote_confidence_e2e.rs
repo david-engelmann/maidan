@@ -70,6 +70,7 @@ async fn vote_confidence_round_trips_and_validates() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

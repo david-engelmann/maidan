@@ -672,6 +672,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/cancel",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/unclaimable",
     "capability": "thread:transition",

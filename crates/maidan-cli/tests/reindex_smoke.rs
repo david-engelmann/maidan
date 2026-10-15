@@ -55,6 +55,7 @@ async fn reindex_embeddings_cli_processes_live_messages() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

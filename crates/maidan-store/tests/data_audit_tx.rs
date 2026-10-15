@@ -67,6 +67,7 @@ async fn seed(store: &dyn Store, name: &str) -> Seeded {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

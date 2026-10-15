@@ -154,6 +154,7 @@ async fn a_member_holds_one_verdict_and_can_take_it_back() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

@@ -119,6 +119,7 @@ async fn run_suite(store: &impl Store) {
             parent_thread_id: None,
             title: Some("trace".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

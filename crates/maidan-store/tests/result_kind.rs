@@ -82,6 +82,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("review".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("review thread");
@@ -104,6 +105,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("plan".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("plan thread");
@@ -123,6 +125,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("bare".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("bare thread");
@@ -138,6 +141,7 @@ async fn run_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("foreign review".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("foreign thread");

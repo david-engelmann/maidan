@@ -68,6 +68,7 @@ async fn an_absurd_limit_is_clamped_not_honoured() {
             parent_thread_id: None,
             title: Some("busy".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

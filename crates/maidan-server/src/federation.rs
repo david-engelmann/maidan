@@ -363,6 +363,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             thread_id,
             produced_by,
         },
+        // Non-federatable (this deployment's cancel) — never actually
+        // ingested/remapped, but the exhaustive match must classify it.
+        ThreadCancelled {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            reason,
+            cancelled_by,
+        } => ThreadCancelled {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reason,
+            cancelled_by,
+        },
         // Non-federatable local human-control state.
         ApprovalRequested {
             occurred_at,

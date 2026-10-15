@@ -130,6 +130,7 @@ async fn github_issue_comment_in_a_linked_issue_posts_a_maidan_message() {
             parent_thread_id: None,
             title: Some("issue-42".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -219,6 +220,7 @@ async fn github_pull_request_merged_emits_thread_landed() {
             parent_thread_id: None,
             title: Some("pr-7".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

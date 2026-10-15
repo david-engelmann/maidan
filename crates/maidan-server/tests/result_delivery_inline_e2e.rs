@@ -242,6 +242,7 @@ async fn harness(name: &str) -> Harness {
             parent_thread_id: None,
             title: Some(name.into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

@@ -273,6 +273,7 @@ async fn the_backfill_derives_each_rows_workspace_from_what_it_references(db: &D
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

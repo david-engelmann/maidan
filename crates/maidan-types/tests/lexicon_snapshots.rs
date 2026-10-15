@@ -80,6 +80,7 @@ fn thread() -> Thread {
         block: None,
         closed_without_review: false,
         notices: Vec::new(),
+        created_by: None,
     }
 }
 
@@ -186,6 +187,14 @@ fn sample_event(kind: EventKind) -> Event {
             channel_id,
             thread_id,
             produced_by: member_id,
+        },
+        EventKind::ThreadCancelled => Event::ThreadCancelled {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reason: "superseded".into(),
+            cancelled_by: member_id,
         },
         EventKind::ApprovalRequested => Event::ApprovalRequested {
             occurred_at,
@@ -511,6 +520,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadAssignmentChanged
             | EventKind::ThreadReady
             | EventKind::ThreadResultSet
+            | EventKind::ThreadCancelled
             | EventKind::ApprovalRequested
             | EventKind::ThreadBlocked
             | EventKind::BlockedResolved

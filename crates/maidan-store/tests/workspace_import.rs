@@ -89,6 +89,7 @@ fn sample() -> WorkspaceImport {
             block: None,
             closed_without_review: false,
             notices: Vec::new(),
+            created_by: None,
         }],
         messages: vec![
             Message {

@@ -135,6 +135,7 @@ async fn seed_room(store: &dyn Store) -> (WorkspaceId, maidan_types::MemberId, T
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

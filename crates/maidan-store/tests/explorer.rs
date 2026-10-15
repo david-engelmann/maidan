@@ -64,6 +64,7 @@ async fn run_explorer_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("th");
@@ -111,6 +112,7 @@ async fn run_explorer_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("oth");
@@ -337,6 +339,7 @@ async fn run_purged_bound_suite(store: &dyn Store) {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

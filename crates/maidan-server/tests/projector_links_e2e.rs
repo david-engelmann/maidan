@@ -60,6 +60,7 @@ async fn projector_links_link_list_and_unlink() {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

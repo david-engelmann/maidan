@@ -29,6 +29,7 @@
     "maidan.event.status_declared/1",
     "maidan.event.thread_assignment_changed/1",
     "maidan.event.thread_blocked/1",
+    "maidan.event.thread_cancelled/1",
     "maidan.event.thread_created/1",
     "maidan.event.thread_landed/1",
     "maidan.event.thread_notice/1",

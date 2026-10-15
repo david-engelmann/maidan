@@ -50,6 +50,7 @@ async fn room(store: &dyn Store, name: &str) -> Room {
             parent_thread_id: None,
             title: Some("work".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

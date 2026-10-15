@@ -2796,6 +2796,16 @@ macro_rules! store_delegations {
                 wip::count_live_claims(self.pool(), member_id).await
             }
 
+            async fn cancel_thread(
+                &self,
+                thread_id: ThreadId,
+                actor: MemberId,
+                reason: &str,
+                authority: CancelAuthority,
+            ) -> Result<CancelOutcome, StoreError> {
+                cancel::cancel(self.pool(), &self.keys, thread_id, actor, reason, authority).await
+            }
+
             async fn mark_thread_unclaimable(
                 &self,
                 thread_id: ThreadId,
