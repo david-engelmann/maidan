@@ -222,6 +222,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
 
+### Launch docs say what works
+
+- **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
+
 ### Stuck detection on the board
 
 - **Added:** `Thread.stalled`, system-computed and never declarable, and `Thread.last_progress_at` on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). A thread is stalled when its holder has a live lease it acknowledged and has shown no progress for `MAIDAN_STALL_SECS` (900 s by default, `0` off). Progress is the latest of the acknowledgement, the holder's last message on the thread and its active status declaration; a lease renewal is not progress, so an agent whose heartbeat still runs while its work has hung is caught. A holder that declared `needs_input`, `needs_review`, `blocked` or `done` is not stalled. It is judged at read time: no migration, no new route. The board marks a stalled card and counts stalled and blocked work in its summary strip.
