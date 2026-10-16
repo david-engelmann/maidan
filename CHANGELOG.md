@@ -13,9 +13,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** the retention sweep retries a batch of due shas each run through `reap_artifact_blob`, so each try takes the reap lease and rechecks for a row. A sha another workspace has uploaded since keeps its bytes and leaves the queue. A failed retry backs off from one minute, doubling up to six hours.
 - **Fixed:** a failed delete used to log `purge.orphaned_blob_not_deleted` and leave the bytes in the blob store for good. The log line stays; the bytes now go on a later sweep.
 
-### An S3 storage error names the server's error code
+### The integration job keeps room on the runner's disk for MinIO
 
-- **Fixed:** every S3 call in `maidan-artifacts` (put, get, head, delete, bucket creation and the multipart calls) reported a failure as the SDK's bare `service error`, without the S3 error code or the server's message. A red CI run had nothing to go on. The error now carries the SDK's whole source chain, for example `put_object: service error: unhandled error (XMinioStorageFull)`.
+- **Fixed:** the required `integration (testcontainers)` check failed on main and on open PRs, intermittently, in `maidan-artifacts`' two MinIO tests. MinIO answered `XMinioStorageFull` ("Storage backend has reached its minimum free drive threshold"): the workspace's test build had grown to 83G and left 871M of the runner's 145G disk. The job now frees the runner's unused SDKs and Docker images first, as the coverage job does (about 20G). After building, it fails with a plain error if under 8G is free, so a full disk can't surface again as a storage error inside one test.
+- **Fixed:** every S3 call in `maidan-artifacts` (put, get, head, delete, bucket creation and the multipart calls) reported a failure as the SDK's bare `service error`, without the S3 error code or the server's message, so the red runs above had nothing to go on. The error now carries the SDK's whole source chain, for example `put_object: service error: unhandled error (XMinioStorageFull): ...`.
 
 ### Every deploy path runs v413.0.0, and the ARM64 page runs it with auth on
 

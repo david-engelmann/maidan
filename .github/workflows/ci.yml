@@ -415,6 +415,16 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The workspace's test binaries reach about 83G here, which left 871M of
+      # the runner's disk. MinIO refuses writes below its free-drive floor, so
+      # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
+      # coverage job, which frees this space first, passed them.
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af --volumes >/dev/null
+          df -h /
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -423,17 +433,25 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
+      - name: build integration tests
+        if: needs.changes.outputs.code == 'true'
+        run: cargo nextest run --workspace --tests --profile ci --no-run
+      # A full disk shows up only as a storage error deep in one test, so
+      # name it here, before the containers start writing.
+      - name: disk left for the test containers
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          df -h /
+          du -sh target
+          avail_kib=$(df --output=avail -k / | tail -1)
+          floor_gib=8
+          if [ "$avail_kib" -lt $((floor_gib * 1024 * 1024)) ]; then
+            echo "::error::under ${floor_gib}G free after the test build; MinIO and Postgres need room to write"
+            exit 1
+          fi
       - name: integration tests
         if: needs.changes.outputs.code == 'true'
         run: cargo nextest run --workspace --tests --profile ci
-      # The S3 tests write through MinIO to this disk, after the workspace
-      # build has filled most of it; the free space left is the first thing to
-      # read when they fail.
-      - name: disk after tests
-        if: ${{ !cancelled() }}
-        run: |
-          df -h /
-          du -sh target 2>/dev/null || true
       - name: doc contract tests (docs-only change)
         # The tests that read docs/, book/ or Markdown; nothing else can be
         # affected by a docs-only change.
