@@ -108,6 +108,7 @@ mod tests {
             notices: Vec::new(),
             last_progress_at: Some(started),
             stalled: false,
+            human_wait: None,
         }
     }
 

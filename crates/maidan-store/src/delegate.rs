@@ -2754,6 +2754,17 @@ macro_rules! store_delegations {
                 threads::report_unacknowledged_claims(self.pool(), now, claimed_before, limit).await
             }
 
+            async fn return_human_timeouts(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                declared_before: chrono::DateTime<chrono::Utc>,
+                policy: &str,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                threads::return_human_timeouts(self.pool(), now, declared_before, policy, limit)
+                    .await
+            }
+
             async fn renew_claim(
                 &self,
                 thread_id: ThreadId,
