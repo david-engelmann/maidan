@@ -177,6 +177,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `footprint` on `POST /channels/{cid}/threads` and the MCP `create_thread` tool. The footprint commits with the thread, so the claim queue applies it from the first claim, and a producer declares it under the `workspace:write` that creating the thread already needs. A separate `PUT /threads/{id}/footprint` needed `thread:transition`, which a producer should not hold. An invalid footprint is a `400` and creates nothing.
 
+### Reaction buttons say what they do
+
+- **Fixed:** a reaction button on a message was titled only "React", so a screen reader read out a bare emoji name without the action. Each quick-reaction button now says "React with thumbs up" (or heart, check mark, party popper, eyes). Each chip says whether it adds or removes the reaction and how many there are so far, and marks whether it is yours with `aria-pressed`. From the 2026-10-03 UI audit (P2, keyboard and accessibility).
+
 ### rustls advisories of 2026-10
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.

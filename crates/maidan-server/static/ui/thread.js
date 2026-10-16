@@ -4,7 +4,7 @@ import { artifactCard, artifactShasFromMetadata } from "./artifacts.js";
 import { selectedThreadId } from "./board.js";
 import { clearLoading, renderState, responseError, setLoading, showError, unreachable } from "./feedback.js";
 import { authorId, avatarEl, personEl } from "./people.js";
-import { QUICK_REACTIONS, THREAD_CONTENT_KINDS } from "./state.js";
+import { QUICK_REACTIONS, REACTION_NAMES, THREAD_CONTENT_KINDS } from "./state.js";
 import { loadMessageEdits } from "./tools.js";
 
 
@@ -209,6 +209,8 @@ import { loadMessageEdits } from "./tools.js";
           chip.type = "button";
           chip.className = "reaction-chip" + (mine ? " mine" : "");
           chip.textContent = `${emoji} ${count}`;
+          chip.setAttribute("aria-pressed", mine ? "true" : "false");
+          chip.setAttribute("aria-label", reactionChipLabel(emoji, count, mine));
           chip.title = mine ? "Remove your reaction" : "React";
           chip.onclick = (ev) => {
             ev.stopPropagation();
@@ -222,6 +224,7 @@ import { loadMessageEdits } from "./tools.js";
           add.type = "button";
           add.className = "reaction-add";
           add.textContent = emoji;
+          add.setAttribute("aria-label", `React with ${reactionName(emoji)}`);
           add.title = "React";
           add.onclick = (ev) => {
             ev.stopPropagation();
@@ -231,6 +234,18 @@ import { loadMessageEdits } from "./tools.js";
         });
       }
 
+
+      /** @param {string} emoji */
+      function reactionName(emoji) {
+        return REACTION_NAMES[emoji] || emoji;
+      }
+
+      /** @param {string} emoji @param {number} count @param {boolean} mine */
+      function reactionChipLabel(emoji, count, mine) {
+        const name = reactionName(emoji);
+        const tally = count === 1 ? "1 so far" : `${count} so far`;
+        return mine ? `Remove your ${name} reaction, ${tally}` : `Add a ${name} reaction, ${tally}`;
+      }
 
       async function toggleReaction(messageId, emoji, mine, el) {
         if (!requireAuthForWrite()) return;
