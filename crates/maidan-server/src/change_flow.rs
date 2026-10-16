@@ -19,6 +19,16 @@
 //! branch head is already that commit (on top of `base_sha`) reuses it, and the
 //! pull request is looked up before one is opened, so a retry makes neither a
 //! second commit nor a second pull request.
+//!
+//! **One force write: the squash-rebase round.** A result with
+//! `"rebase": true` carries the whole branch's diff against the base branch's
+//! current head. It is rebuilt as one commit on that head and the branch is
+//! moved there with `force: true`, the flow's only non-fast-forward write. It
+//! happens only when the branch is an agent branch with an open pull request
+//! outside the merge queue, `base_sha` is the base's head right now, and the
+//! branch head is still the last commit this flow delivered to that pull
+//! request, re-read immediately before the move. The move itself goes
+//! through [`ForceMovePass`], which only this module's guard can mint.
 
 use maidan_types::{ChangeResult, ThreadId};
 use sha2::{Digest, Sha256};
@@ -58,6 +68,17 @@ pub struct ChangeRequest<'a> {
     /// The repository's merge-queue label (`MAIDAN_MERGE_QUEUE_LABELS`), if
     /// it has one.
     pub merge_queue_label: Option<&'a str>,
+    /// For a squash-rebase round: the commit of the newest round this flow
+    /// recorded for the branch's open pull request in this workspace. `None`
+    /// when it delivered nothing there, which refuses the rebase.
+    pub delivered_head: Option<DeliveredHead>,
+}
+
+/// The last commit the change flow delivered to a pull request, as recorded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeliveredHead {
+    pub pull_number: i64,
+    pub commit_sha: String,
 }
 
 impl ChangeRequest<'_> {
@@ -136,12 +157,18 @@ fn clip_at_word(text: &str, max: usize) -> String {
     format!("{kept}…")
 }
 
-/// The trailer that names this thread's result in its commit.
-pub fn change_trailer(thread_id: ThreadId, base_sha: &str, diff: &str) -> String {
+/// The trailer that names this thread's result in its commit. A
+/// squash-rebase round's digest also covers the flag, so a rebase never
+/// mistakes a normal round's commit with the same base and diff for its own
+/// and reports a rebase that never happened.
+pub fn change_trailer(thread_id: ThreadId, base_sha: &str, diff: &str, rebase: bool) -> String {
     let mut hasher = Sha256::new();
     hasher.update(base_sha.as_bytes());
     hasher.update([0u8]);
     hasher.update(diff.as_bytes());
+    if rebase {
+        hasher.update(b"\0rebase");
+    }
     let digest = hex::encode(hasher.finalize());
     format!("Maidan-Change: {}/{}", thread_id.0, &digest[..16])
 }
@@ -191,7 +218,7 @@ pub async fn deliver_change(
         Ok(patches) => patches,
         Err(err) => return refused(format!("the diff does not apply: {err}")),
     };
-    let trailer = change_trailer(req.thread_id, base_sha, diff);
+    let trailer = change_trailer(req.thread_id, base_sha, diff, change.rebase);
 
     // An open pull request for the branch is checked before anything is
     // written: one into another base (`prod`, say) refuses the whole change.
@@ -213,79 +240,14 @@ pub async fn deliver_change(
             ));
         }
     }
-    let head = git.branch_head(req.repo, req.branch).await?;
-    let commit_sha = match head {
-        Some(head) if head != base_sha => {
-            // A retry of this very result finds its own commit on top of
-            // `base_sha`; anything else means the branch moved on.
-            let commit = git.commit(req.repo, &head).await?;
-            if commit.parents != [base_sha] || !commit.message.contains(&trailer) {
-                return refused(format!(
-                    "branch `{}` is at {head}, not the result's base_sha {base_sha}",
-                    req.branch
-                ));
-            }
-            head
-        }
-        head => {
-            // Read and apply before writing anything, so a diff that does not
-            // apply leaves no branch behind.
-            let mut changes = Vec::new();
-            for patch in &patches {
-                let old = match &patch.old_path {
-                    Some(path) => git.file_at(req.repo, path, base_sha).await?,
-                    None => None,
-                };
-                match patch.apply(old.as_deref()) {
-                    Ok(more) => changes.extend(more),
-                    Err(err) => return refused(format!("the diff does not apply: {err}")),
-                }
-            }
-            if head.is_none() {
-                match git.create_branch(req.repo, req.branch, base_sha).await {
-                    Ok(()) => {}
-                    // Either the branch appeared between the read and the
-                    // write, or GitHub does not know `base_sha`.
-                    Err(err) if err.is_unprocessable() => {
-                        match git.branch_head(req.repo, req.branch).await? {
-                            Some(now) if now == base_sha => {}
-                            Some(now) => {
-                                return refused(format!(
-                                    "branch `{}` is at {now}, not the result's base_sha {base_sha}",
-                                    req.branch
-                                ))
-                            }
-                            None => {
-                                return refused(format!(
-                                    "GitHub refused to create branch `{}` at {base_sha}; is that commit in {}?",
-                                    req.branch, req.repo
-                                ))
-                            }
-                        }
-                    }
-                    Err(err) => return Err(err),
-                }
-            }
-            let base_commit = git.commit(req.repo, base_sha).await?;
-            let entries = tree_entries(git, req.repo, &changes).await?;
-            let tree = git
-                .create_tree(req.repo, &base_commit.tree_sha, &entries)
-                .await?;
-            let message = commit_message(&req.title(), change, &trailer);
-            let commit = git
-                .create_commit(req.repo, &message, &tree, &[base_sha.to_string()])
-                .await?;
-            match git.update_branch(req.repo, req.branch, &commit).await {
-                Ok(()) => commit,
-                Err(err) if err.is_unprocessable() => {
-                    return refused(format!(
-                        "branch `{}` moved while the commit was being made",
-                        req.branch
-                    ))
-                }
-                Err(err) => return Err(err),
-            }
-        }
+    let commit_sha = if change.rebase {
+        rebase_commit(git, req, base_sha, &patches, &trailer, existing.as_ref()).await?
+    } else {
+        fast_forward_commit(git, req, base_sha, &patches, &trailer).await?
+    };
+    let commit_sha = match commit_sha {
+        Ok(commit_sha) => commit_sha,
+        Err(reason) => return refused(reason),
     };
 
     let opened_now = existing.is_none();
@@ -341,6 +303,329 @@ pub async fn deliver_change(
     Ok(ChangeOutcome::Committed { commit_sha, pull })
 }
 
+/// What building a round's commit came to: `Ok` is the branch's new head,
+/// `Err` a final refusal with nothing written to the branch.
+type Built = Result<String, String>;
+
+/// A normal round: commit the diff on `base_sha` and fast-forward the branch
+/// to it, creating the branch when it does not exist yet.
+async fn fast_forward_commit(
+    git: &dyn GithubGit,
+    req: &ChangeRequest<'_>,
+    base_sha: &str,
+    patches: &[change_patch::FilePatch],
+    trailer: &str,
+) -> Result<Built, GithubError> {
+    let head = git.branch_head(req.repo, req.branch).await?;
+    if let Some(head) = head.as_deref().filter(|head| *head != base_sha) {
+        // A retry of this very result finds its own commit on top of
+        // `base_sha`; anything else means the branch moved on.
+        let commit = git.commit(req.repo, head).await?;
+        if commit.parents != [base_sha] || !commit.message.contains(trailer) {
+            return Ok(Err(format!(
+                "branch `{}` is at {head}, not the result's base_sha {base_sha}",
+                req.branch
+            )));
+        }
+        return Ok(Ok(head.to_string()));
+    }
+    // Read and apply before writing anything, so a diff that does not apply
+    // leaves no branch behind.
+    let changes = match apply_at(git, req.repo, base_sha, patches).await? {
+        Ok(changes) => changes,
+        Err(reason) => return Ok(Err(reason)),
+    };
+    if head.is_none() {
+        match git.create_branch(req.repo, req.branch, base_sha).await {
+            Ok(()) => {}
+            // Either the branch appeared between the read and the write, or
+            // GitHub does not know `base_sha`.
+            Err(err) if err.is_unprocessable() => {
+                match git.branch_head(req.repo, req.branch).await? {
+                    Some(now) if now == base_sha => {}
+                    Some(now) => {
+                        return Ok(Err(format!(
+                            "branch `{}` is at {now}, not the result's base_sha {base_sha}",
+                            req.branch
+                        )))
+                    }
+                    None => {
+                        return Ok(Err(format!(
+                        "GitHub refused to create branch `{}` at {base_sha}; is that commit in {}?",
+                        req.branch, req.repo
+                    )))
+                    }
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    let commit = commit_on(git, req, base_sha, &changes, trailer).await?;
+    match git.update_branch(req.repo, req.branch, &commit).await {
+        Ok(()) => Ok(Ok(commit)),
+        Err(err) if err.is_unprocessable() => Ok(Err(format!(
+            "branch `{}` moved while the commit was being made",
+            req.branch
+        ))),
+        Err(err) => Err(err),
+    }
+}
+
+/// A squash-rebase round: rebuild the whole branch as one commit on the base
+/// branch's current head and force-move the branch there. Every refusal
+/// comes before any write to the branch.
+async fn rebase_commit(
+    git: &dyn GithubGit,
+    req: &ChangeRequest<'_>,
+    base_sha: &str,
+    patches: &[change_patch::FilePatch],
+    trailer: &str,
+    pull: Option<&GithubPull>,
+) -> Result<Built, GithubError> {
+    // A rebase rewrites a branch people are reviewing; with no pull request
+    // there is nothing it is keeping current, and no delivered head to
+    // vouch for the branch.
+    let Some(pull) = pull else {
+        return Ok(Err(format!(
+            "a rebase round needs the open pull request for `{}`, and none is open",
+            req.branch
+        )));
+    };
+    let Some(head) = git.branch_head(req.repo, req.branch).await? else {
+        return Ok(Err(format!(
+            "branch `{}` does not exist, so there is nothing to rebase",
+            req.branch
+        )));
+    };
+    // A retry of this very rebase finds its own commit on `base_sha` with
+    // this result's trailer, and reuses it whatever the base has done since.
+    let commit = git.commit(req.repo, &head).await?;
+    if commit.parents == [base_sha] && commit.message.contains(trailer) {
+        return Ok(Ok(head));
+    }
+    match req
+        .delivered_head
+        .as_ref()
+        .filter(|d| d.pull_number == pull.number)
+    {
+        Some(delivered) if delivered.commit_sha.eq_ignore_ascii_case(&head) => {}
+        Some(delivered) => {
+            return Ok(Err(format!(
+                "branch `{}` is at {head}, but the last commit Maidan delivered to #{} is {}; someone else pushed, so it is not rebased",
+                req.branch, pull.number, delivered.commit_sha
+            )))
+        }
+        None => {
+            return Ok(Err(format!(
+                "branch `{}` is at {head}, and Maidan has delivered no commit to #{} in this workspace, so it is not rebased",
+                req.branch, pull.number
+            )))
+        }
+    }
+    // A stale `base_sha` would move the branch backwards past work that has
+    // landed on the base since.
+    let base_head = git.branch_head(req.repo, req.base).await?;
+    if let Err(reason) = check_base_current(req.repo, req.base, base_sha, base_head.as_deref()) {
+        return Ok(Err(reason));
+    }
+    let changes = match apply_at(git, req.repo, base_sha, patches).await? {
+        Ok(changes) => changes,
+        Err(reason) => return Ok(Err(reason)),
+    };
+    let commit = commit_on(git, req, base_sha, &changes, trailer).await?;
+    match force::move_branch(git, req.repo, req.branch, &head, &commit).await? {
+        Ok(()) => Ok(Ok(commit)),
+        Err(reason) => Ok(Err(reason)),
+    }
+}
+
+/// Whether `base_sha` is the base branch's head as just read. SHAs compare
+/// case-insensitively, as every other SHA comparison in this flow does: a
+/// producer may send the hex in upper case, and the same commit must not read
+/// as a stale base.
+fn check_base_current(
+    repo: &str,
+    base: &str,
+    base_sha: &str,
+    base_head: Option<&str>,
+) -> Result<(), String> {
+    match base_head {
+        Some(head) if head.eq_ignore_ascii_case(base_sha) => Ok(()),
+        Some(head) => Err(format!(
+            "the rebase's base_sha {base_sha} is not the head of `{base}`, which is at {head}; rebase onto the current base"
+        )),
+        None => Err(format!("base branch `{base}` does not exist in {repo}")),
+    }
+}
+
+/// The tree changes `patches` make to the files at `base_sha`, or the reason
+/// they do not apply.
+async fn apply_at(
+    git: &dyn GithubGit,
+    repo: &str,
+    base_sha: &str,
+    patches: &[change_patch::FilePatch],
+) -> Result<Result<Vec<TreeChange>, String>, GithubError> {
+    let mut changes = Vec::new();
+    for patch in patches {
+        let old = match &patch.old_path {
+            Some(path) => git.file_at(repo, path, base_sha).await?,
+            None => None,
+        };
+        match patch.apply(old.as_deref()) {
+            Ok(more) => changes.extend(more),
+            Err(err) => return Ok(Err(format!("the diff does not apply: {err}"))),
+        }
+    }
+    Ok(Ok(changes))
+}
+
+/// Write `changes` as one commit whose only parent is `base_sha`.
+async fn commit_on(
+    git: &dyn GithubGit,
+    req: &ChangeRequest<'_>,
+    base_sha: &str,
+    changes: &[TreeChange],
+    trailer: &str,
+) -> Result<String, GithubError> {
+    let base_commit = git.commit(req.repo, base_sha).await?;
+    let entries = tree_entries(git, req.repo, changes).await?;
+    let tree = git
+        .create_tree(req.repo, &base_commit.tree_sha, &entries)
+        .await?;
+    let message = commit_message(&req.title(), req.change, trailer);
+    git.create_commit(req.repo, &message, &tree, &[base_sha.to_string()])
+        .await
+}
+
+pub use force::ForceMovePass;
+
+/// The force-move guard, alone in its own module so that nothing else, not
+/// even the rest of the change flow, can construct a [`ForceMovePass`].
+mod force {
+    use crate::github::{GithubError, GithubGit};
+
+    /// Leave to force-move one agent branch from one commit to another, once.
+    /// Its fields are private to this module and it is neither `Clone` nor
+    /// `Default`, so [`GithubGit::force_move_branch`] can only ever be handed
+    /// a pass that [`move_branch`] minted after its checks.
+    #[derive(Debug)]
+    pub struct ForceMovePass {
+        branch: String,
+        from: String,
+        to: String,
+    }
+
+    impl ForceMovePass {
+        /// The agent branch to move.
+        pub fn branch(&self) -> &str {
+            &self.branch
+        }
+
+        /// The head the branch had when the pass was minted.
+        pub fn from(&self) -> &str {
+            &self.from
+        }
+
+        /// The commit the branch moves to.
+        pub fn to(&self) -> &str {
+            &self.to
+        }
+    }
+
+    /// The pass, if `branch` is an agent branch whose head, read just now,
+    /// is still `expected`.
+    pub(super) fn authorize(
+        branch: &str,
+        expected: &str,
+        observed: Option<&str>,
+        to: &str,
+    ) -> Result<ForceMovePass, String> {
+        if !maidan_types::is_change_branch(branch) {
+            return Err(format!(
+                "branch `{branch}` is not an agent branch, and only agent branches are ever force-moved"
+            ));
+        }
+        match observed {
+            Some(head) if head.eq_ignore_ascii_case(expected) => Ok(ForceMovePass {
+                branch: branch.to_string(),
+                from: head.to_string(),
+                to: to.to_string(),
+            }),
+            Some(head) => Err(format!(
+                "branch `{branch}` moved to {head} while the rebase commit was being made (expected {expected}); nothing was forced"
+            )),
+            None => Err(format!(
+                "branch `{branch}` was deleted while the rebase commit was being made; nothing was forced"
+            )),
+        }
+    }
+
+    /// Re-read the head immediately before the move, then force it.
+    ///
+    /// **This is not atomic.** GitHub's REST refs API has no compare-and-swap
+    /// (`PATCH .../git/refs` takes no expected old value), so a push that
+    /// lands between this read and the `PATCH` is overwritten. The window is
+    /// one round trip. That is acceptable because the branch is an agent
+    /// branch only Maidan delivers to, the pull request is out of the merge
+    /// queue, and an overwritten commit stays reachable on GitHub and in the
+    /// pusher's checkout. A later round then refuses, since the head no longer
+    /// matches what was delivered. Don't rely on this guard as a lock.
+    pub(super) async fn move_branch(
+        git: &dyn GithubGit,
+        repo: &str,
+        branch: &str,
+        expected: &str,
+        to: &str,
+    ) -> Result<Result<(), String>, GithubError> {
+        let observed = git.branch_head(repo, branch).await?;
+        match authorize(branch, expected, observed.as_deref(), to) {
+            Ok(pass) => git.force_move_branch(repo, pass).await.map(Ok),
+            Err(reason) => Ok(Err(reason)),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        const A: &str = "1111111111111111111111111111111111111111";
+        const B: &str = "2222222222222222222222222222222222222222";
+
+        #[test]
+        fn a_branch_without_the_agent_shape_never_gets_a_pass() {
+            for branch in [
+                "main",
+                "prod",
+                "dev",
+                "feature/agent-",
+                "feature/x",
+                "Feature/agent-x",
+                "feature/agent-x/../main",
+            ] {
+                let refused = authorize(branch, A, Some(A), B);
+                assert!(refused.is_err(), "{branch} was given a pass");
+            }
+        }
+
+        #[test]
+        fn a_head_that_moved_or_vanished_since_the_check_gets_no_pass() {
+            let moved = authorize("feature/agent-x", A, Some(B), B).unwrap_err();
+            assert!(moved.contains(B) && moved.contains(A), "{moved}");
+            assert!(authorize("feature/agent-x", A, None, B).is_err());
+        }
+
+        #[test]
+        fn an_agent_branch_still_at_the_delivered_head_gets_a_pass_for_that_move() {
+            let pass = authorize("feature/agent-x", A, Some(A), B).unwrap();
+            assert_eq!(
+                (pass.branch(), pass.from(), pass.to()),
+                ("feature/agent-x", A, B)
+            );
+        }
+    }
+}
+
 fn commit_message(title: &str, change: &ChangeResult, trailer: &str) -> String {
     match change.summary.as_deref() {
         Some(summary) => format!("{title}\n\n{summary}\n\n{trailer}\n"),
@@ -381,6 +666,7 @@ mod tests {
             change,
             opening_message: opening,
             merge_queue_label: None,
+            delivered_head: None,
         }
     }
 
@@ -394,7 +680,20 @@ mod tests {
             summary: summary.map(str::to_string),
             error_detail: None,
             current_state: None,
+            rebase: false,
         }
+    }
+
+    #[test]
+    fn a_base_sha_in_another_case_is_still_the_current_base() {
+        let lower = "abcdef0123456789abcdef0123456789abcdef01";
+        let upper = lower.to_ascii_uppercase();
+        assert!(check_base_current("o/r", "dev", &upper, Some(lower)).is_ok());
+        assert!(check_base_current("o/r", "dev", lower, Some(&upper)).is_ok());
+        let other = "1111111111111111111111111111111111111111";
+        let stale = check_base_current("o/r", "dev", lower, Some(other)).unwrap_err();
+        assert!(stale.contains(lower) && stale.contains(other), "{stale}");
+        assert!(check_base_current("o/r", "dev", lower, None).is_err());
     }
 
     #[test]

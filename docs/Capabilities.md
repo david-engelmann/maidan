@@ -85,6 +85,7 @@ are the cluster records; the table first lists what landed outside a cluster.
 | **Verification depth:** `claimer_crash` (#1034), `claim_state_machine` (#1039), `schema_parity` (#1052), a real SMTP server (#1038), claim only open threads (#1046); nextest profiles and per-crate coverage floors (#1065); the two quarantined races fixed and the MinIO tests run for real (#1068); container tests skip only without Docker (#1072). | `crates/maidan-store/tests/`, `.config/nextest.toml`, `.config/coverage-floors.toml` |
 | **A2A lists page all the way through (#1076):** `ListTasks` pages and counts every pending approval gate, and push-config lists honour `pageSize`/`pageToken`. | `crates/maidan-a2a/`, `crates/maidan-store/` |
 | **Blob reaps under a lease (#1077):** deleting an orphaned artifact's bytes no longer holds a database transaction; only an upload of the same bytes waits. | `crates/maidan-store/src/*/artifacts.rs` |
+| **Failed blob reaps retry (0181):** bytes an orphaning delete could not remove are queued by sha with the workspace that orphaned them, and the retention sweep retries them under the same lease; bytes another workspace holds again stay and leave the queue. | `crates/maidan-store/src/blob_reap_retry.rs`, `crates/maidan-server/src/retention.rs` |
 | **Docs and review:** CodeRabbit in the PR flow (#1067, #1069); roadmap sync (#1070); a README that shows a real handoff (#1071). | `.coderabbit.yaml`, `README.md` |
 
 ### Cluster 418 — the adoption surface

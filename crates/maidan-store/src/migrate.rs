@@ -264,6 +264,10 @@ const POSTGRES_UP_V177: &str =
 const POSTGRES_UP_V178: &str =
     include_str!("../../../migrations/postgres/0178_waitlist_and_signup.sql");
 const POSTGRES_UP_V180: &str = include_str!("../../../migrations/postgres/0180_thread_cancel.sql");
+const POSTGRES_UP_V181: &str =
+    include_str!("../../../migrations/postgres/0181_artifact_reap_retries.sql");
+const POSTGRES_UP_V182: &str =
+    include_str!("../../../migrations/postgres/0182_change_round_rebase.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -471,6 +475,10 @@ const SQLITE_UP_V177: &str =
 const SQLITE_UP_V178: &str =
     include_str!("../../../migrations/sqlite/0178_waitlist_and_signup.sql");
 const SQLITE_UP_V180: &str = include_str!("../../../migrations/sqlite/0180_thread_cancel.sql");
+const SQLITE_UP_V181: &str =
+    include_str!("../../../migrations/sqlite/0181_artifact_reap_retries.sql");
+const SQLITE_UP_V182: &str =
+    include_str!("../../../migrations/sqlite/0182_change_round_rebase.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -702,6 +710,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 177, POSTGRES_UP_V177).await?;
     apply_postgres(pool, &applied, 178, POSTGRES_UP_V178).await?;
     apply_postgres(pool, &applied, 180, POSTGRES_UP_V180).await?;
+    apply_postgres(pool, &applied, 181, POSTGRES_UP_V181).await?;
+    apply_postgres(pool, &applied, 182, POSTGRES_UP_V182).await?;
     // The partitioned tables need their months ready before the first write,
     // or rows land in DEFAULT until the first retention sweep.
     crate::postgres::partitions::maintain(pool, chrono::Utc::now()).await?;
@@ -888,6 +898,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 177, SQLITE_UP_V177).await?;
     apply_sqlite(pool, &applied, 178, SQLITE_UP_V178).await?;
     apply_sqlite(pool, &applied, 180, SQLITE_UP_V180).await?;
+    apply_sqlite(pool, &applied, 181, SQLITE_UP_V181).await?;
+    apply_sqlite(pool, &applied, 182, SQLITE_UP_V182).await?;
     Ok(())
 }
 

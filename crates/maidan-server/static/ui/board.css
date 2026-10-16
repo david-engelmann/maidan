@@ -565,6 +565,10 @@
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
       .tabs button[aria-selected="true"] { background: #e6efe8; color: var(--accent); }
+      .tabs .tab-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; padding-right: 0.75rem; border-right: 1px solid var(--border); }
+      .tabs .tab-group:last-child { border-right: none; padding-right: 0; }
+      .tabs .tab-group-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+      .tabs .tab-group.dev button:not([aria-selected="true"]) { color: var(--muted); }
       /* Phones: one column. Channels become a short scrolling strip above the
          board, lanes stack, and a Needs you row puts its buttons under the text. */
       @media (max-width: 720px) {
@@ -646,3 +650,13 @@
 .swarm-list { list-style: none; margin: 0.25rem 0 0.75rem; padding: 0; }
 .swarm-row { padding: 0.35rem 0; border-bottom: 1px solid var(--line, #ddd); }
 .swarm-items { margin: 0.15rem 0 0.15rem 1rem; padding: 0; }
+
+/* Touch: a fingertip needs a target of about 44px (WCAG 2.5.5), and a
+   keyboard-shortcut hint means nothing on a device with no keyboard. Keyed on
+   the primary pointer, so a touch laptop driven by its trackpad is unchanged. */
+@media (pointer: coarse) {
+  button, select, summary, #channel-list li, input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; }
+  button { min-width: 44px; }
+  input[type="checkbox"], input[type="radio"] { width: 1.5rem; height: 1.5rem; }
+  .kbd.mod-k, .palette-foot { display: none; }
+}

@@ -1061,9 +1061,14 @@ not by GitHub settings, and none of them is configurable:
 - A pull request is opened only into the base the allowlist names for that
   repository. An open pull request for the branch into any other base refuses
   the change before anything is written.
-- Branch moves are fast-forwards (`force: false`). Maidan has no code that
-  merges, marks a pull request ready, requests a review, deletes a branch or
-  changes repository settings or protection.
+- Branch moves are fast-forwards (`force: false`), with one exception: a
+  squash-rebase round moves an agent branch with `force: true`, only while its
+  head is still the last commit the change flow delivered to its open pull
+  request in that workspace, the pull request is not in the merge queue and
+  the new commit sits on the base branch's current head. The head is re-read
+  right before the move ([Result Delivery](Result%20Delivery.md)). Maidan has
+  no code that merges, marks a pull request ready, requests a review, deletes
+  a branch or changes repository settings or protection.
 
 A refused change is recorded as `skipped` with the reason on the delivery
 (`GET /threads/:id/deliveries`) and said in the Slack thread.

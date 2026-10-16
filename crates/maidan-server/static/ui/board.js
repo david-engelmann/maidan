@@ -288,8 +288,14 @@ import { loadMessages } from "./thread.js";
           : "Board";
         const before = boardRects();
         board.removeAttribute("aria-busy");
-        board.replaceChildren();
+        // A load redraws only what changed: the lanes stay, and a card whose
+        // markup is the same as last time keeps its node, so a board of
+        // thousands is not torn down for one moved card.
+        const lanes = boardLanes(board);
+        const onScreen = lanes ? cardsInLanes(lanes) : new Map();
+        if (!lanes) board.replaceChildren();
         if (!threads.length && selectedChannelId) {
+          board.replaceChildren();
           board.appendChild(emptyChannelHelp());
           const firstPaint = boardSeen.size === 0;
           boardSeen = new Map();
@@ -300,7 +306,13 @@ import { loadMessages } from "./thread.js";
           return;
         }
         const cols = {};
-        BOARD_COLUMNS.forEach((c) => {
+        const wanted = {};
+        BOARD_COLUMNS.forEach((c, i) => {
+          wanted[c.key] = [];
+          if (lanes) {
+            cols[c.key] = { el: lanes[i], count: laneCounts.get(lanes[i]), n: 0 };
+            return;
+          }
           const col = document.createElement("section");
           col.className = "board-col";
           col.dataset.column = c.key;
@@ -310,6 +322,7 @@ import { loadMessages } from "./thread.js";
           const count = document.createElement("span");
           h.append(label, " ", count);
           col.appendChild(h);
+          laneCounts.set(col, count);
           board.appendChild(col);
           cols[c.key] = { el: col, count, n: 0 };
         });
@@ -406,7 +419,7 @@ import { loadMessages } from "./thread.js";
             }
           };
           const col = cols[chrome.column];
-          col.el.appendChild(card);
+          wanted[chrome.column].push(sameCardOrNew(onScreen, card));
           col.n += 1;
         });
         const firstPaint = boardSeen.size === 0;
@@ -418,8 +431,9 @@ import { loadMessages } from "./thread.js";
             const empty = document.createElement("div");
             empty.className = "board-empty";
             empty.textContent = "—";
-            col.el.appendChild(empty);
+            wanted[c.key].push(empty);
           }
+          placeInLane(col.el, wanted[c.key]);
         });
         summary.replaceChildren();
         const facts = [
@@ -445,6 +459,62 @@ import { loadMessages } from "./thread.js";
         if (selectedThreadId && threadsById.has(selectedThreadId)) renderThreadHeader();
       }
 
+      // Each lane's count, so a kept lane is not searched for it.
+      const laneCounts = new WeakMap();
+
+      // The board's lanes when they are the ones renderBoard drew, in order;
+      // otherwise null and the board is drawn from scratch (first paint, after
+      // the empty-channel help, or after a loading state replaced them).
+      function boardLanes(board) {
+        const kids = Array.from(board.children);
+        if (kids.length !== BOARD_COLUMNS.length) return null;
+        const ok = kids.every((el, i) => el.dataset && el.dataset.column === BOARD_COLUMNS[i].key && laneCounts.has(el));
+        return ok ? kids : null;
+      }
+
+      function cardsInLanes(lanes) {
+        const cards = new Map();
+        for (const lane of lanes) {
+          for (const el of Array.from(lane.children)) {
+            if (el.dataset && el.dataset.id) cards.set(el.dataset.id, el);
+          }
+        }
+        return cards;
+      }
+
+      // The card already on screen when it would be drawn exactly the same,
+      // so the browser restyles nothing for it; otherwise the new one. Markup
+      // is the whole card, so a chip or state added to the card code later is
+      // compared without being listed here.
+      function sameCardOrNew(onScreen, card) {
+        const shown = onScreen.get(card.dataset.id);
+        return shown && shown.outerHTML === card.outerHTML ? shown : card;
+      }
+
+      function isLaneEmptyMark(el) {
+        return Boolean(el) && String(el.className).split(" ").includes("board-empty");
+      }
+
+      // Put a lane's cards in order after its heading, moving only nodes that
+      // are not already where they belong.
+      function placeInLane(lane, cards) {
+        // Walk siblings rather than index lane.children: a live collection
+        // re-counts after every insert, which is quadratic on a long lane.
+        let here = lane.firstElementChild ? lane.firstElementChild.nextElementSibling : null;
+        for (const card of cards) {
+          if (here === card || (isLaneEmptyMark(here) && isLaneEmptyMark(card))) {
+            here = here.nextElementSibling;
+            continue;
+          }
+          lane.insertBefore(card, here);
+        }
+        while (here) {
+          const next = here.nextElementSibling;
+          lane.removeChild(here);
+          here = next;
+        }
+      }
+
       let boardChannel = null;
 
       function boardRects() {
@@ -459,16 +529,22 @@ import { loadMessages } from "./thread.js";
 
       function glideCards(before) {
         if (reduceMotion.matches || !before.size) return;
-        document.querySelectorAll("#board .card").forEach((card) => {
-          const was = before.get(card.dataset.id);
-          if (!was) {
+        // Every rect is read before any animation starts: starting one between
+        // two reads forces a fresh layout for each card, which on a large board
+        // turned one moved card into seconds of work.
+        const placed = Array.from(document.querySelectorAll("#board .card")).map((card) => ({
+          card,
+          was: before.get(card.dataset.id),
+          now: before.has(card.dataset.id) ? card.getBoundingClientRect() : null,
+        }));
+        placed.forEach(({ card, was, now }) => {
+          if (!was || !now) {
             card.animate(
               [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "none" }],
               { duration: 320, easing: "ease-out" }
             );
             return;
           }
-          const now = card.getBoundingClientRect();
           const dx = was.left - now.left;
           const dy = was.top - now.top;
           if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
