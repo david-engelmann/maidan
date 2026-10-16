@@ -425,7 +425,7 @@ fn ui_js_wires_work_tab() {
         assert!(s.contains(f), "the Work tab must define {f}");
     }
     assert!(
-        s.contains("=== \"work\") loadWork()"),
+        s.contains("=== \"work\" && !firstWorkLoad) loadWork()"),
         "the tab switch must call loadWork() for the Work tab"
     );
     assert!(
@@ -5217,7 +5217,12 @@ fn ui_more_tools_tabs_are_grouped_with_developer_surfaces_last() {
         "the palette names each tool's group"
     );
     assert!(
-        s.contains("if (!toolsPanel.open || toolsPrimed) return;"),
-        "the first open loads the selected panel"
+        s.contains("if (!toolsPanel.open || toolsPrimed) return;")
+            && s.contains("firstWorkLoad = loadWork()"),
+        "the first open loads Work"
+    );
+    assert!(
+        s.contains(r#"btn.dataset.tab === "work" && !firstWorkLoad) loadWork();"#),
+        "a click during the first load starts no second one"
     );
 }
