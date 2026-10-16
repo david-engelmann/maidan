@@ -193,6 +193,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
 
+### A check keeps dead CSS out of the web UI
+
+- **Added:** the `ui_css_dead` test fails when a `board.css` selector names a class or id that neither `index.html` nor any `static/ui` module uses, so rules for removed markup go with it. A name the code builds from a literal prefix (`` `card-status-${status}` ``) counts as used. `board.css` has no dead names today. From the 2026-10-03 UI audit (P2, dead-CSS lint).
+
 ### The console shows the swarm at work
 
 - **Added:** a Swarm tab in the `/ui` console for one workspace. It lists the live claims with their holder, lease and footprint items, the threads the claim queue is holding back with their reasons, each slot's capacity and use, and the paused repositories, refreshing while it is open. An operator with `token:admin` can pause a repository from the panel and resume a paused one; everything else is a read over the existing footprint endpoints, and no route is new.
