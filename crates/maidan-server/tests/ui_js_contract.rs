@@ -189,6 +189,7 @@ const ALLOWED: &[&str] = &[
     "Object",
     "Promise",
     "Map",
+    "WeakMap",
     "Set",
     "Date",
     "Error",
@@ -2729,6 +2730,64 @@ fn ui_js_no_refusal_strip() {
     }
 }
 
+/// A load redraws only what changed. From the large-board render pass: a
+/// card that would be drawn the same keeps its node, a changed card is a new
+/// node in its new lane, and a card that left the board is gone. This runs the
+/// page's `renderBoard` three times. It fails if a load tears down cards that
+/// did not change, which is what made a board of thousands slow to update.
+#[test]
+fn ui_js_board_keeps_unchanged_cards_between_loads() {
+    let three = [
+        RefusedTask::new("t1", "File the notes", "open"),
+        RefusedTask::new("t2", "Ship the summary", "open"),
+        RefusedTask::new("t3", "Tidy the docs", "open"),
+    ];
+    let moved = [
+        RefusedTask::new("t1", "File the notes", "open"),
+        RefusedTask::new("t2", "Ship the summary", "in_review"),
+        RefusedTask::new("t3", "Tidy the docs", "open"),
+    ];
+    let steps = [
+        RefusalStep::render(&three),
+        RefusalStep::render(&three),
+        RefusalStep::render(&moved),
+        RefusalStep::render(&moved[..2]),
+    ];
+    let drawn = board_after_refusals(&steps);
+    let serial = |view: usize, id: &str| {
+        drawn[view]
+            .cards
+            .iter()
+            .find(|card| card.id == id)
+            .map(|card| (card.serial, card.lane.clone()))
+            .unwrap_or_else(|| panic!("step {view}: {id} is not on the board"))
+    };
+    for id in ["t1", "t2", "t3"] {
+        assert_eq!(
+            serial(0, id),
+            serial(1, id),
+            "{id}: the same data redrew its card"
+        );
+    }
+    assert_eq!(serial(1, "t1"), serial(2, "t1"), "t1 did not change");
+    assert_eq!(serial(1, "t3"), serial(2, "t3"), "t3 did not change");
+    let (before, _) = serial(1, "t2");
+    let (after, lane) = serial(2, "t2");
+    assert_ne!(before, after, "t2 changed state, so it is drawn again");
+    assert_eq!(lane, "review", "t2 moved to the review lane");
+    let order: Vec<&str> = drawn[2].cards.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(
+        order,
+        ["t1", "t3", "t2"],
+        "lanes in order, cards in lane order"
+    );
+    assert!(
+        drawn[3].cards.iter().all(|card| card.id != "t3"),
+        "a card that left the board is removed"
+    );
+    assert_eq!(serial(2, "t1"), serial(3, "t1"), "removing t3 kept t1");
+}
+
 #[derive(Clone)]
 struct RefusedTask {
     id: &'static str,
@@ -2788,6 +2847,8 @@ struct RefusalCard {
     heading: String,
     line: Option<String>,
     title: String,
+    serial: u64,
+    lane: String,
 }
 
 struct RefusalView {
@@ -2844,6 +2905,8 @@ fn board_after_refusals(steps: &[RefusalStep]) -> Vec<RefusalView> {
                     heading: card["heading"].as_str().expect("heading").to_string(),
                     line: card["line"].as_str().map(str::to_string),
                     title: card["title"].as_str().expect("title").to_string(),
+                    serial: card["serial"].as_u64().expect("serial"),
+                    lane: card["lane"].as_str().expect("lane").to_string(),
                 })
                 .collect(),
         })
@@ -2917,6 +2980,13 @@ function extractConst(name) {
   throw new Error("unclosed " + name);
 }
 const prelude = `
+let serials = 0;
+function detach(node) {
+  if (node && node.parent) {
+    node.parent.children = node.parent.children.filter((child) => child !== node);
+    node.parent = null;
+  }
+}
 function makeEl(tag) {
   const el = {
     tag: tag,
@@ -2930,25 +3000,60 @@ function makeEl(tag) {
     style: {},
     attrs: {},
     tabIndex: 0,
+    parent: null,
+    serial: ++serials,
   };
   el.classList = {
     add(name) { el.className = (el.className + " " + name).trim(); },
     remove() {},
     toggle() {},
   };
-  el.appendChild = (child) => { el.children.push(child); return child; };
+  el.appendChild = (child) => { detach(child); child.parent = el; el.children.push(child); return child; };
   el.append = (...kids) => {
     for (const kid of kids) {
       if (typeof kid === "string") {
         const text = makeEl("#text");
         text.textContent = kid;
-        el.children.push(text);
+        el.appendChild(text);
       } else {
-        el.children.push(kid);
+        el.appendChild(kid);
       }
     }
   };
-  el.replaceChildren = () => { el.children = []; };
+  el.insertBefore = (node, ref) => {
+    detach(node);
+    node.parent = el;
+    const at = ref ? el.children.indexOf(ref) : -1;
+    if (at < 0) el.children.push(node);
+    else el.children.splice(at, 0, node);
+    return node;
+  };
+  el.removeChild = (node) => { detach(node); return node; };
+  el.replaceChildren = (...kids) => {
+    for (const child of el.children) child.parent = null;
+    el.children = [];
+    el.append(...kids);
+  };
+  Object.defineProperty(el, "firstElementChild", {
+    get: () => el.children.find((child) => child.tag !== "#text") || null,
+  });
+  Object.defineProperty(el, "nextElementSibling", {
+    get: () => {
+      if (!el.parent) return null;
+      const kids = el.parent.children;
+      for (let i = kids.indexOf(el) + 1; i < kids.length; i++) {
+        if (kids[i].tag !== "#text") return kids[i];
+      }
+      return null;
+    },
+  });
+  // Stands in for the browser's serialization: everything a card shows.
+  Object.defineProperty(el, "outerHTML", {
+    get: () => JSON.stringify([
+      el.tag, el.className, el.title, el.textContent, el.attrs, el.dataset, el.tabIndex,
+      el.children.map((child) => child.outerHTML),
+    ]),
+  });
   el.setAttribute = (key, value) => {
     el.attrs[key] = String(value);
     if (key === "hidden") el.hidden = true;
@@ -3026,6 +3131,7 @@ function glideCards() {}
 function renderTeam() {}
 function emptyChannelHelp() { return document.createElement("div"); }
 function selectThread() {}
+const laneCounts = new WeakMap();
 `;
 const tail = `
 function snapshot() {
@@ -3042,6 +3148,8 @@ function snapshot() {
       heading: headingEl ? headingEl.textContent : "",
       line: lineEl ? lineEl.textContent : null,
       title: el.title || "",
+      serial: el.serial,
+      lane: el.parent && el.parent.dataset ? el.parent.dataset.column || "" : "",
     });
   });
   return {
@@ -3066,6 +3174,11 @@ const body = prelude
   + functionSource("paintRefusal") + "\n"
   + functionSource("rememberRefusal") + "\n"
   + functionSource("renderBoard") + "\n"
+  + functionSource("boardLanes") + "\n"
+  + functionSource("cardsInLanes") + "\n"
+  + functionSource("sameCardOrNew") + "\n"
+  + functionSource("isLaneEmptyMark") + "\n"
+  + functionSource("placeInLane") + "\n"
   + tail;
 let views;
 try {
@@ -3624,9 +3737,13 @@ function glideCards() {}
 function renderTeam() {}
 function renderThreadHeader() {}
 function openConnect() {}
+const laneCounts = new WeakMap();
+const columnsAt = js.indexOf("const BOARD_COLUMNS = ");
+if (columnsAt < 0) throw new Error("missing BOARD_COLUMNS");
+eval("var" + js.slice(columnsAt + "const".length, js.indexOf("];", columnsAt) + 2));
 let views;
 try {
-  eval(functionSource("emptyChannelHelp") + "\n" + functionSource("renderBoard"));
+  eval(functionSource("emptyChannelHelp") + "\n" + functionSource("renderBoard") + "\n" + functionSource("boardLanes"));
   const out = [];
   const marker = '<div id="board">';
   const at = html.indexOf(marker);
