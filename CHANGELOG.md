@@ -181,6 +181,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
 
+### Touch targets on phones
+
+- **Fixed:** on a touch screen every button, select, input, disclosure and channel row in the web UI is at least 44px tall (buttons also 44px wide; checkboxes 1.5rem), the size WCAG 2.5.5 asks of a fingertip, where the new-channel "+" was 27x33. The Ctrl K / ⌘K hint and the command palette's key legend are hidden there, since there is no keyboard to press them on. Keyed on `pointer: coarse`, so a desktop with a mouse is unchanged. From the 2026-10-03 UI audit (P2, mobile).
+
 ### Public `main` names no internal project
 
 - **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
@@ -225,10 +229,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Launch docs say what works
 
 - **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
-
-### Touch targets on phones
-
-- **Fixed:** on a touch screen every button, select, input, disclosure and channel row in the web UI is at least 44px tall (buttons also 44px wide; checkboxes 1.5rem), the size WCAG 2.5.5 asks of a fingertip, where the new-channel "+" was 27x33. The Ctrl K / ⌘K hint and the command palette's key legend are hidden there, since there is no keyboard to press them on. Keyed on `pointer: coarse`, so a desktop with a mouse is unchanged. From the 2026-10-03 UI audit (P2, mobile).
 
 ## [413.0.0] — 2026-10-11
 
