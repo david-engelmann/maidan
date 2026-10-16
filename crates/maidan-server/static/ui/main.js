@@ -18,8 +18,20 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       setInterval(refreshTeamSoon, 30000);
 
 
+      // A tab loads its panel when clicked. The panel More tools opens on is
+      // selected in the page, not clicked, so the first open loads it once;
+      // a tab opened through the palette is clicked and needs no second load.
+      let toolsPrimed = false;
+      const toolsPanel = /** @type {HTMLDetailsElement} */ (document.getElementById("tools"));
+      toolsPanel.addEventListener("toggle", () => {
+        if (!toolsPanel.open || toolsPrimed) return;
+        const selected = document.querySelector('.tabs button[aria-selected="true"]');
+        if (selected) selected.click();
+      });
+
       document.querySelectorAll(".tabs button").forEach((btn) => {
         btn.onclick = () => {
+          toolsPrimed = true;
           document.querySelectorAll(".tabs button").forEach((b) => {
             b.setAttribute("aria-selected", "false");
             b.tabIndex = -1;
