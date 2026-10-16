@@ -73,6 +73,19 @@ pub enum BlobReap {
     DeleteFailed(String),
 }
 
+/// Orphaned bytes queued for another delete
+/// ([`store::ArtifactMetaStore::queue_blob_reap`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingBlobReap {
+    pub sha256: String,
+    /// The workspace whose erase, purge, expiry or refused upload orphaned
+    /// the bytes. It may since have been purged.
+    pub workspace_id: maidan_types::WorkspaceId,
+    /// Retries that have failed so far.
+    pub attempts: i32,
+    pub last_error: String,
+}
+
 /// How long a reap's blob delete may run before the reap stops waiting for it.
 pub const BLOB_DELETE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -111,6 +124,7 @@ pub const REVIEW_LOWER_REFUSAL: &str =
     "lowering a review requirement needs the channel:admin capability";
 mod attestation;
 pub mod automation_deliveries;
+pub mod blob_reap_retry;
 mod change_notices;
 mod claim_next;
 pub mod content_keyring;
@@ -139,6 +153,7 @@ pub mod retention_policy;
 mod share_tickets;
 pub mod shred_residue;
 pub mod sqlite;
+mod stall;
 pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

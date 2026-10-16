@@ -209,6 +209,32 @@ pub async fn sweep_once(
 
     let expired = expire_media(store, artifacts, cfg.batch, now, cfg.media_days).await;
     record("media_artifacts", expired);
+
+    retry_orphaned_blobs(store, artifacts, cfg.batch).await;
+}
+
+/// Retry the deletes of orphaned bytes that failed before, one batch a sweep.
+/// Each try is a full reap, so bytes another workspace has uploaded since
+/// stay.
+async fn retry_orphaned_blobs(
+    store: &Arc<dyn Store>,
+    artifacts: &Arc<dyn ArtifactStore>,
+    batch: i64,
+) {
+    let tally = maidan_store::blob_reap_retry::retry_due(store.as_ref(), batch, |sha| {
+        crate::routes::blob_delete(artifacts, sha)
+    })
+    .await;
+    match tally {
+        Ok(tally) if tally == maidan_store::blob_reap_retry::RetryTally::default() => {}
+        Ok(tally) => tracing::info!(
+            deleted = tally.deleted,
+            kept = tally.referenced,
+            failed = tally.failed,
+            "retention: orphaned blobs retried"
+        ),
+        Err(err) => tracing::warn!(error = %err, "retention: retrying orphaned blobs failed"),
+    }
 }
 
 /// Expire media page by page until a page comes back short, reaping the
@@ -238,12 +264,15 @@ async fn expire_media(
                 break;
             }
         };
-        let orphaned: Vec<String> = page
-            .iter()
-            .filter(|erasure| erasure.last_reference)
-            .map(|erasure| erasure.sha256.clone())
-            .collect();
-        crate::routes::reap_orphaned_blobs(store.as_ref(), artifacts, &orphaned).await;
+        for erasure in page.iter().filter(|erasure| erasure.last_reference) {
+            crate::routes::reap_orphaned_blobs(
+                store.as_ref(),
+                artifacts,
+                erasure.workspace_id,
+                std::slice::from_ref(&erasure.sha256),
+            )
+            .await;
+        }
         total += page.len() as u64;
         if (page.len() as i64) < batch {
             break;

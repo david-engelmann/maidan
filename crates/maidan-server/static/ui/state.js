@@ -114,6 +114,10 @@
 
 
       const QUICK_REACTIONS = ["👍", "❤️", "✅", "🎉", "👀"];
+      // A screen reader reads a bare emoji by its Unicode name with no hint of
+      // what pressing it does, so each control names the reaction in words.
+      /** @type {Record<string, string>} */
+      const REACTION_NAMES = { "👍": "thumbs up", "❤️": "heart", "✅": "check mark", "🎉": "party popper", "👀": "eyes" };
 
       // The worker preset is the named set on the server (maidan.agent.worker):
       // claim, post, and transition. The browser token is never written into
@@ -136,4 +140,4 @@
 
       const LIVE_POLL_MS = 15000;
 
-export { ACTOR_KEYS, BOARD_COLUMNS, INLINE_IMAGE_TYPES, LIVE_MS, LIVE_POLL_MS, NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS, QUICK_REACTIONS, SUBJECT_KEYS, THREAD_BOARD_KINDS, THREAD_CONTENT_KINDS, WORKER_PRESET, artifactFetches, artifactImages, baseInput, channelKey, lastSeen, memberDirectory, onMac, reduceMotion, refusals, tokenKey, wsKey, wsResumeKey };
+export { ACTOR_KEYS, BOARD_COLUMNS, INLINE_IMAGE_TYPES, LIVE_MS, LIVE_POLL_MS, NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS, QUICK_REACTIONS, REACTION_NAMES, SUBJECT_KEYS, THREAD_BOARD_KINDS, THREAD_CONTENT_KINDS, WORKER_PRESET, artifactFetches, artifactImages, baseInput, channelKey, lastSeen, memberDirectory, onMac, reduceMotion, refusals, tokenKey, wsKey, wsResumeKey };

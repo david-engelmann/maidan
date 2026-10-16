@@ -503,6 +503,14 @@ async fn github_branch_result(
     } else {
         None
     };
+    // Only a squash-rebase needs it: the force move is allowed only while the
+    // branch head is still the last commit this flow delivered to the pull
+    // request, as recorded for this workspace.
+    let delivered_head = if change.rebase {
+        delivered_head(state, git, entry, repo, branch).await?
+    } else {
+        None
+    };
     let request = crate::change_flow::ChangeRequest {
         repo,
         branch,
@@ -511,6 +519,7 @@ async fn github_branch_result(
         change: &change,
         opening_message: opening.as_deref(),
         merge_queue_label: state.merge_queue_labels.label_for(repo),
+        delivered_head,
     };
     match crate::change_flow::deliver_change(git, &request).await {
         Ok(crate::change_flow::ChangeOutcome::Committed { commit_sha, pull }) => {
@@ -531,6 +540,39 @@ async fn github_branch_result(
             })
         }
     }
+}
+
+/// The newest round recorded for the branch's open pull request in this
+/// workspace, or `None` when no pull request is open or nothing was recorded.
+async fn delivered_head(
+    state: &AppState,
+    git: &dyn crate::github::GithubGit,
+    entry: &EgressOutbox,
+    repo: &str,
+    branch: &str,
+) -> Result<Option<crate::change_flow::DeliveredHead>, DeliveryFailure> {
+    let pull = git
+        .open_pull(repo, branch)
+        .await
+        .map_err(|err| DeliveryFailure {
+            message: err.to_string(),
+            misconfiguration: err.is_misconfiguration(),
+        })?;
+    let Some(pull) = pull else {
+        return Ok(None);
+    };
+    let head = state
+        .store
+        .latest_change_round_head(entry.workspace_id, repo, pull.number)
+        .await
+        .map_err(|err| DeliveryFailure {
+            message: err.to_string(),
+            misconfiguration: false,
+        })?;
+    Ok(head.map(|commit_sha| crate::change_flow::DeliveredHead {
+        pull_number: pull.number,
+        commit_sha,
+    }))
 }
 
 async fn github_result(
@@ -1232,10 +1274,15 @@ async fn record_change_round(
     let Some(base_sha) = request.change.base_sha.clone() else {
         return;
     };
-    let base_behind = git
-        .commits_behind(request.repo, &base_sha, request.base)
-        .await
-        .ok();
+    // A rebase round was refused unless `base_sha` was the base's head, so
+    // there is nothing to ask GitHub.
+    let base_behind = if request.change.rebase {
+        Some(0)
+    } else {
+        git.commits_behind(request.repo, &base_sha, request.base)
+            .await
+            .ok()
+    };
     let round = maidan_types::NewChangeRound {
         workspace_id: entry.workspace_id,
         thread_id: entry.thread_id,
@@ -1257,6 +1304,7 @@ async fn record_change_round(
             .map(maidan_types::diff_paths)
             .unwrap_or_default(),
         base_branch: Some(request.base.to_string()),
+        rebase: request.change.rebase,
     };
     if let Err(err) = state.store.record_change_round(round).await {
         tracing::warn!(repo = request.repo, pull_number, error = %err, "change flow: round not recorded");

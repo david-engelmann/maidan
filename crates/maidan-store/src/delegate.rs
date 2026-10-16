@@ -1943,6 +1943,13 @@ macro_rules! store_delegations {
             ) -> Result<Option<ReviewPacket>, StoreError> {
                 review_packets::latest(self.pool(), thread_id).await
             }
+
+            async fn list_review_packets(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ReviewPacket>, StoreError> {
+                review_packets::list(self.pool(), thread_id).await
+            }
         }
     };
     ($store:ty, TaskScheduleStore) => {
@@ -2600,6 +2607,16 @@ macro_rules! store_delegations {
                 round: maidan_types::NewChangeRound,
             ) -> Result<(), StoreError> {
                 change_metrics::record_round(self.pool(), round).await
+            }
+
+            async fn latest_change_round_head(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<String>, StoreError> {
+                change_metrics::latest_round_head(self.pool(), workspace_id, repo, pull_number)
+                    .await
             }
 
             async fn mark_change_pull_ready(
@@ -3465,6 +3482,35 @@ macro_rules! store_delegations {
                 delete: crate::BlobDelete<'_>,
             ) -> Result<crate::BlobReap, StoreError> {
                 artifacts::reap_blob(self.pool(), sha256, delete).await
+            }
+
+            async fn queue_blob_reap(
+                &self,
+                sha256: &str,
+                workspace_id: WorkspaceId,
+                error: &str,
+            ) -> Result<(), StoreError> {
+                artifact_reap_retries::queue(self.pool(), sha256, workspace_id, error).await
+            }
+
+            async fn due_blob_reaps(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<crate::PendingBlobReap>, StoreError> {
+                artifact_reap_retries::due(self.pool(), limit).await
+            }
+
+            async fn defer_blob_reap(
+                &self,
+                sha256: &str,
+                error: &str,
+                delay_secs: i64,
+            ) -> Result<(), StoreError> {
+                artifact_reap_retries::defer(self.pool(), sha256, error, delay_secs).await
+            }
+
+            async fn settle_blob_reap(&self, sha256: &str) -> Result<(), StoreError> {
+                artifact_reap_retries::settle(self.pool(), sha256).await
             }
         }
     };

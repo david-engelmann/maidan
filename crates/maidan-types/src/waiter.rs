@@ -543,6 +543,11 @@ pub const CHANGE_RESULT_KIND: &str = "pi.change.result/1";
 /// and `content_blocked` are recorded and answered in Slack, never committed.
 pub const CHANGE_STATUS_CHANGED: &str = "changed";
 
+/// A squash-rebase round whose rebase hit conflicts in the producer's
+/// checkout. Non-delivering, like `no_change`: the producer routes it to a
+/// session, so Maidan only records it and says so in the reply.
+pub const CHANGE_STATUS_REBASE_CONFLICT: &str = "rebase_conflict";
+
 /// Every branch the change flow may write starts with this.
 pub const CHANGE_BRANCH_PREFIX: &str = "feature/agent-";
 
@@ -813,6 +818,12 @@ pub struct ChangeResult {
     /// pull request body. `pr_state.title` is not read: a title people fixed
     /// must not be reverted each round.
     pub current_state: Option<String>,
+    /// `"rebase": true`: a squash-rebase round. `base_sha` is then the base
+    /// branch's current head and `diff` the whole branch against it, so the
+    /// branch is rebuilt as one commit on the base and moved by the change
+    /// flow's only force write. Anything but a JSON `true` is a normal round,
+    /// so a stray string can never ask for a force move.
+    pub rebase: bool,
 }
 
 impl ChangeResult {
@@ -850,6 +861,7 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
             .and_then(Value::as_str)
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string),
+        rebase: obj.get("rebase").and_then(Value::as_bool) == Some(true),
     })
 }
 
@@ -1774,6 +1786,25 @@ mod tests {
         let mut review = change_envelope(json!([]));
         review["result_kind"] = json!(EXAMPLE_REVIEW_RESULT_KIND);
         assert!(parse_change_result(&review).is_none());
+    }
+
+    #[test]
+    fn only_a_json_true_rebase_asks_for_a_squash_rebase_round() {
+        assert!(
+            !parse_change_result(&change_envelope(json!([])))
+                .unwrap()
+                .rebase
+        );
+        for (value, want) in [
+            (json!(true), true),
+            (json!(false), false),
+            (json!("true"), false),
+            (json!(1), false),
+        ] {
+            let mut env = change_envelope(json!([]));
+            env["rebase"] = value.clone();
+            assert_eq!(parse_change_result(&env).unwrap().rebase, want, "{value}");
+        }
     }
 
     #[test]

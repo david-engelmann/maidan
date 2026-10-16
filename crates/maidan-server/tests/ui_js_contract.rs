@@ -189,6 +189,7 @@ const ALLOWED: &[&str] = &[
     "Object",
     "Promise",
     "Map",
+    "WeakMap",
     "Set",
     "Date",
     "Error",
@@ -425,7 +426,7 @@ fn ui_js_wires_work_tab() {
         assert!(s.contains(f), "the Work tab must define {f}");
     }
     assert!(
-        s.contains("=== \"work\") loadWork()"),
+        s.contains("=== \"work\" && !firstWorkLoad) loadWork()"),
         "the tab switch must call loadWork() for the Work tab"
     );
     assert!(
@@ -1544,14 +1545,19 @@ fn ui_js_names_the_live_connect_control() {
 /// The DM header names the other person. The list already does; the selection does too.
 #[test]
 fn ui_js_selects_a_dm_by_member_name() {
-    let body = function_body(script(HTML), "selectDm");
+    let js = script(HTML);
     assert!(
-        body.contains("textContent = `with ${memberName(dmOther(c))}`"),
-        "the selection header uses the member name"
+        js.contains("selectedText: (c) => `with ${memberName(dmOther(c))}`"),
+        "the DM selection header uses the member name"
     );
     assert!(
-        !body.contains("textContent = `with ${dmOther(c)}`"),
+        !js.contains("`with ${dmOther(c)}`"),
         "the selection header is not the raw member id"
+    );
+    let select = function_body(js, "selectConversation");
+    assert!(
+        select.contains("textContent = kind.selectedText(c)"),
+        "the shared selection paints the kind's header"
     );
 }
 
@@ -1776,8 +1782,10 @@ fn ui_js_state_is_a_word_not_a_pill() {
         "renderBoard puts the sessionChrome label in the card foot and does not paint a badge"
     );
     assert!(
-        board.contains("card.setAttribute(\"aria-label\", `${title}: ${stateLabel}`)"),
-        "the card's accessible name uses the same state word"
+        board.contains(
+            "card.setAttribute(\"aria-label\", `${title}: ${stateLabel}${th.stalled ? \", stalled\" : \"\"}`)"
+        ),
+        "the card's accessible name uses the same state word, then says when it is stalled"
     );
     let header = function_body(js, "renderThreadHeader");
     assert!(
@@ -2289,18 +2297,21 @@ fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
         "the draft is cleared only after the server accepts the post"
     );
 
-    let dms = function_body(js, "loadDms");
+    let lists = function_body(js, "loadConversations");
     assert!(
-        dms.contains("memberName(other)") && dms.contains("await loadMembers()"),
-        "a DM list names the other member"
+        lists.contains("if (kind.namesMembers) await loadMembers();")
+            && lists.contains("a.textContent = kind.label(c);")
+            && js.contains("label: (c) => `with ${memberName(dmOther(c))}`")
+            && js.contains("namesMembers: true"),
+        "a DM list loads the roster and names the other member"
     );
     assert!(
-        !dms.contains("with ${dmOther(c)}"),
+        !js.contains("with ${dmOther(c)}"),
         "a DM list must not show the raw member id"
     );
     let open = function_body(js, "openDm");
     assert!(
-        open.contains("selectDm(opened)"),
+        open.contains("conversationOpened(DM, opened)"),
         "opening a DM selects that conversation"
     );
 
@@ -2729,6 +2740,64 @@ fn ui_js_no_refusal_strip() {
     }
 }
 
+/// A load redraws only what changed. From the large-board render pass: a
+/// card that would be drawn the same keeps its node, a changed card is a new
+/// node in its new lane, and a card that left the board is gone. This runs the
+/// page's `renderBoard` three times. It fails if a load tears down cards that
+/// did not change, which is what made a board of thousands slow to update.
+#[test]
+fn ui_js_board_keeps_unchanged_cards_between_loads() {
+    let three = [
+        RefusedTask::new("t1", "File the notes", "open"),
+        RefusedTask::new("t2", "Ship the summary", "open"),
+        RefusedTask::new("t3", "Tidy the docs", "open"),
+    ];
+    let moved = [
+        RefusedTask::new("t1", "File the notes", "open"),
+        RefusedTask::new("t2", "Ship the summary", "in_review"),
+        RefusedTask::new("t3", "Tidy the docs", "open"),
+    ];
+    let steps = [
+        RefusalStep::render(&three),
+        RefusalStep::render(&three),
+        RefusalStep::render(&moved),
+        RefusalStep::render(&moved[..2]),
+    ];
+    let drawn = board_after_refusals(&steps);
+    let serial = |view: usize, id: &str| {
+        drawn[view]
+            .cards
+            .iter()
+            .find(|card| card.id == id)
+            .map(|card| (card.serial, card.lane.clone()))
+            .unwrap_or_else(|| panic!("step {view}: {id} is not on the board"))
+    };
+    for id in ["t1", "t2", "t3"] {
+        assert_eq!(
+            serial(0, id),
+            serial(1, id),
+            "{id}: the same data redrew its card"
+        );
+    }
+    assert_eq!(serial(1, "t1"), serial(2, "t1"), "t1 did not change");
+    assert_eq!(serial(1, "t3"), serial(2, "t3"), "t3 did not change");
+    let (before, _) = serial(1, "t2");
+    let (after, lane) = serial(2, "t2");
+    assert_ne!(before, after, "t2 changed state, so it is drawn again");
+    assert_eq!(lane, "review", "t2 moved to the review lane");
+    let order: Vec<&str> = drawn[2].cards.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(
+        order,
+        ["t1", "t3", "t2"],
+        "lanes in order, cards in lane order"
+    );
+    assert!(
+        drawn[3].cards.iter().all(|card| card.id != "t3"),
+        "a card that left the board is removed"
+    );
+    assert_eq!(serial(2, "t1"), serial(3, "t1"), "removing t3 kept t1");
+}
+
 #[derive(Clone)]
 struct RefusedTask {
     id: &'static str,
@@ -2788,6 +2857,8 @@ struct RefusalCard {
     heading: String,
     line: Option<String>,
     title: String,
+    serial: u64,
+    lane: String,
 }
 
 struct RefusalView {
@@ -2844,6 +2915,8 @@ fn board_after_refusals(steps: &[RefusalStep]) -> Vec<RefusalView> {
                     heading: card["heading"].as_str().expect("heading").to_string(),
                     line: card["line"].as_str().map(str::to_string),
                     title: card["title"].as_str().expect("title").to_string(),
+                    serial: card["serial"].as_u64().expect("serial"),
+                    lane: card["lane"].as_str().expect("lane").to_string(),
                 })
                 .collect(),
         })
@@ -2917,6 +2990,13 @@ function extractConst(name) {
   throw new Error("unclosed " + name);
 }
 const prelude = `
+let serials = 0;
+function detach(node) {
+  if (node && node.parent) {
+    node.parent.children = node.parent.children.filter((child) => child !== node);
+    node.parent = null;
+  }
+}
 function makeEl(tag) {
   const el = {
     tag: tag,
@@ -2930,25 +3010,60 @@ function makeEl(tag) {
     style: {},
     attrs: {},
     tabIndex: 0,
+    parent: null,
+    serial: ++serials,
   };
   el.classList = {
     add(name) { el.className = (el.className + " " + name).trim(); },
     remove() {},
     toggle() {},
   };
-  el.appendChild = (child) => { el.children.push(child); return child; };
+  el.appendChild = (child) => { detach(child); child.parent = el; el.children.push(child); return child; };
   el.append = (...kids) => {
     for (const kid of kids) {
       if (typeof kid === "string") {
         const text = makeEl("#text");
         text.textContent = kid;
-        el.children.push(text);
+        el.appendChild(text);
       } else {
-        el.children.push(kid);
+        el.appendChild(kid);
       }
     }
   };
-  el.replaceChildren = () => { el.children = []; };
+  el.insertBefore = (node, ref) => {
+    detach(node);
+    node.parent = el;
+    const at = ref ? el.children.indexOf(ref) : -1;
+    if (at < 0) el.children.push(node);
+    else el.children.splice(at, 0, node);
+    return node;
+  };
+  el.removeChild = (node) => { detach(node); return node; };
+  el.replaceChildren = (...kids) => {
+    for (const child of el.children) child.parent = null;
+    el.children = [];
+    el.append(...kids);
+  };
+  Object.defineProperty(el, "firstElementChild", {
+    get: () => el.children.find((child) => child.tag !== "#text") || null,
+  });
+  Object.defineProperty(el, "nextElementSibling", {
+    get: () => {
+      if (!el.parent) return null;
+      const kids = el.parent.children;
+      for (let i = kids.indexOf(el) + 1; i < kids.length; i++) {
+        if (kids[i].tag !== "#text") return kids[i];
+      }
+      return null;
+    },
+  });
+  // Stands in for the browser's serialization: everything a card shows.
+  Object.defineProperty(el, "outerHTML", {
+    get: () => JSON.stringify([
+      el.tag, el.className, el.title, el.textContent, el.attrs, el.dataset, el.tabIndex,
+      el.children.map((child) => child.outerHTML),
+    ]),
+  });
   el.setAttribute = (key, value) => {
     el.attrs[key] = String(value);
     if (key === "hidden") el.hidden = true;
@@ -3026,6 +3141,7 @@ function glideCards() {}
 function renderTeam() {}
 function emptyChannelHelp() { return document.createElement("div"); }
 function selectThread() {}
+const laneCounts = new WeakMap();
 `;
 const tail = `
 function snapshot() {
@@ -3042,6 +3158,8 @@ function snapshot() {
       heading: headingEl ? headingEl.textContent : "",
       line: lineEl ? lineEl.textContent : null,
       title: el.title || "",
+      serial: el.serial,
+      lane: el.parent && el.parent.dataset ? el.parent.dataset.column || "" : "",
     });
   });
   return {
@@ -3066,6 +3184,11 @@ const body = prelude
   + functionSource("paintRefusal") + "\n"
   + functionSource("rememberRefusal") + "\n"
   + functionSource("renderBoard") + "\n"
+  + functionSource("boardLanes") + "\n"
+  + functionSource("cardsInLanes") + "\n"
+  + functionSource("sameCardOrNew") + "\n"
+  + functionSource("isLaneEmptyMark") + "\n"
+  + functionSource("placeInLane") + "\n"
   + tail;
 let views;
 try {
@@ -3624,9 +3747,13 @@ function glideCards() {}
 function renderTeam() {}
 function renderThreadHeader() {}
 function openConnect() {}
+const laneCounts = new WeakMap();
+const columnsAt = js.indexOf("const BOARD_COLUMNS = ");
+if (columnsAt < 0) throw new Error("missing BOARD_COLUMNS");
+eval("var" + js.slice(columnsAt + "const".length, js.indexOf("];", columnsAt) + 2));
 let views;
 try {
-  eval(functionSource("emptyChannelHelp") + "\n" + functionSource("renderBoard"));
+  eval(functionSource("emptyChannelHelp") + "\n" + functionSource("renderBoard") + "\n" + functionSource("boardLanes"));
   const out = [];
   const marker = '<div id="board">';
   const at = html.indexOf(marker);
@@ -5151,7 +5278,411 @@ fn every_inline_harness_runs_with_the_write_guard() {
         rest = &rest[at + probe.len()..];
     }
     assert_eq!(
-        harnesses, 8,
-        "the seven page harnesses and run_bare_harness each go through with_prelude"
+        harnesses, 9,
+        "the eight page harnesses and run_bare_harness each go through with_prelude"
     );
+}
+
+/// Stuck detection on the board: a card the server marked `stalled` carries a
+/// "stalled" chip, says so in its accessible name, and the summary strip
+/// counts it; blocked work (a dispatch block or a declared `blocked`) is
+/// counted too. A healthy board's strip has no health entries at all.
+///
+/// This runs the page's `renderBoard` on fake threads and reads the cards and
+/// `#board-summary` back.
+#[test]
+fn ui_js_board_marks_a_stalled_card_and_counts_it_in_the_summary() {
+    let thread = |id: &str, extra: serde_json::Value| {
+        let mut t = serde_json::json!({
+            "id": id,
+            "title": id,
+            "state": "open",
+            "assignee_id": "agent-1",
+            "work_started_at": "2026-10-01T11:00:00Z",
+            "updated_at": "2026-10-01T12:00:00Z",
+        });
+        if let (Some(t), Some(extra)) = (t.as_object_mut(), extra.as_object()) {
+            t.extend(extra.clone());
+        }
+        t
+    };
+    let sick = board_health(&[
+        thread(
+            "quiet",
+            serde_json::json!({ "stalled": true, "last_progress_at": "2026-10-01T11:00:00Z" }),
+        ),
+        thread(
+            "busy",
+            serde_json::json!({ "last_progress_at": "2026-10-01T11:59:00Z" }),
+        ),
+        thread(
+            "waiting",
+            serde_json::json!({ "status": { "status": "blocked", "note": "Need a key." } }),
+        ),
+    ]);
+    let card = |id: &str| {
+        sick["cards"]
+            .as_array()
+            .expect("cards")
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap_or_else(|| panic!("no card {id}: {sick}"))
+            .clone()
+    };
+    let chips = |c: &serde_json::Value| -> Vec<String> {
+        c["chips"]
+            .as_array()
+            .expect("chips")
+            .iter()
+            .map(|chip| chip.as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+    let quiet = card("quiet");
+    assert!(
+        chips(&quiet).iter().any(|c| c == "card-stalled:stalled"),
+        "the stalled card carries the chip: {quiet}"
+    );
+    assert!(
+        quiet["label"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with(", stalled"),
+        "and says so to a screen reader: {quiet}"
+    );
+    assert!(
+        quiet["stalled_title"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("Last progress from its agent"),
+        "the chip names when the agent last made progress: {quiet}"
+    );
+    for id in ["busy", "waiting"] {
+        let c = card(id);
+        assert!(
+            !chips(&c)
+                .iter()
+                .any(|chip| chip.starts_with("card-stalled")),
+            "{id} is not stalled: {c}"
+        );
+    }
+    let alerts: Vec<&str> = sick["alerts"]
+        .as_array()
+        .expect("alerts")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(alerts, ["1 stalled", "1 blocked"], "summary: {sick}");
+
+    let healthy = board_health(&[thread("busy", serde_json::json!({}))]);
+    assert!(
+        healthy["alerts"].as_array().expect("alerts").is_empty(),
+        "a healthy board shows no health entries: {healthy}"
+    );
+    assert!(!healthy["summary"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("stalled"));
+}
+
+/// Runs [`BOARD_HEALTH_TAIL`] in place of the refusal harness's tail and
+/// keeps the rest of that harness, so the page functions it lifts out (any
+/// helper `renderBoard` comes to call) are listed in one place, not two that
+/// drift apart.
+fn board_health(threads: &[serde_json::Value]) -> serde_json::Value {
+    let (head, rest) = REFUSAL_PAGE_HARNESS
+        .split_once("const tail = `")
+        .expect("the refusal harness has a tail");
+    let (_, runner) = rest
+        .split_once("\n`;\nconst body = prelude")
+        .expect("the refusal harness builds its body after the tail");
+    let harness =
+        format!("{head}const tail = `{BOARD_HEALTH_TAIL}\n`;\nconst body = prelude{runner}");
+    // The shared runner reads its input as `steps`.
+    let payload = serde_json::json!({
+        "html": HTML,
+        "js": script(HTML),
+        "css": UI_CSS,
+        "steps": threads,
+    });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(with_prelude(&harness))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run the board: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write threads");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "board health harness failed\n{stderr}\n{stdout}"
+    );
+    serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("board health harness returned {err}: {stdout}"))
+}
+
+/// The board-health view: render the threads once and read back the cards'
+/// chips and accessible names and the summary strip's health entries. The
+/// threads arrive as the shared runner's `steps`.
+const BOARD_HEALTH_TAIL: &str = r#####"
+renderBoard(steps, {});
+const cards = [];
+walk(byId.board, (el) => {
+  if (!classHas(el, "card") || !el.dataset || !el.dataset.id) return;
+  const chips = [];
+  let stalledTitle = "";
+  walk(el, (kid) => {
+    if (!kid.className) return;
+    chips.push(String(kid.className) + ":" + flatText(kid));
+    if (classHas(kid, "card-stalled")) stalledTitle = kid.title || "";
+  });
+  cards.push({ id: el.dataset.id, label: el.attrs["aria-label"] || "", chips: chips, stalled_title: stalledTitle });
+});
+const alerts = [];
+for (const kid of byId["board-summary"].children) {
+  if (classHas(kid, "health-alert")) alerts.push(flatText(kid));
+}
+return { cards: cards, alerts: alerts, summary: flatText(byId["board-summary"]) };
+"#####;
+
+/// More tools is grouped, not one row of seventeen tabs. Every tab sits in
+/// exactly one named group, in this order, and the raw API and developer
+/// surfaces come last. The palette names each tool's group, the panel opens
+/// on Work, and the first open loads it.
+#[test]
+fn ui_more_tools_tabs_are_grouped_with_developer_surfaces_last() {
+    let nav_start = HTML
+        .find(r#"<nav class="tabs" role="tablist""#)
+        .unwrap_or_else(|| panic!("the More tools tablist"));
+    let nav = &HTML[nav_start..];
+    let nav = &nav[..nav.find("</nav>").unwrap_or(nav.len())];
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut ungrouped = Vec::new();
+    for line in nav.lines().map(str::trim) {
+        if let Some(rest) = line.split("data-group=\"").nth(1) {
+            let name = rest.split('"').next().unwrap_or_default().to_string();
+            groups.push((name, Vec::new()));
+        } else if let Some(rest) = line.split("data-tab=\"").nth(1) {
+            let tab = rest.split('"').next().unwrap_or_default().to_string();
+            match groups.last_mut() {
+                Some((_, tabs)) => tabs.push(tab),
+                None => ungrouped.push(tab),
+            }
+        }
+    }
+    assert!(
+        ungrouped.is_empty(),
+        "tabs outside any group: {ungrouped:?}"
+    );
+    let want: Vec<(&str, Vec<&str>)> = vec![
+        ("Work", vec!["work", "swarm", "approvals", "notifications"]),
+        ("People", vec!["dms", "group-dms", "presence", "search"]),
+        ("Account", vec!["session", "prefs", "tokens"]),
+        ("Admin", vec!["admin", "operator"]),
+        ("Developer", vec!["events", "glass", "thread", "slash"]),
+    ];
+    let got: Vec<(&str, Vec<&str>)> = groups
+        .iter()
+        .map(|(g, tabs)| (g.as_str(), tabs.iter().map(String::as_str).collect()))
+        .collect();
+    assert_eq!(got, want);
+    assert_eq!(
+        nav.matches("<div class=\"tab-group").count(),
+        nav.matches("</div>").count(),
+        "each group closes before the next opens"
+    );
+    assert!(nav.contains(r#"class="tab-group dev""#));
+    // The muted Developer color outranks `.tabs button[aria-selected]`, so
+    // without the `:not` a selected Developer tab lost its selected color.
+    assert!(
+        UI_CSS.contains(
+            r#".tabs .tab-group.dev button:not([aria-selected="true"]) { color: var(--muted); }"#
+        ) && !UI_CSS.contains(".tabs .tab-group.dev button { color"),
+        "a selected Developer tab keeps the selected tab's color"
+    );
+    assert!(
+        nav.contains(r#"data-tab="work" aria-selected="true""#),
+        "More tools opens on Work"
+    );
+    assert_eq!(nav.matches(r#"aria-selected="true""#).count(), 1);
+    assert!(HTML.contains(r#"<section id="panel-work" class="panel active">"#));
+    assert_eq!(HTML.matches(r#"class="panel active""#).count(), 1);
+
+    let s = script(HTML);
+    assert!(
+        s.contains("hint: group ? group.dataset.group : undefined"),
+        "the palette names each tool's group"
+    );
+    assert!(
+        s.contains("if (!toolsPanel.open || toolsPrimed) return;")
+            && s.contains("firstWorkLoad = loadWork()"),
+        "the first open loads Work"
+    );
+    assert!(
+        s.contains(r#"btn.dataset.tab === "work" && !firstWorkLoad) loadWork();"#),
+        "a click during the first load starts no second one"
+    );
+}
+
+/// The thread panel's evidence timeline: it reads the timeline route on both
+/// trees, only while open, drops a read for a thread no longer open, and
+/// flags evidence that moved since the latest hand-off.
+#[test]
+fn ui_js_thread_panel_shows_the_evidence_timeline() {
+    let s = script(HTML);
+    assert!(HTML.contains(r#"<details id="evidence-timeline">"#));
+    assert!(HTML.contains(r#"id="evidence-list""#));
+    assert!(s.contains("function loadEvidenceTimeline("));
+    assert!(s.contains("${base()}/threads/${tid}/evidence"));
+    assert!(s.contains("uiReadPath(`/threads/${tid}/evidence`)"));
+    assert!(
+        s.contains("if (!panel.open) return;"),
+        "a closed panel costs no read"
+    );
+    assert!(
+        s.contains("if (tid !== selectedThreadId) return;"),
+        "a slower read for another thread must not paint over the open one"
+    );
+    assert!(s.contains(r#"addEventListener("toggle", loadEvidenceTimeline)"#));
+    assert!(
+        s.contains("loadEvidenceTimeline();"),
+        "a thread refresh reloads an open panel"
+    );
+    assert!(s.contains("timeline.evidence_changed_since_review !== true"));
+    for kind in [
+        "artifact_linked",
+        "result_recorded",
+        "land_gate_verdict",
+        "review_requested",
+        "review_verdict",
+    ] {
+        assert!(
+            s.contains(&format!("entry.kind === \"{kind}\"")),
+            "{kind} is rendered"
+        );
+    }
+}
+
+/// The Evidence summary stays on screen while the panel is closed, so picking
+/// another thread must clear the last thread's "changed since review" flag
+/// and entries even though nothing is fetched. This runs the page's
+/// `loadEvidenceTimeline` with the panel closed after a switch from a thread
+/// whose evidence had moved.
+#[test]
+fn ui_js_evidence_panel_does_not_carry_one_threads_flag_to_the_next() {
+    let js = script(HTML);
+    let harness = format!(
+        r#"
+const els = {{
+  "evidence-timeline": {{ open: false }},
+  "evidence-list": {{
+    children: ["Artifact linked on thread A"],
+    matches: () => true,
+    replaceChildren() {{ this.children = []; }},
+    appendChild(child) {{ this.children.push(child.textContent); }},
+  }},
+  "evidence-moved": {{ hidden: false }},
+}};
+const document = {{
+  getElementById: (id) => els[id] || null,
+  createElement: (tag) => ({{ tag, textContent: "", className: "" }}),
+}};
+let selectedThreadId = "thread-a";
+let evidenceShownFor = "thread-a";
+{render_state}
+}}
+async {load}
+}}
+selectedThreadId = "thread-b";
+loadEvidenceTimeline().then(() => {{
+  process.stdout.write(JSON.stringify({{
+    moved_hidden: els["evidence-moved"].hidden,
+    list: els["evidence-list"].children,
+  }}));
+}});
+"#,
+        render_state = function_body(js, "renderState"),
+        load = function_body(js, "loadEvidenceTimeline"),
+    );
+    let out = run_bare_harness(&harness);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "harness failed: {stderr}");
+    let view: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|err| panic!("{err}: {stdout}"));
+    assert_eq!(
+        view["moved_hidden"], true,
+        "thread A's \"changed since review\" must not show on thread B: {view}"
+    );
+    assert_eq!(
+        view["list"],
+        serde_json::json!(["Open to load what this task recorded as evidence."]),
+        "thread A's entries must not show under thread B: {view}"
+    );
+}
+
+/// DMs and group DMs share one conversation module: one list, one select and
+/// one send, parameterized by the kind. The copied pairs are gone, so a fix to
+/// one kind cannot miss the other.
+#[test]
+fn ui_dm_and_group_dm_share_one_conversation_module() {
+    const DM_JS: &str = include_str!("../static/ui/dm.js");
+    for gone in [
+        "function loadDms(",
+        "function loadGroupDms(",
+        "function selectDm(",
+        "function selectGroupDm(",
+        "function sendDmMessage(",
+        "function sendGroupDmMessage(",
+        "function loadDmMessages(",
+        "function loadGroupDmMessages(",
+        "let selectedDm",
+        "let selectedGdm",
+    ] {
+        assert!(!DM_JS.contains(gone), "dm.js still has a copied `{gone}`");
+    }
+    for shared in [
+        "async function loadConversations(kind)",
+        "function selectConversation(kind, c)",
+        "async function sendConversationMessage(kind)",
+        "async function conversationOpened(kind, opened)",
+    ] {
+        assert_eq!(
+            DM_JS.matches(shared).count(),
+            1,
+            "dm.js defines `{shared}` once"
+        );
+    }
+    for (kind, list, send) in [
+        (
+            "const DM = {",
+            "list: \"dm-list\"",
+            "sendPath: (c) => `/dm/${c.id}/messages`",
+        ),
+        (
+            "const GROUP_DM = {",
+            "list: \"gdm-list\"",
+            "sendPath: (c) => `/group-dms/${c.id}/messages`",
+        ),
+    ] {
+        let at = DM_JS.find(kind).unwrap_or_else(|| panic!("{kind}"));
+        let block = &DM_JS[at..];
+        let block = &block[..block.find("};").unwrap_or(block.len())];
+        assert!(
+            block.contains(list) && block.contains(send),
+            "{kind} names its list and route"
+        );
+    }
+    let main = include_str!("../static/ui/main.js");
+    for wiring in [
+        "onclick = () => loadConversations(DM);",
+        "onclick = () => loadConversations(GROUP_DM);",
+        "onclick = () => sendConversationMessage(DM);",
+        "onclick = () => sendConversationMessage(GROUP_DM);",
+    ] {
+        assert!(main.contains(wiring), "main.js wires `{wiring}`");
+    }
 }

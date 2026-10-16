@@ -1559,6 +1559,17 @@ pub fn get_thread_version() {}
     ))]
 pub fn get_review_packet() {}
 
+/// A thread's evidence timeline
+#[utoipa::path(get, path = "/threads/{id}/evidence", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "Everything recorded as the thread's evidence, oldest first: linked artifacts, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only.", body = EvidenceTimeline),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_evidence_timeline() {}
+
 /// A thread's linked artifacts
 #[utoipa::path(get, path = "/threads/{id}/artifacts", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

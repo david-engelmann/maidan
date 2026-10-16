@@ -188,6 +188,10 @@
             <span id="thread-actions"></span>
           </div>
           <div id="thread-facts"></div>
+          <details id="evidence-timeline">
+            <summary>Evidence <span id="evidence-moved" class="wait" hidden>changed since review</span></summary>
+            <ol id="evidence-list"><li class="muted">Open to load what this task recorded as evidence.</li></ol>
+          </details>
           <div id="message-list"><div class="muted">Pick a task on the board to open its thread.</div></div>
           <label>Message
             <textarea id="compose-body" class="compose" placeholder="Post a message (@handle for mentions)"></textarea>
@@ -227,26 +231,41 @@
 
     <details id="tools">
       <summary>More tools</summary>
-      <nav class="tabs" role="tablist">
-        <button type="button" data-tab="admin" aria-selected="true">Admin</button>
-        <button type="button" data-tab="session">Session</button>
-        <button type="button" data-tab="search">Search</button>
-        <button type="button" data-tab="events">Events (HTTP)</button>
-        <button type="button" data-tab="presence">Presence</button>
-        <button type="button" data-tab="work">Work</button>
-        <button type="button" data-tab="swarm">Swarm</button>
-        <button type="button" data-tab="prefs">Prefs</button>
-        <button type="button" data-tab="glass">Looking glass</button>
-        <button type="button" data-tab="notifications">Notifications</button>
-        <button type="button" data-tab="approvals">Approvals</button>
-        <button type="button" data-tab="thread">FSM</button>
-        <button type="button" data-tab="dms">DMs</button>
-        <button type="button" data-tab="group-dms">Group DMs</button>
-        <button type="button" data-tab="operator">Operator</button>
-        <button type="button" data-tab="slash">Slash</button>
-        <button type="button" data-tab="tokens">Tokens</button>
+      <nav class="tabs" role="tablist" aria-label="More tools">
+        <div class="tab-group" role="presentation" data-group="Work">
+          <span class="tab-group-label" aria-hidden="true">Work</span>
+          <button type="button" data-tab="work" aria-selected="true">Work</button>
+          <button type="button" data-tab="swarm">Swarm</button>
+          <button type="button" data-tab="approvals">Approvals</button>
+          <button type="button" data-tab="notifications">Notifications</button>
+        </div>
+        <div class="tab-group" role="presentation" data-group="People">
+          <span class="tab-group-label" aria-hidden="true">People</span>
+          <button type="button" data-tab="dms">DMs</button>
+          <button type="button" data-tab="group-dms">Group DMs</button>
+          <button type="button" data-tab="presence">Presence</button>
+          <button type="button" data-tab="search">Search</button>
+        </div>
+        <div class="tab-group" role="presentation" data-group="Account">
+          <span class="tab-group-label" aria-hidden="true">Account</span>
+          <button type="button" data-tab="session">Session</button>
+          <button type="button" data-tab="prefs">Prefs</button>
+          <button type="button" data-tab="tokens">Tokens</button>
+        </div>
+        <div class="tab-group" role="presentation" data-group="Admin">
+          <span class="tab-group-label" aria-hidden="true">Admin</span>
+          <button type="button" data-tab="admin">Admin</button>
+          <button type="button" data-tab="operator">Operator</button>
+        </div>
+        <div class="tab-group dev" role="presentation" data-group="Developer">
+          <span class="tab-group-label" aria-hidden="true">Developer</span>
+          <button type="button" data-tab="events">Events (HTTP)</button>
+          <button type="button" data-tab="glass">Looking glass</button>
+          <button type="button" data-tab="thread">FSM</button>
+          <button type="button" data-tab="slash">Slash</button>
+        </div>
       </nav>
-      <section id="panel-admin" class="panel active">
+      <section id="panel-admin" class="panel">
         <details open>
           <summary>Audit log</summary>
           <label>Limit <input id="audit-limit" type="number" value="50" min="1" max="500" /></label>
@@ -356,7 +375,7 @@
           <li>Connect the WebSocket to populate.</li>
         </ul>
       </section>
-      <section id="panel-work" class="panel">
+      <section id="panel-work" class="panel active">
         <p class="muted">
           The work console — inhabit the room's task loop. Pick a channel to see its
           queue depth and occupancy, browse its threads, and inspect a task's result

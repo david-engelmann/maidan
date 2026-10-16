@@ -4,7 +4,7 @@ import { artifactCard, artifactShasFromMetadata } from "./artifacts.js";
 import { selectedThreadId } from "./board.js";
 import { clearLoading, renderState, responseError, setLoading, showError, unreachable } from "./feedback.js";
 import { authorId, avatarEl, personEl } from "./people.js";
-import { QUICK_REACTIONS, THREAD_CONTENT_KINDS } from "./state.js";
+import { QUICK_REACTIONS, REACTION_NAMES, THREAD_CONTENT_KINDS } from "./state.js";
 import { loadMessageEdits } from "./tools.js";
 
 
@@ -29,6 +29,7 @@ import { loadMessageEdits } from "./tools.js";
             return;
           }
           await loadPins(selectedThreadId);
+          loadEvidenceTimeline();
           renderMessages(await res.json(), box);
         } catch (e) {
           renderState(box, unreachable(e), "err");
@@ -209,6 +210,8 @@ import { loadMessageEdits } from "./tools.js";
           chip.type = "button";
           chip.className = "reaction-chip" + (mine ? " mine" : "");
           chip.textContent = `${emoji} ${count}`;
+          chip.setAttribute("aria-pressed", mine ? "true" : "false");
+          chip.setAttribute("aria-label", reactionChipLabel(emoji, count, mine));
           chip.title = mine ? "Remove your reaction" : "React";
           chip.onclick = (ev) => {
             ev.stopPropagation();
@@ -222,6 +225,7 @@ import { loadMessageEdits } from "./tools.js";
           add.type = "button";
           add.className = "reaction-add";
           add.textContent = emoji;
+          add.setAttribute("aria-label", `React with ${reactionName(emoji)}`);
           add.title = "React";
           add.onclick = (ev) => {
             ev.stopPropagation();
@@ -231,6 +235,18 @@ import { loadMessageEdits } from "./tools.js";
         });
       }
 
+
+      /** @param {string} emoji */
+      function reactionName(emoji) {
+        return REACTION_NAMES[emoji] || emoji;
+      }
+
+      /** @param {string} emoji @param {number} count @param {boolean} mine */
+      function reactionChipLabel(emoji, count, mine) {
+        const name = reactionName(emoji);
+        const tally = count === 1 ? "1 so far" : `${count} so far`;
+        return mine ? `Remove your ${name} reaction, ${tally}` : `Add a ${name} reaction, ${tally}`;
+      }
 
       async function toggleReaction(messageId, emoji, mine, el) {
         if (!requireAuthForWrite()) return;
@@ -287,6 +303,107 @@ import { loadMessageEdits } from "./tools.js";
         await loadMessages();
       }
 
+      // Which thread the Evidence panel's contents belong to.
+      let evidenceShownFor = null;
+
+      // The open thread's evidence, oldest first, as the server recorded it:
+      // links, the standing result, land-gate verdicts, each hand-off to
+      // review and each verdict. Read only; this panel decides nothing. It
+      // loads only while open, so a thread refresh costs no extra read for
+      // anyone who never looks at it.
+      async function loadEvidenceTimeline() {
+        const panel = document.getElementById("evidence-timeline");
+        const list = document.getElementById("evidence-list");
+        const moved = document.getElementById("evidence-moved");
+        if (!panel || !list || !moved) return;
+        const tid = selectedThreadId;
+        // The summary shows while the panel is closed, so the last thread's
+        // "changed since review" and entries must not carry over to this one.
+        if (tid !== evidenceShownFor) {
+          evidenceShownFor = tid;
+          moved.hidden = true;
+          renderState(list, "Open to load what this task recorded as evidence.");
+        }
+        if (!panel.open) return;
+        moved.hidden = true;
+        if (!tid) {
+          renderState(list, "Select a thread to see its evidence.");
+          return;
+        }
+        const url = token()
+          ? `${base()}/threads/${tid}/evidence`
+          : uiReadPath(`/threads/${tid}/evidence`);
+        let timeline;
+        try {
+          const res = await api(url, { headers: headers(), credentials: "include" });
+          if (!res.ok) {
+            if (tid === selectedThreadId) renderState(list, await responseError(res, "Could not load the evidence"), "err");
+            return;
+          }
+          timeline = await res.json();
+        } catch (e) {
+          if (tid === selectedThreadId) renderState(list, unreachable(e), "err");
+          return;
+        }
+        // A slower read for a thread no longer open must not paint over it.
+        if (tid !== selectedThreadId) return;
+        renderEvidenceTimeline(timeline, list, moved);
+      }
+
+      function renderEvidenceTimeline(timeline, list, moved) {
+        moved.hidden = timeline.evidence_changed_since_review !== true;
+        const entries = Array.isArray(timeline.entries) ? timeline.entries : [];
+        if (!entries.length) {
+          renderState(list, "No evidence recorded yet.");
+          return;
+        }
+        list.replaceChildren();
+        for (const entry of entries) {
+          const li = document.createElement("li");
+          li.className = `ev ev-${entry.kind}`;
+          const when = document.createElement("time");
+          when.dateTime = entry.at;
+          when.textContent = new Date(entry.at).toLocaleString();
+          li.appendChild(when);
+          const what = document.createElement("span");
+          what.className = "ev-what";
+          li.appendChild(what);
+          const say = (text) => what.appendChild(document.createTextNode(text));
+          const hash = (h) => {
+            const code = document.createElement("code");
+            code.textContent = `${String(h || "").slice(0, 12)}…`;
+            code.title = h || "";
+            what.appendChild(code);
+          };
+          if (entry.kind === "artifact_linked") {
+            say("Artifact ");
+            hash(entry.artifact.sha256);
+            say(" linked by ");
+            what.appendChild(personEl(entry.artifact.linked_by, { avatar: false }));
+          } else if (entry.kind === "result_recorded") {
+            say("Result ");
+            if (entry.sha256) hash(entry.sha256);
+            say(" recorded by ");
+            what.appendChild(personEl(entry.produced_by, { avatar: false }));
+          } else if (entry.kind === "land_gate_verdict") {
+            say(`Land gate: ${entry.verdict.status}`);
+          } else if (entry.kind === "review_requested") {
+            say("Handed to review by ");
+            what.appendChild(personEl(entry.packet.requested_by, { avatar: false }));
+            say(` at version ${entry.packet.thread_version}, evidence root `);
+            hash(entry.packet.evidence_root);
+            if (entry.packet.self_reported_only) say(" (self-reported only)");
+          } else if (entry.kind === "review_verdict") {
+            say(`Review: ${String(entry.verdict.decision).replace(/_/g, " ")} by `);
+            what.appendChild(personEl(entry.verdict.reviewer_id, { avatar: false }));
+            if (entry.verdict.note) say(`: ${entry.verdict.note}`);
+          } else {
+            say(String(entry.kind));
+          }
+          list.appendChild(li);
+        }
+      }
+
       let artifactObjectUrls = [];
 
-export { artifactObjectUrls, flashLiveIndicator, liveFrameTargetsOpenThread, liveRefreshTimer, loadMessages, loadPins, loadReactions, pinnedIds, renderMessages, renderSlashResult, scheduleLiveRefresh, togglePin, toggleReaction };
+export { artifactObjectUrls, flashLiveIndicator, loadEvidenceTimeline, liveFrameTargetsOpenThread, liveRefreshTimer, loadMessages, loadPins, loadReactions, pinnedIds, renderMessages, renderSlashResult, scheduleLiveRefresh, togglePin, toggleReaction };

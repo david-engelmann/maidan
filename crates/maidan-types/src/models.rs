@@ -2020,6 +2020,19 @@ pub struct Thread {
     /// the thread; empty on the list reads.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<crate::change_metrics::ThreadNotice>,
+    /// When the holder of a live, acknowledged lease last showed progress:
+    /// the latest of its acknowledgement, its last message on the thread and
+    /// its active status declaration. A lease renewal is not progress, since
+    /// a hung agent's heartbeat keeps renewing. Read by the board's reads (a
+    /// single-thread read and a channel's thread page); `None` elsewhere and
+    /// on threads nobody is working.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_progress_at: Option<DateTime<Utc>>,
+    /// System-computed and never declarable: the holder has shown no progress
+    /// for `MAIDAN_STALL_SECS` and has not said it is waiting. Set by the
+    /// board's reads from [`Thread::last_progress_at`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stalled: bool,
 }
 
 #[derive(Debug, Clone)]

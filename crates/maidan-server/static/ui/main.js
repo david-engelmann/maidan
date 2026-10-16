@@ -2,7 +2,7 @@
 import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi } from "./api.js";
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
 import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
-import { clearDmPickers, initDmPickers, loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
+import { DM, GROUP_DM, clearDmPickers, initDmPickers, loadConversations, openDm, openGroupDm, sendConversationMessage } from "./dm.js";
 import { humanError, responseError, setOut, showError, textError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
 import { authorId, loadMembers } from "./people.js";
@@ -11,15 +11,34 @@ import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./re
 import { initWorkspaceSwitcher, loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
 import { initSwarm, loadSwarm } from "./swarm.js";
-import { loadMessages } from "./thread.js";
+import { loadEvidenceTimeline, loadMessages } from "./thread.js";
 import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
 
 
       setInterval(refreshTeamSoon, 30000);
 
 
+      // A tab loads its panel when clicked. More tools opens on Work, which is
+      // selected in the page rather than clicked, so the first open loads it.
+      // A click on Work while that load is in flight starts no second one: a
+      // late duplicate response would reset a channel picked in between.
+      let toolsPrimed = false;
+      let firstWorkLoad = null;
+      const toolsPanel = /** @type {HTMLDetailsElement} */ (document.getElementById("tools"));
+      toolsPanel.addEventListener("toggle", () => {
+        if (!toolsPanel.open || toolsPrimed) return;
+        toolsPrimed = true;
+        const selected = document.querySelector('.tabs button[aria-selected="true"]');
+        if (selected instanceof HTMLElement && selected.dataset.tab === "work") {
+          firstWorkLoad = loadWork().finally(() => {
+            firstWorkLoad = null;
+          });
+        }
+      });
+
       document.querySelectorAll(".tabs button").forEach((btn) => {
         btn.onclick = () => {
+          toolsPrimed = true;
           document.querySelectorAll(".tabs button").forEach((b) => {
             b.setAttribute("aria-selected", "false");
             b.tabIndex = -1;
@@ -28,7 +47,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           btn.tabIndex = 0;
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
-          if (btn.dataset.tab === "work") loadWork();
+          if (btn.dataset.tab === "work" && !firstWorkLoad) loadWork();
           if (btn.dataset.tab === "swarm") loadSwarm();
           if (btn.dataset.tab === "prefs") loadPrefs();
           if (btn.dataset.tab === "glass") loadGlass();
@@ -523,20 +542,21 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("reload-messages").onclick = loadMessages;
+      document.getElementById("evidence-timeline").addEventListener("toggle", loadEvidenceTimeline);
 
       initDmPickers();
 
       document.getElementById("gdm-open").onclick = openGroupDm;
 
-      document.getElementById("gdm-refresh").onclick = loadGroupDms;
+      document.getElementById("gdm-refresh").onclick = () => loadConversations(GROUP_DM);
 
-      document.getElementById("gdm-send").onclick = sendGroupDmMessage;
+      document.getElementById("gdm-send").onclick = () => sendConversationMessage(GROUP_DM);
 
       document.getElementById("dm-open").onclick = openDm;
 
-      document.getElementById("dm-refresh").onclick = loadDms;
+      document.getElementById("dm-refresh").onclick = () => loadConversations(DM);
 
-      document.getElementById("dm-send").onclick = sendDmMessage;
+      document.getElementById("dm-send").onclick = () => sendConversationMessage(DM);
 
       document.getElementById("op-deliv-refresh").onclick = loadDeliveries;
 
