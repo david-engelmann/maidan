@@ -6,7 +6,7 @@
 # Default (secure) path — the quickstart stack runs with auth ON, so mint a token first:
 #   docker compose -f compose.quickstart.yaml up -d --build --wait
 #   docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
-#   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id>./scripts/quickstart-two-agents.sh
+#   MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace-id> ./scripts/quickstart-two-agents.sh
 #
 # `maidan init` prints both the admin bearer token and the workspace id; content
 # operations (channel/thread/message) are authenticated with the token.
