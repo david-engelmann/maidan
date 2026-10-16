@@ -61,7 +61,12 @@ pub fn is_stalled(thread: &Thread, now: DateTime<Utc>, threshold: Option<Duratio
     let Ok(threshold) = chrono::Duration::from_std(threshold) else {
         return false;
     };
-    progress + threshold <= now
+    // An operator may set an enormous threshold to all but turn detection
+    // off; past chrono's date range the deadline never comes, so not stalled
+    // rather than a panic on every board read.
+    progress
+        .checked_add_signed(threshold)
+        .is_some_and(|deadline| deadline <= now)
 }
 
 /// Mark each thread's [`Thread::stalled`] at the current time and the
@@ -156,6 +161,13 @@ mod tests {
         assert!(!is_stalled(&thread, now, None));
         thread.last_progress_at = None;
         assert!(!is_stalled(&thread, now, FIFTEEN_MINS));
+    }
+
+    #[test]
+    fn a_threshold_past_the_date_range_is_never_stalled_and_does_not_panic() {
+        let now = Utc::now();
+        let huge = Some(Duration::from_secs(1_000_000_000_000_000));
+        assert!(!is_stalled(&worked(60, now), now, huge));
     }
 
     #[test]
