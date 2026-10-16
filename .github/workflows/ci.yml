@@ -426,6 +426,14 @@ jobs:
       - name: integration tests
         if: needs.changes.outputs.code == 'true'
         run: cargo nextest run --workspace --tests --profile ci
+      # The S3 tests write through MinIO to this disk, after the workspace
+      # build has filled most of it; the free space left is the first thing to
+      # read when they fail.
+      - name: disk after tests
+        if: ${{ !cancelled() }}
+        run: |
+          df -h /
+          du -sh target 2>/dev/null || true
       - name: doc contract tests (docs-only change)
         # The tests that read docs/, book/ or Markdown; nothing else can be
         # affected by a docs-only change.
