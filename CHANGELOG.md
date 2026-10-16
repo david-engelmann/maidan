@@ -209,6 +209,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a background change sweep (`MAIDAN_CHANGE_SWEEP_SECS`, every 120 s by default, `0` off). Per workspace it reads from GitHub the agent pull requests not yet seen closed, at most 25 a pass, the longest unread first (migration 0177 adds `checked_at`, and `settled_at` so each close acts once). A merge closes the change's thread through the store's transition path, with a `ThreadLanded` event in the same transaction, so a task that depends on it becomes claimable without a webhook or a person closing it by hand. A thread with another open pull request, or already closed, is left alone. A close without a merge leaves the thread open and posts one message, "#N closed without merging". The swarm-metrics read shares the refresh but still only records closes.
 
+### One conversation module for DMs and group DMs
+
+- **Changed:** the console's DM and group DM panels run through one conversation module (`static/ui/dm.js`). Each kind is described once: its elements, its list and send routes, and its words. One list, one select, one send and one after-open step serve both. The copied `loadDms`/`loadGroupDms`, `selectDm`/`selectGroupDm` and `sendDmMessage`/`sendGroupDmMessage` pairs, and the per-kind selection globals, are deleted. Opening keeps its two forms, because one person and a group of three or more are validated differently. An empty list, or one shown before sign-in, is now a muted state line in both panels instead of a bare list item. Nothing changes on the server.
+
 ### Change notices: rebase_needed and stale_base
 
 - **Added:** a thread is told when its base goes stale, with a `ThreadNotice` event (new event kind `thread_notice`) and one message. When the change sweep sees an agent pull request merged, each live claim in the same workspace and repository whose footprint covers a path the pull request touched (`path` and `glob` items, by prefix) gets one `rebase_needed` notice naming the repository, the pull request, the base branch and up to 20 covered paths; a merge notifies once. A round delivered on a base `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind gets one `stale_base` notice. The last 10 notices, newest first, are in `GET /threads/{id}` and the context pack's tail (MCP `get_thread_context`). Migration 0176 adds `maidan_change_rounds.paths` and `base_branch`, `maidan_change_pulls.noticed_at`, and `maidan_thread_notices`.
@@ -225,10 +229,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Launch docs say what works
 
 - **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
-
-### One conversation module for DMs and group DMs
-
-- **Changed:** the console's DM and group DM panels run through one conversation module (`static/ui/dm.js`). Each kind is described once: its elements, its list and send routes, and its words. One list, one select, one send and one after-open step serve both. The copied `loadDms`/`loadGroupDms`, `selectDm`/`selectGroupDm` and `sendDmMessage`/`sendGroupDmMessage` pairs, and the per-kind selection globals, are deleted. Opening keeps its two forms, because one person and a group of three or more are validated differently. An empty list, or one shown before sign-in, is now a muted state line in both panels instead of a bare list item. Nothing changes on the server.
 
 ## [413.0.0] — 2026-10-11
 
