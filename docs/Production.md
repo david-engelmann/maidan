@@ -71,7 +71,7 @@ period is cut, and clients retry.
 | `MAIDAN_ALLOW_INSECURE_DEV_KEK` | no | `1` lets a server with no `MAIDAN_CONTENT_KEK` use the built-in development key, which is public, with a warning. For local development and CI only; refused with `MAIDAN_ENV=production`. |
 | `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. Requires `MAIDAN_CONTENT_KEK`. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
-| `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). |
+| `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). Each tick polls every enabled peer; a peer whose target is refused, has no outbound secret, or fails to answer is logged and skipped, and the rest are still polled. Counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`). |
 | `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
 | `MAIDAN_EMBEDDING_ENDPOINT` | when provider is `openai-compatible` | Full URL to embeddings endpoint (OpenAI-compatible response shape). |
 | `MAIDAN_EMBEDDING_MODEL` | when provider is `openai-compatible` | Embedding model id sent in request body. |

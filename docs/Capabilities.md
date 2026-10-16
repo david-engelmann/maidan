@@ -1309,7 +1309,7 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 
 | Change | Where |
 |--------|-------|
-| A2A conformance client (`examples/a2a_interop.py`, httpx): validates the Agent Card §4.4.1 + JSON-RPC + REST bindings against the spec. Harness `scripts/a2a-interop.sh` (boot + run + teardown) + a report-only `a2a interop` CI job. Live-verified. **Completes the A2A v1.0 arc (282–289): all three transports + negotiation** | `examples/a2a_interop.py`, `scripts/a2a-interop.sh`, `.github/workflows/ci.yml`, `docs/Framework Integrations.md` |
+| A2A conformance client (`examples/a2a_interop.py`, httpx): validates the Agent Card §4.4.1 + JSON-RPC + REST bindings against the spec. The boot + run + teardown harness and its report-only CI job are now [`scripts/a2a-tck.sh`](https://github.com/david-engelmann/maidan/blob/main/scripts/a2a-tck.sh) and the `a2a tck` job, which run this client before the official TCK. Live-verified. **Completes the A2A v1.0 arc (282–289): all three transports + negotiation** | `examples/a2a_interop.py`, `scripts/a2a-tck.sh`, `.github/workflows/ci.yml`, `docs/Framework Integrations.md` |
 
 ## [v288.0.0](https://github.com/david-engelmann/maidan/releases/tag/v288.0.0) — A2A transport negotiation + configurable origin (compliance arc, part 7)
 
