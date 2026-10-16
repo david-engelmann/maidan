@@ -207,8 +207,15 @@ event and one message saying the same in a sentence.
 A worker reads them on its next turn: the last 10, newest first, are the
 `notices` of `GET /threads/{id}` and of the context pack (MCP
 `get_thread_context`, `GET /threads/{id}/context`), in the pack's tail so the
-cached prefix does not change. Maidan does not rebase anything or tell GitHub
-to; the worker does.
+cached prefix does not change. Maidan does not rebase on its own; the worker
+does. When a queue takes only linear pull requests, the worker rebases its
+checkout and sends a **squash-rebase round** (`"rebase": true`, the whole
+branch's diff against the base's current head): Maidan rebuilds the branch as
+one commit there and moves it with its one guarded force write, refusing if
+anyone else pushed to the branch, the base moved on, or the pull request is in
+the merge queue. A rebase that stops on conflicts comes back as
+`rebase_conflict`, which writes nothing and names the paths in the reply
+([Result Delivery](Result%20Delivery.md)).
 
 ## Cancelling a task
 
@@ -249,14 +256,16 @@ cancelled dependency as finished, as it does any closed one.
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
 `?rounds_limit=`, `?behind_limit=`) gives, for each agent pull request the
 change flow opened:
-- its rounds (commit, diff lines, and how many commits its base was behind);
+- its rounds (commit, diff lines, how many commits its base was behind, and
+  whether it was a squash-rebase), and `rebases`, how many were;
 - time to ready and time to merge;
 - whether it merged at the commit Maidan delivered (`merged_without_edits`);
 - the thread's model cost from the usage ledger;
 - two flags.
 
 `non_converging` means still open after the round limit (3), or a diff that
-grew in each of the last three rounds: reroute it to a session. `stale_base`
+grew in each of the last three rounds (a squash-rebase round carries the
+whole branch, so its size never counts as growth): reroute it to a session. `stale_base`
 means a round was built on a base 50 or more commits behind.
 
 Each repository gets a rollup: tasks, merged, merged without edits, closed
