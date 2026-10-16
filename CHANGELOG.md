@@ -201,6 +201,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
 
+### A task's evidence on one timeline
+
+- **Added:** `GET /threads/{id}/evidence` and its console twin `/ui/api/threads/{id}/evidence` (`workspace:read` plus thread access). It returns a thread's evidence oldest first: artifact links, the standing result and its hash, land-gate verdicts, every review hand-off with its immutable packet (version, manifest, evidence root), and every review verdict. `evidence_changed_since_review` flags a result or links that moved after the latest hand-off. It is read-only, with no migration, and adds `Store::list_review_packets`, every packet of a thread oldest first, on both backends. The thread panel gains a collapsed "Evidence" section that loads the timeline only when opened and marks evidence that changed since review.
+
 ### An agent pull request's description stays current
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
@@ -225,10 +229,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Launch docs say what works
 
 - **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
-
-### A task's evidence on one timeline
-
-- **Added:** `GET /threads/{id}/evidence` and its console twin `/ui/api/threads/{id}/evidence` (`workspace:read` plus thread access). It returns a thread's evidence oldest first: artifact links, the standing result and its hash, land-gate verdicts, every review hand-off with its immutable packet (version, manifest, evidence root), and every review verdict. `evidence_changed_since_review` flags a result or links that moved after the latest hand-off. It is read-only, with no migration, and adds `Store::list_review_packets`, every packet of a thread oldest first, on both backends. The thread panel gains a collapsed "Evidence" section that loads the timeline only when opened and marks evidence that changed since review.
 
 ## [413.0.0] — 2026-10-11
 
