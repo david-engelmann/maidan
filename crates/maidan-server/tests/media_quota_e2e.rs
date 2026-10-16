@@ -342,6 +342,47 @@ async fn the_retention_sweep_expires_unreferenced_media_and_reaps_its_bytes() {
     );
 }
 
+/// Bytes whose delete failed are queued, and the retention sweep retries
+/// them: bytes no row holds go, and bytes another workspace has uploaded since
+/// stay, with both shas leaving the queue.
+#[tokio::test]
+async fn the_retention_sweep_retries_orphaned_bytes_a_failed_delete_left() {
+    let ctx = spawn().await;
+    let (wa, _tok_a) = workspace_with_token(&ctx, "orphaner").await;
+    let (_wb, tok_b) = workspace_with_token(&ctx, "holder").await;
+    let orphan = ctx
+        .artifacts
+        .put(bytes::Bytes::from_static(b"nobody holds these"))
+        .await
+        .unwrap();
+    let held = uploaded(&ctx, &tok_b, "attachment", b"b uploaded these since").await;
+    for sha in [orphan.to_hex(), held.clone()] {
+        ctx.store
+            .queue_blob_reap(&sha, wa, "blob store unavailable")
+            .await
+            .unwrap();
+    }
+
+    retention::sweep_once(&ctx.store, &ctx.artifacts, &retention::config_from_env()).await;
+
+    assert!(
+        !ctx.artifacts.exists(&orphan).await.unwrap(),
+        "the retry deletes bytes no row holds"
+    );
+    assert!(
+        ctx.artifacts
+            .exists(&Sha256::from_hex(&held).unwrap())
+            .await
+            .unwrap(),
+        "bytes another workspace holds stay"
+    );
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM maidan_artifact_reap_retries")
+        .fetch_one(&ctx.pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0);
+}
+
 #[tokio::test]
 async fn a_workspace_may_not_set_more_media_than_the_instance_allows() {
     let ctx = spawn().await;

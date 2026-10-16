@@ -3,6 +3,7 @@
 mod a2a;
 mod approval_gates;
 mod apps;
+mod artifact_reap_retries;
 mod artifacts;
 mod audit;
 mod automation_deliveries;
