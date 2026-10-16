@@ -117,6 +117,11 @@ pub struct CreateThread {
     /// replaced later by `PUT /threads/{id}/attributes`.
     #[serde(default)]
     pub attributes: Option<TaskAttributes>,
+    /// The thread's dispatch priority (higher is more urgent; the default is
+    /// 0), stored with the thread under the creator's `workspace:write`.
+    /// Changing it later is `PUT /threads/{id}/priority`.
+    #[serde(default)]
+    pub priority: Option<i64>,
 }
 
 /// Actions a caller may name on `POST /threads/{id}`.
@@ -440,6 +445,8 @@ pub struct SwarmMetricsQuery {
     /// Only tasks of this kind (`change`, `plan` or `review`); a task never
     /// described counts as a change.
     pub kind: Option<maidan_types::TaskKind>,
+    /// Only tasks of this size (`S`, `M` or `L`).
+    pub size: Option<maidan_types::TaskSize>,
 }
 
 /// Query params for lifting a repository pause.

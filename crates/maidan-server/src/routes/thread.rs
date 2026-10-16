@@ -47,6 +47,10 @@ pub async fn create_thread(
         .footprint
         .map(|footprint| footprint.validated().map_err(ApiError::BadRequest))
         .transpose()?;
+    let attributes = body
+        .attributes
+        .map(|attributes| attributes.validated().map_err(ApiError::BadRequest))
+        .transpose()?;
     let created = state
         .store
         .create_thread_with_footprint(
@@ -58,14 +62,15 @@ pub async fn create_thread(
                 created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
-            body.attributes,
+            attributes.clone(),
+            body.priority,
         )
         .await;
     let actor = (!auth.bypass).then_some(auth.member_id);
     let (mut t, stored) = observe_spawn_denial(&state, actor, created).await?;
     // The response carries the attributes the thread now reads with: the
     // ones stored, or the defaults when intake gave none.
-    t.attributes = Some(body.attributes.unwrap_or_default());
+    t.attributes = Some(attributes.unwrap_or_default());
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(t)))
 }

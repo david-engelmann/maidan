@@ -3,7 +3,7 @@
 //! thread was never described.
 
 use chrono::Utc;
-use maidan_types::{TaskAttributes, TaskEngine, TaskKind, ThreadId};
+use maidan_types::{TaskAttributes, TaskEngine, TaskKind, TaskSize, ThreadId};
 use sqlx::{PgPool, Row};
 
 use crate::error::StoreError;
@@ -17,13 +17,15 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, updated_at)
-         VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
     .bind(attributes.engine.map(|engine| engine.as_str()))
     .bind(attributes.threat_model)
+    .bind(attributes.size.map(|size| size.as_str()))
+    .bind(attributes.acceptance.as_deref())
     .bind(Utc::now())
     .execute(&mut *conn)
     .await?;
@@ -33,7 +35,7 @@ pub(crate) async fn insert_on(
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model FROM maidan_thread_attributes WHERE thread_id = $1",
+        "SELECT kind, engine, threat_model, size, acceptance FROM maidan_thread_attributes WHERE thread_id = $1",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -48,6 +50,10 @@ pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, S
         kind: TaskKind::parse(&kind).unwrap_or_default(),
         engine: engine.and_then(|engine| TaskEngine::parse(&engine)),
         threat_model,
+        size: row
+            .try_get::<Option<String>, _>("size")?
+            .and_then(|size| TaskSize::parse(&size)),
+        acceptance: row.try_get("acceptance")?,
     })
 }
 
@@ -66,18 +72,22 @@ pub async fn set(
         return Err(StoreError::NotFound);
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, updated_at)
-         VALUES ($1, $2, $3, $4, $5)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
              threat_model = excluded.threat_model,
+             size = excluded.size,
+             acceptance = excluded.acceptance,
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
     .bind(attributes.engine.map(|engine| engine.as_str()))
     .bind(attributes.threat_model)
+    .bind(attributes.size.map(|size| size.as_str()))
+    .bind(attributes.acceptance.as_deref())
     .bind(Utc::now())
     .execute(pool)
     .await?;

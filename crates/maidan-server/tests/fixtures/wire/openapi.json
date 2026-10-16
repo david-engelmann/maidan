@@ -2321,6 +2321,14 @@
               "null"
             ]
           },
+          "priority": {
+            "description": "The thread's dispatch priority (higher is more urgent; the default is\n0), stored with the thread under the creator's `workspace:write`.\nChanging it later is `PUT /threads/{id}/priority`.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "title": {
             "type": [
               "string",
@@ -8325,8 +8333,15 @@
         "type": "object"
       },
       "TaskAttributes": {
-        "description": "A thread's task attributes, whole: setting them replaces all three.",
+        "description": "A thread's task attributes, whole: setting them replaces every field.",
         "properties": {
+          "acceptance": {
+            "description": "How a reviewer verifies the task: what the change must satisfy. Shown\nto the worker in the thread context.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "engine": {
             "oneOf": [
               {
@@ -8340,14 +8355,20 @@
           "kind": {
             "$ref": "#/components/schemas/TaskKind"
           },
+          "size": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskSize"
+              }
+            ]
+          },
           "threat_model": {
             "type": "boolean"
           }
         },
-        "required": [
-          "kind",
-          "threat_model"
-        ],
         "type": "object"
       },
       "TaskEngine": {
@@ -8544,6 +8565,15 @@
       },
       "TaskScheduleId": {
         "format": "uuid",
+        "type": "string"
+      },
+      "TaskSize": {
+        "description": "How big a task is, as its planner judged it.",
+        "enum": [
+          "S",
+          "M",
+          "L"
+        ],
         "type": "string"
       },
       "Thread": {
@@ -31291,6 +31321,15 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/TaskKind"
+            }
+          },
+          {
+            "description": "Only tasks of this size (`S`, `M` or `L`).",
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskSize"
             }
           }
         ],

@@ -1494,6 +1494,7 @@ pub trait ThreadStore: Send + Sync {
         new: NewThread,
         footprint: Option<maidan_types::Footprint>,
         attributes: Option<maidan_types::TaskAttributes>,
+        priority: Option<i64>,
     ) -> Result<(Thread, StoredEvent), StoreError>;
 
     /// A thread's task attributes; the defaults when it was never
@@ -2216,6 +2217,7 @@ pub trait AssignmentStore: Send + Sync {
         since: Option<chrono::DateTime<chrono::Utc>>,
         engine: Option<maidan_types::TaskEngine>,
         kind: Option<maidan_types::TaskKind>,
+        size: Option<maidan_types::TaskSize>,
     ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
     /// Stamp when a tracked agent pull request was last read from GitHub.
     async fn mark_change_pull_checked(

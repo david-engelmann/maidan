@@ -258,6 +258,8 @@ pub(crate) struct ItemRow {
     pub(crate) task_kind: Option<String>,
     pub(crate) task_engine: Option<String>,
     pub(crate) threat_model: Option<bool>,
+    pub(crate) task_size: Option<String>,
+    pub(crate) task_acceptance: Option<String>,
 }
 
 fn parse_mode(mode: &str) -> Result<FootprintMode, StoreError> {
@@ -321,6 +323,11 @@ pub(crate) fn group_active(rows: Vec<ItemRow>) -> Result<Vec<ActiveClaim>, Store
                         .as_deref()
                         .and_then(maidan_types::TaskEngine::parse),
                     threat_model: row.threat_model.unwrap_or(false),
+                    size: row
+                        .task_size
+                        .as_deref()
+                        .and_then(maidan_types::TaskSize::parse),
+                    acceptance: row.task_acceptance.clone(),
                 },
             },
         );

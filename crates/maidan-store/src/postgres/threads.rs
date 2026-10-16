@@ -42,18 +42,32 @@ pub async fn create_with_event(
     pool: &PgPool,
     new: NewThread,
 ) -> Result<(Thread, StoredEvent), StoreError> {
-    create_with_footprint(pool, new, None, None).await
+    create_with_footprint(pool, new, None, None, None).await
 }
 
-/// [`create_with_event`], storing `footprint` and the task `attributes`
-/// with the thread in the same transaction, so no claimer ever sees the
-/// thread without them.
+/// [`create_with_event`], storing `footprint`, the task `attributes` and the
+/// dispatch `priority` with the thread in the same transaction, so no claimer
+/// ever sees the thread without them. A priority needs an attributed creator,
+/// who is recorded as having set it.
 pub async fn create_with_footprint(
     pool: &PgPool,
     new: NewThread,
     footprint: Option<maidan_types::Footprint>,
     attributes: Option<maidan_types::TaskAttributes>,
+    priority: Option<i64>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    let attributes = attributes
+        .map(|attributes| attributes.validated().map_err(StoreError::InvalidInput))
+        .transpose()?;
+    let priority_by = match (priority, new.created_by) {
+        (Some(priority), Some(by)) => Some((priority, by)),
+        (Some(_), None) => {
+            return Err(StoreError::InvalidInput(
+                "a priority at creation needs an attributed caller".into(),
+            ))
+        }
+        (None, _) => None,
+    };
     let footprint = footprint
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
@@ -92,6 +106,16 @@ pub async fn create_with_footprint(
     }
     if let Some(attributes) = &attributes {
         super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
+    }
+    if let Some((priority, by)) = priority_by {
+        sqlx::query(
+            "INSERT INTO maidan_thread_priorities (thread_id, priority, set_by, set_at) VALUES ($1, $2, $3, NOW())",
+        )
+        .bind(thread.id.0)
+        .bind(priority)
+        .bind(by.0)
+        .execute(&mut *tx)
+        .await?;
     }
     let stored = events::append_in_tx(&mut tx, &event).await?;
     tx.commit().await?;

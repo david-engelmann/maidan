@@ -10,6 +10,8 @@ CREATE TABLE maidan_thread_attributes (
                  CHECK (kind IN ('change', 'plan', 'review')),
     engine       TEXT CHECK (engine IN ('pi', 'session', 'human')),
     threat_model BOOLEAN NOT NULL DEFAULT FALSE,
+    size         TEXT CHECK (size IN ('S', 'M', 'L')),
+    acceptance   TEXT,
     updated_at   TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX idx_thread_attributes_engine ON maidan_thread_attributes (engine);

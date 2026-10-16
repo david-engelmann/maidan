@@ -403,10 +403,13 @@ pub fn catalog() -> Vec<Value> {
                         "properties": {
                             "kind": {"type": "string", "enum": ["change", "plan", "review"]},
                             "engine": {"type": "string", "enum": ["pi", "session", "human"]},
-                            "threat_model": {"type": "boolean"}
+                            "threat_model": {"type": "boolean"},
+                            "size": {"type": "string", "enum": ["S", "M", "L"]},
+                            "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"}
                         },
                         "required": ["kind"]
-                    }
+                    },
+                    "priority": {"type": "integer", "description": "dispatch priority, stored with the thread; higher is claimed first (default 0)"}
                 },
                 "required": ["channel_id"]
             }
@@ -1449,7 +1452,9 @@ pub fn catalog() -> Vec<Value> {
                     "thread_id": {"type": "string", "format": "uuid"},
                     "kind": {"type": "string", "enum": ["change", "plan", "review"]},
                     "engine": {"type": "string", "enum": ["pi", "session", "human"], "description": "omit to leave the work unrouted"},
-                    "threat_model": {"type": "boolean"}
+                    "threat_model": {"type": "boolean"},
+                    "size": {"type": "string", "enum": ["S", "M", "L"]},
+                    "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"}
                 },
                 "required": ["thread_id", "kind"]
             }

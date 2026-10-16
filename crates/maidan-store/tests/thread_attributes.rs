@@ -71,6 +71,7 @@ fn attrs(kind: TaskKind, engine: Option<TaskEngine>, threat_model: bool) -> Task
         kind,
         engine,
         threat_model,
+        ..TaskAttributes::default()
     }
 }
 
@@ -80,7 +81,12 @@ async fn attributes_set_at_creation_are_read_back(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "intake", 1).await;
     let described = attrs(TaskKind::Review, Some(TaskEngine::Human), true);
     let (thread, _event) = store
-        .create_thread_with_footprint(new_thread(room.channel, "described"), None, Some(described))
+        .create_thread_with_footprint(
+            new_thread(room.channel, "described"),
+            None,
+            Some(described.clone()),
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -89,7 +95,7 @@ async fn attributes_set_at_creation_are_read_back(store: Arc<dyn Store>) {
     );
 
     let (plain, _event) = store
-        .create_thread_with_footprint(new_thread(room.channel, "plain"), None, None)
+        .create_thread_with_footprint(new_thread(room.channel, "plain"), None, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -108,12 +114,13 @@ async fn attributes_set_later_replace_the_whole_set(store: Arc<dyn Store>) {
             new_thread(room.channel, "task"),
             None,
             Some(attrs(TaskKind::Change, Some(TaskEngine::Pi), false)),
+            None,
         )
         .await
         .unwrap();
     let replaced = attrs(TaskKind::Plan, Some(TaskEngine::Session), true);
     let stored = store
-        .set_thread_attributes(thread.id, replaced)
+        .set_thread_attributes(thread.id, replaced.clone())
         .await
         .unwrap();
     assert_eq!(stored, replaced);
@@ -146,6 +153,7 @@ async fn an_engine_claim_takes_only_its_own_work(store: Arc<dyn Store>) {
                 new_thread(room.channel, title),
                 None,
                 Some(attrs(TaskKind::Change, engine, false)),
+                None,
             )
             .await
             .unwrap();
@@ -186,7 +194,8 @@ async fn a_live_claim_entry_carries_the_attributes(store: Arc<dyn Store>) {
                     value: "db".into(),
                 }],
             }),
-            Some(described),
+            Some(described.clone()),
+            None,
         )
         .await
         .unwrap();
@@ -213,12 +222,13 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
         .create_thread_with_footprint(
             new_thread(room.channel, "review task"),
             None,
-            Some(described),
+            Some(described.clone()),
+            None,
         )
         .await
         .unwrap();
     let (plain, _event) = store
-        .create_thread_with_footprint(new_thread(room.channel, "plain task"), None, None)
+        .create_thread_with_footprint(new_thread(room.channel, "plain task"), None, None, None)
         .await
         .unwrap();
     for (n, thread) in [(1, review.id), (2, plain.id)] {
@@ -240,7 +250,7 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     }
 
     let all = store
-        .list_change_pulls(room.ws, None, None, None, None)
+        .list_change_pulls(room.ws, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(all.len(), 2);
@@ -256,13 +266,13 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     assert_eq!(plain_pull.attributes, TaskAttributes::default());
 
     let pi_only = store
-        .list_change_pulls(room.ws, None, None, Some(TaskEngine::Pi), None)
+        .list_change_pulls(room.ws, None, None, Some(TaskEngine::Pi), None, None)
         .await
         .unwrap();
     assert_eq!(pi_only.len(), 1);
     assert_eq!(pi_only[0].thread_id, review.id);
     let changes = store
-        .list_change_pulls(room.ws, None, None, None, Some(TaskKind::Change))
+        .list_change_pulls(room.ws, None, None, None, Some(TaskKind::Change), None)
         .await
         .unwrap();
     assert_eq!(changes.len(), 1, "the undescribed task counts as a change");
@@ -275,6 +285,98 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     assert_eq!(rollup.by_engine[0].tasks, 1);
     assert_eq!(rollup.by_engine[1].engine, None);
     assert_eq!(rollup.by_engine[1].tasks, 1);
+}
+
+/// Size and acceptance round-trip at creation and on replace; acceptance is
+/// trimmed (blank reads as none) and refused past its limit, creating
+/// nothing.
+async fn size_and_acceptance_are_stored_and_checked(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "sizing", 1).await;
+    let sized = TaskAttributes {
+        size: Some(TaskSize::M),
+        acceptance: Some("  The bridge retries twice, and its test proves it.  ".into()),
+        ..attrs(TaskKind::Change, Some(TaskEngine::Pi), false)
+    };
+    let (thread, _) = store
+        .create_thread_with_footprint(new_thread(room.channel, "sized"), None, Some(sized), None)
+        .await
+        .unwrap();
+    let read = store.get_thread_attributes(thread.id).await.unwrap();
+    assert_eq!(read.size, Some(TaskSize::M));
+    assert_eq!(
+        read.acceptance.as_deref(),
+        Some("The bridge retries twice, and its test proves it.")
+    );
+
+    let blank = TaskAttributes {
+        acceptance: Some("   ".into()),
+        ..read.clone()
+    };
+    let stored = store
+        .set_thread_attributes(thread.id, blank.validated().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(stored.acceptance, None, "blank acceptance reads as none");
+
+    let before = store.list_threads(room.channel).await.unwrap().len();
+    let too_long = TaskAttributes {
+        acceptance: Some("x".repeat(maidan_types::ACCEPTANCE_MAX_CHARS + 1)),
+        ..TaskAttributes::default()
+    };
+    assert!(store
+        .create_thread_with_footprint(new_thread(room.channel, "long"), None, Some(too_long), None)
+        .await
+        .is_err());
+    assert_eq!(
+        store.list_threads(room.channel).await.unwrap().len(),
+        before
+    );
+}
+
+/// A priority set at creation is stored with the thread and the claim queue
+/// hands it out before older unprioritised work; a priority needs an
+/// attributed creator.
+async fn a_priority_set_at_creation_is_claimed_first(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "priority", 2).await;
+    let older = store
+        .create_thread_with_footprint(new_thread(room.channel, "older"), None, None, None)
+        .await
+        .unwrap()
+        .0;
+    let urgent_new = NewThread {
+        created_by: Some(room.agents[1]),
+        ..new_thread(room.channel, "urgent")
+    };
+    let urgent = store
+        .create_thread_with_footprint(urgent_new, None, None, Some(100))
+        .await
+        .unwrap()
+        .0;
+    assert_eq!(
+        store
+            .get_thread_priority(urgent.id)
+            .await
+            .unwrap()
+            .map(|p| p.priority),
+        Some(100)
+    );
+    let claimed = store
+        .claim_next_thread(room.channel, room.agents[0], Some(600), None)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        claimed.id, urgent.id,
+        "the urgent task is claimed before the older one"
+    );
+    assert_ne!(claimed.id, older.id);
+    assert!(
+        store
+            .create_thread_with_footprint(new_thread(room.channel, "anon"), None, None, Some(5))
+            .await
+            .is_err(),
+        "a priority needs an attributed creator"
+    );
 }
 
 macro_rules! on_both_backends {
@@ -345,4 +447,6 @@ on_both_backends!(
     an_engine_claim_takes_only_its_own_work,
     a_live_claim_entry_carries_the_attributes,
     the_metrics_carry_filter_and_split_on_attributes,
+    size_and_acceptance_are_stored_and_checked,
+    a_priority_set_at_creation_is_claimed_first,
 );

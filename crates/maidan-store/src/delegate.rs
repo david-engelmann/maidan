@@ -1778,8 +1778,10 @@ macro_rules! store_delegations {
                 new: NewThread,
                 footprint: Option<maidan_types::Footprint>,
                 attributes: Option<maidan_types::TaskAttributes>,
+                priority: Option<i64>,
             ) -> Result<(Thread, StoredEvent), StoreError> {
-                threads::create_with_footprint(self.pool(), new, footprint, attributes).await
+                threads::create_with_footprint(self.pool(), new, footprint, attributes, priority)
+                    .await
             }
 
             async fn get_thread_attributes(
@@ -2666,8 +2668,10 @@ macro_rules! store_delegations {
                 since: Option<chrono::DateTime<chrono::Utc>>,
                 engine: Option<maidan_types::TaskEngine>,
                 kind: Option<maidan_types::TaskKind>,
+                size: Option<maidan_types::TaskSize>,
             ) -> Result<Vec<maidan_types::ChangePull>, StoreError> {
-                change_metrics::list(self.pool(), workspace_id, repo, since, engine, kind).await
+                change_metrics::list(self.pool(), workspace_id, repo, since, engine, kind, size)
+                    .await
             }
 
             async fn mark_change_pull_checked(

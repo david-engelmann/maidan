@@ -1606,7 +1606,7 @@ async fn each_delivered_round_counts_toward_the_swarm_metrics() {
     h.drain().await;
     let pulls = h
         .store
-        .list_change_pulls(h.a.workspace_id, None, None, None, None)
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(pulls.len(), 1);

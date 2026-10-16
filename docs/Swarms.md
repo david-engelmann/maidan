@@ -250,12 +250,20 @@ A thread can carry attributes that say what kind of work it is, who or what
 should do it, and whether it needs a threat model:
 
 ```json
-{ "kind": "change", "engine": "pi", "threat_model": false }
+{ "kind": "change", "engine": "pi", "threat_model": false,
+  "size": "M", "acceptance": "The bridge retries twice; its test proves it." }
 ```
 
 `kind` is `change` (the default), `plan` or `review`. `engine` is `pi`,
 `session` or `human`, or absent when nobody has routed the work yet.
-`threat_model` marks work that needs one.
+`threat_model` marks work that needs one. `size` (`S`, `M` or `L`) is the
+planner's estimate, and `acceptance` says how a reviewer verifies the task;
+the worker sees it in the thread context. The lane is not an attribute: it is
+a footprint item.
+
+A producer sets them, and a dispatch `priority` (higher is claimed first),
+in the call that creates the thread, under the `workspace:write` it creates
+threads with.
 
 They are set at intake, on `POST /channels/{cid}/threads` or MCP
 `create_thread`, in the same transaction as the thread, and replaced later

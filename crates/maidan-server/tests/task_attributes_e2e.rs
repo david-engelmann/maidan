@@ -462,3 +462,68 @@ async fn swarm_metrics_carry_attributes_filters_and_the_engine_split() {
     assert_eq!(reviews["tasks"].as_array().unwrap().len(), 1);
     assert_eq!(reviews["tasks"][0]["pull_number"], 1);
 }
+
+#[tokio::test]
+async fn a_producer_sets_priority_size_and_acceptance_at_intake() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "intake").await;
+    // A producer creates tasks; it holds no thread:transition.
+    let (_, producer) = member_with(
+        store.as_ref(),
+        room.ws,
+        "producer",
+        &[
+            maidan_auth::capability::WORKSPACE_READ,
+            maidan_auth::capability::WORKSPACE_WRITE,
+        ],
+    )
+    .await;
+    let as_producer = Room {
+        ws: room.ws,
+        channel: room.channel,
+        token: producer,
+    };
+    let (status, _older) = create_thread(&base, &as_producer, json!({ "title": "older" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, urgent) = create_thread(
+        &base,
+        &as_producer,
+        json!({
+            "title": "urgent",
+            "priority": 100,
+            "attributes": {
+                "kind": "change",
+                "engine": "pi",
+                "size": "S",
+                "acceptance": "The retry test passes."
+            }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{urgent}");
+    assert_eq!(urgent["attributes"]["size"], "S");
+    assert_eq!(urgent["attributes"]["acceptance"], "The retry test passes.");
+
+    let claimed = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "claim_next_thread",
+            json!({ "channel_id": room.channel.0 }),
+        )
+        .await,
+    );
+    let id = claimed["thread"]["id"]
+        .as_str()
+        .or_else(|| claimed["id"].as_str())
+        .unwrap_or_else(|| panic!("nothing claimed: {claimed}"));
+    assert_eq!(id, urgent["id"].as_str().unwrap(), "priority beats age");
+
+    let (status, _) = create_thread(
+        &base,
+        &as_producer,
+        json!({ "title": "bad", "attributes": { "kind": "change", "size": "XL" } }),
+    )
+    .await;
+    assert!(status.is_client_error(), "an unknown size is refused");
+}

@@ -77,8 +77,39 @@ impl TaskEngine {
     }
 }
 
-/// A thread's task attributes, whole: setting them replaces all three.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+/// How big a task is, as its planner judged it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum TaskSize {
+    S,
+    M,
+    L,
+}
+
+impl TaskSize {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::S => "S",
+            Self::M => "M",
+            Self::L => "L",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "S" => Some(Self::S),
+            "M" => Some(Self::M),
+            "L" => Some(Self::L),
+            _ => None,
+        }
+    }
+}
+
+/// The most characters an acceptance criterion may hold.
+pub const ACCEPTANCE_MAX_CHARS: usize = 4000;
+
+/// A thread's task attributes, whole: setting them replaces every field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TaskAttributes {
     #[serde(default)]
@@ -87,4 +118,34 @@ pub struct TaskAttributes {
     pub engine: Option<TaskEngine>,
     #[serde(default)]
     pub threat_model: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<TaskSize>,
+    /// How a reviewer verifies the task: what the change must satisfy. Shown
+    /// to the worker in the thread context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance: Option<String>,
+}
+
+impl TaskAttributes {
+    /// Trim the acceptance text (blank reads as none) and check its length.
+    pub fn validated(mut self) -> Result<Self, String> {
+        self.acceptance = self
+            .acceptance
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty());
+        if let Some(text) = &self.acceptance {
+            if text.chars().count() > ACCEPTANCE_MAX_CHARS {
+                return Err(format!(
+                    "acceptance is at most {ACCEPTANCE_MAX_CHARS} characters"
+                ));
+            }
+            if text
+                .chars()
+                .any(|c| c.is_control() && c != '\n' && c != '\t')
+            {
+                return Err("acceptance has no control characters".into());
+            }
+        }
+        Ok(self)
+    }
 }

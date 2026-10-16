@@ -604,6 +604,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "attributes": {
       "description": "the task's attributes, stored with the thread (the shape set_thread_attributes takes, without thread_id)",
       "properties": {
+        "acceptance": {
+          "description": "how a reviewer verifies the task; the worker must satisfy it",
+          "maxLength": 4000,
+          "type": "string"
+        },
         "engine": {
           "enum": [
             "pi",
@@ -617,6 +622,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
             "change",
             "plan",
             "review"
+          ],
+          "type": "string"
+        },
+        "size": {
+          "enum": [
+            "S",
+            "M",
+            "L"
           ],
           "type": "string"
         },
@@ -684,6 +697,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "parent_thread_id": {
       "format": "uuid",
       "type": "string"
+    },
+    "priority": {
+      "description": "dispatch priority, stored with the thread; higher is claimed first (default 0)",
+      "type": "integer"
     },
     "title": {
       "type": "string"
@@ -2409,6 +2426,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "acceptance": {
+      "description": "how a reviewer verifies the task; the worker must satisfy it",
+      "maxLength": 4000,
+      "type": "string"
+    },
     "engine": {
       "description": "omit to leave the work unrouted",
       "enum": [
@@ -2423,6 +2445,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "change",
         "plan",
         "review"
+      ],
+      "type": "string"
+    },
+    "size": {
+      "enum": [
+        "S",
+        "M",
+        "L"
       ],
       "type": "string"
     },

@@ -680,7 +680,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         created_by: None,
     };
     let (created, _) = store
-        .create_thread_with_footprint(new("intake"), Some(lane), None)
+        .create_thread_with_footprint(new("intake"), Some(lane), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -702,7 +702,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         &[(FootprintKind::Path, "../outside")],
     );
     assert!(store
-        .create_thread_with_footprint(new("bad"), Some(bad), None)
+        .create_thread_with_footprint(new("bad"), Some(bad), None, None)
         .await
         .is_err());
     assert_eq!(
@@ -934,7 +934,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         .is_empty());
 
     let pulls = store
-        .list_change_pulls(room.ws, None, None, None, None)
+        .list_change_pulls(room.ws, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(pulls.len(), 1);
@@ -951,7 +951,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
     );
     assert_eq!(pulls[0].merged_head_sha.as_deref(), Some("c2"));
     assert!(store
-        .list_change_pulls(room.ws, Some("example/other"), None, None, None)
+        .list_change_pulls(room.ws, Some("example/other"), None, None, None, None)
         .await
         .unwrap()
         .is_empty());

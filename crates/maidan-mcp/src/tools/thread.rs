@@ -164,6 +164,9 @@ struct CreateThreadArgs {
     /// it is routed to, and whether it needs a threat model.
     #[serde(default)]
     attributes: Option<maidan_types::TaskAttributes>,
+    /// Dispatch priority, stored with the thread.
+    #[serde(default)]
+    priority: Option<i64>,
 }
 
 /// Create a thread. `workspace:write` plus channel access, same as
@@ -184,6 +187,14 @@ pub(super) async fn create_thread(
                 .map_err(|e| McpError::InvalidParams(format!("footprint: {e}")))
         })
         .transpose()?;
+    let attributes = a
+        .attributes
+        .map(|attributes| {
+            attributes
+                .validated()
+                .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))
+        })
+        .transpose()?;
     let created = server
         .store
         .create_thread_with_footprint(
@@ -195,11 +206,12 @@ pub(super) async fn create_thread(
                 created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
-            a.attributes,
+            attributes.clone(),
+            a.priority,
         )
         .await;
     let (mut thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
-    thread.attributes = Some(a.attributes.unwrap_or_default());
+    thread.attributes = Some(attributes.unwrap_or_default());
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
@@ -1249,6 +1261,10 @@ struct SetThreadAttributesArgs {
     engine: Option<maidan_types::TaskEngine>,
     #[serde(default)]
     threat_model: bool,
+    #[serde(default)]
+    size: Option<maidan_types::TaskSize>,
+    #[serde(default)]
+    acceptance: Option<String>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1267,7 +1283,11 @@ pub(super) async fn set_thread_attributes(
                 kind: a.kind,
                 engine: a.engine,
                 threat_model: a.threat_model,
-            },
+                size: a.size,
+                acceptance: a.acceptance,
+            }
+            .validated()
+            .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,
         )
         .await?;
     Ok(content_json(&stored))
