@@ -15,6 +15,7 @@
   "attach_memory_block",
   "attenuate_token",
   "begin_artifact_multipart",
+  "cancel_thread",
   "cancel_wait",
   "cast_vote",
   "catch_up_events",

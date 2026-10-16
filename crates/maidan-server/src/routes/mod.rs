@@ -47,6 +47,7 @@ mod thread;
 mod token;
 pub use token::mint_vocabulary;
 mod usage;
+mod waitlist;
 mod workspace;
 
 pub use approval_gate::*;
@@ -80,6 +81,7 @@ pub use task_schedule::*;
 pub use thread::*;
 pub use token::*;
 pub use usage::*;
+pub use waitlist::*;
 pub use workspace::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;

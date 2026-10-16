@@ -1578,6 +1578,36 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `cancel_thread`
+
+**Cancel thread.** Cancel a task: close it without its work being done, park it from dispatch with the reason, and end any live claim, so the worker's next renew_claim is refused. The reason (1 to 500 characters) is posted on the thread. Requires workspace:write; without thread:transition only the member that created the thread may cancel it. Cancelling an already-cancelled thread returns the first cancel; a thread closed some other way is refused. The REST twin is POST /threads/{id}/cancel.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "reason": {
+      "description": "why the task is cancelled, posted on the thread",
+      "maxLength": 500,
+      "minLength": 1,
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "reason"
+  ],
+  "type": "object"
+}
+```
+
 ### `mark_claimable`
 
 **Mark claimable.** Un-park a thread (G3) — it becomes claimable again. {cleared} is false when it was not parked. Requires thread:transition.

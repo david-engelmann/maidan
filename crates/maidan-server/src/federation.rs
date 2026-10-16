@@ -363,6 +363,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             thread_id,
             produced_by,
         },
+        // Non-federatable (this deployment's cancel) — never actually
+        // ingested/remapped, but the exhaustive match must classify it.
+        ThreadCancelled {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            reason,
+            cancelled_by,
+        } => ThreadCancelled {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reason,
+            cancelled_by,
+        },
         // Non-federatable local human-control state.
         ApprovalRequested {
             occurred_at,
@@ -533,6 +550,31 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             merged_by,
             merge_commit_sha,
             title,
+        },
+        // Non-federatable (a locally-derived change notice) — never actually
+        // ingested/remapped, but the exhaustive match must classify it.
+        ThreadNotice {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            notice,
+            repo,
+            pr_number,
+            paths,
+            base_branch,
+            base_behind,
+        } => ThreadNotice {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            notice,
+            repo,
+            pr_number,
+            paths,
+            base_branch,
+            base_behind,
         },
         // Non-federatable (a locally-derived wait-timer signal) — never
         // actually ingested/remapped, but the exhaustive match must classify
@@ -959,6 +1001,10 @@ pub struct WellKnownAuth {
     /// Where OIDC sign-in starts (with `?workspace_id=`), when it is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_login: Option<String>,
+    /// Where invited sign-up starts, when the instance has it enabled. The
+    /// board shows its waitlist form only when this is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_signup: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -993,6 +1039,11 @@ pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
             oidc,
             sessions,
             oidc_login: oidc.then(|| "/auth/oidc/login".to_string()),
+            oidc_signup: state
+                .oidc
+                .as_ref()
+                .filter(|runtime| runtime.settings.signup)
+                .map(|_| "/auth/oidc/signup".to_string()),
         },
     })
 }

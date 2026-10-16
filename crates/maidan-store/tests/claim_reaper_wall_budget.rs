@@ -55,6 +55,7 @@ async fn queue(store: &dyn Store, name: &str, max_wall_secs: Option<i64>) -> Que
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -407,6 +408,7 @@ async fn concurrent_reapers_charge_each_claim_once(store: Arc<dyn Store>) {
                 parent_thread_id: None,
                 title: Some(format!("task {i}")),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

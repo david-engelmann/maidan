@@ -343,6 +343,25 @@
         "reason": "calls Maidan's own S3 artifact backend only"
       }
     },
+    "cancel_thread": {
+      "title": "Cancel thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.cancel_thread closes the thread, parks it, ends its claim and posts a notice in one transaction"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "an irreversible close that also ends another member's live claim"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat returns the first cancel and writes nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
     "cancel_wait": {
       "title": "Cancel wait",
       "readOnlyHint": {

@@ -130,6 +130,7 @@ async fn world() -> World {
                 parent_thread_id: None,
                 title: Some(format!("t{i}")),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

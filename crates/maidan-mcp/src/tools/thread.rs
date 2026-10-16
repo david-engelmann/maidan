@@ -192,6 +192,7 @@ pub(super) async fn create_thread(
                 parent_thread_id: a.parent_thread_id.map(ThreadId),
                 title: a.title,
                 description: None,
+                created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
             a.attributes,
@@ -637,6 +638,59 @@ pub(super) async fn mark_unclaimable(
         .mark_thread_unclaimable(ThreadId(a.thread_id), reason, auth.member_id)
         .await?;
     Ok(content_json(&marked))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CancelThreadArgs {
+    thread_id: uuid::Uuid,
+    reason: String,
+}
+
+/// Cancel a task: close it without its work being done, park it from dispatch
+/// and end any live claim, the same store cancel as `POST /threads/{id}/cancel`.
+/// `workspace:write` to call; without `thread:transition` as well only the
+/// thread's creator may. Thread access is enforced pre-dispatch.
+pub(super) async fn cancel_thread(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CancelThreadArgs = crate::tools::parse_args(args)?;
+    let reason = validated_cancel_reason(&a.reason).map_err(McpError::InvalidParams)?;
+    let authority = if auth.has_capability(maidan_auth::capability::THREAD_TRANSITION) {
+        CancelAuthority::Transition
+    } else {
+        CancelAuthority::Creator
+    };
+    let thread_id = ThreadId(a.thread_id);
+    match server
+        .store
+        .cancel_thread(thread_id, auth.member_id, reason, authority)
+        .await?
+    {
+        CancelOutcome::Cancelled { cancelled, events } => {
+            for stored in &events {
+                server.publish_stored(stored).await;
+            }
+            let uris = crate::resource_updates::uris_for_thread_transition(
+                server.store.as_ref(),
+                thread_id,
+            )
+            .await;
+            server.publish_resource_uris(uris).await;
+            Ok(content_json(&cancelled))
+        }
+        CancelOutcome::AlreadyCancelled(cancelled) => Ok(content_json(&cancelled)),
+        CancelOutcome::NotCreator => Err(McpError::Forbidden(
+            "only the member that created this thread may cancel it without thread:transition"
+                .into(),
+        )),
+        CancelOutcome::AlreadyFinished(finished) => Err(McpError::InvalidParams(format!(
+            "thread is already {}; there is nothing to cancel",
+            finished.as_str()
+        ))),
+    }
 }
 
 /// Un-park a thread — it becomes claimable again. `{cleared}` is `false` when

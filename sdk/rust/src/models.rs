@@ -244,6 +244,8 @@ model! {
         state: ThreadState,
         assignee_id: Option<String>,
         owner_id: Option<String>,
+        /// The member that created it; that member may cancel it.
+        created_by: Option<String>,
         assignment_expires_at: Option<String>,
         /// The fencing token [`crate::Client::renew_claim`] takes.
         claim_lease_id: Option<String>,

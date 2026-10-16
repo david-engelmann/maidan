@@ -127,6 +127,7 @@ async fn egress_relays_a_linked_thread_message_and_skips_slack_sourced() {
             parent_thread_id: None,
             title: Some("slack".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -197,6 +198,7 @@ async fn egress_relays_a_linked_thread_message_and_skips_slack_sourced() {
             parent_thread_id: None,
             title: Some("other".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

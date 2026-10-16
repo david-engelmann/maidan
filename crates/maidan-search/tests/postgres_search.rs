@@ -106,6 +106,7 @@ async fn configured_hnsw_build_params_and_ef_search() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

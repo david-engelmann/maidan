@@ -6,6 +6,7 @@
 pub mod a2a;
 pub mod approval_policy;
 pub mod attribution;
+mod cancel;
 
 /// The audit row an authority-changing store call writes in its own
 /// transaction (D-A), built from what the call produced — a new token's id,
@@ -110,6 +111,7 @@ pub const REVIEW_LOWER_REFUSAL: &str =
     "lowering a review requirement needs the channel:admin capability";
 mod attestation;
 pub mod automation_deliveries;
+mod change_notices;
 mod claim_next;
 pub mod content_keyring;
 mod content_keys;

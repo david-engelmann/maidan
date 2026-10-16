@@ -13,15 +13,12 @@ use crate::extract::{ApiPath, ApiQuery};
 use crate::routes::{cap, ensure_workspace, ApiResult};
 use crate::state::AppState;
 
-/// Tracked pull requests refreshed per read: enough for a ramp, bounded so a
-/// read never fans out into hundreds of GitHub calls.
-const REFRESH_LIMIT: i64 = 25;
-
 /// The workspace's ramp metrics. Before computing them, pull requests not yet
-/// seen closed are read from GitHub, oldest first, so a merge counts without
-/// a webhook (a local stack may receive none). That refresh fills in what
-/// the read reports (a merge time GitHub already holds), with no event or
-/// audit row, so the route is classified a read. `workspace:read`.
+/// seen closed are read from GitHub (the change sweep's refresh), so a merge
+/// counts without waiting for the next sweep. That refresh fills in what the
+/// read reports (a merge time GitHub already holds), with no event or audit
+/// row, so the route is classified a read; closing the merged change's thread
+/// is left to the sweep. `workspace:read`.
 pub async fn get_swarm_metrics(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -40,7 +37,7 @@ pub async fn get_swarm_metrics(
         rounds: query.rounds_limit.unwrap_or(defaults.rounds).max(1),
         behind: query.behind_limit.unwrap_or(defaults.behind).max(1),
     };
-    refresh_open_pulls(&state, workspace_id).await;
+    crate::change_sweep::refresh_open_pulls(&state, workspace_id).await;
     let pulls = state
         .store
         .list_change_pulls(
@@ -52,47 +49,4 @@ pub async fn get_swarm_metrics(
         )
         .await?;
     Ok(Json(maidan_types::swarm_metrics(pulls, limits)))
-}
-
-/// Record the close of each tracked pull request GitHub now reports closed.
-/// Best effort: a failed read leaves it open until the next one.
-async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
-    let Some(git) = state.github_sender.as_ref().and_then(|s| s.git()) else {
-        return;
-    };
-    let open = match state
-        .store
-        .list_open_change_pulls(workspace_id, REFRESH_LIMIT)
-        .await
-    {
-        Ok(open) => open,
-        Err(err) => {
-            tracing::warn!(error = %err, "swarm metrics: open pull requests not read");
-            return;
-        }
-    };
-    for (repo, pull_number) in open {
-        let brief = match git.pull_brief(&repo, pull_number).await {
-            Ok(brief) => brief,
-            Err(err) => {
-                tracing::debug!(repo, pull_number, error = %err, "swarm metrics: pull request not refreshed");
-                continue;
-            }
-        };
-        if brief.open {
-            continue;
-        }
-        let closed_at = brief
-            .closed_at
-            .or(brief.merged_at)
-            .unwrap_or_else(chrono::Utc::now);
-        let merged_head = brief.merged_at.map(|_| brief.head_sha.as_str());
-        if let Err(err) = state
-            .store
-            .close_change_pull(&repo, pull_number, brief.merged_at, merged_head, closed_at)
-            .await
-        {
-            tracing::warn!(repo, pull_number, error = %err, "swarm metrics: close not recorded");
-        }
-    }
 }

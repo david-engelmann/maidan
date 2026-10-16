@@ -194,6 +194,7 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -312,6 +313,7 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
             parent_thread_id: None,
             title: Some("second".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

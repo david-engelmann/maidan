@@ -338,6 +338,16 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.thread_cancelled/1": {
+    "$type": "maidan.event.thread_cancelled/1",
+    "cancelled_by": "00000000-0000-0000-0000-000000000002",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_cancelled",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "superseded",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.thread_created/1": {
     "$type": "maidan.event.thread_created/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",
@@ -367,6 +377,21 @@
     "repo": "example/repo",
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "title": "land",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.thread_notice/1": {
+    "$type": "maidan.event.thread_notice/1",
+    "base_branch": "main",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_notice",
+    "notice": "rebase_needed",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "paths": [
+      "src/bridge/x.rs"
+    ],
+    "pr_number": 1,
+    "repo": "example/repo",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
   "maidan.event.thread_ready/1": {

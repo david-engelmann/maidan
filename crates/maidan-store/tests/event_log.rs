@@ -240,6 +240,7 @@ async fn create_with_event_commits_row_and_event() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread + event");
@@ -304,6 +305,7 @@ async fn social_with_event_appends_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -409,6 +411,7 @@ async fn pins_and_mentions_with_event_append_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -521,6 +524,7 @@ async fn transition_with_event_appends_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -593,6 +597,7 @@ async fn assignment_with_event_appends_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -655,6 +660,7 @@ async fn assignment_with_event_appends_atomically() {
             parent_thread_id: None,
             title: Some("t2".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread2");
@@ -734,6 +740,7 @@ async fn dm_post_with_event_appends_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -827,6 +834,7 @@ async fn message_post_finalize_with_event_appends_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -946,6 +954,7 @@ async fn edit_and_tombstone_with_event_append_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -1105,6 +1114,7 @@ async fn reference_and_artifact_with_event_append_atomically() {
             parent_thread_id: None,
             title: Some("t".to_string()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

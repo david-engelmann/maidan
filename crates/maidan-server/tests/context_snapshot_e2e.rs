@@ -108,6 +108,7 @@ async fn context_snapshot_freezes_the_pack_as_an_artifact() {
             parent_thread_id: None,
             title: Some("decide".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

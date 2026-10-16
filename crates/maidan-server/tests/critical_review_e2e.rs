@@ -124,6 +124,7 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
             parent_thread_id: None,
             title: Some("land this".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -284,6 +285,7 @@ async fn a_warning_only_review_does_not_arm_the_close_gate() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

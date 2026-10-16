@@ -80,6 +80,8 @@ fn thread() -> Thread {
         block: None,
         attributes: None,
         closed_without_review: false,
+        notices: Vec::new(),
+        created_by: None,
     }
 }
 
@@ -186,6 +188,14 @@ fn sample_event(kind: EventKind) -> Event {
             channel_id,
             thread_id,
             produced_by: member_id,
+        },
+        EventKind::ThreadCancelled => Event::ThreadCancelled {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reason: "superseded".into(),
+            cancelled_by: member_id,
         },
         EventKind::ApprovalRequested => Event::ApprovalRequested {
             occurred_at,
@@ -304,6 +314,18 @@ fn sample_event(kind: EventKind) -> Event {
             merged_by: Some("octocat".into()),
             merge_commit_sha: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into()),
             title: Some("land".into()),
+        },
+        EventKind::ThreadNotice => Event::ThreadNotice {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            notice: maidan_types::ThreadNoticeKind::RebaseNeeded,
+            repo: "example/repo".into(),
+            pr_number: 1,
+            paths: vec!["src/bridge/x.rs".into()],
+            base_branch: Some("main".into()),
+            base_behind: None,
         },
         EventKind::ReviewSubmitted => Event::ReviewSubmitted {
             occurred_at,
@@ -499,6 +521,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadAssignmentChanged
             | EventKind::ThreadReady
             | EventKind::ThreadResultSet
+            | EventKind::ThreadCancelled
             | EventKind::ApprovalRequested
             | EventKind::ThreadBlocked
             | EventKind::BlockedResolved
@@ -508,6 +531,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ClaimFailed
             | EventKind::UsageReported
             | EventKind::ThreadLanded
+            | EventKind::ThreadNotice
             | EventKind::ReviewSubmitted
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped

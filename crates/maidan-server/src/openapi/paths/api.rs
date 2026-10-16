@@ -1458,6 +1458,26 @@ pub fn report_thread_usage_otel() {}
     ))]
 pub fn claim_thread() {}
 
+/// Cancel a thread
+///
+/// Closes the task without its work being done, parks it from dispatch with the
+/// reason, ends any live claim (the holder's next renew is refused) and posts
+/// the reason on the thread. Needs `workspace:write`; with it a caller may
+/// cancel a thread it created, and with `thread:transition` as well any thread
+/// it can reach. A repeat answers 200 with the first cancel.
+#[utoipa::path(post, path = "/threads/{id}/cancel", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = CancelThread,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = CancelledThread, description = "The cancelled thread and why"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn cancel_thread() {}
+
 /// Mark a thread unclaimable
 #[utoipa::path(put, path = "/threads/{id}/unclaimable", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

@@ -99,6 +99,11 @@ async fn build_live(
     // does; the as-of rebuild does not (they are current routing state,
     // not history).
     thread.attributes = Some(store.get_thread_attributes(thread_id).await?);
+    // The live pack only: the notices table keeps no history to rebuild an
+    // as-of pack's notices from.
+    thread.notices = store
+        .list_thread_notices(thread_id, maidan_types::THREAD_NOTICE_LIMIT)
+        .await?;
     let channel = store.get_channel(thread.channel_id).await?;
     let workspace_id = channel.workspace_id;
     let page = store

@@ -79,6 +79,7 @@ async fn embedding_handler_upserts_on_message_posted() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -203,6 +204,7 @@ async fn batching_handler_embeds_posted_messages_and_records_metrics() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

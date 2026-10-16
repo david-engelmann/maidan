@@ -69,6 +69,7 @@ async fn thread(store: &dyn Store, workspace_id: WorkspaceId, private: bool) -> 
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()

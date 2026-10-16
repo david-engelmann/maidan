@@ -22,6 +22,7 @@ pub mod bootstrap;
 pub mod chain_verify;
 pub mod change_flow;
 pub mod change_patch;
+pub mod change_sweep;
 pub mod claim_reaper;
 pub mod compression;
 pub mod config;

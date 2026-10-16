@@ -93,6 +93,7 @@ async fn run_suite(store: &dyn Store) {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
 
     // Only the work's own account: the warning is on.
@@ -478,6 +479,7 @@ async fn legacy_setup(store: &dyn Store) -> (ThreadId, MemberId) {
             parent_thread_id: None,
             title: Some("legacy".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread")

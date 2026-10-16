@@ -401,6 +401,7 @@ async fn scim_rename_keeps_the_member_and_refuses_a_taken_user_name() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

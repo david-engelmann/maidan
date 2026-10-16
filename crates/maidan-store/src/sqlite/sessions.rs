@@ -15,7 +15,7 @@ pub async fn create(pool: &SqlitePool, new: NewMaidanSession) -> Result<MaidanSe
     create_on(&mut conn, new).await
 }
 
-async fn create_on(
+pub(crate) async fn create_on(
     conn: &mut sqlx::SqliteConnection,
     new: NewMaidanSession,
 ) -> Result<MaidanSession, StoreError> {

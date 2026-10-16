@@ -1991,6 +1991,11 @@ pub struct Thread {
     /// designated owner (unrestricted).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<MemberId>,
+    /// The member who created this thread, if a member did. Unlike
+    /// [`Thread::owner_id`] it never changes; it is the producer whose own
+    /// task this is, so it may cancel it without `thread:transition`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<MemberId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tombstoned_at: Option<DateTime<Utc>>,
@@ -2017,6 +2022,11 @@ pub struct Thread {
     /// reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attributes: Option<crate::TaskAttributes>,
+    /// The change notices on the thread, newest first, at most 10. Read by a
+    /// single-thread read, so a worker sees "rebase before you deliver" with
+    /// the thread; empty on the list reads.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<crate::change_metrics::ThreadNotice>,
 }
 
 #[derive(Debug, Clone)]
@@ -2025,6 +2035,10 @@ pub struct NewThread {
     pub parent_thread_id: Option<ThreadId>,
     pub title: Option<String>,
     pub description: Option<String>,
+    /// The member who created the thread: the authenticated caller on every
+    /// create path, `None` only for threads the system makes itself. It is
+    /// what lets a producer cancel its own task without `thread:transition`.
+    pub created_by: Option<MemberId>,
 }
 
 /// A child thread collapsed under its parent: the child thread plus a live
@@ -3443,6 +3457,11 @@ pub enum OidcPendingTarget {
     /// No workspace (`kind = 'front_door'`): the callback picks the identity's
     /// most recently used workspace.
     FrontDoor,
+    /// No workspace yet (`kind = 'sign_up'`): the callback creates one for
+    /// the verified identity, gated by the pending row's invite or the
+    /// instance's sign-up domain list. A sign-up `state` can never complete
+    /// a sign-in, or the other way round.
+    SignUp,
 }
 
 impl OidcPendingTarget {
@@ -3451,6 +3470,7 @@ impl OidcPendingTarget {
         match self {
             Self::Workspace(_) => "sign_in",
             Self::FrontDoor => "front_door",
+            Self::SignUp => "sign_up",
         }
     }
 
@@ -3459,6 +3479,7 @@ impl OidcPendingTarget {
         match self {
             Self::Workspace(id) => Some(id),
             Self::FrontDoor => None,
+            Self::SignUp => None,
         }
     }
 }
@@ -3471,6 +3492,9 @@ pub struct OidcPendingAuth {
     pub pkce_verifier: String,
     pub return_to: Option<String>,
     pub expires_at: DateTime<Utc>,
+    /// The waitlist entry whose invite gates this sign-up. Set only on a
+    /// `SignUp` row that arrived by invite; a domain-listed sign-up has none.
+    pub invite_entry_id: Option<WaitlistEntryId>,
 }
 
 #[derive(Debug, Clone)]
@@ -3481,6 +3505,100 @@ pub struct NewOidcPendingAuth {
     pub pkce_verifier: String,
     pub return_to: Option<String>,
     pub expires_at: DateTime<Utc>,
+    /// See [`OidcPendingAuth::invite_entry_id`].
+    pub invite_entry_id: Option<WaitlistEntryId>,
+}
+
+/// Where a waitlist entry stands. `waiting` until an operator invites it,
+/// `invited` while its invite is live, `signed_up` once the invite (or the
+/// entry itself, matched by email) produced a workspace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaitlistStatus {
+    Waiting,
+    Invited,
+    SignedUp,
+}
+
+impl WaitlistStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Waiting => "waiting",
+            Self::Invited => "invited",
+            Self::SignedUp => "signed_up",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "waiting" => Some(Self::Waiting),
+            "invited" => Some(Self::Invited),
+            "signed_up" => Some(Self::SignedUp),
+            _ => None,
+        }
+    }
+}
+
+/// One row of the hosted instance's waitlist. The email is stored as given
+/// and matched case-insensitively; `consented_at` is when the visitor agreed
+/// to be contacted about a place. The invite token itself is never stored —
+/// only its SHA-256 hex — and shown to the operator exactly once, at mint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaitlistEntry {
+    pub id: WaitlistEntryId,
+    pub email: String,
+    pub use_case: String,
+    pub consented_at: DateTime<Utc>,
+    pub status: WaitlistStatus,
+    pub invite_token_hash: Option<String>,
+    pub invite_expires_at: Option<DateTime<Utc>>,
+    /// The workspace the sign-up created, once it has.
+    pub workspace_id: Option<WorkspaceId>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NewWaitlistEntry {
+    pub email: String,
+    pub use_case: String,
+    pub consented_at: DateTime<Utc>,
+}
+
+/// Everything the sign-up transaction needs. The ids of the workspace, its
+/// admin member, the identity and the session are minted inside the
+/// transaction, so a caller cannot aim a sign-up at rows that already exist:
+/// a sign-up always lands in a workspace born in the same transaction.
+#[derive(Debug, Clone)]
+pub struct NewOidcSignup {
+    pub workspace_name: String,
+    pub handle: String,
+    pub issuer: String,
+    pub subject: String,
+    pub email: String,
+    /// The invite being consumed, if this sign-up arrived by invite. The
+    /// transaction refuses unless the entry is still `invited`, unexpired
+    /// and addressed to `email` (case-insensitive).
+    pub invite_entry_id: Option<WaitlistEntryId>,
+    pub session_expires_at: DateTime<Utc>,
+}
+
+/// What a completed sign-up made, before the session: the audit closure for
+/// `workspace.signup` reads it.
+#[derive(Debug, Clone)]
+pub struct OidcSignupCore {
+    pub workspace: Workspace,
+    pub member: Member,
+    pub identity: OidcIdentity,
+}
+
+/// A completed sign-up: the core rows plus the session the callback sets as
+/// the browser's cookie.
+#[derive(Debug, Clone)]
+pub struct OidcSignupOutcome {
+    pub workspace: Workspace,
+    pub member: Member,
+    pub identity: OidcIdentity,
+    pub session: MaidanSession,
 }
 
 /// Which workspace an audit row belongs to. It has no default on purpose: the

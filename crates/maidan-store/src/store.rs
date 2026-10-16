@@ -1318,6 +1318,50 @@ pub trait SessionStore: Send + Sync {
     async fn insert_oidc_pending(&self, new: NewOidcPendingAuth) -> Result<(), StoreError>;
     async fn take_oidc_pending(&self, state: &str) -> Result<OidcPendingAuth, StoreError>;
 
+    /// Add one waitlist entry. A second entry for the same email (matched
+    /// case-insensitively) is a `Conflict`: the list holds one row per
+    /// address, so a repeat sign-up updates nothing and mints nothing.
+    async fn insert_waitlist_entry(
+        &self,
+        new: NewWaitlistEntry,
+    ) -> Result<WaitlistEntry, StoreError>;
+    /// Every waitlist entry, oldest first: the operator's list and export.
+    async fn list_waitlist_entries(&self) -> Result<Vec<WaitlistEntry>, StoreError>;
+    async fn get_waitlist_entry(&self, id: WaitlistEntryId) -> Result<WaitlistEntry, StoreError>;
+    /// The entry an invite token belongs to, by the token's SHA-256 hex.
+    /// Entries are returned whatever their status; liveness (invited,
+    /// unexpired, unconsumed) is the caller's and the sign-up
+    /// transaction's check.
+    async fn get_waitlist_entry_by_invite_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<WaitlistEntry, StoreError>;
+    /// Mint (or replace) the entry's invite: status becomes `invited` and
+    /// the token hash and expiry are stored. `Conflict` once the entry has
+    /// signed up.
+    async fn set_waitlist_invite(
+        &self,
+        id: WaitlistEntryId,
+        token_hash: String,
+        expires_at: DateTime<Utc>,
+    ) -> Result<WaitlistEntry, StoreError>;
+
+    /// Complete an invited or domain-listed sign-up in ONE transaction: the
+    /// workspace, its human admin member, the OIDC identity row and the
+    /// session are created together, both audit rows are appended in the
+    /// same transaction, and the waitlist bookkeeping lands with them (the
+    /// invite is consumed, or a waiting entry with the same email is marked
+    /// signed up). Every id is minted inside the transaction, so a sign-up
+    /// can never land in a workspace that existed before it. With an
+    /// invite, the transaction refuses (`Conflict`) unless the entry is
+    /// still `invited`, unexpired and addressed to the sign-up's email.
+    async fn complete_oidc_signup(
+        &self,
+        new: NewOidcSignup,
+        signup_audit: crate::AuditFor<OidcSignupCore>,
+        session_audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<OidcSignupOutcome, StoreError>;
+
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
     async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
@@ -2157,7 +2201,8 @@ pub trait AssignmentStore: Send + Sync {
         merged_head_sha: Option<&str>,
         closed_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
-    /// Tracked agent pull requests in a workspace not yet seen closed.
+    /// Tracked agent pull requests in a workspace not yet seen closed, the
+    /// longest unread first (never read before all).
     async fn list_open_change_pulls(
         &self,
         workspace_id: WorkspaceId,
@@ -2172,6 +2217,54 @@ pub trait AssignmentStore: Send + Sync {
         engine: Option<maidan_types::TaskEngine>,
         kind: Option<maidan_types::TaskKind>,
     ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
+    /// Stamp when a tracked agent pull request was last read from GitHub.
+    async fn mark_change_pull_checked(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
+    /// Workspaces with a tracked agent pull request still to read or settle.
+    async fn list_change_sweep_workspaces(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<WorkspaceId>, StoreError>;
+    /// Tracked agent pull requests in a workspace seen closed and not yet
+    /// settled, oldest close first.
+    async fn list_unsettled_change_pulls(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<(String, i64)>, StoreError>;
+    /// Settle a tracked agent pull request seen closed, once: a merge closes
+    /// its thread through the transition path with `ThreadLanded` in the same
+    /// transaction. See [`maidan_types::ChangeSettlement`].
+    async fn settle_change_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<maidan_types::ChangeSettlement, StoreError>;
+    /// Notify the merges in a workspace not yet noticed, at most `limit`:
+    /// each live claim in the same workspace and repository whose footprint
+    /// covers a merged path gets one `rebase_needed` notice, its
+    /// `ThreadNotice` event committed with it. Each merge is noticed once.
+    async fn notify_change_merges(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// Record a `stale_base` notice on the thread a round was delivered on,
+    /// with its `ThreadNotice` event; `None` when that commit already had one.
+    async fn add_stale_base_notice(
+        &self,
+        notice: maidan_types::NewStaleBaseNotice,
+    ) -> Result<Option<maidan_types::PostedNotice>, StoreError>;
+    /// A thread's change notices, newest first, at most `limit`.
+    async fn list_thread_notices(
+        &self,
+        thread_id: ThreadId,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::ThreadNotice>, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.
     async fn list_slots(
@@ -2285,6 +2378,22 @@ pub trait AssignmentStore: Send + Sync {
     /// reclaimable ghost, not live work). This is the quantity a WIP limit
     /// caps.
     async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError>;
+
+    /// Cancel a thread in one transaction: close it without the transition
+    /// gates (a cancel lands nothing), park it from dispatch with `reason`,
+    /// end any live claim so the holder's next renew is refused, and append
+    /// `ThreadStateChanged`, `ThreadCancelled` and a notice message posted by
+    /// `actor`. Under [`CancelAuthority::Creator`] only the thread's
+    /// `created_by` may. A repeat answers with the first cancel and changes
+    /// nothing. `reason` is the caller's to validate
+    /// ([`validated_cancel_reason`]). `NotFound` when the thread is gone.
+    async fn cancel_thread(
+        &self,
+        thread_id: ThreadId,
+        actor: MemberId,
+        reason: &str,
+        authority: CancelAuthority,
+    ) -> Result<CancelOutcome, StoreError>;
 
     /// Park a thread from dispatch: while marked, `claim_next` skips it and an
     /// explicit claim is refused. Upserts the reason/actor.

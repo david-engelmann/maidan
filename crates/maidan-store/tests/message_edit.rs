@@ -46,6 +46,7 @@ async fn edit_message_sets_body_and_edited_at() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");
@@ -126,6 +127,7 @@ async fn edit_message_rejects_tombstoned() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .expect("thread");

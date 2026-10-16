@@ -51,6 +51,8 @@ fn mock_oidc_settings(auto_mint: bool) -> OidcSettings {
         post_logout_redirect_uri: None,
         first_admin_mint: true,
         auto_mint,
+        signup: false,
+        signup_email_domains: Vec::new(),
     }
 }
 

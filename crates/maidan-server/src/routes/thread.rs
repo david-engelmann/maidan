@@ -55,6 +55,7 @@ pub async fn create_thread(
                 parent_thread_id: body.parent_thread_id.map(ThreadId),
                 title: body.title,
                 description: body.description,
+                created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
             body.attributes,
@@ -180,6 +181,10 @@ pub async fn get_thread(
     let mut thread = thread;
     thread.status = state.store.get_thread_status(ThreadId(id)).await?;
     thread.attributes = Some(state.store.get_thread_attributes(ThreadId(id)).await?);
+    thread.notices = state
+        .store
+        .list_thread_notices(ThreadId(id), maidan_types::THREAD_NOTICE_LIMIT)
+        .await?;
     Ok(Json(thread))
 }
 
@@ -1030,6 +1035,60 @@ pub async fn mark_thread_unclaimable(
             .await?,
     ))
 }
+
+/// `POST /threads/:id/cancel` — close a task without its work being done, park
+/// it from dispatch and end any live claim; see
+/// [`maidan_store::Store::cancel_thread`]. Needs `workspace:write`; with it a
+/// caller may cancel a thread it created, and with `thread:transition` as well
+/// any thread it can reach. A repeat answers `200` with the first cancel; a thread
+/// that closed some other way is `409`.
+pub async fn cancel_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<CancelThread>,
+) -> ApiResult<Json<CancelledThread>> {
+    // One gate on both surfaces: MCP admits a tool on a single capability,
+    // so `workspace:write` admits the call here too, and `thread:transition`
+    // only widens it from the caller's own threads to any it can reach.
+    cap(&auth, WORKSPACE_WRITE)?;
+    let authority = if auth.has_capability(THREAD_TRANSITION) {
+        CancelAuthority::Transition
+    } else {
+        CancelAuthority::Creator
+    };
+    let thread_id = ThreadId(id);
+    let reason = validated_cancel_reason(&body.reason).map_err(ApiError::BadRequest)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    match state
+        .store
+        .cancel_thread(thread_id, auth.member_id, reason, authority)
+        .await?
+    {
+        CancelOutcome::Cancelled { cancelled, events } => {
+            for stored in events {
+                publish_stored(&state, stored).await;
+            }
+            let uris = maidan_mcp::resource_updates::uris_for_thread_transition(
+                state.store.as_ref(),
+                thread_id,
+            )
+            .await;
+            state.mcp.publish_resource_uris(uris).await;
+            Ok(Json(cancelled))
+        }
+        CancelOutcome::AlreadyCancelled(cancelled) => Ok(Json(cancelled)),
+        CancelOutcome::NotCreator => Err(ApiError::Forbidden(NOT_CREATOR.into())),
+        CancelOutcome::AlreadyFinished(finished) => Err(ApiError::Conflict(format!(
+            "thread is already {}; there is nothing to cancel",
+            finished.as_str()
+        ))),
+    }
+}
+
+/// Why a caller without `thread:transition` was refused a cancel.
+const NOT_CREATOR: &str = "only the member that created this thread may cancel it \
+                           without thread:transition";
 
 /// `PUT /threads/:id/block` — set (upsert) an explicit dispatch block.
 /// `claim_next` skips the thread and an explicit `claim` is 409 until cleared.

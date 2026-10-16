@@ -165,6 +165,7 @@ pub enum EventKind {
     ThreadAssignmentChanged,
     ThreadReady,
     ThreadResultSet,
+    ThreadCancelled,
     ApprovalRequested,
     ThreadBlocked,
     BlockedResolved,
@@ -174,6 +175,7 @@ pub enum EventKind {
     ClaimFailed,
     UsageReported,
     ThreadLanded,
+    ThreadNotice,
     ReviewSubmitted,
     WaitTimedOut,
     ScheduleSkipped,
@@ -207,6 +209,7 @@ impl EventKind {
             Self::ThreadAssignmentChanged => "thread_assignment_changed",
             Self::ThreadReady => "thread_ready",
             Self::ThreadResultSet => "thread_result_set",
+            Self::ThreadCancelled => "thread_cancelled",
             Self::ApprovalRequested => "approval_requested",
             Self::ThreadBlocked => "thread_blocked",
             Self::BlockedResolved => "blocked_resolved",
@@ -216,6 +219,7 @@ impl EventKind {
             Self::ClaimFailed => "claim_failed",
             Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
+            Self::ThreadNotice => "thread_notice",
             Self::ReviewSubmitted => "review_submitted",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
@@ -249,6 +253,7 @@ impl EventKind {
             "thread_assignment_changed" => Some(Self::ThreadAssignmentChanged),
             "thread_ready" => Some(Self::ThreadReady),
             "thread_result_set" => Some(Self::ThreadResultSet),
+            "thread_cancelled" => Some(Self::ThreadCancelled),
             "approval_requested" => Some(Self::ApprovalRequested),
             "thread_blocked" => Some(Self::ThreadBlocked),
             "blocked_resolved" => Some(Self::BlockedResolved),
@@ -258,6 +263,7 @@ impl EventKind {
             "claim_failed" => Some(Self::ClaimFailed),
             "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
+            "thread_notice" => Some(Self::ThreadNotice),
             "review_submitted" => Some(Self::ReviewSubmitted),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
@@ -316,6 +322,7 @@ impl EventKind {
         Self::ThreadAssignmentChanged,
         Self::ThreadReady,
         Self::ThreadResultSet,
+        Self::ThreadCancelled,
         Self::ApprovalRequested,
         Self::ThreadBlocked,
         Self::BlockedResolved,
@@ -325,6 +332,7 @@ impl EventKind {
         Self::ClaimFailed,
         Self::UsageReported,
         Self::ThreadLanded,
+        Self::ThreadNotice,
         Self::ReviewSubmitted,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
@@ -384,6 +392,9 @@ impl EventKind {
             Self::ThreadReady => false,
             // A task result is produced locally; a peer must not inject one.
             Self::ThreadResultSet => false,
+            // A cancel is this deployment's decision about its own queue; a
+            // peer must not end a claim here.
+            Self::ThreadCancelled => false,
             // Approval gates are local human-control state.
             Self::ApprovalRequested => false,
             // A block is *this* deployment's dispatch decision; a peer must
@@ -410,6 +421,10 @@ impl EventKind {
             // A "landed" fact is derived from *this* deployment's GitHub
             // projector webhook; a peer must not inject one for our threads.
             Self::ThreadLanded => false,
+            // A change notice reads this deployment's claims against this
+            // deployment's change sweep; a peer must not tell our workers to
+            // rebase.
+            Self::ThreadNotice => false,
             // A verdict is this deployment's governance record: the reviews
             // table is what the close-gate reads, and a peer must not announce
             // a verdict nobody gave here.
@@ -505,6 +520,18 @@ pub enum Event {
         channel_id: ChannelId,
         thread_id: ThreadId,
         produced_by: MemberId,
+    },
+    /// A thread was cancelled: closed without its work being done, parked from
+    /// dispatch, and any live claim ended, so the holder's next renew is
+    /// refused. The `ThreadStateChanged` committed with it carries the row.
+    /// Locally decided: not federatable.
+    ThreadCancelled {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        reason: String,
+        cancelled_by: MemberId,
     },
     /// A durable human-approval gate was opened. The optional thread/channel
     /// context is absent for workspace-level questions. Locally derived: a
@@ -615,6 +642,31 @@ pub enum Event {
         stamp: PayerStamp,
         turns: i64,
         budget: ThreadBudget,
+    },
+    /// The change flow told a thread's worker something about its base: a
+    /// merged pull request touched paths its claim's footprint covers
+    /// (`rebase_needed`), or a round it delivered was built on a base far
+    /// behind its branch (`stale_base`). Each is said once. Locally derived:
+    /// not federatable.
+    ThreadNotice {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        notice: crate::change_metrics::ThreadNoticeKind,
+        /// Lowercase `owner/name`.
+        repo: String,
+        /// The merged pull request (`rebase_needed`) or the one the stale
+        /// round went to (`stale_base`).
+        pr_number: i64,
+        /// The merged paths the claim's footprint covers, at most 20.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        paths: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_branch: Option<String>,
+        /// Commits the stale round's base was behind its branch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_behind: Option<i64>,
     },
     /// The GitHub PR linked to a thread was **merged** — the work landed. A
     /// derived fact projected from an inbound `pull_request` (`action=closed`,
@@ -890,6 +942,7 @@ impl Event {
             Self::ThreadAssignmentChanged { .. } => EventKind::ThreadAssignmentChanged,
             Self::ThreadReady { .. } => EventKind::ThreadReady,
             Self::ThreadResultSet { .. } => EventKind::ThreadResultSet,
+            Self::ThreadCancelled { .. } => EventKind::ThreadCancelled,
             Self::ApprovalRequested { .. } => EventKind::ApprovalRequested,
             Self::ThreadBlocked { .. } => EventKind::ThreadBlocked,
             Self::BlockedResolved { .. } => EventKind::BlockedResolved,
@@ -899,6 +952,7 @@ impl Event {
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
+            Self::ThreadNotice { .. } => EventKind::ThreadNotice,
             Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
@@ -932,6 +986,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { occurred_at, .. }
             | Self::ThreadReady { occurred_at, .. }
             | Self::ThreadResultSet { occurred_at, .. }
+            | Self::ThreadCancelled { occurred_at, .. }
             | Self::ApprovalRequested { occurred_at, .. }
             | Self::ThreadBlocked { occurred_at, .. }
             | Self::BlockedResolved { occurred_at, .. }
@@ -941,6 +996,7 @@ impl Event {
             | Self::ClaimFailed { occurred_at, .. }
             | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
+            | Self::ThreadNotice { occurred_at, .. }
             | Self::ReviewSubmitted { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
@@ -974,6 +1030,7 @@ impl Event {
             | Self::ThreadAssignmentChanged { workspace_id, .. }
             | Self::ThreadReady { workspace_id, .. }
             | Self::ThreadResultSet { workspace_id, .. }
+            | Self::ThreadCancelled { workspace_id, .. }
             | Self::ApprovalRequested { workspace_id, .. }
             | Self::ThreadBlocked { workspace_id, .. }
             | Self::BlockedResolved { workspace_id, .. }
@@ -983,6 +1040,7 @@ impl Event {
             | Self::ClaimFailed { workspace_id, .. }
             | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
+            | Self::ThreadNotice { workspace_id, .. }
             | Self::ReviewSubmitted { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
@@ -1013,12 +1071,14 @@ impl Event {
             | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::ThreadReady { channel_id, .. }
             | Self::ThreadResultSet { channel_id, .. }
+            | Self::ThreadCancelled { channel_id, .. }
             | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimUnacknowledged { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
             | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
+            | Self::ThreadNotice { channel_id, .. }
             | Self::ReviewSubmitted { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
@@ -1043,6 +1103,7 @@ impl Event {
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadReady { thread_id, .. } => Some(*thread_id),
             Self::ThreadResultSet { thread_id, .. } => Some(*thread_id),
+            Self::ThreadCancelled { thread_id, .. } => Some(*thread_id),
             Self::ApprovalRequested { thread_id, .. } => *thread_id,
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
@@ -1050,6 +1111,7 @@ impl Event {
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
+            Self::ThreadNotice { thread_id, .. } => Some(*thread_id),
             Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
@@ -1090,6 +1152,7 @@ impl Event {
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadResultSet { produced_by, .. } => Some(*produced_by),
+            Self::ThreadCancelled { cancelled_by, .. } => Some(*cancelled_by),
             Self::ApprovalRequested { requested_by, .. } => Some(*requested_by),
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
@@ -1465,6 +1528,7 @@ mod kind_tests {
                 | EventKind::ThreadAssignmentChanged
                 | EventKind::ThreadReady
                 | EventKind::ThreadResultSet
+                | EventKind::ThreadCancelled
                 | EventKind::ApprovalRequested
                 | EventKind::ThreadBlocked
                 | EventKind::BlockedResolved
@@ -1473,6 +1537,7 @@ mod kind_tests {
                 | EventKind::ClaimFailed
                 | EventKind::UsageReported
                 | EventKind::ThreadLanded
+                | EventKind::ThreadNotice
                 | EventKind::ReviewSubmitted
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
@@ -1550,6 +1615,7 @@ mod kind_tests {
             EventKind::ArtifactUpserted,
             EventKind::ThreadReady,
             EventKind::ThreadResultSet,
+            EventKind::ThreadCancelled,
             EventKind::ApprovalRequested,
             EventKind::ThreadBlocked,
             EventKind::BlockedResolved,
@@ -1557,6 +1623,7 @@ mod kind_tests {
             EventKind::ClaimUnacknowledged,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
+            EventKind::ThreadNotice,
             EventKind::ReviewSubmitted,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,

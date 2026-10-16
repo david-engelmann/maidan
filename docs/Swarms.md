@@ -184,6 +184,66 @@ pause to apply declares `repo` when it creates the thread, not after the claim.
 A pause binds one workspace, and both the pause and the resume are audited
 (`repo.pause`, `repo.resume`).
 
+### Change notices
+
+At three to five workers the pain is stale bases: one agent's change merges
+over files another is still editing, and the second finds out in review.
+Maidan tells it first, with a **notice** on its thread: a `ThreadNotice`
+event and one message saying the same in a sentence.
+
+- **`rebase_needed`.** When the change sweep sees an agent pull request
+  merged, it takes the files every round of it touched (each round records
+  its diff's paths, at most 500) and looks for live claims in the same
+  workspace and repository whose footprint covers one, by the footprint
+  rules: a `path` or `glob` item matches by prefix; lane, crate, branch and
+  slot items say nothing about files and never match. Each such thread gets
+  one notice naming the repository, the pull request, the base branch and
+  the covered paths (at most 20). A merge notifies once, whatever the sweep
+  does after; another workspace's claims are never told.
+- **`stale_base`.** When the change flow delivers a round whose base is
+  `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind its branch,
+  that thread gets a notice, once per delivered commit.
+
+A worker reads them on its next turn: the last 10, newest first, are the
+`notices` of `GET /threads/{id}` and of the context pack (MCP
+`get_thread_context`, `GET /threads/{id}/context`), in the pack's tail so the
+cached prefix does not change. Maidan does not rebase anything or tell GitHub
+to; the worker does.
+
+## Cancelling a task
+
+A producer that no longer needs a task (the plan changed, the issue closed, a
+duplicate turned up) cancels it rather than waiting for the worker to finish:
+
+| | REST | MCP |
+|---|---|---|
+| Cancel, with a reason of 1 to 500 characters | `POST /threads/{id}/cancel` with `{"reason": "superseded"}` | `cancel_thread` |
+
+Every thread records the member that created it (`created_by`), on every
+create path: REST, MCP `create_thread`, a seeded thread, an A2A conversation,
+a recipe and a schedule. A cancel needs `workspace:write`: with it a member
+may cancel a thread it created, and with `thread:transition` as well any
+thread it can reach. Anyone else gets `403`.
+
+In one transaction the cancel:
+
+- closes the thread. It goes straight to `closed`, around the review, land
+  and parent gates, because those guard landing work and a cancel lands
+  nothing;
+- parks it from dispatch (the unclaimable mark, with the reason), so nothing
+  reopens it into the queue;
+- ends any live claim. The assignee and lease are cleared and the worked time
+  is charged, so the worker's next `renew_claim` is refused (`404`), and it
+  should stop;
+- appends `ThreadStateChanged` and `ThreadCancelled` (`reason`,
+  `cancelled_by`), and posts the reason on the thread as a message whose
+  metadata is `{"notice": "cancelled"}`.
+
+A second cancel answers `200` with the first one and changes nothing. A thread
+that closed or was archived some other way answers `409`. A cancel publishes
+no `ThreadReady` for the thread's dependents, but `claim_next` still counts a
+cancelled dependency as finished, as it does any closed one.
+
 ## Task attributes
 
 A thread can carry attributes that say what kind of work it is, who or what

@@ -104,6 +104,7 @@ async fn memory_blocks_over_http() {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

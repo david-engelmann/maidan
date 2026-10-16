@@ -28,7 +28,7 @@ use chrono::Utc;
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
 use maidan_server::{
-    egress_worker,
+    change_sweep, egress_worker,
     github::GithubApiClient,
     linear::{LinearError, LinearIssue, LinearSender, LinearState},
     notification_router,
@@ -38,9 +38,9 @@ use maidan_server::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    status, ChannelId, EgressSurface, EgressTarget, Event, ExternalRef, MemberId, MemberKind,
-    NewChannel, NewEgressTarget, NewMember, NewMessage, NewThread, NewWorkspace, ResultDelivery,
-    ThreadId, WorkspaceId, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
+    status, ChannelId, EgressSurface, EgressTarget, Event, EventKind, ExternalRef, MemberId,
+    MemberKind, NewChannel, NewEgressTarget, NewMember, NewMessage, NewThread, NewWorkspace,
+    ResultDelivery, ThreadId, ThreadState, WorkspaceId, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -71,6 +71,8 @@ struct FakePull {
     labels: Vec<String>,
     /// Set by a test to report the pull request merged.
     merged_at: Option<String>,
+    /// Set by a test to report the pull request closed without merging.
+    closed_at: Option<String>,
 }
 
 type Tree = BTreeMap<String, (String, String)>;
@@ -87,6 +89,8 @@ struct Fake {
     /// Fail `POST /pulls` with a body that echoes the token, as a careless
     /// proxy might.
     fail_pulls: bool,
+    /// What `compare` reports a delivered base behind by; 2 when unset.
+    behind: Option<i64>,
 }
 
 impl Fake {
@@ -300,7 +304,10 @@ async fn github(
                 .collect();
             reply(StatusCode::OK, json!(open))
         }
-        ("GET", r) if r.starts_with("compare/") => reply(StatusCode::OK, json!({"ahead_by": 2})),
+        ("GET", r) if r.starts_with("compare/") => reply(
+            StatusCode::OK,
+            json!({"ahead_by": fake.behind.unwrap_or(2)}),
+        ),
         ("GET", r) if r.starts_with("pulls/") => {
             let number: i64 = r["pulls/".len()..].parse().unwrap();
             match fake.pulls.iter().find(|p| p.number == number) {
@@ -311,10 +318,10 @@ async fn github(
                         "head": {"ref": p.head, "sha": fake.refs.get(&p.head).cloned().unwrap_or_default(), "repo": {"full_name": REPO}},
                         "base": {"ref": p.base, "repo": {"full_name": REPO}},
                         "draft": p.draft,
-                        "state": if p.merged_at.is_some() { "closed" } else { "open" },
+                        "state": if p.merged_at.is_some() || p.closed_at.is_some() { "closed" } else { "open" },
                         "node_id": format!("PR_{}", p.number),
                         "merged_at": p.merged_at,
-                        "closed_at": p.merged_at,
+                        "closed_at": p.closed_at.clone().or_else(|| p.merged_at.clone()),
                     }),
                 ),
                 None => not_found(),
@@ -345,6 +352,7 @@ async fn github(
                 draft: body["draft"].as_bool().unwrap(),
                 labels: Vec::new(),
                 merged_at: None,
+                closed_at: None,
             });
             reply(
                 StatusCode::CREATED,
@@ -504,6 +512,7 @@ struct Harness {
 }
 
 const GREETING: &str = "line one\nhello\nline three\n";
+const BRIDGE: &str = "pub fn bridge() {}\n";
 
 async fn tenant(store: &dyn Store, name: &str) -> Tenant {
     let ws = store
@@ -534,6 +543,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             parent_thread_id: None,
             title: Some("change".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -571,7 +581,11 @@ async fn harness_with(linear: RecordingLinear) -> Harness {
         let mut f = fake.lock().unwrap();
         let root = f.commit_files(&[("README.md", "readme\n")], vec![]);
         let base = f.commit_files(
-            &[("README.md", "readme\n"), ("src/greeting.txt", GREETING)],
+            &[
+                ("README.md", "readme\n"),
+                ("src/greeting.txt", GREETING),
+                ("src/bridge/x.rs", BRIDGE),
+            ],
             vec![root],
         );
         f.refs.insert("dev".into(), base.clone());
@@ -1171,6 +1185,7 @@ async fn an_open_pull_request_into_prod_refuses_the_change_before_any_write() {
             draft: false,
             labels: Vec::new(),
             merged_at: None,
+            closed_at: None,
         });
     }
     h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
@@ -1641,6 +1656,167 @@ async fn each_delivered_round_counts_toward_the_swarm_metrics() {
     assert_eq!(task["merged_without_edits"], true, "{metrics}");
     assert_eq!(task["rounds"].as_array().unwrap().len(), 1);
     assert_eq!(metrics["repos"][0]["merged"], 1);
+
+    // The read only recorded the close; the sweep still lands the thread.
+    assert_eq!(change_sweep::sweep_once(&h.state).await.landed, 1);
+    assert_eq!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+}
+
+/// A merged pull request closes its task on the next sweep, with
+/// `ThreadLanded`, and the task waiting on it becomes claimable. Another
+/// workspace's tracked pull request on the same repository, still open, is
+/// left alone.
+#[tokio::test]
+async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let dependent = h
+        .store
+        .create_thread(NewThread {
+            channel_id: h.a.channel_id,
+            parent_thread_id: None,
+            title: Some("after the change".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    h.store
+        .add_thread_dependency(dependent, h.a.thread_id)
+        .await
+        .unwrap();
+    h.store
+        .set_thread_result(h.b.thread_id, h.b.member_id, &json!({"summary": "theirs"}))
+        .await
+        .unwrap();
+    h.store
+        .record_change_round(maidan_types::NewChangeRound {
+            workspace_id: h.b.workspace_id,
+            thread_id: h.b.thread_id,
+            repo: REPO.into(),
+            pull_number: 999,
+            commit_sha: "f".repeat(40),
+            base_sha: h.base_sha.clone(),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats::default(),
+        "nothing has closed yet"
+    );
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].merged_at = Some("2026-10-15T12:00:00Z".into());
+        f.pulls[0].number
+    };
+    assert_eq!(change_sweep::sweep_once(&h.state).await.landed, 1);
+    assert_eq!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let events = h
+        .store
+        .list_events_after(h.a.workspace_id, 0, 500)
+        .await
+        .unwrap();
+    let landed: Vec<_> = events
+        .iter()
+        .filter(|e| e.kind == EventKind::ThreadLanded)
+        .collect();
+    assert_eq!(landed.len(), 1);
+    assert_eq!(landed[0].thread_id, Some(h.a.thread_id));
+    assert_eq!(landed[0].payload["repo"], REPO);
+    assert_eq!(landed[0].payload["pr_number"], number);
+    let claimed = h
+        .store
+        .claim_next_thread(h.a.channel_id, h.a.member_id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        claimed.map(|t| t.id),
+        Some(dependent),
+        "the task waiting on the change is claimable"
+    );
+
+    assert_eq!(
+        h.store.get_thread(h.b.thread_id).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert!(!h
+        .store
+        .list_events_after(h.b.workspace_id, 0, 500)
+        .await
+        .unwrap()
+        .iter()
+        .any(|e| e.kind == EventKind::ThreadLanded));
+    assert_eq!(
+        h.store
+            .list_open_change_pulls(h.b.workspace_id, 10)
+            .await
+            .unwrap(),
+        vec![(REPO.to_string(), 999)]
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.landed,
+        0,
+        "a merge lands its thread once"
+    );
+}
+
+/// A pull request closed without merging leaves its task open, with one
+/// notice that a second sweep does not repeat.
+#[tokio::test]
+async fn a_pull_request_closed_without_merging_leaves_its_task_open_with_one_notice() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].closed_at = Some("2026-10-15T12:00:00Z".into());
+        f.pulls[0].number
+    };
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats {
+            landed: 0,
+            noticed: 1,
+            rebase_notices: 0,
+        }
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats::default(),
+        "the notice is not repeated"
+    );
+    assert_ne!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let notices: Vec<_> = h
+        .store
+        .list_messages_after(h.a.thread_id, None, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.body == format!("#{number} closed without merging"))
+        .collect();
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].metadata["github"]["closed_unmerged"], true);
 }
 
 #[tokio::test]
@@ -1684,4 +1860,286 @@ async fn the_pull_request_body_keeps_a_current_state_section_across_rounds() {
     assert!(!body.contains("Round one"), "{body}");
     assert_eq!(body.matches("<!-- pi:current-state -->").count(), 1);
     assert_eq!(f.pulls[0].title, title, "the title is left to people");
+}
+
+// ---------------------------------------------------------------- notices
+
+const BRIDGE_DIFF: &str = "diff --git a/src/bridge/x.rs b/src/bridge/x.rs\nindex 1111111..2222222 100644\n--- a/src/bridge/x.rs\n+++ b/src/bridge/x.rs\n@@ -1 +1 @@\n-pub fn bridge() {}\n+pub fn bridge() -> u8 { 1 }\n";
+
+/// A bearer token for `member` in `workspace` that may read it.
+async fn read_token(h: &Harness, workspace_id: WorkspaceId, member_id: MemberId) -> String {
+    let secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id,
+            member_id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![maidan_auth::capability::WORKSPACE_READ.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+async fn get_json(h: &Harness, token: &str, path: &str) -> (StatusCode, Value) {
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::get(path)
+            .header("authorization", format!("Bearer {token}"))
+            .body(axum::body::Body::empty())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// An agent holding `glob` in `repo` on a new thread in `t`'s channel: a new
+/// member, its thread, the footprint, and the claim.
+async fn agent_holding(
+    h: &Harness,
+    t: &Tenant,
+    handle: &str,
+    repo: &str,
+    glob: &str,
+) -> (MemberId, ThreadId) {
+    let member = h
+        .store
+        .create_member(NewMember {
+            workspace_id: t.workspace_id,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    let thread = h
+        .store
+        .create_thread(NewThread {
+            channel_id: t.channel_id,
+            parent_thread_id: None,
+            title: Some(format!("{handle}'s work")),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    h.store
+        .set_thread_footprint(
+            thread,
+            Some(maidan_types::Footprint {
+                repo: repo.into(),
+                mode: maidan_types::FootprintMode::Shared,
+                items: vec![maidan_types::FootprintItem {
+                    kind: maidan_types::FootprintKind::Glob,
+                    value: glob.into(),
+                }],
+            }),
+        )
+        .await
+        .unwrap();
+    assert!(h.store.claim_thread(thread, member).await.unwrap().claimed);
+    (member, thread)
+}
+
+async fn notice_events(h: &Harness, ws: WorkspaceId) -> Vec<maidan_types::StoredEvent> {
+    h.store
+        .list_events_after(ws, 0, 1000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::ThreadNotice)
+        .collect()
+}
+
+/// Two agents in one repository: A's pull request touching
+/// `src/bridge/x.rs` merges, and B, holding `src/bridge/**`, is told to
+/// rebase exactly once: a `ThreadNotice`, one message, and the notice on its
+/// thread read (REST and the MCP context pack). C, holding
+/// `src/gateway/**`, and an agent holding `src/bridge/**` in another
+/// workspace hear nothing, and the next sweep repeats nothing.
+#[tokio::test]
+async fn a_merge_tells_the_agent_holding_its_paths_to_rebase_once() {
+    let h = harness().await;
+    h.allow_change().await;
+    let (b_member, b_thread) = agent_holding(&h, &h.a, "agent-b", REPO, "src/bridge/**").await;
+    let (_, c_thread) = agent_holding(&h, &h.a, "agent-c", REPO, "src/gateway/**").await;
+    let (_, foreign_thread) = agent_holding(&h, &h.b, "agent-d", REPO, "src/bridge/**").await;
+
+    h.route(
+        &h.a,
+        &change("changed", &h.base_sha, BRANCH, BRIDGE_DIFF),
+        1,
+    )
+    .await;
+    h.drain().await;
+    assert_eq!(
+        h.delivery(&h.a, "github_branch").await.status,
+        status::DELIVERED
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.rebase_notices,
+        0,
+        "not merged yet"
+    );
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].merged_at = Some("2026-10-15T12:00:00Z".into());
+        f.pulls[0].number
+    };
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.rebase_notices), (1, 1));
+
+    let events = notice_events(&h, h.a.workspace_id).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].thread_id, Some(b_thread));
+    assert_eq!(events[0].payload["notice"], "rebase_needed");
+    assert_eq!(events[0].payload["repo"], REPO);
+    assert_eq!(events[0].payload["pr_number"], number);
+    assert_eq!(events[0].payload["paths"], json!(["src/bridge/x.rs"]));
+    assert_eq!(events[0].payload["base_branch"], "dev");
+    assert!(notice_events(&h, h.b.workspace_id).await.is_empty());
+    let said: Vec<_> = h
+        .store
+        .list_messages_after(b_thread, None, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.metadata["change_notice"]["kind"] == "rebase_needed")
+        .collect();
+    assert_eq!(said.len(), 1);
+    assert!(
+        said[0].body.contains(&format!("{REPO}#{number}")),
+        "{}",
+        said[0].body
+    );
+    assert!(said[0].body.contains("src/bridge/x.rs"), "{}", said[0].body);
+    assert_eq!(
+        said[0].author_id, b_member,
+        "the claim holder, no owner set"
+    );
+    for quiet in [c_thread, foreign_thread] {
+        assert!(h
+            .store
+            .list_thread_notices(quiet, 10)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(h
+            .store
+            .list_messages_after(quiet, None, 100)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (code, thread) = get_json(&h, &token, &format!("/threads/{}", b_thread.0)).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(thread["notices"].as_array().unwrap().len(), 1, "{thread}");
+    assert_eq!(thread["notices"][0]["kind"], "rebase_needed");
+    assert_eq!(thread["notices"][0]["paths"], json!(["src/bridge/x.rs"]));
+    let (_, quiet) = get_json(&h, &token, &format!("/threads/{}", c_thread.0)).await;
+    assert!(quiet.get("notices").is_none(), "{quiet}");
+    let pack = maidan_mcp::context::get_thread_context(
+        h.store.as_ref(),
+        &json!({ "thread_id": b_thread.0 }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(pack["notices"][0]["kind"], "rebase_needed", "{pack}");
+    assert_eq!(pack["notices"][0]["pull_number"], number);
+    // Another tenant's token reads none of it.
+    let other = read_token(&h, h.b.workspace_id, h.b.member_id).await;
+    let (code, _) = get_json(&h, &other, &format!("/threads/{}", b_thread.0)).await;
+    assert_ne!(code, StatusCode::OK);
+
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await,
+        change_sweep::SweepStats::default(),
+        "a merge notifies once"
+    );
+    assert_eq!(notice_events(&h, h.a.workspace_id).await.len(), 1);
+    assert_eq!(
+        h.store
+            .list_thread_notices(b_thread, 10)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+/// A round delivered on a base `MAIDAN_STALE_BASE_COMMITS` (50 by default)
+/// or more behind gets one `stale_base` notice on its thread; a retried
+/// delivery of the same commit adds none.
+#[tokio::test]
+async fn a_stale_base_delivery_gets_a_notice() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake.lock().unwrap().behind = Some(60);
+    let result = change("changed", &h.base_sha, BRANCH, DIFF);
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+    h.route(&h.a, &result, 2).await;
+    h.drain().await;
+    let notices = h
+        .store
+        .list_thread_notices(h.a.thread_id, 10)
+        .await
+        .unwrap();
+    assert_eq!(notices.len(), 1, "{notices:?}");
+    assert_eq!(notices[0].kind, maidan_types::ThreadNoticeKind::StaleBase);
+    assert_eq!(notices[0].base_behind, Some(60));
+    assert_eq!(notices[0].base_branch.as_deref(), Some("dev"));
+    let events = notice_events(&h, h.a.workspace_id).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].payload["notice"], "stale_base");
+    let said: Vec<_> = h
+        .store
+        .list_messages_after(h.a.thread_id, None, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|m| m.metadata["change_notice"]["kind"] == "stale_base")
+        .collect();
+    assert_eq!(said.len(), 1);
+    assert!(
+        said[0].body.contains("60 commits behind dev"),
+        "{}",
+        said[0].body
+    );
+}
+
+/// A round on a fresh base (2 behind) gets no notice.
+#[tokio::test]
+async fn a_fresh_base_delivery_gets_no_notice() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    assert_eq!(
+        h.delivery(&h.a, "github_branch").await.status,
+        status::DELIVERED
+    );
+    assert!(h
+        .store
+        .list_thread_notices(h.a.thread_id, 10)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(notice_events(&h, h.a.workspace_id).await.is_empty());
 }

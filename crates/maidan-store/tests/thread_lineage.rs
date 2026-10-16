@@ -64,6 +64,7 @@ async fn seed(
             parent_thread_id: None,
             title: Some("parent run".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("parent");
@@ -73,6 +74,7 @@ async fn seed(
             parent_thread_id: Some(parent.id),
             title: Some("nested".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("child");
@@ -82,6 +84,7 @@ async fn seed(
             parent_thread_id: None,
             title: Some("unrelated".into()),
             description: None,
+            created_by: None,
         })
         .await
         .expect("other");

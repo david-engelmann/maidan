@@ -172,9 +172,11 @@ import { tokenKey, wsResumeKey } from "./state.js";
         oidcLoginPath = null;
         serverOffersSessions = null;
         document.getElementById("first-run-oidc").hidden = true;
+        document.getElementById("waitlist-block").hidden = true;
         let answered = false;
         let loginPath = null;
         let sessions = null;
+        let signupPath = null;
         try {
           const res = await api(`${base()}/.well-known/maidan.json`, {
             signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
@@ -183,6 +185,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
             const auth = (await res.json()).auth;
             if (auth && auth.oidc && auth.oidc_login) loginPath = auth.oidc_login;
             if (auth && typeof auth.sessions === "boolean") sessions = auth.sessions;
+            if (auth && auth.oidc_signup) signupPath = auth.oidc_signup;
             answered = true;
           } else if (res.status < 500 && res.status !== 429) {
             // No discovery document: a token is the only path offered.
@@ -195,6 +198,9 @@ import { tokenKey, wsResumeKey } from "./state.js";
         oidcLoginPath = loginPath;
         serverOffersSessions = sessions;
         document.getElementById("first-run-oidc").hidden = !oidcLoginPath;
+        // The waitlist form shows only where the instance runs sign-up;
+        // elsewhere the surface does not exist at all.
+        document.getElementById("waitlist-block").hidden = !signupPath;
         if (!answered && attempt < DISCOVERY_RETRY_MS.length) {
           discoveryRetry = setTimeout(() => discoverServerAuth(attempt + 1), DISCOVERY_RETRY_MS[attempt]);
         }
@@ -346,6 +352,45 @@ import { tokenKey, wsResumeKey } from "./state.js";
           return;
         }
         signInWithToken();
+      });
+
+      // The waitlist is the signed-out door: no credential, just an address,
+      // what the visitor would use Maidan for, and their consent to be
+      // emailed. The server answers the same for an address already waiting.
+      async function joinWaitlist() {
+        const state = document.getElementById("waitlist-state");
+        const email = document.getElementById("waitlist-email").value.trim();
+        const useCase = document.getElementById("waitlist-use").value.trim();
+        const consent = document.getElementById("waitlist-consent").checked;
+        state.hidden = false;
+        if (!email || !useCase) {
+          state.textContent = "Add your email and a line about what you would use Maidan for.";
+          return;
+        }
+        if (!consent) {
+          state.textContent = "Tick the box so an operator may email you about your place on the list.";
+          return;
+        }
+        let res;
+        try {
+          res = await writeApi("waitlist-join", `${base()}/waitlist`, {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({ email, use_case: useCase, consent: true }),
+          });
+        } catch (e) {
+          state.textContent = unreachable(e);
+          return;
+        }
+        if (!res.ok) {
+          state.textContent = await responseError(res, "Could not join the waitlist");
+          return;
+        }
+        state.textContent = "You are on the list. An operator can turn your place into an invite.";
+      }
+
+      document.getElementById("waitlist-join").addEventListener("click", () => {
+        joinWaitlist();
       });
 
 

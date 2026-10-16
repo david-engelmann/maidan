@@ -228,6 +228,7 @@ impl World {
                 parent_thread_id: None,
                 title: Some("work".into()),
                 description: None,
+                created_by: None,
             })
             .await
             .unwrap();

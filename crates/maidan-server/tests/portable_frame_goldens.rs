@@ -89,6 +89,8 @@ fn sample_export() -> WorkspaceExport {
             block: None,
             attributes: None,
             closed_without_review: false,
+            notices: Vec::new(),
+            created_by: None,
         }],
         messages: vec![Message {
             id: MessageId(uuid(5)),

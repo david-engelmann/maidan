@@ -21,6 +21,54 @@ pub(crate) fn live_claim(held: &str, now: &str) -> String {
     )
 }
 
+/// Whether two `path`-namespace keys overlap: one is a prefix of the other,
+/// the rule [`overlapping`] applies in SQL. A glob's key is what comes before
+/// its first wildcard, so `src/bridge/**` covers `src/bridge/x.rs`.
+pub(crate) fn path_keys_overlap(a: &str, b: &str) -> bool {
+    a.starts_with(b) || b.starts_with(a)
+}
+
+/// The `paths` that a claim holding the `path`-namespace keys `keys` covers,
+/// in the order given, at most `limit`.
+pub(crate) fn covered_paths(keys: &[String], paths: &[String], limit: usize) -> Vec<String> {
+    paths
+        .iter()
+        .filter(|path| keys.iter().any(|key| path_keys_overlap(key, path)))
+        .take(limit)
+        .cloned()
+        .collect()
+}
+
+/// `SELECT` of the `path`-namespace footprint keys of the live claims in
+/// workspace `ws` and repository `repo`, thread `exclude` left out, as
+/// `(thread_id, match_key)` ordered by thread. Lane, crate, branch and slot
+/// items say nothing about files, so they never match a merged path.
+pub(crate) fn live_path_keys_select(ws: &str, repo: &str, exclude: &str, now: &str) -> String {
+    let live = live_claim("held", now);
+    format!(
+        "SELECT f.thread_id, f.match_key
+         FROM maidan_thread_footprints f
+         JOIN maidan_threads held ON held.id = f.thread_id
+         WHERE f.workspace_id = {ws} AND f.repo = {repo}
+           AND f.match_namespace = 'path' AND f.thread_id <> {exclude}
+           AND {live}
+         ORDER BY f.thread_id, f.match_key"
+    )
+}
+
+/// Group `(thread_id, key)` rows, already ordered by thread, into each
+/// thread's keys.
+pub(crate) fn keys_by_thread(rows: Vec<(uuid::Uuid, String)>) -> Vec<(uuid::Uuid, Vec<String>)> {
+    let mut grouped: Vec<(uuid::Uuid, Vec<String>)> = Vec::new();
+    for (thread, key) in rows {
+        match grouped.last_mut() {
+            Some((last, keys)) if *last == thread => keys.push(key),
+            _ => grouped.push((thread, vec![key])),
+        }
+    }
+    grouped
+}
+
 /// The joins and predicates that pair the items of `thread` (`mine`) with the
 /// items of other threads' live claims they overlap (`theirs`, on thread
 /// `held`).
@@ -302,4 +350,41 @@ pub(crate) fn footprint_from_rows(
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
     Ok(Some(maidan_types::Footprint { repo, mode, items }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn a_merged_path_is_covered_by_a_prefix_key_either_way() {
+        let paths = strings(&["src/bridge/x.rs", "src/gateway/y.rs", "README.md"]);
+        assert_eq!(
+            covered_paths(&strings(&["src/bridge/"]), &paths, 20),
+            strings(&["src/bridge/x.rs"])
+        );
+        // A path key naming a directory a merged file sits under, or a file
+        // inside a directory the merge touched, both overlap.
+        assert_eq!(
+            covered_paths(&strings(&["src"]), &paths, 20),
+            strings(&["src/bridge/x.rs", "src/gateway/y.rs"])
+        );
+        assert!(covered_paths(&strings(&["src/gateway/z/"]), &paths, 20).is_empty());
+        assert_eq!(covered_paths(&strings(&[""]), &paths, 2).len(), 2, "capped");
+    }
+
+    #[test]
+    fn keys_group_by_thread_in_order() {
+        let a = uuid::Uuid::from_u128(1);
+        let b = uuid::Uuid::from_u128(2);
+        let rows = vec![(a, "x".into()), (a, "y".into()), (b, "z".into())];
+        assert_eq!(
+            keys_by_thread(rows),
+            vec![(a, strings(&["x", "y"])), (b, strings(&["z"]))]
+        );
+    }
 }

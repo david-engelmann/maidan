@@ -65,6 +65,7 @@ async fn task(store: &dyn Store, channel: ChannelId, title: &str) -> ThreadId {
             parent_thread_id: None,
             title: Some(title.into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap()
@@ -676,6 +677,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     };
     let (created, _) = store
         .create_thread_with_footprint(new("intake"), Some(lane), None)
@@ -902,6 +904,8 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         base_sha: "a".repeat(40),
         base_behind: Some(3),
         diff_lines: lines,
+        paths: vec!["src/a.rs".into()],
+        base_branch: Some("main".into()),
     };
     store.record_change_round(round("c1", 10)).await.unwrap();
     store.record_change_round(round("c1", 10)).await.unwrap();
@@ -951,6 +955,481 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         .await
         .unwrap()
         .is_empty());
+}
+
+fn round_for(ws: WorkspaceId, thread: ThreadId, pull_number: i64) -> NewChangeRound {
+    NewChangeRound {
+        workspace_id: ws,
+        thread_id: thread,
+        repo: REPO.into(),
+        pull_number,
+        commit_sha: format!("{pull_number:040x}"),
+        base_sha: "a".repeat(40),
+        base_behind: None,
+        diff_lines: 1,
+        paths: Vec::new(),
+        base_branch: None,
+    }
+}
+
+async fn open_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
+    store
+        .list_open_change_pulls(ws, 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect()
+}
+
+async fn unsettled_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
+    store
+        .list_unsettled_change_pulls(ws, 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect()
+}
+
+/// The change sweep's refresh reads the pull requests read longest ago
+/// first, never-read ones before all, and only its own workspace's.
+async fn the_refresh_reads_the_longest_unread_pull_first(store: Arc<dyn Store>) {
+    let mine = room(store.as_ref(), "sweep", 1).await;
+    let theirs = room(store.as_ref(), "sweep-other", 1).await;
+    let thread = task(store.as_ref(), mine.channel, "change").await;
+    let other_thread = task(store.as_ref(), theirs.channel, "change").await;
+    for n in 1..=3 {
+        store
+            .record_change_round(round_for(mine.ws, thread, n))
+            .await
+            .unwrap();
+    }
+    store
+        .record_change_round(round_for(theirs.ws, other_thread, 9))
+        .await
+        .unwrap();
+    assert_eq!(open_order(store.as_ref(), mine.ws).await, vec![1, 2, 3]);
+
+    let t0 = chrono::Utc::now();
+    store.mark_change_pull_checked(REPO, 1, t0).await.unwrap();
+    assert_eq!(
+        open_order(store.as_ref(), mine.ws).await,
+        vec![2, 3, 1],
+        "a pull request never read goes before one read"
+    );
+    store
+        .mark_change_pull_checked(REPO, 3, t0 + chrono::Duration::seconds(1))
+        .await
+        .unwrap();
+    store
+        .mark_change_pull_checked(REPO, 2, t0 + chrono::Duration::seconds(2))
+        .await
+        .unwrap();
+    assert_eq!(
+        open_order(store.as_ref(), mine.ws).await,
+        vec![1, 3, 2],
+        "then the one read longest ago"
+    );
+    assert_eq!(open_order(store.as_ref(), theirs.ws).await, vec![9]);
+
+    let mut swept = store.list_change_sweep_workspaces(10).await.unwrap();
+    swept.sort_by_key(|ws| ws.0);
+    let mut both = vec![mine.ws, theirs.ws];
+    both.sort_by_key(|ws| ws.0);
+    assert_eq!(swept, both);
+}
+
+/// A merged pull request lands its thread once, through the transition path,
+/// with `ThreadLanded` in the same transaction; a close without a merge is
+/// reported once and closes nothing; a thread with another open pull request
+/// waits for it; another workspace's close is not touched.
+async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "settle", 1).await;
+    let other = room(store.as_ref(), "settle-other", 1).await;
+    let agent = r.agents[0];
+    let lands = task(store.as_ref(), r.channel, "lands").await;
+    let unmerged = task(store.as_ref(), r.channel, "unmerged").await;
+    let waits = task(store.as_ref(), r.channel, "waits").await;
+    let foreign = task(store.as_ref(), other.channel, "foreign").await;
+    for (thread, by) in [
+        (lands, agent),
+        (unmerged, agent),
+        (waits, agent),
+        (foreign, other.agents[0]),
+    ] {
+        store
+            .set_thread_result(thread, by, &serde_json::json!({"summary": "done"}))
+            .await
+            .unwrap();
+    }
+    for (thread, ws, n) in [
+        (lands, r.ws, 1),
+        (unmerged, r.ws, 2),
+        (waits, r.ws, 3),
+        (waits, r.ws, 4),
+        (foreign, other.ws, 5),
+    ] {
+        store
+            .record_change_round(round_for(ws, thread, n))
+            .await
+            .unwrap();
+    }
+    let t0 = chrono::Utc::now();
+    let at = |secs: i64| t0 + chrono::Duration::seconds(secs);
+    store
+        .close_change_pull(REPO, 1, Some(at(1)), Some("c1"), at(1))
+        .await
+        .unwrap();
+    store
+        .close_change_pull(REPO, 2, None, None, at(2))
+        .await
+        .unwrap();
+    store
+        .close_change_pull(REPO, 3, Some(at(3)), Some("c3"), at(3))
+        .await
+        .unwrap();
+    store
+        .close_change_pull(REPO, 5, Some(at(4)), Some("c5"), at(4))
+        .await
+        .unwrap();
+    assert_eq!(unsettled_order(store.as_ref(), r.ws).await, vec![1, 2, 3]);
+    assert_eq!(unsettled_order(store.as_ref(), other.ws).await, vec![5]);
+
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 1).await.unwrap() else {
+        panic!("a merge lands its thread");
+    };
+    let kinds: Vec<EventKind> = stored.iter().map(|e| e.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            EventKind::ThreadStateChanged,
+            EventKind::ThreadStateChanged,
+            EventKind::ThreadLanded
+        ],
+        "open to review to closed, then the landing"
+    );
+    assert!(stored.iter().all(|e| e.thread_id == Some(lands)));
+    assert_eq!(
+        store.get_thread(lands).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let transitions = store.list_thread_transitions(lands, 10).await.unwrap();
+    assert_eq!(transitions.len(), 2);
+    assert!(transitions.iter().all(|t| t.actor_id == agent));
+    assert!(
+        matches!(
+            store.settle_change_pull(REPO, 1).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "a close settles once"
+    );
+
+    match store.settle_change_pull(REPO, 2).await.unwrap() {
+        ChangeSettlement::ClosedUnmerged {
+            thread_id,
+            author_id,
+        } => assert_eq!((thread_id, author_id), (unmerged, agent)),
+        other => panic!("a close without a merge owes a notice, got {other:?}"),
+    }
+    assert!(matches!(
+        store.settle_change_pull(REPO, 2).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    assert_eq!(
+        store.get_thread(unmerged).await.unwrap().state,
+        ThreadState::Open
+    );
+
+    assert!(
+        matches!(
+            store.settle_change_pull(REPO, 3).await.unwrap(),
+            ChangeSettlement::Unchanged
+        ),
+        "pull request 4 is still open on the same thread"
+    );
+    assert_eq!(
+        store.get_thread(waits).await.unwrap().state,
+        ThreadState::Open
+    );
+    store
+        .close_change_pull(REPO, 4, Some(at(5)), Some("c4"), at(5))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.settle_change_pull(REPO, 4).await.unwrap(),
+        ChangeSettlement::Landed(_)
+    ));
+    assert_eq!(
+        store.get_thread(waits).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert!(unsettled_order(store.as_ref(), r.ws).await.is_empty());
+
+    // A merge that waited on a sibling still lands when the sibling closes
+    // without merging, and the landing names the merge.
+    let sibling = task(store.as_ref(), r.channel, "sibling").await;
+    store
+        .set_thread_result(sibling, agent, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    for n in [6, 7] {
+        store
+            .record_change_round(round_for(r.ws, sibling, n))
+            .await
+            .unwrap();
+    }
+    store
+        .close_change_pull(REPO, 6, Some(at(6)), Some("c6"), at(6))
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.settle_change_pull(REPO, 6).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
+    store
+        .close_change_pull(REPO, 7, None, None, at(7))
+        .await
+        .unwrap();
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 7).await.unwrap() else {
+        panic!("the earlier merge lands the thread once nothing is open");
+    };
+    let landed = stored
+        .iter()
+        .find(|e| e.kind == EventKind::ThreadLanded)
+        .unwrap();
+    assert_eq!(landed.payload["pr_number"], 6);
+    assert_eq!(
+        store.get_thread(sibling).await.unwrap().state,
+        ThreadState::Closed
+    );
+
+    assert_eq!(
+        store.get_thread(foreign).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert_eq!(unsettled_order(store.as_ref(), other.ws).await, vec![5]);
+    store.notify_change_merges(r.ws, 25).await.unwrap();
+    let swept = store.list_change_sweep_workspaces(10).await.unwrap();
+    assert!(swept.contains(&other.ws));
+    assert!(
+        !swept.contains(&r.ws),
+        "nothing left to read, settle or notify"
+    );
+}
+
+fn round_touching(
+    ws: WorkspaceId,
+    thread: ThreadId,
+    pull_number: i64,
+    sha: &str,
+    paths: &[&str],
+    base_branch: Option<&str>,
+) -> NewChangeRound {
+    NewChangeRound {
+        commit_sha: sha.into(),
+        paths: paths.iter().map(|p| p.to_string()).collect(),
+        base_branch: base_branch.map(str::to_string),
+        ..round_for(ws, thread, pull_number)
+    }
+}
+
+async fn claimed_with(
+    store: &dyn Store,
+    room: &Room,
+    agent: usize,
+    title: &str,
+    fp: Footprint,
+) -> ThreadId {
+    let thread = task(store, room.channel, title).await;
+    declare(store, thread, fp).await;
+    let claimed = store
+        .claim_thread(thread, room.agents[agent])
+        .await
+        .unwrap();
+    assert!(claimed.claimed);
+    thread
+}
+
+/// A merge gives each live claim whose footprint covers a path any of its
+/// rounds touched one `rebase_needed` notice, with the covered paths and the
+/// base branch, its event committed with it. A claim on other paths, a lane
+/// claim, an unclaimed thread, a claim on another repository and a claim in
+/// another workspace get none, and a second pass notifies nobody again.
+async fn a_merge_notifies_each_overlapping_live_claim_once(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let r = room(s, "notices", 6).await;
+    let other = room(s, "notices-other", 1).await;
+    let bridge = || {
+        footprint(
+            FootprintMode::Shared,
+            &[(FootprintKind::Glob, "src/bridge/**")],
+        )
+    };
+    let producer = task(s, r.channel, "producer").await;
+    let holder = claimed_with(s, &r, 1, "bridge", bridge()).await;
+    let gateway = claimed_with(
+        s,
+        &r,
+        2,
+        "gateway",
+        footprint(
+            FootprintMode::Shared,
+            &[(FootprintKind::Glob, "src/gateway/**")],
+        ),
+    )
+    .await;
+    let lane = claimed_with(
+        s,
+        &r,
+        3,
+        "lane",
+        footprint(
+            FootprintMode::Shared,
+            &[(FootprintKind::Lane, "src/bridge")],
+        ),
+    )
+    .await;
+    let mut elsewhere = bridge();
+    elsewhere.repo = "example/other".into();
+    let other_repo = claimed_with(s, &r, 4, "other repo", elsewhere).await;
+    let unclaimed = task(s, r.channel, "unclaimed").await;
+    declare(s, unclaimed, bridge()).await;
+    let foreign = claimed_with(s, &other, 0, "foreign", bridge()).await;
+
+    s.record_change_round(round_touching(
+        r.ws,
+        producer,
+        11,
+        "c1",
+        &["src/bridge/x.rs", "docs/a.md"],
+        Some("main"),
+    ))
+    .await
+    .unwrap();
+    s.record_change_round(round_touching(
+        r.ws,
+        producer,
+        11,
+        "c2",
+        &["src/bridge/y.rs", "src/bridge/x.rs"],
+        None,
+    ))
+    .await
+    .unwrap();
+    assert!(
+        s.notify_change_merges(r.ws, 25).await.unwrap().is_empty(),
+        "nothing merged yet"
+    );
+
+    let now = chrono::Utc::now();
+    s.close_change_pull(REPO, 11, Some(now), Some("c2"), now)
+        .await
+        .unwrap();
+    assert!(
+        s.list_change_sweep_workspaces(10)
+            .await
+            .unwrap()
+            .contains(&r.ws),
+        "a merge not yet noticed brings the sweep back"
+    );
+    assert!(s
+        .notify_change_merges(other.ws, 25)
+        .await
+        .unwrap()
+        .is_empty());
+    let posted = s.notify_change_merges(r.ws, 25).await.unwrap();
+    assert_eq!(posted.len(), 1, "{posted:?}");
+    let p = &posted[0];
+    assert_eq!(p.thread_id, holder);
+    assert_eq!(p.notice.kind, ThreadNoticeKind::RebaseNeeded);
+    assert_eq!((p.notice.repo.as_str(), p.notice.pull_number), (REPO, 11));
+    assert_eq!(p.notice.paths, vec!["src/bridge/x.rs", "src/bridge/y.rs"]);
+    assert_eq!(p.notice.base_branch.as_deref(), Some("main"));
+    assert_eq!(
+        p.author_id,
+        Some(r.agents[1]),
+        "the claim holder, no owner set"
+    );
+    assert_eq!(p.event.kind, EventKind::ThreadNotice);
+    assert_eq!(p.event.thread_id, Some(holder));
+    assert_eq!(p.event.payload["notice"], "rebase_needed");
+    assert_eq!(p.event.payload["pr_number"], 11);
+
+    assert!(
+        s.notify_change_merges(r.ws, 25).await.unwrap().is_empty(),
+        "a merge notifies once"
+    );
+    let read = s
+        .list_thread_notices(holder, THREAD_NOTICE_LIMIT)
+        .await
+        .unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(
+        ThreadNotice {
+            created_at: p.notice.created_at,
+            ..read[0].clone()
+        },
+        p.notice,
+        "read back as recorded"
+    );
+    for quiet in [gateway, lane, other_repo, unclaimed, foreign, producer] {
+        assert!(
+            s.list_thread_notices(quiet, THREAD_NOTICE_LIMIT)
+                .await
+                .unwrap()
+                .is_empty(),
+            "{quiet:?} got a notice"
+        );
+    }
+}
+
+/// A stale-base notice is said once per delivered commit, and a thread's
+/// notices read newest first, as many as asked for.
+async fn a_stale_base_notice_is_given_once_per_commit(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let r = room(s, "stale", 1).await;
+    let thread = task(s, r.channel, "change").await;
+    s.set_thread_result(thread, r.agents[0], &serde_json::json!({"summary": "x"}))
+        .await
+        .unwrap();
+    let stale = |sha: &str, behind: i64| NewStaleBaseNotice {
+        thread_id: thread,
+        repo: "Example/App".into(),
+        pull_number: 7,
+        commit_sha: sha.into(),
+        base_branch: Some("main".into()),
+        base_behind: behind,
+    };
+    let first = s
+        .add_stale_base_notice(stale("c1", 60))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(first.notice.kind, ThreadNoticeKind::StaleBase);
+    assert_eq!(first.notice.repo, REPO);
+    assert_eq!(first.notice.base_behind, Some(60));
+    assert_eq!(
+        first.author_id,
+        Some(r.agents[0]),
+        "who produced the result"
+    );
+    assert_eq!(first.event.payload["notice"], "stale_base");
+    assert!(
+        s.add_stale_base_notice(stale("C1", 60))
+            .await
+            .unwrap()
+            .is_none(),
+        "a retried delivery of the same commit is not said twice"
+    );
+    s.add_stale_base_notice(stale("c2", 75))
+        .await
+        .unwrap()
+        .unwrap();
+    let read = s.list_thread_notices(thread, 10).await.unwrap();
+    let behind: Vec<_> = read.iter().map(|n| n.base_behind).collect();
+    assert_eq!(behind, vec![Some(75), Some(60)], "newest first");
+    assert_eq!(s.list_thread_notices(thread, 1).await.unwrap().len(), 1);
 }
 
 async fn sqlite() -> Arc<dyn Store> {
@@ -1005,4 +1484,8 @@ on_both_backends!(
     the_deferred_list_names_why_each_thread_waits,
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
     change_rounds_ready_and_close_are_recorded_once,
+    the_refresh_reads_the_longest_unread_pull_first,
+    a_closed_pull_settles_its_thread_once,
+    a_merge_notifies_each_overlapping_live_claim_once,
+    a_stale_base_notice_is_given_once_per_commit,
 );

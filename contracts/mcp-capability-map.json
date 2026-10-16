@@ -15,6 +15,7 @@
   "attach_memory_block": "workspace:write",
   "attenuate_token": "workspace:read",
   "begin_artifact_multipart": "artifact:upload",
+  "cancel_thread": "workspace:write",
   "cancel_wait": "thread:transition",
   "cast_vote": "workspace:write",
   "catch_up_events": "token:admin",

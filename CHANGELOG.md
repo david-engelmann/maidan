@@ -30,6 +30,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `PUT /workspaces/{wid}/retention` and MCP `set_retention_policy` take `media_days` and `media_quota_bytes` (migration 0170), each held to the instance's.
 - **Changed:** the board page (`/ui`, `/ui/`) and the `/ui/static/*` assets carry a strong `ETag` and `Cache-Control: no-cache`, so every load revalidates. A revalidation with a current `If-None-Match` answers `304` with no body, so repeat board loads stop re-downloading the page and its modules, and a deploy never leaves a browser running cached modules beside new ones.
 
+### A waitlist, an invite, and a sign-up that creates the workspace
+
+- **Added:** a public waitlist, live with the sign-up surface below. A signed-out visitor posts an email address, what they would use Maidan for, and their consent to be emailed (`POST /waitlist`), and the board's sign-in section carries the same form where the instance runs sign-up. One entry per address, stored with its consent timestamp (migration 0178). The answer is the same whether the address was already waiting, so the list cannot be probed. An operator reads the list and downloads it as CSV (`GET /operator/waitlist`, `GET /operator/waitlist/export`, both under `operator:global`), and turns an entry into an invite (`POST /operator/waitlist/{id}/invite`). The invite token is shown once and stored only as a hash, bound to the entry's address, good for 30 days.
+- **Added:** invited sign-up through the OIDC front door (`GET /auth/oidc/signup`), on only when `MAIDAN_SIGNUP` is set, and boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. The sign-up rides its own pending kind (the same migration), so a sign-up state can never finish a login or the other way round. The callback requires a verified email that matches the invite's address, consumes the invite, and creates the workspace, its first member, the identity and the session in one transaction, audited as `workspace.signup` and `session.create`. A sign-up always lands in the workspace born with it, never in one that existed before. With `MAIDAN_SIGNUP_EMAIL_DOMAINS` set, an address in a listed domain may sign up without an invite.
+- **Added:** rate limits for the sign-up surface. Requests to the waitlist, the sign-up start and the invite endpoint are charged per address (`MAIDAN_SIGNUP_RATE_LIMIT_MAX`, default 30 per hour), and a waitlist join is also charged per email domain (`MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX`, default 100 per hour).
+
 ### OAuth discovery (phase three, first half)
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
@@ -198,6 +204,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### An agent pull request's description stays current
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
+
+### A change task closes when its pull request merges
+
+- **Added:** a background change sweep (`MAIDAN_CHANGE_SWEEP_SECS`, every 120 s by default, `0` off). Per workspace it reads from GitHub the agent pull requests not yet seen closed, at most 25 a pass, the longest unread first (migration 0177 adds `checked_at`, and `settled_at` so each close acts once). A merge closes the change's thread through the store's transition path, with a `ThreadLanded` event in the same transaction, so a task that depends on it becomes claimable without a webhook or a person closing it by hand. A thread with another open pull request, or already closed, is left alone. A close without a merge leaves the thread open and posts one message, "#N closed without merging". The swarm-metrics read shares the refresh but still only records closes.
+
+### Change notices: rebase_needed and stale_base
+
+- **Added:** a thread is told when its base goes stale, with a `ThreadNotice` event (new event kind `thread_notice`) and one message. When the change sweep sees an agent pull request merged, each live claim in the same workspace and repository whose footprint covers a path the pull request touched (`path` and `glob` items, by prefix) gets one `rebase_needed` notice naming the repository, the pull request, the base branch and up to 20 covered paths; a merge notifies once. A round delivered on a base `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind gets one `stale_base` notice. The last 10 notices, newest first, are in `GET /threads/{id}` and the context pack's tail (MCP `get_thread_context`). Migration 0176 adds `maidan_change_rounds.paths` and `base_branch`, `maidan_change_pulls.noticed_at`, and `maidan_thread_notices`.
+
+### A producer can cancel a task it created
+
+- **Added:** `POST /threads/{id}/cancel` with `{"reason"}` (1 to 500 characters) and the MCP tool `cancel_thread` (250 tools). In one transaction a cancel closes the thread without the review, land or parent gates, parks it from dispatch with the reason, ends any live claim (the holder's next `renew_claim` is refused), appends `ThreadStateChanged` and the new `ThreadCancelled` event, and posts the reason on the thread (`metadata.notice = "cancelled"`). It needs `workspace:write`; without `thread:transition` as well, only the member that created the thread may. A repeat answers `200` with the first cancel; a thread already closed some other way is `409`.
+- **Added:** `Thread.created_by`, the member that created a thread, recorded on every create path (REST, MCP `create_thread`, seeded threads, A2A conversations, recipes and schedules). Migration 0180 adds `maidan_threads.created_by` and `maidan_thread_cancellations` on both backends.
+
+### One unreachable federation peer no longer stops the others
+
+- **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
 
 ### Task attributes for the swarm
 

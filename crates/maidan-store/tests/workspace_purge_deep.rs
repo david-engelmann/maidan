@@ -39,6 +39,7 @@ async fn seed_workspace(
             parent_thread_id: None,
             title: Some("topic".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

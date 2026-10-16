@@ -48,6 +48,7 @@ id_newtype!(WebhookSubscriptionId);
 id_newtype!(SlashCommandId);
 id_newtype!(FsmHookId);
 id_newtype!(OidcIdentityId);
+id_newtype!(WaitlistEntryId);
 id_newtype!(TaskScheduleId);
 id_newtype!(NotificationId);
 id_newtype!(MailOutboxId);

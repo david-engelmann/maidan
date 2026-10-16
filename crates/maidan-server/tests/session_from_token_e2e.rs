@@ -170,6 +170,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             parent_thread_id: None,
             title: Some("t".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();
@@ -257,6 +258,8 @@ async fn world(sessions: Sessions) -> World {
                     post_logout_redirect_uri: None,
                     first_admin_mint: true,
                     auto_mint: false,
+                    signup: false,
+                    signup_email_domains: Vec::new(),
                 },
                 session_secret: Arc::from(SESSION_SECRET),
                 client: None,

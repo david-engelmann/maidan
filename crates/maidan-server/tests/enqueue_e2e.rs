@@ -248,6 +248,7 @@ async fn spawn(pull: FakePull) -> Harness {
             parent_thread_id: None,
             title: None,
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

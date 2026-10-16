@@ -62,6 +62,7 @@ fn new_thread(channel: ChannelId, title: &str) -> NewThread {
         parent_thread_id: None,
         title: Some(title.into()),
         description: None,
+        created_by: None,
     }
 }
 
@@ -231,6 +232,8 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
                 base_sha: "a".repeat(40),
                 base_behind: None,
                 diff_lines: 10,
+                paths: Vec::new(),
+                base_branch: None,
             })
             .await
             .unwrap();

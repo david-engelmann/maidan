@@ -418,6 +418,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "add_reference"
         | "create_channel"
         | "create_thread"
+        | "cancel_thread"
         | "create_task_schedule"
         | "create_recipe"
         | "instantiate_recipe"
@@ -830,6 +831,7 @@ async fn enforce_channel_access(
         | "get_dependency_results"
         | "request_approval"
         | "mark_unclaimable"
+        | "cancel_thread"
         | "mark_claimable"
         | "set_thread_block"
         | "get_thread_block"
@@ -980,6 +982,7 @@ pub async fn dispatch(
         "get_member_wip" => thread::get_member_wip(store, auth, args).await,
         "get_member_occupancy" => member::get_member_occupancy(server, auth, args).await,
         "mark_unclaimable" => thread::mark_unclaimable(store, auth, args).await,
+        "cancel_thread" => thread::cancel_thread(server, auth, args).await,
         "mark_claimable" => thread::mark_claimable(store, args).await,
         "list_unclaimable" => thread::list_unclaimable(store, args).await,
         "set_thread_block" => thread::set_thread_block(store, auth, args).await,

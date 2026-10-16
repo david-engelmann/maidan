@@ -104,6 +104,7 @@ async fn tenant(store: &dyn Store, name: &str) -> (WorkspaceId, MemberId, String
             parent_thread_id: None,
             title: Some("task".into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

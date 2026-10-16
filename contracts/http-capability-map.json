@@ -672,6 +672,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/cancel",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/unclaimable",
     "capability": "thread:transition",
@@ -1232,6 +1238,24 @@
   {
     "method": "GET",
     "path": "/operator/status",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/waitlist",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/waitlist/export",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/operator/waitlist/{id}/invite",
     "capability": "operator:global",
     "surface": "http"
   },

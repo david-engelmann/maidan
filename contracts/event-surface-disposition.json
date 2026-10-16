@@ -176,6 +176,13 @@
     "note": "Setting an explicit dispatch block is available over REST and MCP; emits ThreadBlocked."
   },
   {
+    "kind": "thread_cancelled",
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/thread_cancel_e2e.rs#a_producer_cancels_its_claimed_task_over_http",
+    "mcp_evidence": "crates/maidan-server/tests/thread_cancel_e2e.rs#a_producer_cancels_its_task_over_mcp",
+    "note": "POST /threads/{id}/cancel and the MCP cancel_thread tool share the store cancel, which commits the event with the close."
+  },
+  {
     "kind": "thread_created",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/event_emission_e2e.rs#http_mutations_publish_matching_events",
@@ -187,6 +194,12 @@
     "disposition": "internal_only",
     "internal_evidence": "crates/maidan-server/tests/github_ingress_e2e.rs#github_pull_request_merged_emits_thread_landed",
     "note": "A verified GitHub projector webhook derives this fact; clients cannot assert it."
+  },
+  {
+    "kind": "thread_notice",
+    "disposition": "internal_only",
+    "internal_evidence": "crates/maidan-server/tests/change_flow_e2e.rs#a_merge_tells_the_agent_holding_its_paths_to_rebase_once",
+    "note": "The change sweep derives a rebase_needed notice from a merge, and the egress worker a stale_base notice from a delivery; clients cannot assert one."
   },
   {
     "kind": "thread_ready",

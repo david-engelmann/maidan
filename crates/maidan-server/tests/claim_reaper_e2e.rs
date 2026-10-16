@@ -92,6 +92,7 @@ async fn new_thread(store: &dyn Store, channel: ChannelId, title: &str) {
             parent_thread_id: None,
             title: Some(title.into()),
             description: None,
+            created_by: None,
         })
         .await
         .unwrap();

@@ -84,6 +84,8 @@ async fn spawn() -> Env {
             post_logout_redirect_uri: None,
             first_admin_mint: true,
             auto_mint: false,
+            signup: false,
+            signup_email_domains: Vec::new(),
         },
         session_secret: Arc::from(SECRET),
         client: None,

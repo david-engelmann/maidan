@@ -11,8 +11,8 @@ use maidan_types::{
     EgressSurface, EmailDeliveryMode, EscalationPolicy, EventKind, Footprint, FsmHookId, LandColor,
     LandGateStatus, Member, MemberFreeze, MemberId, MemberKind, PeerId, RecipeSpec, RefSide,
     RelationKind, ReviewDecision, ShareTicket, SlashCommandId, SlashHandlerKind, TaskAttributes,
-    TaskEngine, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind,
-    WebhookSubscriptionId, Workspace, WorkspaceId,
+    TaskEngine, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind, WaitlistEntry,
+    WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -713,6 +713,15 @@ pub struct SetWipLimit {
 #[serde(deny_unknown_fields)]
 pub struct SetDelegationPolicy {
     pub max_grant_days: Option<i64>,
+}
+
+/// Body for `POST /threads/:id/cancel`: why the task is being cancelled, 1 to
+/// 500 characters after trimming. It is posted on the thread and kept as the
+/// dispatch park's reason.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelThread {
+    pub reason: String,
 }
 
 /// Body for `PUT /threads/:id/unclaimable` — park a thread from dispatch with a
@@ -1738,6 +1747,62 @@ pub struct OidcCallbackQuery {
     pub code: Option<String>,
     pub mock_sub: Option<String>,
     pub mock_email: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct OidcSignupQuery {
+    /// The invite token from the operator's invite link. Optional: an
+    /// address in the instance's sign-up domain list needs none.
+    pub invite: Option<String>,
+    pub return_to: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct JoinWaitlistRequest {
+    pub email: String,
+    /// What the visitor would use Maidan for, in their own words.
+    pub use_case: String,
+    /// The visitor agreed to be contacted about a place. A join without
+    /// consent is refused: the consent timestamp is the point of the row.
+    pub consent: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WaitlistEntryView {
+    pub id: WaitlistEntryId,
+    pub email: String,
+    pub use_case: String,
+    pub consented_at: chrono::DateTime<chrono::Utc>,
+    pub status: String,
+    pub invite_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub workspace_id: Option<WorkspaceId>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<WaitlistEntry> for WaitlistEntryView {
+    fn from(entry: WaitlistEntry) -> Self {
+        Self {
+            id: entry.id,
+            email: entry.email,
+            use_case: entry.use_case,
+            consented_at: entry.consented_at,
+            status: entry.status.as_str().to_string(),
+            invite_expires_at: entry.invite_expires_at,
+            workspace_id: entry.workspace_id,
+            created_at: entry.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InviteMintedView {
+    pub entry: WaitlistEntryView,
+    /// The invite token, shown exactly once. Only its hash is stored.
+    pub invite_token: String,
+    /// Where the invite link points, on this instance's origin.
+    pub signup_path: String,
+    pub invite_expires_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

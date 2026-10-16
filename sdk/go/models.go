@@ -130,14 +130,16 @@ type Channel struct {
 }
 
 type Thread struct {
-	ID                  string      `json:"id"`
-	ChannelID           string      `json:"channel_id"`
-	ParentThreadID      *string     `json:"parent_thread_id,omitempty"`
-	Title               *string     `json:"title,omitempty"`
-	State               ThreadState `json:"state"`
-	AssigneeID          *string     `json:"assignee_id,omitempty"`
-	OwnerID             *string     `json:"owner_id,omitempty"`
-	AssignmentExpiresAt *time.Time  `json:"assignment_expires_at,omitempty"`
+	ID             string      `json:"id"`
+	ChannelID      string      `json:"channel_id"`
+	ParentThreadID *string     `json:"parent_thread_id,omitempty"`
+	Title          *string     `json:"title,omitempty"`
+	State          ThreadState `json:"state"`
+	AssigneeID     *string     `json:"assignee_id,omitempty"`
+	OwnerID        *string     `json:"owner_id,omitempty"`
+	// CreatedBy is the member that created it; that member may cancel it.
+	CreatedBy           *string    `json:"created_by,omitempty"`
+	AssignmentExpiresAt *time.Time `json:"assignment_expires_at,omitempty"`
 	// ClaimLeaseID is the fencing token RenewClaim takes.
 	ClaimLeaseID  *string    `json:"claim_lease_id,omitempty"`
 	WorkStartedAt *time.Time `json:"work_started_at,omitempty"`
@@ -239,11 +241,11 @@ type ThreadTransition struct {
 
 // ThreadBrief is the stable thread fields. State and the lease are not here.
 type ThreadBrief struct {
-	Title           *string  `json:"title,omitempty"`
-	ParentThreadID  *string  `json:"parent_thread_id,omitempty"`
-	OwnerID         *string  `json:"owner_id,omitempty"`
-	RequiredSkills  []string `json:"required_skills,omitempty"`
-	CreatedAt       time.Time `json:"created_at"`
+	Title          *string   `json:"title,omitempty"`
+	ParentThreadID *string   `json:"parent_thread_id,omitempty"`
+	OwnerID        *string   `json:"owner_id,omitempty"`
+	RequiredSkills []string  `json:"required_skills,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type AcceptedDecision struct {

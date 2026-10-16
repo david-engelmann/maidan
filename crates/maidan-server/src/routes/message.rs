@@ -173,6 +173,7 @@ pub async fn seed_from_message(
             parent_thread_id: None,
             title: Some(body.title.trim().to_string()),
             description: None,
+            created_by: auth.attribution().map(|a| a.subject_id),
         })
         .await?;
     super::publish_stored(&state, t_stored).await;

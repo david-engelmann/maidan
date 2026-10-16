@@ -474,6 +474,11 @@ pub struct ContextTail {
     pub prefix_sha256: String,
     /// Length of that prefix JSON, in bytes.
     pub prefix_bytes: u64,
+    /// The thread's change notices, newest first, at most 10. In the tail
+    /// because a merge elsewhere adds one without touching the thread's own
+    /// history, and the prefix must stay cache-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<crate::change_metrics::ThreadNotice>,
 }
 
 impl ContextTail {
@@ -497,6 +502,7 @@ impl ContextTail {
             next_message_cursor,
             prefix_sha256,
             prefix_bytes,
+            notices: thread.notices.clone(),
         }
     }
 }
@@ -976,6 +982,8 @@ mod tests {
             block: None,
             attributes: None,
             closed_without_review: false,
+            notices: Vec::new(),
+            created_by: None,
         }
     }
 
@@ -1253,6 +1261,8 @@ mod tests {
             block: None,
             attributes: None,
             closed_without_review: false,
+            notices: Vec::new(),
+            created_by: None,
         }
     }
 

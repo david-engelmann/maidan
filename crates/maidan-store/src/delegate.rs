@@ -1548,6 +1548,49 @@ macro_rules! store_delegations {
                 oidc::take_pending(self.pool(), state).await
             }
 
+            async fn insert_waitlist_entry(
+                &self,
+                new: NewWaitlistEntry,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::insert_waitlist_entry(self.pool(), new).await
+            }
+
+            async fn list_waitlist_entries(&self) -> Result<Vec<WaitlistEntry>, StoreError> {
+                oidc::list_waitlist_entries(self.pool()).await
+            }
+
+            async fn get_waitlist_entry(
+                &self,
+                id: WaitlistEntryId,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::get_waitlist_entry(self.pool(), id).await
+            }
+
+            async fn get_waitlist_entry_by_invite_hash(
+                &self,
+                token_hash: &str,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::get_waitlist_entry_by_invite_hash(self.pool(), token_hash).await
+            }
+
+            async fn set_waitlist_invite(
+                &self,
+                id: WaitlistEntryId,
+                token_hash: String,
+                expires_at: DateTime<Utc>,
+            ) -> Result<WaitlistEntry, StoreError> {
+                oidc::set_waitlist_invite(self.pool(), id, token_hash, expires_at).await
+            }
+
+            async fn complete_oidc_signup(
+                &self,
+                new: NewOidcSignup,
+                signup_audit: crate::AuditFor<OidcSignupCore>,
+                session_audit: crate::AuditFor<MaidanSession>,
+            ) -> Result<OidcSignupOutcome, StoreError> {
+                oidc::complete_signup(self.pool(), new, signup_audit, session_audit).await
+            }
+
             async fn create_session(
                 &self,
                 new: NewMaidanSession,
@@ -2627,6 +2670,61 @@ macro_rules! store_delegations {
                 change_metrics::list(self.pool(), workspace_id, repo, since, engine, kind).await
             }
 
+            async fn mark_change_pull_checked(
+                &self,
+                repo: &str,
+                pull_number: i64,
+                at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                change_metrics::mark_checked(self.pool(), repo, pull_number, at).await
+            }
+
+            async fn list_change_sweep_workspaces(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<WorkspaceId>, StoreError> {
+                change_metrics::list_sweep_workspaces(self.pool(), limit).await
+            }
+
+            async fn list_unsettled_change_pulls(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<(String, i64)>, StoreError> {
+                change_metrics::list_unsettled(self.pool(), workspace_id, limit).await
+            }
+
+            async fn settle_change_pull(
+                &self,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<maidan_types::ChangeSettlement, StoreError> {
+                change_metrics::settle(self.pool(), repo, pull_number).await
+            }
+
+            async fn notify_change_merges(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::notify_merges(self.pool(), workspace_id, limit).await
+            }
+
+            async fn add_stale_base_notice(
+                &self,
+                notice: maidan_types::NewStaleBaseNotice,
+            ) -> Result<Option<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::add_stale_base_notice(self.pool(), notice).await
+            }
+
+            async fn list_thread_notices(
+                &self,
+                thread_id: ThreadId,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::ThreadNotice>, StoreError> {
+                change_metrics::list_notices(self.read_pool(), thread_id, limit).await
+            }
+
             async fn list_slots(
                 &self,
                 workspace_id: WorkspaceId,
@@ -2719,6 +2817,16 @@ macro_rules! store_delegations {
             async fn count_live_claims(&self, member_id: MemberId) -> Result<i64, StoreError> {
                 // Primary read: enforcement must not act on a lagged claim count.
                 wip::count_live_claims(self.pool(), member_id).await
+            }
+
+            async fn cancel_thread(
+                &self,
+                thread_id: ThreadId,
+                actor: MemberId,
+                reason: &str,
+                authority: CancelAuthority,
+            ) -> Result<CancelOutcome, StoreError> {
+                cancel::cancel(self.pool(), &self.keys, thread_id, actor, reason, authority).await
             }
 
             async fn mark_thread_unclaimable(
