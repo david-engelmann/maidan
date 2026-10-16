@@ -411,6 +411,13 @@
       #thread-facts code { background: #f4f4f5; border-radius: 0.3rem; padding: 0.05rem 0.35rem; color: var(--ink); font-size: 0.78rem; }
       #thread-facts .ok { color: #15803d; font-weight: 600; }
       #thread-facts .wait { color: #b45309; font-weight: 600; }
+      #evidence-timeline { margin-top: 0.5rem; font-size: 0.82rem; }
+      #evidence-timeline > summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+      #evidence-moved { margin-left: 0.4rem; font-weight: 600; color: #b45309; }
+      #evidence-list { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+      #evidence-list .ev { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; padding: 0.15rem 0; }
+      #evidence-list time { color: var(--muted); font-size: 0.75rem; }
+      #evidence-list code { background: #f4f4f5; border-radius: 0.3rem; padding: 0 0.3rem; font-size: 0.76rem; }
       #message-list { background: transparent; padding: 0; max-height: 24rem; font-size: 0.88rem; margin: 0.75rem 0; }
       #message-list .msg { display: grid; grid-template-columns: auto 1fr; column-gap: 0.6rem; padding: 0.55rem 0.1rem; margin: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
       #message-list .msg:last-child { border-bottom: none; }

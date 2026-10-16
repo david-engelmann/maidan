@@ -5518,3 +5518,100 @@ fn ui_more_tools_tabs_are_grouped_with_developer_surfaces_last() {
         "a click during the first load starts no second one"
     );
 }
+
+/// The thread panel's evidence timeline: it reads the timeline route on both
+/// trees, only while open, drops a read for a thread no longer open, and
+/// flags evidence that moved since the latest hand-off.
+#[test]
+fn ui_js_thread_panel_shows_the_evidence_timeline() {
+    let s = script(HTML);
+    assert!(HTML.contains(r#"<details id="evidence-timeline">"#));
+    assert!(HTML.contains(r#"id="evidence-list""#));
+    assert!(s.contains("function loadEvidenceTimeline("));
+    assert!(s.contains("${base()}/threads/${tid}/evidence"));
+    assert!(s.contains("uiReadPath(`/threads/${tid}/evidence`)"));
+    assert!(
+        s.contains("if (!panel.open) return;"),
+        "a closed panel costs no read"
+    );
+    assert!(
+        s.contains("if (tid !== selectedThreadId) return;"),
+        "a slower read for another thread must not paint over the open one"
+    );
+    assert!(s.contains(r#"addEventListener("toggle", loadEvidenceTimeline)"#));
+    assert!(
+        s.contains("loadEvidenceTimeline();"),
+        "a thread refresh reloads an open panel"
+    );
+    assert!(s.contains("timeline.evidence_changed_since_review !== true"));
+    for kind in [
+        "artifact_linked",
+        "result_recorded",
+        "land_gate_verdict",
+        "review_requested",
+        "review_verdict",
+    ] {
+        assert!(
+            s.contains(&format!("entry.kind === \"{kind}\"")),
+            "{kind} is rendered"
+        );
+    }
+}
+
+/// The Evidence summary stays on screen while the panel is closed, so picking
+/// another thread must clear the last thread's "changed since review" flag
+/// and entries even though nothing is fetched. This runs the page's
+/// `loadEvidenceTimeline` with the panel closed after a switch from a thread
+/// whose evidence had moved.
+#[test]
+fn ui_js_evidence_panel_does_not_carry_one_threads_flag_to_the_next() {
+    let js = script(HTML);
+    let harness = format!(
+        r#"
+const els = {{
+  "evidence-timeline": {{ open: false }},
+  "evidence-list": {{
+    children: ["Artifact linked on thread A"],
+    matches: () => true,
+    replaceChildren() {{ this.children = []; }},
+    appendChild(child) {{ this.children.push(child.textContent); }},
+  }},
+  "evidence-moved": {{ hidden: false }},
+}};
+const document = {{
+  getElementById: (id) => els[id] || null,
+  createElement: (tag) => ({{ tag, textContent: "", className: "" }}),
+}};
+let selectedThreadId = "thread-a";
+let evidenceShownFor = "thread-a";
+{render_state}
+}}
+async {load}
+}}
+selectedThreadId = "thread-b";
+loadEvidenceTimeline().then(() => {{
+  process.stdout.write(JSON.stringify({{
+    moved_hidden: els["evidence-moved"].hidden,
+    list: els["evidence-list"].children,
+  }}));
+}});
+"#,
+        render_state = function_body(js, "renderState"),
+        load = function_body(js, "loadEvidenceTimeline"),
+    );
+    let out = run_bare_harness(&harness);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "harness failed: {stderr}");
+    let view: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|err| panic!("{err}: {stdout}"));
+    assert_eq!(
+        view["moved_hidden"], true,
+        "thread A's \"changed since review\" must not show on thread B: {view}"
+    );
+    assert_eq!(
+        view["list"],
+        serde_json::json!(["Open to load what this task recorded as evidence."]),
+        "thread A's entries must not show under thread B: {view}"
+    );
+}
