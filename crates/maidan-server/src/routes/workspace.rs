@@ -848,7 +848,7 @@ pub async fn purge_workspace(
             }),
         )
         .await?;
-    delete_orphaned_blobs(&state, &result.artifact_shas).await;
+    delete_orphaned_blobs(&state, workspace_id, &result.artifact_shas).await;
     result.artifact_shas.clear();
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
@@ -875,8 +875,12 @@ fn purge_metadata(result: &WorkspacePurgeResult) -> serde_json::Value {
 /// Delete the blobs a purge or erase orphaned — shas no workspace references
 /// any more. The store decides orphanhood inside its transaction; this runs
 /// after it.
-pub(super) async fn delete_orphaned_blobs(state: &AppState, shas: &[String]) {
-    super::reap_orphaned_blobs(state.store.as_ref(), &state.artifacts, shas).await;
+pub(super) async fn delete_orphaned_blobs(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    shas: &[String],
+) {
+    super::reap_orphaned_blobs(state.store.as_ref(), &state.artifacts, workspace_id, shas).await;
 }
 
 pub async fn erase_workspace(
@@ -910,7 +914,7 @@ pub async fn erase_workspace(
             }),
         )
         .await?;
-    delete_orphaned_blobs(&state, &result.purge.artifact_shas).await;
+    delete_orphaned_blobs(&state, workspace_id, &result.purge.artifact_shas).await;
     result.purge.artifact_shas.clear();
     let uris = maidan_mcp::resource_updates::uris_for_workspace_purge(workspace_id);
     state.mcp.publish_resource_uris(uris).await;
