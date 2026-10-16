@@ -226,6 +226,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
 
+### Tests for routes no test called
+
+- **Tests:** ten routes that no test called now have behavior tests, each with a second workspace that holds the same capabilities and gets none of the first workspace's rows. They cover the thread, workspace and member usage rollups, `GET /workspaces/{id}/deferred`, `GET /members/{id}/decisions`, `DELETE /members/{id}/push-subscriptions/{sub_id}`, `GET /channels/{cid}/recent-threads`, `DELETE /workspaces/{wid}/peers/{pid}`, and the operator dead-mail list and requeue, where `operator:global` also sees the tenant-less row. The tests are in `http_capability_matrix_e2e`. In `ui_thread_reads_e2e`, every `/ui/api` read, for a session that holds a token's authority, answers with the same status and body as its bearer twin, and refuses another workspace's ids the same way.
+
 ### Launch docs say what works
 
 - **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.

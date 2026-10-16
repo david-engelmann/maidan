@@ -982,3 +982,538 @@ async fn every_http_map_route_denies_without_required_capability() {
 
     h.shutdown().await;
 }
+
+// Behavior for routes no other test calls. The table above proves each one
+// asks for its capability; these prove what each answers to a caller that has
+// it, and that a second workspace's caller, holding the same capabilities,
+// gets none of the first workspace's rows.
+
+/// One workspace with a work channel, a thread, and two members, each with a
+/// token holding `setup_caps()`: `admin` reads and administers, `agent` claims
+/// and reports.
+struct Tenant {
+    workspace: maidan_types::WorkspaceId,
+    channel: maidan_types::ChannelId,
+    thread: maidan_types::ThreadId,
+    admin: maidan_types::MemberId,
+    admin_token: String,
+    agent: maidan_types::MemberId,
+    agent_token: String,
+}
+
+async fn tenant(store: &dyn Store, name: &str) -> Tenant {
+    let workspace = store
+        .create_workspace(NewWorkspace { name: name.into() })
+        .await
+        .unwrap()
+        .id;
+    let mut members = Vec::new();
+    for (handle, kind) in [("admin", MemberKind::Human), ("agent", MemberKind::Agent)] {
+        let id = store
+            .create_member(NewMember {
+                workspace_id: workspace,
+                handle: handle.into(),
+                display_name: None,
+                kind,
+            })
+            .await
+            .unwrap()
+            .id;
+        members.push((id, mint_token(store, workspace, id, setup_caps()).await));
+    }
+    let channel = store
+        .create_channel(maidan_types::NewChannel {
+            workspace_id: workspace,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap()
+        .id;
+    let thread = new_thread(store, channel, "first").await;
+    let (agent, agent_token) = members.pop().unwrap();
+    let (admin, admin_token) = members.pop().unwrap();
+    Tenant {
+        workspace,
+        channel,
+        thread,
+        admin,
+        admin_token,
+        agent,
+        agent_token,
+    }
+}
+
+async fn new_thread(
+    store: &dyn Store,
+    channel: maidan_types::ChannelId,
+    title: &str,
+) -> maidan_types::ThreadId {
+    store
+        .create_thread(maidan_types::NewThread {
+            channel_id: channel,
+            parent_thread_id: None,
+            title: Some(title.into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+async fn call(
+    h: &Harness,
+    method: reqwest::Method,
+    path: &str,
+    token: &str,
+) -> (StatusCode, Value) {
+    let resp = h
+        .client
+        .request(method, format!("{}{path}", h.base()))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let text = resp.text().await.unwrap();
+    (status, serde_json::from_str(&text).unwrap_or(Value::Null))
+}
+
+async fn read(h: &Harness, path: &str, token: &str) -> (StatusCode, Value) {
+    call(h, reqwest::Method::GET, path, token).await
+}
+
+/// Another workspace's caller is refused without learning anything: a 403 or
+/// a 404, and no id from the refused workspace in the body.
+fn assert_refused(what: &str, (status, body): &(StatusCode, Value), secrets: &[String]) {
+    assert!(
+        matches!(*status, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "{what}: another workspace got {status} {body}"
+    );
+    let text = body.to_string();
+    for secret in secrets {
+        assert!(!text.contains(secret), "{what} leaked {secret}: {text}");
+    }
+}
+
+/// Report `input` tokens on a thread the tenant's agent claims for it.
+async fn report_usage(h: &Harness, t: &Tenant, thread: maidan_types::ThreadId, input: i64) {
+    let claimed = h.store.assign_thread(thread, t.agent).await.unwrap();
+    let lease = claimed.claim_lease_id.unwrap();
+    let resp = h
+        .client
+        .post(format!("{}/threads/{}/usage", h.base(), thread.0))
+        .bearer_auth(&t.agent_token)
+        .json(&json!({
+            "usage_report_id": uuid::Uuid::now_v7(),
+            "claim_lease_id": lease.0,
+            "model": "test/model",
+            "tokens": {
+                "input": input,
+                "output": 0,
+                "cache_read": 0,
+                "cache_write_5m": 0,
+                "cache_write_1h": 0
+            },
+            "usd_micros": 0,
+            "price_snapshot": {
+                "input_usd_micros_per_million": 0,
+                "output_usd_micros_per_million": 0,
+                "cache_read_usd_micros_per_million": 0,
+                "cache_write_5m_usd_micros_per_million": 0,
+                "cache_write_1h_usd_micros_per_million": 0
+            },
+            "turns": 1
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "{}",
+        resp.text().await.unwrap()
+    );
+}
+
+#[tokio::test]
+async fn usage_rollups_sum_the_callers_workspace_and_refuse_another() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    report_usage(&h, &a, a.thread, 100).await;
+    report_usage(&h, &b, b.thread, 7).await;
+
+    for path in [
+        format!("/threads/{}/usage-rollup", a.thread.0),
+        format!("/workspaces/{}/usage-rollup", a.workspace.0),
+        format!("/members/{}/usage-rollup", a.agent.0),
+    ] {
+        let (s, rollup) = read(&h, &path, &a.admin_token).await;
+        assert_eq!(s, StatusCode::OK, "{path}: {rollup}");
+        assert_eq!(rollup["workspace_id"], json!(a.workspace.0), "{path}");
+        assert_eq!(rollup["reports"], 1, "{path}: {rollup}");
+        assert_eq!(rollup["input_tokens"], 100, "B's 7 stay out of {path}");
+
+        let refused = read(&h, &path, &b.admin_token).await;
+        assert_refused(&path, &refused, &[a.workspace.0.to_string()]);
+    }
+    let (_, thread) = read(
+        &h,
+        &format!("/threads/{}/usage-rollup", a.thread.0),
+        &a.admin_token,
+    )
+    .await;
+    assert_eq!(thread["thread_id"], json!(a.thread.0));
+    let (_, member) = read(
+        &h,
+        &format!("/members/{}/usage-rollup", a.agent.0),
+        &a.admin_token,
+    )
+    .await;
+    assert_eq!(member["member_id"], json!(a.agent.0));
+
+    // B's own rollup is B's alone, so the refusals above are the boundary.
+    let (s, own) = read(
+        &h,
+        &format!("/workspaces/{}/usage-rollup", b.workspace.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(own["input_tokens"], 7, "{own}");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn deferred_threads_list_the_overlap_and_refuse_another_workspace() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    let lane: maidan_types::Footprint = serde_json::from_value(json!({
+        "repo": "https://github.com/Example/App.git",
+        "mode": "exclusive",
+        "items": [{ "kind": "lane", "value": "bridge" }]
+    }))
+    .unwrap();
+    let lane = lane.validated().unwrap();
+    let waiting = new_thread(h.store.as_ref(), a.channel, "waits for the bridge").await;
+    h.store.claim_thread(a.thread, a.agent).await.unwrap();
+    for thread in [a.thread, waiting] {
+        let conflicts = h
+            .store
+            .set_thread_footprint(thread, Some(lane.clone()))
+            .await
+            .unwrap();
+        assert!(conflicts.is_empty(), "{conflicts:?}");
+    }
+
+    let path = format!("/workspaces/{}/deferred", a.workspace.0);
+    let (s, deferred) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{deferred}");
+    let deferred = deferred.as_array().unwrap();
+    assert_eq!(
+        deferred.len(),
+        1,
+        "only the unclaimed overlap: {deferred:?}"
+    );
+    assert_eq!(deferred[0]["thread_id"], json!(waiting.0));
+    assert_eq!(deferred[0]["title"], json!("waits for the bridge"));
+    assert!(
+        deferred[0]["reasons"].to_string().contains("overlap"),
+        "{deferred:?}"
+    );
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[waiting.0.to_string()]);
+    let (s, own) = read(
+        &h,
+        &format!("/workspaces/{}/deferred", b.workspace.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(own, json!([]), "B holds nothing back");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn member_decisions_are_the_members_own_and_refuse_another_workspace() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    // The admin follows the channel; the agent's result is a decision buried
+    // in the admin's feed.
+    for t in [&a, &b] {
+        h.store.follow_channel(t.admin, t.channel).await.unwrap();
+        h.store.claim_thread(t.thread, t.agent).await.unwrap();
+        h.store
+            .set_thread_result(t.thread, t.agent, &json!({"status": "done"}))
+            .await
+            .unwrap();
+    }
+
+    let path = format!("/members/{}/decisions", a.admin.0);
+    let (s, decisions) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{decisions}");
+    let decisions = decisions.as_array().unwrap();
+    assert_eq!(decisions.len(), 1, "{decisions:?}");
+    assert_eq!(decisions[0]["thread_id"], json!(a.thread.0));
+    assert_eq!(decisions[0]["produced_by"], json!(a.agent.0));
+
+    // Personal state: a colleague in the same workspace is refused too.
+    let (s, body) = read(&h, &path, &a.agent_token).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "{body}");
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_eq!(
+        refused.0,
+        StatusCode::NOT_FOUND,
+        "another workspace's member"
+    );
+    assert_refused(&path, &refused, &[a.thread.0.to_string()]);
+
+    let (s, own) = read(
+        &h,
+        &format!("/members/{}/decisions", b.admin.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(own[0]["thread_id"], json!(b.thread.0), "{own}");
+    assert_eq!(own.as_array().unwrap().len(), 1, "{own}");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_push_subscription_is_deleted_only_by_its_own_member() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    let sub = h
+        .store
+        .add_push_subscription(maidan_types::NewPushSubscription {
+            member_id: a.admin,
+            endpoint: "https://push.example/a".into(),
+            p256dh: "p256dh".into(),
+            auth: "auth".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let path = format!("/members/{}/push-subscriptions/{}", a.admin.0, sub.0);
+    let listed = || async {
+        h.store
+            .list_push_subscriptions(a.admin)
+            .await
+            .unwrap()
+            .len()
+    };
+
+    let (s, _) = call(&h, reqwest::Method::DELETE, &path, &b.admin_token).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "another workspace's member");
+    // B names its own member with A's subscription id: the store scopes the
+    // delete to the member, so nothing of A's goes.
+    let (s, _) = call(
+        &h,
+        reqwest::Method::DELETE,
+        &format!("/members/{}/push-subscriptions/{}", b.admin.0, sub.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    let (s, _) = call(&h, reqwest::Method::DELETE, &path, &a.agent_token).await;
+    assert_eq!(s, StatusCode::FORBIDDEN, "a colleague's subscription");
+    assert_eq!(listed().await, 1, "every refusal left it in place");
+
+    let (s, _) = call(&h, reqwest::Method::DELETE, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(listed().await, 0);
+    let (s, _) = call(&h, reqwest::Method::DELETE, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "a second delete finds nothing");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn recent_threads_put_the_last_bumped_first_and_refuse_another_workspace() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    let quiet = new_thread(h.store.as_ref(), a.channel, "quiet").await;
+    // Timestamps are compared, so the post has to land measurably later.
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    // Posted over REST: the route's post is the one that bumps the thread.
+    let posted = h
+        .client
+        .post(format!("{}/threads/{}/messages", h.base(), a.thread.0))
+        .bearer_auth(&a.agent_token)
+        .json(&json!({ "body": "bump" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(posted.status(), StatusCode::CREATED);
+
+    let path = format!("/channels/{}/recent-threads", a.channel.0);
+    let (s, threads) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{threads}");
+    let ids: Vec<&Value> = threads
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| &t["id"])
+        .collect();
+    assert_eq!(ids, vec![&json!(a.thread.0), &json!(quiet.0)], "{threads}");
+    let (_, one) = read(&h, &format!("{path}?limit=1"), &a.admin_token).await;
+    assert_eq!(one.as_array().unwrap().len(), 1, "{one}");
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(
+        &path,
+        &refused,
+        &[a.thread.0.to_string(), quiet.0.to_string()],
+    );
+    let (s, own) = read(
+        &h,
+        &format!("/channels/{}/recent-threads", b.channel.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(own[0]["id"], json!(b.thread.0), "{own}");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_peer_is_deleted_only_through_its_own_workspace() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    let mut peers = Vec::new();
+    for (t, secret) in [(&a, "peer-secret-a"), (&b, "peer-secret-b")] {
+        let peer = h
+            .store
+            .create_peer(maidan_types::NewPeer {
+                workspace_id: t.workspace,
+                remote_workspace_id: t.workspace,
+                name: "remote".into(),
+                base_url: "https://remote.example".into(),
+                token_hash: hash_secret(secret),
+                outbound_secret_ciphertext: None,
+            })
+            .await
+            .unwrap();
+        peers.push(peer.id);
+    }
+    let (peer_a, peer_b) = (peers[0], peers[1]);
+    let a_peers = || async { h.store.list_peers(a.workspace).await.unwrap().len() };
+
+    // B names A's workspace: refused before the peer is looked up.
+    let path = format!("/workspaces/{}/peers/{}", a.workspace.0, peer_a.0);
+    let refused = call(&h, reqwest::Method::DELETE, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[]);
+    // B names its own workspace with A's peer id: the peer is not B's.
+    let (s, _) = call(
+        &h,
+        reqwest::Method::DELETE,
+        &format!("/workspaces/{}/peers/{}", b.workspace.0, peer_a.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::NOT_FOUND);
+    assert_eq!(a_peers().await, 1, "A's peer survives both");
+
+    let (s, _) = call(&h, reqwest::Method::DELETE, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert_eq!(a_peers().await, 0);
+    let (s, _) = call(&h, reqwest::Method::DELETE, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "already gone");
+    assert_eq!(
+        h.store.list_peers(b.workspace).await.unwrap()[0].id,
+        peer_b,
+        "B's peer is untouched"
+    );
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn dead_mail_lists_and_requeues_only_the_callers_workspace() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    for (workspace, to) in [
+        (Some(a.workspace), "a@example.com"),
+        (Some(b.workspace), "b@example.com"),
+        (None, "nobody@example.com"),
+    ] {
+        h.store
+            .enqueue_mail(maidan_types::NewMailOutbox {
+                workspace_id: workspace,
+                source_log_id: None,
+                to_address: to.into(),
+                subject: format!("for {to}"),
+                body: "b".into(),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    // Dead-letter all three: a failure with no retry time is final.
+    while let Some(mail) = h
+        .store
+        .claim_next_due_mail(chrono::Utc::now(), 60)
+        .await
+        .unwrap()
+    {
+        h.store
+            .mark_mail_failed(mail.id, "bounced", None)
+            .await
+            .unwrap();
+    }
+    let dead = |token: String| {
+        let h = &h;
+        async move {
+            let (s, rows) = read(h, "/operator/mail/dead", &token).await;
+            assert_eq!(s, StatusCode::OK, "{rows}");
+            rows.as_array()
+                .unwrap()
+                .iter()
+                .map(|r| r["to_address"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        }
+    };
+    assert_eq!(dead(a.admin_token.clone()).await, vec!["a@example.com"]);
+    assert_eq!(dead(b.admin_token.clone()).await, vec!["b@example.com"]);
+    let global = mint_token(
+        h.store.as_ref(),
+        a.workspace,
+        a.admin,
+        vec![
+            capability::TOKEN_ADMIN.into(),
+            capability::OPERATOR_GLOBAL.into(),
+        ],
+    )
+    .await;
+    let mut all = dead(global).await;
+    all.sort();
+    assert_eq!(
+        all,
+        vec!["a@example.com", "b@example.com", "nobody@example.com"],
+        "operator:global sees every tenant's and the tenant-less row"
+    );
+
+    let rows = h.store.list_dead_mail(Some(a.workspace), 10).await.unwrap();
+    let a_mail = rows[0].id;
+    let requeue = format!("/operator/mail/dead/{}/requeue", a_mail.0);
+    let (s, _) = call(&h, reqwest::Method::POST, &requeue, &b.admin_token).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "B cannot re-send A's mail");
+    assert_eq!(dead(a.admin_token.clone()).await, vec!["a@example.com"]);
+
+    let (s, _) = call(&h, reqwest::Method::POST, &requeue, &a.admin_token).await;
+    assert_eq!(s, StatusCode::NO_CONTENT);
+    assert!(dead(a.admin_token.clone()).await.is_empty(), "requeued");
+    let (s, _) = call(&h, reqwest::Method::POST, &requeue, &a.admin_token).await;
+    assert_eq!(s, StatusCode::NOT_FOUND, "no longer dead");
+    assert_eq!(dead(b.admin_token.clone()).await, vec!["b@example.com"]);
+    h.shutdown().await;
+}
