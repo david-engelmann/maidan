@@ -54,6 +54,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** migration 0182 adds `rebase` and `workspace_id` to `maidan_change_rounds`. Swarm metrics mark each rebase round, count `rebases` per task, and never read a rebase's whole-branch diff as a growing one.
 - **Fixed:** the swarm metrics for a pull request listed rounds that another workspace delivered to it. They now list only the reading workspace's rounds.
 
+### The waiter contract test speaks of the producer generically
+
+- The MCP waiter contract test is now `crates/maidan-server/tests/producer_waiter_contract_e2e.rs`. Its constants, client type, helpers, test names and comments, plus three test names elsewhere, now say "producer" and "waiter" instead of an internal name. The wire strings it pins (`pi.change.result/1`, `pi.result_attachments`, `pi.task_kind`, `<!-- pi:current-state -->`) are unchanged, and so is behaviour.
+
 ### A change that ends without a commit says why in its one Slack notice
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
