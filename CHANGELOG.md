@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Orphaned artifact bytes whose delete failed are retried
+
+- **Added:** a reap whose blob delete fails or overruns queues the sha in `maidan_artifact_reap_retries` (migration 0181, both backends), keyed by sha and recording the workspace whose erase, purge, media expiry or refused upload orphaned it. Every delete site queues: `DELETE /artifacts/{sha}`, workspace purge and erase, a refused multipart upload over REST and MCP, and media expiry.
+- **Added:** the retention sweep retries a batch of due shas each run through `reap_artifact_blob`, so each try takes the reap lease and rechecks for a row. A sha another workspace has uploaded since keeps its bytes and leaves the queue. A failed retry backs off from one minute, doubling up to six hours.
+- **Fixed:** a failed delete used to log `purge.orphaned_blob_not_deleted` and leave the bytes in the blob store for good. The log line stays; the bytes now go on a later sweep.
+
 ### Every deploy path runs v413.0.0, and the ARM64 page runs it with auth on
 
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.

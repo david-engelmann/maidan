@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(backoff_secs(1), 60);
         assert_eq!(backoff_secs(2), 120);
         assert_eq!(backoff_secs(3), 240);
-        assert_eq!(backoff_secs(9), MAX_BACKOFF_SECS);
+        assert_eq!(backoff_secs(10), MAX_BACKOFF_SECS);
         assert_eq!(backoff_secs(i32::MAX), MAX_BACKOFF_SECS);
     }
 }
