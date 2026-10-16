@@ -2,9 +2,9 @@
 //! needs a person reads back `waiting`, then `overdue` past half of
 //! `MAIDAN_HUMAN_TIMEOUT_SECS`, and at the full timeout the claim reaper's
 //! tick returns its thread to the queue: no holder, no stale declaration, the
-//! thread still open. Auth is enabled with real tokens; a second workspace's
-//! wait, not yet due, keeps its holder, and that workspace reads neither our
-//! thread nor its wait.
+//! thread still open, and the owner is told. Auth is enabled with real
+//! tokens; a second workspace's wait, not yet due, keeps its holder, and that
+//! workspace reads neither our thread nor its wait.
 
 use std::{
     net::SocketAddr,
@@ -18,8 +18,8 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ChannelId, DeclaredStatus, MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewThread,
-    NewWorkspace, ThreadId, Workspace,
+    BusEnvelope, ChannelId, DeclaredStatus, EventKind, MemberId, MemberKind, NewApiToken,
+    NewChannel, NewMember, NewThread, NewWorkspace, ThreadId, Workspace,
 };
 use reqwest::StatusCode;
 use serde_json::Value;
@@ -186,6 +186,19 @@ async fn an_unanswered_wait_on_a_person_returns_the_thread_and_stays_in_its_work
 
     let asking = worked_task(&store, ours, agent, "asking").await;
     let busy = worked_task(&store, ours, agent, "busy").await;
+    // The person accountable for the thread, who must hear that the agent's
+    // ask went unanswered and the work is back in the queue.
+    let owner = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "lead".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap()
+        .id;
+    store.set_thread_owner(asking, Some(owner)).await.unwrap();
     let their_asking = worked_task(&store, theirs, other_agent, "their asking").await;
     ask(&store, asking, agent).await;
 
@@ -227,6 +240,28 @@ async fn an_unanswered_wait_on_a_person_returns_the_thread_and_stays_in_its_work
     assert!(one.get("human_wait").is_none());
     let (_, busy_read) = get_json(&client, &format!("{base}/threads/{}", busy.0), &auth).await;
     assert_eq!(busy_read["assignee_id"], agent.0.to_string());
+
+    // The return is recorded as a WaitTimedOut carrying the ask, and routing
+    // that event tells the owner.
+    let timed_out = store
+        .list_events_after(ws.id, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|e| e.kind == EventKind::WaitTimedOut && e.thread_id == Some(asking))
+        .expect("the return appended a WaitTimedOut");
+    assert_eq!(timed_out.payload["policy"], "return_to_queue");
+    assert_eq!(timed_out.payload["reason"], "Which schema version?");
+    let envelope = BusEnvelope::from_stored(&timed_out).unwrap();
+    maidan_server::notification_router::route_event(&state, envelope.log_id, &envelope.event)
+        .await
+        .unwrap();
+    let told = store.list_notifications(owner, false, 10).await.unwrap();
+    assert!(
+        told.iter()
+            .any(|n| n.kind == EventKind::WaitTimedOut && n.thread_id == Some(asking)),
+        "the owner hears the wait went unanswered: {told:?}"
+    );
 
     // Theirs keeps its holder and its clock; it reads neither our thread nor
     // our wait.
