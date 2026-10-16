@@ -288,6 +288,9 @@ import { loadMessageEdits } from "./tools.js";
         await loadMessages();
       }
 
+      // Which thread the Evidence panel's contents belong to.
+      let evidenceShownFor = null;
+
       // The open thread's evidence, oldest first, as the server recorded it:
       // links, the standing result, land-gate verdicts, each hand-off to
       // review and each verdict. Read only; this panel decides nothing. It
@@ -299,6 +302,13 @@ import { loadMessageEdits } from "./tools.js";
         const moved = document.getElementById("evidence-moved");
         if (!panel || !list || !moved) return;
         const tid = selectedThreadId;
+        // The summary shows while the panel is closed, so the last thread's
+        // "changed since review" and entries must not carry over to this one.
+        if (tid !== evidenceShownFor) {
+          evidenceShownFor = tid;
+          moved.hidden = true;
+          renderState(list, "Open to load what this task recorded as evidence.");
+        }
         if (!panel.open) return;
         moved.hidden = true;
         if (!tid) {
