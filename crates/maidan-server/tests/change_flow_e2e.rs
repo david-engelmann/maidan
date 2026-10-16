@@ -2276,11 +2276,12 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
         Some(maidan_store::ResultDeliveryReplay::Enqueued(_))
     ));
     h.drain().await;
-    let f = h.fake.lock().unwrap();
-    assert_eq!(f.refs[BRANCH], head);
-    assert_eq!(f.forced.len(), 1, "no second force");
-    assert_eq!(f.writes().len(), writes_before, "{:?}", f.writes());
-    drop(f);
+    {
+        let f = h.fake.lock().unwrap();
+        assert_eq!(f.refs[BRANCH], head);
+        assert_eq!(f.forced.len(), 1, "no second force");
+        assert_eq!(f.writes().len(), writes_before, "{:?}", f.writes());
+    }
     assert_eq!(
         h.delivery(&h.a, "github_branch").await.status,
         status::DELIVERED
