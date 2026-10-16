@@ -222,6 +222,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
 
+### Launch docs say what works
+
+- **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
+
 ### A task's evidence on one timeline
 
 - **Added:** `GET /threads/{id}/evidence` and its console twin `/ui/api/threads/{id}/evidence` (`workspace:read` plus thread access). It returns a thread's evidence oldest first: artifact links, the standing result and its hash, land-gate verdicts, every review hand-off with its immutable packet (version, manifest, evidence root), and every review verdict. `evidence_changed_since_review` flags a result or links that moved after the latest hand-off. It is read-only, with no migration, and adds `Store::list_review_packets`, every packet of a thread oldest first, on both backends. The thread panel gains a collapsed "Evidence" section that loads the timeline only when opened and marks evidence that changed since review.
