@@ -5346,17 +5346,25 @@ fn ui_js_board_shows_a_wait_on_a_person_and_counts_the_overdue_ones() {
     assert_eq!(alerts, ["1 overdue on a person"], "summary: {view}");
 }
 
+/// Runs [`BOARD_HEALTH_TAIL`] in place of the refusal harness's tail and
+/// keeps the rest of that harness, so the page functions it lifts out (any
+/// helper `renderBoard` comes to call) are listed in one place, not two that
+/// drift apart.
 fn board_health(threads: &[serde_json::Value]) -> serde_json::Value {
-    let head = REFUSAL_PAGE_HARNESS
-        .split("const tail = `")
-        .next()
+    let (head, rest) = REFUSAL_PAGE_HARNESS
+        .split_once("const tail = `")
         .expect("the refusal harness has a tail");
-    let harness = format!("{head}{BOARD_HEALTH_TAIL}");
+    let (_, runner) = rest
+        .split_once("\n`;\nconst body = prelude")
+        .expect("the refusal harness builds its body after the tail");
+    let harness =
+        format!("{head}const tail = `{BOARD_HEALTH_TAIL}\n`;\nconst body = prelude{runner}");
+    // The shared runner reads its input as `steps`.
     let payload = serde_json::json!({
         "html": HTML,
         "js": script(HTML),
         "css": UI_CSS,
-        "threads": threads,
+        "steps": threads,
     });
     let mut child = std::process::Command::new("node")
         .arg("-e")
@@ -5378,8 +5386,11 @@ fn board_health(threads: &[serde_json::Value]) -> serde_json::Value {
         .unwrap_or_else(|err| panic!("board health harness returned {err}: {stdout}"))
 }
 
-const BOARD_HEALTH_TAIL: &str = r#####"const tail = `
-renderBoard(threads, {});
+/// The board-health view: render the threads once and read back the cards'
+/// chips and accessible names and the summary strip's health entries. The
+/// threads arrive as the shared runner's `steps`.
+const BOARD_HEALTH_TAIL: &str = r#####"
+renderBoard(steps, {});
 const cards = [];
 walk(byId.board, (el) => {
   if (!classHas(el, "card") || !el.dataset || !el.dataset.id) return;
@@ -5399,20 +5410,4 @@ for (const kid of byId["board-summary"].children) {
   if (classHas(kid, "health-alert")) alerts.push(flatText(kid));
 }
 return { cards: cards, alerts: alerts, summary: flatText(byId["board-summary"]) };
-`;
-const body = prelude
-  + functionSource("sessionChrome") + "\n"
-  + extractConst("BOARD_COLUMNS") + "\n"
-  + functionSource("paintRefusal") + "\n"
-  + functionSource("rememberRefusal") + "\n"
-  + functionSource("renderBoard") + "\n"
-  + tail;
-let view;
-try {
-  view = new Function("threads", body)(input.threads);
-} catch (err) {
-  console.error(err && err.stack || err);
-  process.exit(1);
-}
-process.stdout.write(JSON.stringify(view));
 "#####;
