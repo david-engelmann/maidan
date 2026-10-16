@@ -132,24 +132,6 @@ const HARNESS: &str = r#####"
 const fs = require("fs");
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 
-function functionSource(js, name) {
-  const mark = "function " + name + "(";
-  let i = js.indexOf(mark);
-  if (i < 0) throw new Error("missing " + name);
-  if (js.slice(i - 6, i) === "async ") i -= 6;
-  const open = js.indexOf("{", i);
-  let depth = 0;
-  for (let j = open; j < js.length; j++) {
-    const c = js[j];
-    if (c === "{") depth++;
-    else if (c === "}") {
-      depth--;
-      if (depth === 0) return js.slice(i, j + 1);
-    }
-  }
-  throw new Error("unclosed " + name);
-}
-
 function makeEl(tag, id) {
   const el = {
     tag: tag,
@@ -226,6 +208,12 @@ function authorId() {
   return "member-1";
 }
 async function loadMembers() {}
+function memberName(id) {
+  return id;
+}
+function memberPicker() {
+  return { clear() {}, selected() { return []; } };
+}
 function wid() {
   return "ws-1";
 }
@@ -244,8 +232,6 @@ function headers() {
 function requireAuthForWrite() {
   return true;
 }
-var selectedDm = { id: "dm1", thread_id: "thread-1" };
-var selectedGdm = { id: "gdm1", thread_id: "thread-2" };
 
 let scene = "refused";
 async function api() {
@@ -276,9 +262,20 @@ const feedback = input.feedback
   })
   .join("\n");
 eval(feedback);
-for (const name of ["loadDms", "loadGroupDms", "loadConversationMessages", "sendDmMessage", "sendGroupDmMessage"]) {
-  eval(functionSource(input.dm, name));
-}
+// The whole module, as the page loads it, so both kinds run through the one
+// shared list, pane and send.
+const dmModule = input.dm
+  .split("\n")
+  .filter((line) => {
+    const trimmed = line.trim();
+    return !trimmed.startsWith("import ") && !trimmed.startsWith("export ");
+  })
+  .join("\n");
+const dm = eval(
+  dmModule + "\n;({ DM, GROUP_DM, loadConversations, loadConversationMessages, sendConversationMessage })",
+);
+dm.DM.selected = { id: "dm1", thread_id: "thread-1" };
+dm.GROUP_DM.selected = { id: "gdm1", thread_id: "thread-2" };
 
 function reset() {
   for (const id of ["dm-list", "gdm-list", "dm-messages", "gdm-messages", "toasts"]) {
@@ -312,16 +309,16 @@ async function run(name, which, next) {
 }
 
 (async () => {
-  await run("dms-403", "refused", () => loadDms());
-  await run("dms-throw", "throw", () => loadDms());
-  await run("gdm-403", "refused", () => loadGroupDms());
-  await run("gdm-throw", "throw", () => loadGroupDms());
-  await run("messages-500", "server", () => loadConversationMessages("thread-1", "dm-messages"));
-  await run("messages-throw", "throw", () => loadConversationMessages("thread-1", "dm-messages"));
-  await run("send-dm-409", "conflict", () => sendDmMessage());
-  await run("send-dm-throw", "throw", () => sendDmMessage());
-  await run("send-gdm-403", "refused", () => sendGroupDmMessage());
-  await run("send-gdm-throw", "throw", () => sendGroupDmMessage());
+  await run("dms-403", "refused", () => dm.loadConversations(dm.DM));
+  await run("dms-throw", "throw", () => dm.loadConversations(dm.DM));
+  await run("gdm-403", "refused", () => dm.loadConversations(dm.GROUP_DM));
+  await run("gdm-throw", "throw", () => dm.loadConversations(dm.GROUP_DM));
+  await run("messages-500", "server", () => dm.loadConversationMessages("thread-1", "dm-messages"));
+  await run("messages-throw", "throw", () => dm.loadConversationMessages("thread-1", "dm-messages"));
+  await run("send-dm-409", "conflict", () => dm.sendConversationMessage(dm.DM));
+  await run("send-dm-throw", "throw", () => dm.sendConversationMessage(dm.DM));
+  await run("send-gdm-403", "refused", () => dm.sendConversationMessage(dm.GROUP_DM));
+  await run("send-gdm-throw", "throw", () => dm.sendConversationMessage(dm.GROUP_DM));
   process.stdout.write(JSON.stringify({ cases: cases }));
 })().catch((err) => {
   console.error(err && err.stack ? err.stack : err);

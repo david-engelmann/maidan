@@ -2,7 +2,7 @@
 import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi } from "./api.js";
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
 import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
-import { clearDmPickers, initDmPickers, loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
+import { DM, GROUP_DM, clearDmPickers, initDmPickers, loadConversations, openDm, openGroupDm, sendConversationMessage } from "./dm.js";
 import { humanError, responseError, setOut, showError, textError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
 import { authorId, loadMembers } from "./people.js";
@@ -548,15 +548,15 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
       document.getElementById("gdm-open").onclick = openGroupDm;
 
-      document.getElementById("gdm-refresh").onclick = loadGroupDms;
+      document.getElementById("gdm-refresh").onclick = () => loadConversations(GROUP_DM);
 
-      document.getElementById("gdm-send").onclick = sendGroupDmMessage;
+      document.getElementById("gdm-send").onclick = () => sendConversationMessage(GROUP_DM);
 
       document.getElementById("dm-open").onclick = openDm;
 
-      document.getElementById("dm-refresh").onclick = loadDms;
+      document.getElementById("dm-refresh").onclick = () => loadConversations(DM);
 
-      document.getElementById("dm-send").onclick = sendDmMessage;
+      document.getElementById("dm-send").onclick = () => sendConversationMessage(DM);
 
       document.getElementById("op-deliv-refresh").onclick = loadDeliveries;
 
