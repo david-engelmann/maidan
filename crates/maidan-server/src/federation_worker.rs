@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use maidan_a2a::{FederationEnvelope, Outbound};
+use maidan_types::Peer;
 use tokio::sync::watch;
 use tracing::{debug, warn};
 
@@ -44,66 +45,106 @@ async fn run(state: AppState, interval: Duration, mut shutdown: watch::Receiver<
     }
 }
 
-async fn poll_once(state: &AppState) -> Result<(), String> {
+/// One pass over every enabled peer. A peer that fails is logged, counted and
+/// skipped; the others are still polled. Returning early on the first failure
+/// let one unreachable peer stop federation for every peer sorted after it, in
+/// any workspace, on every tick.
+pub async fn poll_once(state: &AppState) -> Result<(), String> {
     let peers = state
         .store
         .list_enabled_peers()
         .await
         .map_err(|e| e.to_string())?;
     for peer in peers {
-        let (client, _) = match crate::egress_http::client_for(&peer.base_url).await {
-            Ok(target) => target,
-            Err(err) => {
-                warn!(peer = %peer.id, error = %err, "federation peer target refused");
-                continue;
-            }
-        };
-        let outbound = Outbound::new(client);
-        let Some(secret) = resolve_outbound_secret(state, &peer) else {
-            warn!(
-                peer = %peer.id,
-                "skipping poll: no outbound secret (set FEDERATION_ENCRYPTION_KEY and re-create peer)"
-            );
-            continue;
-        };
-        let events = outbound
-            .list_events(&peer, &secret, peer.last_synced_event_id, 100)
-            .await
-            .map_err(|e| e.to_string())?;
-        // The cursor advances only over events actually processed. It used to
-        // be set to the batch's highest id regardless of outcome, so a failed
-        // ingest was skipped past and never retried — silent, permanent loss. A
-        // failure now stops the batch and leaves the cursor behind it, so the
-        // next poll retries from the same place.
-        let mut max_id = peer.last_synced_event_id;
-        for stored in events {
-            let remote_event_id = stored.id;
-            let envelope = FederationEnvelope {
-                origin_peer_id: peer.id,
-                remote_event_id,
-                event: stored,
-            };
-            match ingest_envelope(state, &peer, envelope).await {
-                Ok(_) => max_id = max_id.max(remote_event_id),
-                Err(err) => {
-                    warn!(
-                        peer = %peer.id,
-                        remote_event_id,
-                        error = ?err,
-                        "ingest failed; holding the cursor so the next poll retries"
-                    );
-                    break;
-                }
-            }
-        }
-        if max_id > peer.last_synced_event_id {
-            let _ = state
-                .store
-                .update_peer_cursor(peer.id, max_id)
-                .await
-                .map_err(|e| e.to_string())?;
-            debug!(peer = %peer.id, cursor = max_id, "advanced federation cursor");
-        }
+        let outcome = poll_peer(state, &peer).await;
+        // No peer or workspace label: /metrics is instance-wide, and the
+        // per-peer detail is already in the logs.
+        metrics::counter!(
+            "maidan_federation_peer_polls_total",
+            "outcome" => outcome.as_str()
+        )
+        .increment(1);
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum PollOutcome {
+    Ok,
+    Refused,
+    NoSecret,
+    Failed,
+}
+
+impl PollOutcome {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Refused => "refused",
+            Self::NoSecret => "no_secret",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+async fn poll_peer(state: &AppState, peer: &Peer) -> PollOutcome {
+    let (client, _) = match crate::egress_http::client_for(&peer.base_url).await {
+        Ok(target) => target,
+        Err(err) => {
+            warn!(peer = %peer.id, error = %err, "federation peer target refused");
+            return PollOutcome::Refused;
+        }
+    };
+    let outbound = Outbound::new(client);
+    let Some(secret) = resolve_outbound_secret(state, peer) else {
+        warn!(
+            peer = %peer.id,
+            "skipping poll: no outbound secret (set FEDERATION_ENCRYPTION_KEY and re-create peer)"
+        );
+        return PollOutcome::NoSecret;
+    };
+    let events = match outbound
+        .list_events(peer, &secret, peer.last_synced_event_id, 100)
+        .await
+    {
+        Ok(events) => events,
+        Err(err) => {
+            warn!(peer = %peer.id, error = %err, "federation poll failed; trying again next tick");
+            return PollOutcome::Failed;
+        }
+    };
+    // The cursor advances only over events actually processed. It used to
+    // be set to the batch's highest id regardless of outcome, so a failed
+    // ingest was skipped past and never retried — silent, permanent loss. A
+    // failure now stops the batch and leaves the cursor behind it, so the
+    // next poll retries from the same place.
+    let mut max_id = peer.last_synced_event_id;
+    for stored in events {
+        let remote_event_id = stored.id;
+        let envelope = FederationEnvelope {
+            origin_peer_id: peer.id,
+            remote_event_id,
+            event: stored,
+        };
+        match ingest_envelope(state, peer, envelope).await {
+            Ok(_) => max_id = max_id.max(remote_event_id),
+            Err(err) => {
+                warn!(
+                    peer = %peer.id,
+                    remote_event_id,
+                    error = ?err,
+                    "ingest failed; holding the cursor so the next poll retries"
+                );
+                break;
+            }
+        }
+    }
+    if max_id > peer.last_synced_event_id {
+        if let Err(err) = state.store.update_peer_cursor(peer.id, max_id).await {
+            warn!(peer = %peer.id, error = %err, "could not save the federation cursor");
+            return PollOutcome::Failed;
+        }
+        debug!(peer = %peer.id, cursor = max_id, "advanced federation cursor");
+    }
+    PollOutcome::Ok
 }
