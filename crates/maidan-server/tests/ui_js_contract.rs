@@ -5203,6 +5203,14 @@ fn ui_more_tools_tabs_are_grouped_with_developer_surfaces_last() {
         "each group closes before the next opens"
     );
     assert!(nav.contains(r#"class="tab-group dev""#));
+    // The muted Developer color outranks `.tabs button[aria-selected]`, so
+    // without the `:not` a selected Developer tab lost its selected color.
+    assert!(
+        UI_CSS.contains(
+            r#".tabs .tab-group.dev button:not([aria-selected="true"]) { color: var(--muted); }"#
+        ) && !UI_CSS.contains(".tabs .tab-group.dev button { color"),
+        "a selected Developer tab keeps the selected tab's color"
+    );
     assert!(
         nav.contains(r#"data-tab="work" aria-selected="true""#),
         "More tools opens on Work"
