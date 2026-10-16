@@ -234,6 +234,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
 
+### More tools in groups
+
+- **Changed:** the console's More tools panel puts its 17 tabs in five named groups, still one keyboard tablist: Work (work, swarm, approvals, notifications), People (DMs, group DMs, presence, search), Account (session, prefs, tokens), Admin (admin, operator) and Developer (events over HTTP, looking glass, FSM, slash). The raw API and developer surfaces move last and are muted, and no panel is removed. The panel opens on Work instead of the audit log, and the first open loads it. The command palette shows each tool's group.
+
 ### A change task closes when its pull request merges
 
 - **Added:** a background change sweep (`MAIDAN_CHANGE_SWEEP_SECS`, every 120 s by default, `0` off). Per workspace it reads from GitHub the agent pull requests not yet seen closed, at most 25 a pass, the longest unread first (migration 0177 adds `checked_at`, and `settled_at` so each close acts once). A merge closes the change's thread through the store's transition path, with a `ThreadLanded` event in the same transaction, so a task that depends on it becomes claimable without a webhook or a person closing it by hand. A thread with another open pull request, or already closed, is left alone. A close without a merge leaves the thread open and posts one message, "#N closed without merging". The swarm-metrics read shares the refresh but still only records closes.

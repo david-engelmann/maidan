@@ -426,7 +426,7 @@ fn ui_js_wires_work_tab() {
         assert!(s.contains(f), "the Work tab must define {f}");
     }
     assert!(
-        s.contains("=== \"work\") loadWork()"),
+        s.contains("=== \"work\" && !firstWorkLoad) loadWork()"),
         "the tab switch must call loadWork() for the Work tab"
     );
     assert!(
@@ -5270,5 +5270,84 @@ fn every_inline_harness_runs_with_the_write_guard() {
     assert_eq!(
         harnesses, 8,
         "the seven page harnesses and run_bare_harness each go through with_prelude"
+    );
+}
+
+/// More tools is grouped, not one row of seventeen tabs. Every tab sits in
+/// exactly one named group, in this order, and the raw API and developer
+/// surfaces come last. The palette names each tool's group, the panel opens
+/// on Work, and the first open loads it.
+#[test]
+fn ui_more_tools_tabs_are_grouped_with_developer_surfaces_last() {
+    let nav_start = HTML
+        .find(r#"<nav class="tabs" role="tablist""#)
+        .unwrap_or_else(|| panic!("the More tools tablist"));
+    let nav = &HTML[nav_start..];
+    let nav = &nav[..nav.find("</nav>").unwrap_or(nav.len())];
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut ungrouped = Vec::new();
+    for line in nav.lines().map(str::trim) {
+        if let Some(rest) = line.split("data-group=\"").nth(1) {
+            let name = rest.split('"').next().unwrap_or_default().to_string();
+            groups.push((name, Vec::new()));
+        } else if let Some(rest) = line.split("data-tab=\"").nth(1) {
+            let tab = rest.split('"').next().unwrap_or_default().to_string();
+            match groups.last_mut() {
+                Some((_, tabs)) => tabs.push(tab),
+                None => ungrouped.push(tab),
+            }
+        }
+    }
+    assert!(
+        ungrouped.is_empty(),
+        "tabs outside any group: {ungrouped:?}"
+    );
+    let want: Vec<(&str, Vec<&str>)> = vec![
+        ("Work", vec!["work", "swarm", "approvals", "notifications"]),
+        ("People", vec!["dms", "group-dms", "presence", "search"]),
+        ("Account", vec!["session", "prefs", "tokens"]),
+        ("Admin", vec!["admin", "operator"]),
+        ("Developer", vec!["events", "glass", "thread", "slash"]),
+    ];
+    let got: Vec<(&str, Vec<&str>)> = groups
+        .iter()
+        .map(|(g, tabs)| (g.as_str(), tabs.iter().map(String::as_str).collect()))
+        .collect();
+    assert_eq!(got, want);
+    assert_eq!(
+        nav.matches("<div class=\"tab-group").count(),
+        nav.matches("</div>").count(),
+        "each group closes before the next opens"
+    );
+    assert!(nav.contains(r#"class="tab-group dev""#));
+    // The muted Developer color outranks `.tabs button[aria-selected]`, so
+    // without the `:not` a selected Developer tab lost its selected color.
+    assert!(
+        UI_CSS.contains(
+            r#".tabs .tab-group.dev button:not([aria-selected="true"]) { color: var(--muted); }"#
+        ) && !UI_CSS.contains(".tabs .tab-group.dev button { color"),
+        "a selected Developer tab keeps the selected tab's color"
+    );
+    assert!(
+        nav.contains(r#"data-tab="work" aria-selected="true""#),
+        "More tools opens on Work"
+    );
+    assert_eq!(nav.matches(r#"aria-selected="true""#).count(), 1);
+    assert!(HTML.contains(r#"<section id="panel-work" class="panel active">"#));
+    assert_eq!(HTML.matches(r#"class="panel active""#).count(), 1);
+
+    let s = script(HTML);
+    assert!(
+        s.contains("hint: group ? group.dataset.group : undefined"),
+        "the palette names each tool's group"
+    );
+    assert!(
+        s.contains("if (!toolsPanel.open || toolsPrimed) return;")
+            && s.contains("firstWorkLoad = loadWork()"),
+        "the first open loads Work"
+    );
+    assert!(
+        s.contains(r#"btn.dataset.tab === "work" && !firstWorkLoad) loadWork();"#),
+        "a click during the first load starts no second one"
     );
 }

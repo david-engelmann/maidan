@@ -565,6 +565,10 @@
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
       .tabs button[aria-selected="true"] { background: #e6efe8; color: var(--accent); }
+      .tabs .tab-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; padding-right: 0.75rem; border-right: 1px solid var(--border); }
+      .tabs .tab-group:last-child { border-right: none; padding-right: 0; }
+      .tabs .tab-group-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+      .tabs .tab-group.dev button:not([aria-selected="true"]) { color: var(--muted); }
       /* Phones: one column. Channels become a short scrolling strip above the
          board, lanes stack, and a Needs you row puts its buttons under the text. */
       @media (max-width: 720px) {

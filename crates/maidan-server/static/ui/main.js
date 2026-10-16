@@ -18,8 +18,27 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       setInterval(refreshTeamSoon, 30000);
 
 
+      // A tab loads its panel when clicked. More tools opens on Work, which is
+      // selected in the page rather than clicked, so the first open loads it.
+      // A click on Work while that load is in flight starts no second one: a
+      // late duplicate response would reset a channel picked in between.
+      let toolsPrimed = false;
+      let firstWorkLoad = null;
+      const toolsPanel = /** @type {HTMLDetailsElement} */ (document.getElementById("tools"));
+      toolsPanel.addEventListener("toggle", () => {
+        if (!toolsPanel.open || toolsPrimed) return;
+        toolsPrimed = true;
+        const selected = document.querySelector('.tabs button[aria-selected="true"]');
+        if (selected instanceof HTMLElement && selected.dataset.tab === "work") {
+          firstWorkLoad = loadWork().finally(() => {
+            firstWorkLoad = null;
+          });
+        }
+      });
+
       document.querySelectorAll(".tabs button").forEach((btn) => {
         btn.onclick = () => {
+          toolsPrimed = true;
           document.querySelectorAll(".tabs button").forEach((b) => {
             b.setAttribute("aria-selected", "false");
             b.tabIndex = -1;
@@ -28,7 +47,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
           btn.tabIndex = 0;
           document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
           document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
-          if (btn.dataset.tab === "work") loadWork();
+          if (btn.dataset.tab === "work" && !firstWorkLoad) loadWork();
           if (btn.dataset.tab === "swarm") loadSwarm();
           if (btn.dataset.tab === "prefs") loadPrefs();
           if (btn.dataset.tab === "glass") loadGlass();
