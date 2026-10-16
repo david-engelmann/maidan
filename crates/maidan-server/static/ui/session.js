@@ -253,14 +253,39 @@ import { tokenKey, wsResumeKey } from "./state.js";
       // here; a second trigger while one is running joins it rather than
       // spending the token twice.
       let signingIn = null;
+      const SIGNING_IN = "Signing in…";
+      const SIGNING_IN_LINE_MS = 700;
 
       function signInWithToken() {
-        if (!signingIn)
+        if (!signingIn) {
+          // On a slow link the exchange and /me can take many seconds; a
+          // disabled field with no words reads as a hang.
+          const button = document.getElementById("token-signin");
+          const status = document.getElementById("session-status");
+          button.textContent = SIGNING_IN;
+          button.setAttribute("aria-busy", "true");
+          // The status line pushes the page down when it appears. A fast
+          // sign-in never shows it, so a click landing as the field blurs is
+          // not moved off its target.
+          const slow = setTimeout(() => {
+            status.hidden = false;
+            status.className = "muted";
+            status.textContent = SIGNING_IN;
+          }, SIGNING_IN_LINE_MS);
           signingIn = trySignIn().finally(() => {
+            clearTimeout(slow);
             signingIn = null;
             document.getElementById("token").disabled = false;
-            document.getElementById("token-signin").disabled = false;
+            button.disabled = false;
+            button.textContent = "Sign in";
+            button.removeAttribute("aria-busy");
+            // An outcome that wrote its own words keeps them.
+            if (status.textContent === SIGNING_IN) {
+              status.hidden = true;
+              status.textContent = "";
+            }
           });
+        }
         return signingIn;
       }
 
