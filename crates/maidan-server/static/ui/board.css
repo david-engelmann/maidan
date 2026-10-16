@@ -632,6 +632,19 @@
 .card-status-needs_review { background: #f3e5f5; color: #6a1b9a; }
 .card-status-blocked { background: #ffebee; color: #c62828; }
 .card-status-done { background: #e8f5e9; color: #2e7d32; }
+.card-stalled {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #fff8e1;
+  color: #8d4b00;
+  border: 1px dashed #c77700;
+}
+#board-summary .health-alert,
+#board-summary .health-alert b { color: #a14400; }
 
 /* Swarm panel: one row per claim, waiting thread, slot or paused repo. */
 .swarm-list { list-style: none; margin: 0.25rem 0 0.75rem; padding: 0; }

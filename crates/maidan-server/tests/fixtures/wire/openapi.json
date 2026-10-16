@@ -8519,6 +8519,14 @@
           "id": {
             "$ref": "#/components/schemas/ThreadId"
           },
+          "last_progress_at": {
+            "description": "When the holder of a live, acknowledged lease last showed progress:\nthe latest of its acknowledgement, its last message on the thread and\nits active status declaration. A lease renewal is not progress, since\na hung agent's heartbeat keeps renewing. Read by the board's reads (a\nsingle-thread read and a channel's thread page); `None` elsewhere and\non threads nobody is working.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "notices": {
             "description": "The change notices on the thread, newest first, at most 10. Read by a\nsingle-thread read, so a worker sees \"rebase before you deliver\" with\nthe thread; empty on the list reads.",
             "items": {
@@ -8546,6 +8554,10 @@
                 "$ref": "#/components/schemas/ThreadId"
               }
             ]
+          },
+          "stalled": {
+            "description": "System-computed and never declarable: the holder has shown no progress\nfor `MAIDAN_STALL_SECS` and has not said it is waiting. Set by the\nboard's reads from [`Thread::last_progress_at`].",
+            "type": "boolean"
           },
           "state": {
             "$ref": "#/components/schemas/ThreadState"

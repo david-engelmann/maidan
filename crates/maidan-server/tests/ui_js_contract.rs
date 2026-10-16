@@ -1777,8 +1777,10 @@ fn ui_js_state_is_a_word_not_a_pill() {
         "renderBoard puts the sessionChrome label in the card foot and does not paint a badge"
     );
     assert!(
-        board.contains("card.setAttribute(\"aria-label\", `${title}: ${stateLabel}`)"),
-        "the card's accessible name uses the same state word"
+        board.contains(
+            "card.setAttribute(\"aria-label\", `${title}: ${stateLabel}${th.stalled ? \", stalled\" : \"\"}`)"
+        ),
+        "the card's accessible name uses the same state word, then says when it is stalled"
     );
     let header = function_body(js, "renderThreadHeader");
     assert!(
@@ -5268,10 +5270,175 @@ fn every_inline_harness_runs_with_the_write_guard() {
         rest = &rest[at + probe.len()..];
     }
     assert_eq!(
-        harnesses, 8,
-        "the seven page harnesses and run_bare_harness each go through with_prelude"
+        harnesses, 9,
+        "the eight page harnesses and run_bare_harness each go through with_prelude"
     );
 }
+
+/// Stuck detection on the board: a card the server marked `stalled` carries a
+/// "stalled" chip, says so in its accessible name, and the summary strip
+/// counts it; blocked work (a dispatch block or a declared `blocked`) is
+/// counted too. A healthy board's strip has no health entries at all.
+///
+/// This runs the page's `renderBoard` on fake threads and reads the cards and
+/// `#board-summary` back.
+#[test]
+fn ui_js_board_marks_a_stalled_card_and_counts_it_in_the_summary() {
+    let thread = |id: &str, extra: serde_json::Value| {
+        let mut t = serde_json::json!({
+            "id": id,
+            "title": id,
+            "state": "open",
+            "assignee_id": "agent-1",
+            "work_started_at": "2026-10-01T11:00:00Z",
+            "updated_at": "2026-10-01T12:00:00Z",
+        });
+        if let (Some(t), Some(extra)) = (t.as_object_mut(), extra.as_object()) {
+            t.extend(extra.clone());
+        }
+        t
+    };
+    let sick = board_health(&[
+        thread(
+            "quiet",
+            serde_json::json!({ "stalled": true, "last_progress_at": "2026-10-01T11:00:00Z" }),
+        ),
+        thread(
+            "busy",
+            serde_json::json!({ "last_progress_at": "2026-10-01T11:59:00Z" }),
+        ),
+        thread(
+            "waiting",
+            serde_json::json!({ "status": { "status": "blocked", "note": "Need a key." } }),
+        ),
+    ]);
+    let card = |id: &str| {
+        sick["cards"]
+            .as_array()
+            .expect("cards")
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap_or_else(|| panic!("no card {id}: {sick}"))
+            .clone()
+    };
+    let chips = |c: &serde_json::Value| -> Vec<String> {
+        c["chips"]
+            .as_array()
+            .expect("chips")
+            .iter()
+            .map(|chip| chip.as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+    let quiet = card("quiet");
+    assert!(
+        chips(&quiet).iter().any(|c| c == "card-stalled:stalled"),
+        "the stalled card carries the chip: {quiet}"
+    );
+    assert!(
+        quiet["label"]
+            .as_str()
+            .unwrap_or_default()
+            .ends_with(", stalled"),
+        "and says so to a screen reader: {quiet}"
+    );
+    assert!(
+        quiet["stalled_title"]
+            .as_str()
+            .unwrap_or_default()
+            .starts_with("Last progress from its agent"),
+        "the chip names when the agent last made progress: {quiet}"
+    );
+    for id in ["busy", "waiting"] {
+        let c = card(id);
+        assert!(
+            !chips(&c)
+                .iter()
+                .any(|chip| chip.starts_with("card-stalled")),
+            "{id} is not stalled: {c}"
+        );
+    }
+    let alerts: Vec<&str> = sick["alerts"]
+        .as_array()
+        .expect("alerts")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(alerts, ["1 stalled", "1 blocked"], "summary: {sick}");
+
+    let healthy = board_health(&[thread("busy", serde_json::json!({}))]);
+    assert!(
+        healthy["alerts"].as_array().expect("alerts").is_empty(),
+        "a healthy board shows no health entries: {healthy}"
+    );
+    assert!(!healthy["summary"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("stalled"));
+}
+
+/// Runs [`BOARD_HEALTH_TAIL`] in place of the refusal harness's tail and
+/// keeps the rest of that harness, so the page functions it lifts out (any
+/// helper `renderBoard` comes to call) are listed in one place, not two that
+/// drift apart.
+fn board_health(threads: &[serde_json::Value]) -> serde_json::Value {
+    let (head, rest) = REFUSAL_PAGE_HARNESS
+        .split_once("const tail = `")
+        .expect("the refusal harness has a tail");
+    let (_, runner) = rest
+        .split_once("\n`;\nconst body = prelude")
+        .expect("the refusal harness builds its body after the tail");
+    let harness =
+        format!("{head}const tail = `{BOARD_HEALTH_TAIL}\n`;\nconst body = prelude{runner}");
+    // The shared runner reads its input as `steps`.
+    let payload = serde_json::json!({
+        "html": HTML,
+        "js": script(HTML),
+        "css": UI_CSS,
+        "steps": threads,
+    });
+    let mut child = std::process::Command::new("node")
+        .arg("-e")
+        .arg(with_prelude(&harness))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|err| panic!("node is required to run the board: {err}"));
+    serde_json::to_writer(child.stdin.take().expect("stdin"), &payload).expect("write threads");
+    let out = child.wait_with_output().expect("node");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "board health harness failed\n{stderr}\n{stdout}"
+    );
+    serde_json::from_str(&stdout)
+        .unwrap_or_else(|err| panic!("board health harness returned {err}: {stdout}"))
+}
+
+/// The board-health view: render the threads once and read back the cards'
+/// chips and accessible names and the summary strip's health entries. The
+/// threads arrive as the shared runner's `steps`.
+const BOARD_HEALTH_TAIL: &str = r#####"
+renderBoard(steps, {});
+const cards = [];
+walk(byId.board, (el) => {
+  if (!classHas(el, "card") || !el.dataset || !el.dataset.id) return;
+  const chips = [];
+  let stalledTitle = "";
+  walk(el, (kid) => {
+    if (!kid.className) return;
+    chips.push(String(kid.className) + ":" + flatText(kid));
+    if (classHas(kid, "card-stalled")) stalledTitle = kid.title || "";
+  });
+  cards.push({ id: el.dataset.id, label: el.attrs["aria-label"] || "", chips: chips, stalled_title: stalledTitle });
+});
+const alerts = [];
+for (const kid of byId["board-summary"].children) {
+  if (classHas(kid, "health-alert")) alerts.push(flatText(kid));
+}
+return { cards: cards, alerts: alerts, summary: flatText(byId["board-summary"]) };
+"#####;
 
 /// More tools is grouped, not one row of seventeen tabs. Every tab sits in
 /// exactly one named group, in this order, and the raw API and developer

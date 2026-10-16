@@ -94,14 +94,15 @@ pub async fn create_with_footprint(
 }
 
 pub async fn get(pool: &PgPool, id: ThreadId) -> Result<Thread, StoreError> {
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by,
                 (t.state IN ('closed', 'archived') AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_reviews r
                    WHERE r.thread_id = t.id AND r.decision = 'approve' AND r.dismissed_at IS NULL
-                 )) AS closed_without_review
+                 )) AS closed_without_review,{progress}
          FROM maidan_threads t WHERE t.id = $1",
-    )
+        progress = crate::stall::PROGRESS_COLUMNS,
+    ))
     .bind(id.0)
     .fetch_optional(pool)
     .await?
@@ -1175,7 +1176,7 @@ pub async fn page_for_channel(
                 (t.state IN ('closed', 'archived') AND NOT EXISTS (
                    SELECT 1 FROM maidan_thread_reviews r
                    WHERE r.thread_id = t.id AND r.decision = 'approve' AND r.dismissed_at IS NULL
-                 )) AS closed_without_review
+                 )) AS closed_without_review,{progress}
          FROM maidan_threads t
          WHERE t.channel_id = $1
            AND t.tombstoned_at IS NULL
@@ -1192,7 +1193,8 @@ pub async fn page_for_channel(
                  WHERE s.thread_id = t.id AND s.status = $5
                ))
          ORDER BY t.created_at {direction}, t.id {direction}
-         LIMIT $6"
+         LIMIT $6",
+        progress = crate::stall::PROGRESS_COLUMNS,
     );
     let rows = sqlx::query(&sql)
         .bind(channel_id.0)
@@ -1282,11 +1284,16 @@ async fn enforce_spawn_budget(
     Ok(())
 }
 
-/// A thread read for a board: the row plus its `closed_without_review` column,
-/// which only the board's reads select.
+/// A thread read for a board: the row plus its `closed_without_review` and
+/// progress columns, which only the board's reads select.
 fn row_to_board_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, StoreError> {
     let mut thread = row_to_thread(row)?;
     thread.closed_without_review = row.get("closed_without_review");
+    crate::stall::set_last_progress(
+        &mut thread,
+        row.get("holder_posted_at"),
+        row.get("holder_declared_at"),
+    );
     Ok(thread)
 }
 
@@ -1321,6 +1328,8 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         status: None,
         block: None,
         closed_without_review: false,
+        last_progress_at: None,
+        stalled: false,
         notices: Vec::new(),
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })
