@@ -1777,9 +1777,9 @@ fn ui_js_state_is_a_word_not_a_pill() {
     );
     assert!(
         board.contains(
-            "card.setAttribute(\"aria-label\", `${title}: ${stateLabel}${th.stalled ? \", stalled\" : \"\"}`)"
+            "`${title}: ${stateLabel}${th.stalled ? \", stalled\" : \"\"}${wait ? `, ${waitWords[wait.state]}` : \"\"}`"
         ),
-        "the card's accessible name uses the same state word, then says when it is stalled"
+        "the card's accessible name uses the same state word, then says when it is stalled or waiting on a person"
     );
     let header = function_body(js, "renderThreadHeader");
     assert!(
@@ -5259,6 +5259,93 @@ fn ui_js_board_marks_a_stalled_card_and_counts_it_in_the_summary() {
         .contains("stalled"));
 }
 
+/// The human-timeout machine on the board: a card whose agent is waiting on
+/// a person says so, an overdue one says when it goes back to the queue, both
+/// in the chip and the accessible name, and the summary strip counts overdue
+/// asks. A state the board does not know draws nothing.
+#[test]
+fn ui_js_board_shows_a_wait_on_a_person_and_counts_the_overdue_ones() {
+    let thread = |id: &str, state: &str| {
+        serde_json::json!({
+            "id": id,
+            "title": id,
+            "state": "open",
+            "assignee_id": "agent-1",
+            "work_started_at": "2026-10-01T11:00:00Z",
+            "updated_at": "2026-10-01T12:00:00Z",
+            "status": { "status": "needs_input", "note": "Which schema?" },
+            "human_wait": {
+                "state": state,
+                "since": "2026-10-01T11:30:00Z",
+                "returns_at": "2026-10-01T12:30:00Z",
+            },
+        })
+    };
+    let view = board_health(&[
+        thread("asking", "waiting"),
+        thread("late", "overdue"),
+        thread("odd", "pondering"),
+    ]);
+    let card = |id: &str| {
+        view["cards"]
+            .as_array()
+            .expect("cards")
+            .iter()
+            .find(|c| c["id"] == id)
+            .unwrap_or_else(|| panic!("no card {id}: {view}"))
+            .clone()
+    };
+    let wait_chip = |c: &serde_json::Value| -> Option<String> {
+        c["chips"]
+            .as_array()
+            .expect("chips")
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|chip| chip.starts_with("card-human-wait "))
+            .map(str::to_string)
+    };
+    let asking = card("asking");
+    assert_eq!(
+        wait_chip(&asking).as_deref(),
+        Some("card-human-wait card-human-wait-waiting:waiting on a person"),
+        "{asking}"
+    );
+    assert!(asking["label"]
+        .as_str()
+        .unwrap_or_default()
+        .ends_with(", waiting on a person"));
+    assert!(
+        asking["wait_title"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("returns to the queue at"),
+        "the chip says when an unanswered ask gives the work back: {asking}"
+    );
+    let late = card("late");
+    let chip = wait_chip(&late).unwrap_or_default();
+    assert!(
+        chip.starts_with("card-human-wait card-human-wait-overdue:overdue, back to queue "),
+        "{late}"
+    );
+    assert!(late["label"]
+        .as_str()
+        .unwrap_or_default()
+        .ends_with(", overdue on a person"));
+    let odd = card("odd");
+    assert_eq!(
+        wait_chip(&odd),
+        None,
+        "an unknown state draws nothing: {odd}"
+    );
+    let alerts: Vec<&str> = view["alerts"]
+        .as_array()
+        .expect("alerts")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(alerts, ["1 overdue on a person"], "summary: {view}");
+}
+
 fn board_health(threads: &[serde_json::Value]) -> serde_json::Value {
     let head = REFUSAL_PAGE_HARNESS
         .split("const tail = `")
@@ -5298,12 +5385,14 @@ walk(byId.board, (el) => {
   if (!classHas(el, "card") || !el.dataset || !el.dataset.id) return;
   const chips = [];
   let stalledTitle = "";
+  let waitTitle = "";
   walk(el, (kid) => {
     if (!kid.className) return;
     chips.push(String(kid.className) + ":" + flatText(kid));
     if (classHas(kid, "card-stalled")) stalledTitle = kid.title || "";
+    if (classHas(kid, "card-human-wait")) waitTitle = kid.title || "";
   });
-  cards.push({ id: el.dataset.id, label: el.attrs["aria-label"] || "", chips: chips, stalled_title: stalledTitle });
+  cards.push({ id: el.dataset.id, label: el.attrs["aria-label"] || "", chips: chips, stalled_title: stalledTitle, wait_title: waitTitle });
 });
 const alerts = [];
 for (const kid of byId["board-summary"].children) {

@@ -317,6 +317,7 @@ import { loadMessages } from "./thread.js";
         const agents = new Set();
         let stalledCount = 0;
         let blockedCount = 0;
+        let overdueCount = 0;
         threads.forEach((th) => {
           const chrome = sessionChrome(th, gates[th.id]);
           const title = th.title || th.id.slice(0, 8);
@@ -328,7 +329,16 @@ import { loadMessages } from "./thread.js";
           card.setAttribute("role", "button");
           // The review gate is opt-in: a close with no approval says so.
           const stateLabel = th.closed_without_review ? "closed without review" : chrome.label;
-          card.setAttribute("aria-label", `${title}: ${stateLabel}${th.stalled ? ", stalled" : ""}`);
+          const waitWords = {
+            waiting: "waiting on a person",
+            overdue: "overdue on a person",
+            returned_to_queue: "returning to the queue",
+          };
+          const wait = th.human_wait && waitWords[th.human_wait.state] ? th.human_wait : null;
+          card.setAttribute(
+            "aria-label",
+            `${title}: ${stateLabel}${th.stalled ? ", stalled" : ""}${wait ? `, ${waitWords[wait.state]}` : ""}`,
+          );
           if (th.id === selectedThreadId) card.classList.add("selected");
           const sig = `${chrome.label}|${th.assignee_id || ""}`;
           if (boardSeen.size && boardSeen.get(th.id) !== sig) card.classList.add("fresh");
@@ -362,6 +372,24 @@ import { loadMessages } from "./thread.js";
               : "No recent progress from its agent";
             foot.appendChild(st);
             stalledCount += 1;
+          }
+          // The agent asked a person and is holding the work until answered;
+          // the chip says when an unanswered ask gives the work back.
+          if (wait) {
+            const hw = document.createElement("span");
+            hw.className = `card-human-wait card-human-wait-${wait.state}`;
+            const back = new Date(wait.returns_at);
+            const at = Number.isNaN(back.getTime())
+              ? ""
+              : back.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            hw.textContent = wait.state === "overdue" && at
+              ? `overdue, back to queue ${at}`
+              : waitWords[wait.state];
+            hw.title = at
+              ? `Asked a person ${ago(wait.since)}; returns to the queue at ${at} if unanswered`
+              : "Asked a person; returns to the queue if unanswered";
+            foot.appendChild(hw);
+            if (wait.state !== "waiting") overdueCount += 1;
           }
           if (chrome.column !== "done" && (th.block || (th.status && th.status.status === "blocked"))) {
             blockedCount += 1;
@@ -432,6 +460,7 @@ import { loadMessages } from "./thread.js";
         // train the eye to skip it.
         if (stalledCount) facts.push([stalledCount, "stalled", "health-alert"]);
         if (blockedCount) facts.push([blockedCount, "blocked", "health-alert"]);
+        if (overdueCount) facts.push([overdueCount, "overdue on a person", "health-alert"]);
         facts.forEach(([n, label, cls]) => {
           const span = document.createElement("span");
           if (cls) span.className = cls;
