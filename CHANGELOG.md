@@ -222,6 +222,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
 
+### Launch docs say what works
+
+- **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
+
 ### Sign-in says it is working
 
 - **Fixed:** while a pasted token is exchanged and checked, the web UI's Sign in button reads "Signing in…" and is marked `aria-busy`, and the status line (a polite live region) says the same, where before the field just went disabled. The audit timed a slow-3G sign-in at 21 s with no feedback. A refused token replaces the line with its reason, and a success clears it. From the 2026-10-03 UI audit (P2, outage UX).
