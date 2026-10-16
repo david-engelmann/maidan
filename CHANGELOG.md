@@ -218,6 +218,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST /threads/{id}/cancel` with `{"reason"}` (1 to 500 characters) and the MCP tool `cancel_thread` (250 tools). In one transaction a cancel closes the thread without the review, land or parent gates, parks it from dispatch with the reason, ends any live claim (the holder's next `renew_claim` is refused), appends `ThreadStateChanged` and the new `ThreadCancelled` event, and posts the reason on the thread (`metadata.notice = "cancelled"`). It needs `workspace:write`; without `thread:transition` as well, only the member that created the thread may. A repeat answers `200` with the first cancel; a thread already closed some other way is `409`.
 - **Added:** `Thread.created_by`, the member that created a thread, recorded on every create path (REST, MCP `create_thread`, seeded threads, A2A conversations, recipes and schedules). Migration 0180 adds `maidan_threads.created_by` and `maidan_thread_cancellations` on both backends.
 
+### Tests for routes no test called
+
+- **Tests:** ten routes that no test called now have behavior tests, each with a second workspace that holds the same capabilities and gets none of the first workspace's rows. They cover the thread, workspace and member usage rollups, `GET /workspaces/{id}/deferred`, `GET /members/{id}/decisions`, `DELETE /members/{id}/push-subscriptions/{sub_id}`, `GET /channels/{cid}/recent-threads`, `DELETE /workspaces/{wid}/peers/{pid}`, and the operator dead-mail list and requeue, where `operator:global` also sees the tenant-less row. The tests are in `http_capability_matrix_e2e`. In `ui_thread_reads_e2e`, every `/ui/api` read, for a session that holds a token's authority, answers with the same status and body as its bearer twin, and refuses another workspace's ids the same way.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
