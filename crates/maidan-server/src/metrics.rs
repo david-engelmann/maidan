@@ -196,6 +196,11 @@ pub fn init() {
             "A2A task push notifications by outcome (ok/failed after retries)"
         );
         describe_counter!(
+            "maidan_federation_peer_polls_total",
+            "Federation peer polls by outcome (ok/refused/no_secret/failed); a failed \
+             peer is skipped and the other peers are still polled"
+        );
+        describe_counter!(
             "maidan_event_append_failures_total",
             "Domain events that failed to append to the log after retries (a lost \
              event: the domain row committed but no event was persisted)"
