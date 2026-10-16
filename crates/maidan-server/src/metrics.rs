@@ -217,6 +217,10 @@ pub fn init() {
             "Leased claims reported as never acknowledged (each with a ClaimUnacknowledged)"
         );
         describe_counter!(
+            "maidan_human_waits_returned_total",
+            "Threads returned to the queue because their agent's wait on a person went unanswered (each with a WaitTimedOut, policy return_to_queue)"
+        );
+        describe_counter!(
             "maidan_wait_timed_out_total",
             "Thread wait timers fired by the wait sweeper, by escalation policy (notify/park)"
         );

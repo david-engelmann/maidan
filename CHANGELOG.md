@@ -222,6 +222,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `Thread.stalled`, system-computed and never declarable, and `Thread.last_progress_at` on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). A thread is stalled when its holder has a live lease it acknowledged and has shown no progress for `MAIDAN_STALL_SECS` (900 s by default, `0` off). Progress is the latest of the acknowledgement, the holder's last message on the thread and its active status declaration; a lease renewal is not progress, so an agent whose heartbeat still runs while its work has hung is caught. A holder that declared `needs_input`, `needs_review`, `blocked` or `done` is not stalled. It is judged at read time: no migration, no new route. The board marks a stalled card and counts stalled and blocked work in its summary strip.
 
+### Human-timeout state machine
+
+- **Added:** an agent waiting on a person no longer holds its thread forever. The holder's own `needs_input` or `needs_review` on a live claim it acknowledged starts a clock, `MAIDAN_HUMAN_TIMEOUT_SECS` (3600 s by default, `0` off). The wait runs on one state machine, `HumanWaitState` (`waiting`, `overdue` from half the timeout, then `returned_to_queue`, or `answered` when a person replies), with an explicit transition table that refuses every other move. At the timeout the claim reaper's existing tick releases the claim, drops the stale declaration and emits `WaitTimedOut` with policy `return_to_queue` in one transaction. The owner is notified and the thread stays open and claimable. That is the only ending: nothing is approved, closed or proceeded with for a person who did not answer. `Thread.human_wait` (`state`, `since`, `returns_at`) is on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). The card shows "waiting on a person" or "overdue, back to queue HH:MM", and the summary strip counts overdue asks. Counter `maidan_human_waits_returned_total`. No migration, no new route.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
