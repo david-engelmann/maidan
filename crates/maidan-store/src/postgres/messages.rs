@@ -69,6 +69,7 @@ pub async fn create(pool: &PgPool, new: NewMessage) -> Result<Message, StoreErro
     enforce_tool_budget(pool, new.thread_id, new_tool_uses(&new.content)).await?;
     let id = Uuid::now_v7();
     let content = new.content.as_ref().map(serde_json::to_value).transpose()?;
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -80,8 +81,15 @@ pub async fn create(pool: &PgPool, new: NewMessage) -> Result<Message, StoreErro
     .bind(&new.body)
     .bind(&new.metadata)
     .bind(content)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+    // Every post bumps its thread's activity clock, whichever path it takes —
+    // see the SQLite twin. In-tx, atomic with the post.
+    sqlx::query("UPDATE maidan_threads SET updated_at = now() WHERE id = $1")
+        .bind(new.thread_id.0)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     Ok(row_to_message(&row))
 }
 
