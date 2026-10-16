@@ -218,6 +218,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** `POST /threads/{id}/cancel` with `{"reason"}` (1 to 500 characters) and the MCP tool `cancel_thread` (250 tools). In one transaction a cancel closes the thread without the review, land or parent gates, parks it from dispatch with the reason, ends any live claim (the holder's next `renew_claim` is refused), appends `ThreadStateChanged` and the new `ThreadCancelled` event, and posts the reason on the thread (`metadata.notice = "cancelled"`). It needs `workspace:write`; without `thread:transition` as well, only the member that created the thread may. A repeat answers `200` with the first cancel; a thread already closed some other way is `409`.
 - **Added:** `Thread.created_by`, the member that created a thread, recorded on every create path (REST, MCP `create_thread`, seeded threads, A2A conversations, recipes and schedules). Migration 0180 adds `maidan_threads.created_by` and `maidan_thread_cancellations` on both backends.
 
+### More tools in groups
+
+- **Changed:** the console's More tools panel puts its 17 tabs in five named groups, still one keyboard tablist: Work (work, swarm, approvals, notifications), People (DMs, group DMs, presence, search), Account (session, prefs, tokens), Admin (admin, operator) and Developer (events over HTTP, looking glass, FSM, slash). The raw API and developer surfaces move last and are muted, and no panel is removed. The panel opens on Work instead of the audit log, and the first open loads it. The command palette shows each tool's group.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
