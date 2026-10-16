@@ -5155,3 +5155,42 @@ fn every_inline_harness_runs_with_the_write_guard() {
         "the seven page harnesses and run_bare_harness each go through with_prelude"
     );
 }
+
+/// The thread panel's evidence timeline: it reads the timeline route on both
+/// trees, only while open, drops a read for a thread no longer open, and
+/// flags evidence that moved since the latest hand-off.
+#[test]
+fn ui_js_thread_panel_shows_the_evidence_timeline() {
+    let s = script(HTML);
+    assert!(HTML.contains(r#"<details id="evidence-timeline">"#));
+    assert!(HTML.contains(r#"id="evidence-list""#));
+    assert!(s.contains("function loadEvidenceTimeline("));
+    assert!(s.contains("${base()}/threads/${tid}/evidence"));
+    assert!(s.contains("uiReadPath(`/threads/${tid}/evidence`)"));
+    assert!(
+        s.contains("if (!panel.open) return;"),
+        "a closed panel costs no read"
+    );
+    assert!(
+        s.contains("if (tid !== selectedThreadId) return;"),
+        "a slower read for another thread must not paint over the open one"
+    );
+    assert!(s.contains(r#"addEventListener("toggle", loadEvidenceTimeline)"#));
+    assert!(
+        s.contains("loadEvidenceTimeline();"),
+        "a thread refresh reloads an open panel"
+    );
+    assert!(s.contains("timeline.evidence_changed_since_review !== true"));
+    for kind in [
+        "artifact_linked",
+        "result_recorded",
+        "land_gate_verdict",
+        "review_requested",
+        "review_verdict",
+    ] {
+        assert!(
+            s.contains(&format!("entry.kind === \"{kind}\"")),
+            "{kind} is rendered"
+        );
+    }
+}
