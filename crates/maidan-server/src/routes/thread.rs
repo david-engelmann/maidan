@@ -1207,6 +1207,35 @@ pub async fn get_review_packet(
         .ok_or(ApiError::NotFound)
 }
 
+/// `GET /threads/:id/evidence`: the thread's evidence timeline, oldest
+/// first: linked artifacts, the standing result, land-gate verdicts, every
+/// review hand-off with its packet, and every review verdict, with whether
+/// the evidence moved since the latest hand-off. A read of what was
+/// recorded; it decides nothing. `workspace:read` + thread access.
+pub async fn get_evidence_timeline(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<maidan_types::EvidenceTimeline>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let store = state.store.as_ref();
+    let thread_version = store.thread_version(thread_id).await?;
+    let sources = maidan_types::EvidenceSources {
+        artifacts: store.list_thread_artifacts(thread_id).await?,
+        result: store.get_thread_result(thread_id).await?,
+        land_gate: store.list_land_gate_history(thread_id).await?,
+        packets: store.list_review_packets(thread_id).await?,
+        verdicts: store.list_review_history(thread_id).await?,
+    };
+    Ok(Json(maidan_types::EvidenceTimeline::assemble(
+        thread_id,
+        thread_version,
+        sources,
+    )))
+}
+
 /// A sha256 path segment in its one stored form, lowercase hex. A malformed
 /// one is a 400, not an artifact that does not exist.
 fn canonical_sha256(hex: &str) -> Result<String, ApiError> {

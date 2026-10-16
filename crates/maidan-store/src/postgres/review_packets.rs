@@ -215,6 +215,22 @@ pub async fn latest(
     .transpose()
 }
 
+/// Every packet the thread was handed, oldest first: a hand-off is never
+/// updated, so the list is the thread's review history of evidence.
+pub async fn list(pool: &PgPool, thread_id: ThreadId) -> Result<Vec<ReviewPacket>, StoreError> {
+    sqlx::query(
+        "SELECT id, thread_id, requested_by, thread_version, manifest, evidence_root, created_at
+         FROM maidan_review_packets WHERE thread_id = $1
+         ORDER BY created_at ASC, id ASC",
+    )
+    .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?
+    .iter()
+    .map(row_to_packet)
+    .collect()
+}
+
 /// The root of the thread's latest packet, `None` before any hand-off.
 pub(crate) async fn latest_root_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
