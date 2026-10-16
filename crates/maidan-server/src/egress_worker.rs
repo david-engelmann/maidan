@@ -279,7 +279,13 @@ async fn deliver_result(
             channel_id,
             thread_ts,
         } => {
-            let body = match crate::result_delivery::change_reply(state, entry.thread_id).await {
+            let body = match crate::result_delivery::change_reply(
+                state,
+                entry.workspace_id,
+                entry.thread_id,
+            )
+            .await
+            {
                 crate::result_delivery::ChangeReply::Waiting => return Ok(Sent::Waiting),
                 crate::result_delivery::ChangeReply::Ready(reply) => {
                     crate::result_delivery::slack_reply_body(&reply)
@@ -291,7 +297,13 @@ async fn deliver_result(
                 .map(Sent::Landed)
         }
         EgressTarget::Linear { team_id, issue } => {
-            let body = match crate::result_delivery::change_reply(state, entry.thread_id).await {
+            let body = match crate::result_delivery::change_reply(
+                state,
+                entry.workspace_id,
+                entry.thread_id,
+            )
+            .await
+            {
                 crate::result_delivery::ChangeReply::Waiting => return Ok(Sent::Waiting),
                 crate::result_delivery::ChangeReply::Ready(reply) => {
                     crate::result_delivery::linear_reply_body(&reply)
@@ -522,9 +534,18 @@ async fn github_branch_result(
         delivered_head,
     };
     match crate::change_flow::deliver_change(git, &request).await {
-        Ok(crate::change_flow::ChangeOutcome::Committed { commit_sha, pull }) => {
+        Ok(crate::change_flow::ChangeOutcome::Committed {
+            commit_sha,
+            pull,
+            rebased_from,
+        }) => {
             crate::metrics::record_github_egress("sent");
-            record_change_round(state, git, entry, &request, &commit_sha, pull.number).await;
+            let landed = RoundLanded {
+                commit_sha: &commit_sha,
+                pull_number: pull.number,
+                previous_head: rebased_from,
+            };
+            record_change_round(state, git, entry, &request, landed).await;
             Ok(Sent::Landed(Some(ExternalRef::GithubBranch {
                 repo: repo.to_string(),
                 commit_sha,
@@ -1260,6 +1281,14 @@ pub async fn run(state: AppState, cfg: EgressWorkerConfig) {
     }
 }
 
+/// A round the change flow delivered: its commit, its pull request, and for
+/// a squash-rebase that moved the branch, the head it moved from.
+struct RoundLanded<'a> {
+    commit_sha: &'a str,
+    pull_number: i64,
+    previous_head: Option<String>,
+}
+
 /// Record the round for the swarm ramp metrics: the commit, its diff size,
 /// and how far its base had fallen behind the base branch. Best effort: a
 /// failed read or write never undoes a delivered commit.
@@ -1268,9 +1297,13 @@ async fn record_change_round(
     git: &dyn crate::github::GithubGit,
     entry: &EgressOutbox,
     request: &crate::change_flow::ChangeRequest<'_>,
-    commit_sha: &str,
-    pull_number: i64,
+    landed: RoundLanded<'_>,
 ) {
+    let RoundLanded {
+        commit_sha,
+        pull_number,
+        previous_head,
+    } = landed;
     let Some(base_sha) = request.change.base_sha.clone() else {
         return;
     };
@@ -1305,6 +1338,7 @@ async fn record_change_round(
             .unwrap_or_default(),
         base_branch: Some(request.base.to_string()),
         rebase: request.change.rebase,
+        previous_head,
     };
     if let Err(err) = state.store.record_change_round(round).await {
         tracing::warn!(repo = request.repo, pull_number, error = %err, "change flow: round not recorded");

@@ -894,6 +894,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         paths: vec!["src/a.rs".into()],
         base_branch: Some("main".into()),
         rebase: false,
+        previous_head: None,
     };
     store.record_change_round(round("c1", 10)).await.unwrap();
     store.record_change_round(round("c1", 10)).await.unwrap();
@@ -955,6 +956,7 @@ fn round_for(ws: WorkspaceId, thread: ThreadId, pull_number: i64) -> NewChangeRo
         paths: Vec::new(),
         base_branch: None,
         rebase: false,
+        previous_head: None,
     }
 }
 

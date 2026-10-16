@@ -1357,11 +1357,13 @@ async fn a_change_reply_stops_waiting_on_a_branch_delivery_that_never_settles() 
 
     let soon = produced_at + chrono::Duration::hours(1);
     assert!(matches!(
-        change_reply_at(&h.state, h.a.thread_id, soon).await,
+        change_reply_at(&h.state, h.a.workspace_id, h.a.thread_id, soon).await,
         ChangeReply::Waiting
     ));
     let late = produced_at + CHANGE_REPLY_MAX_WAIT + chrono::Duration::minutes(1);
-    let ChangeReply::Ready(text) = change_reply_at(&h.state, h.a.thread_id, late).await else {
+    let ChangeReply::Ready(text) =
+        change_reply_at(&h.state, h.a.workspace_id, h.a.thread_id, late).await
+    else {
         panic!("the reply must stop waiting");
     };
     assert!(text.contains("Nothing has landed"), "{text}");
@@ -1724,6 +1726,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
             paths: Vec::new(),
             base_branch: None,
             rebase: false,
+            previous_head: None,
         })
         .await
         .unwrap();
@@ -2412,6 +2415,7 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
             paths: Vec::new(),
             base_branch: Some("dev".into()),
             rebase: false,
+            previous_head: None,
         })
         .await
         .unwrap();

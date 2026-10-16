@@ -603,6 +603,15 @@ pub trait GithubGit: Send + Sync {
         pull_number: i64,
         body: &str,
     ) -> Result<(), GithubError>;
+    /// `POST /repos/{repo}/issues/{n}/comments`. The change flow's one
+    /// comment: after a squash-rebase moves the agent branch, it names the
+    /// old and new heads so a reviewer can diff the range the force rewrote.
+    async fn comment_on_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        body: &str,
+    ) -> Result<(), GithubError>;
     /// `GET /repos/{repo}/compare/{base_sha}...{branch}`: how many commits
     /// `branch` has gained since `base_sha`, for the stale-base warning.
     async fn commits_behind(
@@ -1367,6 +1376,25 @@ impl GithubGit for GithubApiClient {
                 reqwest::Method::PATCH,
                 repo,
                 &format!("/pulls/{pull_number}"),
+            )
+            .await?
+            .json(&serde_json::json!({ "body": body }));
+        self.send_json(request).await?;
+        Ok(())
+    }
+
+    async fn comment_on_pull(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        body: &str,
+    ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
+        let request = self
+            .request(
+                reqwest::Method::POST,
+                repo,
+                &format!("/issues/{pull_number}/comments"),
             )
             .await?
             .json(&serde_json::json!({ "body": body }));
