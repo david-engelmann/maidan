@@ -424,20 +424,9 @@ async fn rebase_commit(
     }
     // A stale `base_sha` would move the branch backwards past work that has
     // landed on the base since.
-    match git.branch_head(req.repo, req.base).await? {
-        Some(base_head) if base_head == base_sha => {}
-        Some(base_head) => {
-            return Ok(Err(format!(
-                "the rebase's base_sha {base_sha} is not the head of `{}`, which is at {base_head}; rebase onto the current base",
-                req.base
-            )))
-        }
-        None => {
-            return Ok(Err(format!(
-                "base branch `{}` does not exist in {}",
-                req.base, req.repo
-            )))
-        }
+    let base_head = git.branch_head(req.repo, req.base).await?;
+    if let Err(reason) = check_base_current(req.repo, req.base, base_sha, base_head.as_deref()) {
+        return Ok(Err(reason));
     }
     let changes = match apply_at(git, req.repo, base_sha, patches).await? {
         Ok(changes) => changes,
@@ -447,6 +436,25 @@ async fn rebase_commit(
     match force::move_branch(git, req.repo, req.branch, &head, &commit).await? {
         Ok(()) => Ok(Ok(commit)),
         Err(reason) => Ok(Err(reason)),
+    }
+}
+
+/// Whether `base_sha` is the base branch's head as just read. SHAs compare
+/// case-insensitively, as every other SHA comparison in this flow does: a
+/// producer may send the hex in upper case, and the same commit must not read
+/// as a stale base.
+fn check_base_current(
+    repo: &str,
+    base: &str,
+    base_sha: &str,
+    base_head: Option<&str>,
+) -> Result<(), String> {
+    match base_head {
+        Some(head) if head.eq_ignore_ascii_case(base_sha) => Ok(()),
+        Some(head) => Err(format!(
+            "the rebase's base_sha {base_sha} is not the head of `{base}`, which is at {head}; rebase onto the current base"
+        )),
+        None => Err(format!("base branch `{base}` does not exist in {repo}")),
     }
 }
 
@@ -553,9 +561,16 @@ mod force {
         }
     }
 
-    /// Re-read the head immediately before the move, so the window in which
-    /// someone else's push could be overwritten is one round trip. GitHub's
-    /// ref API has no compare-and-swap, so this is as close as it gets.
+    /// Re-read the head immediately before the move, then force it.
+    ///
+    /// **This is not atomic.** GitHub's REST refs API has no compare-and-swap
+    /// (`PATCH .../git/refs` takes no expected old value), so a push that
+    /// lands between this read and the `PATCH` is overwritten. The window is
+    /// one round trip. That is acceptable because the branch is an agent
+    /// branch only Maidan delivers to, the pull request is out of the merge
+    /// queue, and an overwritten commit stays reachable on GitHub and in the
+    /// pusher's checkout. A later round then refuses, since the head no longer
+    /// matches what was delivered. Don't rely on this guard as a lock.
     pub(super) async fn move_branch(
         git: &dyn GithubGit,
         repo: &str,
@@ -667,6 +682,18 @@ mod tests {
             current_state: None,
             rebase: false,
         }
+    }
+
+    #[test]
+    fn a_base_sha_in_another_case_is_still_the_current_base() {
+        let lower = "abcdef0123456789abcdef0123456789abcdef01";
+        let upper = lower.to_ascii_uppercase();
+        assert!(check_base_current("o/r", "dev", &upper, Some(lower)).is_ok());
+        assert!(check_base_current("o/r", "dev", lower, Some(&upper)).is_ok());
+        let other = "1111111111111111111111111111111111111111";
+        let stale = check_base_current("o/r", "dev", lower, Some(other)).unwrap_err();
+        assert!(stale.contains(lower) && stale.contains(other), "{stale}");
+        assert!(check_base_current("o/r", "dev", lower, None).is_err());
     }
 
     #[test]

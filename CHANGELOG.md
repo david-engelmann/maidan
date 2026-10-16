@@ -52,6 +52,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
 
+### A squash-rebase round compares the base SHA case-insensitively
+
+- **Fixed:** a squash-rebase round whose `base_sha` matched the base branch's head in another letter case was refused as a stale base. The comparison now ignores case, as the change flow's other SHA comparisons do. The force move's doc comment now says the move is not atomic (GitHub's refs API has no compare-and-swap) and why the one-round-trip window is acceptable.
+
 ### A result delivered to GitHub links its attached files
 
 - **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
