@@ -845,3 +845,107 @@ async fn a_refused_event_does_not_wedge_the_origin_chain() {
 
     h.shutdown().await;
 }
+
+/// A poll tick used to return on the first peer whose `list_events` failed,
+/// so one unreachable peer stopped federation for every peer sorted after it,
+/// in every workspace, on every tick. Workspace A's peer sorts first and
+/// points at a closed port; workspace B's peer must still be asked for events.
+#[tokio::test]
+async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use maidan_auth::encrypt_peer_secret;
+    use maidan_server::federation_worker::poll_once;
+
+    // The peers below live on loopback, which the egress guard refuses
+    // unless the development escape hatch is on.
+    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+
+    let asked = Arc::new(AtomicUsize::new(0));
+    // A stand-in remote peer, not a Maidan route, so the checked-extractor
+    // wrapper does not apply.
+    #[allow(clippy::disallowed_methods)]
+    let remote = axum::Router::new().route(
+        "/workspaces/{workspace}/events",
+        axum::routing::get({
+            let asked = asked.clone();
+            move || {
+                let asked = asked.clone();
+                async move {
+                    asked.fetch_add(1, Ordering::SeqCst);
+                    axum::Json(Vec::<StoredEvent>::new())
+                }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let healthy = listener.local_addr().unwrap();
+    let remote_server = tokio::spawn(async move { axum::serve(listener, remote).await.unwrap() });
+    let closed = {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        probe.local_addr().unwrap()
+    };
+
+    let key = Arc::new([0x42; 32]);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let dir = tempfile::tempdir().unwrap();
+    let state = AppState::new(
+        store.clone(),
+        Arc::new(maidan_artifacts::LocalFsStore::new(dir.path())),
+        Arc::new(maidan_bus::InMemoryBus::new()),
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        true,
+        false,
+        FederationRuntime::new(true, Some(key.clone())),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+
+    for (workspace, name, base_url) in [
+        ("tenant-a", "a-unreachable", format!("http://{closed}")),
+        ("tenant-b", "b-healthy", format!("http://{healthy}")),
+    ] {
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: workspace.to_string(),
+            })
+            .await
+            .unwrap();
+        let secret = format!("maid_peer_secret_{name}");
+        store
+            .create_peer(maidan_types::NewPeer {
+                workspace_id: ws.id,
+                remote_workspace_id: ws.id,
+                name: name.to_string(),
+                base_url,
+                token_hash: hash_secret(&secret),
+                outbound_secret_ciphertext: Some(
+                    encrypt_peer_secret(&secret, key.as_ref()).expect("encrypt"),
+                ),
+            })
+            .await
+            .unwrap();
+    }
+
+    poll_once(&state)
+        .await
+        .expect("a failed peer is skipped, not fatal");
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        1,
+        "workspace B's peer was not polled after workspace A's peer failed"
+    );
+    remote_server.abort();
+}
