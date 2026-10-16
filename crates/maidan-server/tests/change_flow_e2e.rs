@@ -91,6 +91,8 @@ struct Fake {
     fail_pulls: bool,
     /// What `compare` reports a delivered base behind by; 2 when unset.
     behind: Option<i64>,
+    /// Every `force: true` ref move, as `(branch, from, to)`.
+    forced: Vec<(String, String, String)>,
 }
 
 impl Fake {
@@ -185,11 +187,23 @@ async fn github(
             let Some(current) = fake.refs.get(name).cloned() else {
                 return not_found();
             };
+            if body["force"] == json!(true) {
+                assert!(
+                    name.starts_with("feature/agent-"),
+                    "only an agent branch is ever forced, not `{name}`"
+                );
+                if !fake.commits.contains_key(sha) {
+                    return reply(StatusCode::UNPROCESSABLE_ENTITY, json!({}));
+                }
+                fake.forced.push((name.into(), current, sha.into()));
+                fake.refs.insert(name.into(), sha.into());
+                return reply(StatusCode::OK, json!({}));
+            }
+            assert_eq!(body["force"], json!(false), "force is always said");
             let fast_forward = fake
                 .commits
                 .get(sha)
                 .is_some_and(|c| c.parents.contains(&current));
-            assert_eq!(body["force"], json!(false), "the flow never force-pushes");
             if !fast_forward {
                 return reply(StatusCode::UNPROCESSABLE_ENTITY, json!({}));
             }
@@ -760,6 +774,7 @@ async fn a_change_creates_the_branch_commits_once_and_opens_one_draft_pr() {
         assert_eq!(fake.file(&head, "README.md").as_deref(), Some("readme\n"));
         assert!(commit.message.starts_with("Greet the world\n"));
         assert!(commit.message.contains("Maidan-Change: "));
+        assert!(fake.forced.is_empty(), "a normal round never forces");
         assert_eq!(fake.pulls.len(), 1);
         (head, commit, fake.pulls[0].clone())
     };
@@ -1708,6 +1723,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
             diff_lines: 1,
             paths: Vec::new(),
             base_branch: None,
+            rebase: false,
         })
         .await
         .unwrap();
@@ -2142,4 +2158,316 @@ async fn a_fresh_base_delivery_gets_no_notice() {
         .unwrap()
         .is_empty());
     assert!(notice_events(&h, h.a.workspace_id).await.is_empty());
+}
+
+// ---------------------------------------------------------------- squash-rebase rounds
+
+/// A squash-rebase result: `base_sha` is the base branch's head and `diff`
+/// the whole branch against it.
+fn rebase_change(base_sha: &str, diff: &str) -> Value {
+    let mut result = change("changed", base_sha, BRANCH, diff);
+    result["rebase"] = json!(true);
+    result
+}
+
+/// Tenant A delivers a normal first round, then `dev` moves on under it.
+/// Returns the delivered head and the new base.
+async fn delivered_then_base_moved(h: &Harness) -> (String, String) {
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    assert_eq!(
+        h.delivery(&h.a, "github_branch").await.status,
+        status::DELIVERED
+    );
+    let mut f = h.fake.lock().unwrap();
+    let delivered = f.refs[BRANCH].clone();
+    let new_base = f.commit_files(
+        &[
+            ("README.md", "readme, revised on dev\n"),
+            ("src/greeting.txt", GREETING),
+            ("src/bridge/x.rs", BRIDGE),
+        ],
+        vec![h.base_sha.clone()],
+    );
+    f.refs.insert("dev".into(), new_base.clone());
+    (delivered, new_base)
+}
+
+#[tokio::test]
+async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_retry_reuses_it() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let (head, pull) = {
+        let f = h.fake.lock().unwrap();
+        let head = f.refs[BRANCH].clone();
+        assert_ne!(head, delivered);
+        assert_eq!(
+            f.commits[&head].parents,
+            vec![new_base.clone()],
+            "one commit whose only parent is the new base"
+        );
+        assert_eq!(
+            f.file(&head, "src/greeting.txt").as_deref(),
+            Some("line one\nhello, world\nline three\n")
+        );
+        assert_eq!(
+            f.file(&head, "README.md").as_deref(),
+            Some("readme, revised on dev\n"),
+            "the base's own work is kept"
+        );
+        assert!(f.commits[&head].message.contains("Maidan-Change: "));
+        assert_eq!(
+            f.forced,
+            vec![(BRANCH.to_string(), delivered.clone(), head.clone())]
+        );
+        assert_eq!(f.pulls.len(), 1, "the same pull request stays open");
+        let pull = f.pulls[0].clone();
+        assert_eq!((pull.head.as_str(), pull.base.as_str()), (BRANCH, "dev"));
+        assert!(pull.merged_at.is_none() && pull.closed_at.is_none());
+        (head, pull)
+    };
+    assert_eq!(
+        row.external_ref.as_deref(),
+        Some(format!("{head}#{}", pull.number).as_str())
+    );
+
+    // The round is recorded as a rebase, on a current base.
+    let pulls = h
+        .store
+        .list_change_pulls(h.a.workspace_id, None, None)
+        .await
+        .unwrap();
+    let rounds: Vec<_> = pulls[0]
+        .rounds
+        .iter()
+        .map(|r| (r.commit_sha.clone(), r.rebase, r.base_behind))
+        .collect();
+    assert_eq!(
+        rounds,
+        vec![
+            (delivered.clone(), false, Some(2)),
+            (head.clone(), true, Some(0)),
+        ]
+    );
+    let metrics = maidan_types::swarm_metrics(pulls, maidan_types::FlagLimits::default());
+    assert_eq!(metrics.tasks[0].rebases, 1);
+
+    // A retried delivery finds its own rebase commit and writes nothing,
+    // even though the delivered head it was checked against has moved.
+    let writes_before = h.fake.lock().unwrap().writes().len();
+    let replayed = maidan_store::replay_result_delivery(
+        h.store.as_ref(),
+        h.a.workspace_id,
+        h.a.thread_id,
+        row.id,
+        String::new(),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        replayed,
+        Some(maidan_store::ResultDeliveryReplay::Enqueued(_))
+    ));
+    h.drain().await;
+    {
+        let f = h.fake.lock().unwrap();
+        assert_eq!(f.refs[BRANCH], head);
+        assert_eq!(f.forced.len(), 1, "no second force");
+        assert_eq!(f.writes().len(), writes_before, "{:?}", f.writes());
+    }
+    assert_eq!(
+        h.delivery(&h.a, "github_branch").await.status,
+        status::DELIVERED
+    );
+}
+
+/// The branch reads, refusal, and that nothing was written since `before`.
+async fn assert_rebase_refused(h: &Harness, writes_before: usize, head: &str, why: &[&str]) {
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    for part in why {
+        assert!(reason.contains(part), "{part:?} not in {reason}");
+    }
+    let f = h.fake.lock().unwrap();
+    assert_eq!(f.writes().len(), writes_before, "{:?}", f.writes());
+    assert!(f.forced.is_empty(), "{:?}", f.forced);
+    assert_eq!(f.refs[BRANCH], head);
+}
+
+#[tokio::test]
+async fn a_rebase_over_a_commit_someone_else_pushed_is_refused_naming_both_shas() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let (foreign, writes_before) = {
+        let mut f = h.fake.lock().unwrap();
+        let foreign = f.commit_files(
+            &[("src/greeting.txt", "a person's fix\n")],
+            vec![delivered.clone()],
+        );
+        f.refs.insert(BRANCH.into(), foreign.clone());
+        (foreign, f.writes().len())
+    };
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+    assert_rebase_refused(
+        &h,
+        writes_before,
+        &foreign,
+        &[&foreign, &delivered, "someone else pushed"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_rebase_whose_base_sha_is_not_the_base_head_is_refused() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let writes_before = h.fake.lock().unwrap().writes().len();
+    // Built on the old base: a rebase must never move a branch backwards.
+    h.route(&h.a, &rebase_change(&h.base_sha, DIFF), 2).await;
+    h.drain().await;
+    assert_rebase_refused(
+        &h,
+        writes_before,
+        &delivered,
+        &[&h.base_sha, &new_base, "not the head of `dev`"],
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_rebase_of_a_pull_request_in_the_merge_queue_is_refused() {
+    let mut h = harness().await;
+    h.state.merge_queue_labels =
+        maidan_types::MergeQueueLabels::parse(&format!("{REPO}=ready-to-merge")).unwrap();
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let writes_before = {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].labels.push("ready-to-merge".into());
+        f.writes().len()
+    };
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+    assert_rebase_refused(&h, writes_before, &delivered, &["merge queue"]).await;
+}
+
+#[tokio::test]
+async fn a_rebase_with_no_open_pull_request_or_a_diff_that_does_not_apply_writes_nothing() {
+    // No pull request: nothing was delivered, so nothing vouches for a force.
+    let h = harness().await;
+    h.allow_change().await;
+    let lone = {
+        let mut f = h.fake.lock().unwrap();
+        let lone = f.commit_files(&[("src/greeting.txt", "x\n")], vec![h.base_sha.clone()]);
+        f.refs.insert(BRANCH.into(), lone.clone());
+        lone
+    };
+    h.route(&h.a, &rebase_change(&h.base_sha, DIFF), 1).await;
+    h.drain().await;
+    assert_rebase_refused(&h, 0, &lone, &["needs the open pull request"]).await;
+
+    // A whole-branch diff that does not apply to the new base.
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let writes_before = h.fake.lock().unwrap().writes().len();
+    let stale = DIFF.replace("-hello\n", "-goodbye\n");
+    h.route(&h.a, &rebase_change(&new_base, &stale), 2).await;
+    h.drain().await;
+    assert_rebase_refused(&h, writes_before, &delivered, &["does not apply"]).await;
+}
+
+/// Two workspaces on one pull request: a commit another workspace delivered
+/// is someone else's push to this one, and a workspace that delivered
+/// nothing to the pull request may never force it.
+#[tokio::test]
+async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    // Workspace B's round lands on the same branch and pull request.
+    let theirs = {
+        let mut f = h.fake.lock().unwrap();
+        let theirs = f.commit_files(&[("src/greeting.txt", "theirs\n")], vec![delivered.clone()]);
+        f.refs.insert(BRANCH.into(), theirs.clone());
+        theirs
+    };
+    h.store
+        .record_change_round(maidan_types::NewChangeRound {
+            workspace_id: h.b.workspace_id,
+            thread_id: h.b.thread_id,
+            repo: REPO.into(),
+            pull_number: number,
+            commit_sha: theirs.clone(),
+            base_sha: delivered.clone(),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: Some("dev".into()),
+            rebase: false,
+        })
+        .await
+        .unwrap();
+    let writes_before = h.fake.lock().unwrap().writes().len();
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+    assert_rebase_refused(&h, writes_before, &theirs, &[&theirs, &delivered]).await;
+
+    // B, blessed for the same repository, tries the rebase itself.
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+    h.route(&h.b, &rebase_change(&new_base, DIFF), 3).await;
+    h.drain().await;
+    let row = h.delivery(&h.b, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(reason.contains("delivered no commit"), "{reason}");
+    let f = h.fake.lock().unwrap();
+    assert!(f.forced.is_empty(), "{:?}", f.forced);
+    assert_eq!(f.refs[BRANCH], theirs);
+}
+
+#[tokio::test]
+async fn a_rebase_conflict_is_skipped_with_no_write_and_the_reply_names_the_paths() {
+    let h = harness().await;
+    h.allow_change().await;
+    let mut result = change("rebase_conflict", &h.base_sha, BRANCH, "");
+    result["rebase"] = json!(true);
+    result["error_detail"] = json!("conflicts in src/greeting.txt and src/bridge/x.rs");
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(
+        reason.contains("rebase_conflict") && reason.contains("conflicts"),
+        "{reason}"
+    );
+    assert!(
+        h.fake.lock().unwrap().requests.is_empty(),
+        "no GitHub call at all"
+    );
+    let posts = h.slack_posts();
+    assert_eq!(posts.len(), 1);
+    let text = &posts[0].2;
+    assert_eq!(posts[0].1.as_deref(), Some(THREAD_TS));
+    for part in [
+        "rebase_conflict",
+        "nothing was committed",
+        "src/greeting.txt and src/bridge/x.rs",
+    ] {
+        assert!(text.contains(part), "{part:?} not in {text}");
+    }
 }

@@ -69,10 +69,9 @@ pub fn is_stalled(thread: &Thread, now: DateTime<Utc>, threshold: Option<Duratio
         .is_some_and(|deadline| deadline <= now)
 }
 
-/// Mark each thread's [`Thread::stalled`] at the current time and the
-/// configured threshold.
-pub fn mark<'a>(threads: impl IntoIterator<Item = &'a mut Thread>) {
-    let threshold = threshold_from_env();
+/// Mark each thread's [`Thread::stalled`] at the current time against
+/// `threshold` ([`crate::AppState::stall_threshold`]).
+pub fn mark<'a>(threads: impl IntoIterator<Item = &'a mut Thread>, threshold: Option<Duration>) {
     let now = Utc::now();
     for thread in threads {
         thread.stalled = is_stalled(thread, now, threshold);

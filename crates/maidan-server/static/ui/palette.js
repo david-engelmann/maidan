@@ -102,7 +102,13 @@ import { reduceMotion } from "./state.js";
         });
         items.push({ kind: "Action", label: "Refresh channels", run: () => document.getElementById("refresh-channels").click() });
         document.querySelectorAll("#tools [data-tab]").forEach((b) => {
-          items.push({ kind: "Tool", label: b.textContent.trim(), run: () => openTool(b.dataset.tab) });
+          const group = b.closest(".tab-group");
+          items.push({
+            kind: "Tool",
+            label: b.textContent.trim(),
+            hint: group ? group.dataset.group : undefined,
+            run: () => openTool(b.dataset.tab),
+          });
         });
         return items;
       }

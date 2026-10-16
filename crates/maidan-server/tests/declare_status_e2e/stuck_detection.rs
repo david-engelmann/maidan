@@ -130,9 +130,6 @@ fn stalled(thread: &Value) -> bool {
 
 #[tokio::test]
 async fn a_quiet_agent_reads_back_stalled_and_only_in_its_own_workspace() {
-    // Read per request, so setting it before the first read is enough; each
-    // test runs in its own process under nextest, so nothing else sees it.
-    std::env::set_var("MAIDAN_STALL_SECS", STALL_SECS.to_string());
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -148,7 +145,7 @@ async fn a_quiet_agent_reads_back_stalled_and_only_in_its_own_workspace() {
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool));
     let dir = tempfile::tempdir().unwrap();
-    let state = AppState::new(
+    let mut state = AppState::new(
         store.clone(),
         Arc::new(LocalFsStore::new(dir.path())),
         Arc::new(InMemoryBus::with_capacity(64)),
@@ -160,6 +157,9 @@ async fn a_quiet_agent_reads_back_stalled_and_only_in_its_own_workspace() {
         Arc::new(AtomicI64::new(0)),
         None,
     );
+    // On this test's state, not the process environment: the other tests in
+    // this binary run alongside it and would read a short threshold too.
+    state.stall_threshold = Some(Duration::from_secs(STALL_SECS));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let app = router(state);

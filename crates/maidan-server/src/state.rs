@@ -172,6 +172,12 @@ pub struct AppState {
     /// `at_least_once` subscriptions. Read from env once at startup.
     pub delivery_stability: std::time::Duration,
     pub delivery_reconcile_interval: std::time::Duration,
+    /// How long a worked thread may go without progress before the board's
+    /// reads mark it stalled (`MAIDAN_STALL_SECS`, [`crate::stall`]); `None`
+    /// turns detection off. Read once here so a test can set its own on its
+    /// state instead of through the process environment, which every test in
+    /// the binary shares.
+    pub stall_threshold: Option<std::time::Duration>,
     /// Off-platform email transport, built from `MAIDAN_SMTP_*` at startup.
     /// `None` when SMTP isn't configured — the config gate: no transport, no
     /// email. Set only by the server binary via [`AppState::attach_mail`], so
@@ -363,6 +369,7 @@ impl AppState {
             indexer_metrics: Arc::new(maidan_search::IndexerMetrics::default()),
             delivery_stability: crate::event_stream::reconcile_stability_window_from_env(),
             delivery_reconcile_interval: crate::event_stream::reconcile_interval_from_env(),
+            stall_threshold: crate::stall::threshold_from_env(),
             mail: None,
             web_push: None,
             web_push_public_key: None,

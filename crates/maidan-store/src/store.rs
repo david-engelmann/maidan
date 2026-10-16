@@ -2165,6 +2165,16 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         round: maidan_types::NewChangeRound,
     ) -> Result<(), StoreError>;
+    /// The commit of the newest round recorded for `repo`#`pull_number` in
+    /// `workspace_id`, or `None` when the change flow recorded none there.
+    /// Read from the primary: a squash-rebase compares it with the branch
+    /// head right before its force move.
+    async fn latest_change_round_head(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<String>, StoreError>;
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,
@@ -2970,6 +2980,33 @@ pub trait ArtifactMetaStore: Send + Sync {
         sha256: &str,
         delete: crate::BlobDelete<'_>,
     ) -> Result<crate::BlobReap, StoreError>;
+
+    /// Queue `sha256`'s bytes for another delete after a reap could not
+    /// delete them, recording `workspace_id` as the workspace that orphaned
+    /// them. One row per sha: queueing a queued sha keeps its attempts and its
+    /// next try. The retention sweep retries it
+    /// ([`crate::blob_reap_retry::retry_due`]).
+    async fn queue_blob_reap(
+        &self,
+        sha256: &str,
+        workspace_id: WorkspaceId,
+        error: &str,
+    ) -> Result<(), StoreError>;
+
+    /// Up to `limit` queued shas whose next try is due, soonest first.
+    async fn due_blob_reaps(&self, limit: i64) -> Result<Vec<crate::PendingBlobReap>, StoreError>;
+
+    /// Count a failed retry of `sha256` and put its next try `delay_secs` out.
+    async fn defer_blob_reap(
+        &self,
+        sha256: &str,
+        error: &str,
+        delay_secs: i64,
+    ) -> Result<(), StoreError>;
+
+    /// Take `sha256` off the queue: its bytes are gone, or an artifact row
+    /// holds them again and they must stay.
+    async fn settle_blob_reap(&self, sha256: &str) -> Result<(), StoreError>;
 }
 
 #[async_trait]

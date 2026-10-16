@@ -85,39 +85,47 @@ pub use workspace::*;
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
 /// Delete the blobs of `shas` that no artifact row holds any more, after a
-/// purge, an erase or a media expiry. Each delete runs under a lease on the
-/// sha (`reap_artifact_blob`), so a workspace uploading the same bytes
-/// meanwhile either commits its row first, and the bytes stay, or after, and
-/// puts them back. A failure is logged: the bytes are only orphaned, never
-/// reachable.
+/// purge, an erase, a media expiry or a refused upload in `workspace_id`.
+/// Each delete runs under a lease on the sha (`reap_artifact_blob`), so a
+/// workspace uploading the same bytes meanwhile either commits its row first,
+/// and the bytes stay, or after, and puts them back. A failed delete queues
+/// the sha for the retention sweep to retry: the bytes are only orphaned,
+/// never reachable, but they must not stay for good.
 pub(crate) async fn reap_orphaned_blobs(
     store: &dyn maidan_store::Store,
     artifacts: &std::sync::Arc<dyn maidan_artifacts::ArtifactStore>,
+    workspace_id: maidan_types::WorkspaceId,
     shas: &[String],
 ) {
     for sha_hex in shas {
-        let Ok(sha) = maidan_artifacts::Sha256::from_hex(sha_hex) else {
+        let Some(delete) = blob_delete(artifacts, sha_hex) else {
             continue;
         };
-        let artifacts = artifacts.clone();
-        let delete: maidan_store::BlobDelete<'_> = Box::new(move || {
-            Box::pin(async move {
-                match artifacts.delete(&sha).await {
-                    Ok(()) | Err(maidan_artifacts::ArtifactError::NotFound) => Ok(()),
-                    Err(err) => Err(err.to_string()),
-                }
-            })
-        });
-        match store.reap_artifact_blob(sha_hex, delete).await {
-            Ok(maidan_store::BlobReap::Deleted | maidan_store::BlobReap::Referenced) => {}
-            Ok(maidan_store::BlobReap::DeleteFailed(err)) => {
-                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
-            }
-            Err(err) => {
-                tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
-            }
+        let reaped =
+            maidan_store::blob_reap_retry::reap_or_queue(store, sha_hex, workspace_id, delete)
+                .await;
+        if let maidan_store::BlobReap::DeleteFailed(err) = reaped {
+            tracing::warn!(sha = %sha_hex, error = %err, "purge.orphaned_blob_not_deleted");
         }
     }
+}
+
+/// The delete a reap runs for `sha_hex`'s bytes; `None` for a string that is
+/// not a sha. Bytes already gone count as deleted.
+pub(crate) fn blob_delete(
+    artifacts: &std::sync::Arc<dyn maidan_artifacts::ArtifactStore>,
+    sha_hex: &str,
+) -> Option<maidan_store::BlobDelete<'static>> {
+    let sha = maidan_artifacts::Sha256::from_hex(sha_hex).ok()?;
+    let artifacts = artifacts.clone();
+    Some(Box::new(move || {
+        Box::pin(async move {
+            match artifacts.delete(&sha).await {
+                Ok(()) | Err(maidan_artifacts::ArtifactError::NotFound) => Ok(()),
+                Err(err) => Err(err.to_string()),
+            }
+        })
+    }))
 }
 
 pub(crate) fn clamp_context_transition_limit(limit: i64) -> i64 {

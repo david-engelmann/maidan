@@ -96,8 +96,8 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    or answered (#1162 to #1191, #1262), the cross-tenant rate-limit bug among
    them, and the official MCP conformance suite runs in CI (#1286). Kani proves
    capability containment and cursor arithmetic (#1340), nightly (#1374).
-   Next: the store's thread-read rule requiring the reader's own workspace
-   (#1376, in review), wire snapshots, and a named regression test per
+   The store's thread-read rule requires the reader's own workspace (#1376)
+   and the wire snapshots are in. Next: a named regression test per
    Threat-Model row. REST `POST /threads/{id}` names
    `action` as `start_review`, `close`, or `archive`.
 5. **A web UI worth showing.** The board is the one thread surface (#1118),
@@ -164,9 +164,9 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
      (Next 27), and abuse controls (Next 28).
    - **Prove.** A validated version (Next 14), the ChatGPT card and the
      connect recipes tested live (Next 17, Next 13), the listing assets and
-     demo instance (Next 12), the launch polish (Next 30), public `main` naming no
-     internal project (Next 31), and pi's client contract in Maidan's CI
-     (Next 32).
+     demo instance (Next 12), and the launch polish (Next 30). Public `main`
+     names no internal project (#1387) and pi's client contract runs in
+     Maidan's CI (#1384).
    - **Launch.** The launch release and its surfaces, closed by the
      `maidan-launch-1.0` gate (Next 29).
 

@@ -1005,6 +1005,18 @@ the key.
   pooled connection idle in a transaction, which
   `idle_in_transaction_session_timeout` could end with the delete still
   running.
+- **Failed reaps retry.** A reap whose delete fails or overruns queues
+  the sha in `maidan_artifact_reap_retries` (migration 0181), with the
+  workspace whose erase, purge, media expiry or refused upload orphaned
+  it. The retention sweep retries a batch each run through the same
+  `reap_artifact_blob`, so every try takes the lease and checks for a row
+  again. A sha another workspace has uploaded since comes back
+  `Referenced`: its bytes stay and it leaves the queue, because that
+  workspace's own last erase will reap them. A failed retry backs off
+  from a minute, doubling to six hours. The queue has no foreign key to
+  the workspace, so a purge cannot take its orphaned bytes' retry with
+  it. Before, a failed delete was a log line and the bytes stayed for
+  good.
 
 **Alternative.** Per-author or per-workspace keys: coarser, so a single
 withdrawal cannot be erased without re-encrypting everything else.
@@ -2038,6 +2050,9 @@ The token is an admin's, so the guards live in Maidan's code, not in GitHub sett
 - The base must be the repo's allowed base.
 - `prod` is refused for every repo, whatever the configuration.
 - Maidan never merges, changes settings, deletes a branch or force-pushes.
+  The one later exception (#1444): a squash-rebase round force-moves an agent
+  branch whose head is still the last commit Maidan delivered, behind a guard
+  no other code can call ([Result Delivery](Result%20Delivery.md)).
 - Maidan marks ready only through the deliberate exception below, never any
   other PR mutation.
 - The token is never logged.

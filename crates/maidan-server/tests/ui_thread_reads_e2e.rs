@@ -57,6 +57,10 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         ttl_secs: 3600,
         cookie_secure: false,
     });
+    // Gate lists sign each gate's `request_state`; without the key they 500.
+    state.subscribe_resume_secret = Some(Arc::from(
+        maidan_server::subscribe_resume::TEST_SUBSCRIBE_RESUME_SECRET,
+    ));
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -111,6 +115,10 @@ async fn signed_in(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> Stri
 }
 
 struct Tenant {
+    workspace: WorkspaceId,
+    channel: maidan_types::ChannelId,
+    operator_id: MemberId,
+    message: maidan_types::MessageId,
     thread: ThreadId,
     private_thread: ThreadId,
     worker: MemberId,
@@ -138,6 +146,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
         store.record_artifact_ref(ws, sha).await.unwrap();
     }
     let mut threads = Vec::new();
+    let mut channels = Vec::new();
     for (channel_name, private) in [("work", false), ("secret", true)] {
         let channel = store
             .create_channel(NewChannel {
@@ -199,8 +208,24 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
         // no longer links it.
         store.unlink_thread_artifact(thread, DROPPED).await.unwrap();
         threads.push(thread);
+        channels.push(channel.id);
     }
+    let message = store
+        .post_message(maidan_types::NewMessage {
+            thread_id: threads[0],
+            author_id: worker,
+            body: "handed off".into(),
+            metadata: json!({}),
+            content: None,
+        })
+        .await
+        .unwrap()
+        .id;
     Tenant {
+        workspace: ws,
+        channel: channels[0],
+        operator_id: operator,
+        message,
         thread: threads[0],
         private_thread: threads[1],
         worker,
@@ -350,4 +375,209 @@ async fn another_workspaces_session_gets_nothing_of_a_threads_reviews_or_links()
     .await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(links[0]["linked_by"], json!(b.worker.0));
+}
+
+/// A token, and a session signed in with it: the session carries the token's
+/// authority, so each `/ui/api` read must answer exactly as its bearer twin
+/// (the same path without `/ui/api`) does for that token.
+async fn token_and_session(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    member: MemberId,
+) -> (String, String) {
+    let secret = maidan_auth::TokenSecret::generate();
+    let token = store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id: ws,
+            member_id: member,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: [
+                maidan_auth::capability::WORKSPACE_READ,
+                maidan_auth::capability::SEARCH_QUERY,
+                maidan_auth::capability::TOKEN_ADMIN,
+                maidan_auth::capability::FEDERATION_ADMIN,
+            ]
+            .map(String::from)
+            .to_vec(),
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let session = store
+        .create_session(NewMaidanSession {
+            workspace_id: ws,
+            member_id: member,
+            api_token_id: Some(token.id),
+            oidc_identity_id: None,
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        })
+        .await
+        .unwrap();
+    let mut headers = axum::http::HeaderMap::new();
+    maidan_server::session::set_session_cookie(
+        &mut headers,
+        session.id,
+        3600,
+        false,
+        SESSION_SECRET,
+    )
+    .unwrap();
+    let cookie = headers
+        .get(axum::http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    (secret.as_str().to_string(), cookie)
+}
+
+/// Every `/ui/api` read route, filled in with one tenant's ids. A route added
+/// to the session tree belongs here too.
+fn ui_reads(t: &Tenant) -> Vec<String> {
+    let (w, c, th, m, me) = (
+        t.workspace.0,
+        t.channel.0,
+        t.thread.0,
+        t.message.0,
+        t.operator_id.0,
+    );
+    let unknown = uuid::Uuid::now_v7();
+    [
+        format!("/workspaces/{w}"),
+        format!("/workspaces/{w}/events"),
+        format!("/workspaces/{w}/channels"),
+        format!("/workspaces/{w}/search?q=handed"),
+        format!("/workspaces/{w}/audit"),
+        format!("/workspaces/{w}/peers"),
+        format!("/workspaces/{w}/group-dms?member_id={me}"),
+        format!("/workspaces/{w}/dm?member_id={me}"),
+        format!("/workspaces/{w}/slash-commands"),
+        format!("/workspaces/{w}/deliveries"),
+        format!("/workspaces/{w}/members"),
+        format!("/workspaces/{w}/members/{me}/tokens"),
+        format!("/workspaces/{w}/app-installations"),
+        format!("/workspaces/{w}/approval-gates"),
+        format!("/workspaces/{w}/task-schedules"),
+        format!("/channels/{c}/threads"),
+        format!("/channels/{c}/queue-depth"),
+        format!("/channels/{c}/occupancy"),
+        format!("/threads/{th}"),
+        format!("/threads/{th}/messages"),
+        format!("/threads/{th}/review-status"),
+        format!("/threads/{th}/review-packet"),
+        format!("/threads/{th}/reviews"),
+        format!("/threads/{th}/artifacts"),
+        format!("/threads/{th}/pins"),
+        format!("/threads/{th}/result"),
+        format!("/threads/{th}/dependencies"),
+        format!("/messages/{m}/edits"),
+        format!("/messages/{m}/reactions"),
+        format!("/group-dms/{unknown}"),
+        format!("/members/{me}/notifications"),
+        format!("/members/{me}/notifications/unread-count"),
+        format!("/members/{me}/notification-prefs"),
+        format!("/members/{me}/delivery-mode"),
+        format!("/members/{me}/email"),
+        format!("/members/{me}/channel-follows"),
+        format!("/members/{me}/thread-follows"),
+        format!("/members/{me}/waiting"),
+        format!("/artifacts/{HELD}/meta"),
+        format!("/artifacts/{HELD}"),
+        "/me".to_string(),
+        "/web-push/vapid-public-key".to_string(),
+    ]
+    .into()
+}
+
+async fn get_bearer(client: &reqwest::Client, url: String, token: &str) -> (StatusCode, String) {
+    let resp = client.get(url).bearer_auth(token).send().await.unwrap();
+    (resp.status(), resp.text().await.unwrap())
+}
+
+async fn get_cookie(client: &reqwest::Client, url: String, cookie: &str) -> (StatusCode, String) {
+    let resp = client
+        .get(url)
+        .header("Cookie", cookie)
+        .send()
+        .await
+        .unwrap();
+    (resp.status(), resp.text().await.unwrap())
+}
+
+/// The session tree serves the bearer tree's handlers: for each `/ui/api`
+/// read, a session holding a token's authority gets the status and body the
+/// token gets from the twin route, for its own workspace's ids and for
+/// another workspace's, which both refuse with nothing of B's in the body.
+#[tokio::test]
+async fn every_ui_api_read_answers_as_its_bearer_twin_and_refuses_another_workspace() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let a = tenant(store.as_ref(), "a").await;
+    let b = tenant(store.as_ref(), "b").await;
+    let (token, cookie) = token_and_session(store.as_ref(), a.workspace, a.operator_id).await;
+
+    let own = ui_reads(&a);
+    let mut not_ok = Vec::new();
+    for path in &own {
+        let (session_status, session_body) =
+            get_cookie(&client, format!("{base}/ui/api{path}"), &cookie).await;
+        let (bearer_status, bearer_body) =
+            get_bearer(&client, format!("{base}{path}"), &token).await;
+        assert_eq!(
+            session_status, bearer_status,
+            "{path}: session {session_status} {session_body}, bearer {bearer_status} {bearer_body}"
+        );
+        assert_eq!(session_body, bearer_body, "{path}");
+        if session_status != StatusCode::OK {
+            not_ok.push(path.clone());
+        }
+    }
+    // The rest answer 200, so the comparison above covers real bodies. These
+    // four name nothing that exists: no email is set, the artifact is a bare
+    // reference with no blob, and the group DM id is made up.
+    let expected_missing = [
+        format!("/members/{}/email", a.operator_id.0),
+        format!("/artifacts/{HELD}/meta"),
+        format!("/artifacts/{HELD}"),
+    ];
+    not_ok.retain(|p| !expected_missing.contains(p) && !p.starts_with("/group-dms/"));
+    assert!(not_ok.is_empty(), "reads that did not answer: {not_ok:#?}");
+
+    let b_ids = [
+        b.workspace.0.to_string(),
+        b.channel.0.to_string(),
+        b.thread.0.to_string(),
+        b.message.0.to_string(),
+        b.operator_id.0.to_string(),
+    ];
+    for path in ui_reads(&b) {
+        // Paths that name no workspace's ids answer the caller's own data.
+        if !b_ids.iter().any(|id| path.contains(id.as_str())) {
+            continue;
+        }
+        let (session_status, session_body) =
+            get_cookie(&client, format!("{base}/ui/api{path}"), &cookie).await;
+        let (bearer_status, _) = get_bearer(&client, format!("{base}{path}"), &token).await;
+        assert!(
+            matches!(
+                session_status,
+                StatusCode::FORBIDDEN | StatusCode::NOT_FOUND
+            ),
+            "A's session reads B's {path}: {session_status} {session_body}"
+        );
+        assert_eq!(session_status, bearer_status, "{path}");
+        for id in &b_ids {
+            if !path.contains(id.as_str()) {
+                assert!(
+                    !session_body.contains(id.as_str()),
+                    "{path} leaked {id}: {session_body}"
+                );
+            }
+        }
+    }
 }
