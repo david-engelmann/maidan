@@ -56,7 +56,10 @@ credential. Reviews and approval gates decide when it is done, a reviewed pull
 request enters the repository's merge queue only at the commit that was
 reviewed, and the result goes back to the issue it came from (GitHub, Slack or
 Linear).
-[Running an agent swarm](docs/Swarms.md) is the guide.
+[Running an agent swarm](docs/Swarms.md) is the guide. Footprints, the merge
+queue and Linear delivery are on `main` but not yet in a release, so the
+`v413.0.0` the quickstart runs does not have them: build from source until the
+next release.
 
 ## How it fits together
 
@@ -256,7 +259,7 @@ see [SECURITY.md](SECURITY.md#verifying-a-release).
 ### Build + test
 
 ```sh
-git clone git@github.com:david-engelmann/maidan.git && cd maidan
+git clone https://github.com/david-engelmann/maidan && cd maidan
 cargo build --workspace
 cargo test --workspace      # integration tests need Docker (Postgres testcontainers); they skip cleanly without it
 ```
