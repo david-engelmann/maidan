@@ -130,8 +130,8 @@ fn stalled(thread: &Value) -> bool {
 
 #[tokio::test]
 async fn a_quiet_agent_reads_back_stalled_and_only_in_its_own_workspace() {
-    // Read per request, so setting it before the first read is enough; this
-    // binary has one test, so nothing else sees it.
+    // Read per request, so setting it before the first read is enough; each
+    // test runs in its own process under nextest, so nothing else sees it.
     std::env::set_var("MAIDAN_STALL_SECS", STALL_SECS.to_string());
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
