@@ -60,6 +60,8 @@ pub struct NewChangeRound {
     pub paths: Vec<String>,
     /// The branch the pull request merges into.
     pub base_branch: Option<String>,
+    /// A squash-rebase round: the branch was rebuilt on the base's head.
+    pub rebase: bool,
 }
 
 /// What a change notice tells a thread's worker.
@@ -172,6 +174,8 @@ pub struct ChangeRound {
     pub base_behind: Option<i64>,
     pub diff_lines: i64,
     pub delivered_at: DateTime<Utc>,
+    /// Whether this round rebuilt the branch on the base's head.
+    pub rebase: bool,
 }
 
 /// An agent pull request the change flow opened, with its rounds.
@@ -223,6 +227,8 @@ pub struct TaskMetrics {
     pub merged_without_edits: Option<bool>,
     pub cost_usd_micros: i64,
     pub flags: Vec<TaskFlag>,
+    /// How many of the rounds were squash-rebases.
+    pub rebases: i64,
 }
 
 /// One repository's rollup.
@@ -299,7 +305,9 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
             .windows(2)
             .rev()
             .take(2)
-            .all(|pair| pair[1].diff_lines > pair[0].diff_lines);
+            // A squash-rebase round carries the whole branch's diff, so its
+            // size says nothing about whether the rounds are converging.
+            .all(|pair| !pair[1].rebase && pair[1].diff_lines > pair[0].diff_lines);
     if open && (pull.rounds.len() as i64 >= limits.rounds || growing) {
         flags.push(TaskFlag::NonConverging);
     }
@@ -323,6 +331,7 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
         merged_without_edits,
         cost_usd_micros: pull.cost_usd_micros,
         flags,
+        rebases: pull.rounds.iter().filter(|r| r.rebase).count() as i64,
         rounds: pull.rounds,
     }
 }
@@ -409,6 +418,7 @@ mod tests {
             base_behind: behind,
             diff_lines: diff,
             delivered_at: at(n * 60),
+            rebase: false,
         }
     }
 
@@ -474,6 +484,26 @@ mod tests {
         assert!(m.tasks[3].flags.is_empty(), "a merged task is done");
         assert_eq!(m.tasks[4].flags, vec![TaskFlag::StaleBase]);
         assert_eq!(m.repos[0].flagged, 3);
+    }
+
+    #[test]
+    fn rebase_rounds_are_counted_per_task_and_never_read_as_a_growing_diff() {
+        let mut rebased = round(3, "c", 40, Some(0));
+        rebased.rebase = true;
+        let task = pull(vec![
+            round(1, "a", 10, None),
+            round(2, "b", 20, None),
+            rebased,
+        ]);
+        let m = swarm_metrics(
+            vec![task],
+            FlagLimits {
+                rounds: 10,
+                ..FlagLimits::default()
+            },
+        );
+        assert_eq!(m.tasks[0].rebases, 1);
+        assert!(m.tasks[0].flags.is_empty(), "{:?}", m.tasks[0].flags);
     }
 
     #[test]
