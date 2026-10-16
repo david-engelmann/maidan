@@ -218,6 +218,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a Swarm tab in the `/ui` console for one workspace. It lists the live claims with their holder, lease and footprint items, the threads the claim queue is holding back with their reasons, each slot's capacity and use, and the paused repositories, refreshing while it is open. An operator with `token:admin` can pause a repository from the panel and resume a paused one; everything else is a read over the existing footprint endpoints, and no route is new.
 
+### Sign-in says it is working
+
+- **Fixed:** while a pasted token is exchanged and checked, the web UI's Sign in button reads "Signing in…" and is marked `aria-busy`, and the status line (a polite live region) says the same, where before the field just went disabled. The audit timed a slow-3G sign-in at 21 s with no feedback. A refused token replaces the line with its reason, and a success clears it. From the 2026-10-03 UI audit (P2, outage UX).
+
 ### The audit log is partitioned by month
 
 - **Changed:** the Postgres audit log is range-partitioned by calendar month of `occurred_at` (migration 0165), the way the event log is (0162). Existing rows stay put in a legacy partition and drain through retention; `prune_audit` drops a month whole when no row in it belongs to a held workspace and deletes inside it otherwise, and boot and every retention sweep keep the current month plus three ahead ready. SQLite keeps one table.
