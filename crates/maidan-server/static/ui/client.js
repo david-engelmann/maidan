@@ -47,6 +47,7 @@ export const OPERATIONS = [
   { method: "", path: "/threads/${threadId}/pins" },
   { method: "", path: "/threads/${tid}" },
   { method: "", path: "/threads/${tid}/dependencies" },
+  { method: "", path: "/threads/${tid}/evidence" },
   { method: "", path: "/threads/${tid}/messages?limit=50" },
   { method: "", path: "/threads/${tid}/result" },
   { method: "", path: "/threads/${tid}/review-status" },
