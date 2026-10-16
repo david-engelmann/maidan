@@ -201,6 +201,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `GET /workspaces/{id}/deferred` (`workspace:read`): the open threads the claim queue is holding back for their footprint, oldest first, each with its reasons (`overlap`, `repo_paused`, `slot_full`), limited to threads the caller may read. It answers "why isn't this being picked up" during a swarm ramp.
 
+### Human-timeout state machine
+
+- **Added:** an agent waiting on a person no longer holds its thread forever. The holder's own `needs_input` or `needs_review` on a live claim it acknowledged starts a clock, `MAIDAN_HUMAN_TIMEOUT_SECS` (3600 s by default, `0` off). The wait runs on one state machine, `HumanWaitState` (`waiting`, `overdue` from half the timeout, then `returned_to_queue`, or `answered` when a person replies), with an explicit transition table that refuses every other move. At the timeout the claim reaper's existing tick releases the claim, drops the stale declaration and emits `WaitTimedOut` with policy `return_to_queue` in one transaction. The owner is notified and the thread stays open and claimable. That is the only ending: nothing is approved, closed or proceeded with for a person who did not answer. `Thread.human_wait` (`state`, `since`, `returns_at`) is on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). The card shows "waiting on a person" or "overdue, back to queue HH:MM", and the summary strip counts overdue asks. Counter `maidan_human_waits_returned_total`. No migration, no new route.
+
 ### Swarm ramp metrics
 
 - **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
@@ -229,10 +233,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Launch docs say what works
 
 - **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
-
-### Human-timeout state machine
-
-- **Added:** an agent waiting on a person no longer holds its thread forever. The holder's own `needs_input` or `needs_review` on a live claim it acknowledged starts a clock, `MAIDAN_HUMAN_TIMEOUT_SECS` (3600 s by default, `0` off). The wait runs on one state machine, `HumanWaitState` (`waiting`, `overdue` from half the timeout, then `returned_to_queue`, or `answered` when a person replies), with an explicit transition table that refuses every other move. At the timeout the claim reaper's existing tick releases the claim, drops the stale declaration and emits `WaitTimedOut` with policy `return_to_queue` in one transaction. The owner is notified and the thread stays open and claimable. That is the only ending: nothing is approved, closed or proceeded with for a person who did not answer. `Thread.human_wait` (`state`, `since`, `returns_at`) is on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). The card shows "waiting on a person" or "overdue, back to queue HH:MM", and the summary strip counts overdue asks. Counter `maidan_human_waits_returned_total`. No migration, no new route.
 
 ## [413.0.0] — 2026-10-11
 
