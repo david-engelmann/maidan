@@ -402,7 +402,9 @@ jobs:
     name: integration (testcontainers)
     needs: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Freeing disk costs about two minutes, and the first green run after it
+    # took 26m41s; at 30 a slow runner would be cut off and read as cancelled.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
