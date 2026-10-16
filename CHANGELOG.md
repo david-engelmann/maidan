@@ -222,6 +222,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
 
+### Launch docs say what works
+
+- **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
+
 ### The UI's route catalog is checked against the API
 
 - **Changed:** `static/ui/client.js`, the catalog of the paths the console calls, now lists every method OpenAPI has on each path (`methods: [...]`). Before, all 62 entries had an empty method. It also covers the direct `${base()}/…` calls and the calls the generator used to lose after an apostrophe in a comment or a quote in a regex. It now has 90 entries, and the three entries that had no OpenAPI path are gone. `scripts/gen-ui-client.mjs` gains `--stdout`. A new test in `ui_fetch_openapi_contract` runs the generator against the built OpenAPI document and fails when `client.js` differs, so a renamed or removed route, a dropped method, or a new UI call without a regeneration breaks `cargo test`. `MAIDAN_WRITE_SNAPSHOTS=1` on that test rewrites the file.
