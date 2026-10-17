@@ -508,7 +508,9 @@ pub(super) async fn transition_thread(
             return Err(err.into());
         }
     };
-    server.publish_stored(&stored).await;
+    for event in &stored {
+        server.publish_stored(event).await;
+    }
     // Entering a terminal state can unblock dependents. Same derived
     // `ThreadReady` emit as REST — best-effort, never undoes the committed
     // transition.
@@ -1291,6 +1293,50 @@ pub(super) async fn set_thread_attributes(
         )
         .await?;
     Ok(content_json(&stored))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SubmitPlanArgs {
+    thread_id: uuid::Uuid,
+    lease_id: ClaimLeaseId,
+    children: Vec<PlanChild>,
+}
+
+/// Make a plan parent's children, with their attributes, footprints and
+/// dependency edges, in one transaction. Thread access is enforced
+/// pre-dispatch; the store checks the caller holds the parent's live claim
+/// under `lease_id`. The MCP twin of `POST /threads/:id/plan`.
+pub(super) async fn submit_plan(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SubmitPlanArgs = crate::tools::parse_args(args)?;
+    let plan = SubmitPlan {
+        lease_id: a.lease_id,
+        children: a.children,
+    }
+    .validated()
+    .map_err(McpError::InvalidParams)?;
+    let outcome = server
+        .store
+        .submit_plan(ThreadId(a.thread_id), auth.member_id, plan)
+        .await?;
+    match outcome {
+        PlanOutcome::Created { children, events } => {
+            for stored in &events {
+                server.publish_stored(stored).await;
+            }
+            Ok(content_json(
+                &json!({ "children": children, "replayed": false }),
+            ))
+        }
+        PlanOutcome::Replayed(children) => Ok(content_json(
+            &json!({ "children": children, "replayed": true }),
+        )),
+        PlanOutcome::Conflict(children) => Err(McpError::PlanConflict(children)),
+    }
 }
 
 #[derive(Deserialize)]

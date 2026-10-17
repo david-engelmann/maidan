@@ -64,6 +64,9 @@ pub enum ApiError {
     /// with each overlapped claim item and its lease, so a client can defer
     /// until the lease would end.
     FootprintConflict(Vec<maidan_types::FootprintConflict>),
+    /// A plan parent already has children from another claim or with other
+    /// keys. 409 with the children it has, so the planner can work with them.
+    PlanConflict(Vec<maidan_types::PlannedChild>),
 }
 
 impl ApiError {
@@ -87,6 +90,7 @@ impl ApiError {
             Self::CursorTooOld { .. } | Self::EventLogBroken { .. } => StatusCode::CONFLICT,
             Self::MediaQuotaExceeded { .. } => StatusCode::CONFLICT,
             Self::FootprintConflict(_) => StatusCode::CONFLICT,
+            Self::PlanConflict(_) => StatusCode::CONFLICT,
         }
     }
 
@@ -111,6 +115,7 @@ impl ApiError {
             Self::EventLogBroken { .. } => "Event Log Broken",
             Self::MediaQuotaExceeded { .. } => "Media Quota Exceeded",
             Self::FootprintConflict(_) => "Footprint Conflict",
+            Self::PlanConflict(_) => "Plan Conflict",
         }
     }
 
@@ -176,6 +181,11 @@ impl ApiError {
                     held.len()
                 )
             }
+            Self::PlanConflict(children) => format!(
+                "this plan already has {} children, from another claim or with other keys; \
+                 nothing was created. Work with the children listed, or ask a person to replan",
+                children.len()
+            ),
         }
     }
 
@@ -201,6 +211,7 @@ impl ApiError {
             Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
             Self::MediaQuotaExceeded { .. } => "https://maidan.dev/problems/media-quota-exceeded",
             Self::FootprintConflict(_) => "https://maidan.dev/problems/footprint-conflict",
+            Self::PlanConflict(_) => "https://maidan.dev/problems/plan-conflict",
         }
     }
 
@@ -271,6 +282,9 @@ pub struct ProblemDetails {
     /// overlaps, each with its thread, holder and lease.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflicts: Option<Vec<maidan_types::FootprintConflict>>,
+    /// On a `plan-conflict` 409: the children the plan already has.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<maidan_types::PlannedChild>>,
 }
 
 impl IntoResponse for ApiError {
@@ -292,6 +306,10 @@ impl IntoResponse for ApiError {
             Self::FootprintConflict(conflicts) => Some(conflicts.clone()),
             _ => None,
         };
+        let children = match &self {
+            Self::PlanConflict(children) => Some(children.clone()),
+            _ => None,
+        };
         let body = ProblemDetails {
             type_: self.problem_type().to_string(),
             title: self.title().to_string(),
@@ -303,6 +321,7 @@ impl IntoResponse for ApiError {
             quota_bytes: quota.map(|(_, quota, _)| quota),
             upload_bytes: quota.map(|(_, _, upload)| upload),
             conflicts,
+            children,
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(

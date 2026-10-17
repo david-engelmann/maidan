@@ -58,6 +58,13 @@ pub struct PlannedChild {
     pub thread_id: ThreadId,
 }
 
+/// The children a plan made, as the plan routes answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PlanChildren {
+    pub children: Vec<PlannedChild>,
+}
+
 /// What submitting a plan did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanOutcome {

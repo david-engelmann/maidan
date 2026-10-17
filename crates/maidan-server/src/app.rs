@@ -529,6 +529,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/attributes",
             put(routes::set_thread_attributes),
         )
+        .route("/threads/{id}/plan", post(routes::submit_plan))
         .route(
             "/threads/{id}/deliveries",
             get(routes::list_thread_deliveries),

@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
@@ -525,6 +526,280 @@ macro_rules! on_both_backends {
     };
 }
 
+/// Land `thread` as the PR sweep does: a result, a delivered round, the pull
+/// request merged, then the settle that closes it with `ThreadLanded`.
+async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<StoredEvent> {
+    store
+        .set_thread_result(thread, room.worker, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: thread,
+            repo: REPO.into(),
+            pull_number: pr,
+            commit_sha: format!("{pr:040x}"),
+            base_sha: "a".repeat(40),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: None,
+            rebase: false,
+        })
+        .await
+        .unwrap();
+    let at = chrono::Utc::now();
+    store
+        .close_change_pull(REPO, pr, Some(at), Some("c0ffee"), at)
+        .await
+        .unwrap();
+    match store.settle_change_pull(REPO, pr).await.unwrap() {
+        ChangeSettlement::Landed(stored) => stored,
+        other => panic!("a merged pull request lands its thread, got {other:?}"),
+    }
+}
+
+/// Close `thread` by hand: through review, with no pull request merged.
+async fn close_unlanded(store: &dyn Store, thread: ThreadId, by: MemberId) -> Vec<StoredEvent> {
+    store
+        .transition_thread_with_event(thread, by, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    store
+        .transition_thread_with_event(thread, by, ThreadAction::Close)
+        .await
+        .unwrap()
+        .1
+}
+
+/// The `notice` names of the system messages on `thread`.
+async fn notices(store: &dyn Store, thread: ThreadId) -> Vec<String> {
+    store
+        .list_messages(thread, 50)
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|m| m.metadata.get("notice")?.as_str().map(str::to_string))
+        .collect()
+}
+
+/// A child closed without landing blocks what depends on it, so the queue
+/// never builds `b` on an `a` that never merged; the plan stays open with
+/// one message, and `plan_state` counts the block.
+async fn a_dependent_of_an_unlanded_child_is_never_claimed(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "plan-unlanded").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
+    let kids = created(
+        submit(
+            store.as_ref(),
+            parent,
+            r.planner,
+            lease,
+            vec![child("a", &[]), child("b", &["a"]), child("c", &[])],
+        )
+        .await
+        .unwrap(),
+    );
+    let (a, b, c) = (id(&kids, "a"), id(&kids, "b"), id(&kids, "c"));
+
+    // The plan is still open under its planner's claim; its child moves on
+    // regardless.
+    let stored = close_unlanded(store.as_ref(), a, r.worker).await;
+    assert!(
+        stored.iter().any(|e| e.kind == EventKind::ThreadBlocked
+            && e.payload["thread_id"] == serde_json::json!(b.0)),
+        "the dependent's block is published with the close"
+    );
+
+    let block = store
+        .get_thread_block(b)
+        .await
+        .unwrap()
+        .expect("b is blocked");
+    assert_eq!(block.reason, BlockedReason::Dag);
+    assert!(
+        block
+            .note
+            .as_deref()
+            .is_some_and(|n| n.contains("closed without landing")),
+        "the block names why: {:?}",
+        block.note
+    );
+    assert_eq!(notices(store.as_ref(), b).await, ["dependency_unlanded"]);
+    assert!(store.get_thread_block(c).await.unwrap().is_none());
+
+    let first = store
+        .claim_next_thread(r.channel, r.worker, Some(600), None)
+        .await
+        .unwrap()
+        .expect("c is free");
+    assert_eq!(first.id, c);
+    assert_eq!(
+        store
+            .claim_next_thread(r.channel, r.worker, Some(600), None)
+            .await
+            .unwrap()
+            .map(|t| t.id),
+        None,
+        "b depends on work that never merged"
+    );
+
+    assert_eq!(
+        store.get_thread(parent).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert_eq!(
+        notices(store.as_ref(), parent).await,
+        ["plan_child_unlanded"]
+    );
+    assert_eq!(
+        store.get_plan_state(parent).await.unwrap(),
+        Some(PlanState {
+            total: 3,
+            closed: 1,
+            open: 2,
+            blocked: 1,
+        })
+    );
+}
+
+/// The plan closes with its last landed child, in that child's transaction,
+/// with a `ThreadLanded` naming the pull request that finished it.
+async fn the_last_landed_child_closes_the_plan(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "plan-lands").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
+    let kids = created(
+        submit(
+            store.as_ref(),
+            parent,
+            r.planner,
+            lease,
+            vec![child("a", &[]), child("b", &["a"])],
+        )
+        .await
+        .unwrap(),
+    );
+
+    let first = land(store.as_ref(), &r, id(&kids, "a"), 11).await;
+    assert!(first.iter().all(|e| e.thread_id != Some(parent)));
+    assert_eq!(
+        store.get_thread(parent).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert!(store
+        .get_thread_block(id(&kids, "b"))
+        .await
+        .unwrap()
+        .is_none());
+
+    let last = land(store.as_ref(), &r, id(&kids, "b"), 12).await;
+    let landed = last
+        .iter()
+        .find(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(parent))
+        .expect("the plan lands with its last child");
+    assert_eq!(landed.payload["pr_number"], 12);
+    assert_eq!(
+        store.get_thread(parent).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let messages = store.list_messages(parent, 50).await.unwrap();
+    let [summary] = messages.as_slice() else {
+        panic!("one message on the plan, got {}", messages.len());
+    };
+    assert_eq!(summary.metadata["notice"], "plan_landed");
+    assert!(
+        summary.body.contains("do a: example/app#11"),
+        "{}",
+        summary.body
+    );
+    assert!(
+        summary.body.contains("do b: example/app#12"),
+        "{}",
+        summary.body
+    );
+    assert_eq!(
+        store.get_plan_state(parent).await.unwrap(),
+        Some(PlanState {
+            total: 2,
+            closed: 2,
+            open: 0,
+            blocked: 0,
+        })
+    );
+}
+
+/// An unlanded child keeps the plan open even after every other child
+/// lands: nothing merged stands in for it.
+async fn an_unlanded_child_keeps_the_plan_open(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "plan-partial").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
+    let kids = created(
+        submit(
+            store.as_ref(),
+            parent,
+            r.planner,
+            lease,
+            vec![child("a", &[]), child("c", &[])],
+        )
+        .await
+        .unwrap(),
+    );
+    close_unlanded(store.as_ref(), id(&kids, "a"), r.worker).await;
+    let stored = land(store.as_ref(), &r, id(&kids, "c"), 21).await;
+    assert!(stored.iter().all(|e| e.thread_id != Some(parent)));
+    assert_eq!(
+        store.get_thread(parent).await.unwrap().state,
+        ThreadState::Open
+    );
+    assert_eq!(
+        notices(store.as_ref(), parent).await,
+        ["plan_child_unlanded"]
+    );
+}
+
+/// The plan's own close goes through every gate. When one refuses, the
+/// child's landing stands, the plan stays open, and it says why once.
+async fn a_gate_refusal_leaves_the_plan_open(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "plan-gated").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
+    store.set_review_requirement(parent, 1).await.unwrap();
+    let kids = created(
+        submit(
+            store.as_ref(),
+            parent,
+            r.planner,
+            lease,
+            vec![child("only", &[])],
+        )
+        .await
+        .unwrap(),
+    );
+    let only = id(&kids, "only");
+    let stored = land(store.as_ref(), &r, only, 31).await;
+    assert!(stored
+        .iter()
+        .any(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(only)));
+    assert!(!stored
+        .iter()
+        .any(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(parent)));
+    assert_eq!(
+        store.get_thread(only).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let plan = store.get_thread(parent).await.unwrap();
+    assert_eq!(plan.state, ThreadState::Open);
+    assert_eq!(
+        plan.assignee_id,
+        Some(r.planner),
+        "the planner's claim stands"
+    );
+    assert_eq!(
+        notices(store.as_ref(), parent).await,
+        ["plan_close_refused"]
+    );
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -570,4 +845,8 @@ on_both_backends!(
     only_the_claim_holder_plans,
     another_workspace_allowlist_does_not_count,
     the_spawn_budget_counts_the_whole_plan,
+    a_dependent_of_an_unlanded_child_is_never_claimed,
+    the_last_landed_child_closes_the_plan,
+    an_unlanded_child_keeps_the_plan_open,
+    a_gate_refusal_leaves_the_plan_open,
 );

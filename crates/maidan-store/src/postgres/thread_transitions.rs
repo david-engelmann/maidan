@@ -1,7 +1,8 @@
 use chrono::Utc;
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    Event, MemberId, StoredEvent, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult,
+    ContentKeyring, Event, MemberId, StoredEvent, ThreadId, ThreadState, ThreadTransition,
+    ThreadTransitionResult,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -193,7 +194,15 @@ pub(crate) async fn transition_in_tx(
         .await?
         .ok_or(StoreError::NotFound)?;
         let parent = row_to_thread(&parent_row)?;
-        maidan_fsm::hsm::parent_allows_transition(parent.state, to_state)
+        // A plan's children land while the plan stays open under its
+        // planner's claim, and the plan closes after them (#1421), so only
+        // an archived plan holds a child back.
+        let child_to = if super::plans::is_child_in_tx(tx, thread_id).await? {
+            ThreadState::Open
+        } else {
+            to_state
+        };
+        maidan_fsm::hsm::parent_allows_transition(parent.state, child_to)
             .map_err(|e| StoreError::Conflict(e.as_str().into()))?;
     }
 
@@ -247,27 +256,38 @@ pub(crate) async fn transition_in_tx(
 
 pub async fn transition(
     pool: &PgPool,
+    keys: &ContentKeyring,
     thread_id: ThreadId,
     actor_id: MemberId,
     action: ThreadAction,
 ) -> Result<ThreadTransitionResult, StoreError> {
     let mut tx = pool.begin().await?;
     let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
+    if result.to_state == ThreadState::Closed {
+        // Recorded in the event log; this path publishes nothing, its own
+        // state change included.
+        super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?;
+    }
     tx.commit().await?;
     Ok(result)
 }
 
 /// Transition a thread's state and append its `ThreadStateChanged` event in one
-/// transaction.
+/// transaction. The events come back in order, the state change first, then
+/// whatever the close owed a plan around the thread.
 pub async fn transition_with_event(
     pool: &PgPool,
+    keys: &ContentKeyring,
     thread_id: ThreadId,
     actor_id: MemberId,
     action: ThreadAction,
-) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
+) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
-    let stored = state_changed_in_tx(&mut tx, actor_id, &result).await?;
+    let mut stored = vec![state_changed_in_tx(&mut tx, actor_id, &result).await?];
+    if result.to_state == ThreadState::Closed {
+        stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
+    }
     tx.commit().await?;
     Ok((result, stored))
 }

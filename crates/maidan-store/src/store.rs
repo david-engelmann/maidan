@@ -1573,13 +1573,15 @@ pub trait ThreadStore: Send + Sync {
         action: maidan_fsm::ThreadAction,
     ) -> Result<ThreadTransitionResult, StoreError>;
     /// Transition a thread's state and append its `ThreadStateChanged` event
-    /// atomically.
+    /// atomically. The events to publish come back in order: the state
+    /// change first, then what a close owed the plan around the thread
+    /// (#1421): its parent's close, blocks on its dependents, messages.
     async fn transition_thread_with_event(
         &self,
         thread_id: ThreadId,
         actor_id: MemberId,
         action: maidan_fsm::ThreadAction,
-    ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError>;
+    ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError>;
 
     async fn list_thread_transitions(
         &self,
