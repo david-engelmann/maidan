@@ -81,6 +81,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a squash-rebase round whose `base_sha` matched the base branch's head in another letter case was refused as a stale base. The comparison now ignores case, as the change flow's other SHA comparisons do. The force move's doc comment now says the move is not atomic (GitHub's refs API has no compare-and-swap) and why the one-round-trip window is acceptable.
 
+### A system notice floats its thread in the recently-active view
+
+- Every post now bumps its thread's activity time, whichever store path it takes. Before, the plain `post_message` path skipped the bump. That path carries the MCP system notices (`rebase_needed`, `cancelled`), so a thread that had just got one of them could sink below quieter threads in `GET /channels/{cid}/recent-threads`. The bump runs in the same transaction as the insert on both backends. Stuck detection reads `last_progress_at` and is unaffected.
+
 ### A result delivered to GitHub links its attached files
 
 - **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.

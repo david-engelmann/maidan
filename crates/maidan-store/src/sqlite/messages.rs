@@ -71,6 +71,7 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
         .as_ref()
         .map(serde_json::to_string)
         .transpose()?;
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -83,8 +84,17 @@ pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, Store
     .bind(&metadata_text)
     .bind(&content_text)
     .bind(now)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+    // Every post bumps its thread's activity clock, whichever path it takes:
+    // system notices go through here, and a recently-active view that missed
+    // them would sink a thread that just got news. In-tx, atomic with the post.
+    sqlx::query("UPDATE maidan_threads SET updated_at = ? WHERE id = ?")
+        .bind(now.to_rfc3339())
+        .bind(new.thread_id.0)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
     row_to_message(&row)
 }
 
