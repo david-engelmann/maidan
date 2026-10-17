@@ -528,11 +528,11 @@ pub enum MarkReadyOutcome {
 
 /// The GitHub calls the change flow makes: read a branch and the files a diff
 /// touches, write blobs, a tree and a commit, move the branch, find or open
-/// its draft pull request, and — the one deliberate exception —
-/// [`GithubGit::set_pull_ready`]. Nothing else here approves,
-/// merges, requests a review, comments, deletes a branch, force-pushes or
-/// touches repository settings, and there is deliberately no other method
-/// that could.
+/// its draft pull request, and — the deliberate exceptions —
+/// [`GithubGit::set_pull_ready`] and [`GithubGit::force_move_branch`].
+/// Nothing else here approves, merges, requests a review, comments, deletes a
+/// branch, force-pushes or touches repository settings, and there is
+/// deliberately no other method that could.
 #[async_trait::async_trait]
 pub trait GithubGit: Send + Sync {
     /// `GET /repos/{repo}/git/ref/heads/{branch}`: the branch head, or `None`
@@ -570,6 +570,18 @@ pub trait GithubGit: Send + Sync {
     /// `PATCH /repos/{repo}/git/refs/heads/{branch}` with `force: false`, so
     /// GitHub refuses (422) a move that is not a fast-forward.
     async fn update_branch(&self, repo: &str, branch: &str, sha: &str) -> Result<(), GithubError>;
+    /// `PATCH /repos/{repo}/git/refs/heads/{branch}` with `force: true`: the
+    /// change flow's only non-fast-forward write, for a squash-rebase round.
+    /// The branch and the commit come from the `pass` alone, and only the
+    /// guard in [`crate::change_flow`] can mint one: it re-reads the head
+    /// right before the move and binds the pass to that agent branch and that
+    /// commit. A caller cannot name a branch or commit here, so no other path
+    /// can force anything.
+    async fn force_move_branch(
+        &self,
+        repo: &str,
+        pass: crate::change_flow::ForceMovePass,
+    ) -> Result<(), GithubError>;
     /// `GET /repos/{repo}/pulls?head={owner}:{branch}&state=open`: the open
     /// pull request for this head branch, if any.
     async fn open_pull(&self, repo: &str, branch: &str) -> Result<Option<GithubPull>, GithubError>;
@@ -1285,6 +1297,23 @@ impl GithubGit for GithubApiClient {
             .request(reqwest::Method::PATCH, repo, &path)
             .await?
             .json(&serde_json::json!({ "sha": sha, "force": false }));
+        self.send_json(request).await.map(|_| ())
+    }
+
+    async fn force_move_branch(
+        &self,
+        repo: &str,
+        pass: crate::change_flow::ForceMovePass,
+    ) -> Result<(), GithubError> {
+        self.ensure_writable(repo)?;
+        // The pass already holds an agent branch; checked again here so the
+        // one force write never depends on a single check.
+        guard_ref(pass.branch())?;
+        let path = format!("/git/refs/heads/{}", encode_path(pass.branch()));
+        let request = self
+            .request(reqwest::Method::PATCH, repo, &path)
+            .await?
+            .json(&serde_json::json!({ "sha": pass.to(), "force": true }));
         self.send_json(request).await.map(|_| ())
     }
 

@@ -2038,6 +2038,9 @@ The token is an admin's, so the guards live in Maidan's code, not in GitHub sett
 - The base must be the repo's allowed base.
 - `prod` is refused for every repo, whatever the configuration.
 - Maidan never merges, changes settings, deletes a branch or force-pushes.
+  The one later exception (#1444): a squash-rebase round force-moves an agent
+  branch whose head is still the last commit Maidan delivered, behind a guard
+  no other code can call ([Result Delivery](Result%20Delivery.md)).
 - Maidan marks ready only through the deliberate exception below, never any
   other PR mutation.
 - The token is never logged.

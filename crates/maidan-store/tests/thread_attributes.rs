@@ -244,6 +244,7 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
                 diff_lines: 10,
                 paths: Vec::new(),
                 base_branch: None,
+                rebase: false,
             })
             .await
             .unwrap();

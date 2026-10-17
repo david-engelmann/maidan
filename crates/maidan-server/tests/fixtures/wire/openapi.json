@@ -1282,6 +1282,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "rebase": {
+            "description": "Whether this round rebuilt the branch on the base's head.",
+            "type": "boolean"
+          },
           "round": {
             "format": "int64",
             "type": "integer"
@@ -1291,7 +1295,8 @@
           "round",
           "commit_sha",
           "diff_lines",
-          "delivered_at"
+          "delivered_at",
+          "rebase"
         ],
         "type": "object"
       },
@@ -8450,6 +8455,11 @@
               "null"
             ]
           },
+          "rebases": {
+            "description": "How many of the rounds were squash-rebases.",
+            "format": "int64",
+            "type": "integer"
+          },
           "repo": {
             "type": "string"
           },
@@ -8487,6 +8497,7 @@
           "rounds",
           "cost_usd_micros",
           "flags",
+          "rebases",
           "attributes"
         ],
         "type": "object"

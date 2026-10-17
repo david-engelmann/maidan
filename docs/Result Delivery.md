@@ -326,7 +326,8 @@ envelope fields, Maidan reads:
 
 | Field | How Maidan uses it |
 |---|---|
-| `status` | `changed`, `no_change`, `seat_error` or `content_blocked` (the producer found a secret in the diff, title or summary, and sent none of it). Only `changed` writes to GitHub. Any other status records the `github_branch` target as skipped, with the status in the reason, makes no GitHub call, and the Slack reply says the status. |
+| `status` | `changed`, `no_change`, `seat_error`, `content_blocked` (the producer found a secret in the diff, title or summary, and sent none of it) or `rebase_conflict` (a squash-rebase round whose rebase stopped on conflicts in the producer's checkout). Only `changed` writes to GitHub. Any other status records the `github_branch` target as skipped, with the status in the reason, makes no GitHub call, and the Slack reply says the status; for `rebase_conflict` it says the rebase stopped on conflicts and gives `error_detail`, where the producer lists the conflicting paths. |
+| `rebase` | Optional. `true` (a JSON boolean; anything else is a normal round) makes this a **squash-rebase round**: `base_sha` is the current head of the target's base branch and `diff` is the whole branch's change against it. See below. |
 | `base_sha` | The full SHA (40 or 64 hex) the diff applies to, captured before any edit. The commit's parent. **Never** taken from thread metadata or the branch. |
 | `branch` | The branch the producer worked on, echoed verbatim. Must equal the target's `branch`, or the delivery is refused. |
 | `diff` | A git diff that applies with `git apply` to `base_sha`. |
@@ -359,7 +360,8 @@ blessed:
    quoted paths, paths outside the repository or under `.git`.
 4. Commits through the Git Data API: one blob per changed file, a tree on the
    base tree, a commit whose only parent is `base_sha`, and a fast-forward of
-   the branch (`force: false`).
+   the branch (`force: false`). A squash-rebase round is the one exception;
+   see below.
 5. Opens a **draft** pull request against `base` with the title and summary
    when none is open for the branch. Maidan posts no other comment, requests no
    review, and never marks the pull request ready, approves or merges it.
@@ -374,12 +376,50 @@ like any delivery; a 401/403/404 dead-letters the target.
 
 **Idempotent per thread and result.** The commit message carries a trailer
 `Maidan-Change: <thread_id>/<digest>`, the digest covering `base_sha` and the
-diff. A retried or replayed delivery that finds the branch head is that commit,
+diff (and, for a squash-rebase round, the `rebase` flag, so a rebase never
+takes a normal round's commit for its own). A retried or replayed delivery that finds the branch head is that commit,
 on top of `base_sha`, reuses it; the pull request is looked up before one is
 opened. A retry makes neither a second commit nor a second pull request.
 
 **A follow-up** is a new result whose `base_sha` is the branch head the last
 change left: it commits on top and finds the pull request already open.
+
+**A squash-rebase round** (`"rebase": true`) is a follow-up that rebases onto
+the current base instead of merging the base in, for a queue that takes only
+linear pull requests. `branch` is the existing agent branch, `base_sha` the
+base branch's current head, and `diff` the whole branch against it. On top of
+every rule above (the branch shape, the allowlisted base, never `prod`, the
+open pull request's base, and the merge-queue refusal below), Maidan refuses
+it, before any write and with the reason recorded, when:
+
+- no pull request is open for the branch;
+- **someone else pushed:** the branch head is not the newest round the change
+  flow recorded for that pull request in this workspace (a commit another
+  workspace delivered counts as someone else's). The reason names both SHAs;
+- **the base is not current:** `base_sha` is not the base branch's head right
+  now, so a rebase never moves a branch backwards;
+- the diff does not apply to `base_sha`.
+
+Otherwise it applies the diff to the `base_sha` tree, makes one commit whose
+only parent is `base_sha` with the usual `Maidan-Change` trailer, re-reads the
+branch head immediately before the move, and moves the branch with
+`force: true` only if the head is still the one it checked. This is the change
+flow's **only non-fast-forward write**. It is allowed only for a
+`feature/agent-*` branch whose head is the last commit Maidan delivered, and
+only through one guard in `change_flow.rs` that no other code can call: the
+GitHub client's force method takes a single-use pass that only that guard
+mints, bound to the branch and both commits, and checks the branch shape
+again. GitHub's ref API has no compare-and-swap, so a push landing between the
+re-read and the move (one round trip) is the window that remains. The round is
+recorded with `rebase: true` and `base_behind` 0, and the pull request's
+current-state section is updated from `pr_state` as for any round. A retry that
+finds the head is already that rebase commit (same trailer, parent `base_sha`)
+reuses it and writes nothing.
+
+**A rebase conflict** is the producer's to resolve: it sends `status:
+"rebase_conflict"`, Maidan records the target as skipped with no GitHub call,
+and the Slack reply says the rebase stopped on conflicts and gives
+`error_detail` (the conflicting paths, when the producer lists them).
 
 **The merge queue.** For a repository listed in `MAIDAN_MERGE_QUEUE_LABELS`,
 the mark-ready app may enter a ready agent pull request into the merge queue

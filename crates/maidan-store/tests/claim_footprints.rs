@@ -906,6 +906,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         diff_lines: lines,
         paths: vec!["src/a.rs".into()],
         base_branch: Some("main".into()),
+        rebase: false,
     };
     store.record_change_round(round("c1", 10)).await.unwrap();
     store.record_change_round(round("c1", 10)).await.unwrap();
@@ -969,7 +970,88 @@ fn round_for(ws: WorkspaceId, thread: ThreadId, pull_number: i64) -> NewChangeRo
         diff_lines: 1,
         paths: Vec::new(),
         base_branch: None,
+        rebase: false,
     }
+}
+
+/// A squash-rebase may force-move a branch only while its head is the newest
+/// round this workspace delivered. Another workspace's round on the same
+/// pull request is filed under the first workspace's pull request row, so it
+/// must neither vouch for the branch nor hide this workspace's own head.
+async fn the_newest_round_names_the_head_only_for_the_workspace_that_delivered_it(
+    store: Arc<dyn Store>,
+) {
+    let mine = room(store.as_ref(), "rebase-mine", 1).await;
+    let theirs = room(store.as_ref(), "rebase-theirs", 1).await;
+    let thread = task(store.as_ref(), mine.channel, "change").await;
+    let other_thread = task(store.as_ref(), theirs.channel, "change").await;
+    assert_eq!(
+        store
+            .latest_change_round_head(mine.ws, REPO, 7)
+            .await
+            .unwrap(),
+        None,
+        "nothing delivered yet"
+    );
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: "c1".repeat(20),
+            ..round_for(mine.ws, thread, 7)
+        })
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: "c2".repeat(20),
+            base_behind: Some(0),
+            rebase: true,
+            ..round_for(mine.ws, thread, 7)
+        })
+        .await
+        .unwrap();
+    // Another workspace delivering to the same pull request afterwards.
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: "f".repeat(40),
+            ..round_for(theirs.ws, other_thread, 7)
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        store
+            .latest_change_round_head(mine.ws, &REPO.to_ascii_uppercase(), 7)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("c2".repeat(20).as_str()),
+        "the newest round this workspace delivered, whatever the repo's case"
+    );
+    assert_eq!(
+        store
+            .latest_change_round_head(theirs.ws, REPO, 7)
+            .await
+            .unwrap(),
+        None,
+        "a pull request another workspace tracks is never vouched for"
+    );
+    assert_eq!(
+        store
+            .latest_change_round_head(mine.ws, REPO, 8)
+            .await
+            .unwrap(),
+        None
+    );
+    let pulls = store
+        .list_change_pulls(mine.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    let rebases: Vec<bool> = pulls[0].rounds.iter().map(|r| r.rebase).collect();
+    assert_eq!(
+        rebases,
+        vec![false, true],
+        "another workspace's round is not listed among this workspace's"
+    );
 }
 
 async fn open_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
@@ -1484,6 +1566,7 @@ on_both_backends!(
     the_deferred_list_names_why_each_thread_waits,
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
     change_rounds_ready_and_close_are_recorded_once,
+    the_newest_round_names_the_head_only_for_the_workspace_that_delivered_it,
     the_refresh_reads_the_longest_unread_pull_first,
     a_closed_pull_settles_its_thread_once,
     a_merge_notifies_each_overlapping_live_claim_once,

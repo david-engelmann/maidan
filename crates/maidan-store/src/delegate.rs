@@ -2625,6 +2625,16 @@ macro_rules! store_delegations {
                 change_metrics::record_round(self.pool(), round).await
             }
 
+            async fn latest_change_round_head(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<String>, StoreError> {
+                change_metrics::latest_round_head(self.pool(), workspace_id, repo, pull_number)
+                    .await
+            }
+
             async fn mark_change_pull_ready(
                 &self,
                 repo: &str,

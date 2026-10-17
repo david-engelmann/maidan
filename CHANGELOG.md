@@ -41,6 +41,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
 - **Changed:** HTTP responses are gzip-compressed for clients that offer `Accept-Encoding: gzip`. Event streams, protocol upgrades, images and already-encoded responses are never encoded. Nothing changes for clients that do not offer an encoding. Responses that carry a credential (a minted, rotated or delegated token, an agent's token, a share ticket, a webhook or hook secret, a peer token, an app code exchange) send `Cache-Control: no-store` and are never compressed, so a secret's length cannot be probed beside text the caller chose (BREACH).
 
+### A follow-up round can rebase an agent branch onto the current base (#1444)
+
+- **Added:** a change result with `"rebase": true` is a squash-rebase round. `base_sha` is the base branch's current head and `diff` the whole branch against it. Maidan rebuilds the branch as one commit on that head and moves it with `force: true`, the change flow's only non-fast-forward write. It refuses, before any write and naming the SHAs, when the branch head isn't the last commit the change flow delivered to the pull request in this workspace, when `base_sha` isn't the base's head, when the pull request is in the merge queue or none is open, and for anything but a `feature/agent-*` branch. The head is re-read right before the move, and only a guard in `change_flow.rs` can mint the single-use pass the GitHub client's force method takes. A retry that finds its own rebase commit reuses it.
+- **Added:** `status: "rebase_conflict"` is recorded as skipped with no GitHub call, and the Slack reply says the rebase stopped on conflicts and gives `error_detail` (the conflicting paths).
+- **Added:** migration 0182 adds `rebase` and `workspace_id` to `maidan_change_rounds`. Swarm metrics mark each rebase round, count `rebases` per task, and never read a rebase's whole-branch diff as a growing one.
+- **Fixed:** the swarm metrics for a pull request listed rounds that another workspace delivered to it. They now list only the reading workspace's rounds.
+
 ### A change that ends without a commit says why in its one Slack notice
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
@@ -177,13 +184,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `footprint` on `POST /channels/{cid}/threads` and the MCP `create_thread` tool. The footprint commits with the thread, so the claim queue applies it from the first claim, and a producer declares it under the `workspace:write` that creating the thread already needs. A separate `PUT /threads/{id}/footprint` needed `thread:transition`, which a producer should not hold. An invalid footprint is a `400` and creates nothing.
 
+### Reaction buttons say what they do
+
+- **Fixed:** a reaction button on a message was titled only "React", so a screen reader read out a bare emoji name without the action. Each quick-reaction button now says "React with thumbs up" (or heart, check mark, party popper, eyes). Each chip says whether it adds or removes the reaction and how many there are so far, and marks whether it is yours with `aria-pressed`. From the 2026-10-03 UI audit (P2, keyboard and accessibility).
+
 ### rustls advisories of 2026-10
 
 - **Security:** rustls 0.23.45 → 0.23.46 in the root and fuzz lockfiles (RUSTSEC-2026-0346, -0347, -0348). The 0.21.12 copy that only the AWS S3 client uses has no fixed release; RUSTSEC-2026-0346 and -0349 are accepted for it in `deny.toml` and the OSV config, with the reason.
 
+### Touch targets on phones
+
+- **Fixed:** on a touch screen every button, select, input, disclosure and channel row in the web UI is at least 44px tall (buttons also 44px wide; checkboxes 1.5rem), the size WCAG 2.5.5 asks of a fingertip, where the new-channel "+" was 27x33. The Ctrl K / ⌘K hint and the command palette's key legend are hidden there, since there is no keyboard to press them on. Keyed on `pointer: coarse`, so a desktop with a mouse is unchanged. From the 2026-10-03 UI audit (P2, mobile).
+
 ### Public `main` names no internal project
 
 - **Changed:** docs, code comments and the changelog no longer name the internal projects and repositories this one grew up beside; the prose uses neutral names, and the cross-repo contracts are cited by a neutral title. A lint check (`scripts/check-no-internal-names.sh`) fails when a listed name comes back, as a word or run into one. The list (`scripts/internal-names.sha256`) holds each name's length and SHA-256, not the name, so the list does not name them either.
+
+### A check keeps dead CSS out of the web UI
+
+- **Added:** the `ui_css_dead` test fails when a `board.css` selector names a class or id that neither `index.html` nor any `static/ui` module uses, so rules for removed markup go with it. A name the code builds from a literal prefix (`` `card-status-${status}` ``) counts as used. `board.css` has no dead names today. From the 2026-10-03 UI audit (P2, dead-CSS lint).
 
 ### The console shows the swarm at work
 
@@ -213,6 +232,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a thread is told when its base goes stale, with a `ThreadNotice` event (new event kind `thread_notice`) and one message. When the change sweep sees an agent pull request merged, each live claim in the same workspace and repository whose footprint covers a path the pull request touched (`path` and `glob` items, by prefix) gets one `rebase_needed` notice naming the repository, the pull request, the base branch and up to 20 covered paths; a merge notifies once. A round delivered on a base `MAIDAN_STALE_BASE_COMMITS` (default 50) or more commits behind gets one `stale_base` notice. The last 10 notices, newest first, are in `GET /threads/{id}` and the context pack's tail (MCP `get_thread_context`). Migration 0176 adds `maidan_change_rounds.paths` and `base_branch`, `maidan_change_pulls.noticed_at`, and `maidan_thread_notices`.
 
+### The board redraws only the cards that changed
+
+- **Changed:** a board load keeps every card whose markup is unchanged and only adds, replaces, moves or removes the cards that differ, instead of rebuilding all of them. The card glide now reads every card's position before it starts any animation, so one load forces one layout rather than one per card. In headless Chromium on a synthetic board of 3,000 threads, a load where one card changed went from about 1.6 s to about 150 ms, and a load with no changes from about 120 ms to about 60 ms.
+
 ### A producer can cancel a task it created
 
 - **Added:** `POST /threads/{id}/cancel` with `{"reason"}` (1 to 500 characters) and the MCP tool `cancel_thread` (250 tools). In one transaction a cancel closes the thread without the review, land or parent gates, parks it from dispatch with the reason, ends any live claim (the holder's next `renew_claim` is refused), appends `ThreadStateChanged` and the new `ThreadCancelled` event, and posts the reason on the thread (`metadata.notice = "cancelled"`). It needs `workspace:write`; without `thread:transition` as well, only the member that created the thread may. A repeat answers `200` with the first cancel; a thread already closed some other way is `409`.
@@ -221,6 +244,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### One unreachable federation peer no longer stops the others
 
 - **Fixed:** a federation poll tick returned at the first peer whose event read failed (unreachable, an error status, a refused bearer, a bad body) or whose cursor write failed. Every peer sorted after it, in every workspace, went unpolled on every tick. Now a failing peer is logged and skipped, and the rest are still polled. New counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`), with no peer or workspace label. The per-peer egress allowlist that would replace `MAIDAN_ALLOW_PRIVATE_EGRESS` stays deferred until a real federation peer.
+
+### Tests for routes no test called
+
+- **Tests:** ten routes that no test called now have behavior tests, each with a second workspace that holds the same capabilities and gets none of the first workspace's rows. They cover the thread, workspace and member usage rollups, `GET /workspaces/{id}/deferred`, `GET /members/{id}/decisions`, `DELETE /members/{id}/push-subscriptions/{sub_id}`, `GET /channels/{cid}/recent-threads`, `DELETE /workspaces/{wid}/peers/{pid}`, and the operator dead-mail list and requeue, where `operator:global` also sees the tenant-less row. The tests are in `http_capability_matrix_e2e`. In `ui_thread_reads_e2e`, every `/ui/api` read, for a session that holds a token's authority, answers with the same status and body as its bearer twin, and refuses another workspace's ids the same way.
 
 ### Launch docs say what works
 

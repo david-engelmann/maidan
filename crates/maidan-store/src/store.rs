@@ -2186,6 +2186,16 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         round: maidan_types::NewChangeRound,
     ) -> Result<(), StoreError>;
+    /// The commit of the newest round recorded for `repo`#`pull_number` in
+    /// `workspace_id`, or `None` when the change flow recorded none there.
+    /// Read from the primary: a squash-rebase compares it with the branch
+    /// head right before its force move.
+    async fn latest_change_round_head(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<String>, StoreError>;
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,

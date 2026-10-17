@@ -375,6 +375,12 @@ fn no_change_reason(target: &EgressTarget, waiter: &WaiterResult) -> Option<Stri
             waiter.result_kind
         ));
     }
+    if waiter.status == maidan_types::CHANGE_STATUS_REBASE_CONFLICT {
+        return Some(format!(
+            "status `{}`: the rebase stopped on conflicts, so no GitHub write",
+            waiter.status
+        ));
+    }
     (waiter.status != maidan_types::CHANGE_STATUS_CHANGED).then(|| {
         format!(
             "status `{}`: nothing to commit, so no GitHub write",
@@ -459,10 +465,17 @@ pub async fn change_reply_at(
     };
     let mut lines = Vec::new();
     if !change.is_changed() {
-        lines.push(format!(
-            "The coding agent finished with status `{}`, so nothing was committed.",
-            change.status
-        ));
+        lines.push(if change.status == maidan_types::CHANGE_STATUS_REBASE_CONFLICT {
+            format!(
+                "The coding agent's rebase onto the base branch stopped on conflicts (status `{}`), so nothing was committed.",
+                change.status
+            )
+        } else {
+            format!(
+                "The coding agent finished with status `{}`, so nothing was committed.",
+                change.status
+            )
+        });
         // The cause, so the thread gets one end notice that says why. A
         // producer's own detail wins over its summary, as the consuming app reads it.
         if let Some(reason) = change.error_detail.as_deref().or(change.summary.as_deref()) {
