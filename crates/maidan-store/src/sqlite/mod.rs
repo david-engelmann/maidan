@@ -60,6 +60,7 @@ mod oidc;
 pub mod outbox;
 mod peers;
 mod pins;
+mod plans;
 mod pragmas;
 mod priorities;
 mod purge_workspace;

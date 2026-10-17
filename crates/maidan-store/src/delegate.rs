@@ -3055,6 +3055,22 @@ macro_rules! store_delegations {
                 thread_deps::remove(self.pool(), thread_id, depends_on).await
             }
 
+            async fn submit_plan(
+                &self,
+                parent_id: ThreadId,
+                member_id: MemberId,
+                plan: maidan_types::SubmitPlan,
+            ) -> Result<maidan_types::PlanOutcome, StoreError> {
+                plans::submit(self.pool(), parent_id, member_id, plan).await
+            }
+
+            async fn get_plan_state(
+                &self,
+                parent_id: ThreadId,
+            ) -> Result<Option<maidan_types::PlanState>, StoreError> {
+                plans::state(self.read_pool(), parent_id).await
+            }
+
             async fn list_thread_dependencies(
                 &self,
                 thread_id: ThreadId,
