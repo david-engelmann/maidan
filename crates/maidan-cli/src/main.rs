@@ -30,12 +30,19 @@ fn version() -> &'static str {
     option_env!("MAIDAN_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
 }
 
+// Every `DATABASE_URL` argument sets `hide_env_values`: clap otherwise prints
+// the variable's current value, password and all, in `--help`.
 #[derive(Subcommand)]
 enum Commands {
     /// MCP JSON-RPC over stdin/stdout (line-delimited).
     #[command(name = "mcp-stdio")]
     McpStdio {
-        #[arg(long, env = "DATABASE_URL", default_value = "sqlite::memory:")]
+        #[arg(
+            long,
+            env = "DATABASE_URL",
+            hide_env_values = true,
+            default_value = "sqlite::memory:"
+        )]
         database_url: String,
         #[arg(
             long,
@@ -56,7 +63,12 @@ enum Commands {
     /// Re-embed all live messages for the configured provider model.
     #[command(name = "reindex-embeddings")]
     ReindexEmbeddings {
-        #[arg(long, env = "DATABASE_URL", default_value = "sqlite::memory:")]
+        #[arg(
+            long,
+            env = "DATABASE_URL",
+            hide_env_values = true,
+            default_value = "sqlite::memory:"
+        )]
         database_url: String,
         #[arg(long, env = "MAIDAN_EMBEDDING_PROVIDER", default_value = "hash-v1")]
         embedding_provider: String,
@@ -70,7 +82,7 @@ enum Commands {
     /// database.
     #[command(name = "verify-shredding")]
     VerifyShredding {
-        #[arg(long, env = "DATABASE_URL")]
+        #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
         database_url: String,
         /// Check one workspace instead of all of them.
         #[arg(long)]
@@ -82,7 +94,7 @@ enum Commands {
     /// the server's `MAIDAN_CONTENT_KEK`.
     #[command(name = "rotate-workspace-key")]
     RotateWorkspaceKey {
-        #[arg(long, env = "DATABASE_URL")]
+        #[arg(long, env = "DATABASE_URL", hide_env_values = true)]
         database_url: String,
         #[arg(long)]
         workspace_id: uuid::Uuid,
@@ -92,7 +104,12 @@ enum Commands {
     /// already has a workspace. Removes the need for public bootstrap HTTP routes
     /// or `AUTH_DISABLED` on a production deployment.
     Init {
-        #[arg(long, env = "DATABASE_URL", default_value = "sqlite::memory:")]
+        #[arg(
+            long,
+            env = "DATABASE_URL",
+            hide_env_values = true,
+            default_value = "sqlite::memory:"
+        )]
         database_url: String,
         /// Name for the initial workspace.
         #[arg(long, default_value = "maidan")]
