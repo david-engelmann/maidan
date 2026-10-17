@@ -66,9 +66,12 @@ pub fn redact_connection_url(url: &str) -> String {
     out
 }
 
-/// Where the part after the scheme starts: after `scheme://`, or after a
-/// mistyped `scheme:` or `scheme:/`, which must not slip past the userinfo
-/// masking. `None` when the text before the first `:` is not a scheme, as in
+/// Where the part after the scheme starts: after `scheme://`, or at the very
+/// start when no `//` follows the first `:`. Without the `//` the text before
+/// that colon may not be a scheme at all: in `maidan:S3cr3tPw@db/maidan`,
+/// a URL that lost its scheme, it is the user. Reading it from the start puts
+/// everything after the first `:` up to the last `@` under the password mask.
+/// `None` when the text before the first `:` is not a scheme, as in
 /// `host=db:5432 password=x`.
 fn authority_start(url: &str) -> Option<usize> {
     let colon = url.find(':')?;
@@ -81,6 +84,9 @@ fn authority_start(url: &str) -> Option<usize> {
         return None;
     }
     let slashes = url[colon + 1..].chars().take_while(|c| *c == '/').count();
+    if slashes < 2 {
+        return Some(0);
+    }
     Some(colon + 1 + slashes)
 }
 
@@ -222,6 +228,18 @@ mod tests {
     }
 
     #[test]
+    fn a_url_that_lost_its_scheme_never_shows_the_password() {
+        for url in [
+            "maidan:S3cr3tPw@db.example/maidan",
+            "maidan:S3cr3tPw@db.example:5432/maidan?sslmode=require",
+        ] {
+            let shown = redact_connection_url(url);
+            assert_no_secret(&shown);
+            assert!(shown.starts_with("maidan:***@db.example"), "{shown}");
+        }
+    }
+
+    #[test]
     fn credential_query_parameters_are_masked_in_any_spelling() {
         let shown = redact_connection_url(
             "libsql://d.turso.io?authToken=tok_S3cr3t&password=S3cr3tPw&API_KEY=S3cr3tPw\
@@ -242,7 +260,9 @@ mod tests {
         ] {
             let shown = redact_connection_url(url);
             assert_no_secret(&shown);
-            assert!(shown.contains("maidan:***@db.example"), "{shown}");
+            // Without `//` the user may be the scheme's stand-in, so it is
+            // masked along with the password.
+            assert!(shown.contains(":***@db.example/maidan"), "{shown}");
         }
     }
 
