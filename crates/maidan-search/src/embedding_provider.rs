@@ -97,10 +97,24 @@ impl OpenAiCompatibleProvider {
             })
             .transpose()?
             .unwrap_or(15);
-        let client = Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
-            .build()
-            .map_err(|e| EmbeddingProviderError::InvalidConfig(e.to_string()))?;
+        Self::new(endpoint, model, api_key, configured_dim, timeout_secs)
+    }
+
+    /// The provider for `endpoint` and `model`, probing the endpoint once for
+    /// the dimension unless `configured_dim` gives it.
+    pub fn new(
+        endpoint: String,
+        model: String,
+        api_key: Option<String>,
+        configured_dim: Option<usize>,
+        timeout_secs: u64,
+    ) -> Result<Self, EmbeddingProviderError> {
+        let client = off_runtime(|| {
+            Client::builder()
+                .timeout(Duration::from_secs(timeout_secs))
+                .build()
+        })
+        .map_err(|e| EmbeddingProviderError::InvalidConfig(e.to_string()))?;
         // Dimension is set explicitly via MAIDAN_EMBEDDING_DIM, or auto-detected
         // by a one-shot probe against the endpoint. Probing here means a
         // mis-configured model or unreachable endpoint fails at boot, not on
@@ -132,12 +146,14 @@ impl OpenAiCompatibleProvider {
         if let Some(token) = &self.api_key {
             req = req.bearer_auth(token);
         }
-        req.send()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
-            .json()
-            .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))
+        off_runtime(move || {
+            req.send()
+                .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
+                .error_for_status()
+                .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))?
+                .json()
+                .map_err(|e| EmbeddingProviderError::Remote(e.to_string()))
+        })
     }
 
     /// One sentinel embed to learn the model's output dimension (used when
@@ -158,6 +174,20 @@ impl OpenAiCompatibleProvider {
         }
         Ok(dim)
     }
+}
+
+/// Run `f` where `reqwest::blocking` is allowed to block. Its client panics if
+/// it is built or sends from inside a Tokio runtime, and this provider is
+/// built in the server's async `serve` and called from async search, indexing
+/// and reindex paths. A scoped OS thread is outside any runtime, and starting
+/// one costs nothing next to a remote embedding call. The caller still waits
+/// for the call, as the provider's synchronous trait already says it will.
+fn off_runtime<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return f();
+    }
+    std::thread::scope(|scope| scope.spawn(f).join())
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
 }
 
 /// Resolve the embedding dimension: an explicit positive `configured` value
@@ -343,5 +373,61 @@ mod tests {
             data: vec![item(0, 0.0, 3)],
         };
         assert!(parse_embeddings_batch(wrong_dim, 4, 1).is_err());
+    }
+
+    /// A one-endpoint stand-in for an OpenAI-compatible server: every request
+    /// gets one 3-dimensional embedding, and each connection is closed after
+    /// its answer so the client never waits on a reused socket.
+    fn stub_endpoint(requests: usize) -> String {
+        use std::io::{BufRead, BufReader, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(requests) {
+                let mut stream = stream.expect("accept");
+                let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+                let mut length = 0usize;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).expect("header");
+                    if line == "\r\n" || line.is_empty() {
+                        break;
+                    }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = v.trim().parse().expect("length");
+                    }
+                }
+                let mut body = vec![0; length];
+                reader.read_exact(&mut body).expect("body");
+                let reply = r#"{"data":[{"index":0,"embedding":[0.1,0.2,0.3]}]}"#;
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+                    reply.len()
+                )
+                .expect("reply");
+            }
+        });
+        format!("http://{addr}/v1/embeddings")
+    }
+
+    // The server builds the provider in its async `serve` and calls it from
+    // async handlers; a blocking client used there panics in a debug build.
+    #[tokio::test]
+    async fn the_remote_provider_builds_probes_and_embeds_inside_a_runtime() {
+        let endpoint = stub_endpoint(2);
+        let provider =
+            OpenAiCompatibleProvider::new(endpoint, "stub".into(), None, None, 5).expect("build");
+        assert_eq!(provider.dimension(), 3, "the probe learns the dimension");
+        assert_eq!(provider.embed("hello").expect("embed"), vec![0.1, 0.2, 0.3]);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_remote_provider_embeds_on_a_multi_thread_runtime() {
+        let endpoint = stub_endpoint(1);
+        let provider = OpenAiCompatibleProvider::new(endpoint, "stub".into(), None, Some(3), 5)
+            .expect("build");
+        let batch = provider.embed_batch(&["hello"]).expect("embed");
+        assert_eq!(batch, vec![vec![0.1, 0.2, 0.3]]);
     }
 }
