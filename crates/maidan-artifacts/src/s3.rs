@@ -114,7 +114,7 @@ impl S3Store {
                     .bucket(&self.bucket)
                     .send()
                     .await
-                    .map_err(|e| ArtifactError::Storage(format!("create bucket: {e}")))?;
+                    .map_err(|e| ArtifactError::sdk("create bucket", &e))?;
                 Ok(())
             }
         }
@@ -143,7 +143,7 @@ impl ArtifactStore for S3Store {
             .body(ByteStream::from(bytes))
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("put_object: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("put_object", &e))?;
 
         Ok(sha)
     }
@@ -161,7 +161,7 @@ impl ArtifactStore for S3Store {
                 if e.as_service_error().is_some_and(|s| s.is_no_such_key()) {
                     ArtifactError::NotFound
                 } else {
-                    ArtifactError::Storage(format!("get_object: {e}"))
+                    ArtifactError::sdk("get_object", &e)
                 }
             })?;
 
@@ -169,7 +169,7 @@ impl ArtifactStore for S3Store {
             .body
             .collect()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("read body: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("read body", &e))?;
         Ok(aggregated.into_bytes())
     }
 
@@ -185,7 +185,7 @@ impl ArtifactStore for S3Store {
         {
             Ok(_) => Ok(true),
             Err(e) if e.as_service_error().is_some_and(|s| s.is_not_found()) => Ok(false),
-            Err(e) => Err(ArtifactError::Storage(format!("head_object: {e}"))),
+            Err(e) => Err(ArtifactError::sdk("head_object", &e)),
         }
     }
 
@@ -197,7 +197,7 @@ impl ArtifactStore for S3Store {
             .key(&key)
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("delete_object: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("delete_object", &e))?;
         Ok(())
     }
 }
