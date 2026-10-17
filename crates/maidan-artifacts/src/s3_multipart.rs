@@ -35,7 +35,7 @@ impl S3Store {
             .key(&object_key)
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("create_multipart_upload: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("create_multipart_upload", &e))?;
         let upload_id = out
             .upload_id()
             .ok_or_else(|| ArtifactError::Storage("missing upload_id".into()))?
@@ -68,7 +68,7 @@ impl S3Store {
             .body(ByteStream::from(body))
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("upload_part: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("upload_part", &e))?;
         out.e_tag()
             .map(|s| s.to_string())
             .ok_or_else(|| ArtifactError::Storage("missing part ETag".into()))
@@ -107,7 +107,7 @@ impl S3Store {
             .multipart_upload(completed)
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("complete_multipart_upload: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("complete_multipart_upload", &e))?;
 
         let bytes = self.get_object_key(&upload.object_key).await?;
         self.client()
@@ -116,7 +116,7 @@ impl S3Store {
             .key(&upload.object_key)
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("delete temp multipart object: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("delete temp multipart object", &e))?;
         self.put(bytes).await
     }
 
@@ -151,12 +151,12 @@ impl S3Store {
             .key(key)
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("get_object: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("get_object", &e))?;
         let aggregated = out
             .body
             .collect()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("read body: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("read body", &e))?;
         Ok(aggregated.into_bytes())
     }
 }
