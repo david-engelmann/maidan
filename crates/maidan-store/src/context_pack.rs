@@ -95,6 +95,10 @@ async fn build_live(
     if thread.tombstoned_at.is_some() {
         return Err(StoreError::NotFound);
     }
+    // The pack reports the thread's task attributes, as the thread read
+    // does; the as-of rebuild does not (they are current routing state,
+    // not history).
+    thread.attributes = Some(store.get_thread_attributes(thread_id).await?);
     // The live pack only: the notices table keeps no history to rebuild an
     // as-of pack's notices from.
     thread.notices = store

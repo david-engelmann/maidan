@@ -243,6 +243,10 @@
           "assignee_id": {
             "$ref": "#/components/schemas/MemberId"
           },
+          "attributes": {
+            "$ref": "#/components/schemas/TaskAttributes",
+            "description": "The claimed thread's task attributes; the defaults when the thread\nwas never described."
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/FootprintItem"
@@ -272,7 +276,8 @@
           "assignee_id",
           "repo",
           "mode",
-          "items"
+          "items",
+          "attributes"
         ],
         "type": "object"
       },
@@ -1457,6 +1462,17 @@
         "additionalProperties": false,
         "description": "Claim the next unassigned/expired thread in a channel.",
         "properties": {
+          "engine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskEngine",
+                "description": "Only claim a thread routed to this engine (`pi`, `session` or\n`human`), for a worker that serves one kind of work. A thread routed\nto another engine, or not routed at all, is then never claimed."
+              }
+            ]
+          },
           "lease_secs": {
             "description": "Lease in seconds (1 s to 7 days). The holder renews before it lapses;\na lapsed claim is reaped and the thread returns to the queue with a\n`ClaimExpired`. Omitted, the server's default lease applies\n(`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s).",
             "format": "int64",
@@ -2274,6 +2290,17 @@
       "CreateThread": {
         "additionalProperties": false,
         "properties": {
+          "attributes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskAttributes",
+                "description": "The task's attributes: what kind of work it is, who or what should\ndo it, and whether it needs a threat model. Stored with the thread;\nreplaced later by `PUT /threads/{id}/attributes`."
+              }
+            ]
+          },
           "description": {
             "description": "What the task is about, in the creator's words.",
             "type": [
@@ -2296,6 +2323,14 @@
             "format": "uuid",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "description": "The thread's dispatch priority (higher is more urgent; the default is\n0), stored with the thread under the creator's `workspace:write`.\nChanging it later is `PUT /threads/{id}/priority`.",
+            "format": "int64",
+            "type": [
+              "integer",
               "null"
             ]
           },
@@ -2731,6 +2766,35 @@
         "required": [
           "model",
           "dimension"
+        ],
+        "type": "object"
+      },
+      "EngineRollup": {
+        "description": "One engine's slice of a repository rollup: how much of the repo's work\nwas routed to it, and how much of that merged.",
+        "properties": {
+          "engine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskEngine",
+                "description": "The engine the tasks were routed to; `None` for tasks never routed."
+              }
+            ]
+          },
+          "merged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tasks": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks",
+          "merged"
         ],
         "type": "object"
       },
@@ -6680,6 +6744,13 @@
       "RepoRollup": {
         "description": "One repository's rollup.",
         "properties": {
+          "by_engine": {
+            "description": "The rollup split by the engine each task was routed to, in engine\norder with unrouted tasks last; engines with no tasks are omitted.",
+            "items": {
+              "$ref": "#/components/schemas/EngineRollup"
+            },
+            "type": "array"
+          },
           "closed_unmerged": {
             "format": "int64",
             "type": "integer"
@@ -6730,7 +6801,8 @@
           "merged_without_edits",
           "closed_unmerged",
           "flagged",
-          "mean_rounds"
+          "mean_rounds",
+          "by_engine"
         ],
         "type": "object"
       },
@@ -8429,6 +8501,54 @@
         ],
         "type": "object"
       },
+      "TaskAttributes": {
+        "description": "A thread's task attributes, whole: setting them replaces every field.",
+        "properties": {
+          "acceptance": {
+            "description": "How a reviewer verifies the task: what the change must satisfy. Shown\nto the worker in the thread context.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskEngine"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TaskKind"
+          },
+          "size": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskSize"
+              }
+            ]
+          },
+          "threat_model": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "TaskEngine": {
+        "description": "Who or what a task is meant for. `None` on a thread means nobody has\nrouted it yet; an engine-filtered claim never takes a thread routed to\nanother engine, nor one not routed at all.",
+        "enum": [
+          "pi",
+          "session",
+          "human"
+        ],
+        "type": "string"
+      },
       "TaskFlag": {
         "description": "Why a task needs a look.",
         "enum": [
@@ -8437,9 +8557,22 @@
         ],
         "type": "string"
       },
+      "TaskKind": {
+        "description": "What kind of work a task is.",
+        "enum": [
+          "change",
+          "plan",
+          "review"
+        ],
+        "type": "string"
+      },
       "TaskMetrics": {
         "description": "One task's numbers.",
         "properties": {
+          "attributes": {
+            "$ref": "#/components/schemas/TaskAttributes",
+            "description": "The task's attributes; the defaults when the thread was never\ndescribed."
+          },
           "closed_at": {
             "format": "date-time",
             "type": [
@@ -8528,7 +8661,8 @@
           "rounds",
           "cost_usd_micros",
           "flags",
-          "rebases"
+          "rebases",
+          "attributes"
         ],
         "type": "object"
       },
@@ -8608,6 +8742,15 @@
         "format": "uuid",
         "type": "string"
       },
+      "TaskSize": {
+        "description": "How big a task is, as its planner judged it.",
+        "enum": [
+          "S",
+          "M",
+          "L"
+        ],
+        "type": "string"
+      },
       "Thread": {
         "properties": {
           "assignee_id": {
@@ -8627,6 +8770,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "attributes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskAttributes",
+                "description": "The thread's task attributes (kind, engine, threat model). Populated\nby the API layer on the reads that report them; `None` in store-level\nqueries that do not read the attributes table. A thread with no\nattributes row reads as [`TaskAttributes::default`] where they are\nreported."
+              }
             ]
           },
           "block": {
@@ -21104,6 +21258,98 @@
         ]
       }
     },
+    "/threads/{id}/attributes": {
+      "put": {
+        "operationId": "set_thread_attributes",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskAttributes"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskAttributes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set a thread's task attributes",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/threads/{id}/block": {
       "delete": {
         "operationId": "clear_thread_block",
@@ -31303,6 +31549,33 @@
             "schema": {
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only tasks routed to this engine (`pi`, `session` or `human`).",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskEngine"
+            }
+          },
+          {
+            "description": "Only tasks of this kind (`change`, `plan` or `review`); a task never\ndescribed counts as a change.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskKind"
+            }
+          },
+          {
+            "description": "Only tasks of this size (`S`, `M` or `L`).",
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskSize"
             }
           }
         ],

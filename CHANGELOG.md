@@ -283,6 +283,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** the quickstart command in `compose.quickstart.yaml` and `scripts/quickstart-two-agents.sh` was missing the space before `./scripts/quickstart-two-agents.sh`, so pasting it ran nothing. The README's build-from-source clone uses https, as the quickstart does, and `docs/Capabilities.md` names `scripts/a2a-tck.sh` in place of the removed `scripts/a2a-interop.sh`. The README's swarm section says that footprints, the merge queue and Linear delivery are not in `v413.0.0`, the release the quickstart runs.
 
+### Task attributes for the swarm
+
+- **Added:** task attributes on a thread (migration 0175): a `kind` (`change`, `plan` or `review`), an `engine` the work is routed to (`pi`, `session` or `human`), a `threat_model` flag, a `size` (`S`, `M` or `L`) and an `acceptance` criterion (up to 4,000 characters, shown to the worker in the thread context). They are set at intake on thread creation (`POST /channels/{cid}/threads`, MCP `create_thread`) in the create transaction, replaced later with `PUT /threads/{id}/attributes` or MCP `set_thread_attributes`, and read on the thread, its context pack and each `list_active_claims` entry. A thread nobody described reads as a change with no engine. Creating a thread also takes a dispatch `priority`, stored in the same transaction under the creator's `workspace:write`, so a producer ranks urgent work without holding `thread:transition`. `?size=` filters the swarm metrics.
+- **Added:** `claim_next` (HTTP and MCP, channel and workspace) takes an optional `engine` and then hands over only work routed to that engine, so a Pi worker is never handed session or human work. `GET /workspaces/{id}/swarm-metrics` takes `?engine=` and `?kind=` filters, each task carries its attributes, and each repository rollup splits tasks and merges by engine (`by_engine`).
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

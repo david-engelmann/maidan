@@ -601,6 +601,47 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "attributes": {
+      "description": "the task's attributes, stored with the thread (the shape set_thread_attributes takes, without thread_id)",
+      "properties": {
+        "acceptance": {
+          "description": "how a reviewer verifies the task; the worker must satisfy it",
+          "maxLength": 4000,
+          "type": "string"
+        },
+        "engine": {
+          "enum": [
+            "pi",
+            "session",
+            "human"
+          ],
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "change",
+            "plan",
+            "review"
+          ],
+          "type": "string"
+        },
+        "size": {
+          "enum": [
+            "S",
+            "M",
+            "L"
+          ],
+          "type": "string"
+        },
+        "threat_model": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
     "channel_id": {
       "format": "uuid",
       "type": "string"
@@ -656,6 +697,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "parent_thread_id": {
       "format": "uuid",
       "type": "string"
+    },
+    "priority": {
+      "description": "dispatch priority, stored with the thread; higher is claimed first (default 0)",
+      "type": "integer"
     },
     "title": {
       "type": "string"
@@ -2206,6 +2251,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "format": "uuid",
       "type": "string"
     },
+    "engine": {
+      "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
+      "enum": [
+        "pi",
+        "session",
+        "human"
+      ],
+      "type": "string"
+    },
     "lease_secs": {
       "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
       "maximum": 604800,
@@ -2235,6 +2289,15 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "engine": {
+      "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work",
+      "enum": [
+        "pi",
+        "session",
+        "human"
+      ],
+      "type": "string"
+    },
     "lease_secs": {
       "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
       "maximum": 604800,
@@ -2352,6 +2415,63 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `set_thread_attributes`
+
+**Set thread attributes.** Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.
+
+**Capability:** `thread:transition`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "acceptance": {
+      "description": "how a reviewer verifies the task; the worker must satisfy it",
+      "maxLength": 4000,
+      "type": "string"
+    },
+    "engine": {
+      "description": "omit to leave the work unrouted",
+      "enum": [
+        "pi",
+        "session",
+        "human"
+      ],
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "change",
+        "plan",
+        "review"
+      ],
+      "type": "string"
+    },
+    "size": {
+      "enum": [
+        "S",
+        "M",
+        "L"
+      ],
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "threat_model": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "thread_id",
+    "kind"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_thread_footprint`
 
 **Set thread footprint.** Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.
@@ -2418,7 +2538,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `list_active_claims`
 
-**List active claims.** List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.
+**List active claims.** List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items, attributes), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.
 
 **Capability:** `workspace:read`
 

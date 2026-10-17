@@ -47,6 +47,10 @@ pub async fn create_thread(
         .footprint
         .map(|footprint| footprint.validated().map_err(ApiError::BadRequest))
         .transpose()?;
+    let attributes = body
+        .attributes
+        .map(|attributes| attributes.validated().map_err(ApiError::BadRequest))
+        .transpose()?;
     let created = state
         .store
         .create_thread_with_footprint(
@@ -58,10 +62,15 @@ pub async fn create_thread(
                 created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
+            attributes.clone(),
+            body.priority,
         )
         .await;
     let actor = (!auth.bypass).then_some(auth.member_id);
-    let (t, stored) = observe_spawn_denial(&state, actor, created).await?;
+    let (mut t, stored) = observe_spawn_denial(&state, actor, created).await?;
+    // The response carries the attributes the thread now reads with: the
+    // ones stored, or the defaults when intake gave none.
+    t.attributes = Some(attributes.unwrap_or_default());
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(t)))
 }
@@ -178,6 +187,7 @@ pub async fn get_thread(
     // attach the thread's active declaration when one exists.
     let mut thread = thread;
     thread.status = state.store.get_thread_status(ThreadId(id)).await?;
+    thread.attributes = Some(state.store.get_thread_attributes(ThreadId(id)).await?);
     thread.notices = state
         .store
         .list_thread_notices(ThreadId(id), maidan_types::THREAD_NOTICE_LIMIT)
@@ -1509,7 +1519,13 @@ pub async fn claim_next_thread(
     }
     let claimed = state
         .store
-        .claim_next_thread_with_event(channel.id, member_id, Some(lease_secs), repo.as_deref())
+        .claim_next_thread_with_event(
+            channel.id,
+            member_id,
+            Some(lease_secs),
+            repo.as_deref(),
+            body.engine,
+        )
         .await?;
     publish_claim(&state, claimed).await.map(Json)
 }
@@ -1546,6 +1562,7 @@ pub async fn claim_next_workspace_thread(
             auth.member_id,
             Some(lease_secs),
             repo.as_deref(),
+            body.engine,
         )
         .await?;
     publish_claim(&state, claimed).await.map(Json)

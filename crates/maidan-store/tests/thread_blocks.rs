@@ -225,7 +225,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
     assert_eq!(depth.unclaimable, 0, "363 park is a different table");
 
     let claimed = store
-        .claim_next_thread(channel.id, member.id, None)
+        .claim_next_thread(channel.id, member.id, None, None)
         .await
         .expect("claim_next")
         .expect("claimed something");
@@ -233,7 +233,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
 
     // The with_event path shares the same skip.
     let (again, events) = store
-        .claim_next_thread_with_event(channel.id, member.id, None, None)
+        .claim_next_thread_with_event(channel.id, member.id, None, None, None)
         .await
         .expect("claim_next_with_event");
     assert!(again.is_none(), "t1 still blocked, t3 still DAG-blocked");
@@ -246,7 +246,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
         .expect("clear")
         .expect("had a block");
     let claimed2 = store
-        .claim_next_thread(channel.id, member.id, None)
+        .claim_next_thread(channel.id, member.id, None, None)
         .await
         .expect("claim_next")
         .expect("claimed something");

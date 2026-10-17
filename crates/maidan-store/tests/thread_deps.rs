@@ -205,7 +205,7 @@ async fn run_readiness_claim_suite(store: &dyn Store) {
 
     // claim_next skips the older-but-blocked task and takes the ready one (`dep`).
     let first = store
-        .claim_next_thread(channel.id, agent.id, None)
+        .claim_next_thread(channel.id, agent.id, None, None)
         .await
         .expect("claim1")
         .expect("some ready work");
@@ -216,7 +216,7 @@ async fn run_readiness_claim_suite(store: &dyn Store) {
 
     // Now `dep` is assigned but still Open, so `blocked` is still not ready.
     assert!(store
-        .claim_next_thread(channel.id, agent.id, None)
+        .claim_next_thread(channel.id, agent.id, None, None)
         .await
         .expect("claim2")
         .is_none());
@@ -231,7 +231,7 @@ async fn run_readiness_claim_suite(store: &dyn Store) {
         .await
         .expect("dep close");
     let second = store
-        .claim_next_thread(channel.id, agent.id, None)
+        .claim_next_thread(channel.id, agent.id, None, None)
         .await
         .expect("claim3")
         .expect("blocked is now ready");

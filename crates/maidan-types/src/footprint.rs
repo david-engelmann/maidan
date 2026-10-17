@@ -243,6 +243,9 @@ pub struct ActiveClaim {
     pub repo: String,
     pub mode: FootprintMode,
     pub items: Vec<FootprintItem>,
+    /// The claimed thread's task attributes; the defaults when the thread
+    /// was never described.
+    pub attributes: crate::TaskAttributes,
 }
 
 /// One item of a live claim that a footprint would overlap.
