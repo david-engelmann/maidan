@@ -22,7 +22,7 @@ pub enum MailError {
 }
 
 /// SMTP connection settings, read from `MAIDAN_SMTP_*`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SmtpConfig {
     pub host: String,
     pub port: u16,
@@ -33,6 +33,21 @@ pub struct SmtpConfig {
     /// STARTTLS on the submission port (true, default) vs a plaintext relay (false,
     /// for a local test MTA). Implicit-TLS-only servers are not modeled here yet.
     pub starttls: bool,
+}
+
+// Written out rather than derived, so the relay password never reaches a
+// `{:?}`; whether one is set still shows.
+impl std::fmt::Debug for SmtpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SmtpConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .field("from", &self.from)
+            .field("starttls", &self.starttls)
+            .finish()
+    }
 }
 
 impl SmtpConfig {
@@ -267,6 +282,24 @@ mod tests {
         assert!(
             captured.contains("maidan@example.com"),
             "From header on the wire"
+        );
+    }
+
+    #[test]
+    fn debug_formatting_hides_the_relay_password() {
+        let config = SmtpConfig {
+            host: "smtp.example".into(),
+            port: 587,
+            username: Some("relay-user".into()),
+            password: Some("smtp-S3cr3t".into()),
+            from: "Maidan <no-reply@example.com>".into(),
+            starttls: true,
+        };
+        let shown = format!("{config:?}");
+        assert!(!shown.contains("smtp-S3cr3t"), "{shown}");
+        assert!(
+            shown.contains("smtp.example") && shown.contains("relay-user"),
+            "{shown}"
         );
     }
 }
