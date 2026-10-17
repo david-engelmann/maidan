@@ -286,3 +286,9 @@ async fn report_unacknowledged_claims_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     run_suite(Arc::new(PostgresStore::for_tests(pool))).await;
 }
+
+// A module here rather than its own `tests/*.rs`: every test binary is
+// another fully linked, debug-info build on the integration runner's disk,
+// and the progress clock starts at the acknowledgement this file is about.
+#[path = "claim_unacknowledged/thread_progress.rs"]
+mod thread_progress;

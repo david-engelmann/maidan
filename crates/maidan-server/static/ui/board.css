@@ -411,6 +411,13 @@
       #thread-facts code { background: #f4f4f5; border-radius: 0.3rem; padding: 0.05rem 0.35rem; color: var(--ink); font-size: 0.78rem; }
       #thread-facts .ok { color: #15803d; font-weight: 600; }
       #thread-facts .wait { color: #b45309; font-weight: 600; }
+      #evidence-timeline { margin-top: 0.5rem; font-size: 0.82rem; }
+      #evidence-timeline > summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+      #evidence-moved { margin-left: 0.4rem; font-weight: 600; color: #b45309; }
+      #evidence-list { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+      #evidence-list .ev { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; padding: 0.15rem 0; }
+      #evidence-list time { color: var(--muted); font-size: 0.75rem; }
+      #evidence-list code { background: #f4f4f5; border-radius: 0.3rem; padding: 0 0.3rem; font-size: 0.76rem; }
       #message-list { background: transparent; padding: 0; max-height: 24rem; font-size: 0.88rem; margin: 0.75rem 0; }
       #message-list .msg { display: grid; grid-template-columns: auto 1fr; column-gap: 0.6rem; padding: 0.55rem 0.1rem; margin: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
       #message-list .msg:last-child { border-bottom: none; }
@@ -565,6 +572,10 @@
       #tools > summary { color: var(--muted); }
       .tabs button { box-shadow: none; font-size: 0.82rem; }
       .tabs button[aria-selected="true"] { background: #e6efe8; color: var(--accent); }
+      .tabs .tab-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; padding-right: 0.75rem; border-right: 1px solid var(--border); }
+      .tabs .tab-group:last-child { border-right: none; padding-right: 0; }
+      .tabs .tab-group-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+      .tabs .tab-group.dev button:not([aria-selected="true"]) { color: var(--muted); }
       /* Phones: one column. Channels become a short scrolling strip above the
          board, lanes stack, and a Needs you row puts its buttons under the text. */
       @media (max-width: 720px) {
@@ -628,6 +639,19 @@
 .card-status-needs_review { background: #f3e5f5; color: #6a1b9a; }
 .card-status-blocked { background: #ffebee; color: #c62828; }
 .card-status-done { background: #e8f5e9; color: #2e7d32; }
+.card-stalled {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #fff8e1;
+  color: #8d4b00;
+  border: 1px dashed #c77700;
+}
+#board-summary .health-alert,
+#board-summary .health-alert b { color: #a14400; }
 
 /* Swarm panel: one row per claim, waiting thread, slot or paused repo. */
 .swarm-list { list-style: none; margin: 0.25rem 0 0.75rem; padding: 0; }

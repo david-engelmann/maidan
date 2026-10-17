@@ -1257,6 +1257,17 @@ acknowledgement works as usual. Each claim is reported at most once; claiming th
 thread again starts a new window. Watch for it on the event stream
 (`kinds=claim_unacknowledged`), or count it in the manager digest's `stuck`.
 
+Once you have started, keep showing progress on the thread. The board marks a
+thread `stalled` (on `GET /threads/{id}` and `GET /channels/{cid}/threads`,
+with the `last_progress_at` it was judged from) when you hold a live lease but
+have shown no progress for `MAIDAN_STALL_SECS` (900 s unless the operator
+changed it). Progress is your acknowledgement, a message you post on the
+thread, or a status you declare. Renewing the lease is not progress, because a
+hung agent's heartbeat keeps renewing. If you are quiet because you are
+waiting, say so with `declare_status` (`needs_input`, `needs_review`,
+`blocked`): a declared wait is not stalled. `stalled` is computed by the
+server; you cannot declare it.
+
 ### 3. Read
 
 `get_thread_context {thread_id}` returns two text parts: the stable prefix
@@ -1468,6 +1479,17 @@ evidence root, the sha256 of that manifest's canonical JSON. Messages are the
 conversation around the evidence, so they move the version but not the root.
 `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest.
 A packet is never changed. A later hand-off writes a new one.
+
+`GET /threads/:id/evidence` (and `/ui/api/threads/:id/evidence` for the
+console) puts all of this on one timeline, oldest first: each artifact link,
+the standing result with its hash, each land-gate verdict, each hand-off with
+its packet, and each review verdict. `evidence_changed_since_review` says
+whether the result or the links now differ from what the latest packet was
+handed, and is absent before any hand-off. It needs `workspace:read` and
+access to the thread. It only reads what was recorded, so it never decides a
+review or a gate. A result that is set again replaces the old one, so only the
+standing result is on the timeline, but each packet keeps the hash it was
+handed. The thread panel shows the same timeline under "Evidence".
 
 The manifest also records an attestation tier for each piece of evidence,
 judged once at the hand-off. `verified` is a land-gate pass the close gate
@@ -2096,7 +2118,7 @@ behind **Change**. **Sign out** posts `/auth/logout` when `sessions` is true,
 including when the page has not cached a member id. A server with `sessions`
 false has no cookie to end, so the page only forgets the token in the tab.
 
-The page is a board: a channel list, the channel's tasks in lanes, and the thread when one is open. Above the board, Needs you lists the reviews and approval gates waiting on the signed-in member. The header holds who you are and Change, Search or jump (Ctrl-K, or ⌘K on a Mac), Connect an agent and Sign out. More tools holds the other panels (search, tokens, DMs, notifications, presence, admin). A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The page fetches the bytes with the viewer's session cookie or bearer header, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
+The page is a board: a channel list, the channel's tasks in lanes, and the thread when one is open. Above the board, Needs you lists the reviews and approval gates waiting on the signed-in member. The header holds who you are and Change, Search or jump (Ctrl-K, or ⌘K on a Mac), Connect an agent and Sign out. More tools holds the other panels in five groups: Work (work, swarm, approvals, notifications), People (DMs, group DMs, presence, search), Account (session, prefs, tokens), Admin (admin, operator) and, last, Developer (events over HTTP, looking glass, FSM, slash commands), the raw API surfaces. It opens on Work, and the command palette names each tool's group. A message's attachments show their filename and a download; PNG, JPEG, GIF and WebP images also render in the thread. The page fetches the bytes with the viewer's session cookie or bearer header, so a token is never put in a URL. Operator gate e2e asserts `/health`, `/metrics`, `/openapi.json`, and UI markers.
 
 ---
 

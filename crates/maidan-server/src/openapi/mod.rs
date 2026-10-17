@@ -486,6 +486,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::clear_thread_block,
         paths::get_thread_version,
         paths::get_review_packet,
+        paths::get_evidence_timeline,
         paths::list_thread_artifacts,
         paths::link_thread_artifact,
         paths::unlink_thread_artifact,

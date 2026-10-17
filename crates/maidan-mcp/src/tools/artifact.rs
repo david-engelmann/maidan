@@ -126,7 +126,7 @@ pub(super) async fn complete_artifact_multipart(
     // upload's bytes go unless another workspace holds them.
     if let Err(refused) = ensure_media_quota(server, auth, a.kind, &sha.to_hex(), bytes.len()).await
     {
-        reap_if_orphaned(server, &sha).await;
+        reap_if_orphaned(server, auth.workspace_id, &sha).await;
         return Err(refused);
     }
     let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
@@ -326,9 +326,14 @@ async fn ensure_media_quota(
 }
 
 /// Delete the bytes of a refused multipart upload unless an artifact row
-/// holds them, under the reap lease every erase uses. A failure leaves only
-/// unreachable bytes, so it is logged, not returned.
-async fn reap_if_orphaned(server: &crate::server::McpServer, sha: &maidan_artifacts::Sha256) {
+/// holds them, under the reap lease every erase uses. A failed delete is
+/// queued for the retention sweep to retry, and logged, not returned: the
+/// bytes are only unreachable.
+async fn reap_if_orphaned(
+    server: &crate::server::McpServer,
+    workspace_id: maidan_types::WorkspaceId,
+    sha: &maidan_artifacts::Sha256,
+) {
     let artifacts = server.artifacts.clone();
     let target = *sha;
     let delete: maidan_store::BlobDelete<'_> = Box::new(move || {
@@ -339,13 +344,14 @@ async fn reap_if_orphaned(server: &crate::server::McpServer, sha: &maidan_artifa
             }
         })
     });
-    match server.store.reap_artifact_blob(&sha.to_hex(), delete).await {
-        Ok(maidan_store::BlobReap::Deleted | maidan_store::BlobReap::Referenced) => {}
-        Ok(maidan_store::BlobReap::DeleteFailed(err)) => {
-            tracing::warn!(sha = %sha, error = %err, "artifact.refused_blob_not_deleted");
-        }
-        Err(err) => {
-            tracing::warn!(sha = %sha, error = %err, "artifact.refused_blob_not_deleted");
-        }
+    let reaped = maidan_store::blob_reap_retry::reap_or_queue(
+        server.store.as_ref(),
+        &sha.to_hex(),
+        workspace_id,
+        delete,
+    )
+    .await;
+    if let maidan_store::BlobReap::DeleteFailed(err) = reaped {
+        tracing::warn!(sha = %sha, error = %err, "artifact.refused_blob_not_deleted");
     }
 }

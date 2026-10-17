@@ -80,6 +80,8 @@ fn thread() -> Thread {
         block: None,
         attributes: None,
         closed_without_review: false,
+        last_progress_at: None,
+        stalled: false,
         notices: Vec::new(),
         created_by: None,
     }

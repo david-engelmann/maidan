@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Orphaned artifact bytes whose delete failed are retried
+
+- **Added:** a reap whose blob delete fails or overruns queues the sha in `maidan_artifact_reap_retries` (migration 0181, both backends), keyed by sha and recording the workspace whose erase, purge, media expiry or refused upload orphaned it. Every delete site queues: `DELETE /artifacts/{sha}`, workspace purge and erase, a refused multipart upload over REST and MCP, and media expiry.
+- **Added:** the retention sweep retries a batch of due shas each run through `reap_artifact_blob`, so each try takes the reap lease and rechecks for a row. A sha another workspace has uploaded since keeps its bytes and leaves the queue. A failed retry backs off from one minute, doubling up to six hours.
+- **Fixed:** a failed delete used to log `purge.orphaned_blob_not_deleted` and leave the bytes in the blob store for good. The log line stays; the bytes now go on a later sweep.
+
 ### Every deploy path runs v413.0.0, and the ARM64 page runs it with auth on
 
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.
@@ -51,6 +57,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### A change that ends without a commit says why in its one Slack notice
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
+
+### A squash-rebase round compares the base SHA case-insensitively
+
+- **Fixed:** a squash-rebase round whose `base_sha` matched the base branch's head in another letter case was refused as a stale base. The comparison now ignores case, as the change flow's other SHA comparisons do. The force move's doc comment now says the move is not atomic (GitHub's refs API has no compare-and-swap) and why the one-round-trip window is acceptable.
 
 ### A result delivered to GitHub links its attached files
 
@@ -208,9 +218,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a Swarm tab in the `/ui` console for one workspace. It lists the live claims with their holder, lease and footprint items, the threads the claim queue is holding back with their reasons, each slot's capacity and use, and the paused repositories, refreshing while it is open. An operator with `token:admin` can pause a repository from the panel and resume a paused one; everything else is a read over the existing footprint endpoints, and no route is new.
 
+### Sign-in says it is working
+
+- **Fixed:** while a pasted token is exchanged and checked, the web UI's Sign in button reads "Signing in…" and is marked `aria-busy`, and the status line (a polite live region) says the same, where before the field just went disabled. The audit timed a slow-3G sign-in at 21 s with no feedback. A refused token replaces the line with its reason, and a success clears it. From the 2026-10-03 UI audit (P2, outage UX).
+
 ### The audit log is partitioned by month
 
 - **Changed:** the Postgres audit log is range-partitioned by calendar month of `occurred_at` (migration 0165), the way the event log is (0162). Existing rows stay put in a legacy partition and drain through retention; `prune_audit` drops a month whole when no row in it belongs to a held workspace and deletes inside it otherwise, and boot and every retention sweep keep the current month plus three ahead ready. SQLite keeps one table.
+
+### Stuck detection on the board
+
+- **Added:** `Thread.stalled`, system-computed and never declarable, and `Thread.last_progress_at` on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). A thread is stalled when its holder has a live lease it acknowledged and has shown no progress for `MAIDAN_STALL_SECS` (900 s by default, `0` off). Progress is the latest of the acknowledgement, the holder's last message on the thread and its active status declaration; a lease renewal is not progress, so an agent whose heartbeat still runs while its work has hung is caught. A holder that declared `needs_input`, `needs_review`, `blocked` or `done` is not stalled. It is judged at read time: no migration, no new route. The board marks a stalled card and counts stalled and blocked work in its summary strip.
 
 ### The queue says why work waits
 
@@ -220,13 +238,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
 
+### A task's evidence on one timeline
+
+- **Added:** `GET /threads/{id}/evidence` and its console twin `/ui/api/threads/{id}/evidence` (`workspace:read` plus thread access). It returns a thread's evidence oldest first: artifact links, the standing result and its hash, land-gate verdicts, every review hand-off with its immutable packet (version, manifest, evidence root), and every review verdict. `evidence_changed_since_review` flags a result or links that moved after the latest hand-off. It is read-only, with no migration, and adds `Store::list_review_packets`, every packet of a thread oldest first, on both backends. The thread panel gains a collapsed "Evidence" section that loads the timeline only when opened and marks evidence that changed since review.
+
 ### An agent pull request's description stays current
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
 
+### More tools in groups
+
+- **Changed:** the console's More tools panel puts its 17 tabs in five named groups, still one keyboard tablist: Work (work, swarm, approvals, notifications), People (DMs, group DMs, presence, search), Account (session, prefs, tokens), Admin (admin, operator) and Developer (events over HTTP, looking glass, FSM, slash). The raw API and developer surfaces move last and are muted, and no panel is removed. The panel opens on Work instead of the audit log, and the first open loads it. The command palette shows each tool's group.
+
 ### A change task closes when its pull request merges
 
 - **Added:** a background change sweep (`MAIDAN_CHANGE_SWEEP_SECS`, every 120 s by default, `0` off). Per workspace it reads from GitHub the agent pull requests not yet seen closed, at most 25 a pass, the longest unread first (migration 0177 adds `checked_at`, and `settled_at` so each close acts once). A merge closes the change's thread through the store's transition path, with a `ThreadLanded` event in the same transaction, so a task that depends on it becomes claimable without a webhook or a person closing it by hand. A thread with another open pull request, or already closed, is left alone. A close without a merge leaves the thread open and posts one message, "#N closed without merging". The swarm-metrics read shares the refresh but still only records closes.
+
+### One conversation module for DMs and group DMs
+
+- **Changed:** the console's DM and group DM panels run through one conversation module (`static/ui/dm.js`). Each kind is described once: its elements, its list and send routes, and its words. One list, one select, one send and one after-open step serve both. The copied `loadDms`/`loadGroupDms`, `selectDm`/`selectGroupDm` and `sendDmMessage`/`sendGroupDmMessage` pairs, and the per-kind selection globals, are deleted. Opening keeps its two forms, because one person and a group of three or more are validated differently. An empty list, or one shown before sign-in, is now a muted state line in both panels instead of a bare list item. Nothing changes on the server.
 
 ### Change notices: rebase_needed and stale_base
 

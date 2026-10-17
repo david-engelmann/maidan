@@ -1218,6 +1218,155 @@ async fn erasing_a_workspace_destroys_its_key(db: Db) {
     );
 }
 
+/// A blob delete that fails, as a blob store that is down does.
+fn failing_delete() -> BlobDelete<'static> {
+    Box::new(|| Box::pin(async { Err("blob store unavailable".to_string()) }))
+}
+
+/// Make every queued blob retry due now, as if its backoff had passed.
+async fn backoff_passes(db: &Db) {
+    match db {
+        Db::Sqlite(pool) => sqlx::query(
+            "UPDATE maidan_artifact_reap_retries SET next_attempt_at = '2000-01-01T00:00:00.000Z'",
+        )
+        .execute(pool)
+        .await
+        .map(drop),
+        Db::Pg(pool) => sqlx::query(
+            "UPDATE maidan_artifact_reap_retries SET next_attempt_at = now() - interval '1 second'",
+        )
+        .execute(pool)
+        .await
+        .map(drop),
+    }
+    .unwrap();
+}
+
+/// A reap whose delete fails queues the sha under the workspace that
+/// orphaned it, and the queue outlives that workspace: a failed retry backs
+/// off, and a later one deletes the bytes and takes the sha off the queue.
+async fn a_failed_blob_delete_is_queued_and_retried_until_it_lands(db: Db) {
+    use maidan_store::blob_reap_retry::{reap_or_queue, retry_due, RetryTally};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let store = db.store(kek(1));
+    let room = room(store.as_ref(), "reap-retry").await;
+    let sha = "a1".repeat(32);
+    store
+        .upsert_artifact_with_event(upload(&sha, room.alice.id), Some(room.ws.id))
+        .await
+        .unwrap();
+    let erased = store
+        .erase_artifact_audited(room.ws.id, &sha, Box::new(erase_audit))
+        .await
+        .unwrap();
+    assert!(erased.last_reference);
+
+    let reaped = reap_or_queue(store.as_ref(), &sha, room.ws.id, failing_delete()).await;
+    assert!(matches!(reaped, BlobReap::DeleteFailed(_)));
+    let queued = store.due_blob_reaps(10).await.unwrap();
+    assert_eq!(queued.len(), 1, "a failed delete must be queued");
+    assert_eq!(queued[0].sha256, sha);
+    assert_eq!(queued[0].workspace_id, room.ws.id);
+    assert_eq!(queued[0].attempts, 0);
+
+    // Purging the workspace that orphaned the bytes leaves them queued.
+    store.erase_workspace(room.ws.id).await.unwrap();
+    assert_eq!(store.due_blob_reaps(10).await.unwrap().len(), 1);
+
+    let tally = retry_due(store.as_ref(), 10, |_| Some(failing_delete()))
+        .await
+        .unwrap();
+    assert_eq!(
+        tally,
+        RetryTally {
+            deleted: 0,
+            referenced: 0,
+            failed: 1
+        }
+    );
+    assert!(
+        store.due_blob_reaps(10).await.unwrap().is_empty(),
+        "a failed retry waits out its backoff"
+    );
+
+    backoff_passes(&db).await;
+    let pending = store.due_blob_reaps(10).await.unwrap();
+    assert_eq!(pending[0].attempts, 1);
+    assert_eq!(pending[0].last_error, "blob store unavailable");
+    let ran = Arc::new(AtomicBool::new(false));
+    let tally = retry_due(store.as_ref(), 10, |_| {
+        Some(recording_delete(ran.clone(), None, None))
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        tally,
+        RetryTally {
+            deleted: 1,
+            referenced: 0,
+            failed: 0
+        }
+    );
+    assert!(ran.load(Ordering::SeqCst));
+    backoff_passes(&db).await;
+    assert!(store.due_blob_reaps(10).await.unwrap().is_empty());
+}
+
+/// Workspace A's erase orphans a sha whose delete fails, and workspace B then
+/// uploads the same bytes. The retry finds B's row under the reap lease: the
+/// bytes stay, and the sha leaves the queue rather than waiting to delete
+/// B's file later.
+async fn a_queued_sha_another_workspace_now_holds_is_dropped_not_deleted(db: Db) {
+    use maidan_store::blob_reap_retry::{reap_or_queue, retry_due, RetryTally};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let store = db.store(kek(1));
+    let a = room(store.as_ref(), "orphaner").await;
+    let b = room(store.as_ref(), "uploader").await;
+    let sha = "b2".repeat(32);
+    store
+        .upsert_artifact_with_event(upload(&sha, a.alice.id), Some(a.ws.id))
+        .await
+        .unwrap();
+    store
+        .erase_artifact_audited(a.ws.id, &sha, Box::new(erase_audit))
+        .await
+        .unwrap();
+    reap_or_queue(store.as_ref(), &sha, a.ws.id, failing_delete()).await;
+    store
+        .upsert_artifact_with_event(upload(&sha, b.alice.id), Some(b.ws.id))
+        .await
+        .unwrap();
+
+    let ran = Arc::new(AtomicBool::new(false));
+    let tally = retry_due(store.as_ref(), 10, |_| {
+        Some(recording_delete(ran.clone(), None, None))
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        tally,
+        RetryTally {
+            deleted: 0,
+            referenced: 1,
+            failed: 0
+        }
+    );
+    assert!(!ran.load(Ordering::SeqCst), "B's bytes must not be deleted");
+    backoff_passes(&db).await;
+    assert!(
+        store.due_blob_reaps(10).await.unwrap().is_empty(),
+        "a sha another workspace holds leaves the queue"
+    );
+    assert!(store
+        .get_artifact_for_workspace(b.ws.id, &sha)
+        .await
+        .is_ok());
+    assert!(matches!(
+        store.get_artifact_for_workspace(a.ws.id, &sha).await,
+        Err(StoreError::NotFound)
+    ));
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -1258,6 +1407,8 @@ on_both_backends!(
     a_shared_artifact_goes_with_its_last_reference,
     withdrawal_takes_its_notification_mail,
     the_residue_check_finds_words_a_withdrawal_left,
+    a_failed_blob_delete_is_queued_and_retried_until_it_lands,
+    a_queued_sha_another_workspace_now_holds_is_dropped_not_deleted,
 );
 
 /// The reap race needs a second connection that can be blocked, so SQLite runs

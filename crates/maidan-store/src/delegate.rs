@@ -1961,6 +1961,13 @@ macro_rules! store_delegations {
             ) -> Result<Option<ReviewPacket>, StoreError> {
                 review_packets::latest(self.pool(), thread_id).await
             }
+
+            async fn list_review_packets(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<ReviewPacket>, StoreError> {
+                review_packets::list(self.pool(), thread_id).await
+            }
         }
     };
     ($store:ty, TaskScheduleStore) => {
@@ -3502,6 +3509,35 @@ macro_rules! store_delegations {
                 delete: crate::BlobDelete<'_>,
             ) -> Result<crate::BlobReap, StoreError> {
                 artifacts::reap_blob(self.pool(), sha256, delete).await
+            }
+
+            async fn queue_blob_reap(
+                &self,
+                sha256: &str,
+                workspace_id: WorkspaceId,
+                error: &str,
+            ) -> Result<(), StoreError> {
+                artifact_reap_retries::queue(self.pool(), sha256, workspace_id, error).await
+            }
+
+            async fn due_blob_reaps(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<crate::PendingBlobReap>, StoreError> {
+                artifact_reap_retries::due(self.pool(), limit).await
+            }
+
+            async fn defer_blob_reap(
+                &self,
+                sha256: &str,
+                error: &str,
+                delay_secs: i64,
+            ) -> Result<(), StoreError> {
+                artifact_reap_retries::defer(self.pool(), sha256, error, delay_secs).await
+            }
+
+            async fn settle_blob_reap(&self, sha256: &str) -> Result<(), StoreError> {
+                artifact_reap_retries::settle(self.pool(), sha256).await
             }
         }
     };

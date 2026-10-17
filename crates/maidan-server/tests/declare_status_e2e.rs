@@ -767,3 +767,9 @@ async fn a_human_group_dm_reply_clears_the_declared_status() {
 
     server.abort();
 }
+
+// A module here rather than its own `tests/*.rs`: every test binary is
+// another fully linked, debug-info build on the integration runner's disk,
+// and stalled is the other half of a thread's reported status.
+#[path = "declare_status_e2e/stuck_detection.rs"]
+mod stuck_detection;

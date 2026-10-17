@@ -99,7 +99,13 @@ pub async fn complete_multipart_artifact(
     if let Err(refused) =
         ensure_media_quota(&state, &auth, body.kind, &sha.to_hex(), bytes.len() as i64).await
     {
-        super::reap_orphaned_blobs(state.store.as_ref(), &state.artifacts, &[sha.to_hex()]).await;
+        super::reap_orphaned_blobs(
+            state.store.as_ref(),
+            &state.artifacts,
+            auth.workspace_id,
+            &[sha.to_hex()],
+        )
+        .await;
         return Err(refused);
     }
     // Upsert + the per-workspace ref + the ArtifactUpserted event commit
@@ -286,8 +292,12 @@ pub async fn erase_artifact(
         )
         .await?;
     if erasure.last_reference {
-        super::workspace::delete_orphaned_blobs(&state, std::slice::from_ref(&erasure.sha256))
-            .await;
+        super::workspace::delete_orphaned_blobs(
+            &state,
+            erasure.workspace_id,
+            std::slice::from_ref(&erasure.sha256),
+        )
+        .await;
     }
     Ok(Json(erasure))
 }
