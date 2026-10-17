@@ -69,6 +69,11 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .await
         .expect("none yet")
         .is_none());
+    assert!(store
+        .list_review_packets(thread)
+        .await
+        .expect("none listed yet")
+        .is_empty());
 
     store
         .set_review_requirement(thread, 1)
@@ -292,6 +297,20 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .transition_thread(thread, reviewer, ThreadAction::Close)
         .await
         .expect("closes on a bound approval of unchanged evidence");
+
+    // The evidence timeline lists every hand-off, not only the latest one.
+    let listed: Vec<uuid::Uuid> = store
+        .list_review_packets(thread)
+        .await
+        .expect("list")
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+    assert_eq!(
+        listed,
+        vec![first.id, second.id, third.id],
+        "every hand-off, oldest first"
+    );
 
     first.id
 }

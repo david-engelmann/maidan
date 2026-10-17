@@ -1640,6 +1640,12 @@ pub trait ThreadStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ReviewPacket>, StoreError>;
+    /// Every review packet the thread was handed, oldest first. Packets are
+    /// never updated, so earlier hand-offs read back as they were recorded.
+    async fn list_review_packets(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<ReviewPacket>, StoreError>;
 }
 
 #[async_trait]

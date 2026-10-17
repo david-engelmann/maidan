@@ -2,7 +2,7 @@
 import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi } from "./api.js";
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
 import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
-import { clearDmPickers, initDmPickers, loadDms, loadGroupDms, openDm, openGroupDm, sendDmMessage, sendGroupDmMessage } from "./dm.js";
+import { DM, GROUP_DM, clearDmPickers, initDmPickers, loadConversations, openDm, openGroupDm, sendConversationMessage } from "./dm.js";
 import { humanError, responseError, setOut, showError, textError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
 import { authorId, loadMembers } from "./people.js";
@@ -11,7 +11,7 @@ import { connectWs, disconnectWs, reconnectNowIfWanted, setPresence } from "./re
 import { initWorkspaceSwitcher, loadServerAuth, oidcLoginPath, saveWorkspaceName, sessionMemberId, showConnection, showSecretOnce, start } from "./session.js";
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
 import { initSwarm, loadSwarm } from "./swarm.js";
-import { loadMessages } from "./thread.js";
+import { loadEvidenceTimeline, loadMessages } from "./thread.js";
 import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
 
 
@@ -542,20 +542,21 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       };
 
       document.getElementById("reload-messages").onclick = loadMessages;
+      document.getElementById("evidence-timeline").addEventListener("toggle", loadEvidenceTimeline);
 
       initDmPickers();
 
       document.getElementById("gdm-open").onclick = openGroupDm;
 
-      document.getElementById("gdm-refresh").onclick = loadGroupDms;
+      document.getElementById("gdm-refresh").onclick = () => loadConversations(GROUP_DM);
 
-      document.getElementById("gdm-send").onclick = sendGroupDmMessage;
+      document.getElementById("gdm-send").onclick = () => sendConversationMessage(GROUP_DM);
 
       document.getElementById("dm-open").onclick = openDm;
 
-      document.getElementById("dm-refresh").onclick = loadDms;
+      document.getElementById("dm-refresh").onclick = () => loadConversations(DM);
 
-      document.getElementById("dm-send").onclick = sendDmMessage;
+      document.getElementById("dm-send").onclick = () => sendConversationMessage(DM);
 
       document.getElementById("op-deliv-refresh").onclick = loadDeliveries;
 

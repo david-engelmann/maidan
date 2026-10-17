@@ -1545,14 +1545,19 @@ fn ui_js_names_the_live_connect_control() {
 /// The DM header names the other person. The list already does; the selection does too.
 #[test]
 fn ui_js_selects_a_dm_by_member_name() {
-    let body = function_body(script(HTML), "selectDm");
+    let js = script(HTML);
     assert!(
-        body.contains("textContent = `with ${memberName(dmOther(c))}`"),
-        "the selection header uses the member name"
+        js.contains("selectedText: (c) => `with ${memberName(dmOther(c))}`"),
+        "the DM selection header uses the member name"
     );
     assert!(
-        !body.contains("textContent = `with ${dmOther(c)}`"),
+        !js.contains("`with ${dmOther(c)}`"),
         "the selection header is not the raw member id"
+    );
+    let select = function_body(js, "selectConversation");
+    assert!(
+        select.contains("textContent = kind.selectedText(c)"),
+        "the shared selection paints the kind's header"
     );
 }
 
@@ -2292,18 +2297,21 @@ fn ui_js_reports_qa_failures_in_words_and_opens_the_dm() {
         "the draft is cleared only after the server accepts the post"
     );
 
-    let dms = function_body(js, "loadDms");
+    let lists = function_body(js, "loadConversations");
     assert!(
-        dms.contains("memberName(other)") && dms.contains("await loadMembers()"),
-        "a DM list names the other member"
+        lists.contains("if (kind.namesMembers) await loadMembers();")
+            && lists.contains("a.textContent = kind.label(c);")
+            && js.contains("label: (c) => `with ${memberName(dmOther(c))}`")
+            && js.contains("namesMembers: true"),
+        "a DM list loads the roster and names the other member"
     );
     assert!(
-        !dms.contains("with ${dmOther(c)}"),
+        !js.contains("with ${dmOther(c)}"),
         "a DM list must not show the raw member id"
     );
     let open = function_body(js, "openDm");
     assert!(
-        open.contains("selectDm(opened)"),
+        open.contains("conversationOpened(DM, opened)"),
         "opening a DM selects that conversation"
     );
 
@@ -5606,4 +5614,164 @@ fn ui_more_tools_tabs_are_grouped_with_developer_surfaces_last() {
         s.contains(r#"btn.dataset.tab === "work" && !firstWorkLoad) loadWork();"#),
         "a click during the first load starts no second one"
     );
+}
+
+/// The thread panel's evidence timeline: it reads the timeline route on both
+/// trees, only while open, drops a read for a thread no longer open, and
+/// flags evidence that moved since the latest hand-off.
+#[test]
+fn ui_js_thread_panel_shows_the_evidence_timeline() {
+    let s = script(HTML);
+    assert!(HTML.contains(r#"<details id="evidence-timeline">"#));
+    assert!(HTML.contains(r#"id="evidence-list""#));
+    assert!(s.contains("function loadEvidenceTimeline("));
+    assert!(s.contains("${base()}/threads/${tid}/evidence"));
+    assert!(s.contains("uiReadPath(`/threads/${tid}/evidence`)"));
+    assert!(
+        s.contains("if (!panel.open) return;"),
+        "a closed panel costs no read"
+    );
+    assert!(
+        s.contains("if (tid !== selectedThreadId) return;"),
+        "a slower read for another thread must not paint over the open one"
+    );
+    assert!(s.contains(r#"addEventListener("toggle", loadEvidenceTimeline)"#));
+    assert!(
+        s.contains("loadEvidenceTimeline();"),
+        "a thread refresh reloads an open panel"
+    );
+    assert!(s.contains("timeline.evidence_changed_since_review !== true"));
+    for kind in [
+        "artifact_linked",
+        "result_recorded",
+        "land_gate_verdict",
+        "review_requested",
+        "review_verdict",
+    ] {
+        assert!(
+            s.contains(&format!("entry.kind === \"{kind}\"")),
+            "{kind} is rendered"
+        );
+    }
+}
+
+/// The Evidence summary stays on screen while the panel is closed, so picking
+/// another thread must clear the last thread's "changed since review" flag
+/// and entries even though nothing is fetched. This runs the page's
+/// `loadEvidenceTimeline` with the panel closed after a switch from a thread
+/// whose evidence had moved.
+#[test]
+fn ui_js_evidence_panel_does_not_carry_one_threads_flag_to_the_next() {
+    let js = script(HTML);
+    let harness = format!(
+        r#"
+const els = {{
+  "evidence-timeline": {{ open: false }},
+  "evidence-list": {{
+    children: ["Artifact linked on thread A"],
+    matches: () => true,
+    replaceChildren() {{ this.children = []; }},
+    appendChild(child) {{ this.children.push(child.textContent); }},
+  }},
+  "evidence-moved": {{ hidden: false }},
+}};
+const document = {{
+  getElementById: (id) => els[id] || null,
+  createElement: (tag) => ({{ tag, textContent: "", className: "" }}),
+}};
+let selectedThreadId = "thread-a";
+let evidenceShownFor = "thread-a";
+{render_state}
+}}
+async {load}
+}}
+selectedThreadId = "thread-b";
+loadEvidenceTimeline().then(() => {{
+  process.stdout.write(JSON.stringify({{
+    moved_hidden: els["evidence-moved"].hidden,
+    list: els["evidence-list"].children,
+  }}));
+}});
+"#,
+        render_state = function_body(js, "renderState"),
+        load = function_body(js, "loadEvidenceTimeline"),
+    );
+    let out = run_bare_harness(&harness);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "harness failed: {stderr}");
+    let view: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|err| panic!("{err}: {stdout}"));
+    assert_eq!(
+        view["moved_hidden"], true,
+        "thread A's \"changed since review\" must not show on thread B: {view}"
+    );
+    assert_eq!(
+        view["list"],
+        serde_json::json!(["Open to load what this task recorded as evidence."]),
+        "thread A's entries must not show under thread B: {view}"
+    );
+}
+
+/// DMs and group DMs share one conversation module: one list, one select and
+/// one send, parameterized by the kind. The copied pairs are gone, so a fix to
+/// one kind cannot miss the other.
+#[test]
+fn ui_dm_and_group_dm_share_one_conversation_module() {
+    const DM_JS: &str = include_str!("../static/ui/dm.js");
+    for gone in [
+        "function loadDms(",
+        "function loadGroupDms(",
+        "function selectDm(",
+        "function selectGroupDm(",
+        "function sendDmMessage(",
+        "function sendGroupDmMessage(",
+        "function loadDmMessages(",
+        "function loadGroupDmMessages(",
+        "let selectedDm",
+        "let selectedGdm",
+    ] {
+        assert!(!DM_JS.contains(gone), "dm.js still has a copied `{gone}`");
+    }
+    for shared in [
+        "async function loadConversations(kind)",
+        "function selectConversation(kind, c)",
+        "async function sendConversationMessage(kind)",
+        "async function conversationOpened(kind, opened)",
+    ] {
+        assert_eq!(
+            DM_JS.matches(shared).count(),
+            1,
+            "dm.js defines `{shared}` once"
+        );
+    }
+    for (kind, list, send) in [
+        (
+            "const DM = {",
+            "list: \"dm-list\"",
+            "sendPath: (c) => `/dm/${c.id}/messages`",
+        ),
+        (
+            "const GROUP_DM = {",
+            "list: \"gdm-list\"",
+            "sendPath: (c) => `/group-dms/${c.id}/messages`",
+        ),
+    ] {
+        let at = DM_JS.find(kind).unwrap_or_else(|| panic!("{kind}"));
+        let block = &DM_JS[at..];
+        let block = &block[..block.find("};").unwrap_or(block.len())];
+        assert!(
+            block.contains(list) && block.contains(send),
+            "{kind} names its list and route"
+        );
+    }
+    let main = include_str!("../static/ui/main.js");
+    for wiring in [
+        "onclick = () => loadConversations(DM);",
+        "onclick = () => loadConversations(GROUP_DM);",
+        "onclick = () => sendConversationMessage(DM);",
+        "onclick = () => sendConversationMessage(GROUP_DM);",
+    ] {
+        assert!(main.contains(wiring), "main.js wires `{wiring}`");
+    }
 }

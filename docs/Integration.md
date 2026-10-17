@@ -1490,6 +1490,17 @@ conversation around the evidence, so they move the version but not the root.
 `get_review_packet` (REST `GET /threads/:id/review-packet`) returns the latest.
 A packet is never changed. A later hand-off writes a new one.
 
+`GET /threads/:id/evidence` (and `/ui/api/threads/:id/evidence` for the
+console) puts all of this on one timeline, oldest first: each artifact link,
+the standing result with its hash, each land-gate verdict, each hand-off with
+its packet, and each review verdict. `evidence_changed_since_review` says
+whether the result or the links now differ from what the latest packet was
+handed, and is absent before any hand-off. It needs `workspace:read` and
+access to the thread. It only reads what was recorded, so it never decides a
+review or a gate. A result that is set again replaces the old one, so only the
+standing result is on the timeline, but each packet keeps the hash it was
+handed. The thread panel shows the same timeline under "Evidence".
+
 The manifest also records an attestation tier for each piece of evidence,
 judged once at the hand-off. `verified` is a land-gate pass the close gate
 would accept, recorded as its own `land_gate` item with the pass's

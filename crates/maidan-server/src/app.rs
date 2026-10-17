@@ -694,6 +694,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/review-packet",
             get(routes::get_review_packet),
         )
+        .route("/threads/{id}/evidence", get(routes::get_evidence_timeline))
         .route(
             "/threads/{id}/artifacts",
             get(routes::list_thread_artifacts),
@@ -1299,6 +1300,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/ui/api/threads/{tid}/review-packet",
             get(routes::get_review_packet),
+        )
+        .route(
+            "/ui/api/threads/{tid}/evidence",
+            get(routes::get_evidence_timeline),
         )
         // The approval card's decider after a reload, and who linked each
         // artifact: the bearer tree's reads, behind the same thread check.

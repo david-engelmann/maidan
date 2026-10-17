@@ -13,6 +13,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** the retention sweep retries a batch of due shas each run through `reap_artifact_blob`, so each try takes the reap lease and rechecks for a row. A sha another workspace has uploaded since keeps its bytes and leaves the queue. A failed retry backs off from one minute, doubling up to six hours.
 - **Fixed:** a failed delete used to log `purge.orphaned_blob_not_deleted` and leave the bytes in the blob store for good. The log line stays; the bytes now go on a later sweep.
 
+### The integration job keeps room on the runner's disk for MinIO
+
+- **Fixed:** the required `integration (testcontainers)` check failed on main and on open PRs, intermittently, in `maidan-artifacts`' two MinIO tests. MinIO answered `XMinioStorageFull` ("Storage backend has reached its minimum free drive threshold"): the workspace's test build had grown to 83G and left 871M of the runner's 145G disk. The job now frees the runner's unused SDKs and Docker images first, as the coverage job does (about 20G). After building, it fails with a plain error if under 8G is free, so a full disk can't surface again as a storage error inside one test. Its timeout goes from 30 to 40 minutes, because freeing disk adds about two minutes and the first green run took 26m41s.
+- **Fixed:** every S3 call in `maidan-artifacts` (put, get, head, delete, bucket creation and the multipart calls) reported a failure as the SDK's bare `service error`, without the S3 error code or the server's message, so the red runs above had nothing to go on. The error now carries the SDK's whole source chain, for example `put_object: service error: unhandled error (XMinioStorageFull): ...`.
+
 ### Every deploy path runs v413.0.0, and the ARM64 page runs it with auth on
 
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.
@@ -242,6 +247,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** `GET /workspaces/{id}/swarm-metrics`: per agent pull request, the rounds the change flow delivered (diff size, and how far each round's base was behind), time to ready and to merge, whether it merged as delivered, its model cost, and `non_converging` and `stale_base` flags; with a rollup per repository. The change flow records each round, mark-ready stamps the ready time, and the read refreshes merges from GitHub. Migration 0174.
 
+### A task's evidence on one timeline
+
+- **Added:** `GET /threads/{id}/evidence` and its console twin `/ui/api/threads/{id}/evidence` (`workspace:read` plus thread access). It returns a thread's evidence oldest first: artifact links, the standing result and its hash, land-gate verdicts, every review hand-off with its immutable packet (version, manifest, evidence root), and every review verdict. `evidence_changed_since_review` flags a result or links that moved after the latest hand-off. It is read-only, with no migration, and adds `Store::list_review_packets`, every packet of a thread oldest first, on both backends. The thread panel gains a collapsed "Evidence" section that loads the timeline only when opened and marks evidence that changed since review.
+
 ### An agent pull request's description stays current
 
 - **Added:** a change result's `pr_state.body` (the whole branch against its base, after this round) is kept in a marked section of the pull request body (`<!-- pi:current-state -->`), replaced on each delivery and appended when missing; everything else in the body, and the title, is left to people and review bots. Before, the body described only the round that opened the pull request.
@@ -253,6 +262,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### A change task closes when its pull request merges
 
 - **Added:** a background change sweep (`MAIDAN_CHANGE_SWEEP_SECS`, every 120 s by default, `0` off). Per workspace it reads from GitHub the agent pull requests not yet seen closed, at most 25 a pass, the longest unread first (migration 0177 adds `checked_at`, and `settled_at` so each close acts once). A merge closes the change's thread through the store's transition path, with a `ThreadLanded` event in the same transaction, so a task that depends on it becomes claimable without a webhook or a person closing it by hand. A thread with another open pull request, or already closed, is left alone. A close without a merge leaves the thread open and posts one message, "#N closed without merging". The swarm-metrics read shares the refresh but still only records closes.
+
+### One conversation module for DMs and group DMs
+
+- **Changed:** the console's DM and group DM panels run through one conversation module (`static/ui/dm.js`). Each kind is described once: its elements, its list and send routes, and its words. One list, one select, one send and one after-open step serve both. The copied `loadDms`/`loadGroupDms`, `selectDm`/`selectGroupDm` and `sendDmMessage`/`sendGroupDmMessage` pairs, and the per-kind selection globals, are deleted. Opening keeps its two forms, because one person and a group of three or more are validated differently. An empty list, or one shown before sign-in, is now a muted state line in both panels instead of a bare list item. Nothing changes on the server.
 
 ### Change notices: rebase_needed and stale_base
 

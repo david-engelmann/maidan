@@ -12,8 +12,8 @@ fn open_group_dm() -> &'static str {
         .find("async function openGroupDm()")
         .expect("openGroupDm");
     let end = DM_JS[start..]
-        .find("async function sendGroupDmMessage()")
-        .expect("sendGroupDmMessage");
+        .find("async function sendConversationMessage(")
+        .expect("sendConversationMessage");
     &DM_JS[start..start + end]
 }
 
@@ -40,9 +40,21 @@ fn opening_a_group_dm_requires_three_members_and_selects_it() {
     );
     assert!(
         body.contains("const opened = await res.json();")
-            && body.contains("await loadMembers();")
-            && body.contains("selectGroupDm(opened);"),
+            && body.contains("await conversationOpened(GROUP_DM, opened);"),
         "a successful open selects the conversation the server returned"
+    );
+    let opened_start = DM_JS
+        .find("async function conversationOpened(")
+        .expect("conversationOpened");
+    let opened = &DM_JS[opened_start..];
+    let opened = &opened[..opened
+        .find("\n      }\n")
+        .expect("end of conversationOpened")];
+    assert!(
+        opened.contains("await loadMembers();")
+            && opened.contains("await loadConversations(kind);")
+            && opened.contains("selectConversation(kind, opened);"),
+        "an open refreshes the roster and the list, then selects what the server returned"
     );
     assert!(
         HTML.contains("at least two others"),

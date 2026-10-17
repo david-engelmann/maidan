@@ -2942,6 +2942,170 @@
         ],
         "type": "object"
       },
+      "EvidenceTimeline": {
+        "description": "A thread's evidence, oldest first.",
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceTimelineEntry"
+            },
+            "type": "array"
+          },
+          "evidence_changed_since_review": {
+            "description": "Whether the result or the linked artifacts differ from what the\nlatest review packet was handed. `None` before any hand-off.\nMessages are not evidence, so a comment does not set it.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "thread_version": {
+            "description": "The thread's version now; each `review_requested` entry carries the\nversion it was handed at.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "thread_id",
+          "thread_version",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "EvidenceTimelineEntry": {
+        "description": "One recorded piece of evidence, or one step of its review.",
+        "oneOf": [
+          {
+            "description": "An artifact was linked to the thread.",
+            "properties": {
+              "artifact": {
+                "$ref": "#/components/schemas/ThreadArtifact"
+              },
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "artifact_linked"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "at",
+              "artifact",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The thread's current result was recorded. A result is overwritten\nwhen re-set, so only the standing one is on the timeline; a review\npacket keeps the hash of the one it was handed.",
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "result_recorded"
+                ],
+                "type": "string"
+              },
+              "produced_by": {
+                "$ref": "#/components/schemas/MemberId"
+              },
+              "sha256": {
+                "description": "The hash a review packet pins the result by; `None` only if the\nstored result could not be canonicalized.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "at",
+              "produced_by",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A land-gate verdict was recorded.",
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "land_gate_verdict"
+                ],
+                "type": "string"
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/LandGateVerdict"
+              }
+            },
+            "required": [
+              "at",
+              "verdict",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The thread was handed to review with this packet.",
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "review_requested"
+                ],
+                "type": "string"
+              },
+              "packet": {
+                "$ref": "#/components/schemas/ReviewPacket"
+              }
+            },
+            "required": [
+              "at",
+              "packet",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A reviewer gave a verdict.",
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "review_verdict"
+                ],
+                "type": "string"
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/ReviewVerdict"
+              }
+            },
+            "required": [
+              "at",
+              "verdict",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "ExportPublicKey": {
         "description": "`GET /operator/export-public-key` — out-of-band pin for a destination\ninstance's `MAIDAN_EXPORT_VERIFY_KEYS`.",
         "properties": {
@@ -22693,6 +22857,65 @@
           }
         ],
         "summary": "List a thread's dependents",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/evidence": {
+      "get": {
+        "operationId": "get_evidence_timeline",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceTimeline"
+                }
+              }
+            },
+            "description": "Everything recorded as the thread's evidence, oldest first: linked artifacts, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "A thread's evidence timeline",
         "tags": [
           "threads"
         ]

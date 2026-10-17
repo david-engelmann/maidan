@@ -435,3 +435,194 @@ async fn a_hand_off_to_review_pins_what_was_handed_over() {
     );
     assert_eq!(via_mcp["self_reported_only"], true);
 }
+
+fn kinds(timeline: &Value) -> Vec<String> {
+    timeline["entries"]
+        .as_array()
+        .map(|entries| {
+            entries
+                .iter()
+                .map(|e| e["kind"].as_str().unwrap_or_default().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn the_evidence_timeline_shows_every_hand_off_and_stays_in_its_workspace() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (ws, worker, token, thread) = tenant(store.as_ref(), "a").await;
+    let (other_ws, _, other_token, other_thread) = tenant(store.as_ref(), "b").await;
+    let t = thread.0;
+    let held = HELD.to_ascii_lowercase();
+    store.record_artifact_ref(ws, &held).await.unwrap();
+    store
+        .record_artifact_ref(other_ws, ELSEWHERE)
+        .await
+        .unwrap();
+
+    let (s, empty) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/evidence"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{empty}");
+    assert_eq!(empty["entries"], json!([]));
+    assert!(
+        empty.get("evidence_changed_since_review").is_none(),
+        "nothing handed over, nothing to compare: {empty}"
+    );
+
+    store.claim_thread(thread, worker).await.unwrap();
+    let result = json!({"status": "done"});
+    store
+        .set_thread_result(thread, worker, &result)
+        .await
+        .unwrap();
+    store
+        .link_thread_artifact(thread, &held, worker)
+        .await
+        .unwrap();
+    store
+        .transition_thread(thread, worker, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+
+    let (s, handed) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/evidence"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{handed}");
+    let mut evidence = kinds(&handed);
+    let last = evidence.pop();
+    evidence.sort();
+    assert_eq!(evidence, vec!["artifact_linked", "result_recorded"]);
+    assert_eq!(last.as_deref(), Some("review_requested"));
+    assert_eq!(
+        handed["entries"][2]["packet"]["evidence_root"],
+        store
+            .latest_review_packet(thread)
+            .await
+            .unwrap()
+            .unwrap()
+            .evidence_root
+    );
+    assert_eq!(handed["evidence_changed_since_review"], false);
+    assert_eq!(
+        handed["thread_version"],
+        store.thread_version(thread).await.unwrap()
+    );
+
+    // Sent back, then a new artifact: the timeline says the evidence moved
+    // after what the reviewer was handed.
+    let reviewer = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: "reviewer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    store
+        .submit_review(
+            thread,
+            reviewer,
+            maidan_types::ReviewDecision::RequestChanges,
+            Some("add the late file"),
+            None,
+        )
+        .await
+        .unwrap();
+    const LATE: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    store.record_artifact_ref(ws, LATE).await.unwrap();
+    store
+        .link_thread_artifact(thread, LATE, worker)
+        .await
+        .unwrap();
+
+    let (s, moved) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/evidence"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{moved}");
+    let order = kinds(&moved);
+    let requested = order.iter().position(|k| k == "review_requested");
+    let verdict = order.iter().position(|k| k == "review_verdict");
+    assert!(
+        requested.is_some() && verdict > requested,
+        "the verdict follows the hand-off it answers: {order:?}"
+    );
+    assert_eq!(
+        order.iter().filter(|k| *k == "artifact_linked").count(),
+        2,
+        "{order:?}"
+    );
+    assert_eq!(moved["evidence_changed_since_review"], true);
+
+    // The console reads the same timeline through its session proxy.
+    let (s, via_ui) = call(
+        &client,
+        Method::GET,
+        format!("{base}/ui/api/threads/{t}/evidence"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{via_ui}");
+    assert_eq!(via_ui, moved);
+
+    // The other workspace sees its own thread's evidence and none of ours.
+    let o = other_thread.0;
+    let linker = store
+        .create_member(NewMember {
+            workspace_id: other_ws,
+            handle: "linker".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    store
+        .link_thread_artifact(other_thread, ELSEWHERE, linker)
+        .await
+        .unwrap();
+    let (s, theirs) = call(
+        &client,
+        Method::GET,
+        format!("{base}/ui/api/threads/{o}/evidence"),
+        &other_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{theirs}");
+    assert_eq!(kinds(&theirs), vec!["artifact_linked"]);
+    assert_eq!(theirs["entries"][0]["artifact"]["sha256"], ELSEWHERE);
+    for (route, thread_id, bearer) in [
+        ("threads", t, &other_token),
+        ("ui/api/threads", t, &other_token),
+        ("threads", o, &token),
+        ("ui/api/threads", o, &token),
+    ] {
+        let (s, body) = call(
+            &client,
+            Method::GET,
+            format!("{base}/{route}/{thread_id}/evidence"),
+            bearer,
+        )
+        .await;
+        assert!(
+            matches!(s, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+            "/{route}/{thread_id}: one workspace reads no evidence of the other's: {s} {body}"
+        );
+    }
+}
