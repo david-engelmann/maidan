@@ -46,16 +46,18 @@ pub fn redact_connection_url(url: &str) -> String {
     let mut rest = &url[authority_start..];
     // The userinfo ends at the last `@`, so an unencoded `@`, `/`, `?` or `#`
     // inside a password still counts as password. An `@` further on (say, in
-    // a query value) only widens what is masked, never what is shown.
+    // a query value) makes the "userinfo" swallow part of the query, so what
+    // is shown of it still goes through the pair masking: such an `@` only
+    // widens what is masked, never what is shown.
     if let Some(at) = rest.rfind('@') {
         let userinfo = &rest[..at];
         match userinfo.find(':') {
             Some(colon) => {
-                out.push_str(&userinfo[..colon]);
+                out.push_str(&redact_pairs(&userinfo[..colon]));
                 out.push(':');
                 out.push_str(MASK);
             }
-            None => out.push_str(userinfo),
+            None => out.push_str(&redact_pairs(userinfo)),
         }
         out.push('@');
         rest = &rest[at + 1..];
@@ -203,6 +205,20 @@ mod tests {
         );
         assert_no_secret(&shown);
         assert!(shown.starts_with("postgres://maidan:***@"), "{shown}");
+    }
+
+    // The last `@` can sit inside a query value, so the text taken as
+    // userinfo may hold `key=value` pairs; they are masked like the query.
+    #[test]
+    fn an_at_sign_in_a_query_value_never_unmasks_the_text_before_it() {
+        for url in [
+            "libsql://d.turso.io?authToken=tok_S3cr3t@cd",
+            "postgres://maidan@db.example/maidan?password=S3cr3tPw@x",
+            "libsql://d.turso.io?authToken=tok_S3cr3t:x@y",
+            "postgres://maidan@db.example/maidan?password=S3cr3tPw:x@y",
+        ] {
+            assert_no_secret(&redact_connection_url(url));
+        }
     }
 
     #[test]
