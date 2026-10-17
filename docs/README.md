@@ -43,6 +43,7 @@ Live on your server: `GET /openapi.json` and `GET /llms.txt`.
 | [Threat Model](Threat-Model.md) | Assets, trust boundaries and threats, with their mitigations |
 | [Benchmark](Benchmark.md) | What was measured, and how |
 | [SDK Release](SDK%20Release.md) | Publishing the four SDKs |
+| [Listing](Listing.md) | The copy and icons a directory listing asks for, prepared but not submitted |
 
 ## Contribute
 
