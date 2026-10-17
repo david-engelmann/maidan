@@ -23,6 +23,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.
 - **Fixed:** `docs/Pi.md` pulled `:latest`, ran `v315.0.0` with `AUTH_DISABLED=1`, and its native recipe could not boot without `MAIDAN_CONTENT_KEK`. It now runs `v413.0.0` with auth on: `maidan init` from the tag-matched CLI image, both containers as the host user so SQLite can create its file, the content key and session secret generated once into an owner-only file and loaded on every start, and every recipe listening on loopback, reached from elsewhere through SSH or a TLS proxy. The recipe was run on `linux/arm64`: `/me` answers 200 with the minted token and 401 without. `scripts/check-deploy-pins.sh` now checks `docs/Pi.md` too, fifteen pins in all.
 
+### The sqlite-vec CI job finishes instead of timing out
+
+- **Fixed:** the `sqlite-vec (optional feature)` job was cancelled after its tests passed. It wasn't a concurrency cancel: the job ran into its 15-minute timeout while compiling the server's `sqlite-vec` test, and a timed-out job never saves its cache, so the next run started cold again. The job no longer compiles the default build that the unit and lint jobs already compile. It keeps the `cargo tree` check that the default build leaves `sqlite-vec` out, and its timeout is 30 minutes.
+- **Fixed:** the job pulls `pgvector/pgvector` through `mirror.gcr.io` like the other container jobs. A Docker Hub pull failure (`bytes remaining on stream`) failed it on main.
+
 ### The Postgres event log is partitioned by month, and retention drops old months
 
 - **Changed:** On Postgres, `maidan_events` is range-partitioned by calendar month (UTC) of `occurred_at` (migration 0162). Its primary key becomes `(id, occurred_at)`, because a partitioned table's key must include the partition key. Ids still come from one sequence, and every read still orders by `id`, so cursors, the per-workspace hash chain and the delivery floor are unchanged. Existing rows aren't copied: the old table becomes the first partition, `maidan_events_legacy`, covering everything before the month after its newest row. The migration reads the table once, builds the new key and checks the bound, all inside its transaction. The migration reads the table once and builds the new key under its lock; its duration grows with the table size. SQLite is unchanged.
@@ -30,9 +35,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** Instance event retention drops a month whole once its range ends by the cutoff and every row in it is one the batched delete would have removed. That means none above the delivery-cursor floor and none in a workspace under legal hold. Any other partition that may hold rows before the cutoff gets the batched `DELETE`, inside that partition only: a kept month, the month the cutoff falls in, the legacy partition and DEFAULT. The rows left are exactly those the delete alone would have left. Per-workspace event retention still deletes, now limited to the partitions before its cutoff.
 - **Changed:** `maidan_outbox.log_id` and `maidan_federated_ingest.local_event_id` no longer have foreign keys to `maidan_events`, since a key on `id` alone can't reference a partitioned table. Their `ON DELETE CASCADE` is now a delete trigger on the event log, plus an explicit delete before a partition drop. `maidan_outbox.log_id` gets the index the cascade never had.
 
+### A listing asset pack, prepared and not submitted
+
+- New `docs/Listing.md` holds the copy a directory asks for: a short description that fits the MCP registry's 100-character limit, a card description and a long description. Each leads with the room rather than a tool count, names both the hosted room at maidan.world and self-hosting, and has a self-hosted variant to use until the hosted room runs. Each sentence is tied to the evidence it rests on. The page also lists what has to happen before any submission: name and logo clearance, the maintainer's legal pages, and the demo instance.
+- New `docs/assets/listing/` holds a 48×48 and a 400×400 PNG icon, rendered from the mark by `scripts/render-listing-icons.py`. Nothing is published or submitted anywhere.
+
 ### Workspace context and the explorer filter by thread access in the query
 
 - **Changed:** the workspace thread page and the explorer listings (tombstones, message backlinks and the EventKind census) take the reader and filter by thread read access in the SQL on both backends, the way search does. Rows from a private channel or a DM the reader is not in never reach the caller and never crowd a page or a count out, so the REST and MCP surfaces dropped their per-row access post-filters. Backlinks for a message the reader cannot read answer empty instead of confirming the message is pointed at, and its references narrow to sources the reader may read.
+
+### An OpenHands agent can work a Maidan channel
+
+- New `examples/openhands/maidan_claimant.py` runs an agent on the OpenHands Software Agent SDK that works one task per run, using the same waiter loop as the Goose recipe: claim, acknowledge, read the task, do it with OpenHands' terminal and file editor, ask a person through an approval gate before anything irreversible, set the result, hand it to review and release. It connects over streamable HTTP with an app token holding `workspace:read`, `message:post` and `thread:transition`. Because OpenHands sends every tool on every request, the agent is filtered to the loop's ten tools. `--check` verifies the connection and the token's tools without calling a model, and the plain-http token guard allows loopback only.
 
 ### Media expires when nothing references it, under a per-workspace quota
 
