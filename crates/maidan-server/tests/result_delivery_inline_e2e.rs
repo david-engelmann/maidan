@@ -481,7 +481,7 @@ async fn a_reviewed_github_result_posts_the_summary_and_a_right_side_inline_revi
 }
 
 #[tokio::test]
-async fn a_reviewed_github_result_links_its_pi_attachments_in_the_summary_comment() {
+async fn a_reviewed_github_result_links_its_producer_attachments_in_the_summary_comment() {
     let mut h = harness("attachments").await;
     h.state.public_origin = Some("https://maidan.example.com".to_string());
     bless_github(&h).await;
