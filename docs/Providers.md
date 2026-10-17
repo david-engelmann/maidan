@@ -116,6 +116,10 @@ docker compose -f compose.yaml -f examples/embeddings/compose.ollama.yaml \
   --profile full up -d --build
 ```
 
+Run on 2026-10-16 with a release image of `main` @ 466c2ec6 plus the fix below:
+the stack came up healthy, the server probed 768 dimensions, and three semantic
+queries each ranked the matching message first.
+
 A one-shot `ollama-pull` service downloads the model into a volume before
 `maidan-server` starts, because the server probes the endpoint for the vector
 dimension at boot. Search with `GET /workspaces/{wid}/search?q=...&mode=semantic`.
