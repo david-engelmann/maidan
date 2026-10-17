@@ -17,7 +17,7 @@ pub enum ConfigError {
     Invalid(&'static str, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ArtifactBackend {
     LocalFs {
         root: PathBuf,
@@ -29,6 +29,29 @@ pub enum ArtifactBackend {
         access_key: String,
         secret_key: String,
     },
+}
+
+// Written out rather than derived, so the S3 credentials never reach a `{:?}`.
+impl std::fmt::Debug for ArtifactBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LocalFs { root } => f.debug_struct("LocalFs").field("root", root).finish(),
+            Self::S3 {
+                endpoint,
+                bucket,
+                region,
+                access_key: _,
+                secret_key: _,
+            } => f
+                .debug_struct("S3")
+                .field("endpoint", endpoint)
+                .field("bucket", bucket)
+                .field("region", region)
+                .field("access_key", &"***")
+                .field("secret_key", &"***")
+                .finish(),
+        }
+    }
 }
 
 /// Database connection-pool and timeout tuning. All fields are env-driven with
@@ -375,5 +398,25 @@ mod tests {
             err,
             ConfigError::Invalid("MAIDAN_DB_MAX_CONNECTIONS", _)
         ));
+    }
+
+    #[test]
+    fn debug_formatting_hides_the_s3_keys() {
+        let backend = ArtifactBackend::S3 {
+            endpoint: "https://acct.r2.cloudflarestorage.com".into(),
+            bucket: "maidan-artifacts".into(),
+            region: "auto".into(),
+            access_key: "R2ACCESSKEYEXAMPLE".into(),
+            secret_key: "r2-S3cr3t-value".into(),
+        };
+        let shown = format!("{backend:?}");
+        assert!(
+            !shown.contains("R2ACCESSKEYEXAMPLE") && !shown.contains("r2-S3cr3t-value"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains("maidan-artifacts") && shown.contains("auto"),
+            "{shown}"
+        );
     }
 }

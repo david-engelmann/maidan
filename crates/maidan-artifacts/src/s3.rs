@@ -19,13 +19,27 @@ use crate::sha::Sha256;
 use crate::store::ArtifactStore;
 
 /// Connection parameters for [`S3Store`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Config {
     pub endpoint: String,
     pub bucket: String,
     pub region: String,
     pub access_key: String,
     pub secret_key: String,
+}
+
+// Written out rather than derived: a config that reaches a `{:?}` in a log or
+// an error must not carry the object store's credentials with it.
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("access_key", &"***")
+            .field("secret_key", &"***")
+            .finish()
+    }
 }
 
 /// How long a request to the object store may take to connect.
