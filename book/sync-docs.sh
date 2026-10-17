@@ -77,7 +77,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   perl -pi -e 's{Hosted%20Console\.md}{Hosted-Console.md}g' "$f"
 
   # 3) links to docs/ pages that are NOT in the published set -> GitHub
-  perl -pi -e 's{\]\((?:\.\./)?(OIDC\.md|Query-Tuning\.md|Cluster-history\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
+  perl -pi -e 's{\]\((?:\.\./)?(OIDC\.md|Query-Tuning\.md|Cluster-history\.md|Listing\.md)\)}{]($ENV{GH}/docs/$1)}g' "$f"
   # docs/archive/ is history (old plans, handoffs, the strategy pack): it stays
   # in the repo and off the published site, so links into it leave the book.
   perl -pi -e 's{\]\((?:\.\./)?archive/([^)]*)\)}{]($ENV{GH}/docs/archive/$1)}g' "$f"
