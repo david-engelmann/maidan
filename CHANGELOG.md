@@ -85,6 +85,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
 
+### A squash-rebase names the range it rewrote
+
+- **Added:** after a squash-rebase round force-moves an agent branch, the change flow comments `Rebased <old_head>..<new_head> onto <base_sha>` on the pull request, so a reviewer can range-diff what the rebase changed. It is the flow's only comment, and best effort: a refused comment never undoes the move.
+- **Added:** the Slack change reply carries the same line under the commit and pull request link.
+- **Added:** the round records the old head as `previous_head` (migration 0183, both backends), and `GET /workspaces/{id}/swarm-metrics` lists it with the round. A retry that reuses its rebase commit comments only when the move was never recorded.
+
 ### A squash-rebase round compares the base SHA case-insensitively
 
 - **Fixed:** a squash-rebase round whose `base_sha` matched the base branch's head in another letter case was refused as a stale base. The comparison now ignores case, as the change flow's other SHA comparisons do. The force move's doc comment now says the move is not atomic (GitHub's refs API has no compare-and-swap) and why the one-round-trip window is acceptable.

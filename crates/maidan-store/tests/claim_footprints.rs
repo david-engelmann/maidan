@@ -894,6 +894,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         paths: vec!["src/a.rs".into()],
         base_branch: Some("main".into()),
         rebase: false,
+        previous_head: None,
     };
     store.record_change_round(round("c1", 10)).await.unwrap();
     store.record_change_round(round("c1", 10)).await.unwrap();
@@ -955,6 +956,7 @@ fn round_for(ws: WorkspaceId, thread: ThreadId, pull_number: i64) -> NewChangeRo
         paths: Vec::new(),
         base_branch: None,
         rebase: false,
+        previous_head: None,
     }
 }
 
@@ -1033,6 +1035,74 @@ async fn the_newest_round_names_the_head_only_for_the_workspace_that_delivered_i
         vec![false, true],
         "another workspace's round is not listed among this workspace's"
     );
+}
+
+/// A squash-rebase round records the head it force-moved the branch from,
+/// for the reviewer's range. It reads back, whatever the case of the repo or
+/// the SHA, only in the workspace that delivered it: the pull request row is
+/// shared, so another workspace asking about the same commit gets nothing.
+async fn a_rebase_rounds_previous_head_reads_back_only_in_its_own_workspace(store: Arc<dyn Store>) {
+    let mine = room(store.as_ref(), "range-mine", 1).await;
+    let theirs = room(store.as_ref(), "range-theirs", 1).await;
+    let thread = task(store.as_ref(), mine.channel, "change").await;
+    let other_thread = task(store.as_ref(), theirs.channel, "change").await;
+    let (old_head, new_head) = ("d1".repeat(20), "d2".repeat(20));
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: old_head.clone(),
+            ..round_for(mine.ws, thread, 9)
+        })
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: new_head.to_ascii_uppercase(),
+            base_behind: Some(0),
+            rebase: true,
+            previous_head: Some(old_head.to_ascii_uppercase()),
+            ..round_for(mine.ws, thread, 9)
+        })
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: "e".repeat(40),
+            ..round_for(theirs.ws, other_thread, 9)
+        })
+        .await
+        .unwrap();
+
+    let previous = |ws: WorkspaceId, sha: String| {
+        let store = store.clone();
+        async move {
+            store
+                .change_round_previous_head(ws, &REPO.to_ascii_uppercase(), 9, &sha)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(
+        previous(mine.ws, new_head.clone()).await,
+        Some(old_head.clone())
+    );
+    assert_eq!(
+        previous(mine.ws, old_head.clone()).await,
+        None,
+        "a normal round moved nothing"
+    );
+    assert_eq!(
+        previous(theirs.ws, new_head.clone()).await,
+        None,
+        "another workspace never reads this workspace's range"
+    );
+    assert_eq!(previous(theirs.ws, "e".repeat(40)).await, None);
+    let pulls = store.list_change_pulls(mine.ws, None, None).await.unwrap();
+    let heads: Vec<Option<String>> = pulls[0]
+        .rounds
+        .iter()
+        .map(|r| r.previous_head.clone())
+        .collect();
+    assert_eq!(heads, vec![None, Some(old_head)]);
 }
 
 async fn open_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
@@ -1548,6 +1618,7 @@ on_both_backends!(
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
     change_rounds_ready_and_close_are_recorded_once,
     the_newest_round_names_the_head_only_for_the_workspace_that_delivered_it,
+    a_rebase_rounds_previous_head_reads_back_only_in_its_own_workspace,
     the_refresh_reads_the_longest_unread_pull_first,
     a_closed_pull_settles_its_thread_once,
     a_merge_notifies_each_overlapping_live_claim_once,
