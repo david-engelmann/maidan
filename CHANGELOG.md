@@ -158,6 +158,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - **Added:** a member can list the OAuth grants clients hold on them in a workspace and revoke one — `GET /workspaces/{wid}/oauth-grants`, `POST /workspaces/{wid}/oauth-grants/{gid}/revoke`, and the console page at `/ui/oauth/grants`. Every read is scoped to the caller's own workspace and member, so another tenant's grant is a 404. Revoking ends the grant's whole lineage, access and refresh tokens alike, through the audited lineage revocation.
 
+### A slow embedding endpoint no longer stalls unrelated requests
+
+Every embedding call runs on Tokio's blocking pool: semantic and hybrid search over HTTP and MCP, the live indexer, a reindex and the missed-embedding repair sweep. Each used to call the synchronous provider on an async worker, so a remote endpoint that took its time held that worker, and every request queued behind it waited too, in release builds as well as debug. Now only the search waiting on the endpoint waits. `Search::reindex_embeddings`, `Search::embed_missing`, `reindex_postgres`, `reindex_sqlite` and `embed_missing_postgres` take the provider as `&Arc<dyn EmbeddingProvider>`, so the call can move to another thread.
+
 ### Hybrid search ranks a deeper candidate pool
 
 - **Changed:** hybrid search fetched each side at exactly the requested limit before fusing, so on any corpus larger than the page a document mid-list on both sides — whose combined score would beat a one-sided top hit — was never ranked. Each side is now fetched four times deeper than the limit and the fusion orders the wider union. (Reciprocal-rank fusion was built and measured against the new search-quality gate for this change and rejected: it regressed hybrid nDCG on the judged queries at every rank constant tried, because the scores it discards carry the graded signal there.)

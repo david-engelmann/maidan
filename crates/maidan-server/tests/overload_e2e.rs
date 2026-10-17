@@ -5,10 +5,18 @@
 //!   answer, and a finished request gives its permit back.
 //! - A handler that panics answers a `500` problem carrying `X-Request-Id`;
 //!   the connection is not dropped and the server keeps serving.
+//! - A slow embedding endpoint holds only the search that is waiting on it;
+//!   an unrelated request on the same runtime is still answered.
 //!
 //! Header redaction in traces is `trace_redaction_e2e`.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use maidan_artifacts::LocalFsStore;
 use maidan_bus::InMemoryBus;
@@ -190,4 +198,113 @@ async fn a_panicking_handler_answers_a_500_problem_and_the_server_keeps_serving(
         .await
         .unwrap();
     assert_eq!(lexical.status(), StatusCode::OK);
+}
+
+/// An OpenAI-compatible endpoint that answers its one request only once
+/// `release` fires, or after `SLOW_ENDPOINT_FALLBACK` if it never does. It
+/// reports arrival on `arrived` and whether `release` came in time in the
+/// returned flag.
+const SLOW_ENDPOINT_FALLBACK: Duration = Duration::from_secs(10);
+
+fn slow_endpoint(
+    arrived: tokio::sync::oneshot::Sender<()>,
+    release: std::sync::mpsc::Receiver<()>,
+) -> (String, Arc<AtomicBool>) {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let released = Arc::new(AtomicBool::new(false));
+    let flag = released.clone();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut length = 0usize;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = v.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0; length];
+        reader.read_exact(&mut body).unwrap();
+        let _ = arrived.send(());
+        flag.store(
+            release.recv_timeout(SLOW_ENDPOINT_FALLBACK).is_ok(),
+            Ordering::SeqCst,
+        );
+        let reply = r#"{"data":[{"index":0,"embedding":[0.1,0.2,0.3]}]}"#;
+        let _ = write!(
+            stream,
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+            reply.len()
+        );
+    });
+    (format!("http://{addr}/v1/embeddings"), released)
+}
+
+// A current-thread runtime has one worker, so an embed that blocks it stops
+// everything else. The endpoint holds its answer until the unrelated request
+// has been served; if the embed held the worker, that request cannot be served
+// until the endpoint gives up waiting, and `released` stays false.
+#[tokio::test]
+async fn a_slow_embedding_endpoint_does_not_stall_an_unrelated_request() {
+    let (mut state, _dir) = state().await;
+    let ws = state
+        .store
+        .create_workspace(NewWorkspace {
+            name: "slow-embeddings".into(),
+        })
+        .await
+        .unwrap();
+    let (arrived_tx, arrived_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let (endpoint, released) = slow_endpoint(arrived_tx, release_rx);
+    state.embedding_provider = Arc::new(
+        maidan_search::embedding_provider::OpenAiCompatibleProvider::new(
+            endpoint,
+            "slow-stub".into(),
+            None,
+            Some(3),
+            30,
+        )
+        .unwrap(),
+    );
+    let base = serve(state).await;
+    let client = client();
+
+    let search = tokio::spawn({
+        let client = client.clone();
+        let url = format!("{base}/workspaces/{}/search", ws.id.0);
+        async move {
+            client
+                .get(url)
+                .query(&[("q", "anything"), ("mode", "semantic")])
+                .timeout(Duration::from_secs(30))
+                .send()
+                .await
+        }
+    });
+    arrived_rx.await.unwrap();
+
+    let health = client
+        .get(format!("{base}/health/live"))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(health.status(), StatusCode::OK);
+    let _ = release_tx.send(());
+
+    search
+        .await
+        .unwrap()
+        .expect("the search is answered once the endpoint is");
+    assert!(
+        released.load(Ordering::SeqCst),
+        "the unrelated request waited for the embedding endpoint"
+    );
 }
