@@ -1,0 +1,53 @@
+# Semantic search with a local embedding model: an overlay on the root
+# compose.yaml's `full` profile that adds Ollama serving nomic-embed-text and
+# points maidan-server's openai-compatible provider at it.
+#
+#   docker compose -f compose.yaml -f examples/embeddings/compose.ollama.yaml \
+#     --profile full up -d --build
+#
+# The first `up` downloads the model (about 275 MB) into the `ollama_models`
+# volume before maidan-server starts, because the server probes the endpoint
+# for the vector dimension at boot. Write-up: docs/Providers.md ("Recipe: local
+# embeddings with Ollama").
+
+services:
+  ollama:
+    # Pinned to a release tag; the image is large (several GB) because it
+    # carries the GPU runtimes, and this recipe uses only the CPU path.
+    image: ollama/ollama:0.40.5
+    container_name: maidan-ollama
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    profiles:
+      - full
+
+  ollama-pull:
+    # One-shot: the same image as a client of the server above, so the model is
+    # on disk before maidan-server's boot-time probe.
+    image: ollama/ollama:0.40.5
+    container_name: maidan-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", "nomic-embed-text"]
+    profiles:
+      - full
+
+  maidan-server:
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    environment:
+      MAIDAN_EMBEDDING_PROVIDER: openai-compatible
+      MAIDAN_EMBEDDING_ENDPOINT: http://ollama:11434/v1/embeddings
+      MAIDAN_EMBEDDING_MODEL: nomic-embed-text
+
+volumes:
+  ollama_models:
