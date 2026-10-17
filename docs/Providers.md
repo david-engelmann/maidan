@@ -132,10 +132,11 @@ host: `MAIDAN_EMBEDDING_PROVIDER=openai-compatible`,
 `MAIDAN_EMBEDDING_ENDPOINT=http://127.0.0.1:11434/v1/embeddings` and
 `MAIDAN_EMBEDDING_MODEL=nomic-embed-text`.
 
-**Needs a server with the fix "A remote embedding provider no longer blocks or
-crashes the server"** (CHANGELOG). Before it, a debug build crashed at boot with
-this provider, and a release build blocked a runtime worker for each embedding
-call.
+**A debug build needs the fix "A remote embedding provider no longer crashes a
+debug build at boot"** (CHANGELOG). Before it, a debug build crashed at boot
+with this provider. In every build, each embedding call still holds a runtime
+worker until the endpoint answers, so a slow endpoint can delay other requests.
+A follow-up moves those calls off the workers.
 
 **Hugging Face text-embeddings-inference** serves the same OpenAI-style route,
 so the overlay's three variables work with its `/v1/embeddings` in place of
