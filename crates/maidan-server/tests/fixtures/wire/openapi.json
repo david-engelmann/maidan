@@ -1277,6 +1277,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "previous_head": {
+            "description": "The head a squash-rebase round force-moved the branch from: with\n`commit_sha`, the range a reviewer diffs to see what the rebase\nchanged. `None` for a normal round.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "rebase": {
             "description": "Whether this round rebuilt the branch on the base's head.",
             "type": "boolean"

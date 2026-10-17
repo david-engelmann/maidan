@@ -38,10 +38,21 @@ const SLACK_MAX_SKEW_SECS: i64 = 300;
 
 /// Slack app credentials. `signing_secret` verifies inbound requests; `bot_token`
 /// (optional here) authorizes outbound Web API calls in the egress cluster (309).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SlackConfig {
     pub signing_secret: String,
     pub bot_token: Option<String>,
+}
+
+// Written out rather than derived: the signing secret forges inbound requests
+// and the bot token speaks as the app, so neither may reach a `{:?}`.
+impl std::fmt::Debug for SlackConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlackConfig")
+            .field("signing_secret", &"***")
+            .field("bot_token", &self.bot_token.as_ref().map(|_| "***"))
+            .finish()
+    }
 }
 
 /// `MAIDAN_SLACK_BOT_TOKEN`, the egress credential. Read on its own: egress
@@ -587,5 +598,18 @@ mod tests {
         assert!(!SlackError::Http("connection reset".into()).is_misconfiguration());
         // An error Slack adds later is retried, not treated as fatal.
         assert!(!SlackError::Api("some_new_code".into()).is_misconfiguration());
+    }
+
+    #[test]
+    fn debug_formatting_hides_the_signing_secret_and_bot_token() {
+        let config = SlackConfig {
+            signing_secret: "slack-signing-S3cr3t".into(),
+            bot_token: Some("bot-token-S3cr3t".into()),
+        };
+        let shown = format!("{config:?}");
+        assert!(
+            !shown.contains("slack-signing-S3cr3t") && !shown.contains("bot-token-S3cr3t"),
+            "{shown}"
+        );
     }
 }

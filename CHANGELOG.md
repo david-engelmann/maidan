@@ -66,6 +66,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
 - **Changed:** HTTP responses are gzip-compressed for clients that offer `Accept-Encoding: gzip`. Event streams, protocol upgrades, images and already-encoded responses are never encoded. Nothing changes for clients that do not offer an encoding. Responses that carry a credential (a minted, rotated or delegated token, an agent's token, a share ticket, a webhook or hook secret, a peer token, an app code exchange) send `Cache-Control: no-store` and are never compressed, so a secret's length cannot be probed beside text the caller chose (BREACH).
 
+### Object-store, SMTP and Slack credentials stay out of debug output
+
+- **Security:** four settings types derived `Debug`, so formatting one with `{:?}`, in a log line or a wrapped error, printed its credentials in clear: the S3 artifact settings (`S3Config`, and the server's `ArtifactBackend::S3`) with both keys, the SMTP settings with the relay password, and the Slack settings with the signing secret and bot token. Each now prints `***` in their place. An optional credential shows as `Some("***")` or `None`, so whether one is set is still visible.
+
 ### A follow-up round can rebase an agent branch onto the current base (#1444)
 
 - **Added:** a change result with `"rebase": true` is a squash-rebase round. `base_sha` is the base branch's current head and `diff` the whole branch against it. Maidan rebuilds the branch as one commit on that head and moves it with `force: true`, the change flow's only non-fast-forward write. It refuses, before any write and naming the SHAs, when the branch head isn't the last commit the change flow delivered to the pull request in this workspace, when `base_sha` isn't the base's head, when the pull request is in the merge queue or none is open, and for anything but a `feature/agent-*` branch. The head is re-read right before the move, and only a guard in `change_flow.rs` can mint the single-use pass the GitHub client's force method takes. A retry that finds its own rebase commit reuses it.
@@ -73,9 +77,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** migration 0182 adds `rebase` and `workspace_id` to `maidan_change_rounds`. Swarm metrics mark each rebase round, count `rebases` per task, and never read a rebase's whole-branch diff as a growing one.
 - **Fixed:** the swarm metrics for a pull request listed rounds that another workspace delivered to it. They now list only the reading workspace's rounds.
 
+### The waiter contract test speaks of the producer generically
+
+- The MCP waiter contract test is now `crates/maidan-server/tests/producer_waiter_contract_e2e.rs`. Its constants, client type, helpers, test names and comments, plus three test names elsewhere, now say "producer" and "waiter" instead of an internal name. The wire strings it pins (`pi.change.result/1`, `pi.result_attachments`, `pi.task_kind`, `<!-- pi:current-state -->`) are unchanged, and so is behaviour.
+
 ### A change that ends without a commit says why in its one Slack notice
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
+
+### A squash-rebase names the range it rewrote
+
+- **Added:** after a squash-rebase round force-moves an agent branch, the change flow comments `Rebased <old_head>..<new_head> onto <base_sha>` on the pull request, so a reviewer can range-diff what the rebase changed. It is the flow's only comment, and best effort: a refused comment never undoes the move.
+- **Added:** the Slack change reply carries the same line under the commit and pull request link.
+- **Added:** the round records the old head as `previous_head` (migration 0183, both backends), and `GET /workspaces/{id}/swarm-metrics` lists it with the round. A retry that reuses its rebase commit comments only when the move was never recorded.
 
 ### A squash-rebase round compares the base SHA case-insensitively
 

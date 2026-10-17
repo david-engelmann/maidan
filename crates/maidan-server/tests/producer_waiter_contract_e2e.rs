@@ -1,19 +1,20 @@
-//! pi's waiter, on the wire it uses. This mirrors pi-core's contract check
-//! (`scripts/maidan-contract-check.sh`, which runs pi's real waiter image
-//! against a throwaway Maidan before a deploy) inside Maidan's own CI, so a
-//! Maidan change that breaks that client fails here first.
+//! The producer's waiter, on the wire it uses. This mirrors the producer's own
+//! contract check (which runs its real waiter image against a throwaway Maidan
+//! before a deploy) inside Maidan's own CI, so a Maidan change that breaks that
+//! client fails here first.
 //!
-//! On 2026-10-12 a stricter MCP revision check refused every request pi's
-//! waiter sent, and its deployment crash-looped. Every Maidan test passed,
-//! because none of them spoke the way a real client does. The requests below
-//! copy pi-core's client (`pi-mcp`'s HTTP transport and `pi-maidan`'s waiter,
-//! pi 1.16.2): the endpoint, the headers, the JSON-RPC envelope, the tool
+//! On 2026-10-12 a stricter MCP revision check refused every request the
+//! producer's waiter sent, and its deployment crash-looped. Every Maidan test
+//! passed, because none of them spoke the way a real client does. The requests
+//! below copy the producer's client (its MCP HTTP transport and its waiter,
+//! version 1.16.2): the endpoint, the headers, the JSON-RPC envelope, the tool
 //! names, the argument names, the order of the calls, the REST result write
-//! and the fields pi reads from each reply.
+//! and the fields the waiter reads from each reply.
 //!
-//! A change to any of these calls or fields, including a reply field pi
-//! parses, is a breaking change for pi. Tell pi before deploying it, so its
-//! client can move first; don't just update this test.
+//! A change to any of these calls or fields, including a reply field the
+//! waiter parses, is a breaking change for the producer. Tell its maintainers
+//! before deploying it, so the client can move first; don't just update this
+//! test.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -27,15 +28,15 @@ use serde_json::{json, Value};
 use sha2::Digest;
 use sqlx::sqlite::SqlitePoolOptions;
 
-/// pi's waiter connects to `{base}/mcp` (`PiMcpMaidanClient::connect_http`),
+/// The waiter connects to `{base}/mcp` (its client's `connect_http`),
 /// not to `/mcp/streamable`.
-const PI_MCP_ENDPOINT: &str = "/mcp";
+const WAITER_MCP_ENDPOINT: &str = "/mcp";
 
-/// The revision pi 1.16.2 asks for in `initialize`
-/// (`pi_mcp::protocol::CLIENT_PROTOCOL_VERSION`).
-const PI_REVISION: &str = "2025-11-25";
+/// The revision the waiter's client (1.16.2) asks for in `initialize`
+/// (its `CLIENT_PROTOCOL_VERSION`).
+const WAITER_REVISION: &str = "2025-11-25";
 
-/// The revision pi 1.16.1 claimed, without the `_meta` it requires: the
+/// The revision the 1.16.1 client claimed, without the `_meta` it requires: the
 /// requests Maidan began refusing on 2026-10-12.
 const STATELESS_REVISION: &str = "2026-07-28";
 
@@ -66,7 +67,7 @@ async fn spawn() -> Maidan {
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let workspace = store
         .create_workspace(NewWorkspace {
-            name: "pi-check".into(),
+            name: "waiter-check".into(),
         })
         .await
         .unwrap();
@@ -140,27 +141,27 @@ impl Maidan {
         serde_json::from_str(&text).unwrap()
     }
 
-    /// pi's MCP client for `bearer`, before its handshake.
-    fn pi(&self, endpoint: &str, bearer: &str) -> PiMcp {
-        PiMcp {
+    /// The waiter's MCP client for `bearer`, before its handshake.
+    fn waiter(&self, endpoint: &str, bearer: &str) -> WaiterMcp {
+        WaiterMcp {
             http: self.http.clone(),
             url: format!("{}{endpoint}", self.base),
             bearer: bearer.to_string(),
-            revision: PI_REVISION.to_string(),
+            revision: WAITER_REVISION.to_string(),
             next_id: 1,
         }
     }
 }
 
-/// `pi_mcp::Client` over `pi_mcp::HttpTransport`, request for request.
+/// The producer's MCP `Client` over its `HttpTransport`, request for request.
 ///
 /// Every POST carries `MCP-Protocol-Version` (the revision asked for until the
 /// handshake, the one Maidan echoed after it) and the SEP-2243 `Mcp-Method`,
 /// plus `Mcp-Name` on a `tools/call`. A request accepts only
-/// `application/json`, and pi reads each reply body as one JSON-RPC object,
-/// so a reply as SSE breaks it. pi never echoes `Mcp-Session-Id`: a session
+/// `application/json`, and the client reads each reply body as one JSON-RPC object,
+/// so a reply as SSE breaks it. The client never echoes `Mcp-Session-Id`: a session
 /// Maidan required would break it as well.
-struct PiMcp {
+struct WaiterMcp {
     http: reqwest::Client,
     url: String,
     bearer: String,
@@ -168,7 +169,7 @@ struct PiMcp {
     next_id: u64,
 }
 
-impl PiMcp {
+impl WaiterMcp {
     fn post(&self, method: &str, name: Option<&str>) -> reqwest::RequestBuilder {
         let mut request = self
             .http
@@ -200,10 +201,10 @@ impl PiMcp {
         let status = response.status();
         let bytes = response.bytes().await.unwrap();
         let body = String::from_utf8_lossy(&bytes);
-        // pi's transport turns any non-2xx into an error before reading the body.
+        // The client's transport turns any non-2xx into an error before reading the body.
         assert!(status.is_success(), "{method}: HTTP {status}: {body}");
         let reply: Value = serde_json::from_slice(&bytes).unwrap_or_else(|err| {
-            panic!("{method}: pi reads the reply as one JSON-RPC object, not this ({err}): {body}")
+            panic!("{method}: the waiter reads the reply as one JSON-RPC object, not this ({err}): {body}")
         });
         assert_eq!(reply["id"], id, "{method}: the reply answers another id");
         reply
@@ -219,14 +220,14 @@ impl PiMcp {
         reply["result"].clone()
     }
 
-    /// `Client::initialize`: the handshake on the revision pi asks for, then
-    /// the `notifications/initialized` pi sends with `"id": null` and no params.
+    /// `Client::initialize`: the handshake on the revision the client asks for,
+    /// then the `notifications/initialized` it sends with `"id": null` and no params.
     async fn initialize(&mut self) {
         let init = self
             .request(
                 "initialize",
                 json!({
-                    "protocolVersion": PI_REVISION,
+                    "protocolVersion": WAITER_REVISION,
                     "clientInfo": { "name": "pi-mcp", "version": "1.16.2" },
                     "capabilities": { "tools": {} },
                 }),
@@ -235,9 +236,9 @@ impl PiMcp {
         let echoed = init["protocolVersion"]
             .as_str()
             .unwrap_or_else(|| panic!("initialize: no protocolVersion: {init}"));
-        // pi stamps the echoed revision on every later request; a revision it
+        // The client stamps the echoed revision on every later request; a revision it
         // did not ask for would put it back on the rules that broke it.
-        assert_eq!(echoed, PI_REVISION, "initialize: {init}");
+        assert_eq!(echoed, WAITER_REVISION, "initialize: {init}");
         self.revision = echoed.to_string();
 
         let initialized = self
@@ -253,7 +254,7 @@ impl PiMcp {
         );
     }
 
-    /// `Client::call_tool` plus pi-maidan's `extract_text` and `parse_text`:
+    /// `Client::call_tool` plus the waiter's `extract_text` and `parse_text`:
     /// the tool must not report `isError`, and its first content block must
     /// be text holding JSON.
     async fn call_tool(&mut self, name: &str, arguments: Value) -> Value {
@@ -273,23 +274,28 @@ impl PiMcp {
     }
 }
 
-/// The states `pi_maidan::ThreadState` can parse; any other fails the waiter.
-const PI_THREAD_STATES: [&str; 4] = ["open", "in_review", "closed", "archived"];
+/// The states the waiter's `ThreadState` can parse; any other fails the waiter.
+const WAITER_THREAD_STATES: [&str; 4] = ["open", "in_review", "closed", "archived"];
 
-/// The fields `pi_maidan::MaidanClaimedThread` requires.
-fn assert_pi_reads_a_claimed_thread(tool: &str, thread: &Value, thread_id: &str, channel: &str) {
+/// The fields the waiter's `MaidanClaimedThread` requires.
+fn assert_waiter_reads_a_claimed_thread(
+    tool: &str,
+    thread: &Value,
+    thread_id: &str,
+    channel: &str,
+) {
     assert_eq!(thread["id"], thread_id, "{tool}: {thread}");
     assert_eq!(thread["channel_id"], channel, "{tool}: {thread}");
     assert!(
         thread["state"]
             .as_str()
-            .is_some_and(|s| PI_THREAD_STATES.contains(&s)),
-        "{tool}: a state pi cannot parse: {thread}"
+            .is_some_and(|s| WAITER_THREAD_STATES.contains(&s)),
+        "{tool}: a state the waiter cannot parse: {thread}"
     );
 }
 
 #[tokio::test]
-async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
+async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
     let maidan = spawn().await;
     let admin = maidan.admin.clone();
     let wid = maidan.workspace_id.clone();
@@ -337,33 +343,33 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
         .await;
 
     // The waiter, with the worker token only, in `run_waiter_once`'s order.
-    let mut pi = maidan.pi(PI_MCP_ENDPOINT, &worker);
-    pi.initialize().await;
+    let mut client = maidan.waiter(WAITER_MCP_ENDPOINT, &worker);
+    client.initialize().await;
 
     // No `lease_secs`: the waiter sends one only when configured with one.
-    let claimed = pi
+    let claimed = client
         .call_tool("claim_next_thread", json!({ "channel_id": cid }))
         .await;
-    assert_pi_reads_a_claimed_thread("claim_next_thread", &claimed, &tid, &cid);
+    assert_waiter_reads_a_claimed_thread("claim_next_thread", &claimed, &tid, &cid);
     assert_eq!(claimed["assignee_id"], waiter.as_str(), "{claimed}");
     let lease = claimed["claim_lease_id"]
         .as_str()
         .unwrap_or_else(|| panic!("the waiter fences on claim_lease_id: {claimed}"))
         .to_string();
 
-    let acked = pi
+    let acked = client
         .call_tool(
             "acknowledge_claim",
             json!({ "thread_id": tid, "claim_lease_id": lease }),
         )
         .await;
-    assert_pi_reads_a_claimed_thread("acknowledge_claim", &acked, &tid, &cid);
+    assert_waiter_reads_a_claimed_thread("acknowledge_claim", &acked, &tid, &cid);
 
-    // `pi_maidan::MaidanThreadContext`: the first text block is the pack, with
+    // The waiter's `MaidanThreadContext`: the first text block is the pack, with
     // `messages` of `{thread_id, author_id, body, metadata}`. The waiter runs
     // only when a message someone else wrote is there, and reads the task
     // kind from its metadata.
-    let context = pi
+    let context = client
         .call_tool("get_thread_context", json!({ "thread_id": tid }))
         .await;
     let messages = context["messages"]
@@ -386,7 +392,7 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
     );
 
     // The seat's proof, uploaded the way `ArtifactRest::upload` does it.
-    let screenshot = b"\x89PNG\r\n\x1a\npi waiter contract check".to_vec();
+    let screenshot = b"\x89PNG\r\n\x1a\nproducer waiter contract check".to_vec();
     let sha = hex::encode(sha2::Sha256::digest(&screenshot));
     let uploaded = maidan
         .http
@@ -408,12 +414,12 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
         status.is_success(),
         "POST /artifacts: HTTP {status}: {uploaded}"
     );
-    // pi refuses an upload whose stored sha256 is not the one it sent.
+    // The waiter refuses an upload whose stored sha256 is not the one it sent.
     assert_eq!(uploaded["sha256"], sha.as_str(), "{uploaded}");
 
-    // `usd_micros` is pi's own charge for the line, which Maidan recomputes:
+    // `usd_micros` is the waiter's own charge for the line, which Maidan recomputes:
     // 1200 × 3 + 340 × 15 micro-dollars.
-    let usage = pi
+    let usage = client
         .call_tool(
             "report_usage",
             json!({
@@ -440,7 +446,7 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
             }),
         )
         .await;
-    // `pi_maidan::MaidanUsageReport`; `stopped: true` would abort the run.
+    // The waiter's `MaidanUsageReport`; `stopped: true` would abort the run.
     assert_eq!(usage["stopped"], false, "report_usage: {usage}");
     let budget = &usage["budget"];
     assert_eq!(budget["thread_id"], tid.as_str(), "report_usage: {usage}");
@@ -484,16 +490,18 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
 
     // Without `--keep-claimable` the waiter parks a finished task so it is not
     // handed out again, then releases its claim.
-    pi.call_tool(
-        "mark_unclaimable",
-        json!({ "thread_id": tid, "reason": "pi-waiter: completed" }),
-    )
-    .await;
-    pi.call_tool(
-        "release_claim",
-        json!({ "thread_id": tid, "claim_lease_id": lease }),
-    )
-    .await;
+    client
+        .call_tool(
+            "mark_unclaimable",
+            json!({ "thread_id": tid, "reason": "pi-waiter: completed" }),
+        )
+        .await;
+    client
+        .call_tool(
+            "release_claim",
+            json!({ "thread_id": tid, "claim_lease_id": lease }),
+        )
+        .await;
 
     // What the contract check reads back, as the admin.
     let stored = maidan
@@ -517,8 +525,9 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
         "the attachments did not round-trip"
     );
 
-    let parsed = maidan_types::parse_waiter_result(result)
-        .unwrap_or_else(|| panic!("Maidan does not route on the envelope pi wrote: {result}"));
+    let parsed = maidan_types::parse_waiter_result(result).unwrap_or_else(|| {
+        panic!("Maidan does not route on the envelope the waiter wrote: {result}")
+    });
     assert_eq!(parsed.result_kind, maidan_types::CHANGE_RESULT_KIND);
     assert!(parsed.deliver_to.is_empty());
     assert_eq!(
@@ -534,20 +543,20 @@ async fn pis_waiter_round_trip_works_on_the_wire_it_uses() {
     assert!(!change.is_changed(), "a no_change result commits nothing");
 }
 
-/// pi 1.16.2's fix, pinned: a client that handshakes on `2025-11-25` and sends
-/// no `_meta` is served. pi 1.16.1 claimed `2026-07-28` in the header without
+/// The 1.16.2 client's fix, pinned: a client that handshakes on `2025-11-25` and sends
+/// no `_meta` is served. The 1.16.1 client claimed `2026-07-28` in the header without
 /// the `_meta` that revision requires, and Maidan refuses that: the contract
-/// that broke pi on 2026-10-12. Both MCP endpoints keep both rules.
+/// that broke the waiter on 2026-10-12. Both MCP endpoints keep both rules.
 #[tokio::test]
 async fn a_2025_11_25_client_without_meta_is_served_and_a_2026_claim_without_it_is_refused() {
     let maidan = spawn().await;
-    for endpoint in [PI_MCP_ENDPOINT, "/mcp/streamable"] {
-        let mut fixed = maidan.pi(endpoint, &maidan.admin);
+    for endpoint in [WAITER_MCP_ENDPOINT, "/mcp/streamable"] {
+        let mut fixed = maidan.waiter(endpoint, &maidan.admin);
         fixed.initialize().await;
         let me = fixed.call_tool("whoami", json!({})).await;
         assert!(me["member_id"].is_string(), "{endpoint}: whoami: {me}");
 
-        let mut broken = maidan.pi(endpoint, &maidan.admin);
+        let mut broken = maidan.waiter(endpoint, &maidan.admin);
         broken.revision = STATELESS_REVISION.to_string();
         for (method, params) in [
             (

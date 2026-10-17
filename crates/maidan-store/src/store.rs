@@ -2181,6 +2181,17 @@ pub trait AssignmentStore: Send + Sync {
         repo: &str,
         pull_number: i64,
     ) -> Result<Option<String>, StoreError>;
+    /// The head the squash-rebase round that delivered `commit_sha` to
+    /// `repo`#`pull_number` force-moved the branch from, as recorded in
+    /// `workspace_id`; `None` for a normal round, an unrecorded one, or
+    /// another workspace's.
+    async fn change_round_previous_head(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+        commit_sha: &str,
+    ) -> Result<Option<String>, StoreError>;
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,
