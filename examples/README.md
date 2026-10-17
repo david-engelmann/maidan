@@ -53,6 +53,18 @@ docker compose -f examples/recipes/coding-agent.yaml up --build
 task, does it with Goose's tools, asks a person before anything irreversible, and
 hands the result back for review.
 
+## Semantic search with a local model
+
+[`embeddings/compose.ollama.yaml`](embeddings/compose.ollama.yaml) layers Ollama onto the
+root stack, so semantic search runs on `nomic-embed-text` with no outside account:
+
+```sh
+docker compose -f compose.yaml -f examples/embeddings/compose.ollama.yaml --profile full up -d --build
+```
+
+The write-up, and the other provider recipes (R2, S3, Google sign-in, managed Postgres), are
+in [docs/Providers.md](../docs/Providers.md).
+
 ## Framework + REST examples
 
 Start a Maidan first — the quickstart runs one on `http://127.0.0.1:8080` **with auth on**,

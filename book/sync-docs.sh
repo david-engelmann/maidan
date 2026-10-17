@@ -64,6 +64,7 @@ find "$src_docs" -name '*.md' -print0 | while IFS= read -r -d '' f; do
   # fails on a file that is correct but lives outside the book.
   perl -pi -e 's{\]\(\.\./(CHANGELOG\.md|CLAUDE\.md|CONTRIBUTING\.md|AGENTS\.md|README\.md|gemini-extension\.md|gemini-extension\.json|rust-toolchain\.toml|deny\.toml)(#[^)]*)?\)}{]($ENV{GH}/$1$2)}g' "$f"
   perl -pi -e 's{\]\(\.\./contracts/}{]($ENV{GH}/contracts/}g' "$f"
+  perl -pi -e 's{\]\(\.\./examples/}{]($ENV{GH}/examples/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.github/}{]($ENV{GH}/.github/}g' "$f"
   perl -pi -e 's{\]\(\.\./\.\./crates/}{]($ENV{GH}/crates/}g' "$f"
 
