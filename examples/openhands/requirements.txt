@@ -1,2 +1,12 @@
 openhands-sdk==1.55.1
 openhands-tools==1.55.1
+# Floors for transitive dependencies. pip already resolves newer versions
+# today, but the repo's osv scan resolves this file on its own and would
+# otherwise pick releases with known advisories.
+aiohttp>=3.14.3
+httpcore2>=2.10.0
+httpx2>=2.12.0
+json-repair>=0.60.1
+litellm>=1.95.1
+orjson>=3.11.5
+pypdf>=6.19.0
