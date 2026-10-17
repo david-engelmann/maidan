@@ -402,7 +402,9 @@ jobs:
     name: integration (testcontainers)
     needs: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Freeing disk costs about two minutes, and the first green run after it
+    # took 26m41s; at 30 a slow runner would be cut off and read as cancelled.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
@@ -415,6 +417,16 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The workspace's test binaries reach about 83G here, which left 871M of
+      # the runner's disk. MinIO refuses writes below its free-drive floor, so
+      # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
+      # coverage job, which frees this space first, passed them.
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker system prune -af --volumes >/dev/null
+          df -h /
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -423,6 +435,22 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
+      - name: build integration tests
+        if: needs.changes.outputs.code == 'true'
+        run: cargo nextest run --workspace --tests --profile ci --no-run
+      # A full disk shows up only as a storage error deep in one test, so
+      # name it here, before the containers start writing.
+      - name: disk left for the test containers
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          df -h /
+          du -sh target
+          avail_kib=$(df --output=avail -k / | tail -1)
+          floor_gib=8
+          if [ "$avail_kib" -lt $((floor_gib * 1024 * 1024)) ]; then
+            echo "::error::under ${floor_gib}G free after the test build; MinIO and Postgres need room to write"
+            exit 1
+          fi
       - name: integration tests
         if: needs.changes.outputs.code == 'true'
         run: cargo nextest run --workspace --tests --profile ci
