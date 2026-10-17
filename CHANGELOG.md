@@ -41,9 +41,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** `PUT /workspaces/{wid}/retention` and MCP `set_retention_policy` take `media_days` and `media_quota_bytes` (migration 0170), each held to the instance's.
 - **Changed:** the board page (`/ui`, `/ui/`) and the `/ui/static/*` assets carry a strong `ETag` and `Cache-Control: no-cache`, so every load revalidates. A revalidation with a current `If-None-Match` answers `304` with no body, so repeat board loads stop re-downloading the page and its modules, and a deploy never leaves a browser running cached modules beside new ones.
 
-### A remote embedding provider no longer blocks or crashes the server
+### A remote embedding provider no longer crashes a debug build at boot
 
-- `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` used `reqwest`'s blocking client from async code. That covered building it in the server's startup and every semantic search, live index and reindex call. A debug build panicked at boot ("Cannot drop a runtime in a context where blocking is not allowed"). A release build ran each call on a Tokio worker thread and stalled it for up to the request timeout. The provider now builds its client and sends each request on a short-lived OS thread whenever it's called inside a runtime. Its synchronous interface and its configuration are unchanged.
+- `MAIDAN_EMBEDDING_PROVIDER=openai-compatible` used `reqwest`'s blocking client from async code. That covered building it in the server's startup and every semantic search, live index and reindex call. A debug build panicked at boot ("Cannot drop a runtime in a context where blocking is not allowed"). The provider now builds its client and sends each request on a short-lived OS thread whenever it's called inside a runtime, so reqwest's runtime check no longer fires. The caller still waits for that thread, so each embedding call occupies the Tokio worker it was made from until the request returns, in release builds as before. Its synchronous interface and its configuration are unchanged.
 
 ### A waitlist, an invite, and a sign-up that creates the workspace
 

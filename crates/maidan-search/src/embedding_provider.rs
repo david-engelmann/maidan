@@ -180,8 +180,10 @@ impl OpenAiCompatibleProvider {
 /// it is built or sends from inside a Tokio runtime, and this provider is
 /// built in the server's async `serve` and called from async search, indexing
 /// and reindex paths. A scoped OS thread is outside any runtime, and starting
-/// one costs nothing next to a remote embedding call. The caller still waits
-/// for the call, as the provider's synchronous trait already says it will.
+/// one costs nothing next to a remote embedding call. The join is a blocking
+/// wait, so this avoids reqwest's in-runtime panic but still holds the calling
+/// worker until the request returns; keeping the worker free is the async call
+/// sites' job, not this function's.
 fn off_runtime<T: Send>(f: impl FnOnce() -> T + Send) -> T {
     if tokio::runtime::Handle::try_current().is_err() {
         return f();
