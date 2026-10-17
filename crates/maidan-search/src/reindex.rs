@@ -1,10 +1,12 @@
 //! Re-embed all live messages for the active provider model.
 
+use std::sync::Arc;
+
 use maidan_types::{MessageId, WorkspaceId};
 use sqlx::{PgPool, SqlitePool};
 use uuid::Uuid;
 
-use crate::embedding_provider::EmbeddingProvider;
+use crate::embedding_provider::{embed_batch_off_worker, EmbeddingProvider};
 use crate::embedding_tables;
 use crate::error::SearchError;
 use crate::Search;
@@ -23,7 +25,7 @@ struct MessageRow {
 pub async fn reindex_postgres(
     pool: &PgPool,
     search: &dyn Search,
-    provider: &dyn EmbeddingProvider,
+    provider: &Arc<dyn EmbeddingProvider>,
     workspace_id: Option<WorkspaceId>,
 ) -> Result<ReindexReport, SearchError> {
     embedding_tables::ensure_model_postgres(
@@ -41,7 +43,7 @@ pub async fn reindex_postgres(
 pub async fn reindex_sqlite(
     pool: &SqlitePool,
     search: &dyn Search,
-    provider: &dyn EmbeddingProvider,
+    provider: &Arc<dyn EmbeddingProvider>,
     workspace_id: Option<WorkspaceId>,
 ) -> Result<ReindexReport, SearchError> {
     embedding_tables::ensure_model_sqlite(pool, provider.model_name(), provider.dimension())
@@ -61,7 +63,7 @@ const EMBED_REPAIR_LOCK: i64 = 0x6d61_6964_656d_6272;
 pub async fn embed_missing_postgres(
     pool: &PgPool,
     search: &dyn Search,
-    provider: &dyn EmbeddingProvider,
+    provider: &Arc<dyn EmbeddingProvider>,
     limit: i64,
 ) -> Result<ReindexReport, SearchError> {
     let Some((table, _)) =
@@ -129,14 +131,14 @@ const REINDEX_BATCH: usize = 32;
 
 async fn reindex_rows(
     search: &dyn Search,
-    provider: &dyn EmbeddingProvider,
+    provider: &Arc<dyn EmbeddingProvider>,
     rows: Vec<MessageRow>,
 ) -> Result<ReindexReport, SearchError> {
     let mut report = ReindexReport::default();
     let model = provider.model_name();
     for chunk in rows.chunks(REINDEX_BATCH) {
-        let bodies: Vec<&str> = chunk.iter().map(|r| r.body.as_str()).collect();
-        let embeddings = match provider.embed_batch(&bodies) {
+        let bodies = chunk.iter().map(|r| r.body.clone()).collect();
+        let embeddings = match embed_batch_off_worker(provider, bodies).await {
             Ok(v) => v,
             Err(err) => {
                 report.failed += chunk.len() as u64;

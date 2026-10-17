@@ -8,7 +8,7 @@ use maidan_types::{Event, ThreadState};
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use crate::embedding_provider::EmbeddingProvider;
+use crate::embedding_provider::{embed_off_worker, EmbeddingProvider};
 use crate::indexer::EventHandler;
 use crate::Search;
 use crate::SearchError;
@@ -78,7 +78,7 @@ impl EventHandler for EmbeddingHandler {
             return;
         }
 
-        let embedding = match self.provider.embed(&message.body) {
+        let embedding = match embed_off_worker(&self.provider, &message.body).await {
             Ok(v) => v,
             Err(err) => {
                 self.set_health_error(format!("embedding generation failed: {err}"))

@@ -79,9 +79,7 @@ pub async fn start_reindex_embeddings(
     let audit_workspace = workspace_id.map(|w| w.0);
     let mut job_clone = job.clone();
     maidan_store::attribution::spawn(async move {
-        let result = search
-            .reindex_embeddings(provider.as_ref(), workspace_id)
-            .await;
+        let result = search.reindex_embeddings(&provider, workspace_id).await;
         job_clone.finished_at = Some(Utc::now());
         match result {
             Ok(report) => {
