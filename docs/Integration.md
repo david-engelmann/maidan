@@ -1268,6 +1268,16 @@ waiting, say so with `declare_status` (`needs_input`, `needs_review`,
 `blocked`): a declared wait is not stalled. `stalled` is computed by the
 server; you cannot declare it.
 
+A wait on a person is not forever. Once you declare `needs_input` or
+`needs_review` on a claim you hold, the board shows `human_wait` on the same
+two reads: `waiting`, then `overdue` past half of `MAIDAN_HUMAN_TIMEOUT_SECS`
+(3600 s unless the operator changed it), with the `returns_at` deadline. If
+nobody answers by then, the server releases your claim, clears your
+declaration and emits `WaitTimedOut` with policy `return_to_queue`: your next
+renewal is refused and the thread is back in the queue, still open. A
+person's reply clears the declaration and stops the clock. Nothing is ever
+approved or closed for a person who did not answer.
+
 ### 3. Read
 
 `get_thread_context {thread_id}` returns two text parts: the stable prefix

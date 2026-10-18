@@ -2333,6 +2333,26 @@ pub trait AssignmentStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// Return to the queue up to `limit` threads whose holder declared
+    /// `needs_input` or `needs_review` before `declared_before` and is still
+    /// waiting: an open, live thread on a lease running at `now` that the
+    /// holder acknowledged, with the holder's own declaration still active.
+    /// For each, in one transaction: the claim is released as a graceful
+    /// release is (its worked time charged to the wall budget), the
+    /// declaration is dropped, since it spoke for a holder that is gone, and
+    /// a `WaitTimedOut` carrying `policy` and the declaration's note is
+    /// appended. The thread stays open; nothing is decided for the person.
+    /// Concurrent callers take distinct threads (`FOR UPDATE SKIP LOCKED` on
+    /// Postgres; SQLite serializes writers). Returns the appended events,
+    /// oldest declaration first.
+    async fn return_human_timeouts(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        declared_before: chrono::DateTime<chrono::Utc>,
+        policy: &str,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Extend a claimed thread's lease (heartbeat), only for the current
     /// assignee holding the matching fencing token. `NotFound` if the thread is
     /// gone, the caller isn't the holder, or `lease_id` doesn't match the

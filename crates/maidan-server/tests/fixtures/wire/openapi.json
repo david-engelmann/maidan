@@ -3616,6 +3616,40 @@
         ],
         "type": "object"
       },
+      "HumanWait": {
+        "description": "A wait on a person as the board shows it.",
+        "properties": {
+          "returns_at": {
+            "description": "When an unanswered wait returns the thread to the queue.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "since": {
+            "description": "When the holder declared it needs a person.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HumanWaitState"
+          }
+        },
+        "required": [
+          "state",
+          "since",
+          "returns_at"
+        ],
+        "type": "object"
+      },
+      "HumanWaitState": {
+        "description": "Where an agent's wait on a person stands. The policy at the end is\nlocked: an unanswered wait returns the thread to the queue, and no\ntransition leads to a decision made on the person's behalf, because a\nsilence is not a yes.",
+        "enum": [
+          "waiting",
+          "overdue",
+          "returned_to_queue",
+          "answered"
+        ],
+        "type": "string"
+      },
       "ImportMode": {
         "description": "Import mode.",
         "enum": [
@@ -8685,6 +8719,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "human_wait": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HumanWait",
+                "description": "Where a thread whose holder is waiting on a person stands: the\nholder of a live, acknowledged lease declared `needs_input` or\n`needs_review` and no person has answered yet. Set by the board's\nreads; `None` elsewhere and when nobody is waiting on a person."
+              }
             ]
           },
           "id": {
