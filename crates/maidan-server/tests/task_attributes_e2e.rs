@@ -423,6 +423,7 @@ async fn swarm_metrics_carry_attributes_filters_and_the_engine_split() {
                 paths: Vec::new(),
                 base_branch: None,
                 rebase: false,
+                previous_head: None,
             })
             .await
             .unwrap();

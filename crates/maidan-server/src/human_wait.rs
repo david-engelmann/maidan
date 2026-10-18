@@ -173,6 +173,7 @@ mod tests {
             work_started_at: Some(since - chrono::Duration::minutes(1)),
             owner_id: None,
             created_by: None,
+            attributes: None,
             created_at: since,
             updated_at: now,
             tombstoned_at: None,

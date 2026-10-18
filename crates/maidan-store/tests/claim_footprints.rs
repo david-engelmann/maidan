@@ -1115,7 +1115,10 @@ async fn a_rebase_rounds_previous_head_reads_back_only_in_its_own_workspace(stor
         "another workspace never reads this workspace's range"
     );
     assert_eq!(previous(theirs.ws, "e".repeat(40)).await, None);
-    let pulls = store.list_change_pulls(mine.ws, None, None).await.unwrap();
+    let pulls = store
+        .list_change_pulls(mine.ws, None, None, None, None, None)
+        .await
+        .unwrap();
     let heads: Vec<Option<String>> = pulls[0]
         .rounds
         .iter()

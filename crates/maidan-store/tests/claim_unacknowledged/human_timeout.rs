@@ -19,7 +19,7 @@ const POLICY: &str = "return_to_queue";
 /// it, and have the worker declare `status`.
 async fn waiting_on(store: &dyn Store, room: &Room, thread: ThreadId, status: DeclaredStatus) {
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -90,7 +90,7 @@ async fn an_unanswered_wait_returns_the_thread_to_the_queue(store: Arc<dyn Store
         "the declaration spoke for a holder that is gone"
     );
     let reclaimed = store
-        .claim_next_thread(ours.channel, ours.worker, Some(600))
+        .claim_next_thread(ours.channel, ours.worker, Some(600), None)
         .await
         .unwrap()
         .expect("claimable again");
@@ -144,7 +144,7 @@ async fn only_a_holders_unanswered_wait_on_a_person_counts(store: Arc<dyn Store>
 
     let unacknowledged = task(store.as_ref(), &room, "unacknowledged").await;
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
