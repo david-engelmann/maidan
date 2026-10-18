@@ -61,6 +61,18 @@ does it with OpenHands' terminal and file editor, asks a person before anything
 irreversible, and hands the result back for review. `--check` verifies the
 connection and the token's tools without a model.
 
+## Semantic search with a local model
+
+[`embeddings/compose.ollama.yaml`](embeddings/compose.ollama.yaml) layers Ollama onto the
+root stack, so semantic search runs on `nomic-embed-text` with no outside account:
+
+```sh
+docker compose -f compose.yaml -f examples/embeddings/compose.ollama.yaml --profile full up -d --build
+```
+
+The write-up, and the other provider recipes (R2, S3, Google sign-in, managed Postgres), are
+in [docs/Providers.md](../docs/Providers.md).
+
 ## Framework + REST examples
 
 Start a Maidan first — the quickstart runs one on `http://127.0.0.1:8080` **with auth on**,
@@ -99,6 +111,7 @@ change an example or the surface it calls. Owner: the maintainer.
 | `recipes/deploy.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` (with #1046) + these recipes | Opened a gate on the thread and waited; the agent's own token was refused (403) answering it; `approve` deployed, `approve --decline` recorded `not_deployed`; lease held across a multi-minute wait | Docker Compose 5.1.3, `python:3.13-slim` |
 | `goose/maidan-waiter.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | Not run inside Goose (needs an LLM provider). The recipe's eight steps were replayed as MCP calls with an app token holding exactly its three capabilities: all ten tools it names are visible, the gate held until accepted, and the thread ended `in_review` and unclaimable | recipe schema per Goose's recipe reference, 2026-09 |
 | `openhands/maidan_claimant.py` | 2026-10-16 | `main` @ `466c2ec6`, auth on | `--check` connected over streamable HTTP (MCP `2025-11-25`) with an app token holding exactly its three capabilities: 173 tools visible, all ten the loop names among them, and the agent filtered to those ten plus `terminal` and `file_editor`. The full run wasn't done (it needs an LLM provider). The loop's calls were replayed as MCP calls with the same token: claim, acknowledge, context, post, renew, a pending gate, result, `in_review`, release, then no claimable work | openhands-sdk 1.55.1, openhands-tools 1.55.1, Python 3.12 |
+| `embeddings/compose.ollama.yaml` | 2026-10-16 | `main` @ `466c2ec6` + the embedding-provider fix (#1456), release image | `full` profile with the overlay came up healthy; the server probed 768 dimensions and ran the Postgres indexer; three semantic queries each returned the matching message first, `embedding_model: nomic-embed-text` | Docker Compose, `ollama/ollama:0.40.5`, `nomic-embed-text` |
 | `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
 
 `a2a_interop.py` needs a token: A2A messages are posted as the token's member,

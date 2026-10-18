@@ -61,6 +61,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** invited sign-up through the OIDC front door (`GET /auth/oidc/signup`), on only when `MAIDAN_SIGNUP` is set, and boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. The sign-up rides its own pending kind (the same migration), so a sign-up state can never finish a login or the other way round. The callback requires a verified email that matches the invite's address, consumes the invite, and creates the workspace, its first member, the identity and the session in one transaction, audited as `workspace.signup` and `session.create`. A sign-up always lands in the workspace born with it, never in one that existed before. With `MAIDAN_SIGNUP_EMAIL_DOMAINS` set, an address in a listed domain may sign up without an invite.
 - **Added:** rate limits for the sign-up surface. Requests to the waitlist, the sign-up start and the invite endpoint are charged per address (`MAIDAN_SIGNUP_RATE_LIMIT_MAX`, default 30 per hour), and a waitlist join is also charged per email domain (`MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX`, default 100 per hour).
 
+### Provider recipes: local embeddings, R2 and S3, Google sign-in, managed Postgres
+
+- **Added:** `docs/Providers.md` carries a recipe for each provider surface that only had a row before. The local-embeddings recipe is a compose overlay, `examples/embeddings/compose.ollama.yaml`, that serves `nomic-embed-text` from Ollama for the root stack's `full` profile. The R2 and Neon recipes are what `dev.maidan.world` runs. AWS S3 with a least-privilege IAM policy, Google as the OIDC provider, RDS and Supabase are written and marked not run. LibSQL/Turso was measured: `DATABASE_URL` accepts only `postgres://`, `postgresql://` and `sqlite:`, and a remote Turso database needs a libSQL client, so it is not a driver flag and stays out.
+- **Changed:** the book's link rewrite sends `../examples/` links from published pages to GitHub, as it already does for `../contracts/`.
+
 ### OAuth discovery (phase three, first half)
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
@@ -102,6 +107,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### A result delivered to GitHub links its attached files
 
 - **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
+
+### A database URL's password and token stay out of errors, logs and help
+
+- **Security:** a `DATABASE_URL` with an unrecognized prefix stopped boot with an error that quoted the whole URL. A mistyped `postgress://user:password@…` or a `libsql://…?authToken=…` put the password or token on the terminal and into the logs. The same refusal in the `maidan` CLI did the same, and `maidan <command> --help` printed the variable's current value. All three now show the URL with its userinfo password and credential-named parameters (`password`, `authToken`, `token`, `key`, `secret` and similar, in any case) masked as `***`. The scheme and host stay, so the message still says what was wrong. The server config's `Debug` output masks `DATABASE_URL` and `MAIDAN_DB_REPLICA_URL` the same way.
 
 ### The store's thread-read rule requires the reader to belong to the thread's workspace
 
