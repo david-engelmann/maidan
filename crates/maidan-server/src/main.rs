@@ -916,7 +916,9 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Claim reaper: on by default (`MAIDAN_CLAIM_REAP_TICK_SECS`, 5 s; `0`
     // off). Returns lapsed leases to the queue and publishes `ClaimExpired`
     // on time instead of at the next `claim_next`, and reports leased claims
-    // left unacknowledged (`MAIDAN_CLAIM_ACK_TIMEOUT_SECS`, 120 s).
+    // left unacknowledged (`MAIDAN_CLAIM_ACK_TIMEOUT_SECS`, 120 s) and
+    // threads whose agent's wait on a person went unanswered
+    // (`MAIDAN_HUMAN_TIMEOUT_SECS`, 3600 s).
     if let Some(reaper_cfg) = maidan_server::claim_reaper::config_from_env() {
         let reaper_state = state.clone();
         tokio::spawn(async move {

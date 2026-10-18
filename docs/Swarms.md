@@ -311,8 +311,9 @@ that was routed to Pi.
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
 `?rounds_limit=`, `?behind_limit=`, `?engine=`, `?kind=`) gives, for each agent pull request the
 change flow opened:
-- its rounds (commit, diff lines, how many commits its base was behind, and
-  whether it was a squash-rebase), and `rebases`, how many were;
+- its rounds (commit, diff lines, how many commits its base was behind,
+  whether it was a squash-rebase, and for one, `previous_head`, the head it
+  moved the branch from), and `rebases`, how many were;
 - time to ready and time to merge;
 - whether it merged at the commit Maidan delivered (`merged_without_edits`);
 - the thread's model cost from the usage ledger;

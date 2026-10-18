@@ -444,13 +444,18 @@ fn compact_reason(reason: &str) -> String {
 /// `github_branch` deliveries: the commit and pull request when one landed,
 /// the recorded reason when it did not, and the status alone when the producer reported
 /// anything other than `changed`.
-pub async fn change_reply(state: &AppState, thread_id: ThreadId) -> ChangeReply {
-    change_reply_at(state, thread_id, Utc::now()).await
+pub async fn change_reply(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+) -> ChangeReply {
+    change_reply_at(state, workspace_id, thread_id, Utc::now()).await
 }
 
 /// [`change_reply`] as of `now`, which bounds the wait.
 pub async fn change_reply_at(
     state: &AppState,
+    workspace_id: WorkspaceId,
     thread_id: ThreadId,
     now: DateTime<Utc>,
 ) -> ChangeReply {
@@ -524,12 +529,31 @@ pub async fn change_reply_at(
                     pull_number,
                     ..
                 }),
-            ) => lines.push(format!(
-                "Committed {commit_sha} to `{branch}` in {repo}. Draft PR: https://github.com/{repo}/pull/{pull_number}"
-            )),
+            ) => {
+                lines.push(format!(
+                    "Committed {commit_sha} to `{branch}` in {repo}. Draft PR: https://github.com/{repo}/pull/{pull_number}"
+                ));
+                // The same range the pull request was told, from the round
+                // the delivery recorded. A failed read only drops the line.
+                if let (true, Some(base_sha)) = (change.rebase, change.base_sha.as_deref()) {
+                    if let Ok(Some(old_head)) = state
+                        .store
+                        .change_round_previous_head(workspace_id, repo, pull_number, &commit_sha)
+                        .await
+                    {
+                        lines.push(crate::change_flow::rebase_note(
+                            &old_head,
+                            &commit_sha,
+                            base_sha,
+                        ));
+                    }
+                }
+            }
             _ => lines.push(format!(
                 "Nothing was committed to `{branch}` in {repo}: {}",
-                row.last_error.as_deref().unwrap_or("the delivery did not land")
+                row.last_error
+                    .as_deref()
+                    .unwrap_or("the delivery did not land")
             )),
         }
     }

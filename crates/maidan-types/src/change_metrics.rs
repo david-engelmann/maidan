@@ -62,6 +62,8 @@ pub struct NewChangeRound {
     pub base_branch: Option<String>,
     /// A squash-rebase round: the branch was rebuilt on the base's head.
     pub rebase: bool,
+    /// For a squash-rebase round, the head the branch was force-moved from.
+    pub previous_head: Option<String>,
 }
 
 /// What a change notice tells a thread's worker.
@@ -176,6 +178,11 @@ pub struct ChangeRound {
     pub delivered_at: DateTime<Utc>,
     /// Whether this round rebuilt the branch on the base's head.
     pub rebase: bool,
+    /// The head a squash-rebase round force-moved the branch from: with
+    /// `commit_sha`, the range a reviewer diffs to see what the rebase
+    /// changed. `None` for a normal round.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_head: Option<String>,
 }
 
 /// An agent pull request the change flow opened, with its rounds.
@@ -467,6 +474,7 @@ mod tests {
             diff_lines: diff,
             delivered_at: at(n * 60),
             rebase: false,
+            previous_head: None,
         }
     }
 

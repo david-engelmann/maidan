@@ -13,10 +13,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** the retention sweep retries a batch of due shas each run through `reap_artifact_blob`, so each try takes the reap lease and rechecks for a row. A sha another workspace has uploaded since keeps its bytes and leaves the queue. A failed retry backs off from one minute, doubling up to six hours.
 - **Fixed:** a failed delete used to log `purge.orphaned_blob_not_deleted` and leave the bytes in the blob store for good. The log line stays; the bytes now go on a later sweep.
 
+### The integration job keeps room on the runner's disk for MinIO
+
+- **Fixed:** the required `integration (testcontainers)` check failed on main and on open PRs, intermittently, in `maidan-artifacts`' two MinIO tests. MinIO answered `XMinioStorageFull` ("Storage backend has reached its minimum free drive threshold"): the workspace's test build had grown to 83G and left 871M of the runner's 145G disk. The job now frees the runner's unused SDKs and Docker images first, as the coverage job does (about 20G). After building, it fails with a plain error if under 8G is free, so a full disk can't surface again as a storage error inside one test. Its timeout goes from 30 to 40 minutes, because freeing disk adds about two minutes and the first green run took 26m41s.
+- **Fixed:** every S3 call in `maidan-artifacts` (put, get, head, delete, bucket creation and the multipart calls) reported a failure as the SDK's bare `service error`, without the S3 error code or the server's message, so the red runs above had nothing to go on. The error now carries the SDK's whole source chain, for example `put_object: service error: unhandled error (XMinioStorageFull): ...`.
+
 ### Every deploy path runs v413.0.0, and the ARM64 page runs it with auth on
 
 - **Changed:** the Helm prod values of both charts (the stack's server and `maidan-postgres`), the prod kustomize overlay, the quickstart compose default and Dockerfile (with the SHA-256s of the `v413.0.0` Linux tarballs, each checked against its cosign bundle), and the install commands in the README and `docs/Production.md` pin `v413.0.0`. `helm/maidan-stack/charts/maidan-0.1.0.tgz` is repackaged.
 - **Fixed:** `docs/Pi.md` pulled `:latest`, ran `v315.0.0` with `AUTH_DISABLED=1`, and its native recipe could not boot without `MAIDAN_CONTENT_KEK`. It now runs `v413.0.0` with auth on: `maidan init` from the tag-matched CLI image, both containers as the host user so SQLite can create its file, the content key and session secret generated once into an owner-only file and loaded on every start, and every recipe listening on loopback, reached from elsewhere through SSH or a TLS proxy. The recipe was run on `linux/arm64`: `/me` answers 200 with the minted token and 401 without. `scripts/check-deploy-pins.sh` now checks `docs/Pi.md` too, fifteen pins in all.
+
+### The sqlite-vec CI job finishes instead of timing out
+
+- **Fixed:** the `sqlite-vec (optional feature)` job was cancelled after its tests passed. It wasn't a concurrency cancel: the job ran into its 15-minute timeout while compiling the server's `sqlite-vec` test, and a timed-out job never saves its cache, so the next run started cold again. The job no longer compiles the default build that the unit and lint jobs already compile. It keeps the `cargo tree` check that the default build leaves `sqlite-vec` out, and its timeout is 30 minutes.
+- **Fixed:** the job pulls `pgvector/pgvector` through `mirror.gcr.io` like the other container jobs. A Docker Hub pull failure (`bytes remaining on stream`) failed it on main.
 
 ### The Postgres event log is partitioned by month, and retention drops old months
 
@@ -25,9 +35,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** Instance event retention drops a month whole once its range ends by the cutoff and every row in it is one the batched delete would have removed. That means none above the delivery-cursor floor and none in a workspace under legal hold. Any other partition that may hold rows before the cutoff gets the batched `DELETE`, inside that partition only: a kept month, the month the cutoff falls in, the legacy partition and DEFAULT. The rows left are exactly those the delete alone would have left. Per-workspace event retention still deletes, now limited to the partitions before its cutoff.
 - **Changed:** `maidan_outbox.log_id` and `maidan_federated_ingest.local_event_id` no longer have foreign keys to `maidan_events`, since a key on `id` alone can't reference a partitioned table. Their `ON DELETE CASCADE` is now a delete trigger on the event log, plus an explicit delete before a partition drop. `maidan_outbox.log_id` gets the index the cascade never had.
 
+### A listing asset pack, prepared and not submitted
+
+- New `docs/Listing.md` holds the copy a directory asks for: a short description that fits the MCP registry's 100-character limit, a card description and a long description. Each leads with the room rather than a tool count, names both the hosted room at maidan.world and self-hosting, and has a self-hosted variant to use until the hosted room runs. Each sentence is tied to the evidence it rests on. The page also lists what has to happen before any submission: name and logo clearance, the maintainer's legal pages, and the demo instance.
+- New `docs/assets/listing/` holds a 48×48 and a 400×400 PNG icon, rendered from the mark by `scripts/render-listing-icons.py`. Nothing is published or submitted anywhere.
+
 ### Workspace context and the explorer filter by thread access in the query
 
 - **Changed:** the workspace thread page and the explorer listings (tombstones, message backlinks and the EventKind census) take the reader and filter by thread read access in the SQL on both backends, the way search does. Rows from a private channel or a DM the reader is not in never reach the caller and never crowd a page or a count out, so the REST and MCP surfaces dropped their per-row access post-filters. Backlinks for a message the reader cannot read answer empty instead of confirming the message is pointed at, and its references narrow to sources the reader may read.
+
+### An OpenHands agent can work a Maidan channel
+
+- New `examples/openhands/maidan_claimant.py` runs an agent on the OpenHands Software Agent SDK that works one task per run, using the same waiter loop as the Goose recipe: claim, acknowledge, read the task, do it with OpenHands' terminal and file editor, ask a person through an approval gate before anything irreversible, set the result, hand it to review and release. It connects over streamable HTTP with an app token holding `workspace:read`, `message:post` and `thread:transition`. Because OpenHands sends every tool on every request, the agent is filtered to the loop's ten tools. `--check` verifies the connection and the token's tools without calling a model, and the plain-http token guard allows loopback only.
 
 ### Media expires when nothing references it, under a per-workspace quota
 
@@ -42,10 +61,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** invited sign-up through the OIDC front door (`GET /auth/oidc/signup`), on only when `MAIDAN_SIGNUP` is set, and boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. The sign-up rides its own pending kind (the same migration), so a sign-up state can never finish a login or the other way round. The callback requires a verified email that matches the invite's address, consumes the invite, and creates the workspace, its first member, the identity and the session in one transaction, audited as `workspace.signup` and `session.create`. A sign-up always lands in the workspace born with it, never in one that existed before. With `MAIDAN_SIGNUP_EMAIL_DOMAINS` set, an address in a listed domain may sign up without an invite.
 - **Added:** rate limits for the sign-up surface. Requests to the waitlist, the sign-up start and the invite endpoint are charged per address (`MAIDAN_SIGNUP_RATE_LIMIT_MAX`, default 30 per hour), and a waitlist join is also charged per email domain (`MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX`, default 100 per hour).
 
+### Provider recipes: local embeddings, R2 and S3, Google sign-in, managed Postgres
+
+- **Added:** `docs/Providers.md` carries a recipe for each provider surface that only had a row before. The local-embeddings recipe is a compose overlay, `examples/embeddings/compose.ollama.yaml`, that serves `nomic-embed-text` from Ollama for the root stack's `full` profile. The R2 and Neon recipes are what `dev.maidan.world` runs. AWS S3 with a least-privilege IAM policy, Google as the OIDC provider, RDS and Supabase are written and marked not run. LibSQL/Turso was measured: `DATABASE_URL` accepts only `postgres://`, `postgresql://` and `sqlite:`, and a remote Turso database needs a libSQL client, so it is not a driver flag and stays out.
+- **Changed:** the book's link rewrite sends `../examples/` links from published pages to GitHub, as it already does for `../contracts/`.
+
 ### OAuth discovery (phase three, first half)
 
 - **Added:** with `MAIDAN_PUBLIC_ORIGIN` set, the server serves its RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server`, listing only what exists today: the authorization-code grant, PKCE S256, and the authorize and token endpoints. The RFC 9728 protected-resource document now names the server in `authorization_servers`, and the authorization response carries the RFC 9207 `iss` parameter. All of it stays off until the origin is configured.
 - **Changed:** HTTP responses are gzip-compressed for clients that offer `Accept-Encoding: gzip`. Event streams, protocol upgrades, images and already-encoded responses are never encoded. Nothing changes for clients that do not offer an encoding. Responses that carry a credential (a minted, rotated or delegated token, an agent's token, a share ticket, a webhook or hook secret, a peer token, an app code exchange) send `Cache-Control: no-store` and are never compressed, so a secret's length cannot be probed beside text the caller chose (BREACH).
+
+### Object-store, SMTP and Slack credentials stay out of debug output
+
+- **Security:** four settings types derived `Debug`, so formatting one with `{:?}`, in a log line or a wrapped error, printed its credentials in clear: the S3 artifact settings (`S3Config`, and the server's `ArtifactBackend::S3`) with both keys, the SMTP settings with the relay password, and the Slack settings with the signing secret and bot token. Each now prints `***` in their place. An optional credential shows as `Some("***")` or `None`, so whether one is set is still visible.
 
 ### A follow-up round can rebase an agent branch onto the current base (#1444)
 
@@ -54,17 +82,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Added:** migration 0182 adds `rebase` and `workspace_id` to `maidan_change_rounds`. Swarm metrics mark each rebase round, count `rebases` per task, and never read a rebase's whole-branch diff as a growing one.
 - **Fixed:** the swarm metrics for a pull request listed rounds that another workspace delivered to it. They now list only the reading workspace's rounds.
 
+### The waiter contract test speaks of the producer generically
+
+- The MCP waiter contract test is now `crates/maidan-server/tests/producer_waiter_contract_e2e.rs`. Its constants, client type, helpers, test names and comments, plus three test names elsewhere, now say "producer" and "waiter" instead of an internal name. The wire strings it pins (`pi.change.result/1`, `pi.result_attachments`, `pi.task_kind`, `<!-- pi:current-state -->`) are unchanged, and so is behaviour.
+
 ### A change that ends without a commit says why in its one Slack notice
 
 - **Fixed:** a `pi.change.result/1` with `seat_error` (or any status other than `changed`) got Maidan's "finished with status `seat_error`, so nothing was committed" with no reason, and the consuming app posted the reason as a second notice. Maidan's reply now carries the envelope's `error_detail` (else its `summary`), with a cause repeated across retries said once and the reason cut at 600 characters, so the consuming app can drop its own notice. `ChangeResult` gains `error_detail`.
+
+### A squash-rebase names the range it rewrote
+
+- **Added:** after a squash-rebase round force-moves an agent branch, the change flow comments `Rebased <old_head>..<new_head> onto <base_sha>` on the pull request, so a reviewer can range-diff what the rebase changed. It is the flow's only comment, and best effort: a refused comment never undoes the move.
+- **Added:** the Slack change reply carries the same line under the commit and pull request link.
+- **Added:** the round records the old head as `previous_head` (migration 0183, both backends), and `GET /workspaces/{id}/swarm-metrics` lists it with the round. A retry that reuses its rebase commit comments only when the move was never recorded.
 
 ### A squash-rebase round compares the base SHA case-insensitively
 
 - **Fixed:** a squash-rebase round whose `base_sha` matched the base branch's head in another letter case was refused as a stale base. The comparison now ignores case, as the change flow's other SHA comparisons do. The force move's doc comment now says the move is not atomic (GitHub's refs API has no compare-and-swap) and why the one-round-trip window is acceptable.
 
+### A system notice floats its thread in the recently-active view
+
+- Every post now bumps its thread's activity time, whichever store path it takes. Before, the plain `post_message` path skipped the bump. That path carries the MCP system notices (`rebase_needed`, `cancelled`), so a thread that had just got one of them could sink below quieter threads in `GET /channels/{cid}/recent-threads`. The bump runs in the same transaction as the insert on both backends. Stuck detection reads `last_progress_at` and is unaffected.
+
 ### A result delivered to GitHub links its attached files
 
 - **Added:** when a result delivered to a GitHub pull request carries files under `pi.result_attachments`, the PR comment gains one line per file — its caption, or the filename when it has none — linking the file in Maidan, under a header noting the links need Maidan auth. Captions are escaped so producer text renders literally, and Slack deliveries are unchanged.
+
+### A database URL's password and token stay out of errors, logs and help
+
+- **Security:** a `DATABASE_URL` with an unrecognized prefix stopped boot with an error that quoted the whole URL. A mistyped `postgress://user:password@…` or a `libsql://…?authToken=…` put the password or token on the terminal and into the logs. The same refusal in the `maidan` CLI did the same, and `maidan <command> --help` printed the variable's current value. All three now show the URL with its userinfo password and credential-named parameters (`password`, `authToken`, `token`, `key`, `secret` and similar, in any case) masked as `***`. The scheme and host stay, so the message still says what was wrong. The server config's `Debug` output masks `DATABASE_URL` and `MAIDAN_DB_REPLICA_URL` the same way.
 
 ### The store's thread-read rule requires the reader to belong to the thread's workspace
 
@@ -233,6 +279,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### The queue says why work waits
 
 - **Added:** `GET /workspaces/{id}/deferred` (`workspace:read`): the open threads the claim queue is holding back for their footprint, oldest first, each with its reasons (`overlap`, `repo_paused`, `slot_full`), limited to threads the caller may read. It answers "why isn't this being picked up" during a swarm ramp.
+
+### Human-timeout state machine
+
+- **Added:** an agent waiting on a person no longer holds its thread forever. The holder's own `needs_input` or `needs_review` on a live claim it acknowledged starts a clock, `MAIDAN_HUMAN_TIMEOUT_SECS` (3600 s by default, `0` off). The wait runs on one state machine, `HumanWaitState` (`waiting`, `overdue` from half the timeout, then `returned_to_queue`, or `answered` when a person replies), with an explicit transition table that refuses every other move. At the timeout the claim reaper's existing tick releases the claim, drops the stale declaration and emits `WaitTimedOut` with policy `return_to_queue` in one transaction. The owner is notified and the thread stays open and claimable. That is the only ending: nothing is approved, closed or proceeded with for a person who did not answer. `Thread.human_wait` (`state`, `since`, `returns_at`) is on the board's reads (`GET /threads/{id}` and `GET /channels/{cid}/threads`). The card shows "waiting on a person" or "overdue, back to queue HH:MM", and the summary strip counts overdue asks. Counter `maidan_human_waits_returned_total`. No migration, no new route.
 
 ### Swarm ramp metrics
 

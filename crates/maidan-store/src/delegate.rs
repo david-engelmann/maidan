@@ -2642,6 +2642,23 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn change_round_previous_head(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+                commit_sha: &str,
+            ) -> Result<Option<String>, StoreError> {
+                change_metrics::round_previous_head(
+                    self.read_pool(),
+                    workspace_id,
+                    repo,
+                    pull_number,
+                    commit_sha,
+                )
+                .await
+            }
+
             async fn mark_change_pull_ready(
                 &self,
                 repo: &str,
@@ -2796,6 +2813,17 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<StoredEvent>, StoreError> {
                 threads::report_unacknowledged_claims(self.pool(), now, claimed_before, limit).await
+            }
+
+            async fn return_human_timeouts(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                declared_before: chrono::DateTime<chrono::Utc>,
+                policy: &str,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                threads::return_human_timeouts(self.pool(), now, declared_before, policy, limit)
+                    .await
             }
 
             async fn renew_claim(

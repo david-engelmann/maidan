@@ -650,6 +650,22 @@
   color: #8d4b00;
   border: 1px dashed #c77700;
 }
+.card-human-wait {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e3f2fd;
+  color: #0d47a1;
+}
+.card-human-wait-overdue,
+.card-human-wait-returned_to_queue {
+  background: #fff3e0;
+  color: #8d4b00;
+  border: 1px dashed #c77700;
+}
 #board-summary .health-alert,
 #board-summary .health-alert b { color: #a14400; }
 

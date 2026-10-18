@@ -37,8 +37,8 @@ pub async fn record_round(pool: &PgPool, new: NewChangeRound) -> Result<(), Stor
     sqlx::query(
         "INSERT INTO maidan_change_rounds
              (repo, pull_number, commit_sha, round, base_sha, base_behind, diff_lines, delivered_at,
-              paths, base_branch, rebase, workspace_id)
-         SELECT $1, $2, $3, COALESCE(MAX(round), 0) + 1, $4, $5, $6, NOW(), $7, $8, $9, $10
+              paths, base_branch, rebase, workspace_id, previous_head)
+         SELECT $1, $2, $3, COALESCE(MAX(round), 0) + 1, $4, $5, $6, NOW(), $7, $8, $9, $10, $11
          FROM maidan_change_rounds WHERE repo = $1 AND pull_number = $2
          ON CONFLICT (repo, pull_number, commit_sha) DO NOTHING",
     )
@@ -52,6 +52,7 @@ pub async fn record_round(pool: &PgPool, new: NewChangeRound) -> Result<(), Stor
     .bind(&new.base_branch)
     .bind(new.rebase)
     .bind(new.workspace_id.0)
+    .bind(new.previous_head.as_deref().map(str::to_ascii_lowercase))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -82,6 +83,32 @@ pub async fn latest_round_head(
     .bind(pull_number)
     .fetch_optional(pool)
     .await?)
+}
+
+/// The head the squash-rebase round that delivered `commit_sha` to
+/// `repo`#`pull_number` force-moved the branch from, as recorded in
+/// `workspace_id`. `None` for a normal round, an unrecorded one, or another
+/// workspace's.
+pub async fn round_previous_head(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+    commit_sha: &str,
+) -> Result<Option<String>, StoreError> {
+    let head: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT r.previous_head FROM maidan_change_rounds r
+         JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
+         WHERE p.workspace_id = $1 AND r.workspace_id = $1
+           AND r.repo = $2 AND r.pull_number = $3 AND r.commit_sha = $4",
+    )
+    .bind(workspace_id.0)
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(commit_sha.to_ascii_lowercase())
+    .fetch_optional(pool)
+    .await?;
+    Ok(head.flatten())
 }
 
 /// Stamp when a tracked pull request was made ready (the first time only).
@@ -660,7 +687,7 @@ pub async fn list(
     .await?;
     let rounds = sqlx::query(
         "SELECT r.repo, r.pull_number, r.commit_sha, r.round, r.base_behind, r.diff_lines, r.delivered_at,
-                r.rebase
+                r.rebase, r.previous_head
          FROM maidan_change_rounds r
          JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
          WHERE p.workspace_id = $1 AND r.workspace_id = $1
@@ -681,6 +708,7 @@ pub async fn list(
                 diff_lines: row.get("diff_lines"),
                 delivered_at: row.get::<DateTime<Utc>, _>("delivered_at"),
                 rebase: row.get::<Option<bool>, _>("rebase").unwrap_or(false),
+                previous_head: row.get("previous_head"),
             });
     }
     let costs = sqlx::query(
