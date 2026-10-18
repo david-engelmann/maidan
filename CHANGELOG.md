@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A planner submits a plan's children in one call, and the plan closes when they land
+
+- **Added:** `POST /threads/{id}/plan` and MCP `submit_plan`. The member holding a `kind: plan` thread's live claim sends its `lease_id` and 1–50 children (key, title, optional description, attributes, footprint and `depends_on` keys). Every child is made in the plan's channel with its footprint, attributes and dependency edges in one transaction (migration 0184, both backends): `maidan_thread_plans` and `maidan_thread_plan_children`.
+- **Added:** validation before anything is written. Keys must be unique, non-empty and at most 64 characters, `depends_on` must name keys in the plan, and a cycle is refused by name. Each footprint and attribute set is validated as on its own route, and each child repository must be on the workspace's `github_branch` egress allowlist (read only). The whole plan counts against the spawn budget. Every failure is a 400 naming the child, and nothing is created.
+- **Added:** the same claim sending the same keys again gets a 200 with the children already made. Any other plan on a parent that has children is a 409 `plan-conflict` problem (MCP error `-32010`) carrying them in `children`.
+- **Added:** close-side follow-ups, in the closing transaction. A plan child that closes without a `ThreadLanded`, whether by hand or cancelled, gives each open dependent a `dag` block naming it and a message, and posts one message on the plan. The last child to land closes the plan through its own review and close gates, with a `ThreadLanded` for the pull request that finished it and a message listing every child's pull request. When a gate refuses, the plan stays open with one message saying why.
+- **Added:** `GET /threads/{id}` shows `plan_state: {total, closed, open, blocked}` on a plan with children.
+- **Changed:** a plan's children may move through review and close while their plan is still open; only an archived plan holds them back. Other children still can't move ahead of their parent.
+- **Changed:** `Store::transition_thread_with_event` returns every event to publish, the state change first and then what the close owed a plan. REST and MCP transitions publish them all.
+
 ### Orphaned artifact bytes whose delete failed are retried
 
 - **Added:** a reap whose blob delete fails or overruns queues the sha in `maidan_artifact_reap_retries` (migration 0181, both backends), keyed by sha and recording the workspace whose erase, purge, media expiry or refused upload orphaned it. Every delete site queues: `DELETE /artifacts/{sha}`, workspace purge and erase, a refused multipart upload over REST and MCP, and media expiry.

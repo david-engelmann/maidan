@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    ChangePull, ChangeRound, ChangeSettlement, Event, MemberId, NewChangeRound, NewStaleBaseNotice,
-    PostedNotice, StoredEvent, ThreadId, ThreadNotice, ThreadNoticeKind, ThreadState, WorkspaceId,
-    NOTICE_PATH_LIMIT,
+    ChangePull, ChangeRound, ChangeSettlement, ContentKeyring, Event, MemberId, NewChangeRound,
+    NewStaleBaseNotice, PostedNotice, StoredEvent, ThreadId, ThreadNotice, ThreadNoticeKind,
+    ThreadState, WorkspaceId, NOTICE_PATH_LIMIT,
 };
 use sqlx::types::Json;
 use sqlx::{Row, SqlitePool};
@@ -220,6 +220,7 @@ pub async fn list_unsettled(
 /// notice. See [`ChangeSettlement`].
 pub async fn settle(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     repo: &str,
     pull_number: i64,
 ) -> Result<ChangeSettlement, StoreError> {
@@ -300,6 +301,7 @@ pub async fn settle(
     };
     match land_in_tx(
         &mut tx,
+        keys,
         thread_id,
         actor,
         from_open,
@@ -351,6 +353,7 @@ async fn mark_settled(
 
 async fn land_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
     thread_id: ThreadId,
     actor: MemberId,
     from_open: bool,
@@ -383,6 +386,7 @@ async fn land_in_tx(
         title: None,
     };
     stored.push(events::append_in_tx(tx, &landed).await?);
+    stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor).await?);
     Ok(stored)
 }
 

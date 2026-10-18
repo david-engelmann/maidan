@@ -138,6 +138,8 @@ pub async fn cancel(
         sealed: None,
     };
     stored.push(events::append_with_keys_in_tx(&mut tx, Some(keys), &posted, None).await?);
+    // A cancel lands nothing, so a cancelled plan child blocks its dependents.
+    stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor).await?);
     tx.commit().await?;
     Ok(CancelOutcome::Cancelled {
         cancelled: CancelledThread {

@@ -533,6 +533,10 @@ async fn transition_with_event_appends_atomically() {
         .transition_thread_with_event(th.id, MemberId(actor.id.0), ThreadAction::StartReview)
         .await
         .expect("transition");
+    // Not a plan child, so the state change is the only event.
+    let [stored] = stored.as_slice() else {
+        panic!("one event, got {}", stored.len());
+    };
     assert_eq!(stored.kind, EventKind::ThreadStateChanged);
     assert_eq!(result.from_state, ThreadState::Open);
     assert_eq!(result.to_state, ThreadState::InReview);

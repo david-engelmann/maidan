@@ -201,6 +201,7 @@ mod tests {
             last_progress_at: None,
             stalled: false,
             notices: Vec::new(),
+            plan_state: None,
             created_by: None,
         }
     }

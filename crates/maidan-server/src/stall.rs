@@ -106,6 +106,7 @@ mod tests {
             block: None,
             closed_without_review: false,
             notices: Vec::new(),
+            plan_state: None,
             last_progress_at: Some(started),
             stalled: false,
         }

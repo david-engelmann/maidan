@@ -1367,6 +1367,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         last_progress_at: None,
         stalled: false,
         notices: Vec::new(),
+        plan_state: None,
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })
 }
