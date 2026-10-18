@@ -5885,6 +5885,117 @@
         ],
         "type": "object"
       },
+      "PlanChild": {
+        "additionalProperties": false,
+        "description": "One child of a plan, as the planner submits it.",
+        "properties": {
+          "attributes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskAttributes",
+                "description": "Kind, engine, size and acceptance, as at intake."
+              }
+            ]
+          },
+          "depends_on": {
+            "description": "Keys of children in the same plan this one waits for.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "footprint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Footprint"
+              }
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title"
+        ],
+        "type": "object"
+      },
+      "PlanChildren": {
+        "description": "The children a plan made, as the plan routes answer.",
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedChild"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "children"
+        ],
+        "type": "object"
+      },
+      "PlanState": {
+        "description": "How far a plan parent's children have got.",
+        "properties": {
+          "blocked": {
+            "description": "Open children held back by a block row (a dependency that closed\nwithout landing, or any other block).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "closed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "open": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "closed",
+          "open",
+          "blocked"
+        ],
+        "type": "object"
+      },
+      "PlannedChild": {
+        "description": "A child the plan made, by key.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        "required": [
+          "key",
+          "thread_id"
+        ],
+        "type": "object"
+      },
       "PostDmMessage": {
         "additionalProperties": false,
         "properties": {
@@ -5990,6 +6101,16 @@
       "ProblemDetails": {
         "description": "RFC 9457 problem details (`application/problem+json`; 9457 obsoletes 7807\nand keeps its format).",
         "properties": {
+          "children": {
+            "description": "On a `plan-conflict` 409: the children the plan already has.",
+            "items": {
+              "$ref": "#/components/schemas/PlannedChild"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "conflicts": {
             "description": "On a `footprint-conflict` 409: the live claim items the footprint\noverlaps, each with its thread, holder and lease.",
             "items": {
@@ -8433,6 +8554,27 @@
         ],
         "type": "object"
       },
+      "SubmitPlan": {
+        "additionalProperties": false,
+        "description": "A plan as submitted: the planner's claim on the parent and the children.",
+        "properties": {
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/PlanChild"
+            },
+            "type": "array"
+          },
+          "lease_id": {
+            "$ref": "#/components/schemas/ClaimLeaseId",
+            "description": "The parent's `claim_lease_id`: only the planner holding the parent's\nlive claim may plan it."
+          }
+        },
+        "required": [
+          "lease_id",
+          "children"
+        ],
+        "type": "object"
+      },
       "SubmitReview": {
         "description": "Submit a review decision. The reviewer is the caller; an owner/assignee may\nsubmit but it won't count toward the requirement.",
         "properties": {
@@ -8870,6 +9012,17 @@
               },
               {
                 "$ref": "#/components/schemas/ThreadId"
+              }
+            ]
+          },
+          "plan_state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlanState",
+                "description": "On a plan parent, how far its children have got. Read by a\nsingle-thread read only; absent on lists and on threads that are not\nplans with children."
               }
             ]
           },
@@ -24708,6 +24861,109 @@
           }
         ],
         "summary": "Pin a message",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/plan": {
+      "post": {
+        "description": "The planner holding the plan parent's live claim makes every child, with\nits attributes, footprint and dependency edges, in one transaction.\nA repeat from the same claim with the same keys answers `200` with the\nchildren already made; a different plan on a parent that has children is\na `409` (`plan-conflict`) carrying them in `children`.",
+        "operationId": "submit_plan",
+        "parameters": [
+          {
+            "description": "Plan parent thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitPlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanChildren"
+                }
+              }
+            },
+            "description": ""
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanChildren"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Submit a plan parent's children",
         "tags": [
           "threads"
         ]

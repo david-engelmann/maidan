@@ -81,6 +81,7 @@
     "acknowledge_claim",
     "release_claim",
     "set_thread_attributes",
+    "submit_plan",
     "set_thread_footprint",
     "list_active_claims",
     "add_thread_dependency",
