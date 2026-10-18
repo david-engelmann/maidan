@@ -150,7 +150,7 @@ impl DbConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub bind: SocketAddr,
     pub database_url: String,
@@ -161,6 +161,25 @@ pub struct Config {
     pub artifact_backend: ArtifactBackend,
     pub log_filter: String,
     pub db: DbConfig,
+}
+
+// Written out rather than derived so that formatting a `Config` with `{:?}`
+// cannot print the database password or token from either connection URL.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use maidan_store::dialect::redact_connection_url;
+        f.debug_struct("Config")
+            .field("bind", &self.bind)
+            .field("database_url", &redact_connection_url(&self.database_url))
+            .field(
+                "replica_url",
+                &self.replica_url.as_deref().map(redact_connection_url),
+            )
+            .field("artifact_backend", &self.artifact_backend)
+            .field("log_filter", &self.log_filter)
+            .field("db", &self.db)
+            .finish()
+    }
 }
 
 pub fn is_production() -> bool {
@@ -298,6 +317,29 @@ mod tests {
         let map: HashMap<&'static str, String> =
             pairs.iter().map(|(k, v)| (*k, v.to_string())).collect();
         move |name| map.get(name).cloned()
+    }
+
+    #[test]
+    fn debug_formatting_masks_both_connection_urls() {
+        let config = Config {
+            bind: "127.0.0.1:8080".parse().expect("addr"),
+            database_url: "postgres://maidan:S3cr3tPw@db.example/maidan?sslmode=require".into(),
+            replica_url: Some("postgres://reader:R3pl1caPw@replica.example/maidan".into()),
+            artifact_backend: ArtifactBackend::LocalFs {
+                root: PathBuf::from("/data"),
+            },
+            log_filter: "info".into(),
+            db: DbConfig::from_lookup(|_| None).expect("defaults"),
+        };
+        let shown = format!("{config:?}");
+        assert!(
+            !shown.contains("S3cr3tPw") && !shown.contains("R3pl1caPw"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains("db.example") && shown.contains("replica.example"),
+            "{shown}"
+        );
     }
 
     #[test]
