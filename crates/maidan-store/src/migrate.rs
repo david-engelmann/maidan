@@ -258,6 +258,8 @@ const POSTGRES_UP_V172: &str =
     include_str!("../../../migrations/postgres/0172_oauth_client_metadata_url.sql");
 const POSTGRES_UP_V173: &str = include_str!("../../../migrations/postgres/0173_claim_slots.sql");
 const POSTGRES_UP_V174: &str = include_str!("../../../migrations/postgres/0174_change_metrics.sql");
+const POSTGRES_UP_V175: &str =
+    include_str!("../../../migrations/postgres/0175_thread_attributes.sql");
 const POSTGRES_UP_V176: &str = include_str!("../../../migrations/postgres/0176_change_notices.sql");
 const POSTGRES_UP_V177: &str =
     include_str!("../../../migrations/postgres/0177_change_pull_checked.sql");
@@ -471,6 +473,7 @@ const SQLITE_UP_V172: &str =
     include_str!("../../../migrations/sqlite/0172_oauth_client_metadata_url.sql");
 const SQLITE_UP_V173: &str = include_str!("../../../migrations/sqlite/0173_claim_slots.sql");
 const SQLITE_UP_V174: &str = include_str!("../../../migrations/sqlite/0174_change_metrics.sql");
+const SQLITE_UP_V175: &str = include_str!("../../../migrations/sqlite/0175_thread_attributes.sql");
 const SQLITE_UP_V176: &str = include_str!("../../../migrations/sqlite/0176_change_notices.sql");
 const SQLITE_UP_V177: &str =
     include_str!("../../../migrations/sqlite/0177_change_pull_checked.sql");
@@ -710,6 +713,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 172, POSTGRES_UP_V172).await?;
     apply_postgres(pool, &applied, 173, POSTGRES_UP_V173).await?;
     apply_postgres(pool, &applied, 174, POSTGRES_UP_V174).await?;
+    apply_postgres(pool, &applied, 175, POSTGRES_UP_V175).await?;
     apply_postgres(pool, &applied, 176, POSTGRES_UP_V176).await?;
     apply_postgres(pool, &applied, 177, POSTGRES_UP_V177).await?;
     apply_postgres(pool, &applied, 178, POSTGRES_UP_V178).await?;
@@ -899,6 +903,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 172, SQLITE_UP_V172).await?;
     apply_sqlite(pool, &applied, 173, SQLITE_UP_V173).await?;
     apply_sqlite(pool, &applied, 174, SQLITE_UP_V174).await?;
+    apply_sqlite(pool, &applied, 175, SQLITE_UP_V175).await?;
     apply_sqlite(pool, &applied, 176, SQLITE_UP_V176).await?;
     apply_sqlite(pool, &applied, 177, SQLITE_UP_V177).await?;
     apply_sqlite(pool, &applied, 178, SQLITE_UP_V178).await?;

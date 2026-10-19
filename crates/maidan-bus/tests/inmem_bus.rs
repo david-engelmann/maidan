@@ -48,6 +48,7 @@ fn thread(channel_id: ChannelId) -> Thread {
         tombstoned_at: None,
         status: None,
         block: None,
+        attributes: None,
         closed_without_review: false,
         last_progress_at: None,
         stalled: false,

@@ -659,21 +659,32 @@ pub async fn list(
     workspace_id: WorkspaceId,
     repo: Option<&str>,
     since: Option<DateTime<Utc>>,
+    engine: Option<maidan_types::TaskEngine>,
+    kind: Option<maidan_types::TaskKind>,
+    size: Option<maidan_types::TaskSize>,
 ) -> Result<Vec<ChangePull>, StoreError> {
     let repo = repo.map(str::to_ascii_lowercase);
     let since = since.map(|at| at.to_rfc3339());
     let pulls = sqlx::query(
-        "SELECT repo, pull_number, thread_id, opened_at, ready_at, merged_at, merged_head_sha, closed_at
-         FROM maidan_change_pulls
-         WHERE workspace_id = ?1
-           AND (?2 IS NULL OR repo = ?2)
-           AND (?3 IS NULL OR opened_at >= ?3)
-         ORDER BY opened_at, repo, pull_number
+        "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at,
+                a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
+         FROM maidan_change_pulls p
+         LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
+         WHERE p.workspace_id = ?1
+           AND (?2 IS NULL OR p.repo = ?2)
+           AND (?3 IS NULL OR p.opened_at >= ?3)
+           AND (?4 IS NULL OR a.engine = ?4)
+           AND (?5 IS NULL OR COALESCE(a.kind, 'change') = ?5)
+           AND (?6 IS NULL OR a.size = ?6)
+         ORDER BY p.opened_at, p.repo, p.pull_number
          LIMIT 1000",
     )
     .bind(workspace_id.0)
     .bind(&repo)
     .bind(&since)
+    .bind(engine.map(|engine| engine.as_str()))
+    .bind(kind.map(|kind| kind.as_str()))
+    .bind(size.map(|size| size.as_str()))
     .fetch_all(pool)
     .await?;
     let rounds = sqlx::query(
@@ -741,5 +752,32 @@ fn pull_from(
         merged_head_sha: row.get("merged_head_sha"),
         closed_at: row.get::<Option<DateTime<Utc>>, _>("closed_at"),
         cost_usd_micros: cost.get(&thread).copied().unwrap_or(0),
+        attributes: maidan_types::TaskAttributes {
+            kind: row
+                .try_get::<Option<String>, _>("task_kind")
+                .ok()
+                .flatten()
+                .and_then(|kind| maidan_types::TaskKind::parse(&kind))
+                .unwrap_or_default(),
+            engine: row
+                .try_get::<Option<String>, _>("task_engine")
+                .ok()
+                .flatten()
+                .and_then(|engine| maidan_types::TaskEngine::parse(&engine)),
+            threat_model: row
+                .try_get::<Option<bool>, _>("threat_model")
+                .ok()
+                .flatten()
+                .unwrap_or(false),
+            size: row
+                .try_get::<Option<String>, _>("task_size")
+                .ok()
+                .flatten()
+                .and_then(|size| maidan_types::TaskSize::parse(&size)),
+            acceptance: row
+                .try_get::<Option<String>, _>("task_acceptance")
+                .ok()
+                .flatten(),
+        },
     }
 }

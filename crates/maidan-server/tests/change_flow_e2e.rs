@@ -1660,7 +1660,7 @@ async fn each_delivered_round_counts_toward_the_swarm_metrics() {
     h.drain().await;
     let pulls = h
         .store
-        .list_change_pulls(h.a.workspace_id, None, None)
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(pulls.len(), 1);
@@ -1798,7 +1798,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
     assert_eq!(landed[0].payload["pr_number"], number);
     let claimed = h
         .store
-        .claim_next_thread(h.a.channel_id, h.a.member_id, None)
+        .claim_next_thread(h.a.channel_id, h.a.member_id, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -2292,7 +2292,7 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
     // The round is recorded as a rebase, on a current base.
     let pulls = h
         .store
-        .list_change_pulls(h.a.workspace_id, None, None)
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
         .await
         .unwrap();
     let rounds: Vec<_> = pulls[0]

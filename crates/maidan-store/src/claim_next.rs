@@ -15,7 +15,10 @@
 //! ([`crate::footprints`]): a swarm claiming from one queue is never handed
 //! two pieces of the same work. A claimer that serves one repository (a
 //! worker whose checkout is that repository) can ask for work whose footprint
-//! names it; a thread without a footprint is then never handed to it.
+//! names it; a thread without a footprint is then never handed to it. A
+//! claimer that serves one engine can ask only for work routed to that
+//! engine; work routed to another engine, or not routed at all, is never
+//! handed to it.
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
@@ -63,6 +66,10 @@ pub(crate) struct ClaimSql<'a> {
     /// Placeholder bound to the repository (`owner/name`, normalized) the
     /// claimer serves, or NULL for any work.
     pub repo: &'a str,
+    /// Placeholder bound to the engine the claimer serves, or NULL for any
+    /// work. A named engine takes only threads routed to it: a thread with
+    /// no engine, or another engine, is not handed over.
+    pub engine: &'a str,
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
@@ -78,6 +85,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         hours_waiting,
         lapsed_worked_secs,
         repo,
+        engine,
     } = sql;
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
@@ -133,6 +141,10 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            AND ({repo} IS NULL OR EXISTS (
                SELECT 1 FROM maidan_thread_footprints rf
                WHERE rf.thread_id = cand.id AND rf.repo = {repo}
+           ))
+           AND ({engine} IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_thread_attributes a
+               WHERE a.thread_id = cand.id AND a.engine = {engine}
            ))
            AND {readable}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC

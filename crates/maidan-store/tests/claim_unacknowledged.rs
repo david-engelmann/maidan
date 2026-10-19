@@ -64,7 +64,7 @@ async fn claim(
     lease: Option<i64>,
 ) -> Thread {
     store
-        .claim_next_thread(channel, member, lease)
+        .claim_next_thread(channel, member, lease, None)
         .await
         .unwrap()
         .expect("a claimable thread")

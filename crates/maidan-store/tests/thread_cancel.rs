@@ -92,7 +92,7 @@ async fn the_creator_is_recorded_and_read_back(store: Arc<dyn Store>) {
     let listed = store.list_threads(room.channel).await.unwrap();
     assert_eq!(listed[0].created_by, Some(room.producer));
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -138,7 +138,7 @@ async fn the_creator_cancels_an_unclaimed_task(store: Arc<dyn Store>) {
     let transitions = store.list_thread_transitions(thread, 10).await.unwrap();
     assert_eq!(transitions.last().unwrap().to_state, ThreadState::Closed);
     assert!(store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .is_none());
@@ -150,7 +150,7 @@ async fn a_cancel_ends_the_claim_so_the_holders_renew_is_refused(store: Arc<dyn 
     let room = room(store.as_ref(), "claimed").await;
     let thread = task(store.as_ref(), &room, "in progress").await;
     let held = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -330,7 +330,7 @@ async fn a_cancel_stays_in_its_workspace(store: Arc<dyn Store>) {
         ThreadState::Open
     );
     let claimed = store
-        .claim_next_thread(ours.channel, ours.worker, Some(600))
+        .claim_next_thread(ours.channel, ours.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();

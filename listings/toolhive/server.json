@@ -80,6 +80,7 @@
     "renew_claim",
     "acknowledge_claim",
     "release_claim",
+    "set_thread_attributes",
     "set_thread_footprint",
     "list_active_claims",
     "add_thread_dependency",

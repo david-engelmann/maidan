@@ -199,6 +199,9 @@ pub struct ChangePull {
     pub rounds: Vec<ChangeRound>,
     /// What the thread's model use cost, from the usage ledger.
     pub cost_usd_micros: i64,
+    /// The task's attributes; the defaults when the thread was never
+    /// described.
+    pub attributes: crate::TaskAttributes,
 }
 
 /// Why a task needs a look.
@@ -236,6 +239,21 @@ pub struct TaskMetrics {
     pub flags: Vec<TaskFlag>,
     /// How many of the rounds were squash-rebases.
     pub rebases: i64,
+    /// The task's attributes; the defaults when the thread was never
+    /// described.
+    pub attributes: crate::TaskAttributes,
+}
+
+/// One engine's slice of a repository rollup: how much of the repo's work
+/// was routed to it, and how much of that merged.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EngineRollup {
+    /// The engine the tasks were routed to; `None` for tasks never routed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<crate::TaskEngine>,
+    pub tasks: i64,
+    pub merged: i64,
 }
 
 /// One repository's rollup.
@@ -253,6 +271,9 @@ pub struct RepoRollup {
     /// Total cost of the repository's tasks over its merged ones; `None`
     /// before the first merge.
     pub cost_usd_micros_per_merged: Option<i64>,
+    /// The rollup split by the engine each task was routed to, in engine
+    /// order with unrouted tasks last; engines with no tasks are omitted.
+    pub by_engine: Vec<EngineRollup>,
 }
 
 /// The ramp metrics for a workspace.
@@ -340,6 +361,7 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
         flags,
         rebases: pull.rounds.iter().filter(|r| r.rebase).count() as i64,
         rounds: pull.rounds,
+        attributes: pull.attributes,
     }
 }
 
@@ -371,7 +393,33 @@ fn rollup(repo: String, tasks: &[&TaskMetrics]) -> RepoRollup {
             .copied()
             .filter(|_| !ready.is_empty()),
         cost_usd_micros_per_merged: (merged > 0).then(|| cost / merged),
+        by_engine: engine_split(tasks),
     }
+}
+
+/// The per-engine split of one repository's tasks, in engine order with
+/// unrouted tasks last; engines with no tasks are omitted.
+fn engine_split(tasks: &[&TaskMetrics]) -> Vec<EngineRollup> {
+    const ORDER: [Option<crate::TaskEngine>; 4] = [
+        Some(crate::TaskEngine::Pi),
+        Some(crate::TaskEngine::Session),
+        Some(crate::TaskEngine::Human),
+        None,
+    ];
+    ORDER
+        .into_iter()
+        .filter_map(|engine| {
+            let mine: Vec<&&TaskMetrics> = tasks
+                .iter()
+                .filter(|task| task.attributes.engine == engine)
+                .collect();
+            (!mine.is_empty()).then(|| EngineRollup {
+                engine,
+                tasks: mine.len() as i64,
+                merged: mine.iter().filter(|task| task.merged_at.is_some()).count() as i64,
+            })
+        })
+        .collect()
 }
 
 /// Added plus removed lines in a git diff, headers excluded.
@@ -442,6 +490,7 @@ mod tests {
             closed_at: None,
             rounds,
             cost_usd_micros: 300,
+            attributes: crate::TaskAttributes::default(),
         }
     }
 

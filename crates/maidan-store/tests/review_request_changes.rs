@@ -63,7 +63,7 @@ async fn in_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) -> (Thr
         .await
         .expect("thread");
     let claimed = store
-        .claim_next_thread(channel, worker, Some(60))
+        .claim_next_thread(channel, worker, Some(60), None)
         .await
         .expect("claim")
         .expect("the new thread is claimable");
@@ -166,7 +166,7 @@ async fn run_suite(store: &dyn Store) {
 
     // The work is back in the queue, and the rework round needs a fresh approval.
     let again = store
-        .claim_next_thread(channel, worker, Some(60))
+        .claim_next_thread(channel, worker, Some(60), None)
         .await
         .unwrap()
         .expect("the reopened thread is claimable again");

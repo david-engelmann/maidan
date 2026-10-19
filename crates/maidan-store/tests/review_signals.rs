@@ -72,7 +72,7 @@ async fn thread(store: &dyn Store, channel: ChannelId) -> ThreadId {
 /// `in_review` when `hand_in`, else `open`.
 async fn work(store: &dyn Store, channel: ChannelId, worker: MemberId, hand_in: bool) -> ThreadId {
     let claimed = store
-        .claim_next_thread(channel, worker, Some(60))
+        .claim_next_thread(channel, worker, Some(60), None)
         .await
         .expect("claim")
         .expect("a claimable thread");
@@ -237,7 +237,7 @@ async fn run_suite(store: &dyn Store) {
             subject_id: second,
             grant_id: Some(DelegationGrantId(uuid::Uuid::now_v7())),
         }),
-        store.claim_next_thread(ch, second, Some(60)),
+        store.claim_next_thread(ch, second, Some(60), None),
     )
     .await
     .unwrap()

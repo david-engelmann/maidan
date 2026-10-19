@@ -46,16 +46,32 @@ pub async fn create_with_event(
     pool: &SqlitePool,
     new: NewThread,
 ) -> Result<(Thread, StoredEvent), StoreError> {
-    create_with_footprint(pool, new, None).await
+    create_with_footprint(pool, new, None, None, None).await
 }
 
-/// [`create_with_event`], storing `footprint` with the thread in the same
-/// transaction, so no claimer ever sees the thread without it.
+/// [`create_with_event`], storing `footprint`, the task `attributes` and the
+/// dispatch `priority` with the thread in the same transaction, so no claimer
+/// ever sees the thread without them. A priority needs an attributed creator,
+/// who is recorded as having set it.
 pub async fn create_with_footprint(
     pool: &SqlitePool,
     new: NewThread,
     footprint: Option<maidan_types::Footprint>,
+    attributes: Option<maidan_types::TaskAttributes>,
+    priority: Option<i64>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
+    let attributes = attributes
+        .map(|attributes| attributes.validated().map_err(StoreError::InvalidInput))
+        .transpose()?;
+    let priority_by = match (priority, new.created_by) {
+        (Some(priority), Some(by)) => Some((priority, by)),
+        (Some(_), None) => {
+            return Err(StoreError::InvalidInput(
+                "a priority at creation needs an attributed caller".into(),
+            ))
+        }
+        (None, _) => None,
+    };
     let footprint = footprint
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
@@ -94,6 +110,20 @@ pub async fn create_with_footprint(
     };
     if let Some(footprint) = &footprint {
         super::footprints::insert_items_on(&mut tx, thread.id, workspace_id, footprint).await?;
+    }
+    if let Some(attributes) = &attributes {
+        super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
+    }
+    if let Some((priority, by)) = priority_by {
+        sqlx::query(
+            "INSERT INTO maidan_thread_priorities (thread_id, priority, set_by, set_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(thread.id.0)
+        .bind(priority)
+        .bind(by.0)
+            .bind(Utc::now().to_rfc3339())
+        .execute(&mut *tx)
+        .await?;
     }
     let stored = events::append_in_tx(&mut tx, &event).await?;
     tx.commit().await?;
@@ -545,6 +575,7 @@ async fn claim_next_candidate(
     member_id: MemberId,
     now: DateTime<Utc>,
     repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
     let sql = claim_next::candidate_select(
         scope,
@@ -555,6 +586,7 @@ async fn claim_next_candidate(
             now: "?3",
             dm_channel: "?4",
             repo: "?5",
+            engine: "?6",
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN MAX(0, CAST(strftime('%s', cand.assignment_expires_at) AS INTEGER) - CAST(strftime('%s', cand.work_started_at) AS INTEGER)) ELSE 0 END",
@@ -566,6 +598,7 @@ async fn claim_next_candidate(
         .bind(now.to_rfc3339())
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
+        .bind(engine.map(|engine| engine.as_str()))
         .fetch_optional(&mut **tx)
         .await?)
 }
@@ -804,6 +837,7 @@ pub async fn claim_next(
     channel_id: ChannelId,
     member_id: MemberId,
     lease_secs: Option<i64>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<Option<Thread>, StoreError> {
     let now = Utc::now();
     // Claimable = unassigned OR the current lease has expired (dead-agent
@@ -817,6 +851,7 @@ pub async fn claim_next(
         member_id,
         now,
         None,
+        engine,
     )
     .await?
     else {
@@ -907,6 +942,7 @@ pub(crate) async fn claim_next_with_event(
     member_id: MemberId,
     lease_secs: Option<i64>,
     repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let now = Utc::now();
@@ -914,7 +950,9 @@ pub(crate) async fn claim_next_with_event(
     // The candidate row keeps its pre-update claim, so a reclaim of an expired
     // lease can end the dead holder's claim (RETURNING would only give the
     // post-update row).
-    let Some(candidate) = claim_next_candidate(&mut tx, scope, member_id, now, repo).await? else {
+    let Some(candidate) =
+        claim_next_candidate(&mut tx, scope, member_id, now, repo, engine).await?
+    else {
         tx.commit().await?;
         return Ok((None, Vec::new()));
     };
@@ -1442,6 +1480,7 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         tombstoned_at: row.get::<Option<DateTime<Utc>>, _>("tombstoned_at"),
         status: None,
         block: None,
+        attributes: None,
         closed_without_review: false,
         last_progress_at: None,
         stalled: false,

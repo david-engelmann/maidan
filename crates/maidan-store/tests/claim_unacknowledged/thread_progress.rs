@@ -134,7 +134,7 @@ async fn the_holders_own_activity_moves_the_clock(store: Arc<dyn Store>) {
     );
 
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -219,7 +219,7 @@ async fn a_lease_less_assignment_or_a_thread_in_review_has_no_clock(store: Arc<d
 
     let leased = task(store.as_ref(), &room, "leased").await;
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
