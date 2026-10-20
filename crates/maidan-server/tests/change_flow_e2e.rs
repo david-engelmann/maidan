@@ -1730,6 +1730,179 @@ async fn claim_comments_stay_off_until_the_workspace_turns_them_on_then_say_each
     assert_eq!(h.linear.comments().len(), 2);
 }
 
+/// A Pi task past the round limit is handed to a session exactly once: its
+/// claim ends, its engine becomes `session` (a Pi claim skips it), a
+/// `ThreadHandoff` event, a thread message and a Slack line say so, and its
+/// Linear issue gets the packet and then the release. Tenant B is untouched.
+#[tokio::test]
+async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.store
+        .set_linear_claim_comments(
+            h.a.workspace_id,
+            true,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(h.a.workspace_id),
+                actor_id: Some(h.a.member_id),
+                action: "linear.claim_comments.set".into(),
+                target_kind: None,
+                target_id: None,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    let pi = maidan_types::TaskAttributes {
+        engine: Some(maidan_types::TaskEngine::Pi),
+        linear_issue: Some(ISSUE.into()),
+        ..maidan_types::TaskAttributes::default()
+    };
+    h.store
+        .set_thread_attributes(h.a.thread_id, pi.clone())
+        .await
+        .unwrap();
+    h.store
+        .set_thread_attributes(h.b.thread_id, pi)
+        .await
+        .unwrap();
+    h.store
+        .claim_thread(h.a.thread_id, h.a.member_id)
+        .await
+        .unwrap();
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.handed_off,
+        0,
+        "one round"
+    );
+    h.drain().await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    for n in 2..=3u8 {
+        h.store
+            .record_change_round(maidan_types::NewChangeRound {
+                workspace_id: h.a.workspace_id,
+                thread_id: h.a.thread_id,
+                repo: REPO.into(),
+                pull_number: number,
+                commit_sha: format!("{n}").repeat(40),
+                base_sha: h.base_sha.clone(),
+                base_behind: Some(1),
+                diff_lines: 5,
+                paths: Vec::new(),
+                base_branch: Some("dev".into()),
+                rebase: false,
+                previous_head: None,
+                linear_issue: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(change_sweep::sweep_once(&h.state).await.handed_off, 1);
+    h.drain().await;
+    let thread = h.store.get_thread(h.a.thread_id).await.unwrap();
+    assert_eq!(thread.assignee_id, None, "the claim ended");
+    assert_eq!(thread.state, ThreadState::Open, "left open for a session");
+    assert_eq!(
+        h.store
+            .get_thread_attributes(h.a.thread_id)
+            .await
+            .unwrap()
+            .engine,
+        Some(maidan_types::TaskEngine::Session)
+    );
+    assert!(
+        h.store
+            .claim_next_thread(
+                h.a.channel_id,
+                h.a.member_id,
+                None,
+                Some(maidan_types::TaskEngine::Pi)
+            )
+            .await
+            .unwrap()
+            .is_none(),
+        "a Pi claim never takes it again"
+    );
+    let handoffs: Vec<_> = h
+        .store
+        .list_events_after(h.a.workspace_id, 0, 1000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::ThreadHandoff)
+        .collect();
+    assert_eq!(handoffs.len(), 1);
+    assert_eq!(handoffs[0].payload["rounds"], 3);
+    assert_eq!(handoffs[0].payload["to_engine"], "session");
+
+    let comments: Vec<String> = h.linear.comments().into_iter().map(|c| c.2).collect();
+    assert_eq!(comments.len(), 3, "{comments:#?}");
+    assert!(comments[0].starts_with("CLAIM: pi/"), "{}", comments[0]);
+    assert!(comments[1].starts_with("HANDOFF: pi/"), "{}", comments[1]);
+    for part in [
+        "after 3 rounds without converging",
+        &format!(
+            "PR: https://github.com/{REPO}/pull/{number} at {}",
+            "3".repeat(40)
+        ),
+        "- 3: 5 lines, base 1 behind",
+        "Cost: $0.00",
+        "Open findings: none reported",
+        "Models: not reported",
+    ] {
+        assert!(
+            comments[1].contains(part),
+            "{part} missing from {}",
+            comments[1]
+        );
+    }
+    assert!(
+        comments[2].starts_with(&format!(
+            "RELEASED: pi/{} handed off to a session after 3 rounds",
+            h.a.thread_id.0
+        )),
+        "{}",
+        comments[2]
+    );
+    assert!(
+        h.slack_posts()
+            .iter()
+            .any(|(channel, ts, text)| channel == CHANNEL
+                && ts.as_deref() == Some(THREAD_TS)
+                && text.contains("Handed to a session")),
+        "{:?}",
+        h.slack_posts()
+    );
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (_, metrics) = get_json(
+        &h,
+        &token,
+        &format!("/workspaces/{}/swarm-metrics", h.a.workspace_id.0),
+    )
+    .await;
+    assert_eq!(metrics["tasks"][0]["handed_off"], true);
+    assert_eq!(metrics["repos"][0]["misrouted"], 1);
+
+    let again = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((again.handed_off, again.linear_notices), (0, 0));
+    h.drain().await;
+    assert_eq!(h.linear.comments().len(), 3);
+    assert_eq!(
+        h.store
+            .get_thread_attributes(h.b.thread_id)
+            .await
+            .unwrap()
+            .engine,
+        Some(maidan_types::TaskEngine::Pi),
+        "tenant B is untouched"
+    );
+}
+
 #[tokio::test]
 async fn a_claim_comment_on_an_issue_in_an_unblessed_team_is_skipped() {
     let h = harness().await;
@@ -2343,6 +2516,7 @@ async fn a_pull_request_closed_without_merging_leaves_its_task_open_with_one_not
             noticed: 1,
             rebase_notices: 0,
             linear_notices: 0,
+            handed_off: 0,
         }
     );
     assert_eq!(

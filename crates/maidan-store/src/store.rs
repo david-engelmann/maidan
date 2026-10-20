@@ -2247,6 +2247,16 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<(String, i64)>, StoreError>;
+    /// Hand a non-converging task to a session, once: end its claim, route
+    /// it to `session` and append `ThreadHandoff`, in one transaction.
+    /// `None` when it was handed off already.
+    async fn hand_off_thread(
+        &self,
+        thread_id: ThreadId,
+        repo: &str,
+        pull_number: i64,
+        rounds: i64,
+    ) -> Result<Option<maidan_types::HandedOff>, StoreError>;
     /// The workspaces that have turned Linear claim comments on.
     async fn list_linear_claim_comment_workspaces(
         &self,

@@ -677,6 +677,7 @@ pub async fn list(
     let repo = repo.map(str::to_ascii_lowercase);
     let pulls = sqlx::query(
         "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at, p.linear_issue,
+                (SELECT h.handed_off_at FROM maidan_thread_handoffs h WHERE h.thread_id = p.thread_id) AS handed_off_at,
                 p.merge_commit_sha, p.reverted_at, p.revert_ref, p.followup_fixes, p.human_commits,
                 p.human_reviews, p.first_human_review_at,
                 a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance, a.linear_issue AS task_linear_issue
@@ -848,6 +849,93 @@ fn outcome_from(row: &sqlx::postgres::PgRow) -> MergedOutcome {
     }
 }
 
+/// Hand a non-converging task to a session, once: record the handoff, end
+/// its claim (its time charged as any claim end charges it, and its next
+/// renew refused), route it to `session`, and append `ThreadHandoff`, in one
+/// transaction. `None` when it was handed off already.
+pub async fn hand_off(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    repo: &str,
+    pull_number: i64,
+    rounds: i64,
+) -> Result<Option<maidan_types::HandedOff>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let now = Utc::now();
+    let inserted = sqlx::query(
+        "INSERT INTO maidan_thread_handoffs
+             (thread_id, workspace_id, repo, pull_number, rounds, handed_off_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (thread_id) DO NOTHING",
+    )
+    .bind(thread_id.0)
+    .bind(workspace_id.0)
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(rounds)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if inserted == 0 {
+        return Ok(None);
+    }
+    // Read before the claim is cleared: the holder may be the only author.
+    let author_id = sqlx::query(
+        "SELECT COALESCE(t.owner_id, t.assignee_id, r.produced_by) AS author
+         FROM maidan_threads t
+         LEFT JOIN maidan_thread_results r ON r.thread_id = t.id
+         WHERE t.id = $1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .and_then(|row| row.get::<Option<Uuid>, _>("author"))
+    .map(MemberId);
+    super::threads::charge_open_claim_in_tx(&mut tx, thread_id).await?;
+    sqlx::query(
+        "UPDATE maidan_threads SET updated_at = $2,
+            assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
+            claimed_at = NULL, work_started_at = NULL
+         WHERE id = $1",
+    )
+    .bind(thread_id.0)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, updated_at)
+         VALUES ($1, 'change', 'session', FALSE, $2)
+         ON CONFLICT (thread_id) DO UPDATE SET engine = 'session', updated_at = excluded.updated_at",
+    )
+    .bind(thread_id.0)
+    .bind(now)
+    .execute(&mut *tx)
+    .await?;
+    let event = events::append_in_tx(
+        &mut tx,
+        &Event::ThreadHandoff {
+            occurred_at: now,
+            workspace_id,
+            channel_id,
+            thread_id,
+            rounds,
+            repo: repo.to_ascii_lowercase(),
+            pr_number: pull_number,
+            to_engine: maidan_types::TaskEngine::Session,
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(maidan_types::HandedOff {
+        thread_id,
+        workspace_id,
+        event,
+        author_id,
+    }))
+}
+
 fn pull_from(
     row: &sqlx::postgres::PgRow,
     rounds: &mut HashMap<(String, i64), Vec<ChangeRound>>,
@@ -871,6 +959,7 @@ fn pull_from(
         cost_usd_micros: cost.get(&thread).copied().unwrap_or(0),
         linear_issue: row.get("linear_issue"),
         outcome: outcome_from(row),
+        handed_off_at: row.get::<Option<DateTime<Utc>>, _>("handed_off_at"),
         attributes: maidan_types::TaskAttributes {
             kind: row
                 .try_get::<Option<String>, _>("task_kind")

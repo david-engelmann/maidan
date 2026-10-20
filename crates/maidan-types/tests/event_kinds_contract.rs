@@ -30,6 +30,7 @@ fn event_kinds_match_contract_file() {
         EventKind::UsageReported,
         EventKind::ThreadLanded,
         EventKind::ThreadNotice,
+        EventKind::ThreadHandoff,
         EventKind::ReviewSubmitted,
         EventKind::WaitTimedOut,
         EventKind::ScheduleSkipped,

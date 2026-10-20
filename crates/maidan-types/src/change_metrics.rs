@@ -253,6 +253,20 @@ pub struct ChangePull {
     pub linear_issue: Option<String>,
     /// What happened after the merge.
     pub outcome: MergedOutcome,
+    /// When it was handed to a session at `non_converging`, if it was.
+    pub handed_off_at: Option<DateTime<Utc>>,
+}
+
+/// A task the change sweep handed to a session: the `ThreadHandoff` event
+/// to publish, and who posts the message that says it (the thread's owner,
+/// else its claim holder before the handoff, else whoever produced its
+/// result).
+#[derive(Debug, Clone)]
+pub struct HandedOff {
+    pub thread_id: ThreadId,
+    pub workspace_id: WorkspaceId,
+    pub event: StoredEvent,
+    pub author_id: Option<MemberId>,
 }
 
 /// Why a task needs a look.
@@ -310,6 +324,8 @@ pub struct TaskMetrics {
     pub human_reviews: Option<i64>,
     /// From ready (else opened) to the first human review or review comment.
     pub time_to_first_human_review_secs: Option<i64>,
+    /// Handed to a session at `non_converging`: counted as misrouted.
+    pub handed_off: bool,
 }
 
 /// How a set of tasks did: a whole repository, or one slice of it.
@@ -500,6 +516,7 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
                 .num_seconds()
                 .max(0)
         }),
+        handed_off: pull.handed_off_at.is_some(),
     }
 }
 
@@ -567,7 +584,8 @@ fn rollup(
 /// Whether the engine a task was routed to could not finish it: still open
 /// and non-converging, or closed unmerged after reaching the round limit.
 fn misrouted(task: &TaskMetrics, round_limit: i64) -> bool {
-    task.flags.contains(&TaskFlag::NonConverging)
+    task.handed_off
+        || task.flags.contains(&TaskFlag::NonConverging)
         || (task.merged_at.is_none()
             && task.closed_at.is_some()
             && task.rounds.len() as i64 >= round_limit)
@@ -707,6 +725,7 @@ mod tests {
             attributes: crate::TaskAttributes::default(),
             linear_issue: None,
             outcome: MergedOutcome::default(),
+            handed_off_at: None,
         }
     }
 
@@ -950,6 +969,19 @@ mod tests {
             at(day),
         );
         assert_eq!(early.repos[0].totals.revert_rate, None, "nothing known yet");
+    }
+
+    #[test]
+    fn a_handed_off_task_counts_as_misrouted() {
+        let mut handed = pull(vec![round(1, "a", 5, None)]);
+        handed.handed_off_at = Some(at(100));
+        let m = swarm_metrics(
+            vec![handed, pull(vec![round(1, "b", 5, None)])],
+            FlagLimits::default(),
+            at(0),
+        );
+        assert!(m.tasks[0].handed_off);
+        assert_eq!(m.repos[0].totals.misrouted, 1);
     }
 
     #[test]

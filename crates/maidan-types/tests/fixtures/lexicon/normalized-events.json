@@ -366,6 +366,18 @@
     },
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.thread_handoff/1": {
+    "$type": "maidan.event.thread_handoff/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_handoff",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "pr_number": 1,
+    "repo": "example/repo",
+    "rounds": 3,
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "to_engine": "session",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.thread_landed/1": {
     "$type": "maidan.event.thread_landed/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

@@ -358,6 +358,30 @@ checks the allowlist and the team again when it posts. A notice is recorded
 in the same transaction that queues it, so it is said once even with
 several replicas sweeping.
 
+### Handoff at `non_converging`
+
+A Pi task that stops converging is handed to a session, once. The change
+sweep flags a task `non_converging` when it is still open after the round
+limit (3), or its diff grew in each of the last three rounds. For a task
+routed to Pi, it then:
+
+- ends the claim, charging its worked time as any claim end does, so the
+  worker's next renew is refused;
+- sets the task's engine to `session`, so a Pi `claim_next` never takes it
+  again, and leaves the task open for a session;
+- appends a `ThreadHandoff` event (rounds, repository, pull request, the new
+  engine), posts a line in the thread, and queues the same line in the
+  result's Slack thread when that channel is blessed;
+- where the workspace says claims on Linear, queues the handoff packet on
+  the task's Linear issue (its `linear_issue` attribute, else the one its
+  change result named). The packet gives the pull request and its head,
+  each round with its diff lines and base lag, the cost, the open findings
+  from the result, and the models the result reported. The release comment
+  (`RELEASED: … handed off to a session after N rounds`) follows.
+
+The swarm metrics count a handed-off task as misrouted, and each task says
+`handed_off`.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
@@ -380,8 +404,8 @@ Each repository gets a rollup: tasks, merged, merged without edits,
 misrouted, the misroute rate, mean rounds and cost per merged change, then
 closed unmerged, flagged and median time to ready. A task is **misrouted**
 when the engine it was routed to could not finish it: it is open and flagged
-`non_converging`, or it closed unmerged after reaching the round limit. (A
-handoff at `non_converging` will count too once it exists.)
+`non_converging`, or it closed unmerged after reaching the round limit, or
+it was handed to a session at `non_converging`.
 
 The first seven numbers are repeated for three splits: by the engine each
 task was routed to (`by_engine`: `pi`, `session`, `human`, then unrouted),

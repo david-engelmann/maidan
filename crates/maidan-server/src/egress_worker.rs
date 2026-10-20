@@ -322,15 +322,39 @@ async fn deliver_result(
     }
 }
 
-/// Post a notice as written: a task's claim or release on its Linear issue.
-/// The allowlist is read again here, so a team unblessed after the notice
-/// was queued stops it, and the issue must still be in the team the notice
-/// was queued for.
+/// Post a notice as written: a task's claim, release or handoff packet on
+/// its Linear issue, or a handoff line in its Slack thread. The allowlist is
+/// read again here, so a target unblessed after the notice was queued stops
+/// it, and a Linear issue must still be in the team it was queued for.
 async fn deliver_notice(
     state: &AppState,
     entry: &EgressOutbox,
     target: &EgressTarget,
 ) -> Result<Sent, DeliveryFailure> {
+    let allowed = |surface| async move {
+        state
+            .store
+            .is_egress_target_allowed(entry.workspace_id, surface, &target.allowlist_selector())
+            .await
+            .map_err(|err| DeliveryFailure {
+                message: err.to_string(),
+                misconfiguration: false,
+            })
+    };
+    if let EgressTarget::Slack {
+        channel_id,
+        thread_ts,
+    } = target
+    {
+        if !allowed(maidan_types::EgressSurface::Slack).await? {
+            return Ok(Sent::Refused(format!(
+                "Slack channel {channel_id} is not in the workspace egress allowlist"
+            )));
+        }
+        return slack_result(state, None, channel_id, thread_ts.as_deref(), &entry.body)
+            .await
+            .map(Sent::Landed);
+    }
     let EgressTarget::Linear { team_id, issue } = target else {
         return Err(DeliveryFailure {
             message: format!("{} takes no notice", target.surface()),
@@ -343,19 +367,7 @@ async fn deliver_notice(
             misconfiguration: false,
         });
     };
-    let allowed = state
-        .store
-        .is_egress_target_allowed(
-            entry.workspace_id,
-            maidan_types::EgressSurface::Linear,
-            &target.allowlist_selector(),
-        )
-        .await
-        .map_err(|err| DeliveryFailure {
-            message: err.to_string(),
-            misconfiguration: false,
-        })?;
-    if !allowed {
+    if !allowed(maidan_types::EgressSurface::Linear).await? {
         return Ok(Sent::Refused(format!(
             "Linear team {team_id} is not in the workspace egress allowlist"
         )));
