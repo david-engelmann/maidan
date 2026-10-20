@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, Event, MemberId, NewThread,
-    QueueDepth, SpawnAxis, SpawnDenial, StoredEvent, Thread, ThreadClaimResult, ThreadId,
-    ThreadState, WorkspaceId, DM_CHANNEL_NAME,
+    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, DeclaredStatus, Event, MemberId,
+    NewThread, QueueDepth, SpawnAxis, SpawnDenial, StoredEvent, Thread, ThreadClaimResult,
+    ThreadId, ThreadState, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -975,6 +975,63 @@ pub async fn reap_expired_claims(
     Ok(events)
 }
 
+/// Return threads whose holder has waited on a person since before
+/// `declared_before`. See [`crate::Store::return_human_timeouts`].
+pub async fn return_human_timeouts(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    declared_before: DateTime<Utc>,
+    policy: &str,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let mut tx = pool.begin().await?;
+    // Both rows locked: a person answering clears the declaration, and an
+    // answer that lands first must win over the timeout.
+    let candidates = sqlx::query(
+        "SELECT t.id, t.assignee_id, t.claim_lease_id, s.note
+         FROM maidan_threads t
+         JOIN maidan_thread_status s ON s.thread_id = t.id AND s.declared_by = t.assignee_id
+         WHERE s.status IN ($1, $2) AND s.declared_at < $3
+           AND t.claim_lease_id IS NOT NULL AND t.work_started_at IS NOT NULL
+           AND t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at >= $4
+           AND t.tombstoned_at IS NULL AND t.state = 'open'
+         ORDER BY s.declared_at ASC, t.id ASC
+         LIMIT $5
+         FOR UPDATE OF t, s SKIP LOCKED",
+    )
+    .bind(DeclaredStatus::NeedsInput.as_str())
+    .bind(DeclaredStatus::NeedsReview.as_str())
+    .bind(declared_before)
+    .bind(now)
+    .bind(limit)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut events = Vec::with_capacity(candidates.len());
+    for candidate in &candidates {
+        let thread_id = ThreadId(candidate.get("id"));
+        let holder = MemberId(candidate.get("assignee_id"));
+        let lease = ClaimLeaseId(candidate.get("claim_lease_id"));
+        let note: String = candidate.get("note");
+        release_fenced_in_tx(&mut tx, thread_id, holder, lease).await?;
+        sqlx::query("DELETE FROM maidan_thread_status WHERE thread_id = $1")
+            .bind(thread_id.0)
+            .execute(&mut *tx)
+            .await?;
+        let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        let event = Event::WaitTimedOut {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id,
+            policy: policy.to_string(),
+            reason: (!note.trim().is_empty()).then_some(note),
+        };
+        events.push(events::append_in_tx(&mut tx, &event).await?);
+    }
+    tx.commit().await?;
+    Ok(events)
+}
+
 /// Report leased claims taken before `claimed_before` that their holder never
 /// acknowledged, once per claim. See [`Store::report_unacknowledged_claims`].
 pub async fn report_unacknowledged_claims(
@@ -1366,6 +1423,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         closed_without_review: false,
         last_progress_at: None,
         stalled: false,
+        human_wait: None,
         notices: Vec::new(),
         plan_state: None,
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),

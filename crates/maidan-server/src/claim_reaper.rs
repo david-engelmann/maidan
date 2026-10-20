@@ -51,6 +51,9 @@ pub struct ClaimReaperConfig {
     pub tick: Duration,
     /// How long a leased claim may go unacknowledged; `None` reports nothing.
     pub ack_timeout: Option<Duration>,
+    /// How long a holder may wait on a person before its thread goes back to
+    /// the queue (`crate::human_wait`); `None` returns nothing.
+    pub human_timeout: Option<Duration>,
 }
 
 /// Read `MAIDAN_CLAIM_REAP_TICK_SECS` and `MAIDAN_CLAIM_ACK_TIMEOUT_SECS`.
@@ -62,6 +65,10 @@ pub fn config_from_env() -> Option<ClaimReaperConfig> {
         std::env::var("MAIDAN_CLAIM_REAP_TICK_SECS").ok(),
         std::env::var("MAIDAN_CLAIM_ACK_TIMEOUT_SECS").ok(),
     )
+    .map(|cfg| ClaimReaperConfig {
+        human_timeout: crate::human_wait::timeout_from_env(),
+        ..cfg
+    })
 }
 
 fn secs_or(raw: Option<String>, default: u64) -> u64 {
@@ -75,6 +82,7 @@ fn config_from_raw(tick: Option<String>, ack_timeout: Option<String>) -> Option<
     (tick > 0).then(|| ClaimReaperConfig {
         tick: Duration::from_secs(tick),
         ack_timeout: (ack_timeout > 0).then(|| Duration::from_secs(ack_timeout)),
+        human_timeout: None,
     })
 }
 
@@ -145,12 +153,18 @@ pub async fn run(state: AppState, cfg: ClaimReaperConfig) {
     tracing::info!(
         tick_secs = cfg.tick.as_secs(),
         ack_timeout_secs = cfg.ack_timeout.map(|t| t.as_secs()),
+        human_timeout_secs = cfg.human_timeout.map(|t| t.as_secs()),
         "claim reaper started"
     );
     loop {
         sweep_once(&state).await;
         if let Some(ack_timeout) = cfg.ack_timeout {
             report_unacknowledged_once(&state, ack_timeout).await;
+        }
+        // The same tick, because returning a thread to the queue is this
+        // loop's job whether the holder died or is waiting on a silence.
+        if let Some(human_timeout) = cfg.human_timeout {
+            crate::human_wait::return_timed_out_once(&state, human_timeout).await;
         }
         tokio::time::sleep(cfg.tick).await;
     }
@@ -168,6 +182,7 @@ mod tests {
             Some(ClaimReaperConfig {
                 tick: Duration::from_secs(DEFAULT_TICK_SECS),
                 ack_timeout: default_ack,
+                human_timeout: None,
             })
         );
         assert_eq!(
@@ -175,6 +190,7 @@ mod tests {
             Some(ClaimReaperConfig {
                 tick: Duration::from_secs(DEFAULT_TICK_SECS),
                 ack_timeout: default_ack,
+                human_timeout: None,
             })
         );
         assert_eq!(
@@ -182,6 +198,7 @@ mod tests {
             Some(ClaimReaperConfig {
                 tick: Duration::from_secs(30),
                 ack_timeout: default_ack,
+                human_timeout: None,
             })
         );
         assert_eq!(config_from_raw(Some("0".into()), None), None);

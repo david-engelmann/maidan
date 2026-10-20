@@ -546,6 +546,7 @@ async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<
             paths: Vec::new(),
             base_branch: None,
             rebase: false,
+            previous_head: None,
         })
         .await
         .unwrap();

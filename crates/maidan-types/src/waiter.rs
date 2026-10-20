@@ -810,7 +810,7 @@ pub struct ChangeResult {
     pub title: Option<String>,
     pub summary: Option<String>,
     /// Why a run that changed nothing ended, as the producer recorded it
-    /// (pi's `error_detail`), preferred over `summary` in the reply.
+    /// (its `error_detail`), preferred over `summary` in the reply.
     pub error_detail: Option<String>,
     /// `pr_state.body`: the pull request as it stands after this round,
     /// describing the whole branch against its base (where `title` and
@@ -920,14 +920,14 @@ pub fn parse_waiter_result(value: &Value) -> Option<WaiterResult> {
         .map(|entries| entries.iter().filter_map(parse_finding).collect())
         .unwrap_or_default();
 
-    // pi writes the list under the dotted top-level key
+    // The producer writes the list under the dotted top-level key
     // `pi.result_attachments` (the cross-repo attachments contract),
     // which the consuming app also reads, falling back to an unprefixed
     // key. A nested `pi` object is read last, for a producer that nests it.
     let attachments = obj
         .get("pi.result_attachments")
         .or_else(|| obj.get("result_attachments"))
-        .or_else(|| obj.get("pi").and_then(|pi| pi.get("result_attachments")))
+        .or_else(|| obj.get("pi").and_then(|ns| ns.get("result_attachments")))
         .and_then(Value::as_array)
         .map(|entries| entries.iter().filter_map(parse_result_attachment).collect())
         .unwrap_or_default();
@@ -1166,7 +1166,7 @@ mod tests {
     }
 
     #[test]
-    fn attachments_are_read_from_pis_dotted_top_level_key() {
+    fn attachments_are_read_from_the_producers_dotted_top_level_key() {
         let value = json!({
             "schema": WAITER_RESULT_SCHEMA,
             "result_kind": "example.review.result/1",
@@ -1532,7 +1532,7 @@ mod tests {
     }
 
     #[test]
-    fn a_reviewed_pi_review_with_any_critical_finding_is_request_changes() {
+    fn a_reviewed_producer_review_with_any_critical_finding_is_request_changes() {
         // The load-bearing map. result_kind is compared as a
         // namespaced string — a closed enum would need editing every time a
         // waiter product ships a new kind.

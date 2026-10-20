@@ -145,6 +145,7 @@ pub async fn list_threads(
     }
     // After the declarations: a holder that said it is waiting is not stalled.
     crate::stall::mark(threads.iter_mut(), state.stall_threshold);
+    crate::human_wait::mark(threads.iter_mut());
     Ok(Json(threads))
 }
 
@@ -194,6 +195,7 @@ pub async fn get_thread(
         .await?;
     thread.plan_state = state.store.get_plan_state(ThreadId(id)).await?;
     crate::stall::mark(std::iter::once(&mut thread), state.stall_threshold);
+    crate::human_wait::mark(std::iter::once(&mut thread));
     Ok(Json(thread))
 }
 

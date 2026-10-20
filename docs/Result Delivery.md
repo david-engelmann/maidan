@@ -363,8 +363,9 @@ blessed:
    the branch (`force: false`). A squash-rebase round is the one exception;
    see below.
 5. Opens a **draft** pull request against `base` with the title and summary
-   when none is open for the branch. Maidan posts no other comment, requests no
-   review, and never marks the pull request ready, approves or merges it.
+   when none is open for the branch. Maidan posts no other comment (except
+   a squash-rebase's range, below), requests no review, and never marks the
+   pull request ready, approves or merges it.
 6. Replies in the Slack target's thread with the commit SHA and the pull
    request link. The reply waits for the branch delivery; a target that was
    refused or skipped is reported with its reason.
@@ -415,6 +416,17 @@ recorded with `rebase: true` and `base_behind` 0, and the pull request's
 current-state section is updated from `pr_state` as for any round. A retry that
 finds the head is already that rebase commit (same trailer, parent `base_sha`)
 reuses it and writes nothing.
+
+**The rebase's range.** The force move rewrites the history a reviewer has
+read, so after it Maidan comments on the pull request
+`Rebased <old_head>..<new_head> onto <base_sha>`, and the Slack reply carries
+the same line under the commit and pull request link. A reviewer range-diffs
+those two heads to see what the rebase changed. The round records the old
+head as `previous_head`, which the swarm metrics list with its rounds. This is
+the change flow's only comment. It is best effort: a comment GitHub refuses is
+logged, and the move, the delivery and the Slack line stand. A retry that
+reuses its rebase commit comments only when the move was never recorded, so a
+replay of a recorded round writes nothing.
 
 **A rebase conflict** is the producer's to resolve: it sends `status:
 "rebase_conflict"`, Maidan records the target as skipped with no GitHub call,

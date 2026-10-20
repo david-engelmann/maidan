@@ -29,6 +29,14 @@
 //! branch head is still the last commit this flow delivered to that pull
 //! request, re-read immediately before the move. The move itself goes
 //! through [`ForceMovePass`], which only this module's guard can mint.
+//!
+//! **One comment: the rebase range.** After a squash-rebase moves the
+//! branch, the flow comments `Rebased <old_head>..<new_head> onto <base_sha>`
+//! on the pull request, and the round records the old head. This is a
+//! deliberate exception to "never comments": the force move rewrote the
+//! history a reviewer had read, and without the two heads GitHub can no
+//! longer show what the rebase changed. It is best effort, like the body
+//! edit, so a failed comment never undoes the move.
 
 use maidan_types::{ChangeResult, ThreadId};
 use sha2::{Digest, Sha256};
@@ -50,6 +58,9 @@ pub enum ChangeOutcome {
     Committed {
         commit_sha: String,
         pull: GithubPull,
+        /// For a squash-rebase that moved the branch, the head it moved it
+        /// from.
+        rebased_from: Option<String>,
     },
     /// Nothing more will be written; the reason is recorded.
     Refused(String),
@@ -240,13 +251,15 @@ pub async fn deliver_change(
             ));
         }
     }
-    let commit_sha = if change.rebase {
+    let built = if change.rebase {
         rebase_commit(git, req, base_sha, &patches, &trailer, existing.as_ref()).await?
     } else {
-        fast_forward_commit(git, req, base_sha, &patches, &trailer).await?
+        fast_forward_commit(git, req, base_sha, &patches, &trailer)
+            .await?
+            .map(|commit| (commit, None))
     };
-    let commit_sha = match commit_sha {
-        Ok(commit_sha) => commit_sha,
+    let (commit_sha, rebased_from) = match built {
+        Ok(built) => built,
         Err(reason) => return refused(reason),
     };
 
@@ -300,12 +313,32 @@ pub async fn deliver_change(
             }
         }
     }
-    Ok(ChangeOutcome::Committed { commit_sha, pull })
+    if let Some(old_head) = rebased_from.as_deref() {
+        let note = rebase_note(old_head, &commit_sha, base_sha);
+        if let Err(err) = git.comment_on_pull(req.repo, pull.number, &note).await {
+            tracing::warn!(repo = req.repo, pull = pull.number, error = %err, "change flow: rebase range not commented");
+        }
+    }
+    Ok(ChangeOutcome::Committed {
+        commit_sha,
+        pull,
+        rebased_from,
+    })
+}
+
+/// The line that names a squash-rebase's range, on the pull request and in
+/// the Slack reply alike.
+pub fn rebase_note(old_head: &str, new_head: &str, base_sha: &str) -> String {
+    format!("Rebased {old_head}..{new_head} onto {base_sha}")
 }
 
 /// What building a round's commit came to: `Ok` is the branch's new head,
 /// `Err` a final refusal with nothing written to the branch.
 type Built = Result<String, String>;
+
+/// What a squash-rebase came to: `Ok` is the branch's new head and, when it
+/// moved the branch, the head it moved it from.
+type Rebuilt = Result<(String, Option<String>), String>;
 
 /// A normal round: commit the diff on `base_sha` and fast-forward the branch
 /// to it, creating the branch when it does not exist yet.
@@ -381,7 +414,7 @@ async fn rebase_commit(
     patches: &[change_patch::FilePatch],
     trailer: &str,
     pull: Option<&GithubPull>,
-) -> Result<Built, GithubError> {
+) -> Result<Rebuilt, GithubError> {
     // A rebase rewrites a branch people are reviewing; with no pull request
     // there is nothing it is keeping current, and no delivered head to
     // vouch for the branch.
@@ -397,17 +430,22 @@ async fn rebase_commit(
             req.branch
         )));
     };
-    // A retry of this very rebase finds its own commit on `base_sha` with
-    // this result's trailer, and reuses it whatever the base has done since.
-    let commit = git.commit(req.repo, &head).await?;
-    if commit.parents == [base_sha] && commit.message.contains(trailer) {
-        return Ok(Ok(head));
-    }
-    match req
+    let delivered = req
         .delivered_head
         .as_ref()
-        .filter(|d| d.pull_number == pull.number)
-    {
+        .filter(|d| d.pull_number == pull.number);
+    // A retry of this very rebase finds its own commit on `base_sha` with
+    // this result's trailer, and reuses it whatever the base has done since.
+    // When no round records that commit yet, the move went unrecorded, so
+    // the head it moved from is still the delivered one.
+    let commit = git.commit(req.repo, &head).await?;
+    if commit.parents == [base_sha] && commit.message.contains(trailer) {
+        let moved_from = delivered
+            .map(|d| d.commit_sha.clone())
+            .filter(|from| !from.eq_ignore_ascii_case(&head));
+        return Ok(Ok((head, moved_from)));
+    }
+    match delivered {
         Some(delivered) if delivered.commit_sha.eq_ignore_ascii_case(&head) => {}
         Some(delivered) => {
             return Ok(Err(format!(
@@ -434,7 +472,7 @@ async fn rebase_commit(
     };
     let commit = commit_on(git, req, base_sha, &changes, trailer).await?;
     match force::move_branch(git, req.repo, req.branch, &head, &commit).await? {
-        Ok(()) => Ok(Ok(commit)),
+        Ok(()) => Ok(Ok((commit, Some(head)))),
         Err(reason) => Ok(Err(reason)),
     }
 }

@@ -109,6 +109,7 @@ mod tests {
             plan_state: None,
             last_progress_at: Some(started),
             stalled: false,
+            human_wait: None,
         }
     }
 
