@@ -61,6 +61,9 @@ pub enum ChangeOutcome {
         /// For a squash-rebase that moved the branch, the head it moved it
         /// from.
         rebased_from: Option<String>,
+        /// What the pull request lacks against the producer's template; see
+        /// [`template_warnings`].
+        template_warnings: Vec<String>,
     },
     /// Nothing more will be written; the reason is recorded.
     Refused(String),
@@ -117,6 +120,104 @@ impl ChangeRequest<'_> {
         };
         crate::egress_body::neutralize_github_mentions(&body)
     }
+}
+
+/// The warning for a pull request body with no `Testing` heading.
+pub const MISSING_TESTING: &str = "missing_testing";
+/// The warning for a pull request whose title and body name no issue key.
+pub const MISSING_ISSUE_KEY: &str = "missing_issue_key";
+
+/// What a pull request lacks against the producer's template: a `Testing`
+/// heading in the body, and an issue key (`ENG-123`) in the title or body.
+/// It flags and never refuses: the change lands as a draft either way, and
+/// the person or the mark-ready step decides what a warning holds up.
+pub fn template_warnings(title: &str, body: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if !has_testing_heading(body) {
+        warnings.push(MISSING_TESTING.to_string());
+    }
+    if !has_issue_key(title) && !has_issue_key(body) {
+        warnings.push(MISSING_ISSUE_KEY.to_string());
+    }
+    warnings
+}
+
+/// The Slack line naming what the pull request lacks, or `None` when it
+/// lacks nothing.
+pub fn template_note(warnings: &[String]) -> Option<String> {
+    let missing: Vec<&str> = warnings
+        .iter()
+        .map(|code| match code.as_str() {
+            MISSING_TESTING => "a Testing section",
+            MISSING_ISSUE_KEY => "an issue key (like ENG-123) in the title or body",
+            other => other,
+        })
+        .collect();
+    (!missing.is_empty()).then(|| format!("PR template: missing {}.", missing.join(" and ")))
+}
+
+/// A Markdown heading reading `Testing`, at any level, outside fenced code:
+/// pasted check output can hold a line that starts with `#`.
+fn has_testing_heading(body: &str) -> bool {
+    let mut fence: Option<&str> = None;
+    for line in body.lines().map(str::trim_start) {
+        if let Some(open) = fence {
+            if line.starts_with(open) {
+                fence = None;
+            }
+            continue;
+        }
+        if let Some(open) = ["```", "~~~"].into_iter().find(|f| line.starts_with(f)) {
+            fence = Some(open);
+            continue;
+        }
+        let Some(rest) = line.strip_prefix('#') else {
+            continue;
+        };
+        let rest = rest.trim_start_matches('#');
+        // `#1463` or `#tag` is not a heading.
+        if !rest.starts_with([' ', '\t']) {
+            continue;
+        }
+        let text = rest
+            .trim()
+            .trim_end_matches('#')
+            .trim_end()
+            .trim_end_matches(':');
+        if text.eq_ignore_ascii_case("testing") {
+            return true;
+        }
+    }
+    false
+}
+
+/// An issue key standing alone: an uppercase letter, then uppercase letters
+/// or digits, a hyphen and digits (`ENG-123`, `[ENG-123]`).
+fn has_issue_key(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let word_start = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
+        if !(word_start && bytes[i].is_ascii_uppercase()) {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < bytes.len() && (bytes[j].is_ascii_uppercase() || bytes[j].is_ascii_digit()) {
+            j += 1;
+        }
+        if j - i >= 2 && bytes.get(j) == Some(&b'-') {
+            let mut k = j + 1;
+            while k < bytes.len() && bytes[k].is_ascii_digit() {
+                k += 1;
+            }
+            if k > j + 1 && bytes.get(k).is_none_or(|b| !b.is_ascii_alphanumeric()) {
+                return true;
+            }
+        }
+        i = j;
+    }
+    false
 }
 
 /// The markers around the section of a pull request body that Maidan keeps
@@ -264,6 +365,9 @@ pub async fn deliver_change(
     };
 
     let opened_now = existing.is_none();
+    // What this round opened the pull request with: GitHub's create answer
+    // may omit the title and body.
+    let mut opened_with = None;
     let pull = match existing {
         Some(pull) => pull,
         None => {
@@ -272,11 +376,14 @@ pub async fn deliver_change(
             if let Some(state) = req.change.current_state.as_deref() {
                 body = with_current_state(&body, state);
             }
-            match git
+            let created = git
                 .create_draft_pull(req.repo, req.branch, req.base, &title, &body)
-                .await
-            {
-                Ok(pull) => pull,
+                .await;
+            match created {
+                Ok(pull) => {
+                    opened_with = Some((title, body));
+                    pull
+                }
                 // Opened by someone else between the read and the write.
                 Err(err) if err.is_unprocessable() => {
                     match git.open_pull(req.repo, req.branch).await? {
@@ -305,14 +412,22 @@ pub async fn deliver_change(
     // has the section (and the create answer may omit the body). Best effort:
     // the commit stands whether or not the body edit lands, and the next
     // round writes it again.
+    let mut current_body = pull.body.clone();
     if let Some(state) = req.change.current_state.as_deref().filter(|_| !opened_now) {
         let body = with_current_state(&pull.body, state);
         if body != pull.body {
-            if let Err(err) = git.update_pull_body(req.repo, pull.number, &body).await {
-                tracing::warn!(repo = req.repo, pull = pull.number, error = %err, "change flow: pull request body not updated");
+            match git.update_pull_body(req.repo, pull.number, &body).await {
+                Ok(()) => current_body = body,
+                Err(err) => {
+                    tracing::warn!(repo = req.repo, pull = pull.number, error = %err, "change flow: pull request body not updated");
+                }
             }
         }
     }
+    // Checked against the pull request as it now reads, not this round's
+    // result: a later round's title and summary never reach an open one.
+    let (title, body) = opened_with.unwrap_or_else(|| (pull.title.clone(), current_body));
+    let template_warnings = template_warnings(&title, &body);
     if let Some(old_head) = rebased_from.as_deref() {
         let note = rebase_note(old_head, &commit_sha, base_sha);
         if let Err(err) = git.comment_on_pull(req.repo, pull.number, &note).await {
@@ -323,6 +438,7 @@ pub async fn deliver_change(
         commit_sha,
         pull,
         rebased_from,
+        template_warnings,
     })
 }
 
@@ -795,5 +911,66 @@ mod tests {
         );
         let with = change(None, Some("ping @someone"));
         assert_eq!(request(&with, None).body(sha), "ping `@someone`");
+    }
+
+    const TEMPLATED: &str = "## What and why\nThe greeting names the venue. Fixes ENG-1234.\n\n## Testing\n```\n$ cargo test -p greeting\n# 3 passed; 0 failed\ntest result: ok\n```\n\n## Risk\nLow; ask @alice.\n\n## How to revert\nRevert the commit.\n\nPart of ENG-1200\n";
+
+    #[test]
+    fn a_templated_body_passes_through_with_only_its_mentions_defused() {
+        let c = change(Some("[ENG-1234] Name the venue"), Some(TEMPLATED));
+        let req = request(&c, None);
+        assert_eq!(req.title(), "[ENG-1234] Name the venue");
+        assert_eq!(
+            req.body("b5e54f94fd04d6ef7d6e1197ddd59ace70edb911"),
+            TEMPLATED.replace("@alice", "`@alice`")
+        );
+    }
+
+    #[test]
+    fn a_complete_template_has_no_warnings() {
+        assert!(template_warnings("[ENG-1234] Name the venue", TEMPLATED).is_empty());
+        assert!(template_warnings("Name the venue", TEMPLATED).is_empty());
+        assert_eq!(template_note(&[]), None);
+    }
+
+    #[test]
+    fn a_body_without_testing_or_a_key_gets_both_warnings() {
+        let warnings = template_warnings("Greet the world", "Changes the greeting.");
+        assert_eq!(warnings, vec![MISSING_TESTING, MISSING_ISSUE_KEY]);
+        assert_eq!(
+            template_note(&warnings).as_deref(),
+            Some("PR template: missing a Testing section and an issue key (like ENG-123) in the title or body.")
+        );
+    }
+
+    #[test]
+    fn the_testing_heading_is_any_level_and_case_but_never_inside_a_fence() {
+        for heading in ["## Testing", "### testing", "# TESTING:", "## Testing ##"] {
+            assert!(
+                has_testing_heading(&format!("x\n{heading}\nran it")),
+                "{heading}"
+            );
+        }
+        for body in [
+            "Testing: ran it",
+            "#Testing",
+            "## Testing plan",
+            "```\n## Testing\n```",
+            "~~~\n## Testing\n~~~",
+        ] {
+            assert!(!has_testing_heading(body), "{body}");
+        }
+    }
+
+    #[test]
+    fn an_issue_key_must_stand_alone() {
+        for text in ["ENG-1", "[ENG-42] Fix", "Fixes ENG-42.", "Part of AB2-7"] {
+            assert!(has_issue_key(text), "{text}");
+        }
+        for text in [
+            "eng-42", "E-42", "XENG-", "ENG-", "ENG-42a", "aENG-42", "#1463",
+        ] {
+            assert!(!has_issue_key(text), "{text}");
+        }
     }
 }

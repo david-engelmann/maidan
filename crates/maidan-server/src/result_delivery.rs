@@ -548,6 +548,7 @@ pub async fn change_reply_at(
                         ));
                     }
                 }
+                lines.extend(crate::change_flow::template_note(&row.template_warnings));
             }
             _ => lines.push(format!(
                 "Nothing was committed to `{branch}` in {repo}: {}",

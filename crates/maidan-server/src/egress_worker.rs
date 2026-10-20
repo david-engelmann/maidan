@@ -538,8 +538,23 @@ async fn github_branch_result(
             commit_sha,
             pull,
             rebased_from,
+            template_warnings,
         }) => {
             crate::metrics::record_github_egress("sent");
+            // Before the row is marked delivered, so the Slack reply that
+            // waits on it reads them. Best effort: a flag never holds a
+            // landed change.
+            let target = EgressTarget::GithubBranch {
+                repo: repo.to_string(),
+                branch: branch.to_string(),
+            };
+            if let Err(err) = state
+                .store
+                .set_result_delivery_template_warnings(entry.thread_id, &target, &template_warnings)
+                .await
+            {
+                tracing::warn!(error = %err, thread_id = ?entry.thread_id, "change flow: template warnings not recorded");
+            }
             let landed = RoundLanded {
                 commit_sha: &commit_sha,
                 pull_number: pull.number,

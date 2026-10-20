@@ -370,6 +370,28 @@ blessed:
    request link. The reply waits for the branch delivery; a target that was
    refused or skipped is reported with its reason.
 
+**The template check flags and never refuses.** After each delivered round,
+Maidan reads the pull request as it now stands (the title and body it opened
+with, or the open pull request's own title and body on a later round, since a
+later `title` or `summary` never reaches an open pull request) and records
+what it lacks against the producer's template as `template_warnings` on the
+`github_branch` delivery row:
+
+- `missing_testing`: no Markdown heading reading `Testing` (any level, any
+  case, an optional trailing colon) outside fenced code;
+- `missing_issue_key`: no issue key such as `ENG-123` (an uppercase letter,
+  uppercase letters or digits, a hyphen and digits, standing alone) in the
+  title or the body.
+
+The Slack reply adds one line, such as `PR template: missing a Testing
+section.`, and the delivery-status API shows the codes; the field is absent
+when nothing is missing. A warning is not a failure: the row is `delivered`,
+`last_error` stays empty, and the pull request stays a draft until it is
+marked ready, as always. Fixing the pull request itself clears the warnings
+on the next round. Apart from defused mentions, `summary` reaches the pull
+request byte for byte, headings and fenced check output included, and a
+`title` such as `[ENG-123] …` is used as given.
+
 **Refusals are recorded, not retried.** A refused target is `skipped` with the
 reason in `last_error` on the delivery-status API (`GET
 /threads/:id/deliveries`). A GitHub 5xx or rate limit retries with backoff
