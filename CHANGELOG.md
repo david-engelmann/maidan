@@ -401,6 +401,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** `maidan_background_loop_last_tick_seconds{loop}` and `maidan_background_loop_panics_total{loop}`, reported by the change sweep, and two alert rules in `docs/alerts/prometheus-rules-maidan-slo.yaml`: `MaidanChangeSweepStalled` (critical, no tick for 6 minutes) and `MaidanBackgroundLoopPanicking` (warning), with promtool tests. They reach a person only through an alert route; `docs/alerts/README.md` says so.
 
+### Two certificate-trust advisories handled
+
+- **Security:** RUSTSEC-2026-0382 (rustls-webpki) and RUSTSEC-2026-0381 (webpki-roots), published 2026-10-20. rustls-webpki 0.103 is bumped to the fixed 0.103.16 and webpki-roots 1.x to the fixed 1.0.10, in the root and fuzz lockfiles. The remaining rustls-webpki 0.101 is the AWS S3 client's, which has no fixed 0.101 release and only talks to a trusted endpoint. webpki-roots 0.26.11 is a shim over the fixed 1.0.10. Both are accepted with reasons in `deny.toml` and `.config/osv-scanner.toml`. The OpenHands example floors `certifi` at 2026.10.19 (GHSA-6q48-6c7w-9gw2).
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
