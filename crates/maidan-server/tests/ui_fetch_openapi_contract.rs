@@ -427,3 +427,71 @@ fn ui_inline_fetch_methods_resolve_to_the_session_proxy() {
         cursor = open + call.len() + 2;
     }
 }
+
+/// `client.js` is generated, so it stays honest only if something checks it.
+/// This runs the generator against the built `ApiDoc` and compares: a route
+/// renamed or removed, a method dropped, or a new UI call added without a
+/// regeneration fails here. `MAIDAN_WRITE_SNAPSHOTS=1` rewrites the file.
+#[test]
+fn ui_client_catalog_is_what_the_generator_writes() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let generator = manifest.join("../../scripts/gen-ui-client.mjs");
+    let client = manifest.join("static/ui/client.js");
+    let spec = std::env::temp_dir().join(format!(
+        "maidan-ui-client-openapi-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &spec,
+        ApiDoc::openapi().to_json().expect("OpenAPI serializes"),
+    )
+    .expect("write the OpenAPI document");
+    let out = std::process::Command::new("node")
+        .arg(&generator)
+        .arg(&spec)
+        .arg("--stdout")
+        .output()
+        .unwrap_or_else(|err| panic!("node is required to run gen-ui-client.mjs: {err}"));
+    let _ = std::fs::remove_file(&spec);
+    assert!(
+        out.status.success(),
+        "gen-ui-client.mjs failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let generated = String::from_utf8(out.stdout).expect("generator output is UTF-8");
+    if std::env::var("MAIDAN_WRITE_SNAPSHOTS").ok().as_deref() == Some("1") {
+        std::fs::write(&client, &generated).expect("rewrite client.js");
+        return;
+    }
+    let current = std::fs::read_to_string(&client).expect("read client.js");
+    assert!(
+        generated == current,
+        "static/ui/client.js is stale. Regenerate it with \
+         MAIDAN_WRITE_SNAPSHOTS=1 cargo test -p maidan-server --test ui_fetch_openapi_contract"
+    );
+    assert!(
+        !generated.contains("methods: []"),
+        "every catalogued path names at least one method"
+    );
+
+    // The generator walks the modules itself, so hold it to this file's walk:
+    // a template seen here that names an OpenAPI path exactly must be listed.
+    let documented = openapi_routes()
+        .into_iter()
+        .map(|route| route.path)
+        .collect::<BTreeSet<_>>();
+    let unlisted = string_literals(script())
+        .into_iter()
+        .filter(|literal| {
+            normalize_ui_template(literal).is_some_and(|path| documented.contains(&path))
+        })
+        .filter(|literal| {
+            let quoted = serde_json::to_string(literal).expect("a string serializes");
+            !generated.contains(&format!("path: {quoted} }}"))
+        })
+        .collect::<BTreeSet<_>>();
+    assert!(
+        unlisted.is_empty(),
+        "gen-ui-client.mjs missed UI templates: {unlisted:#?}"
+    );
+}
