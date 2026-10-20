@@ -389,6 +389,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** `PUT /threads/{id}/pull` (`workspace:write`) registers a pull request the change flow did not open, for a repository blessed for the workspace, on its task. The change sweep then tracks it and the swarm metrics count it: its time to ready runs from the task's `CLAIM:` comment to the first sweep that sees the `ready-to-merge` label, and its merge closes the task. A pull request tracked on another task is a 409.
 
+### The SDKs model a thread's newer fields
+
+- **Fixed:** the TypeScript, Python, Go and Rust SDKs now declare a thread's `attributes` (as `TaskAttributes`, with `linear_issue`), `description`, `status`, `block`, `closed_without_review`, `notices`, `plan_state`, `last_progress_at`, `stalled` and `human_wait`. Each SDK's suite checks that every member the server sends is declared, so all four had failed since task attributes landed.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

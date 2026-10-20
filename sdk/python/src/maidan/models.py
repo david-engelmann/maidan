@@ -154,6 +154,23 @@ class Channel(Model):
 
 
 @dataclass(kw_only=True)
+class TaskAttributes(Model):
+    """What kind of work a task is and who it is routed to."""
+
+    #: ``change``, ``plan`` or ``review``.
+    kind: str
+    threat_model: bool
+    #: ``pi``, ``session`` or ``human``.
+    engine: Optional[str] = None
+    #: ``S``, ``M`` or ``L``.
+    size: Optional[str] = None
+    #: How a reviewer verifies the task.
+    acceptance: Optional[str] = None
+    #: The Linear issue it is for, such as ``ENG-123``.
+    linear_issue: Optional[str] = None
+
+
+@dataclass(kw_only=True)
 class Thread(Model):
     id: str
     channel_id: str
@@ -172,6 +189,24 @@ class Thread(Model):
     claim_lease_id: Optional[str] = None
     work_started_at: Optional[str] = None
     tombstoned_at: Optional[str] = None
+    description: Optional[str] = None
+    #: The status its agent declared, when it declared one.
+    status: Optional[Dict[str, Any]] = None
+    #: What it is blocked on, when it is.
+    block: Optional[Dict[str, Any]] = None
+    #: Closed or archived with no approval standing on it.
+    closed_without_review: Optional[bool] = None
+    #: Its task attributes, on the reads that report them.
+    attributes: Optional[TaskAttributes] = None
+    #: Change notices on it, newest first (a single-thread read).
+    notices: Optional[List[Dict[str, Any]]] = None
+    #: On a plan parent, how far its children have got.
+    plan_state: Optional[Dict[str, Any]] = None
+    #: When the holder of a live lease last showed progress.
+    last_progress_at: Optional[str] = None
+    stalled: Optional[bool] = None
+    #: A wait on a person, when there is one.
+    human_wait: Optional[Dict[str, Any]] = None
 
 
 @dataclass(kw_only=True)

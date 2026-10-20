@@ -146,6 +146,39 @@ type Thread struct {
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 	TombstonedAt  *time.Time `json:"tombstoned_at,omitempty"`
+	Description   *string    `json:"description,omitempty"`
+	// Status is the status its agent declared, when it declared one.
+	Status json.RawMessage `json:"status,omitempty"`
+	// Block is what it is blocked on, when it is.
+	Block json.RawMessage `json:"block,omitempty"`
+	// ClosedWithoutReview is set when it closed with no approval standing on it.
+	ClosedWithoutReview bool `json:"closed_without_review,omitempty"`
+	// Attributes are its task attributes, on the reads that report them.
+	Attributes *TaskAttributes `json:"attributes,omitempty"`
+	// Notices are the change notices on it, newest first (a single-thread read).
+	Notices []json.RawMessage `json:"notices,omitempty"`
+	// PlanState is, on a plan parent, how far its children have got.
+	PlanState json.RawMessage `json:"plan_state,omitempty"`
+	// LastProgressAt is when the holder of a live lease last showed progress.
+	LastProgressAt *time.Time `json:"last_progress_at,omitempty"`
+	Stalled        bool       `json:"stalled,omitempty"`
+	// HumanWait is a wait on a person, when there is one.
+	HumanWait json.RawMessage `json:"human_wait,omitempty"`
+}
+
+// TaskAttributes say what kind of work a task is and who it is routed to.
+type TaskAttributes struct {
+	// Kind is change, plan or review.
+	Kind        string `json:"kind"`
+	ThreatModel bool   `json:"threat_model"`
+	// Engine is pi, session or human.
+	Engine *string `json:"engine,omitempty"`
+	// Size is S, M or L.
+	Size *string `json:"size,omitempty"`
+	// Acceptance is how a reviewer verifies the task.
+	Acceptance *string `json:"acceptance,omitempty"`
+	// LinearIssue is the Linear issue it is for, such as ENG-123.
+	LinearIssue *string `json:"linear_issue,omitempty"`
 }
 
 // StrongRef is a content-addressed pin (maidan:event/{id} plus its hash).

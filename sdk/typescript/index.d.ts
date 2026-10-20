@@ -223,6 +223,36 @@ export interface Thread {
   created_at: string;
   updated_at: string;
   tombstoned_at?: string | null;
+  description?: string | null;
+  /** The status its agent declared, when it declared one. */
+  status?: unknown;
+  /** What it is blocked on, when it is. */
+  block?: unknown;
+  /** Closed or archived with no approval standing on it. */
+  closed_without_review?: boolean;
+  /** Its task attributes, on the reads that report them. */
+  attributes?: TaskAttributes;
+  /** Change notices on it, newest first (a single-thread read). */
+  notices?: unknown[];
+  /** On a plan parent, how far its children have got. */
+  plan_state?: unknown;
+  /** When the holder of a live lease last showed progress. */
+  last_progress_at?: string | null;
+  stalled?: boolean;
+  /** A wait on a person, when there is one. */
+  human_wait?: unknown;
+}
+
+/** A task's attributes: what kind of work it is and who it is routed to. */
+export interface TaskAttributes {
+  kind: "change" | "plan" | "review";
+  engine?: "pi" | "session" | "human";
+  threat_model: boolean;
+  size?: "S" | "M" | "L";
+  /** How a reviewer verifies the task. */
+  acceptance?: string;
+  /** The Linear issue it is for, such as `ENG-123`. */
+  linear_issue?: string;
 }
 
 /** A content-addressed pin (`maidan:event/{id}` + its hash). */
