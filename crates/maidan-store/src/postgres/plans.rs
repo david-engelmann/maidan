@@ -134,6 +134,21 @@ pub async fn submit(
             .await?;
         }
     }
+    // Held for review: each child is blocked, so `claim_next` skips it and the
+    // board shows why, until a Maintainer releases the plan.
+    if plan.needs_hold() {
+        for child in &children {
+            sqlx::query(
+                "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, note)
+                 VALUES ($1, 'human', $2, $3)",
+            )
+            .bind(child.thread_id.0)
+            .bind(member_id.0)
+            .bind(maidan_types::PLAN_HOLD_NOTE)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
     tx.commit().await?;
     Ok(PlanOutcome::Created {
         children,
@@ -640,4 +655,30 @@ async fn post_notice_in_tx(
         sealed: None,
     };
     events::append_with_keys_in_tx(tx, Some(keys), &posted, None).await
+}
+
+/// Release a held plan: clear the hold on each of `parent_id`'s children
+/// (only the plan hold; any other block stays), with its audit row in the same
+/// transaction. Returns the children released; empty when none was held.
+pub async fn release(
+    pool: &PgPool,
+    parent_id: ThreadId,
+    audit: maidan_types::NewAuditEvent,
+) -> Result<Vec<ThreadId>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let released: Vec<Uuid> = sqlx::query_scalar(
+        "DELETE FROM maidan_thread_blocks
+         WHERE note = $2 AND thread_id IN (
+             SELECT child_thread_id FROM maidan_thread_plan_children WHERE parent_thread_id = $1)
+         RETURNING thread_id",
+    )
+    .bind(parent_id.0)
+    .bind(maidan_types::PLAN_HOLD_NOTE)
+    .fetch_all(&mut *tx)
+    .await?;
+    if !released.is_empty() {
+        super::audit::append_counted(&mut tx, audit).await?;
+    }
+    tx.commit().await?;
+    Ok(released.into_iter().map(ThreadId).collect())
 }

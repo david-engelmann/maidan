@@ -535,6 +535,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/{id}/pull", put(routes::register_thread_pull))
         .route("/threads/{id}/plan", post(routes::submit_plan))
+        .route("/threads/{id}/plan/release", post(routes::release_plan))
         .route(
             "/threads/{id}/deliveries",
             get(routes::list_thread_deliveries),

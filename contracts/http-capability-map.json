@@ -882,6 +882,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/plan/release",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/pull",
     "capability": "workspace:write",
