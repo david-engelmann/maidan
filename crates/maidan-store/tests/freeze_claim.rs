@@ -64,12 +64,12 @@ async fn run_suite(store: &dyn Store) {
 
     // Both claim variants refuse a frozen claimer.
     assert!(store
-        .claim_next_thread(channel.id, member.id, None)
+        .claim_next_thread(channel.id, member.id, None, None)
         .await
         .expect("claim")
         .is_none());
     let (claimed, _) = store
-        .claim_next_thread_with_event(channel.id, member.id, None, None)
+        .claim_next_thread_with_event(channel.id, member.id, None, None, None)
         .await
         .expect("claim_with_event");
     assert!(
@@ -84,7 +84,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("unfreeze")
         .is_some());
     let ok = store
-        .claim_next_thread(channel.id, member.id, None)
+        .claim_next_thread(channel.id, member.id, None, None)
         .await
         .expect("claim after unfreeze");
     assert!(ok.is_some(), "an unfrozen member claims normally");

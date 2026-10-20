@@ -80,7 +80,7 @@ async fn work(
     member: MemberId,
 ) -> (ThreadId, maidan_types::ClaimLeaseId) {
     let held = store
-        .claim_next_thread(channel, member, Some(3600))
+        .claim_next_thread(channel, member, Some(3600), None)
         .await
         .unwrap()
         .expect("claimable");
@@ -164,7 +164,7 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
     // Claimed, never acknowledged: no working clock. Created last, so it is
     // what remains after the acknowledged claims above.
     let quiet = store
-        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .claim_next_thread(r.channel, r.holder, Some(3600), None)
         .await
         .unwrap()
         .unwrap();
@@ -293,7 +293,7 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
     // one is over its token budget, so it is skipped until the cap is raised.
     let mut handed = Vec::new();
     while let Some(t) = store
-        .claim_next_thread(r.channel, r.other, Some(60))
+        .claim_next_thread(r.channel, r.other, Some(60), None)
         .await
         .unwrap()
     {
@@ -315,7 +315,7 @@ async fn every_ending_charges_the_time_the_claim_worked(store: &dyn Store) {
         .await
         .unwrap();
     let raised = store
-        .claim_next_thread(r.channel, r.holder, Some(60))
+        .claim_next_thread(r.channel, r.holder, Some(60), None)
         .await
         .unwrap()
         .expect("raising the token cap puts the stopped thread back");
@@ -352,7 +352,7 @@ async fn claim_next_refuses_a_thread_already_over_budget(store: &dyn Store) {
     assert!(stored.is_none());
     assert!(
         store
-            .claim_next_thread(r.channel, r.holder, Some(60))
+            .claim_next_thread(r.channel, r.holder, Some(60), None)
             .await
             .unwrap()
             .is_none(),
@@ -370,7 +370,7 @@ async fn claim_next_refuses_a_thread_already_over_budget(store: &dyn Store) {
         .await
         .unwrap();
     let taken = store
-        .claim_next_thread(r.channel, r.other, Some(60))
+        .claim_next_thread(r.channel, r.other, Some(60), None)
         .await
         .unwrap()
         .expect("cleared caps are claimable");

@@ -1486,14 +1486,32 @@ pub trait ThreadStore: Send + Sync {
         new: NewThread,
     ) -> Result<(Thread, StoredEvent), StoreError>;
     /// [`create_thread_with_event`](Self::create_thread_with_event) with the
-    /// thread's claim footprint stored in the same transaction, so the claim
-    /// queue never sees the thread without it. An invalid footprint creates
-    /// nothing.
+    /// thread's claim footprint and task attributes stored in the same
+    /// transaction, so the claim queue never sees the thread without them.
+    /// An invalid footprint creates nothing.
     async fn create_thread_with_footprint(
         &self,
         new: NewThread,
         footprint: Option<maidan_types::Footprint>,
+        attributes: Option<maidan_types::TaskAttributes>,
+        priority: Option<i64>,
     ) -> Result<(Thread, StoredEvent), StoreError>;
+
+    /// A thread's task attributes; the defaults when it was never
+    /// described. Not an error for a missing thread: attributes are a view
+    /// of the thread, and the thread read itself reports the miss.
+    async fn get_thread_attributes(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<maidan_types::TaskAttributes, StoreError>;
+
+    /// Replace a thread's task attributes whole. `NotFound` when the
+    /// thread does not exist.
+    async fn set_thread_attributes(
+        &self,
+        thread_id: ThreadId,
+        attributes: maidan_types::TaskAttributes,
+    ) -> Result<maidan_types::TaskAttributes, StoreError>;
     async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError>;
     async fn list_threads(&self, channel_id: ChannelId) -> Result<Vec<Thread>, StoreError>;
 
@@ -2080,6 +2098,7 @@ pub trait AssignmentStore: Send + Sync {
         channel_id: ChannelId,
         member_id: MemberId,
         lease_secs: Option<i64>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<Option<Thread>, StoreError>;
     /// Claim the next thread, appending its events atomically **iff** a thread
     /// was claimed. The returned events are the reclaim's
@@ -2096,6 +2115,7 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
         repo: Option<&str>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2107,6 +2127,7 @@ pub trait AssignmentStore: Send + Sync {
         member_id: MemberId,
         lease_secs: Option<i64>,
         repo: Option<&str>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When
@@ -2181,6 +2202,17 @@ pub trait AssignmentStore: Send + Sync {
         repo: &str,
         pull_number: i64,
     ) -> Result<Option<String>, StoreError>;
+    /// The head the squash-rebase round that delivered `commit_sha` to
+    /// `repo`#`pull_number` force-moved the branch from, as recorded in
+    /// `workspace_id`; `None` for a normal round, an unrecorded one, or
+    /// another workspace's.
+    async fn change_round_previous_head(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+        commit_sha: &str,
+    ) -> Result<Option<String>, StoreError>;
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,
@@ -2210,6 +2242,9 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         repo: Option<&str>,
         since: Option<chrono::DateTime<chrono::Utc>>,
+        engine: Option<maidan_types::TaskEngine>,
+        kind: Option<maidan_types::TaskKind>,
+        size: Option<maidan_types::TaskSize>,
     ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
     /// Stamp when a tracked agent pull request was last read from GitHub.
     async fn mark_change_pull_checked(
@@ -2319,6 +2354,26 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         now: chrono::DateTime<chrono::Utc>,
         claimed_before: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
+    /// Return to the queue up to `limit` threads whose holder declared
+    /// `needs_input` or `needs_review` before `declared_before` and is still
+    /// waiting: an open, live thread on a lease running at `now` that the
+    /// holder acknowledged, with the holder's own declaration still active.
+    /// For each, in one transaction: the claim is released as a graceful
+    /// release is (its worked time charged to the wall budget), the
+    /// declaration is dropped, since it spoke for a holder that is gone, and
+    /// a `WaitTimedOut` carrying `policy` and the declaration's note is
+    /// appended. The thread stays open; nothing is decided for the person.
+    /// Concurrent callers take distinct threads (`FOR UPDATE SKIP LOCKED` on
+    /// Postgres; SQLite serializes writers). Returns the appended events,
+    /// oldest declaration first.
+    async fn return_human_timeouts(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        declared_before: chrono::DateTime<chrono::Utc>,
+        policy: &str,
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 

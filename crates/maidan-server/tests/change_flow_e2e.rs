@@ -93,6 +93,10 @@ struct Fake {
     behind: Option<i64>,
     /// Every `force: true` ref move, as `(branch, from, to)`.
     forced: Vec<(String, String, String)>,
+    /// Every comment on a pull request, as `(number, body)`.
+    pull_comments: Vec<(i64, String)>,
+    /// Fail every comment with a 500.
+    fail_comments: bool,
 }
 
 impl Fake {
@@ -351,6 +355,20 @@ async fn github(
                 None => not_found(),
             }
         }
+        ("POST", r) if r.starts_with("issues/") && r.ends_with("/comments") => {
+            if fake.fail_comments {
+                return reply(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"message": "down"}),
+                );
+            }
+            let number: i64 = r["issues/".len()..r.len() - "/comments".len()]
+                .parse()
+                .unwrap();
+            fake.pull_comments
+                .push((number, body["body"].as_str().unwrap().into()));
+            reply(StatusCode::CREATED, json!({"id": 1}))
+        }
         ("POST", "pulls") if fake.fail_pulls => reply(
             StatusCode::INTERNAL_SERVER_ERROR,
             json!({"message": format!("upstream rejected bearer {TOKEN}")}),
@@ -394,6 +412,9 @@ async fn spawn_github(fake: Shared) -> String {
 #[derive(Default)]
 struct RecordingSlack {
     posts: Mutex<Vec<(String, Option<String>, String)>>,
+    /// Every in-place edit, as `(channel, ts, text)`: a later revision of a
+    /// result edits the reply it already posted.
+    updates: Mutex<Vec<(String, String, String)>>,
 }
 
 #[async_trait::async_trait]
@@ -412,7 +433,11 @@ impl SlackSender for RecordingSlack {
         }))
     }
 
-    async fn update_message(&self, _: &str, _: &str, _: &str) -> Result<(), SlackError> {
+    async fn update_message(&self, channel: &str, ts: &str, text: &str) -> Result<(), SlackError> {
+        self.updates
+            .lock()
+            .unwrap()
+            .push((channel.into(), ts.into(), text.into()));
         Ok(())
     }
 }
@@ -713,6 +738,18 @@ impl Harness {
 
     fn slack_posts(&self) -> Vec<(String, Option<String>, String)> {
         self.slack.posts.lock().unwrap().clone()
+    }
+
+    /// The Slack reply as it reads now: the newest edit, else the newest
+    /// post.
+    fn slack_reply(&self) -> String {
+        if let Some(edit) = self.slack.updates.lock().unwrap().last() {
+            return edit.2.clone();
+        }
+        self.slack_posts()
+            .last()
+            .map(|p| p.2.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -1357,11 +1394,13 @@ async fn a_change_reply_stops_waiting_on_a_branch_delivery_that_never_settles() 
 
     let soon = produced_at + chrono::Duration::hours(1);
     assert!(matches!(
-        change_reply_at(&h.state, h.a.thread_id, soon).await,
+        change_reply_at(&h.state, h.a.workspace_id, h.a.thread_id, soon).await,
         ChangeReply::Waiting
     ));
     let late = produced_at + CHANGE_REPLY_MAX_WAIT + chrono::Duration::minutes(1);
-    let ChangeReply::Ready(text) = change_reply_at(&h.state, h.a.thread_id, late).await else {
+    let ChangeReply::Ready(text) =
+        change_reply_at(&h.state, h.a.workspace_id, h.a.thread_id, late).await
+    else {
         panic!("the reply must stop waiting");
     };
     assert!(text.contains("Nothing has landed"), "{text}");
@@ -1621,7 +1660,7 @@ async fn each_delivered_round_counts_toward_the_swarm_metrics() {
     h.drain().await;
     let pulls = h
         .store
-        .list_change_pulls(h.a.workspace_id, None, None)
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
         .await
         .unwrap();
     assert_eq!(pulls.len(), 1);
@@ -1724,6 +1763,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
             paths: Vec::new(),
             base_branch: None,
             rebase: false,
+            previous_head: None,
         })
         .await
         .unwrap();
@@ -1758,7 +1798,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
     assert_eq!(landed[0].payload["pr_number"], number);
     let claimed = h
         .store
-        .claim_next_thread(h.a.channel_id, h.a.member_id, None)
+        .claim_next_thread(h.a.channel_id, h.a.member_id, None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -2238,22 +2278,40 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
         Some(format!("{head}#{}", pull.number).as_str())
     );
 
+    // Reviewers get the range the force rewrote, on the pull request and in
+    // the Slack reply.
+    let range = format!("Rebased {delivered}..{head} onto {new_base}");
+    assert_eq!(
+        h.fake.lock().unwrap().pull_comments,
+        vec![(pull.number, range.clone())]
+    );
+    let reply = h.slack_reply();
+    assert!(reply.contains(&range), "{range:?} not in {reply}");
+    assert!(reply.contains(&format!("Committed {head}")), "{reply}");
+
     // The round is recorded as a rebase, on a current base.
     let pulls = h
         .store
-        .list_change_pulls(h.a.workspace_id, None, None)
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
         .await
         .unwrap();
     let rounds: Vec<_> = pulls[0]
         .rounds
         .iter()
-        .map(|r| (r.commit_sha.clone(), r.rebase, r.base_behind))
+        .map(|r| {
+            (
+                r.commit_sha.clone(),
+                r.rebase,
+                r.base_behind,
+                r.previous_head.clone(),
+            )
+        })
         .collect();
     assert_eq!(
         rounds,
         vec![
-            (delivered.clone(), false, Some(2)),
-            (head.clone(), true, Some(0)),
+            (delivered.clone(), false, Some(2), None),
+            (head.clone(), true, Some(0), Some(delivered.clone())),
         ]
     );
     let metrics = maidan_types::swarm_metrics(pulls, maidan_types::FlagLimits::default());
@@ -2286,6 +2344,29 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
         h.delivery(&h.a, "github_branch").await.status,
         status::DELIVERED
     );
+}
+
+/// The range comment is best effort: GitHub refusing it leaves the move,
+/// the delivery and the recorded range as they are, and Slack still says it.
+#[tokio::test]
+async fn a_rebase_whose_range_comment_fails_still_lands_and_says_it_in_slack() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    h.fake.lock().unwrap().fail_comments = true;
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let head = {
+        let f = h.fake.lock().unwrap();
+        assert!(f.pull_comments.is_empty());
+        assert_eq!(f.forced.len(), 1);
+        f.refs[BRANCH].clone()
+    };
+    let range = format!("Rebased {delivered}..{head} onto {new_base}");
+    let reply = h.slack_reply();
+    assert!(reply.contains(&range), "{range:?} not in {reply}");
 }
 
 /// The branch reads, refusal, and that nothing was written since `before`.
@@ -2412,6 +2493,7 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
             paths: Vec::new(),
             base_branch: Some("dev".into()),
             rebase: false,
+            previous_head: None,
         })
         .await
         .unwrap();

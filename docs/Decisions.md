@@ -2052,7 +2052,10 @@ The token is an admin's, so the guards live in Maidan's code, not in GitHub sett
 - Maidan never merges, changes settings, deletes a branch or force-pushes.
   The one later exception (#1444): a squash-rebase round force-moves an agent
   branch whose head is still the last commit Maidan delivered, behind a guard
-  no other code can call ([Result Delivery](Result%20Delivery.md)).
+  no other code can call ([Result Delivery](Result%20Delivery.md)). After
+  the move it posts the flow's one comment, the rebase's
+  `<old_head>..<new_head>` range, so a reviewer can still diff what the
+  rewrite changed.
 - Maidan marks ready only through the deliberate exception below, never any
   other PR mutation.
 - The token is never logged.

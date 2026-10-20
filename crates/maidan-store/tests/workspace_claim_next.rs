@@ -86,7 +86,7 @@ async fn thread(store: &dyn Store, channel_id: ChannelId) -> ThreadId {
 
 async fn claim(store: &dyn Store, ws: WorkspaceId, member_id: MemberId) -> Option<ThreadId> {
     store
-        .claim_next_workspace_thread_with_event(ws, member_id, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, member_id, Some(LEASE_SECS), None, None)
         .await
         .expect("claim next in workspace")
         .0
@@ -105,7 +105,7 @@ async fn takes_the_oldest_ready_thread_across_channels(store: &dyn Store) {
     let third = thread(store, beta).await;
 
     let (claimed, events) = store
-        .claim_next_workspace_thread_with_event(ws, agent, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, agent, Some(LEASE_SECS), None, None)
         .await
         .expect("claim");
     let claimed = claimed.expect("a thread");
@@ -135,14 +135,14 @@ async fn takes_over_a_lapsed_lease_and_reports_it(store: &dyn Store) {
     let ch = channel(store, ws, "work", false).await;
     let t = thread(store, ch).await;
     let held = store
-        .claim_next_workspace_thread_with_event(ws, dead, Some(-1), None)
+        .claim_next_workspace_thread_with_event(ws, dead, Some(-1), None, None)
         .await
         .expect("claim")
         .0
         .expect("claimed");
 
     let (claimed, events) = store
-        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None, None)
         .await
         .expect("reclaim");
     let claimed = claimed.expect("the lapsed thread");
@@ -179,7 +179,7 @@ async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
         .await
         .expect("budget");
     let held = store
-        .claim_next_workspace_thread_with_event(ws, dead, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, dead, Some(LEASE_SECS), None, None)
         .await
         .expect("claim")
         .0
@@ -194,7 +194,7 @@ async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
     .await;
 
     let (claimed, events) = store
-        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None, None)
         .await
         .expect("takeover");
     assert!(claimed.is_none(), "a thread over budget is not handed out");
@@ -227,7 +227,7 @@ async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
     );
     assert_eq!(store.list_channel_dlq(ch, 10).await.expect("dlq").len(), 1);
     let (still, _) = store
-        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None, None)
         .await
         .expect("still over");
     assert!(still.is_none());
@@ -242,7 +242,7 @@ async fn a_takeover_charges_the_lapsed_claims_wall_time(store: &dyn Store) {
         .await
         .expect("raise");
     let (raised, _) = store
-        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None)
+        .claim_next_workspace_thread_with_event(ws, next, Some(LEASE_SECS), None, None)
         .await
         .expect("raised");
     assert_eq!(
@@ -299,7 +299,7 @@ async fn a_dm_thread_goes_only_to_its_participants(store: &dyn Store) {
         .channel_id;
 
     let (through_channel, _) = store
-        .claim_next_thread_with_event(dm_channel, carol, Some(LEASE_SECS), None)
+        .claim_next_thread_with_event(dm_channel, carol, Some(LEASE_SECS), None, None)
         .await
         .expect("channel claim");
     assert_eq!(
@@ -308,7 +308,7 @@ async fn a_dm_thread_goes_only_to_its_participants(store: &dyn Store) {
         "the __dm__ channel hands carol her group DM, never alice and bob's DM"
     );
     assert!(store
-        .claim_next_thread(dm_channel, carol, None)
+        .claim_next_thread(dm_channel, carol, None, None)
         .await
         .expect("channel claim")
         .is_none());

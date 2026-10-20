@@ -98,6 +98,7 @@ mod tests {
             work_started_at: Some(started),
             owner_id: None,
             created_by: None,
+            attributes: None,
             created_at: started,
             updated_at: now,
             tombstoned_at: None,
@@ -107,6 +108,7 @@ mod tests {
             notices: Vec::new(),
             last_progress_at: Some(started),
             stalled: false,
+            human_wait: None,
         }
     }
 

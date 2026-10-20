@@ -726,7 +726,9 @@ pub enum Event {
         workspace_id: WorkspaceId,
         channel_id: ChannelId,
         thread_id: ThreadId,
-        /// The escalation applied (`EscalationPolicy::as_str`): `notify` | `park`.
+        /// The escalation applied: `notify` | `park` for a thread wait
+        /// (`EscalationPolicy::as_str`), or `return_to_queue` when an agent's
+        /// wait on a person went unanswered and its claim was released.
         policy: String,
         /// Why the thread was waiting, if a reason was recorded.
         #[serde(default, skip_serializing_if = "Option::is_none")]

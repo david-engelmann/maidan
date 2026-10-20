@@ -1,0 +1,531 @@
+//! Task attributes over the wire: set at intake on REST and MCP create,
+//! read on the thread, replaced by the PUT and the MCP tool, respected by
+//! an engine-filtered claim, invisible and unchangeable to another tenant,
+//! and joined onto the swarm metrics with their filters and engine split.
+
+use std::{
+    net::SocketAddr,
+    sync::{atomic::AtomicI64, Arc},
+};
+
+use maidan_artifacts::LocalFsStore;
+use maidan_auth::{capability, hash_secret, TokenSecret};
+use maidan_bus::InMemoryBus;
+use maidan_server::{router, AppState, FederationRuntime};
+use maidan_store::{prelude::*, run_sqlite_migrations};
+use maidan_types::{
+    ChannelId, MemberId, MemberKind, NewApiToken, NewChangeRound, NewChannel, NewMember,
+    NewWorkspace, WorkspaceId,
+};
+use reqwest::StatusCode;
+use serde_json::{json, Value};
+use sqlx::sqlite::SqlitePoolOptions;
+
+async fn spawn() -> (String, Arc<dyn Store>) {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let state = AppState::new(
+        store.clone(),
+        Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+        Arc::new(InMemoryBus::new()),
+        search,
+        Arc::new(maidan_search::HashV1Provider),
+        false,
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    let app = router(state);
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}"), store)
+}
+
+async fn member_with(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    handle: &str,
+    capabilities: &[&str],
+) -> (MemberId, String) {
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws,
+            member_id: member.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: capabilities.iter().map(|c| (*c).to_string()).collect(),
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    (member.id, secret.as_str().to_string())
+}
+
+const CAPS: &[&str] = &[
+    capability::WORKSPACE_READ,
+    capability::WORKSPACE_WRITE,
+    capability::THREAD_TRANSITION,
+];
+
+struct Room {
+    ws: WorkspaceId,
+    channel: ChannelId,
+    token: String,
+}
+
+async fn room(base_store: &dyn Store, name: &str) -> Room {
+    let ws = base_store
+        .create_workspace(NewWorkspace { name: name.into() })
+        .await
+        .unwrap();
+    let (_member, token) = member_with(base_store, ws.id, "agent", CAPS).await;
+    let channel = base_store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    Room {
+        ws: ws.id,
+        channel: channel.id,
+        token,
+    }
+}
+
+async fn create_thread(base: &str, room: &Room, body: Value) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .post(format!("{base}/channels/{}/threads", room.channel.0))
+        .bearer_auth(&room.token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+async fn get_thread(base: &str, token: &str, thread_id: &str) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .get(format!("{base}/threads/{thread_id}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+async fn tool(base: &str, token: &str, name: &str, arguments: Value) -> Value {
+    reqwest::Client::new()
+        .post(format!("{base}/mcp"))
+        .bearer_auth(token)
+        .header("accept", "application/json")
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": name, "arguments": arguments }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+/// The JSON a successful tool call returned.
+fn tool_result(response: &Value) -> Value {
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("not a tool result: {response}"));
+    serde_json::from_str(text).unwrap()
+}
+
+#[tokio::test]
+async fn attributes_ride_create_read_and_replace_on_rest_and_mcp() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "attrs").await;
+
+    // Set at intake, over REST.
+    let (status, created) = create_thread(
+        &base,
+        &room,
+        json!({
+            "title": "review the gateway",
+            "attributes": { "kind": "review", "engine": "pi", "threat_model": true }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(
+        created["attributes"],
+        json!({ "kind": "review", "engine": "pi", "threat_model": true })
+    );
+    let thread_id = created["id"].as_str().unwrap().to_string();
+
+    // Read back on the thread.
+    let (status, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(read["attributes"]["kind"], "review");
+
+    // Replaced whole by the PUT.
+    let response = reqwest::Client::new()
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&room.token)
+        .json(&json!({ "kind": "plan", "engine": "session", "threat_model": false }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let replaced: Value = response.json().await.unwrap();
+    assert_eq!(
+        replaced,
+        json!({ "kind": "plan", "engine": "session", "threat_model": false })
+    );
+    let (_status, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert_eq!(read["attributes"]["kind"], "plan");
+
+    // A thread created without attributes reads as the defaults, and the
+    // MCP create + tool pair carries them too.
+    let (status, plain) = create_thread(&base, &room, json!({ "title": "plain" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(
+        plain["attributes"],
+        json!({ "kind": "change", "threat_model": false }),
+        "an undescribed thread reads as a change with no engine"
+    );
+
+    let made = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "create_thread",
+            json!({
+                "channel_id": room.channel.0,
+                "title": "from mcp",
+                "attributes": { "kind": "change", "engine": "human" }
+            }),
+        )
+        .await,
+    );
+    assert_eq!(made["attributes"]["engine"], "human");
+    let mcp_thread = made["id"].as_str().unwrap().to_string();
+    let set = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "set_thread_attributes",
+            json!({
+                "thread_id": mcp_thread,
+                "kind": "review",
+                "engine": "pi",
+                "threat_model": true
+            }),
+        )
+        .await,
+    );
+    assert_eq!(set["kind"], "review");
+    let (_status, read) = get_thread(&base, &room.token, &mcp_thread).await;
+    assert_eq!(
+        read["attributes"],
+        json!({ "kind": "review", "engine": "pi", "threat_model": true })
+    );
+}
+
+#[tokio::test]
+async fn a_bad_attribute_value_creates_no_thread() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "bad-attrs").await;
+    let (status, _body) = create_thread(
+        &base,
+        &room,
+        json!({
+            "title": "bogus kind",
+            "attributes": { "kind": "bogus" }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let threads = store.list_threads(room.channel).await.unwrap();
+    assert!(
+        threads.is_empty(),
+        "a refused create must leave no thread behind"
+    );
+
+    // The PUT refuses a bad value the same way.
+    let (status, ok) = create_thread(&base, &room, json!({ "title": "fine" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let thread_id = ok["id"].as_str().unwrap();
+    let response = reqwest::Client::new()
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&room.token)
+        .json(&json!({ "kind": "change", "engine": "robot" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn an_engine_filtered_claim_skips_other_engines() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "claim-engines").await;
+    for (title, engine) in [
+        ("session work", Some("session")),
+        ("pi work", Some("pi")),
+        ("unrouted work", None),
+    ] {
+        let mut attributes = json!({ "kind": "change" });
+        if let Some(engine) = engine {
+            attributes["engine"] = json!(engine);
+        }
+        let (status, _created) = create_thread(
+            &base,
+            &room,
+            json!({ "title": title, "attributes": attributes }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+
+    let http = reqwest::Client::new();
+    let claim = |engine: &str| {
+        let http = http.clone();
+        let url = format!("{base}/channels/{}/threads/claim-next", room.channel.0);
+        let token = room.token.clone();
+        let engine = engine.to_string();
+        async move {
+            http.post(url)
+                .bearer_auth(token)
+                .json(&json!({ "lease_secs": 600, "engine": engine }))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let pi_claim = claim("pi").await;
+    assert_eq!(
+        pi_claim["title"], "pi work",
+        "the pi claim takes the pi task, not the older session or unrouted work: {pi_claim}"
+    );
+    let second = claim("pi").await;
+    assert!(
+        second.is_null(),
+        "no second pi task exists, so the claim is empty: {second}"
+    );
+    let human = claim("human").await;
+    assert!(
+        human.is_null(),
+        "human work was never posted, so a human claim is empty: {human}"
+    );
+}
+
+#[tokio::test]
+async fn another_workspace_cannot_read_or_replace_attributes() {
+    let (base, store) = spawn().await;
+    let victim = room(store.as_ref(), "victim").await;
+    let attacker = room(store.as_ref(), "attacker").await;
+    let (status, created) = create_thread(
+        &base,
+        &victim,
+        json!({
+            "title": "victim task",
+            "attributes": { "kind": "review", "engine": "pi", "threat_model": true }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let thread_id = created["id"].as_str().unwrap().to_string();
+
+    let (status, _body) = get_thread(&base, &attacker.token, &thread_id).await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "another tenant's read must refuse, got {status}"
+    );
+    let response = reqwest::Client::new()
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&attacker.token)
+        .json(&json!({ "kind": "plan", "engine": "human" }))
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "another tenant's replace must refuse, got {status}"
+    );
+
+    let (status, read) = get_thread(&base, &victim.token, &thread_id).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        read["attributes"],
+        json!({ "kind": "review", "engine": "pi", "threat_model": true }),
+        "the victim's attributes are untouched"
+    );
+}
+
+#[tokio::test]
+async fn swarm_metrics_carry_attributes_filters_and_the_engine_split() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "metrics").await;
+    let mut ids = Vec::new();
+    for (n, attributes) in [
+        (1, json!({ "kind": "review", "engine": "pi" })),
+        (2, json!({ "kind": "change" })),
+    ] {
+        let (status, created) = create_thread(
+            &base,
+            &room,
+            json!({ "title": format!("task {n}"), "attributes": attributes }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let thread_id = maidan_types::ThreadId(created["id"].as_str().unwrap().parse().unwrap());
+        store
+            .record_change_round(NewChangeRound {
+                workspace_id: room.ws,
+                thread_id,
+                repo: "example/app".into(),
+                pull_number: n,
+                commit_sha: format!("c{n}"),
+                base_sha: "a".repeat(40),
+                base_behind: None,
+                diff_lines: 10,
+                paths: Vec::new(),
+                base_branch: None,
+                rebase: false,
+                previous_head: None,
+            })
+            .await
+            .unwrap();
+        ids.push(thread_id);
+    }
+
+    let http = reqwest::Client::new();
+    let metrics = |query: &str| {
+        let http = http.clone();
+        let url = format!("{base}/workspaces/{}/swarm-metrics{query}", room.ws.0);
+        let token = room.token.clone();
+        async move {
+            let response = http.get(url).bearer_auth(token).send().await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            response.json::<Value>().await.unwrap()
+        }
+    };
+    let all = metrics("").await;
+    assert_eq!(all["tasks"].as_array().unwrap().len(), 2);
+    let review_task = all["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|task| task["pull_number"] == 1)
+        .expect("the review task is listed");
+    assert_eq!(review_task["attributes"]["kind"], "review");
+    let rollup = &all["repos"][0];
+    let engines: Vec<&Value> = rollup["by_engine"].as_array().unwrap().iter().collect();
+    assert_eq!(engines.len(), 2);
+    assert_eq!(engines[0]["engine"], "pi");
+    assert_eq!(engines[0]["tasks"], 1);
+    assert!(engines[1]["engine"].is_null());
+    assert_eq!(engines[1]["tasks"], 1);
+
+    let pi_only = metrics("?engine=pi").await;
+    assert_eq!(pi_only["tasks"].as_array().unwrap().len(), 1);
+    let reviews = metrics("?kind=review").await;
+    assert_eq!(reviews["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(reviews["tasks"][0]["pull_number"], 1);
+}
+
+#[tokio::test]
+async fn a_producer_sets_priority_size_and_acceptance_at_intake() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "intake").await;
+    // A producer creates tasks; it holds no thread:transition.
+    let (_, producer) = member_with(
+        store.as_ref(),
+        room.ws,
+        "producer",
+        &[
+            maidan_auth::capability::WORKSPACE_READ,
+            maidan_auth::capability::WORKSPACE_WRITE,
+        ],
+    )
+    .await;
+    let as_producer = Room {
+        ws: room.ws,
+        channel: room.channel,
+        token: producer,
+    };
+    let (status, _older) = create_thread(&base, &as_producer, json!({ "title": "older" })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, urgent) = create_thread(
+        &base,
+        &as_producer,
+        json!({
+            "title": "urgent",
+            "priority": 100,
+            "attributes": {
+                "kind": "change",
+                "engine": "pi",
+                "size": "S",
+                "acceptance": "The retry test passes."
+            }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{urgent}");
+    assert_eq!(urgent["attributes"]["size"], "S");
+    assert_eq!(urgent["attributes"]["acceptance"], "The retry test passes.");
+
+    let claimed = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "claim_next_thread",
+            json!({ "channel_id": room.channel.0 }),
+        )
+        .await,
+    );
+    let id = claimed["thread"]["id"]
+        .as_str()
+        .or_else(|| claimed["id"].as_str())
+        .unwrap_or_else(|| panic!("nothing claimed: {claimed}"));
+    assert_eq!(id, urgent["id"].as_str().unwrap(), "priority beats age");
+
+    let (status, _) = create_thread(
+        &base,
+        &as_producer,
+        json!({ "title": "bad", "attributes": { "kind": "change", "size": "XL" } }),
+    )
+    .await;
+    assert!(status.is_client_error(), "an unknown size is refused");
+}

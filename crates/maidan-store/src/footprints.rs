@@ -253,6 +253,13 @@ pub(crate) struct ItemRow {
     pub(crate) mode: String,
     pub(crate) kind: String,
     pub(crate) value: String,
+    /// The thread's task attributes, when the query joined them and the
+    /// thread has a row; `None` fields read as the defaults.
+    pub(crate) task_kind: Option<String>,
+    pub(crate) task_engine: Option<String>,
+    pub(crate) threat_model: Option<bool>,
+    pub(crate) task_size: Option<String>,
+    pub(crate) task_acceptance: Option<String>,
 }
 
 fn parse_mode(mode: &str) -> Result<FootprintMode, StoreError> {
@@ -305,6 +312,23 @@ pub(crate) fn group_active(rows: Vec<ItemRow>) -> Result<Vec<ActiveClaim>, Store
                 repo: row.repo,
                 mode: parse_mode(&row.mode)?,
                 items: vec![item],
+                attributes: maidan_types::TaskAttributes {
+                    kind: row
+                        .task_kind
+                        .as_deref()
+                        .and_then(maidan_types::TaskKind::parse)
+                        .unwrap_or_default(),
+                    engine: row
+                        .task_engine
+                        .as_deref()
+                        .and_then(maidan_types::TaskEngine::parse),
+                    threat_model: row.threat_model.unwrap_or(false),
+                    size: row
+                        .task_size
+                        .as_deref()
+                        .and_then(maidan_types::TaskSize::parse),
+                    acceptance: row.task_acceptance.clone(),
+                },
             },
         );
     }

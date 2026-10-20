@@ -980,9 +980,11 @@ mod tests {
             tombstoned_at: tombstoned.then(Utc::now),
             status: None,
             block: None,
+            attributes: None,
             closed_without_review: false,
             last_progress_at: None,
             stalled: false,
+            human_wait: None,
             notices: Vec::new(),
             created_by: None,
         }
@@ -1260,9 +1262,11 @@ mod tests {
             tombstoned_at: None,
             status: None,
             block: None,
+            attributes: None,
             closed_without_review: false,
             last_progress_at: None,
             stalled: false,
+            human_wait: None,
             notices: Vec::new(),
             created_by: None,
         }

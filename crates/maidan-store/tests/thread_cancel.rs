@@ -92,7 +92,7 @@ async fn the_creator_is_recorded_and_read_back(store: Arc<dyn Store>) {
     let listed = store.list_threads(room.channel).await.unwrap();
     assert_eq!(listed[0].created_by, Some(room.producer));
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -138,7 +138,7 @@ async fn the_creator_cancels_an_unclaimed_task(store: Arc<dyn Store>) {
     let transitions = store.list_thread_transitions(thread, 10).await.unwrap();
     assert_eq!(transitions.last().unwrap().to_state, ThreadState::Closed);
     assert!(store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .is_none());
@@ -150,7 +150,7 @@ async fn a_cancel_ends_the_claim_so_the_holders_renew_is_refused(store: Arc<dyn 
     let room = room(store.as_ref(), "claimed").await;
     let thread = task(store.as_ref(), &room, "in progress").await;
     let held = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -330,11 +330,61 @@ async fn a_cancel_stays_in_its_workspace(store: Arc<dyn Store>) {
         ThreadState::Open
     );
     let claimed = store
-        .claim_next_thread(ours.channel, ours.worker, Some(600))
+        .claim_next_thread(ours.channel, ours.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(claimed.id, our_task);
+}
+
+/// A system notice (a cancel or rebase note) is posted through the plain
+/// `post_message`, not the evented path; it must still float its thread in the
+/// recently-active view, or the thread that just got news sinks below quieter
+/// ones. A post moves only its own thread: another workspace's thread with the
+/// same history keeps its clock.
+async fn a_plain_post_bumps_only_its_own_threads_activity(store: Arc<dyn Store>) {
+    let mine = room(store.as_ref(), "mine").await;
+    let theirs = room(store.as_ref(), "theirs").await;
+    let older = task(store.as_ref(), &mine, "older").await;
+    let newer = task(store.as_ref(), &mine, "newer").await;
+    let their_thread = task(store.as_ref(), &theirs, "theirs").await;
+    let older_before = store.get_thread(older).await.unwrap().updated_at;
+    let theirs_before = store.get_thread(their_thread).await.unwrap().updated_at;
+    tokio::time::sleep(Duration::from_millis(20)).await;
+
+    store
+        .post_message(NewMessage {
+            thread_id: older,
+            author_id: mine.lead,
+            body: "cancelled".into(),
+            metadata: serde_json::json!({ "system": "cancelled" }),
+            content: None,
+        })
+        .await
+        .unwrap();
+
+    let older_after = store.get_thread(older).await.unwrap().updated_at;
+    assert!(
+        older_after > older_before,
+        "the post must bump its thread: {older_before} -> {older_after}"
+    );
+    let order: Vec<ThreadId> = store
+        .list_recently_active_threads(mine.channel, 10)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(
+        order,
+        vec![older, newer],
+        "the posted-to thread floats first"
+    );
+    assert_eq!(
+        store.get_thread(their_thread).await.unwrap().updated_at,
+        theirs_before,
+        "another workspace's thread keeps its clock"
+    );
 }
 
 async fn sqlite() -> Arc<dyn Store> {
@@ -407,4 +457,5 @@ on_both_backends!(
     a_transition_holder_cancels_any_task,
     a_repeat_changes_nothing_and_a_finished_task_stays_finished,
     a_cancel_stays_in_its_workspace,
+    a_plain_post_bumps_only_its_own_threads_activity,
 );

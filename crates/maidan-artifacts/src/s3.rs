@@ -19,13 +19,27 @@ use crate::sha::Sha256;
 use crate::store::ArtifactStore;
 
 /// Connection parameters for [`S3Store`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct S3Config {
     pub endpoint: String,
     pub bucket: String,
     pub region: String,
     pub access_key: String,
     pub secret_key: String,
+}
+
+// Written out rather than derived: a config that reaches a `{:?}` in a log or
+// an error must not carry the object store's credentials with it.
+impl std::fmt::Debug for S3Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Config")
+            .field("endpoint", &self.endpoint)
+            .field("bucket", &self.bucket)
+            .field("region", &self.region)
+            .field("access_key", &"***")
+            .field("secret_key", &"***")
+            .finish()
+    }
 }
 
 /// How long a request to the object store may take to connect.
@@ -100,7 +114,7 @@ impl S3Store {
                     .bucket(&self.bucket)
                     .send()
                     .await
-                    .map_err(|e| ArtifactError::Storage(format!("create bucket: {e}")))?;
+                    .map_err(|e| ArtifactError::sdk("create bucket", &e))?;
                 Ok(())
             }
         }
@@ -129,7 +143,7 @@ impl ArtifactStore for S3Store {
             .body(ByteStream::from(bytes))
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("put_object: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("put_object", &e))?;
 
         Ok(sha)
     }
@@ -147,7 +161,7 @@ impl ArtifactStore for S3Store {
                 if e.as_service_error().is_some_and(|s| s.is_no_such_key()) {
                     ArtifactError::NotFound
                 } else {
-                    ArtifactError::Storage(format!("get_object: {e}"))
+                    ArtifactError::sdk("get_object", &e)
                 }
             })?;
 
@@ -155,7 +169,7 @@ impl ArtifactStore for S3Store {
             .body
             .collect()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("read body: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("read body", &e))?;
         Ok(aggregated.into_bytes())
     }
 
@@ -171,7 +185,7 @@ impl ArtifactStore for S3Store {
         {
             Ok(_) => Ok(true),
             Err(e) if e.as_service_error().is_some_and(|s| s.is_not_found()) => Ok(false),
-            Err(e) => Err(ArtifactError::Storage(format!("head_object: {e}"))),
+            Err(e) => Err(ArtifactError::sdk("head_object", &e)),
         }
     }
 
@@ -183,7 +197,7 @@ impl ArtifactStore for S3Store {
             .key(&key)
             .send()
             .await
-            .map_err(|e| ArtifactError::Storage(format!("delete_object: {e}")))?;
+            .map_err(|e| ArtifactError::sdk("delete_object", &e))?;
         Ok(())
     }
 }

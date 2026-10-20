@@ -30,6 +30,11 @@ fn item_row(row: &sqlx::sqlite::SqliteRow) -> ItemRow {
         mode: row.get("mode"),
         kind: row.get("kind"),
         value: row.get("value"),
+        task_kind: row.try_get("task_kind").ok().flatten(),
+        task_engine: row.try_get("task_engine").ok().flatten(),
+        threat_model: row.try_get("threat_model").ok().flatten(),
+        task_size: row.try_get("task_size").ok().flatten(),
+        task_acceptance: row.try_get("task_acceptance").ok().flatten(),
     }
 }
 
@@ -112,9 +117,12 @@ pub async fn list_active(
     let readable = crate::thread_access::readable_thread("held.id", "?1", "?3", "?4");
     let rows = sqlx::query(&format!(
         "SELECT f.thread_id, held.assignee_id, held.assignment_expires_at,
-                f.repo, f.mode, f.kind, f.value
+                f.repo, f.mode, f.kind, f.value,
+                a.kind AS task_kind, a.engine AS task_engine,
+                a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
          FROM maidan_thread_footprints f
          JOIN maidan_threads held ON held.id = f.thread_id
+         LEFT JOIN maidan_thread_attributes a ON a.thread_id = f.thread_id
          WHERE f.workspace_id = ?1
            AND (?2 IS NULL OR f.repo = ?2)
            AND {}
