@@ -2886,6 +2886,7 @@
           "usage_reported",
           "thread_landed",
           "thread_notice",
+          "thread_handoff",
           "review_submitted",
           "wait_timed_out",
           "schedule_skipped",
@@ -8932,6 +8933,10 @@
             },
             "type": "array"
           },
+          "handed_off": {
+            "description": "Handed to a session at `non_converging`: counted as misrouted.",
+            "type": "boolean"
+          },
           "human_commits": {
             "description": "Commits on the pull request the change flow did not deliver: a proxy\nfor a person's edits. `None` until read after the merge.",
             "format": "int64",
@@ -9049,7 +9054,8 @@
           "flags",
           "rebases",
           "attributes",
-          "followup_fixes"
+          "followup_fixes",
+          "handed_off"
         ],
         "type": "object"
       },

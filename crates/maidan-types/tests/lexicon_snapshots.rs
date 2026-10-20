@@ -331,6 +331,16 @@ fn sample_event(kind: EventKind) -> Event {
             base_branch: Some("main".into()),
             base_behind: None,
         },
+        EventKind::ThreadHandoff => Event::ThreadHandoff {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            rounds: 3,
+            repo: "example/repo".into(),
+            pr_number: 1,
+            to_engine: maidan_types::TaskEngine::Session,
+        },
         EventKind::ReviewSubmitted => Event::ReviewSubmitted {
             occurred_at,
             workspace_id,
@@ -536,6 +546,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::UsageReported
             | EventKind::ThreadLanded
             | EventKind::ThreadNotice
+            | EventKind::ThreadHandoff
             | EventKind::ReviewSubmitted
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped

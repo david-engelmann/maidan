@@ -28,6 +28,14 @@
 //! reverts, follow-up fixes and human effort, in one batch per workspace an
 //! hour.
 //!
+//! A Pi task that stops converging (still open after the round limit, or a
+//! diff that grew each round) is handed to a session once
+//! ([`hand_off_stuck`]): its claim ends, its engine becomes `session`, a
+//! `ThreadHandoff` event and a thread message say so, and its Slack thread
+//! gets a line. Where the workspace says claims on Linear, its issue gets the
+//! handoff packet (rounds, cost, open findings, the pull request and its
+//! head, the models used) and then the release.
+//!
 //! Where a workspace has turned Linear claim comments on, the sweep also
 //! says a task's claim, and its release when it ends without merging, on the
 //! Linear issue its attributes name ([`post_linear_notices`]).
@@ -70,6 +78,8 @@ pub struct SweepStats {
     pub rebase_notices: usize,
     /// Claim and release comments queued for tasks' Linear issues.
     pub linear_notices: usize,
+    /// Non-converging Pi tasks handed to a session.
+    pub handed_off: usize,
 }
 
 /// Read `MAIDAN_CHANGE_SWEEP_SECS`. An unset or unparsable value keeps the
@@ -170,18 +180,290 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         refresh_open_pulls(state, workspace_id).await;
         settle_closed_pulls(state, workspace_id, &mut stats).await;
         notify_merges(state, workspace_id, &mut stats).await;
+        hand_off_stuck(state, workspace_id, &mut stats).await;
         crate::change_outcomes::check_outcomes(state, workspace_id).await;
     }
     stats.linear_notices = post_linear_notices(state).await;
     stats
 }
 
+/// Queue one notice on its Linear issue, recorded once. The issue is looked
+/// up first, because the allowlist blesses its team: an issue in a team the
+/// workspace has not blessed, or one that is not found, is recorded as
+/// skipped and never written to. `None` when the lookup failed otherwise and
+/// the notice should be tried again; `Some(queued)` once recorded.
+async fn queue_linear_notice(
+    state: &AppState,
+    sender: &dyn crate::linear::LinearSender,
+    item: &maidan_types::LinearNoticeDue,
+) -> Option<bool> {
+    let (outcome, send) = match sender.issue(&item.issue).await {
+        Ok(found) => {
+            let target = maidan_types::EgressTarget::Linear {
+                team_id: found.team_id.clone(),
+                issue: found.identifier.clone(),
+            };
+            match state
+                .store
+                .is_egress_target_allowed(
+                    item.workspace_id,
+                    maidan_types::EgressSurface::Linear,
+                    &target.allowlist_selector(),
+                )
+                .await
+            {
+                Ok(true) => (
+                    "queued".to_string(),
+                    Some(maidan_types::NewEgressOutbox {
+                        workspace_id: item.workspace_id,
+                        thread_id: item.thread_id,
+                        source_log_id: item.outbox_key(),
+                        target,
+                        body: item.body(),
+                        kind: maidan_types::EgressKind::Notice,
+                    }),
+                ),
+                Ok(false) => (
+                    format!(
+                        "skipped: team {} is not in the workspace egress allowlist",
+                        found.team_id
+                    ),
+                    None,
+                ),
+                Err(err) => {
+                    tracing::warn!(error = %err, "linear notices: allowlist not read");
+                    return None;
+                }
+            }
+        }
+        Err(crate::linear::LinearError::NotFound(_)) => {
+            ("skipped: the issue was not found".to_string(), None)
+        }
+        Err(err) => {
+            tracing::debug!(issue = item.issue, error = %err, "linear notices: issue not read");
+            return None;
+        }
+    };
+    let sent = send.is_some();
+    match state.store.record_linear_notice(item, &outcome, send).await {
+        Ok(recorded) => Some(recorded && sent),
+        Err(err) => {
+            tracing::warn!(issue = item.issue, error = %err, "linear notices: not recorded");
+            None
+        }
+    }
+}
+
+/// Hand each non-converging Pi task in `workspace_id` to a session, once.
+/// Best effort past the handoff itself: the packet, the message and the
+/// Slack line are said after it commits, and a failed one is logged.
+async fn hand_off_stuck(state: &AppState, workspace_id: WorkspaceId, stats: &mut SweepStats) {
+    let pulls = match state
+        .store
+        .list_change_pulls(workspace_id, None, None, None, None, None)
+        .await
+    {
+        Ok(pulls) => pulls,
+        Err(err) => {
+            tracing::warn!(error = %err, "handoff: pull requests not read");
+            return;
+        }
+    };
+    let metrics = maidan_types::swarm_metrics(
+        pulls,
+        maidan_types::FlagLimits::default(),
+        chrono::Utc::now(),
+    );
+    for task in metrics.tasks {
+        if task.handed_off
+            || task.attributes.engine != Some(maidan_types::TaskEngine::Pi)
+            || !task.flags.contains(&maidan_types::TaskFlag::NonConverging)
+        {
+            continue;
+        }
+        let rounds = task.rounds.len() as i64;
+        let handed = match state
+            .store
+            .hand_off_thread(task.thread_id, &task.repo, task.pull_number, rounds)
+            .await
+        {
+            Ok(Some(handed)) => handed,
+            Ok(None) => continue,
+            Err(err) => {
+                tracing::warn!(repo = task.repo, pull_number = task.pull_number, error = %err, "handoff: not recorded");
+                continue;
+            }
+        };
+        stats.handed_off += 1;
+        // The notices' own key space (negative, fixed per task and kind), so
+        // the Slack line never meets the result's delivery row in the
+        // outbox's dedup.
+        let slack_key = maidan_types::LinearNoticeDue {
+            workspace_id,
+            thread_id: task.thread_id,
+            kind: maidan_types::LinearNoticeKind::Handoff,
+            issue: String::new(),
+            title: None,
+            engine: None,
+            holder: None,
+            reason: None,
+        }
+        .outbox_key();
+        crate::routes::publish_stored(state, handed.event.clone()).await;
+        let result = state
+            .store
+            .get_thread_result(task.thread_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|stored| stored.result);
+        let line = format!(
+            "Handed to a session: {}#{} did not converge in {rounds} rounds, so its claim ended and Pi will not take it again.",
+            task.repo, task.pull_number
+        );
+        if let Some(author_id) = handed.author_id {
+            let new = maidan_types::NewMessage {
+                thread_id: task.thread_id,
+                author_id,
+                body: line.clone(),
+                // `github` keeps egress from posting the line onto the pull
+                // request, as for the change notices.
+                metadata: serde_json::json!({
+                    "github": { "repo": task.repo, "issue": task.pull_number },
+                    "handoff": { "rounds": rounds },
+                }),
+                content: None,
+            };
+            match state.store.post_message_with_event(new, None).await {
+                Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+                Err(err) => tracing::warn!(error = %err, "handoff: message not posted"),
+            }
+        }
+        for target in result
+            .as_ref()
+            .and_then(maidan_types::parse_waiter_result)
+            .map(|waiter| waiter.deliver_to)
+            .unwrap_or_default()
+        {
+            let Some(target @ maidan_types::EgressTarget::Slack { .. }) = target.to_egress_target()
+            else {
+                continue;
+            };
+            let queued = state
+                .store
+                .enqueue_egress(maidan_types::NewEgressOutbox {
+                    workspace_id,
+                    thread_id: task.thread_id,
+                    source_log_id: slack_key,
+                    target,
+                    body: line.clone(),
+                    kind: maidan_types::EgressKind::Notice,
+                })
+                .await;
+            if let Err(err) = queued {
+                tracing::warn!(error = %err, "handoff: slack line not queued");
+            }
+        }
+        let issue = task
+            .attributes
+            .linear_issue
+            .clone()
+            .or_else(|| task.linear_issue.clone());
+        let (Some(issue), Some(sender)) = (issue, state.linear_sender.as_ref()) else {
+            continue;
+        };
+        if !matches!(
+            state.store.linear_claim_comments(workspace_id).await,
+            Ok(true)
+        ) {
+            continue;
+        }
+        let packet = maidan_types::LinearNoticeDue {
+            workspace_id,
+            thread_id: task.thread_id,
+            kind: maidan_types::LinearNoticeKind::Handoff,
+            issue,
+            title: None,
+            engine: Some(maidan_types::TaskEngine::Pi),
+            holder: None,
+            reason: Some(handoff_packet(&task, result.as_ref())),
+        };
+        queue_linear_notice(state, sender.as_ref(), &packet).await;
+    }
+}
+
+/// The handoff packet a session picks the task up from: why, the pull
+/// request and its head, each round, the cost, the open findings and the
+/// models the result reported.
+pub fn handoff_packet(
+    task: &maidan_types::TaskMetrics,
+    result: Option<&serde_json::Value>,
+) -> String {
+    let mut lines = vec![format!(
+        "Handed to a session after {} rounds without converging.",
+        task.rounds.len()
+    )];
+    let head = task
+        .rounds
+        .last()
+        .map(|round| format!(" at {}", round.commit_sha))
+        .unwrap_or_default();
+    lines.push(format!(
+        "PR: https://github.com/{}/pull/{}{head}",
+        task.repo, task.pull_number
+    ));
+    lines.push("Rounds:".into());
+    for round in &task.rounds {
+        let base = match round.base_behind {
+            Some(behind) => format!("base {behind} behind"),
+            None => "base lag unknown".into(),
+        };
+        let rebase = if round.rebase {
+            ", a squash-rebase"
+        } else {
+            ""
+        };
+        lines.push(format!(
+            "- {}: {} lines, {base}{rebase}",
+            round.round, round.diff_lines
+        ));
+    }
+    lines.push(format!(
+        "Cost: ${:.2}",
+        task.cost_usd_micros as f64 / 1_000_000.0
+    ));
+    let findings = result
+        .and_then(maidan_types::parse_waiter_result)
+        .map(|waiter| waiter.findings)
+        .unwrap_or_default();
+    if findings.is_empty() {
+        lines.push("Open findings: none reported".into());
+    } else {
+        lines.push(format!("Open findings: {}", findings.len()));
+        for finding in findings.iter().take(5) {
+            let first = finding.body.lines().next().unwrap_or_default();
+            lines.push(format!("- {}: {first}", finding.file));
+        }
+    }
+    let models: Vec<String> = ["model", "author_model", "red_team_model"]
+        .into_iter()
+        .filter_map(|key| {
+            result
+                .and_then(|value| value.get(key))
+                .and_then(serde_json::Value::as_str)
+                .map(|model| format!("{key} {model}"))
+        })
+        .collect();
+    lines.push(if models.is_empty() {
+        "Models: not reported".into()
+    } else {
+        format!("Models: {}", models.join(", "))
+    });
+    lines.join("\n")
+}
+
 /// Queue the claim and release comments due in every workspace that turned
-/// them on. Each is recorded once, in the transaction that queues it. The
-/// issue is looked up first, because the allowlist blesses its team: an issue
-/// in a team the workspace has not blessed is recorded as skipped and never
-/// written to. A lookup that fails for another reason is tried again on the
-/// next pass.
+/// them on ([`queue_linear_notice`]).
 pub async fn post_linear_notices(state: &AppState) -> usize {
     let Some(sender) = state.linear_sender.as_ref() else {
         return 0;
@@ -211,64 +493,8 @@ pub async fn post_linear_notices(state: &AppState) -> usize {
             }
         };
         for item in due {
-            let (outcome, send) = match sender.issue(&item.issue).await {
-                Ok(found) => {
-                    let target = maidan_types::EgressTarget::Linear {
-                        team_id: found.team_id.clone(),
-                        issue: found.identifier.clone(),
-                    };
-                    match state
-                        .store
-                        .is_egress_target_allowed(
-                            workspace_id,
-                            maidan_types::EgressSurface::Linear,
-                            &target.allowlist_selector(),
-                        )
-                        .await
-                    {
-                        Ok(true) => (
-                            "queued".to_string(),
-                            Some(maidan_types::NewEgressOutbox {
-                                workspace_id,
-                                thread_id: item.thread_id,
-                                source_log_id: item.outbox_key(),
-                                target,
-                                body: item.body(),
-                                kind: maidan_types::EgressKind::Notice,
-                            }),
-                        ),
-                        Ok(false) => (
-                            format!(
-                                "skipped: team {} is not in the workspace egress allowlist",
-                                found.team_id
-                            ),
-                            None,
-                        ),
-                        Err(err) => {
-                            tracing::warn!(error = %err, "linear notices: allowlist not read");
-                            continue;
-                        }
-                    }
-                }
-                Err(crate::linear::LinearError::NotFound(_)) => {
-                    ("skipped: the issue was not found".to_string(), None)
-                }
-                Err(err) => {
-                    tracing::debug!(issue = item.issue, error = %err, "linear notices: issue not read");
-                    continue;
-                }
-            };
-            let sent = send.is_some();
-            match state
-                .store
-                .record_linear_notice(&item, &outcome, send)
-                .await
-            {
-                Ok(true) if sent => queued += 1,
-                Ok(_) => {}
-                Err(err) => {
-                    tracing::warn!(issue = item.issue, error = %err, "linear notices: not recorded");
-                }
+            if queue_linear_notice(state, sender.as_ref(), &item).await == Some(true) {
+                queued += 1;
             }
         }
     }

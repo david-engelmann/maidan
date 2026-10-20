@@ -17,8 +17,11 @@ use crate::ids::{ThreadId, WorkspaceId};
 pub enum LinearNoticeKind {
     /// The task was claimed.
     Claim,
-    /// The task ended without merging.
+    /// The task ended without merging, or was handed off.
     Release,
+    /// The task was handed to a session: the packet a session picks it up
+    /// from.
+    Handoff,
 }
 
 impl LinearNoticeKind {
@@ -26,6 +29,7 @@ impl LinearNoticeKind {
         match self {
             Self::Claim => "claim",
             Self::Release => "release",
+            Self::Handoff => "handoff",
         }
     }
 
@@ -33,6 +37,7 @@ impl LinearNoticeKind {
         match s {
             "claim" => Some(Self::Claim),
             "release" => Some(Self::Release),
+            "handoff" => Some(Self::Handoff),
             _ => None,
         }
     }
@@ -78,6 +83,10 @@ impl LinearNoticeDue {
             LinearNoticeKind::Release => format!(
                 "RELEASED: {task} {}{title}",
                 self.reason.as_deref().unwrap_or("ended without merging")
+            ),
+            LinearNoticeKind::Handoff => format!(
+                "HANDOFF: {task}{title}\n\n{}",
+                self.reason.as_deref().unwrap_or_default()
             ),
         }
     }

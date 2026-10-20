@@ -176,6 +176,7 @@ pub enum EventKind {
     UsageReported,
     ThreadLanded,
     ThreadNotice,
+    ThreadHandoff,
     ReviewSubmitted,
     WaitTimedOut,
     ScheduleSkipped,
@@ -220,6 +221,7 @@ impl EventKind {
             Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
             Self::ThreadNotice => "thread_notice",
+            Self::ThreadHandoff => "thread_handoff",
             Self::ReviewSubmitted => "review_submitted",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
@@ -264,6 +266,7 @@ impl EventKind {
             "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
             "thread_notice" => Some(Self::ThreadNotice),
+            "thread_handoff" => Some(Self::ThreadHandoff),
             "review_submitted" => Some(Self::ReviewSubmitted),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
@@ -333,6 +336,7 @@ impl EventKind {
         Self::UsageReported,
         Self::ThreadLanded,
         Self::ThreadNotice,
+        Self::ThreadHandoff,
         Self::ReviewSubmitted,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
@@ -425,6 +429,7 @@ impl EventKind {
             // deployment's change sweep; a peer must not tell our workers to
             // rebase.
             Self::ThreadNotice => false,
+            Self::ThreadHandoff => false,
             // A verdict is this deployment's governance record: the reviews
             // table is what the close-gate reads, and a peer must not announce
             // a verdict nobody gave here.
@@ -667,6 +672,22 @@ pub enum Event {
         /// Commits the stale round's base was behind its branch.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base_behind: Option<i64>,
+    },
+    /// A Pi task that stopped converging was handed to a session: its claim
+    /// ended and its engine became `session`, so a Pi claim never takes it
+    /// again. Said once per task. Locally derived: not federatable.
+    ThreadHandoff {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// Rounds delivered before the handoff.
+        rounds: i64,
+        /// Lowercase `owner/name` of its open pull request.
+        repo: String,
+        pr_number: i64,
+        /// The engine the task now waits for.
+        to_engine: crate::TaskEngine,
     },
     /// The GitHub PR linked to a thread was **merged** — the work landed. A
     /// derived fact projected from an inbound `pull_request` (`action=closed`,
@@ -955,6 +976,7 @@ impl Event {
             Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
             Self::ThreadNotice { .. } => EventKind::ThreadNotice,
+            Self::ThreadHandoff { .. } => EventKind::ThreadHandoff,
             Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
@@ -999,6 +1021,7 @@ impl Event {
             | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
             | Self::ThreadNotice { occurred_at, .. }
+            | Self::ThreadHandoff { occurred_at, .. }
             | Self::ReviewSubmitted { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
@@ -1043,6 +1066,7 @@ impl Event {
             | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
             | Self::ThreadNotice { workspace_id, .. }
+            | Self::ThreadHandoff { workspace_id, .. }
             | Self::ReviewSubmitted { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
@@ -1081,6 +1105,7 @@ impl Event {
             | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
             | Self::ThreadNotice { channel_id, .. }
+            | Self::ThreadHandoff { channel_id, .. }
             | Self::ReviewSubmitted { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
@@ -1114,6 +1139,7 @@ impl Event {
             Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
             Self::ThreadNotice { thread_id, .. } => Some(*thread_id),
+            Self::ThreadHandoff { thread_id, .. } => Some(*thread_id),
             Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
@@ -1540,6 +1566,7 @@ mod kind_tests {
                 | EventKind::UsageReported
                 | EventKind::ThreadLanded
                 | EventKind::ThreadNotice
+                | EventKind::ThreadHandoff
                 | EventKind::ReviewSubmitted
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
@@ -1626,6 +1653,7 @@ mod kind_tests {
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
             EventKind::ThreadNotice,
+            EventKind::ThreadHandoff,
             EventKind::ReviewSubmitted,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,

@@ -80,19 +80,21 @@ pub async fn list_due(
     .fetch_all(pool)
     .await?;
     let releases = sqlx::query(
-        "SELECT t.id AS thread_id, t.title, a.linear_issue, a.engine, NULL AS holder
+        "SELECT t.id AS thread_id, t.title, a.linear_issue, a.engine, NULL AS holder,
+                h.rounds AS handoff_rounds
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          JOIN maidan_thread_attributes a ON a.thread_id = t.id
+         LEFT JOIN maidan_thread_handoffs h ON h.thread_id = t.id
          WHERE c.workspace_id = $1 AND a.linear_issue IS NOT NULL
-           AND t.state IN ('closed', 'archived')
+           AND (h.thread_id IS NOT NULL OR (t.state IN ('closed', 'archived')
+               AND NOT EXISTS (
+                   SELECT 1 FROM maidan_change_pulls p
+                   WHERE p.thread_id = t.id AND p.merged_at IS NOT NULL)))
            AND EXISTS (
                SELECT 1 FROM maidan_linear_notices n WHERE n.thread_id = t.id AND n.kind = 'claim')
            AND NOT EXISTS (
                SELECT 1 FROM maidan_linear_notices n WHERE n.thread_id = t.id AND n.kind = 'release')
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_change_pulls p
-               WHERE p.thread_id = t.id AND p.merged_at IS NOT NULL)
          ORDER BY t.id LIMIT $2",
     )
     .bind(workspace_id.0)
@@ -105,11 +107,30 @@ pub async fn list_due(
         kind,
         issue: row.get("linear_issue"),
         title: row.get("title"),
-        engine: row
-            .get::<Option<String>, _>("engine")
-            .and_then(|engine| TaskEngine::parse(&engine)),
+        // A handoff moved the task to `session`; its release still names
+        // the engine that held it, and only Pi tasks are handed off.
+        engine: if row
+            .try_get::<Option<i64>, _>("handoff_rounds")
+            .ok()
+            .flatten()
+            .is_some()
+        {
+            Some(TaskEngine::Pi)
+        } else {
+            row.get::<Option<String>, _>("engine")
+                .and_then(|engine| TaskEngine::parse(&engine))
+        },
         holder: row.get("holder"),
-        reason: (kind == LinearNoticeKind::Release).then(|| "ended without merging".to_string()),
+        reason: (kind == LinearNoticeKind::Release).then(|| {
+            match row
+                .try_get::<Option<i64>, _>("handoff_rounds")
+                .ok()
+                .flatten()
+            {
+                Some(rounds) => format!("handed off to a session after {rounds} rounds"),
+                None => "ended without merging".to_string(),
+            }
+        }),
     };
     Ok(claims
         .iter()

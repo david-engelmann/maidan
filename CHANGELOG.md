@@ -381,6 +381,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** `GET /workspaces/{id}/swarm-metrics?linear_issue=ENG-1,ENG-2` counts only the tasks for those issues (the task's `linear_issue` attribute, else the one its change result named), so a paired pilot is read apart from other work in the same repository. A value that is not an issue key is a 400. Each task's attributes in the metrics now carry its `linear_issue`.
 
+### A Pi task that stops converging is handed to a session
+
+- **Added:** when the change sweep flags a Pi task `non_converging` (still open after 3 rounds, or a diff growing each round), it hands the task to a session once (migration 0189). It ends the claim, sets the engine to `session` so a Pi claim never takes it again, and leaves the task open. It appends a `ThreadHandoff` event, posts a line in the thread, and queues it in the result's Slack thread. Where the workspace says claims on Linear, it posts the handoff packet on the task's issue (the pull request and head, each round's diff lines and base lag, cost, open findings, models reported), followed by the release comment. The swarm metrics count it as misrouted and mark the task `handed_off`.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

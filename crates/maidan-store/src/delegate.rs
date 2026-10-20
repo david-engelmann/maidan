@@ -2712,6 +2712,16 @@ macro_rules! store_delegations {
                 change_metrics::list_open(self.pool(), workspace_id, limit).await
             }
 
+            async fn hand_off_thread(
+                &self,
+                thread_id: ThreadId,
+                repo: &str,
+                pull_number: i64,
+                rounds: i64,
+            ) -> Result<Option<maidan_types::HandedOff>, StoreError> {
+                change_metrics::hand_off(self.pool(), thread_id, repo, pull_number, rounds).await
+            }
+
             async fn list_linear_claim_comment_workspaces(
                 &self,
                 limit: i64,
