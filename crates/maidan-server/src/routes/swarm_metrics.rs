@@ -37,8 +37,24 @@ pub async fn get_swarm_metrics(
         rounds: query.rounds_limit.unwrap_or(defaults.rounds).max(1),
         behind: query.behind_limit.unwrap_or(defaults.behind).max(1),
     };
+    let issues: Option<Vec<String>> = query.linear_issue.as_deref().map(|list| {
+        list.split(',')
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_string)
+            .collect()
+    });
+    if let Some(bad) = issues
+        .iter()
+        .flatten()
+        .find(|key| !maidan_types::is_issue_key(key))
+    {
+        return Err(ApiError::BadRequest(format!(
+            "linear_issue `{bad}` is not an issue key such as ENG-123"
+        )));
+    }
     crate::change_sweep::refresh_open_pulls(&state, workspace_id).await;
-    let pulls = state
+    let mut pulls = state
         .store
         .list_change_pulls(
             workspace_id,
@@ -49,6 +65,15 @@ pub async fn get_swarm_metrics(
             query.size,
         )
         .await?;
+    if let Some(issues) = issues {
+        pulls.retain(|pull| {
+            pull.attributes
+                .linear_issue
+                .as_ref()
+                .or(pull.linear_issue.as_ref())
+                .is_some_and(|key| issues.contains(key))
+        });
+    }
     Ok(Json(maidan_types::swarm_metrics(
         pulls,
         limits,

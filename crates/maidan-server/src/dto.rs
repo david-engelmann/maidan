@@ -447,6 +447,10 @@ pub struct SwarmMetricsQuery {
     pub kind: Option<maidan_types::TaskKind>,
     /// Only tasks of this size (`S`, `M` or `L`).
     pub size: Option<maidan_types::TaskSize>,
+    /// Only tasks for these Linear issues, comma-separated
+    /// (`ENG-5843,ENG-5824`): the task's `linear_issue` attribute, else the
+    /// one its change result named. Rollups count only these tasks.
+    pub linear_issue: Option<String>,
 }
 
 /// Query params for lifting a repository pause.

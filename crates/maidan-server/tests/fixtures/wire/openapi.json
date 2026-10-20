@@ -32238,6 +32238,15 @@
             "schema": {
               "$ref": "#/components/schemas/TaskSize"
             }
+          },
+          {
+            "description": "Only tasks for these Linear issues, comma-separated\n(`ENG-5843,ENG-5824`): the task's `linear_issue` attribute, else the\none its change result named. Rollups count only these tasks.",
+            "in": "query",
+            "name": "linear_issue",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
