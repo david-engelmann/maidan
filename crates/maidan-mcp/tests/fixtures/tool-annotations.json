@@ -4238,6 +4238,25 @@
         "reason": "confined to Maidan's database"
       }
     },
+    "submit_plan": {
+      "title": "Submit plan",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "submit_plan INSERTs the plan, its child threads with their footprints, attributes and dependency edges, and appends ThreadCreated per child"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds threads and rows; a plan that already has children is refused, never replaced"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat from the same claim with the same keys answers the children the first call made and creates nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; the egress allowlist is only read"
+      }
+    },
     "submit_review": {
       "title": "Submit review",
       "readOnlyHint": {

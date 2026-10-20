@@ -828,6 +828,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/plan",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/footprint",
     "capability": "thread:transition",

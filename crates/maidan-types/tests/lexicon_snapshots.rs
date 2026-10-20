@@ -84,6 +84,7 @@ fn thread() -> Thread {
         stalled: false,
         human_wait: None,
         notices: Vec::new(),
+        plan_state: None,
         created_by: None,
     }
 }

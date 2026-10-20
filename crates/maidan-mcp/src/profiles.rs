@@ -43,6 +43,7 @@ pub const WORKER_TOOLS: &[&str] = &[
     "set_thread_attributes",
     "set_thread_footprint",
     "set_thread_result",
+    "submit_plan",
     "transition_thread",
     "wait_for_ready",
     "whoami",

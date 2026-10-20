@@ -190,6 +190,7 @@ mod tests {
             last_progress_at: None,
             stalled: false,
             human_wait: None,
+            plan_state: None,
         }
     }
 

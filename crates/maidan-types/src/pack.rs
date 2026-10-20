@@ -986,6 +986,7 @@ mod tests {
             stalled: false,
             human_wait: None,
             notices: Vec::new(),
+            plan_state: None,
             created_by: None,
         }
     }
@@ -1268,6 +1269,7 @@ mod tests {
             stalled: false,
             human_wait: None,
             notices: Vec::new(),
+            plan_state: None,
             created_by: None,
         }
     }

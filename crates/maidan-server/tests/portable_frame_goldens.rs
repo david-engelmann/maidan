@@ -93,6 +93,7 @@ fn sample_export() -> WorkspaceExport {
             stalled: false,
             human_wait: None,
             notices: Vec::new(),
+            plan_state: None,
             created_by: None,
         }],
         messages: vec![Message {

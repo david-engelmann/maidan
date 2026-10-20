@@ -1573,13 +1573,15 @@ pub trait ThreadStore: Send + Sync {
         action: maidan_fsm::ThreadAction,
     ) -> Result<ThreadTransitionResult, StoreError>;
     /// Transition a thread's state and append its `ThreadStateChanged` event
-    /// atomically.
+    /// atomically. The events to publish come back in order: the state
+    /// change first, then what a close owed the plan around the thread
+    /// (#1421): its parent's close, blocks on its dependents, messages.
     async fn transition_thread_with_event(
         &self,
         thread_id: ThreadId,
         actor_id: MemberId,
         action: maidan_fsm::ThreadAction,
-    ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError>;
+    ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError>;
 
     async fn list_thread_transitions(
         &self,
@@ -2622,6 +2624,27 @@ pub trait ThreadDepStore: Send + Sync {
         thread_id: ThreadId,
         depends_on: ThreadId,
     ) -> Result<bool, StoreError>;
+    /// Make a plan parent's children in one transaction (#1421): every child
+    /// in the parent's channel with its footprint and attributes, and every
+    /// dependency between them, or nothing. Only the member holding the
+    /// parent's live claim under `plan.lease_id` may submit, and only on a
+    /// thread whose `attributes.kind` is `plan` (`Conflict` otherwise). A
+    /// child whose footprint names a repository off the workspace's
+    /// `github_branch` egress allowlist is `InvalidInput` naming the child.
+    /// The plan is validated by the caller ([`maidan_types::SubmitPlan::validated`]).
+    /// A parent that already has children answers with them: replayed for the
+    /// same lease and keys, a conflict otherwise.
+    async fn submit_plan(
+        &self,
+        parent_id: ThreadId,
+        member_id: MemberId,
+        plan: maidan_types::SubmitPlan,
+    ) -> Result<maidan_types::PlanOutcome, StoreError>;
+    /// How far a plan parent's children have got; `None` when it has none.
+    async fn get_plan_state(
+        &self,
+        parent_id: ThreadId,
+    ) -> Result<Option<maidan_types::PlanState>, StoreError>;
     /// Edges `thread_id` depends on — what this task is blocked by.
     async fn list_thread_dependencies(
         &self,

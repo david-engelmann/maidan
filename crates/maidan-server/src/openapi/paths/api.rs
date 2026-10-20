@@ -2638,6 +2638,28 @@ pub fn set_thread_footprint() {}
     ))]
 pub fn set_thread_attributes() {}
 
+/// Submit a plan parent's children
+///
+/// The planner holding the plan parent's live claim makes every child, with
+/// its attributes, footprint and dependency edges, in one transaction.
+/// A repeat from the same claim with the same keys answers `200` with the
+/// children already made; a different plan on a parent that has children is
+/// a `409` (`plan-conflict`) carrying them in `children`.
+#[utoipa::path(post, path = "/threads/{id}/plan", tag = "threads",
+    params(("id" = Uuid, Path, description = "Plan parent thread id")),
+    request_body = SubmitPlan,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = PlanChildren),
+        (status = 200, body = PlanChildren),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+        (status = 429, response = TooManyRequests),
+    ))]
+pub fn submit_plan() {}
+
 /// Get a thread's claim footprint
 #[utoipa::path(get, path = "/threads/{id}/footprint", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

@@ -2435,6 +2435,78 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Submit plan"
+      },
+      "description": "Make every child of a plan thread in one call. Only the member holding the plan thread's live claim can plan it, passing that claim's lease_id. Each child has a key unique in the plan, a title, and optional description, attributes, footprint and depends_on (keys of other children in the same plan). Children are created in the plan thread's channel with their dependency edges, so dependents stay off the queue until what they depend on lands; a child that closes without landing blocks its dependents, and the plan thread closes itself when its last child lands. Every child repository must be on this workspace's github_branch egress allowlist. A bad child, an unknown or cyclic depends_on, or too many children for the spawn budget creates nothing. Calling again from the same claim with the same keys answers the children already made (replayed: true); any other plan on a thread that has children is refused with error code -32010 and data.children.",
+      "inputSchema": {
+        "properties": {
+          "children": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "attributes": {
+                  "description": "the child's task attributes (the shape set_thread_attributes takes, without thread_id)",
+                  "type": "object"
+                },
+                "depends_on": {
+                  "description": "keys of children that must land first",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "footprint": {
+                  "description": "the child's footprint (the shape set_thread_footprint takes, without thread_id)",
+                  "type": "object"
+                },
+                "key": {
+                  "description": "unique within this plan; depends_on names children by key",
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "title"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "lease_id": {
+            "description": "the fencing token from your claim on the plan thread",
+            "format": "uuid",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "the plan thread (kind plan) you hold the claim on",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "lease_id",
+          "children"
+        ],
+        "type": "object"
+      },
+      "name": "submit_plan"
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,

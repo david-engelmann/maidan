@@ -2027,6 +2027,11 @@ pub struct Thread {
     /// the thread; empty on the list reads.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<crate::change_metrics::ThreadNotice>,
+    /// On a plan parent, how far its children have got. Read by a
+    /// single-thread read only; absent on lists and on threads that are not
+    /// plans with children.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_state: Option<crate::plan::PlanState>,
     /// When the holder of a live, acknowledged lease last showed progress:
     /// the latest of its acknowledgement, its last message on the thread and
     /// its active status declaration. A lease renewal is not progress, since

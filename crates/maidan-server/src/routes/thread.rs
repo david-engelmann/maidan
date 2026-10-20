@@ -193,6 +193,7 @@ pub async fn get_thread(
         .store
         .list_thread_notices(ThreadId(id), maidan_types::THREAD_NOTICE_LIMIT)
         .await?;
+    thread.plan_state = state.store.get_plan_state(ThreadId(id)).await?;
     crate::stall::mark(std::iter::once(&mut thread), state.stall_threshold);
     crate::human_wait::mark(std::iter::once(&mut thread));
     Ok(Json(thread))
@@ -453,7 +454,9 @@ pub async fn transition_thread(
             return Err(err.into());
         }
     };
-    super::publish_stored(&state, stored).await;
+    for event in stored {
+        super::publish_stored(&state, event).await;
+    }
     // Entering a terminal state can unblock dependents. Push a `ThreadReady`
     // for each task that just became ready, so an agent waiting on the DAG
     // needn't poll `dependencies_satisfied`. Derived + best-effort: a failed

@@ -58,6 +58,7 @@ pub mod outbox;
 pub mod partitions;
 mod peers;
 mod pins;
+mod plans;
 mod priorities;
 mod purge_workspace;
 mod push_subscriptions;

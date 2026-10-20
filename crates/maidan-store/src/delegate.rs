@@ -1854,7 +1854,8 @@ macro_rules! store_delegations {
                 actor_id: MemberId,
                 action: maidan_fsm::ThreadAction,
             ) -> Result<ThreadTransitionResult, StoreError> {
-                thread_transitions::transition(self.pool(), thread_id, actor_id, action).await
+                thread_transitions::transition(self.pool(), &self.keys, thread_id, actor_id, action)
+                    .await
             }
 
             async fn transition_thread_with_event(
@@ -1862,9 +1863,15 @@ macro_rules! store_delegations {
                 thread_id: ThreadId,
                 actor_id: MemberId,
                 action: maidan_fsm::ThreadAction,
-            ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
-                thread_transitions::transition_with_event(self.pool(), thread_id, actor_id, action)
-                    .await
+            ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
+                thread_transitions::transition_with_event(
+                    self.pool(),
+                    &self.keys,
+                    thread_id,
+                    actor_id,
+                    action,
+                )
+                .await
             }
 
             async fn list_thread_transitions(
@@ -2737,7 +2744,7 @@ macro_rules! store_delegations {
                 repo: &str,
                 pull_number: i64,
             ) -> Result<maidan_types::ChangeSettlement, StoreError> {
-                change_metrics::settle(self.pool(), repo, pull_number).await
+                change_metrics::settle(self.pool(), &self.keys, repo, pull_number).await
             }
 
             async fn notify_change_merges(
@@ -3081,6 +3088,22 @@ macro_rules! store_delegations {
                 depends_on: ThreadId,
             ) -> Result<bool, StoreError> {
                 thread_deps::remove(self.pool(), thread_id, depends_on).await
+            }
+
+            async fn submit_plan(
+                &self,
+                parent_id: ThreadId,
+                member_id: MemberId,
+                plan: maidan_types::SubmitPlan,
+            ) -> Result<maidan_types::PlanOutcome, StoreError> {
+                plans::submit(self.pool(), parent_id, member_id, plan).await
+            }
+
+            async fn get_plan_state(
+                &self,
+                parent_id: ThreadId,
+            ) -> Result<Option<maidan_types::PlanState>, StoreError> {
+                plans::state(self.read_pool(), parent_id).await
             }
 
             async fn list_thread_dependencies(

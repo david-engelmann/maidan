@@ -40,9 +40,34 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
 1. **Intake.** A producer turns an issue into a thread: the task text, a
    `deliver_to` list saying where the result goes, and, when it knows, a
    footprint saying what part of the repository the work touches.
-2. **Planning.** A planner agent can split a large task into child threads
-   with dependencies (`add_thread_dependency`). `claim_next` never hands out a
-   thread whose dependencies are unfinished.
+2. **Planning.** A task with `kind: plan` goes to a planner, which claims it
+   and submits its children in one call: `POST /threads/{id}/plan` or the MCP
+   `submit_plan`, with the claim's `lease_id` and 1–50 children. Each child has
+   a key, a title, and optionally a description, attributes, a footprint and
+   `depends_on` (keys of other children in the plan).
+   - **All or nothing.** The children, their footprints, attributes and
+     dependency edges are made in one transaction in the plan's channel. A bad
+     child, an unknown or cyclic `depends_on`, a repository missing from the
+     workspace's `github_branch` egress allowlist, or a plan larger than the
+     spawn budget is a 400 naming the child, and nothing is created.
+   - **Retries.** The same claim sending the same keys again gets a 200 with
+     the children already made. Any other plan on a parent that has children
+     is a 409 (`plan-conflict`, MCP `-32010`) listing them.
+   - **Dispatch.** `claim_next` never hands out a thread whose dependencies
+     are unfinished, so a child becomes claimable when what it depends on
+     lands. A plan's children move through review and close while the plan
+     stays open under its planner's claim.
+   - **A child that closes without landing** (no `ThreadLanded`: closed by
+     hand, or cancelled) blocks each open dependent with a `dag` block naming
+     it, plus a message on the dependent, so no work starts on a base that
+     never merged. The plan gets one message. A person or the planner clears
+     the blocks once the work is redone.
+   - **The plan closes itself** when its last child lands, in that child's
+     transaction, through the plan's own review and close gates, with a
+     `ThreadLanded` and a message listing every child's pull request. When a
+     gate refuses, the plan stays open with one message saying why.
+   - `GET /threads/{id}` on a plan shows `plan_state: {total, closed, open,
+     blocked}`.
 3. **Claiming.** Workers call `claim_next_thread` (or the workspace-wide
    `claim_next_workspace_thread`). Each claim carries a lease and a fencing
    token (`claim_lease_id`). The worker acknowledges it when it starts
