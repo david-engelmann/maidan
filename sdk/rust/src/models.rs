@@ -253,6 +253,41 @@ model! {
         created_at: String,
         updated_at: String,
         tombstoned_at: Option<String>,
+        description: Option<String>,
+        /// The status its agent declared, when it declared one.
+        status: Option<Value>,
+        /// What it is blocked on, when it is.
+        block: Option<Value>,
+        /// Closed or archived with no approval standing on it.
+        closed_without_review: Option<bool>,
+        /// Its task attributes, on the reads that report them.
+        attributes: Option<TaskAttributes>,
+        /// Change notices on it, newest first (a single-thread read).
+        notices: Option<Vec<Value>>,
+        /// On a plan parent, how far its children have got.
+        plan_state: Option<Value>,
+        /// When the holder of a live lease last showed progress.
+        last_progress_at: Option<String>,
+        stalled: Option<bool>,
+        /// A wait on a person, when there is one.
+        human_wait: Option<Value>,
+    }
+}
+
+model! {
+    /// What kind of work a task is and who it is routed to.
+    TaskAttributes {
+        /// `change`, `plan` or `review`.
+        kind: String,
+        threat_model: bool,
+        /// `pi`, `session` or `human`.
+        engine: Option<String>,
+        /// `S`, `M` or `L`.
+        size: Option<String>,
+        /// How a reviewer verifies the task.
+        acceptance: Option<String>,
+        /// The Linear issue it is for, such as `ENG-123`.
+        linear_issue: Option<String>,
     }
 }
 
