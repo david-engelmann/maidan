@@ -7017,6 +7017,13 @@
           "surface": {
             "type": "string"
           },
+          "template_warnings": {
+            "description": "For a change: what its pull request lacks against the producer's\ntemplate (`missing_testing`, `missing_issue_key`). A flag, not a\nfailure: the change landed either way. Absent when nothing is missing.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
           },

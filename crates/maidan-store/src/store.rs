@@ -1142,6 +1142,15 @@ pub trait EgressStore: Send + Sync {
         thread_id: ThreadId,
         target: &EgressTarget,
     ) -> Result<Option<ResultDelivery>, StoreError>;
+    /// What the pull request a change delivered lacks against the producer's
+    /// template (`missing_testing`, `missing_issue_key`), replacing the last
+    /// round's. A flag beside the row's status, never a failure.
+    async fn set_result_delivery_template_warnings(
+        &self,
+        thread_id: ThreadId,
+        target: &EgressTarget,
+        warnings: &[String],
+    ) -> Result<(), StoreError>;
     async fn list_result_deliveries(
         &self,
         thread_id: ThreadId,

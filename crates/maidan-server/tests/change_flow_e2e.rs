@@ -316,6 +316,7 @@ async fn github(
                         "html_url": format!("https://github.com/{REPO}/pull/{}", p.number),
                         "base": {"ref": p.base},
                         "labels": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>(),
+                        "title": p.title,
                         "body": p.body,
                     })
                 })
@@ -1319,6 +1320,125 @@ async fn a_missing_title_or_summary_still_opens_the_draft_with_maidans_fallback(
             assert!(pull.body.starts_with("Changes the greeting."), "{case}");
         }
     }
+}
+
+/// The producer's pull request template, with check output fenced and one
+/// mention in prose.
+const TEMPLATED_BODY: &str = "## What and why\nThe greeting names the world. Fixes ENG-1234.\n\n## Testing\n```\n$ cargo test -p greeting\ntest result: ok. 3 passed; 0 failed\n```\n\n## Risk\nLow. cc @example/eng\n\n## How to revert\nRevert the commit.\n\nPart of ENG-1200\n";
+
+#[tokio::test]
+async fn a_templated_body_passes_through_and_gets_no_template_warnings() {
+    let h = harness().await;
+    h.allow_change().await;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["title"] = json!("[ENG-1234] Greet the world");
+    result["summary"] = json!(TEMPLATED_BODY);
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+
+    {
+        let fake = h.fake.lock().unwrap();
+        let pull = &fake.pulls[0];
+        assert_eq!(pull.title, "[ENG-1234] Greet the world");
+        assert_eq!(
+            pull.body,
+            TEMPLATED_BODY.replace("@example/eng", "`@example/eng`"),
+            "byte for byte, apart from the defused mention"
+        );
+    }
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED);
+    assert!(row.template_warnings.is_empty(), "{row:?}");
+    let reply = h.slack_reply();
+    assert!(reply.contains("Draft PR:"), "{reply}");
+    assert!(!reply.contains("PR template"), "{reply}");
+}
+
+#[tokio::test]
+async fn a_pull_request_missing_its_testing_section_and_issue_key_is_flagged_not_refused() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+
+    assert!(
+        h.fake.lock().unwrap().pulls[0].draft,
+        "the draft opens anyway"
+    );
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED);
+    assert_eq!(row.last_error, None, "a warning is not a failure");
+    assert_eq!(
+        row.template_warnings,
+        vec!["missing_testing", "missing_issue_key"]
+    );
+    let reply = h.slack_reply();
+    assert!(
+        reply.contains(
+            "PR template: missing a Testing section and an issue key (like ENG-123) in the title or body."
+        ),
+        "{reply}"
+    );
+
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (code, rows) = get_json(
+        &h,
+        &token,
+        &format!("/threads/{}/deliveries", h.a.thread_id.0),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    let branch = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["surface"] == "github_branch")
+        .unwrap();
+    assert_eq!(
+        branch["template_warnings"],
+        json!(["missing_testing", "missing_issue_key"])
+    );
+    let slack = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["surface"] == "slack")
+        .unwrap();
+    assert!(slack.get("template_warnings").is_none(), "{slack}");
+
+    // A later round whose result carries the template does not change the
+    // open pull request's title or body, so its warnings stand.
+    let mut templated = change("changed", &h.base_sha, BRANCH, DIFF);
+    templated["title"] = json!("[ENG-1234] Greet the world");
+    templated["summary"] = json!(TEMPLATED_BODY);
+    h.route(&h.a, &templated, 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED);
+    assert_eq!(
+        row.template_warnings,
+        vec!["missing_testing", "missing_issue_key"]
+    );
+
+    // A person fixes the pull request itself; the next round reads it and
+    // clears them.
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].title = "[ENG-1234] Greet the world".into();
+        f.pulls[0].body = TEMPLATED_BODY.into();
+    }
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 3)
+        .await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED);
+    assert!(row.template_warnings.is_empty(), "{row:?}");
+    assert!(
+        !h.slack_reply().contains("PR template"),
+        "{}",
+        h.slack_reply()
+    );
 }
 
 #[tokio::test]

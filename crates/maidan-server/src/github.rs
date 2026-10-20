@@ -474,6 +474,8 @@ pub struct GithubPull {
     pub base: String,
     /// The label names it carries.
     pub labels: Vec<String>,
+    /// Its title; empty when the answer omits it.
+    pub title: String,
     /// Its description; empty when it has none.
     pub body: String,
 }
@@ -1127,6 +1129,11 @@ fn pull_from(value: &serde_json::Value) -> Result<GithubPull, GithubError> {
         html_url: field(value, "/html_url")?,
         base: field(value, "/base/ref")?,
         labels: label_names(value),
+        title: value
+            .get("title")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         body: value
             .get("body")
             .and_then(serde_json::Value::as_str)
