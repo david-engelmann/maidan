@@ -824,6 +824,11 @@ pub struct ChangeResult {
     /// flow's only force write. Anything but a JSON `true` is a normal round,
     /// so a stray string can never ask for a force move.
     pub rebase: bool,
+    /// The Linear issue the change is for (`ENG-1234`), as the producer
+    /// reports it. Recorded on the pull request, so a later fix that names
+    /// the same issue can be matched to it. `None` when absent or not an
+    /// issue key.
+    pub linear_issue: Option<String>,
 }
 
 impl ChangeResult {
@@ -862,7 +867,26 @@ pub fn parse_change_result(value: &Value) -> Option<ChangeResult> {
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string),
         rebase: obj.get("rebase").and_then(Value::as_bool) == Some(true),
+        linear_issue: text("linear_issue")
+            .map(|key| key.trim().to_string())
+            .filter(|key| is_issue_key(key)),
     })
+}
+
+/// Whether `key` is an issue key such as `ENG-1234`: an uppercase letter,
+/// uppercase letters or digits, a hyphen and digits, at most 32 characters.
+pub fn is_issue_key(key: &str) -> bool {
+    let Some((team, number)) = key.split_once('-') else {
+        return false;
+    };
+    key.len() <= 32
+        && team.len() >= 2
+        && team.starts_with(|c: char| c.is_ascii_uppercase())
+        && team
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && !number.is_empty()
+        && number.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Whether this object is a `maidan.waiter.result/1` envelope.
@@ -1768,6 +1792,34 @@ mod tests {
             ),
             Some(DeliverTarget::Unknown("github_branch".into())),
             "a branch target missing its detail is still recorded"
+        );
+    }
+
+    #[test]
+    fn a_change_result_reads_a_linear_issue_only_when_it_is_a_key() {
+        for (value, want) in [
+            (json!("ENG-1234"), Some("ENG-1234")),
+            (json!(" AB2-7 "), Some("AB2-7")),
+            (json!("eng-1234"), None),
+            (json!("E-1"), None),
+            (json!("ENG-"), None),
+            (json!("ENG-12a"), None),
+            (json!("https://linear.app/x/issue/ENG-1"), None),
+            (json!(1234), None),
+        ] {
+            let mut env = change_envelope(json!([]));
+            env["linear_issue"] = value.clone();
+            assert_eq!(
+                parse_change_result(&env).unwrap().linear_issue.as_deref(),
+                want,
+                "{value}"
+            );
+        }
+        assert_eq!(
+            parse_change_result(&change_envelope(json!([])))
+                .unwrap()
+                .linear_issue,
+            None
         );
     }
 

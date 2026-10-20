@@ -364,6 +364,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** after each delivered change round, the `github_branch` delivery row records `template_warnings`: `missing_testing` when the pull request body has no `Testing` heading outside fenced code, and `missing_issue_key` when neither its title nor its body names an issue key such as `ENG-123`. The check reads the pull request as it stands, so fixing the pull request clears them on the next round. `GET /threads/{id}/deliveries` shows the codes, and the Slack reply adds one `PR template: missing …` line. It flags and never refuses: the row is `delivered`, `last_error` stays empty and the draft opens as before. A templated `summary` reaches the pull request byte for byte apart from defused mentions. Migration 0185 adds the column.
 
+### The swarm metrics split by size and risk, and count misroutes
+
+- **Changed:** each repository rollup in `GET /workspaces/{id}/swarm-metrics` now gives the same numbers (tasks, merged, merged without edits, misrouted, misroute rate, mean rounds, cost per merged change) for three splits: `by_engine` (each slice now has its own cost per merged change, which compares Pi with sessions on cost), `by_size` (`S`, `M`, `L`, then unsized) and `by_risk` (standard, then `threat_model`). A task is misrouted when it is open and flagged `non_converging`, or closed unmerged after reaching the round limit.
+- **Added:** a change result may name the Linear issue it is for (`"linear_issue": "ENG-1234"`; ignored unless it is a key). The first round that names one, or that is delivered to a Linear issue, records it on the pull request (migration 0186), and each task in the swarm metrics shows it.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

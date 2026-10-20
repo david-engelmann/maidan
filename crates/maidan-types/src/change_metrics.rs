@@ -64,6 +64,10 @@ pub struct NewChangeRound {
     pub rebase: bool,
     /// For a squash-rebase round, the head the branch was force-moved from.
     pub previous_head: Option<String>,
+    /// The Linear issue the change is for, when the result names one or it
+    /// was delivered to one. The first round that knows it records it on
+    /// the pull request.
+    pub linear_issue: Option<String>,
 }
 
 /// What a change notice tells a thread's worker.
@@ -202,6 +206,8 @@ pub struct ChangePull {
     /// The task's attributes; the defaults when the thread was never
     /// described.
     pub attributes: crate::TaskAttributes,
+    /// The Linear issue the change is for, when known.
+    pub linear_issue: Option<String>,
 }
 
 /// Why a task needs a look.
@@ -242,38 +248,82 @@ pub struct TaskMetrics {
     /// The task's attributes; the defaults when the thread was never
     /// described.
     pub attributes: crate::TaskAttributes,
+    /// The Linear issue the change is for, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_issue: Option<String>,
 }
 
-/// One engine's slice of a repository rollup: how much of the repo's work
-/// was routed to it, and how much of that merged.
+/// How a set of tasks did: a whole repository, or one slice of it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SliceNumbers {
+    pub tasks: i64,
+    pub merged: i64,
+    pub merged_without_edits: i64,
+    /// Tasks the engine they were routed to could not finish: flagged
+    /// non-converging while open, or closed unmerged after reaching the
+    /// round limit.
+    pub misrouted: i64,
+    /// `misrouted` over `tasks`; 0 with no tasks.
+    pub misroute_rate: f64,
+    pub mean_rounds: f64,
+    /// Total cost of the tasks over the merged ones; `None` before the first
+    /// merge.
+    pub cost_usd_micros_per_merged: Option<i64>,
+}
+
+/// The tasks routed to one engine.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EngineRollup {
     /// The engine the tasks were routed to; `None` for tasks never routed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub engine: Option<crate::TaskEngine>,
-    pub tasks: i64,
-    pub merged: i64,
+    #[serde(flatten)]
+    pub numbers: SliceNumbers,
 }
 
-/// One repository's rollup.
+/// The tasks of one size.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SizeRollup {
+    /// The size the planner gave the tasks; `None` for tasks never sized.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<crate::TaskSize>,
+    #[serde(flatten)]
+    pub numbers: SliceNumbers,
+}
+
+/// The tasks of one risk tier.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RiskRollup {
+    /// Whether the tasks were marked as touching the threat model.
+    pub threat_model: bool,
+    #[serde(flatten)]
+    pub numbers: SliceNumbers,
+}
+
+/// One repository's rollup. Pi is given small and medium work and sessions
+/// the risky work, so an engine comparison is read within a size or a risk
+/// tier, not across the whole repository.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RepoRollup {
     pub repo: String,
-    pub tasks: i64,
-    pub merged: i64,
-    pub merged_without_edits: i64,
+    #[serde(flatten)]
+    pub totals: SliceNumbers,
     pub closed_unmerged: i64,
     pub flagged: i64,
-    pub mean_rounds: f64,
     pub median_time_to_ready_secs: Option<i64>,
-    /// Total cost of the repository's tasks over its merged ones; `None`
-    /// before the first merge.
-    pub cost_usd_micros_per_merged: Option<i64>,
-    /// The rollup split by the engine each task was routed to, in engine
-    /// order with unrouted tasks last; engines with no tasks are omitted.
+    /// By the engine each task was routed to, in engine order with unrouted
+    /// tasks last.
     pub by_engine: Vec<EngineRollup>,
+    /// By size, `S` to `L` with unsized tasks last.
+    pub by_size: Vec<SizeRollup>,
+    /// By risk tier, standard first. Slices with no tasks are omitted from
+    /// all three splits.
+    pub by_risk: Vec<RiskRollup>,
 }
 
 /// The ramp metrics for a workspace.
@@ -311,7 +361,7 @@ pub fn swarm_metrics(pulls: Vec<ChangePull>, limits: FlagLimits) -> SwarmMetrics
     }
     let repos = repos
         .into_iter()
-        .map(|(repo, tasks)| rollup(repo, &tasks))
+        .map(|(repo, tasks)| rollup(repo, &tasks, limits.rounds))
         .collect();
     SwarmMetrics { tasks, repos }
 }
@@ -362,64 +412,99 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
         rebases: pull.rounds.iter().filter(|r| r.rebase).count() as i64,
         rounds: pull.rounds,
         attributes: pull.attributes,
+        linear_issue: pull.linear_issue,
     }
 }
 
-fn rollup(repo: String, tasks: &[&TaskMetrics]) -> RepoRollup {
-    let merged = tasks.iter().filter(|t| t.merged_at.is_some()).count() as i64;
+fn rollup(repo: String, tasks: &[&TaskMetrics], round_limit: i64) -> RepoRollup {
     let mut ready: Vec<i64> = tasks.iter().filter_map(|t| t.time_to_ready_secs).collect();
     ready.sort_unstable();
-    let cost: i64 = tasks.iter().map(|t| t.cost_usd_micros).sum();
+    let slice = |keep: &dyn Fn(&TaskMetrics) -> bool| -> Option<SliceNumbers> {
+        let mine: Vec<&TaskMetrics> = tasks.iter().copied().filter(|t| keep(t)).collect();
+        (!mine.is_empty()).then(|| numbers(&mine, round_limit))
+    };
+    let by_engine = [
+        Some(crate::TaskEngine::Pi),
+        Some(crate::TaskEngine::Session),
+        Some(crate::TaskEngine::Human),
+        None,
+    ]
+    .into_iter()
+    .filter_map(|engine| {
+        slice(&|t| t.attributes.engine == engine).map(|numbers| EngineRollup { engine, numbers })
+    })
+    .collect();
+    let by_size = [
+        Some(crate::TaskSize::S),
+        Some(crate::TaskSize::M),
+        Some(crate::TaskSize::L),
+        None,
+    ]
+    .into_iter()
+    .filter_map(|size| {
+        slice(&|t| t.attributes.size == size).map(|numbers| SizeRollup { size, numbers })
+    })
+    .collect();
+    let by_risk = [false, true]
+        .into_iter()
+        .filter_map(|threat_model| {
+            slice(&|t| t.attributes.threat_model == threat_model).map(|numbers| RiskRollup {
+                threat_model,
+                numbers,
+            })
+        })
+        .collect();
     RepoRollup {
         repo,
-        tasks: tasks.len() as i64,
-        merged,
-        merged_without_edits: tasks
-            .iter()
-            .filter(|t| t.merged_without_edits == Some(true))
-            .count() as i64,
+        totals: numbers(tasks, round_limit),
         closed_unmerged: tasks
             .iter()
             .filter(|t| t.merged_at.is_none() && t.closed_at.is_some())
             .count() as i64,
         flagged: tasks.iter().filter(|t| !t.flags.is_empty()).count() as i64,
-        mean_rounds: if tasks.is_empty() {
-            0.0
-        } else {
-            tasks.iter().map(|t| t.rounds.len() as f64).sum::<f64>() / tasks.len() as f64
-        },
         median_time_to_ready_secs: ready
             .get(ready.len() / 2)
             .copied()
             .filter(|_| !ready.is_empty()),
-        cost_usd_micros_per_merged: (merged > 0).then(|| cost / merged),
-        by_engine: engine_split(tasks),
+        by_engine,
+        by_size,
+        by_risk,
     }
 }
 
-/// The per-engine split of one repository's tasks, in engine order with
-/// unrouted tasks last; engines with no tasks are omitted.
-fn engine_split(tasks: &[&TaskMetrics]) -> Vec<EngineRollup> {
-    const ORDER: [Option<crate::TaskEngine>; 4] = [
-        Some(crate::TaskEngine::Pi),
-        Some(crate::TaskEngine::Session),
-        Some(crate::TaskEngine::Human),
-        None,
-    ];
-    ORDER
-        .into_iter()
-        .filter_map(|engine| {
-            let mine: Vec<&&TaskMetrics> = tasks
-                .iter()
-                .filter(|task| task.attributes.engine == engine)
-                .collect();
-            (!mine.is_empty()).then(|| EngineRollup {
-                engine,
-                tasks: mine.len() as i64,
-                merged: mine.iter().filter(|task| task.merged_at.is_some()).count() as i64,
-            })
-        })
-        .collect()
+/// Whether the engine a task was routed to could not finish it: still open
+/// and non-converging, or closed unmerged after reaching the round limit.
+fn misrouted(task: &TaskMetrics, round_limit: i64) -> bool {
+    task.flags.contains(&TaskFlag::NonConverging)
+        || (task.merged_at.is_none()
+            && task.closed_at.is_some()
+            && task.rounds.len() as i64 >= round_limit)
+}
+
+fn numbers(tasks: &[&TaskMetrics], round_limit: i64) -> SliceNumbers {
+    let count = tasks.len() as i64;
+    let merged = tasks.iter().filter(|t| t.merged_at.is_some()).count() as i64;
+    let misrouted = tasks.iter().filter(|t| misrouted(t, round_limit)).count() as i64;
+    let cost: i64 = tasks.iter().map(|t| t.cost_usd_micros).sum();
+    let per_task = |total: f64| {
+        if count == 0 {
+            0.0
+        } else {
+            total / count as f64
+        }
+    };
+    SliceNumbers {
+        tasks: count,
+        merged,
+        merged_without_edits: tasks
+            .iter()
+            .filter(|t| t.merged_without_edits == Some(true))
+            .count() as i64,
+        misrouted,
+        misroute_rate: per_task(misrouted as f64),
+        mean_rounds: per_task(tasks.iter().map(|t| t.rounds.len() as f64).sum()),
+        cost_usd_micros_per_merged: (merged > 0).then(|| cost / merged),
+    }
 }
 
 /// Added plus removed lines in a git diff, headers excluded.
@@ -491,6 +576,7 @@ mod tests {
             rounds,
             cost_usd_micros: 300,
             attributes: crate::TaskAttributes::default(),
+            linear_issue: None,
         }
     }
 
@@ -512,12 +598,13 @@ mod tests {
         assert_eq!(metrics.tasks[0].time_to_merge_secs, Some(900));
         assert_eq!(metrics.tasks[1].merged_without_edits, Some(false));
         let repo = &metrics.repos[0];
+        let totals = &repo.totals;
         assert_eq!(
-            (repo.tasks, repo.merged, repo.merged_without_edits),
+            (totals.tasks, totals.merged, totals.merged_without_edits),
             (2, 2, 1)
         );
-        assert_eq!(repo.mean_rounds, 1.5);
-        assert_eq!(repo.cost_usd_micros_per_merged, Some(300));
+        assert_eq!(totals.mean_rounds, 1.5);
+        assert_eq!(totals.cost_usd_micros_per_merged, Some(300));
         assert_eq!(repo.median_time_to_ready_secs, Some(600));
     }
 
@@ -561,6 +648,130 @@ mod tests {
         );
         assert_eq!(m.tasks[0].rebases, 1);
         assert!(m.tasks[0].flags.is_empty(), "{:?}", m.tasks[0].flags);
+    }
+
+    fn routed(
+        engine: Option<crate::TaskEngine>,
+        size: Option<crate::TaskSize>,
+        threat_model: bool,
+        rounds: i64,
+    ) -> ChangePull {
+        let mut p = pull((1..=rounds).map(|n| round(n, "x", 5, None)).collect());
+        p.attributes = crate::TaskAttributes {
+            engine,
+            size,
+            threat_model,
+            ..crate::TaskAttributes::default()
+        };
+        p
+    }
+
+    #[test]
+    fn each_rollup_splits_by_engine_size_and_risk_with_cost_and_misroutes() {
+        use crate::{TaskEngine, TaskSize};
+        // Pi, small, merged after one round at 300.
+        let mut small = routed(Some(TaskEngine::Pi), Some(TaskSize::S), false, 1);
+        small.merged_at = Some(at(100));
+        // Pi, medium, still open at the round limit: misrouted.
+        let stuck = routed(Some(TaskEngine::Pi), Some(TaskSize::M), false, 3);
+        // A session, threat-model work, closed unmerged at the round limit:
+        // misrouted too.
+        let mut abandoned = routed(Some(TaskEngine::Session), Some(TaskSize::L), true, 3);
+        abandoned.closed_at = Some(at(500));
+        // A session, threat-model work, merged; never sized.
+        let mut risky = routed(Some(TaskEngine::Session), None, true, 2);
+        risky.merged_at = Some(at(900));
+        risky.cost_usd_micros = 900;
+        // Closed unmerged early: given up on, not misrouted.
+        let mut dropped = routed(None, Some(TaskSize::S), false, 1);
+        dropped.closed_at = Some(at(50));
+
+        let m = swarm_metrics(
+            vec![small, stuck, abandoned, risky, dropped],
+            FlagLimits::default(),
+        );
+        let repo = &m.repos[0];
+        assert_eq!(repo.totals.tasks, 5);
+        assert_eq!(repo.totals.merged, 2);
+        assert_eq!(repo.totals.misrouted, 2);
+        assert_eq!(repo.totals.misroute_rate, 0.4);
+        assert_eq!(repo.totals.mean_rounds, 2.0);
+        assert_eq!(
+            repo.totals.cost_usd_micros_per_merged,
+            Some((300 * 4 + 900) / 2)
+        );
+
+        let engines: Vec<_> = repo
+            .by_engine
+            .iter()
+            .map(|e| {
+                (
+                    e.engine,
+                    e.numbers.tasks,
+                    e.numbers.merged,
+                    e.numbers.misrouted,
+                )
+            })
+            .collect();
+        assert_eq!(
+            engines,
+            vec![
+                (Some(TaskEngine::Pi), 2, 1, 1),
+                (Some(TaskEngine::Session), 2, 1, 1),
+                (None, 1, 0, 0),
+            ],
+            "an engine with no tasks is left out"
+        );
+        assert_eq!(
+            repo.by_engine[0].numbers.cost_usd_micros_per_merged,
+            Some(600)
+        );
+        assert_eq!(
+            repo.by_engine[1].numbers.cost_usd_micros_per_merged,
+            Some(1200)
+        );
+        assert_eq!(repo.by_engine[2].numbers.cost_usd_micros_per_merged, None);
+
+        let sizes: Vec<_> = repo
+            .by_size
+            .iter()
+            .map(|s| (s.size, s.numbers.tasks))
+            .collect();
+        assert_eq!(
+            sizes,
+            vec![
+                (Some(TaskSize::S), 2),
+                (Some(TaskSize::M), 1),
+                (Some(TaskSize::L), 1),
+                (None, 1),
+            ]
+        );
+        let risk: Vec<_> = repo
+            .by_risk
+            .iter()
+            .map(|r| (r.threat_model, r.numbers.tasks, r.numbers.misroute_rate))
+            .collect();
+        assert_eq!(risk, vec![(false, 3, 1.0 / 3.0), (true, 2, 0.5)]);
+    }
+
+    #[test]
+    fn a_slice_serializes_flat_beside_its_key() {
+        let mut task = routed(
+            Some(crate::TaskEngine::Pi),
+            Some(crate::TaskSize::M),
+            false,
+            1,
+        );
+        task.merged_at = Some(at(10));
+        let m = swarm_metrics(vec![task], FlagLimits::default());
+        let json = serde_json::to_value(&m.repos[0]).unwrap();
+        assert_eq!(json["tasks"], 1);
+        assert_eq!(json["misroute_rate"], 0.0);
+        assert_eq!(json["by_engine"][0]["engine"], "pi");
+        assert_eq!(json["by_engine"][0]["merged"], 1);
+        assert_eq!(json["by_size"][0]["size"], "M");
+        assert_eq!(json["by_risk"][0]["threat_model"], false);
+        assert!(json.get("totals").is_none(), "{json}");
     }
 
     #[test]

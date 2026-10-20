@@ -228,6 +228,7 @@ async fn land(store: &dyn Store, room: &Room, id: &str, pr: i64) {
             base_branch: None,
             rebase: false,
             previous_head: None,
+            linear_issue: None,
         })
         .await
         .unwrap();

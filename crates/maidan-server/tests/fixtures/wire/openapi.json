@@ -2777,33 +2777,28 @@
         "type": "object"
       },
       "EngineRollup": {
-        "description": "One engine's slice of a repository rollup: how much of the repo's work\nwas routed to it, and how much of that merged.",
-        "properties": {
-          "engine": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/TaskEngine",
-                "description": "The engine the tasks were routed to; `None` for tasks never routed."
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "engine": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TaskEngine",
+                    "description": "The engine the tasks were routed to; `None` for tasks never routed."
+                  }
+                ]
               }
-            ]
-          },
-          "merged": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "tasks": {
-            "format": "int64",
-            "type": "integer"
+            },
+            "type": "object"
           }
-        },
-        "required": [
-          "tasks",
-          "merged"
         ],
-        "type": "object"
+        "description": "The tasks routed to one engine."
       },
       "EnqueueRequest": {
         "properties": {
@@ -6904,69 +6899,64 @@
         "type": "object"
       },
       "RepoRollup": {
-        "description": "One repository's rollup.",
-        "properties": {
-          "by_engine": {
-            "description": "The rollup split by the engine each task was routed to, in engine\norder with unrouted tasks last; engines with no tasks are omitted.",
-            "items": {
-              "$ref": "#/components/schemas/EngineRollup"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "by_engine": {
+                "description": "By the engine each task was routed to, in engine order with unrouted\ntasks last.",
+                "items": {
+                  "$ref": "#/components/schemas/EngineRollup"
+                },
+                "type": "array"
+              },
+              "by_risk": {
+                "description": "By risk tier, standard first. Slices with no tasks are omitted from\nall three splits.",
+                "items": {
+                  "$ref": "#/components/schemas/RiskRollup"
+                },
+                "type": "array"
+              },
+              "by_size": {
+                "description": "By size, `S` to `L` with unsized tasks last.",
+                "items": {
+                  "$ref": "#/components/schemas/SizeRollup"
+                },
+                "type": "array"
+              },
+              "closed_unmerged": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "flagged": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "median_time_to_ready_secs": {
+                "format": "int64",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "repo": {
+                "type": "string"
+              }
             },
-            "type": "array"
-          },
-          "closed_unmerged": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "cost_usd_micros_per_merged": {
-            "description": "Total cost of the repository's tasks over its merged ones; `None`\nbefore the first merge.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "flagged": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "mean_rounds": {
-            "format": "double",
-            "type": "number"
-          },
-          "median_time_to_ready_secs": {
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "merged": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "merged_without_edits": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "repo": {
-            "type": "string"
-          },
-          "tasks": {
-            "format": "int64",
-            "type": "integer"
+            "required": [
+              "repo",
+              "closed_unmerged",
+              "flagged",
+              "by_engine",
+              "by_size",
+              "by_risk"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "repo",
-          "tasks",
-          "merged",
-          "merged_without_edits",
-          "closed_unmerged",
-          "flagged",
-          "mean_rounds",
-          "by_engine"
         ],
-        "type": "object"
+        "description": "One repository's rollup. Pi is given small and medium work and sessions\nthe risky work, so an engine comparison is read within a size or a risk\ntier, not across the whole repository."
       },
       "ResultDelivery": {
         "description": "One `(thread, target)` delivery's durable state.",
@@ -7300,6 +7290,26 @@
           "refresh_tokens_revoked"
         ],
         "type": "object"
+      },
+      "RiskRollup": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "threat_model": {
+                "description": "Whether the tasks were marked as touching the threat model.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "threat_model"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "The tasks of one risk tier."
       },
       "RoomCard": {
         "description": "Authenticated room card: stable id + current handle + canonical URI.",
@@ -8295,6 +8305,30 @@
         ],
         "type": "object"
       },
+      "SizeRollup": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "size": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TaskSize",
+                    "description": "The size the planner gave the tasks; `None` for tasks never sized."
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "The tasks of one size."
+      },
       "SlackChannelLink": {
         "description": "A Slack projector channel link: a Slack channel projects into the\n`thread_id` in `channel_id`/`workspace_id`, with inbound Slack messages\nposted as `member_id`. One Maidan thread per Slack channel.",
         "properties": {
@@ -8396,6 +8430,54 @@
           "wasi"
         ],
         "type": "string"
+      },
+      "SliceNumbers": {
+        "description": "How a set of tasks did: a whole repository, or one slice of it.",
+        "properties": {
+          "cost_usd_micros_per_merged": {
+            "description": "Total cost of the tasks over the merged ones; `None` before the first\nmerge.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mean_rounds": {
+            "format": "double",
+            "type": "number"
+          },
+          "merged": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "merged_without_edits": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "misroute_rate": {
+            "description": "`misrouted` over `tasks`; 0 with no tasks.",
+            "format": "double",
+            "type": "number"
+          },
+          "misrouted": {
+            "description": "Tasks the engine they were routed to could not finish: flagged\nnon-converging while open, or closed unmerged after reaching the\nround limit.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "tasks": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tasks",
+          "merged",
+          "merged_without_edits",
+          "misrouted",
+          "misroute_rate",
+          "mean_rounds"
+        ],
+        "type": "object"
       },
       "SlotUsage": {
         "description": "A slot in a workspace: its capacity, when an operator set one, and how\nmany live claims hold it now.",
@@ -8779,6 +8861,13 @@
               "$ref": "#/components/schemas/TaskFlag"
             },
             "type": "array"
+          },
+          "linear_issue": {
+            "description": "The Linear issue the change is for, when known.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "merged_at": {
             "format": "date-time",
