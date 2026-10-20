@@ -291,6 +291,64 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     assert_eq!(rollup.by_engine[1].numbers.tasks, 1);
 }
 
+/// A task with model spend reads its cost back. On Postgres a SUM over a
+/// BIGINT is NUMERIC: read as an i64 it panicked, and took the change sweep
+/// down on its first tick.
+async fn a_tasks_model_spend_reads_back_as_its_cost(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "spend", 1).await;
+    let agent = room.agents[0];
+    let (thread, _event) = store
+        .create_thread_with_footprint(new_thread(room.channel, "spent"), None, None, None)
+        .await
+        .unwrap();
+    let claimed = store.claim_thread(thread.id, agent).await.unwrap();
+    let lease = claimed.thread.claim_lease_id.unwrap();
+    store
+        .report_accounted_usage(&NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::new_v4(),
+            thread_id: thread.id,
+            reporter: agent,
+            claim_lease_id: lease,
+            model: "provider/model".into(),
+            tokens: TokenUsage {
+                input: 1_000_000,
+                ..Default::default()
+            },
+            usd_micros: 10,
+            price_snapshot: PriceSnapshot {
+                input_usd_micros_per_million: 10,
+                ..Default::default()
+            },
+            turns: 1,
+            evidence: Default::default(),
+        })
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: thread.id,
+            repo: "example/app".into(),
+            pull_number: 9,
+            commit_sha: "c".repeat(40),
+            base_sha: "a".repeat(40),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: None,
+            rebase: false,
+            previous_head: None,
+            linear_issue: None,
+        })
+        .await
+        .unwrap();
+    let pulls = store
+        .list_change_pulls(room.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(pulls[0].cost_usd_micros, 10);
+}
+
 /// A pull request keeps the first Linear issue a round names: a later round
 /// without one, or naming another, changes nothing. A round another
 /// workspace delivers to the same pull request never writes it.
@@ -516,4 +574,5 @@ on_both_backends!(
     size_and_acceptance_are_stored_and_checked,
     a_priority_set_at_creation_is_claimed_first,
     a_change_pull_keeps_the_first_linear_issue_a_round_names,
+    a_tasks_model_spend_reads_back_as_its_cost,
 );
