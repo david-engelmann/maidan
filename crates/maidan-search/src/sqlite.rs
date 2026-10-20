@@ -1,5 +1,7 @@
 //! SQLite FTS5 lexical search and embedding-backed semantic search.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use maidan_store::thread_access::readable_thread;
@@ -322,7 +324,7 @@ impl Search for SqliteSearch {
 
     async fn reindex_embeddings(
         &self,
-        provider: &dyn EmbeddingProvider,
+        provider: &Arc<dyn EmbeddingProvider>,
         workspace_id: Option<WorkspaceId>,
     ) -> Result<crate::reindex::ReindexReport, SearchError> {
         reindex_sqlite(&self.pool, self, provider, workspace_id).await

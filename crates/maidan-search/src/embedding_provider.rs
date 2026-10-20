@@ -43,6 +43,46 @@ pub trait EmbeddingProvider: Send + Sync {
     }
 }
 
+/// Embed `body` on Tokio's blocking pool. `embed` is synchronous, and a remote
+/// provider waits on the network for up to its timeout; called on an async
+/// worker, that wait holds the worker and every task queued behind it, so one
+/// slow endpoint stalls unrelated requests. Async callers go through here.
+pub async fn embed_off_worker(
+    provider: &Arc<dyn EmbeddingProvider>,
+    body: &str,
+) -> Result<Vec<f32>, EmbeddingProviderError> {
+    let provider = Arc::clone(provider);
+    let body = body.to_owned();
+    join_blocking(tokio::task::spawn_blocking(move || provider.embed(&body))).await
+}
+
+/// [`embed_off_worker`] for a batch, for the same reason.
+pub async fn embed_batch_off_worker(
+    provider: &Arc<dyn EmbeddingProvider>,
+    bodies: Vec<String>,
+) -> Result<Vec<Vec<f32>>, EmbeddingProviderError> {
+    let provider = Arc::clone(provider);
+    join_blocking(tokio::task::spawn_blocking(move || {
+        let refs: Vec<&str> = bodies.iter().map(String::as_str).collect();
+        provider.embed_batch(&refs)
+    }))
+    .await
+}
+
+/// A provider panic stays a panic in the caller, as it was when the call ran
+/// inline; the task is only cancelled when the runtime shuts down.
+async fn join_blocking<T>(
+    task: tokio::task::JoinHandle<Result<T, EmbeddingProviderError>>,
+) -> Result<T, EmbeddingProviderError> {
+    match task.await {
+        Ok(result) => result,
+        Err(err) if err.is_panic() => std::panic::resume_unwind(err.into_panic()),
+        Err(err) => Err(EmbeddingProviderError::Remote(format!(
+            "embedding task did not finish: {err}"
+        ))),
+    }
+}
+
 /// SHA-256-derived pseudo-embedding (1024-d, normalized).
 pub struct HashV1Provider;
 
@@ -182,8 +222,8 @@ impl OpenAiCompatibleProvider {
 /// and reindex paths. A scoped OS thread is outside any runtime, and starting
 /// one costs nothing next to a remote embedding call. The join is a blocking
 /// wait, so this avoids reqwest's in-runtime panic but still holds the calling
-/// worker until the request returns; keeping the worker free is the async call
-/// sites' job, not this function's.
+/// worker until the request returns. Async callers keep the worker free by going
+/// through [`embed_off_worker`], which runs the whole call on the blocking pool.
 fn off_runtime<T: Send>(f: impl FnOnce() -> T + Send) -> T {
     if tokio::runtime::Handle::try_current().is_err() {
         return f();

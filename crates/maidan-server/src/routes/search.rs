@@ -49,9 +49,8 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Semantic => {
-            let embedding = state
-                .embedding_provider
-                .embed(&q.q)
+            let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
+                .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
             let model = q
                 .embedding_model
@@ -63,9 +62,8 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Hybrid => {
-            let embedding = state
-                .embedding_provider
-                .embed(&q.q)
+            let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
+                .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
             let model = q
                 .embedding_model

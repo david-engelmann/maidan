@@ -229,6 +229,7 @@ async fn what_retries_cannot_save_the_repair_sweep_embeds_once() {
     assert_eq!(metrics.embedded_total.load(Ordering::Relaxed), 0);
     assert_eq!(metrics.failed_total.load(Ordering::Relaxed), 3);
 
+    let hash: Arc<dyn EmbeddingProvider> = Arc::new(HashV1Provider);
     // Another replica holds the repair lock: this one does nothing.
     let mut other = fx.pool.acquire().await.unwrap();
     let held: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
@@ -237,7 +238,7 @@ async fn what_retries_cannot_save_the_repair_sweep_embeds_once() {
         .await
         .unwrap();
     assert!(held);
-    let skipped = fx.search.embed_missing(&HashV1Provider, 100).await.unwrap();
+    let skipped = fx.search.embed_missing(&hash, 100).await.unwrap();
     assert_eq!(
         skipped.processed, 0,
         "a held lock means another replica is repairing"
@@ -248,8 +249,8 @@ async fn what_retries_cannot_save_the_repair_sweep_embeds_once() {
         .await
         .unwrap();
 
-    let repaired = fx.search.embed_missing(&HashV1Provider, 100).await.unwrap();
+    let repaired = fx.search.embed_missing(&hash, 100).await.unwrap();
     assert_eq!((repaired.processed, repaired.failed), (3, 0));
-    let again = fx.search.embed_missing(&HashV1Provider, 100).await.unwrap();
+    let again = fx.search.embed_missing(&hash, 100).await.unwrap();
     assert_eq!(again.processed, 0, "nothing left missing");
 }

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use maidan_types::{MessageId, WorkspaceId};
 
@@ -54,7 +56,7 @@ pub trait Search: Send + Sync {
     /// Re-embed all live messages for the provider's model (optional workspace scope).
     async fn reindex_embeddings(
         &self,
-        provider: &dyn EmbeddingProvider,
+        provider: &Arc<dyn EmbeddingProvider>,
         workspace_id: Option<WorkspaceId>,
     ) -> Result<ReindexReport, SearchError> {
         let _ = (provider, workspace_id);
@@ -68,7 +70,7 @@ pub trait Search: Send + Sync {
     /// vectors are `Unsupported`.
     async fn embed_missing(
         &self,
-        provider: &dyn EmbeddingProvider,
+        provider: &Arc<dyn EmbeddingProvider>,
         limit: i64,
     ) -> Result<ReindexReport, SearchError> {
         let _ = (provider, limit);

@@ -28,8 +28,8 @@ pub mod traits;
 pub use embedding_batcher::{BatchConfig, BatchingEmbeddingHandler, IndexerMetrics, RetryPolicy};
 pub use embedding_handler::EmbeddingHandler;
 pub use embedding_provider::{
-    provider_from_env, provider_from_name, EmbeddingProvider, EmbeddingProviderError,
-    HashV1Provider,
+    embed_batch_off_worker, embed_off_worker, provider_from_env, provider_from_name,
+    EmbeddingProvider, EmbeddingProviderError, HashV1Provider,
 };
 pub use embeddings::{hash_embedding, model_name};
 pub use error::SearchError;

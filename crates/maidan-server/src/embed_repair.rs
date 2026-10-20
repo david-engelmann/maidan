@@ -43,7 +43,7 @@ pub fn config_from_env() -> Option<RepairConfig> {
 /// One pass. `false` when the backend cannot embed, so the caller stops.
 pub async fn repair_once(
     search: &dyn Search,
-    provider: &dyn EmbeddingProvider,
+    provider: &Arc<dyn EmbeddingProvider>,
     metrics: &IndexerMetrics,
     batch: i64,
 ) -> bool {
@@ -81,7 +81,7 @@ pub async fn run(
     ticker.tick().await;
     loop {
         ticker.tick().await;
-        if !repair_once(search.as_ref(), provider.as_ref(), &metrics, config.batch).await {
+        if !repair_once(search.as_ref(), &provider, &metrics, config.batch).await {
             tracing::info!("embed repair: backend has no embeddings; stopping");
             return;
         }
