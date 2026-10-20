@@ -257,6 +257,33 @@ spec:
               {{ $value }} embed failures in the last 15m. Messages aren't being indexed
               for semantic search. Check the embedding provider and check_health error slot.
 
+        - alert: MaidanChangeSweepStalled
+          # Three default intervals (120 s) without a finished tick: the sweep
+          # is stuck or its task is gone, and merges, notices, handoffs and
+          # Linear claim comments have stopped with it.
+          expr: time() - maidan_background_loop_last_tick_seconds{loop="change_sweep"} > 360
+          for: 5m
+          labels:
+            severity: critical
+            slo: background_loops
+          annotations:
+            summary: Change sweep stalled
+            description: |
+              No change sweep tick has finished for over 6 minutes. Check the
+              maidan-server log for the sweep's last lines and restart if it is gone.
+
+        - alert: MaidanBackgroundLoopPanicking
+          expr: increase(maidan_background_loop_panics_total[15m]) > 0
+          labels:
+            severity: warning
+            slo: background_loops
+          annotations:
+            summary: Background loop tick panicked
+            description: |
+              The {{ $labels.loop }} loop panicked in the last 15 minutes; it runs on,
+              but the work after the panic in that tick was skipped. The panic message
+              is in the maidan-server log at ERROR.
+
         - alert: MaidanSubscribeReplayTruncatedSustained
           expr: |
             sum(rate(maidan_subscribe_replay_total{outcome="replay_truncated"}[15m])) > 0.05

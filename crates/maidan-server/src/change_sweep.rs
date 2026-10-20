@@ -685,11 +685,15 @@ pub async fn run(state: AppState, interval: Duration) {
                 tracing::info!(?stats, "change sweep tick");
             }
             Ok(_) => tracing::debug!("change sweep tick: nothing to do"),
-            Err(panic) => tracing::error!(
-                panic = panic_message(panic.as_ref()),
-                "change sweep tick panicked; the next tick runs"
-            ),
+            Err(panic) => {
+                crate::metrics::record_loop_panic("change_sweep");
+                tracing::error!(
+                    panic = panic_message(panic.as_ref()),
+                    "change sweep tick panicked; the next tick runs"
+                );
+            }
         }
+        crate::metrics::record_loop_tick("change_sweep");
         tokio::time::sleep(interval).await;
     }
 }
