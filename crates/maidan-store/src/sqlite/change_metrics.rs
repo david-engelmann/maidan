@@ -938,6 +938,59 @@ pub async fn hand_off(
     }))
 }
 
+/// Track a pull request the change flow did not open (a session's) on
+/// `thread_id`. Its time to ready starts at the thread's `CLAIM:` notice,
+/// else `claimed_at` (a claim said outside Maidan), else now. Registering it again on the same thread answers the same;
+/// one another thread or workspace tracks is a conflict.
+pub async fn register(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    repo: &str,
+    pull_number: i64,
+    claimed_at: Option<DateTime<Utc>>,
+) -> Result<DateTime<Utc>, StoreError> {
+    let repo = repo.to_ascii_lowercase();
+    let mut tx = pool.begin().await?;
+    let claimed: Option<DateTime<Utc>> = sqlx::query_scalar(
+        "SELECT created_at FROM maidan_linear_notices WHERE thread_id = ?1 AND kind = 'claim'",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let opened_at = claimed.or(claimed_at).unwrap_or_else(Utc::now);
+    sqlx::query(
+        "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (repo, pull_number) DO NOTHING",
+    )
+    .bind(&repo)
+    .bind(pull_number)
+    .bind(workspace_id.0)
+    .bind(thread_id.0)
+    .bind(opened_at.to_rfc3339())
+    .execute(&mut *tx)
+    .await?;
+    let row = sqlx::query(
+        "SELECT workspace_id, thread_id, opened_at FROM maidan_change_pulls
+         WHERE repo = ?1 AND pull_number = ?2",
+    )
+    .bind(&repo)
+    .bind(pull_number)
+    .fetch_one(&mut *tx)
+    .await?;
+    if row.get::<Uuid, _>("workspace_id") != workspace_id.0
+        || row.get::<Uuid, _>("thread_id") != thread_id.0
+    {
+        return Err(StoreError::Conflict(format!(
+            "{repo}#{pull_number} is already tracked on another task"
+        )));
+    }
+    let opened_at: DateTime<Utc> = row.get("opened_at");
+    tx.commit().await?;
+    Ok(opened_at)
+}
+
 fn pull_from(
     row: &sqlx::sqlite::SqliteRow,
     rounds: &mut HashMap<(String, i64), Vec<ChangeRound>>,

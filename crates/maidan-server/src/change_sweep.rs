@@ -144,6 +144,22 @@ pub async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
             }
         };
         if brief.open {
+            // A session's pull request is ready when it carries the label;
+            // the first sighting stamps it (Maidan's own flip stamps the
+            // change flow's).
+            if brief
+                .labels
+                .iter()
+                .any(|label| label == maidan_types::READY_LABEL)
+            {
+                if let Err(err) = state
+                    .store
+                    .mark_change_pull_ready(&repo, pull_number, chrono::Utc::now())
+                    .await
+                {
+                    tracing::warn!(repo, pull_number, error = %err, "change sweep: ready not recorded");
+                }
+            }
             continue;
         }
         let closed_at = brief

@@ -385,6 +385,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** when the change sweep flags a Pi task `non_converging` (still open after 3 rounds, or a diff growing each round), it hands the task to a session once (migration 0189). It ends the claim, sets the engine to `session` so a Pi claim never takes it again, and leaves the task open. It appends a `ThreadHandoff` event, posts a line in the thread, and queues it in the result's Slack thread. Where the workspace says claims on Linear, it posts the handoff packet on the task's issue (the pull request and head, each round's diff lines and base lag, cost, open findings, models reported), followed by the release comment. The swarm metrics count it as misrouted and mark the task `handed_off`.
 
+### A session's pull request can be tracked on its task
+
+- **Added:** `PUT /threads/{id}/pull` (`workspace:write`) registers a pull request the change flow did not open, for a repository blessed for the workspace, on its task. The change sweep then tracks it and the swarm metrics count it: its time to ready runs from the task's `CLAIM:` comment to the first sweep that sees the `ready-to-merge` label, and its merge closes the task. A pull request tracked on another task is a 409.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

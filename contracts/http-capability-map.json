@@ -882,6 +882,12 @@
     "surface": "http"
   },
   {
+    "method": "PUT",
+    "path": "/threads/{id}/pull",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{id}/linear-claim-comments",
     "capability": "workspace:read",

@@ -2758,6 +2758,20 @@ pub fn list_slots() {}
     ))]
 pub fn set_slot_capacity() {}
 
+/// Track a session's pull request on its task, for the swarm metrics
+#[utoipa::path(put, path = "/threads/{id}/pull", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = RegisterPull,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = RegisteredPull),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn register_thread_pull() {}
+
 /// Whether the workspace says its tasks' claims and releases on Linear
 #[utoipa::path(get, path = "/workspaces/{id}/linear-claim-comments", tag = "workspaces",
     params(("id" = Uuid, Path, description = "Workspace id")),

@@ -227,6 +227,7 @@
   {"method":"POST","path":"/threads/{id}/plan","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/priority","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/priority","kind":"changes"},
+  {"method":"PUT","path":"/threads/{id}/pull","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/required-skills","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/required-skills","kind":"changes"},
   {"method":"DELETE","path":"/threads/{id}/required-skills/{skill}","kind":"changes"},
