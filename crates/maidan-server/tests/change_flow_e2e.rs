@@ -390,6 +390,7 @@ async fn github(
                         "merged_at": p.merged_at,
                         "closed_at": p.closed_at.clone().or_else(|| p.merged_at.clone()),
                         "merge_commit_sha": fake.merge_shas.get(&p.number),
+                        "labels": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>(),
                     }),
                 ),
                 None => not_found(),
@@ -1901,6 +1902,124 @@ async fn a_non_converging_pi_task_is_handed_to_a_session_once() {
         Some(maidan_types::TaskEngine::Pi),
         "tenant B is untouched"
     );
+}
+
+/// A session's pull request, registered on its task, is tracked like the
+/// change flow's: time to ready runs from the task's `CLAIM:` comment to the
+/// `ready-to-merge` label, and the `linear_issue` filter counts it.
+#[tokio::test]
+async fn a_registered_session_pull_counts_from_its_claim_to_the_ready_label() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.store
+        .set_linear_claim_comments(
+            h.a.workspace_id,
+            true,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(h.a.workspace_id),
+                actor_id: Some(h.a.member_id),
+                action: "linear.claim_comments.set".into(),
+                target_kind: None,
+                target_id: None,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    h.store
+        .set_thread_attributes(
+            h.a.thread_id,
+            maidan_types::TaskAttributes {
+                engine: Some(maidan_types::TaskEngine::Session),
+                linear_issue: Some(ISSUE.into()),
+                ..maidan_types::TaskAttributes::default()
+            },
+        )
+        .await
+        .unwrap();
+    h.store
+        .claim_thread(h.a.thread_id, h.a.member_id)
+        .await
+        .unwrap();
+    change_sweep::sweep_once(&h.state).await;
+    h.drain().await;
+    assert!(h.linear.comments()[0].2.starts_with("CLAIM: session/"));
+    h.fake.lock().unwrap().pulls.push(FakePull {
+        number: 77,
+        head: "session/name-the-venue".into(),
+        base: "dev".into(),
+        title: "Name the venue".into(),
+        body: String::new(),
+        draft: false,
+        labels: Vec::new(),
+        merged_at: None,
+        closed_at: None,
+    });
+
+    let secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id: h.a.workspace_id,
+            member_id: h.a.member_id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![maidan_auth::capability::WORKSPACE_WRITE.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let register = |repo: &str| {
+        axum::http::Request::put(format!("/threads/{}/pull", h.a.thread_id.0))
+            .header("authorization", format!("Bearer {}", secret.as_str()))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                json!({"repo": repo, "pull_number": 77}).to_string(),
+            ))
+            .unwrap()
+    };
+    let send =
+        |request| tower::ServiceExt::oneshot(maidan_server::router(h.state.clone()), request);
+    assert_eq!(
+        send(register("other/repo")).await.unwrap().status(),
+        StatusCode::FORBIDDEN,
+        "only a blessed repository"
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            send(register(REPO)).await.unwrap().status(),
+            StatusCode::OK,
+            "registering again answers the same"
+        );
+    }
+
+    change_sweep::sweep_once(&h.state).await;
+    let pulls = h
+        .store
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
+        .await
+        .unwrap();
+    let pull = pulls.iter().find(|p| p.pull_number == 77).unwrap();
+    assert_eq!(pull.ready_at, None, "no label yet");
+    h.fake.lock().unwrap().pulls.last_mut().unwrap().labels = vec!["ready-to-merge".into()];
+    change_sweep::sweep_once(&h.state).await;
+
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (_, metrics) = get_json(
+        &h,
+        &token,
+        &format!(
+            "/workspaces/{}/swarm-metrics?linear_issue={ISSUE}",
+            h.a.workspace_id.0
+        ),
+    )
+    .await;
+    let tasks = metrics["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1, "{metrics}");
+    assert_eq!(tasks[0]["pull_number"], 77);
+    assert!(tasks[0]["time_to_ready_secs"].is_i64(), "{}", tasks[0]);
+    assert_eq!(metrics["repos"][0]["by_engine"][0]["engine"], "session");
 }
 
 #[tokio::test]

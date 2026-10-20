@@ -2712,6 +2712,25 @@ macro_rules! store_delegations {
                 change_metrics::list_open(self.pool(), workspace_id, limit).await
             }
 
+            async fn register_change_pull(
+                &self,
+                workspace_id: WorkspaceId,
+                thread_id: ThreadId,
+                repo: &str,
+                pull_number: i64,
+                claimed_at: Option<chrono::DateTime<chrono::Utc>>,
+            ) -> Result<chrono::DateTime<chrono::Utc>, StoreError> {
+                change_metrics::register(
+                    self.pool(),
+                    workspace_id,
+                    thread_id,
+                    repo,
+                    pull_number,
+                    claimed_at,
+                )
+                .await
+            }
+
             async fn hand_off_thread(
                 &self,
                 thread_id: ThreadId,

@@ -2247,6 +2247,18 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<(String, i64)>, StoreError>;
+    /// Track a pull request the change flow did not open (a session's) on a
+    /// thread, so the sweep and the swarm metrics see it. Returns where its
+    /// time to ready starts. A pull request another thread or workspace
+    /// tracks is a conflict.
+    async fn register_change_pull(
+        &self,
+        workspace_id: WorkspaceId,
+        thread_id: ThreadId,
+        repo: &str,
+        pull_number: i64,
+        claimed_at: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Result<chrono::DateTime<chrono::Utc>, StoreError>;
     /// Hand a non-converging task to a session, once: end its claim, route
     /// it to `session` and append `ThreadHandoff`, in one transaction.
     /// `None` when it was handed off already.

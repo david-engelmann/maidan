@@ -189,6 +189,36 @@ pub struct ChangeRound {
     pub previous_head: Option<String>,
 }
 
+/// The label that marks a registered (session) pull request ready: the
+/// change sweep stamps its time to ready when it first sees it.
+pub const READY_LABEL: &str = "ready-to-merge";
+
+/// A pull request the change flow did not open (a session's), registered
+/// on its task's thread so the swarm metrics track it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RegisterPull {
+    /// `owner/name`.
+    pub repo: String,
+    pub pull_number: i64,
+    /// When the task was claimed, for a claim said outside Maidan; a
+    /// `CLAIM:` comment Maidan posted takes precedence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_at: Option<DateTime<Utc>>,
+}
+
+/// A registered pull request as tracked.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RegisteredPull {
+    /// Lowercase `owner/name`.
+    pub repo: String,
+    pub pull_number: i64,
+    /// Where its time to ready starts: the task's `CLAIM:` comment, else the
+    /// `claimed_at` given, else when it was registered.
+    pub opened_at: DateTime<Utc>,
+}
+
 /// How long after a merge the change sweep keeps checking whether it held.
 pub const OUTCOME_WINDOW_DAYS: i64 = 30;
 

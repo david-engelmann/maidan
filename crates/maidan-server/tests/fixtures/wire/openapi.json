@@ -6706,6 +6706,32 @@
         ],
         "type": "object"
       },
+      "RegisterPull": {
+        "description": "A pull request the change flow did not open (a session's), registered\non its task's thread so the swarm metrics track it.",
+        "properties": {
+          "claimed_at": {
+            "description": "When the task was claimed, for a claim said outside Maidan; a\n`CLAIM:` comment Maidan posted takes precedence.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "`owner/name`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "pull_number"
+        ],
+        "type": "object"
+      },
       "RegisterPushSubscription": {
         "description": "Body for `POST /members/:id/push-subscriptions` — the browser's\n`PushSubscription.toJSON()` shape.",
         "properties": {
@@ -6719,6 +6745,30 @@
         "required": [
           "endpoint",
           "keys"
+        ],
+        "type": "object"
+      },
+      "RegisteredPull": {
+        "description": "A registered pull request as tracked.",
+        "properties": {
+          "opened_at": {
+            "description": "Where its time to ready starts: the task's `CLAIM:` comment, else the\n`claimed_at` given, else when it was registered.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Lowercase `owner/name`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "pull_number",
+          "opened_at"
         ],
         "type": "object"
       },
@@ -25382,6 +25432,98 @@
           }
         ],
         "summary": "Set a thread's priority",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/pull": {
+      "put": {
+        "operationId": "register_thread_pull",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPull"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisteredPull"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Track a session's pull request on its task, for the swarm metrics",
         "tags": [
           "threads"
         ]
