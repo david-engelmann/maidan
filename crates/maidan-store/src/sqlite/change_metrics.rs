@@ -23,15 +23,18 @@ pub async fn record_round(pool: &SqlitePool, new: NewChangeRound) -> Result<(), 
     let repo = new.repo.to_ascii_lowercase();
     let mut tx = pool.begin().await?;
     sqlx::query(
-        "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT (repo, pull_number) DO NOTHING",
+        "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at, linear_issue)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT (repo, pull_number) DO UPDATE
+             SET linear_issue = COALESCE(maidan_change_pulls.linear_issue, excluded.linear_issue)
+             WHERE maidan_change_pulls.workspace_id = excluded.workspace_id",
     )
     .bind(&repo)
     .bind(new.pull_number)
     .bind(new.workspace_id.0)
     .bind(new.thread_id.0)
     .bind(Utc::now().to_rfc3339())
+    .bind(&new.linear_issue)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
@@ -670,7 +673,7 @@ pub async fn list(
     let repo = repo.map(str::to_ascii_lowercase);
     let since = since.map(|at| at.to_rfc3339());
     let pulls = sqlx::query(
-        "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at,
+        "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at, p.linear_issue,
                 a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
          FROM maidan_change_pulls p
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
@@ -756,6 +759,7 @@ fn pull_from(
         merged_head_sha: row.get("merged_head_sha"),
         closed_at: row.get::<Option<DateTime<Utc>>, _>("closed_at"),
         cost_usd_micros: cost.get(&thread).copied().unwrap_or(0),
+        linear_issue: row.get("linear_issue"),
         attributes: maidan_types::TaskAttributes {
             kind: row
                 .try_get::<Option<String>, _>("task_kind")

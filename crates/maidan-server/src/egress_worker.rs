@@ -456,18 +456,27 @@ async fn github_branch_result(
             "the result on the thread is not a change result".into(),
         ));
     };
-    let base = maidan_types::parse_waiter_result(&stored.result).and_then(|waiter| {
-        waiter
-            .deliver_to
-            .into_iter()
-            .find_map(|target| match target {
-                maidan_types::DeliverTarget::GithubBranch {
-                    repo: r,
-                    branch: b,
-                    base,
-                } if r == repo && b == branch => Some(base),
-                _ => None,
-            })
+    let targets = maidan_types::parse_waiter_result(&stored.result)
+        .map(|waiter| waiter.deliver_to)
+        .unwrap_or_default();
+    let base = targets.iter().find_map(|target| match target {
+        maidan_types::DeliverTarget::GithubBranch {
+            repo: r,
+            branch: b,
+            base,
+        } if r == repo && b == branch => Some(base.clone()),
+        _ => None,
+    });
+    // The issue the producer names, else the one the result is delivered to.
+    let linear_issue = change.linear_issue.clone().or_else(|| {
+        targets.iter().find_map(|target| match target {
+            maidan_types::DeliverTarget::Linear { issue, .. }
+                if maidan_types::is_issue_key(issue) =>
+            {
+                Some(issue.clone())
+            }
+            _ => None,
+        })
     });
     let Some(base) = base else {
         return Ok(Sent::Refused(
@@ -559,6 +568,7 @@ async fn github_branch_result(
                 commit_sha: &commit_sha,
                 pull_number: pull.number,
                 previous_head: rebased_from,
+                linear_issue,
             };
             record_change_round(state, git, entry, &request, landed).await;
             Ok(Sent::Landed(Some(ExternalRef::GithubBranch {
@@ -1302,6 +1312,7 @@ struct RoundLanded<'a> {
     commit_sha: &'a str,
     pull_number: i64,
     previous_head: Option<String>,
+    linear_issue: Option<String>,
 }
 
 /// Record the round for the swarm ramp metrics: the commit, its diff size,
@@ -1318,6 +1329,7 @@ async fn record_change_round(
         commit_sha,
         pull_number,
         previous_head,
+        linear_issue,
     } = landed;
     let Some(base_sha) = request.change.base_sha.clone() else {
         return;
@@ -1354,6 +1366,7 @@ async fn record_change_round(
         base_branch: Some(request.base.to_string()),
         rebase: request.change.rebase,
         previous_head,
+        linear_issue,
     };
     if let Err(err) = state.store.record_change_round(round).await {
         tracing::warn!(repo = request.repo, pull_number, error = %err, "change flow: round not recorded");

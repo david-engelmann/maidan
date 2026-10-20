@@ -349,12 +349,28 @@ grew in each of the last three rounds (a squash-rebase round carries the
 whole branch, so its size never counts as growth): reroute it to a session. `stale_base`
 means a round was built on a base 50 or more commits behind.
 
-Each repository gets a rollup: tasks, merged, merged without edits, closed
-unmerged, flagged, mean rounds, median time to ready, and cost per merged
-change. The rollup also splits its tasks and merges by the engine each task
-was routed to (`by_engine`), and each task carries its attributes, so the
-ramp can be read per kind of worker. `?engine=` and `?kind=` narrow the
-whole report to one slice. These are the numbers each ramp step is gated on.
+Each repository gets a rollup: tasks, merged, merged without edits,
+misrouted, the misroute rate, mean rounds and cost per merged change, then
+closed unmerged, flagged and median time to ready. A task is **misrouted**
+when the engine it was routed to could not finish it: it is open and flagged
+`non_converging`, or it closed unmerged after reaching the round limit. (A
+handoff at `non_converging` will count too once it exists.)
+
+The first seven numbers are repeated for three splits: by the engine each
+task was routed to (`by_engine`: `pi`, `session`, `human`, then unrouted),
+by size (`by_size`: `S`, `M`, `L`, then unsized) and by risk tier
+(`by_risk`: standard work, then `threat_model` work). A split leaves out a
+slice with no tasks. Pi is given small and medium work and sessions the risky
+work, so compare engines within one size or one tier: across the whole
+repository the comparison mostly measures the routing. Cost per merged change
+in each engine slice is what compares Pi with sessions on cost.
+
+Each task carries its attributes and, when known, its `linear_issue`: the
+Linear key the change result names (`"linear_issue": "ENG-1234"`, ignored
+unless it is a key), else the issue of its Linear `deliver_to` target. The
+first round that knows it records it. `?engine=`, `?kind=` and `?size=`
+narrow the whole report to one slice. These are the numbers each ramp step is
+gated on.
 
 The read refreshes up to 25 open pull requests from GitHub first, so merges
 count on a stack that receives no webhooks.

@@ -1884,6 +1884,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
             base_branch: None,
             rebase: false,
             previous_head: None,
+            linear_issue: None,
         })
         .await
         .unwrap();
@@ -2614,6 +2615,7 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
             base_branch: Some("dev".into()),
             rebase: false,
             previous_head: None,
+            linear_issue: None,
         })
         .await
         .unwrap();

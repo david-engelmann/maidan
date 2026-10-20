@@ -246,6 +246,7 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
                 base_branch: None,
                 rebase: false,
                 previous_head: None,
+                linear_issue: None,
             })
             .await
             .unwrap();
@@ -284,9 +285,71 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     let rollup = &metrics.repos[0];
     assert_eq!(rollup.by_engine.len(), 2);
     assert_eq!(rollup.by_engine[0].engine, Some(TaskEngine::Pi));
-    assert_eq!(rollup.by_engine[0].tasks, 1);
+    assert_eq!(rollup.by_engine[0].numbers.tasks, 1);
     assert_eq!(rollup.by_engine[1].engine, None);
-    assert_eq!(rollup.by_engine[1].tasks, 1);
+    assert_eq!(rollup.by_engine[1].numbers.tasks, 1);
+}
+
+/// A pull request keeps the first Linear issue a round names: a later round
+/// without one, or naming another, changes nothing. A round another
+/// workspace delivers to the same pull request never writes it.
+async fn a_change_pull_keeps_the_first_linear_issue_a_round_names(store: Arc<dyn Store>) {
+    let mine = room(store.as_ref(), "linear-mine", 0).await;
+    let theirs = room(store.as_ref(), "linear-theirs", 0).await;
+    let (thread, _event) = store
+        .create_thread_with_footprint(new_thread(mine.channel, "linked"), None, None, None)
+        .await
+        .unwrap();
+    let (other, _event) = store
+        .create_thread_with_footprint(new_thread(theirs.channel, "elsewhere"), None, None, None)
+        .await
+        .unwrap();
+    let round = |ws: WorkspaceId, thread_id: ThreadId, n: u8, key: Option<&str>| NewChangeRound {
+        workspace_id: ws,
+        thread_id,
+        repo: "example/app".into(),
+        pull_number: 41,
+        commit_sha: format!("{n:x}").repeat(40),
+        base_sha: "a".repeat(40),
+        base_behind: None,
+        diff_lines: 1,
+        paths: Vec::new(),
+        base_branch: None,
+        rebase: false,
+        previous_head: None,
+        linear_issue: key.map(str::to_string),
+    };
+    let key = |store: Arc<dyn Store>| async move {
+        store
+            .list_change_pulls(mine.ws, None, None, None, None, None)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .and_then(|pull| pull.linear_issue)
+    };
+    store
+        .record_change_round(round(mine.ws, thread.id, 1, None))
+        .await
+        .unwrap();
+    assert_eq!(key(store.clone()).await, None);
+    store
+        .record_change_round(round(theirs.ws, other.id, 2, Some("OPS-9")))
+        .await
+        .unwrap();
+    assert_eq!(key(store.clone()).await, None, "another workspace's round");
+    store
+        .record_change_round(round(mine.ws, thread.id, 3, Some("ENG-1234")))
+        .await
+        .unwrap();
+    assert_eq!(key(store.clone()).await.as_deref(), Some("ENG-1234"));
+    for (n, later) in [(4, None), (5, Some("ENG-9"))] {
+        store
+            .record_change_round(round(mine.ws, thread.id, n, later))
+            .await
+            .unwrap();
+        assert_eq!(key(store.clone()).await.as_deref(), Some("ENG-1234"));
+    }
 }
 
 /// Size and acceptance round-trip at creation and on replace; acceptance is
@@ -451,4 +514,5 @@ on_both_backends!(
     the_metrics_carry_filter_and_split_on_attributes,
     size_and_acceptance_are_stored_and_checked,
     a_priority_set_at_creation_is_claimed_first,
+    a_change_pull_keeps_the_first_linear_issue_a_round_names,
 );

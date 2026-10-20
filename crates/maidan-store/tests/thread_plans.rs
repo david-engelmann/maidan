@@ -547,6 +547,7 @@ async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<
             base_branch: None,
             rebase: false,
             previous_head: None,
+            linear_issue: None,
         })
         .await
         .unwrap();
