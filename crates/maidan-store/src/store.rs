@@ -2257,6 +2257,24 @@ pub trait AssignmentStore: Send + Sync {
         kind: Option<maidan_types::TaskKind>,
         size: Option<maidan_types::TaskSize>,
     ) -> Result<Vec<maidan_types::ChangePull>, StoreError>;
+    /// Merged agent pull requests due an outcome check (revert, follow-up
+    /// fixes, human effort): merged within the outcome window, not checked
+    /// in the last day, at most `limit`, and none while the workspace's last
+    /// batch is under an hour old.
+    async fn list_change_outcomes_due(
+        &self,
+        workspace_id: WorkspaceId,
+        now: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::OutcomeDue>, StoreError>;
+    /// Record an outcome check's findings, whole, and stamp it checked.
+    async fn record_change_outcome(
+        &self,
+        repo: &str,
+        pull_number: i64,
+        outcome: &maidan_types::MergedOutcome,
+        checked_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), StoreError>;
     /// Stamp when a tracked agent pull request was last read from GitHub.
     async fn mark_change_pull_checked(
         &self,

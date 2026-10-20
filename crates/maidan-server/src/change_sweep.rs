@@ -24,6 +24,10 @@
 //! behind gets a `stale_base` notice from the egress worker
 //! ([`post_notice`] is shared).
 //!
+//! A merge is then checked for whether it held ([`crate::change_outcomes`]):
+//! reverts, follow-up fixes and human effort, in one batch per workspace an
+//! hour.
+//!
 //! The swarm-metrics read shares the refresh but only records closes: it runs
 //! inside a reader's request, and landing a thread there would attribute the
 //! close to whoever looked. The sweep runs in no request, so the landing is
@@ -160,6 +164,7 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         refresh_open_pulls(state, workspace_id).await;
         settle_closed_pulls(state, workspace_id, &mut stats).await;
         notify_merges(state, workspace_id, &mut stats).await;
+        crate::change_outcomes::check_outcomes(state, workspace_id).await;
     }
     stats
 }

@@ -2725,6 +2725,26 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn list_change_outcomes_due(
+                &self,
+                workspace_id: WorkspaceId,
+                now: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::OutcomeDue>, StoreError> {
+                change_metrics::list_outcomes_due(self.pool(), workspace_id, now, limit).await
+            }
+
+            async fn record_change_outcome(
+                &self,
+                repo: &str,
+                pull_number: i64,
+                outcome: &maidan_types::MergedOutcome,
+                checked_at: chrono::DateTime<chrono::Utc>,
+            ) -> Result<(), StoreError> {
+                change_metrics::record_outcome(self.pool(), repo, pull_number, outcome, checked_at)
+                    .await
+            }
+
             async fn mark_change_pull_checked(
                 &self,
                 repo: &str,

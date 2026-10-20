@@ -189,6 +189,49 @@ pub struct ChangeRound {
     pub previous_head: Option<String>,
 }
 
+/// How long after a merge the change sweep keeps checking whether it held.
+pub const OUTCOME_WINDOW_DAYS: i64 = 30;
+
+/// What happened to a merged change afterwards, as the change sweep read it
+/// from GitHub.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MergedOutcome {
+    /// The commit the merge made on the base: what a revert names.
+    pub merge_commit_sha: Option<String>,
+    /// When a revert of it landed on the base.
+    pub reverted_at: Option<DateTime<Utc>>,
+    /// The reverting pull request (`#12`) or commit.
+    pub revert_ref: Option<String>,
+    /// Later merged pull requests into the same base that say they fix this
+    /// one, or name the same Linear issue.
+    pub followup_fixes: Vec<i64>,
+    /// Commits on the pull request the change flow did not deliver; `None`
+    /// until read, once, after the merge.
+    pub human_commits: Option<i64>,
+    /// Reviews and review comments by accounts that are not bots; `None`
+    /// until read.
+    pub human_reviews: Option<i64>,
+    pub first_human_review_at: Option<DateTime<Utc>>,
+}
+
+/// A merged pull request due an outcome check: merged within
+/// [`OUTCOME_WINDOW_DAYS`], not checked in the last day, in a workspace whose
+/// last batch was over an hour ago.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutcomeDue {
+    /// Lowercase `owner/name`.
+    pub repo: String,
+    pub pull_number: i64,
+    pub merged_at: DateTime<Utc>,
+    /// The branch it merged into, from its newest round.
+    pub base_branch: Option<String>,
+    pub linear_issue: Option<String>,
+    /// Every commit the change flow delivered to it.
+    pub round_commits: Vec<String>,
+    /// What earlier checks found.
+    pub outcome: MergedOutcome,
+}
+
 /// An agent pull request the change flow opened, with its rounds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangePull {
@@ -208,6 +251,8 @@ pub struct ChangePull {
     pub attributes: crate::TaskAttributes,
     /// The Linear issue the change is for, when known.
     pub linear_issue: Option<String>,
+    /// What happened after the merge.
+    pub outcome: MergedOutcome,
 }
 
 /// Why a task needs a look.
@@ -251,6 +296,20 @@ pub struct TaskMetrics {
     /// The Linear issue the change is for, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_issue: Option<String>,
+    /// Whether a revert of it landed on the base; `None` until merged.
+    pub reverted: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revert_ref: Option<String>,
+    /// Later merged pull requests that say they fix this one.
+    pub followup_fixes: Vec<i64>,
+    /// Commits on the pull request the change flow did not deliver: a proxy
+    /// for a person's edits. `None` until read after the merge.
+    pub human_commits: Option<i64>,
+    /// Reviews and review comments by accounts that are not bots: a proxy
+    /// for review effort, which GitHub cannot time.
+    pub human_reviews: Option<i64>,
+    /// From ready (else opened) to the first human review or review comment.
+    pub time_to_first_human_review_secs: Option<i64>,
 }
 
 /// How a set of tasks did: a whole repository, or one slice of it.
@@ -270,6 +329,19 @@ pub struct SliceNumbers {
     /// Total cost of the tasks over the merged ones; `None` before the first
     /// merge.
     pub cost_usd_micros_per_merged: Option<i64>,
+    /// Merged tasks a revert undid.
+    pub reverted: i64,
+    /// `reverted` over the merged tasks whose outcome is known: reverted,
+    /// followed by a fix, or merged over [`OUTCOME_WINDOW_DAYS`] ago. `None`
+    /// with none known.
+    pub revert_rate: Option<f64>,
+    /// Merged tasks a later pull request said it fixed.
+    pub followup_fixed: i64,
+    /// `followup_fixed` over the same known merged tasks.
+    pub followup_fix_rate: Option<f64>,
+    /// Mean commits a person added, over merged tasks read so far.
+    pub mean_human_commits: Option<f64>,
+    pub median_time_to_first_human_review_secs: Option<i64>,
 }
 
 /// The tasks routed to one engine.
@@ -352,8 +424,13 @@ impl Default for FlagLimits {
     }
 }
 
-/// The metrics for `pulls`, oldest first, with a rollup per repository.
-pub fn swarm_metrics(pulls: Vec<ChangePull>, limits: FlagLimits) -> SwarmMetrics {
+/// The metrics for `pulls`, oldest first, with a rollup per repository, as
+/// of `as_of` (which decides whose outcome window has run out).
+pub fn swarm_metrics(
+    pulls: Vec<ChangePull>,
+    limits: FlagLimits,
+    as_of: DateTime<Utc>,
+) -> SwarmMetrics {
     let tasks: Vec<TaskMetrics> = pulls.into_iter().map(|p| task_metrics(p, limits)).collect();
     let mut repos: std::collections::BTreeMap<String, Vec<&TaskMetrics>> = Default::default();
     for task in &tasks {
@@ -361,7 +438,7 @@ pub fn swarm_metrics(pulls: Vec<ChangePull>, limits: FlagLimits) -> SwarmMetrics
     }
     let repos = repos
         .into_iter()
-        .map(|(repo, tasks)| rollup(repo, &tasks, limits.rounds))
+        .map(|(repo, tasks)| rollup(repo, &tasks, limits.rounds, as_of))
         .collect();
     SwarmMetrics { tasks, repos }
 }
@@ -413,15 +490,30 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
         rounds: pull.rounds,
         attributes: pull.attributes,
         linear_issue: pull.linear_issue,
+        reverted: pull.merged_at.map(|_| pull.outcome.reverted_at.is_some()),
+        revert_ref: pull.outcome.revert_ref,
+        followup_fixes: pull.outcome.followup_fixes,
+        human_commits: pull.outcome.human_commits,
+        human_reviews: pull.outcome.human_reviews,
+        time_to_first_human_review_secs: pull.outcome.first_human_review_at.map(|at| {
+            (at - pull.ready_at.unwrap_or(pull.opened_at))
+                .num_seconds()
+                .max(0)
+        }),
     }
 }
 
-fn rollup(repo: String, tasks: &[&TaskMetrics], round_limit: i64) -> RepoRollup {
+fn rollup(
+    repo: String,
+    tasks: &[&TaskMetrics],
+    round_limit: i64,
+    as_of: DateTime<Utc>,
+) -> RepoRollup {
     let mut ready: Vec<i64> = tasks.iter().filter_map(|t| t.time_to_ready_secs).collect();
     ready.sort_unstable();
     let slice = |keep: &dyn Fn(&TaskMetrics) -> bool| -> Option<SliceNumbers> {
         let mine: Vec<&TaskMetrics> = tasks.iter().copied().filter(|t| keep(t)).collect();
-        (!mine.is_empty()).then(|| numbers(&mine, round_limit))
+        (!mine.is_empty()).then(|| numbers(&mine, round_limit, as_of))
     };
     let by_engine = [
         Some(crate::TaskEngine::Pi),
@@ -456,7 +548,7 @@ fn rollup(repo: String, tasks: &[&TaskMetrics], round_limit: i64) -> RepoRollup 
         .collect();
     RepoRollup {
         repo,
-        totals: numbers(tasks, round_limit),
+        totals: numbers(tasks, round_limit, as_of),
         closed_unmerged: tasks
             .iter()
             .filter(|t| t.merged_at.is_none() && t.closed_at.is_some())
@@ -481,8 +573,38 @@ fn misrouted(task: &TaskMetrics, round_limit: i64) -> bool {
             && task.rounds.len() as i64 >= round_limit)
 }
 
-fn numbers(tasks: &[&TaskMetrics], round_limit: i64) -> SliceNumbers {
+/// Whether a merged task's outcome is settled: something was found, or the
+/// window to find it in has run out.
+fn outcome_known(task: &TaskMetrics, as_of: DateTime<Utc>) -> bool {
+    task.merged_at.is_some_and(|merged| {
+        task.reverted == Some(true)
+            || !task.followup_fixes.is_empty()
+            || as_of - merged >= chrono::Duration::days(OUTCOME_WINDOW_DAYS)
+    })
+}
+
+fn rate(hits: i64, of: i64) -> Option<f64> {
+    (of > 0).then(|| hits as f64 / of as f64)
+}
+
+fn numbers(tasks: &[&TaskMetrics], round_limit: i64, as_of: DateTime<Utc>) -> SliceNumbers {
     let count = tasks.len() as i64;
+    let known = tasks.iter().filter(|t| outcome_known(t, as_of)).count() as i64;
+    let reverted = tasks.iter().filter(|t| t.reverted == Some(true)).count() as i64;
+    let followup_fixed = tasks
+        .iter()
+        .filter(|t| t.merged_at.is_some() && !t.followup_fixes.is_empty())
+        .count() as i64;
+    let human: Vec<i64> = tasks
+        .iter()
+        .filter(|t| t.merged_at.is_some())
+        .filter_map(|t| t.human_commits)
+        .collect();
+    let mut first_review: Vec<i64> = tasks
+        .iter()
+        .filter_map(|t| t.time_to_first_human_review_secs)
+        .collect();
+    first_review.sort_unstable();
     let merged = tasks.iter().filter(|t| t.merged_at.is_some()).count() as i64;
     let misrouted = tasks.iter().filter(|t| misrouted(t, round_limit)).count() as i64;
     let cost: i64 = tasks.iter().map(|t| t.cost_usd_micros).sum();
@@ -504,6 +626,13 @@ fn numbers(tasks: &[&TaskMetrics], round_limit: i64) -> SliceNumbers {
         misroute_rate: per_task(misrouted as f64),
         mean_rounds: per_task(tasks.iter().map(|t| t.rounds.len() as f64).sum()),
         cost_usd_micros_per_merged: (merged > 0).then(|| cost / merged),
+        reverted,
+        revert_rate: rate(reverted, known),
+        followup_fixed,
+        followup_fix_rate: rate(followup_fixed, known),
+        mean_human_commits: (!human.is_empty())
+            .then(|| human.iter().sum::<i64>() as f64 / human.len() as f64),
+        median_time_to_first_human_review_secs: first_review.get(first_review.len() / 2).copied(),
     }
 }
 
@@ -577,6 +706,7 @@ mod tests {
             cost_usd_micros: 300,
             attributes: crate::TaskAttributes::default(),
             linear_issue: None,
+            outcome: MergedOutcome::default(),
         }
     }
 
@@ -592,7 +722,7 @@ mod tests {
         let mut edited = pull(vec![round(1, "ccc", 10, None)]);
         edited.merged_at = Some(at(100));
         edited.merged_head_sha = Some("ddd".into());
-        let metrics = swarm_metrics(vec![clean, edited], FlagLimits::default());
+        let metrics = swarm_metrics(vec![clean, edited], FlagLimits::default(), at(0));
         assert_eq!(metrics.tasks[0].merged_without_edits, Some(true));
         assert_eq!(metrics.tasks[0].time_to_ready_secs, Some(600));
         assert_eq!(metrics.tasks[0].time_to_merge_secs, Some(900));
@@ -621,7 +751,7 @@ mod tests {
         let mut merged = pull((1..=5).map(|n| round(n, "x", 5, None)).collect());
         merged.merged_at = Some(at(10));
         let stale = pull(vec![round(1, "a", 3, Some(331))]);
-        let m = swarm_metrics(vec![many, growing, shrinking, merged, stale], limits);
+        let m = swarm_metrics(vec![many, growing, shrinking, merged, stale], limits, at(0));
         assert_eq!(m.tasks[0].flags, vec![TaskFlag::NonConverging]);
         assert_eq!(m.tasks[1].flags, vec![TaskFlag::NonConverging]);
         assert!(m.tasks[2].flags.is_empty());
@@ -645,6 +775,7 @@ mod tests {
                 rounds: 10,
                 ..FlagLimits::default()
             },
+            at(0),
         );
         assert_eq!(m.tasks[0].rebases, 1);
         assert!(m.tasks[0].flags.is_empty(), "{:?}", m.tasks[0].flags);
@@ -689,6 +820,7 @@ mod tests {
         let m = swarm_metrics(
             vec![small, stuck, abandoned, risky, dropped],
             FlagLimits::default(),
+            at(0),
         );
         let repo = &m.repos[0];
         assert_eq!(repo.totals.tasks, 5);
@@ -755,6 +887,72 @@ mod tests {
     }
 
     #[test]
+    fn outcome_rates_count_only_merges_whose_outcome_is_known() {
+        let day = 86_400;
+        let merged = |at_secs: i64, outcome: MergedOutcome| {
+            let mut p = pull(vec![round(1, "a", 5, None)]);
+            p.ready_at = Some(at(at_secs - 1000));
+            p.merged_at = Some(at(at_secs));
+            p.outcome = outcome;
+            p
+        };
+        let reverted = merged(
+            0,
+            MergedOutcome {
+                reverted_at: Some(at(day)),
+                revert_ref: Some("#12".into()),
+                human_commits: Some(2),
+                human_reviews: Some(3),
+                first_human_review_at: Some(at(-900)),
+                ..MergedOutcome::default()
+            },
+        );
+        let fixed = merged(
+            0,
+            MergedOutcome {
+                followup_fixes: vec![9],
+                human_commits: Some(0),
+                ..MergedOutcome::default()
+            },
+        );
+        // Nothing found, and the window has run out: held.
+        let held = merged(0, MergedOutcome::default());
+        // Nothing found yet, two days in: not known, not in the rates.
+        let recent = merged(
+            29 * day,
+            MergedOutcome {
+                human_commits: Some(4),
+                ..MergedOutcome::default()
+            },
+        );
+        let open = pull(vec![round(1, "a", 5, None)]);
+        let m = swarm_metrics(
+            vec![reverted, fixed, held, recent, open],
+            FlagLimits::default(),
+            at(31 * day),
+        );
+        assert_eq!(m.tasks[0].reverted, Some(true));
+        assert_eq!(m.tasks[0].revert_ref.as_deref(), Some("#12"));
+        assert_eq!(m.tasks[0].time_to_first_human_review_secs, Some(100));
+        assert_eq!(m.tasks[1].followup_fixes, vec![9]);
+        assert_eq!(m.tasks[2].reverted, Some(false));
+        assert_eq!(m.tasks[4].reverted, None, "not merged");
+        let totals = &m.repos[0].totals;
+        assert_eq!((totals.reverted, totals.followup_fixed), (1, 1));
+        assert_eq!(totals.revert_rate, Some(1.0 / 3.0));
+        assert_eq!(totals.followup_fix_rate, Some(1.0 / 3.0));
+        assert_eq!(totals.mean_human_commits, Some(2.0));
+        assert_eq!(totals.median_time_to_first_human_review_secs, Some(100));
+
+        let early = swarm_metrics(
+            vec![merged(0, MergedOutcome::default())],
+            FlagLimits::default(),
+            at(day),
+        );
+        assert_eq!(early.repos[0].totals.revert_rate, None, "nothing known yet");
+    }
+
+    #[test]
     fn a_slice_serializes_flat_beside_its_key() {
         let mut task = routed(
             Some(crate::TaskEngine::Pi),
@@ -763,7 +961,7 @@ mod tests {
             1,
         );
         task.merged_at = Some(at(10));
-        let m = swarm_metrics(vec![task], FlagLimits::default());
+        let m = swarm_metrics(vec![task], FlagLimits::default(), at(0));
         let json = serde_json::to_value(&m.repos[0]).unwrap();
         assert_eq!(json["tasks"], 1);
         assert_eq!(json["misroute_rate"], 0.0);

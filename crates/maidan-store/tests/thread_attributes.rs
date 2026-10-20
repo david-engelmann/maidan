@@ -281,7 +281,8 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     assert_eq!(changes.len(), 1, "the undescribed task counts as a change");
     assert_eq!(changes[0].thread_id, plain.id);
 
-    let metrics = maidan_types::swarm_metrics(all, maidan_types::FlagLimits::default());
+    let metrics =
+        maidan_types::swarm_metrics(all, maidan_types::FlagLimits::default(), chrono::Utc::now());
     let rollup = &metrics.repos[0];
     assert_eq!(rollup.by_engine.len(), 2);
     assert_eq!(rollup.by_engine[0].engine, Some(TaskEngine::Pi));

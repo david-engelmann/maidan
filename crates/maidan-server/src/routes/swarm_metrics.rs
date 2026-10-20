@@ -49,5 +49,9 @@ pub async fn get_swarm_metrics(
             query.size,
         )
         .await?;
-    Ok(Json(maidan_types::swarm_metrics(pulls, limits)))
+    Ok(Json(maidan_types::swarm_metrics(
+        pulls,
+        limits,
+        chrono::Utc::now(),
+    )))
 }

@@ -369,6 +369,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Changed:** each repository rollup in `GET /workspaces/{id}/swarm-metrics` now gives the same numbers (tasks, merged, merged without edits, misrouted, misroute rate, mean rounds, cost per merged change) for three splits: `by_engine` (each slice now has its own cost per merged change, which compares Pi with sessions on cost), `by_size` (`S`, `M`, `L`, then unsized) and `by_risk` (standard, then `threat_model`). A task is misrouted when it is open and flagged `non_converging`, or closed unmerged after reaching the round limit.
 - **Added:** a change result may name the Linear issue it is for (`"linear_issue": "ENG-1234"`; ignored unless it is a key). The first round that names one, or that is delivered to a Linear issue, records it on the pull request (migration 0186), and each task in the swarm metrics shows it.
 
+### The swarm metrics say whether a merged change held
+
+- **Added:** for 30 days after an agent pull request merges, the change sweep checks it once a day, in one batch per workspace an hour (migration 0187). It looks for a revert on the base (a `Revert "…"` pull request naming it, or a commit naming its merge commit) and for later merged pull requests that say they fix it or name its Linear issue. Once after the merge, it reads the human-effort proxies: commits the change flow did not deliver, reviews and review comments by people, and the time to the first one. Each task in `GET /workspaces/{id}/swarm-metrics` shows `reverted`, `revert_ref`, `followup_fixes`, `human_commits`, `human_reviews` and `time_to_first_human_review_secs`. Each slice shows the revert and follow-up-fix counts and rates over merges whose outcome is known, the mean human commits and the median time to the first human review. A batch reads each repository and base's commits and closed pull requests once and matches every due pull request against them, rather than searching per pull request.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
