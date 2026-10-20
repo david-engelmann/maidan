@@ -175,6 +175,9 @@ async fn deliver(
     if entry.kind == EgressKind::Result {
         return deliver_result(state, entry, target).await;
     }
+    if entry.kind == EgressKind::Notice {
+        return deliver_notice(state, entry, target).await;
+    }
     deliver_projector(state, target, &entry.body)
         .await
         .map(Sent::Landed)
@@ -317,6 +320,58 @@ async fn deliver_result(
             misconfiguration: true,
         }),
     }
+}
+
+/// Post a notice as written: a task's claim or release on its Linear issue.
+/// The allowlist is read again here, so a team unblessed after the notice
+/// was queued stops it, and the issue must still be in the team the notice
+/// was queued for.
+async fn deliver_notice(
+    state: &AppState,
+    entry: &EgressOutbox,
+    target: &EgressTarget,
+) -> Result<Sent, DeliveryFailure> {
+    let EgressTarget::Linear { team_id, issue } = target else {
+        return Err(DeliveryFailure {
+            message: format!("{} takes no notice", target.surface()),
+            misconfiguration: true,
+        });
+    };
+    let Some(sender) = state.linear_sender.as_ref() else {
+        return Err(DeliveryFailure {
+            message: "no linear sender configured".into(),
+            misconfiguration: false,
+        });
+    };
+    let allowed = state
+        .store
+        .is_egress_target_allowed(
+            entry.workspace_id,
+            maidan_types::EgressSurface::Linear,
+            &target.allowlist_selector(),
+        )
+        .await
+        .map_err(|err| DeliveryFailure {
+            message: err.to_string(),
+            misconfiguration: false,
+        })?;
+    if !allowed {
+        return Ok(Sent::Refused(format!(
+            "Linear team {team_id} is not in the workspace egress allowlist"
+        )));
+    }
+    let found = sender.issue(issue).await.map_err(linear_failure)?;
+    if found.team_id != *team_id {
+        return Ok(Sent::Refused(format!(
+            "{} is no longer in team {team_id}",
+            found.identifier
+        )));
+    }
+    let comment_id = sender
+        .create_comment(&found.id, &entry.body)
+        .await
+        .map_err(linear_failure)?;
+    Ok(Sent::Landed(Some(ExternalRef::Linear { comment_id })))
 }
 
 fn linear_failure(err: crate::linear::LinearError) -> DeliveryFailure {
@@ -1222,8 +1277,13 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 if let Err(err) = state.store.mark_egress_delivered(entry.id).await {
                     tracing::warn!(error = %err, id = %entry.id, "egress worker: mark-delivered failed");
                 }
-                record_result_refused(state, &entry, &target, &reason).await;
-                audit_result_attempt(state, &entry, Some(&target), "refused", Some(&reason)).await;
+                if entry.kind == EgressKind::Result {
+                    record_result_refused(state, &entry, &target, &reason).await;
+                    audit_result_attempt(state, &entry, Some(&target), "refused", Some(&reason))
+                        .await;
+                } else {
+                    tracing::info!(id = %entry.id, kind = %entry.kind, %reason, "egress worker: refused");
+                }
                 crate::metrics::record_egress_delivery(surface, "refused");
                 stats.refused += 1;
             }
@@ -1245,13 +1305,21 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 crate::metrics::record_egress_delivery(surface, "sent");
                 stats.sent += 1;
             }
-            Err(failure) if failure.misconfiguration && entry.kind == EgressKind::Result => {
-                // A result delivery does not ride a projector issue-link. A 401
-                // here must not disable someone else's linked thread.
+            Err(failure) if failure.misconfiguration && entry.kind != EgressKind::Projector => {
+                // A result or a notice does not ride a projector issue-link. A
+                // 401 here must not disable someone else's linked thread.
                 dead_letter(state, &entry, &failure.message).await;
-                record_result_gave_up(state, &entry, &target, &failure.message).await;
-                audit_result_attempt(state, &entry, Some(&target), "dead", Some(&failure.message))
+                if entry.kind == EgressKind::Result {
+                    record_result_gave_up(state, &entry, &target, &failure.message).await;
+                    audit_result_attempt(
+                        state,
+                        &entry,
+                        Some(&target),
+                        "dead",
+                        Some(&failure.message),
+                    )
                     .await;
+                }
                 crate::metrics::record_egress_delivery(surface, "dead");
                 stats.dead += 1;
             }

@@ -625,6 +625,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           ],
           "type": "string"
         },
+        "linear_issue": {
+          "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
+          "type": "string"
+        },
         "size": {
           "enum": [
             "S",
@@ -2446,6 +2450,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "plan",
         "review"
       ],
+      "type": "string"
+    },
+    "linear_issue": {
+      "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
       "type": "string"
     },
     "size": {

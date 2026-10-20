@@ -168,6 +168,51 @@ pub async fn rename_workspace(
     ))
 }
 
+/// `GET /workspaces/:id/linear-claim-comments` — whether the workspace says
+/// its tasks' claims and releases on their Linear issues. `workspace:read`.
+pub async fn get_linear_claim_comments(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<maidan_types::LinearClaimComments>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let enabled = state.store.linear_claim_comments(workspace_id).await?;
+    Ok(Json(maidan_types::LinearClaimComments { enabled }))
+}
+
+/// `PUT /workspaces/:id/linear-claim-comments` — turn the claim and release
+/// comments on or off. Off by default: turning them on starts writing to the
+/// Linear issues tasks name, through the workspace's Linear allowlist, so it
+/// takes `token:admin` and is audited.
+pub async fn set_linear_claim_comments(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<maidan_types::LinearClaimComments>,
+) -> ApiResult<Json<maidan_types::LinearClaimComments>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state
+        .store
+        .set_linear_claim_comments(
+            workspace_id,
+            body.enabled,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "linear.claim_comments.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({ "enabled": body.enabled }),
+            },
+        )
+        .await?;
+    Ok(Json(body))
+}
+
 /// Export the whole workspace content graph as a signed
 /// `maidan.workspace.export/1` envelope. Gated on `token:admin`. Tokens die on
 /// export — secrets are omitted and the envelope records `token_policy`.

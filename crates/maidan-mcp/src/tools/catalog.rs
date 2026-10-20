@@ -405,7 +405,8 @@ pub fn catalog() -> Vec<Value> {
                             "engine": {"type": "string", "enum": ["pi", "session", "human"]},
                             "threat_model": {"type": "boolean"},
                             "size": {"type": "string", "enum": ["S", "M", "L"]},
-                            "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"}
+                            "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"},
+                            "linear_issue": {"type": "string", "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it"}
                         },
                         "required": ["kind"]
                     },
@@ -1454,7 +1455,8 @@ pub fn catalog() -> Vec<Value> {
                     "engine": {"type": "string", "enum": ["pi", "session", "human"], "description": "omit to leave the work unrouted"},
                     "threat_model": {"type": "boolean"},
                     "size": {"type": "string", "enum": ["S", "M", "L"]},
-                    "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"}
+                    "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"},
+                            "linear_issue": {"type": "string", "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it"}
                 },
                 "required": ["thread_id", "kind"]
             }

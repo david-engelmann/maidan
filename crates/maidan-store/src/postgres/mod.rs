@@ -38,6 +38,7 @@ mod import;
 mod inbox;
 mod land_gate;
 mod legal_hold;
+mod linear_notices;
 mod mail_outbox;
 mod mcp_subscriptions;
 mod member_emails;

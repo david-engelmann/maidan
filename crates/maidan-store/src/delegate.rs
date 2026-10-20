@@ -2712,6 +2712,46 @@ macro_rules! store_delegations {
                 change_metrics::list_open(self.pool(), workspace_id, limit).await
             }
 
+            async fn list_linear_claim_comment_workspaces(
+                &self,
+                limit: i64,
+            ) -> Result<Vec<WorkspaceId>, StoreError> {
+                linear_notices::list_enabled(self.pool(), limit).await
+            }
+
+            async fn linear_claim_comments(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<bool, StoreError> {
+                linear_notices::enabled(self.pool(), workspace_id).await
+            }
+
+            async fn set_linear_claim_comments(
+                &self,
+                workspace_id: WorkspaceId,
+                enabled: bool,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                linear_notices::set_enabled(self.pool(), workspace_id, enabled, audit).await
+            }
+
+            async fn list_linear_notices_due(
+                &self,
+                workspace_id: WorkspaceId,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::LinearNoticeDue>, StoreError> {
+                linear_notices::list_due(self.pool(), workspace_id, limit).await
+            }
+
+            async fn record_linear_notice(
+                &self,
+                due: &maidan_types::LinearNoticeDue,
+                outcome: &str,
+                send: Option<maidan_types::NewEgressOutbox>,
+            ) -> Result<bool, StoreError> {
+                linear_notices::record(self.pool(), due, outcome, send).await
+            }
+
             async fn list_change_pulls(
                 &self,
                 workspace_id: WorkspaceId,

@@ -1267,6 +1267,8 @@ struct SetThreadAttributesArgs {
     size: Option<maidan_types::TaskSize>,
     #[serde(default)]
     acceptance: Option<String>,
+    #[serde(default)]
+    linear_issue: Option<String>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1287,6 +1289,7 @@ pub(super) async fn set_thread_attributes(
                 threat_model: a.threat_model,
                 size: a.size,
                 acceptance: a.acceptance,
+                linear_issue: a.linear_issue,
             }
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,

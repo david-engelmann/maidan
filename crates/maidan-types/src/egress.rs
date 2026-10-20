@@ -76,6 +76,9 @@ pub enum EgressKind {
     #[default]
     Projector,
     Result,
+    /// A fixed comment the worker posts as written: a task's claim or
+    /// release on its Linear issue.
+    Notice,
 }
 
 impl EgressKind {
@@ -83,12 +86,14 @@ impl EgressKind {
         match self {
             Self::Projector => "projector",
             Self::Result => "result",
+            Self::Notice => "notice",
         }
     }
 
     pub fn parse(s: &str) -> Self {
         match s {
             "result" => Self::Result,
+            "notice" => Self::Notice,
             _ => Self::Projector,
         }
     }

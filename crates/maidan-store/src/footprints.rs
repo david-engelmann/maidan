@@ -328,6 +328,7 @@ pub(crate) fn group_active(rows: Vec<ItemRow>) -> Result<Vec<ActiveClaim>, Store
                         .as_deref()
                         .and_then(maidan_types::TaskSize::parse),
                     acceptance: row.task_acceptance.clone(),
+                    linear_issue: None,
                 },
             },
         );

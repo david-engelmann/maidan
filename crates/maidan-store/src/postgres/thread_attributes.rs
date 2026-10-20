@@ -17,8 +17,8 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $7)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -27,6 +27,7 @@ pub(crate) async fn insert_on(
     .bind(attributes.size.map(|size| size.as_str()))
     .bind(attributes.acceptance.as_deref())
     .bind(Utc::now())
+    .bind(attributes.linear_issue.as_deref())
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -35,7 +36,7 @@ pub(crate) async fn insert_on(
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance FROM maidan_thread_attributes WHERE thread_id = $1",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue FROM maidan_thread_attributes WHERE thread_id = $1",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -54,6 +55,7 @@ pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, S
             .try_get::<Option<String>, _>("size")?
             .and_then(|size| TaskSize::parse(&size)),
         acceptance: row.try_get("acceptance")?,
+        linear_issue: row.try_get("linear_issue")?,
     })
 }
 
@@ -72,14 +74,15 @@ pub async fn set(
         return Err(StoreError::NotFound);
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $7)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
              threat_model = excluded.threat_model,
              size = excluded.size,
              acceptance = excluded.acceptance,
+             linear_issue = excluded.linear_issue,
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -89,6 +92,7 @@ pub async fn set(
     .bind(attributes.size.map(|size| size.as_str()))
     .bind(attributes.acceptance.as_deref())
     .bind(Utc::now())
+    .bind(attributes.linear_issue.as_deref())
     .execute(pool)
     .await?;
     Ok(attributes)

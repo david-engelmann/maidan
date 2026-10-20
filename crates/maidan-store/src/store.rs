@@ -2247,6 +2247,34 @@ pub trait AssignmentStore: Send + Sync {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<(String, i64)>, StoreError>;
+    /// The workspaces that have turned Linear claim comments on.
+    async fn list_linear_claim_comment_workspaces(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<WorkspaceId>, StoreError>;
+    /// Whether a workspace says its tasks' claims and releases on Linear.
+    async fn linear_claim_comments(&self, workspace_id: WorkspaceId) -> Result<bool, StoreError>;
+    /// Turn Linear claim comments on or off, audited in the same transaction.
+    async fn set_linear_claim_comments(
+        &self,
+        workspace_id: WorkspaceId,
+        enabled: bool,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// Claim and release notices due on tasks' Linear issues in a workspace.
+    async fn list_linear_notices_due(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::LinearNoticeDue>, StoreError>;
+    /// Record a notice as handled and queue its comment in one transaction;
+    /// `false` when it was handled already.
+    async fn record_linear_notice(
+        &self,
+        due: &maidan_types::LinearNoticeDue,
+        outcome: &str,
+        send: Option<maidan_types::NewEgressOutbox>,
+    ) -> Result<bool, StoreError>;
     /// Tracked agent pull requests in a workspace with their rounds and cost.
     async fn list_change_pulls(
         &self,

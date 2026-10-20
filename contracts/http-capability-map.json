@@ -883,6 +883,18 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/linear-claim-comments",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/linear-claim-comments",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{id}/slots",
     "capability": "workspace:read",
     "surface": "http"

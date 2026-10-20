@@ -612,6 +612,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true } }));
     }
+    if path == "/workspaces/{id}/linear-claim-comments" && method == "PUT" {
+        return b.json(&json!({ "enabled": false }));
+    }
     if path == "/workspaces/{id}/slots" && method == "PUT" {
         return b.json(&json!({ "slot": "rust-build", "capacity": 2 }));
     }

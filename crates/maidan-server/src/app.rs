@@ -195,6 +195,10 @@ pub fn router(state: AppState) -> Router {
         .route("/workspaces/{id}", get(routes::get_workspace))
         .route("/workspaces/{id}", patch(routes::rename_workspace))
         .route("/workspaces/{id}/purge", post(routes::purge_workspace))
+        .route(
+            "/workspaces/{id}/linear-claim-comments",
+            get(routes::get_linear_claim_comments).merge(put(routes::set_linear_claim_comments)),
+        )
         .route("/workspaces/{id}", delete(routes::erase_workspace))
         .route("/workspaces/{id}/audit", get(routes::list_workspace_audit))
         .route("/workspaces/{id}/export", get(routes::export_workspace))

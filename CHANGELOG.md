@@ -373,6 +373,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** for 30 days after an agent pull request merges, the change sweep checks it once a day, in one batch per workspace an hour (migration 0187). It looks for a revert on the base (a `Revert "…"` pull request naming it, or a commit naming its merge commit) and for later merged pull requests that say they fix it or name its Linear issue. Once after the merge, it reads the human-effort proxies: commits the change flow did not deliver, reviews and review comments by people, and the time to the first one. Each task in `GET /workspaces/{id}/swarm-metrics` shows `reverted`, `revert_ref`, `followup_fixes`, `human_commits`, `human_reviews` and `time_to_first_human_review_secs`. Each slice shows the revert and follow-up-fix counts and rates over merges whose outcome is known, the mean human commits and the median time to the first human review. A batch reads each repository and base's commits and closed pull requests once and matches every due pull request against them, rather than searching per pull request.
 
+### Claim and release comments on a task's Linear issue, off by default
+
+- **Added:** a task's attributes may name its Linear issue (`linear_issue`, an issue key). With the new per-workspace switch on (`PUT /workspaces/{id}/linear-claim-comments`, `token:admin`, audited; `GET` reads it; off by default, migration 0188), the change sweep says once on that issue `CLAIM: pi/<task id> claimed in Maidan by <handle>: <title>` when the task is first claimed, and `RELEASED: pi/<task id> ended without merging: <title>` when it closes or is archived with no merged pull request. The comments use the Linear delivery path's key and per-team allowlist, checked when queued and again when posted. An issue in a team the workspace has not blessed is recorded as skipped and never written to.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

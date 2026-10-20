@@ -381,6 +381,8 @@
   {"method":"GET","path":"/workspaces/{id}/room","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/run-occupancy","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/run-threads","kind":"reads"},
+  {"method":"GET","path":"/workspaces/{id}/linear-claim-comments","kind":"reads"},
+  {"method":"PUT","path":"/workspaces/{id}/linear-claim-comments","kind":"changes"},
   {"method":"DELETE","path":"/workspaces/{id}/slots","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/slots","kind":"reads"},
   {"method":"PUT","path":"/workspaces/{id}/slots","kind":"changes"},
