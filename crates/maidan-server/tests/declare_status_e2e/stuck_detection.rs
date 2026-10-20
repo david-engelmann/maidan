@@ -90,7 +90,7 @@ async fn worked_task(
         .await
         .unwrap();
     let claimed = store
-        .claim_next_thread(channel, agent, Some(600))
+        .claim_next_thread(channel, agent, Some(600), None)
         .await
         .unwrap()
         .unwrap();

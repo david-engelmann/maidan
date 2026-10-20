@@ -2015,11 +2015,23 @@ pub struct Thread {
     /// list reads.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub closed_without_review: bool,
+    /// The thread's task attributes (kind, engine, threat model). Populated
+    /// by the API layer on the reads that report them; `None` in store-level
+    /// queries that do not read the attributes table. A thread with no
+    /// attributes row reads as [`TaskAttributes::default`] where they are
+    /// reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<crate::TaskAttributes>,
     /// The change notices on the thread, newest first, at most 10. Read by a
     /// single-thread read, so a worker sees "rebase before you deliver" with
     /// the thread; empty on the list reads.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<crate::change_metrics::ThreadNotice>,
+    /// On a plan parent, how far its children have got. Read by a
+    /// single-thread read only; absent on lists and on threads that are not
+    /// plans with children.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_state: Option<crate::plan::PlanState>,
     /// When the holder of a live, acknowledged lease last showed progress:
     /// the latest of its acknowledgement, its last message on the thread and
     /// its active status declaration. A lease renewal is not progress, since
@@ -2033,6 +2045,12 @@ pub struct Thread {
     /// board's reads from [`Thread::last_progress_at`].
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stalled: bool,
+    /// Where a thread whose holder is waiting on a person stands: the
+    /// holder of a live, acknowledged lease declared `needs_input` or
+    /// `needs_review` and no person has answered yet. Set by the board's
+    /// reads; `None` elsewhere and when nobody is waiting on a person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_wait: Option<HumanWait>,
 }
 
 #[derive(Debug, Clone)]
@@ -4449,5 +4467,146 @@ mod vote_kind_tests {
                 "{rejected} parsed"
             );
         }
+    }
+}
+
+/// Where an agent's wait on a person stands. The policy at the end is
+/// locked: an unanswered wait returns the thread to the queue, and no
+/// transition leads to a decision made on the person's behalf, because a
+/// silence is not a yes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum HumanWaitState {
+    /// The holder declared it needs a person, inside the first half of the
+    /// timeout.
+    Waiting,
+    /// Past half the timeout with no answer: the board warns before the
+    /// thread goes back.
+    Overdue,
+    /// The timeout ran out: the holder's claim was released and the thread
+    /// is claimable again. Terminal.
+    ReturnedToQueue,
+    /// A person answered, which clears the declaration. Terminal.
+    Answered,
+}
+
+/// What can happen to a wait on a person.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HumanWaitInput {
+    /// Half the timeout passed without an answer.
+    WarnElapsed,
+    /// The whole timeout passed without an answer.
+    TimeoutElapsed,
+    /// A person responded on the thread.
+    HumanResponded,
+}
+
+/// A move the human-wait machine does not make.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("a {from:?} wait does not move on {input:?}")]
+pub struct IllegalHumanWaitTransition {
+    pub from: HumanWaitState,
+    pub input: HumanWaitInput,
+}
+
+impl HumanWaitState {
+    /// The one table of moves. Anything not listed is refused rather than
+    /// ignored, so a caller replaying inputs in the wrong order finds out.
+    pub fn next(self, input: HumanWaitInput) -> Result<Self, IllegalHumanWaitTransition> {
+        use HumanWaitInput::*;
+        use HumanWaitState::*;
+        match (self, input) {
+            (Waiting, WarnElapsed) => Ok(Overdue),
+            (Waiting | Overdue, TimeoutElapsed) => Ok(ReturnedToQueue),
+            (Waiting | Overdue, HumanResponded) => Ok(Answered),
+            (from, input) => Err(IllegalHumanWaitTransition { from, input }),
+        }
+    }
+
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::ReturnedToQueue | Self::Answered)
+    }
+}
+
+/// A wait on a person as the board shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HumanWait {
+    pub state: HumanWaitState,
+    /// When the holder declared it needs a person.
+    pub since: DateTime<Utc>,
+    /// When an unanswered wait returns the thread to the queue.
+    pub returns_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod human_wait_tests {
+    use super::*;
+
+    const STATES: [HumanWaitState; 4] = [
+        HumanWaitState::Waiting,
+        HumanWaitState::Overdue,
+        HumanWaitState::ReturnedToQueue,
+        HumanWaitState::Answered,
+    ];
+    const INPUTS: [HumanWaitInput; 3] = [
+        HumanWaitInput::WarnElapsed,
+        HumanWaitInput::TimeoutElapsed,
+        HumanWaitInput::HumanResponded,
+    ];
+
+    #[test]
+    fn the_human_wait_machine_moves_only_along_its_table() {
+        use HumanWaitInput::*;
+        use HumanWaitState::*;
+        let allowed = [
+            (Waiting, WarnElapsed, Overdue),
+            (Waiting, TimeoutElapsed, ReturnedToQueue),
+            (Overdue, TimeoutElapsed, ReturnedToQueue),
+            (Waiting, HumanResponded, Answered),
+            (Overdue, HumanResponded, Answered),
+        ];
+        for from in STATES {
+            for input in INPUTS {
+                let expected = allowed
+                    .iter()
+                    .find(|(f, i, _)| *f == from && *i == input)
+                    .map(|(_, _, to)| *to);
+                assert_eq!(from.next(input).ok(), expected, "{from:?} on {input:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_unanswered_wait_ends_back_in_the_queue_and_terminal_states_stay_put() {
+        for from in [HumanWaitState::Waiting, HumanWaitState::Overdue] {
+            assert_eq!(
+                from.next(HumanWaitInput::TimeoutElapsed),
+                Ok(HumanWaitState::ReturnedToQueue)
+            );
+        }
+        for terminal in STATES.into_iter().filter(|s| s.is_terminal()) {
+            for input in INPUTS {
+                assert!(terminal.next(input).is_err(), "{terminal:?} on {input:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_wire_names_are_snake_case() {
+        let names: Vec<String> = STATES
+            .iter()
+            .map(|s| serde_json::to_string(s).unwrap_or_default())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "\"waiting\"",
+                "\"overdue\"",
+                "\"returned_to_queue\"",
+                "\"answered\""
+            ]
+        );
     }
 }

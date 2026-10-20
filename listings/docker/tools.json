@@ -293,11 +293,19 @@
       "name": "release_claim"
     },
     {
+      "description": "Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.",
+      "name": "set_thread_attributes"
+    },
+    {
+      "description": "Make every child of a plan thread in one call. Only the member holding the plan thread's live claim can plan it, passing that claim's lease_id. Each child has a key unique in the plan, a title, and optional description, attributes, footprint and depends_on (keys of other children in the same plan). Children are created in the plan thread's channel with their dependency edges, so dependents stay off the queue until what they depend on lands; a child that closes without landing blocks its dependents, and the plan thread closes itself when its last child lands. Every child repository must be on this workspace's github_branch egress allowlist. A bad child, an unknown or cyclic depends_on, or too many children for the spawn budget creates nothing. Calling again from the same claim with the same keys answers the children already made (replayed: true); any other plan on a thread that has children is refused with error code -32010 and data.children.",
+      "name": "submit_plan"
+    },
+    {
       "description": "Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.",
       "name": "set_thread_footprint"
     },
     {
-      "description": "List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.",
+      "description": "List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items, attributes), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.",
       "name": "list_active_claims"
     },
     {

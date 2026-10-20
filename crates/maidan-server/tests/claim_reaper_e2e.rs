@@ -117,12 +117,12 @@ async fn reaper_frees_a_lapsed_lease_and_publishes_claim_expired(
     new_thread(store.as_ref(), r.channel, "dead").await;
     new_thread(store.as_ref(), r.channel, "alive").await;
     let dead = store
-        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .claim_next_thread(r.channel, r.holder, Some(3600), None)
         .await
         .unwrap()
         .unwrap();
     let alive = store
-        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .claim_next_thread(r.channel, r.holder, Some(3600), None)
         .await
         .unwrap()
         .unwrap();
@@ -223,7 +223,7 @@ async fn reaper_stops_a_hung_claim_past_its_wall_budget(
     let r = room(store.as_ref()).await;
     new_thread(store.as_ref(), r.channel, "hung").await;
     let held = store
-        .claim_next_thread(r.channel, r.holder, Some(LEASE_SECS))
+        .claim_next_thread(r.channel, r.holder, Some(LEASE_SECS), None)
         .await
         .unwrap()
         .unwrap();
@@ -321,7 +321,7 @@ async fn reaper_reports_an_unacknowledged_claim_once(
     new_thread(store.as_ref(), r.channel, "silent").await;
     new_thread(store.as_ref(), r.channel, "working").await;
     let silent = store
-        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .claim_next_thread(r.channel, r.holder, Some(3600), None)
         .await
         .unwrap()
         .unwrap();
@@ -330,7 +330,7 @@ async fn reaper_reports_an_unacknowledged_claim_once(
         .await
         .unwrap();
     let working = store
-        .claim_next_thread(r.channel, r.holder, Some(3600))
+        .claim_next_thread(r.channel, r.holder, Some(3600), None)
         .await
         .unwrap()
         .unwrap();

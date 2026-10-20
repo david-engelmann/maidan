@@ -17,7 +17,7 @@ pub enum ConfigError {
     Invalid(&'static str, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ArtifactBackend {
     LocalFs {
         root: PathBuf,
@@ -29,6 +29,29 @@ pub enum ArtifactBackend {
         access_key: String,
         secret_key: String,
     },
+}
+
+// Written out rather than derived, so the S3 credentials never reach a `{:?}`.
+impl std::fmt::Debug for ArtifactBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LocalFs { root } => f.debug_struct("LocalFs").field("root", root).finish(),
+            Self::S3 {
+                endpoint,
+                bucket,
+                region,
+                access_key: _,
+                secret_key: _,
+            } => f
+                .debug_struct("S3")
+                .field("endpoint", endpoint)
+                .field("bucket", bucket)
+                .field("region", region)
+                .field("access_key", &"***")
+                .field("secret_key", &"***")
+                .finish(),
+        }
+    }
 }
 
 /// Database connection-pool and timeout tuning. All fields are env-driven with
@@ -127,7 +150,7 @@ impl DbConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub bind: SocketAddr,
     pub database_url: String,
@@ -138,6 +161,25 @@ pub struct Config {
     pub artifact_backend: ArtifactBackend,
     pub log_filter: String,
     pub db: DbConfig,
+}
+
+// Written out rather than derived so that formatting a `Config` with `{:?}`
+// cannot print the database password or token from either connection URL.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use maidan_store::dialect::redact_connection_url;
+        f.debug_struct("Config")
+            .field("bind", &self.bind)
+            .field("database_url", &redact_connection_url(&self.database_url))
+            .field(
+                "replica_url",
+                &self.replica_url.as_deref().map(redact_connection_url),
+            )
+            .field("artifact_backend", &self.artifact_backend)
+            .field("log_filter", &self.log_filter)
+            .field("db", &self.db)
+            .finish()
+    }
 }
 
 pub fn is_production() -> bool {
@@ -278,6 +320,29 @@ mod tests {
     }
 
     #[test]
+    fn debug_formatting_masks_both_connection_urls() {
+        let config = Config {
+            bind: "127.0.0.1:8080".parse().expect("addr"),
+            database_url: "postgres://maidan:S3cr3tPw@db.example/maidan?sslmode=require".into(),
+            replica_url: Some("postgres://reader:R3pl1caPw@replica.example/maidan".into()),
+            artifact_backend: ArtifactBackend::LocalFs {
+                root: PathBuf::from("/data"),
+            },
+            log_filter: "info".into(),
+            db: DbConfig::from_lookup(|_| None).expect("defaults"),
+        };
+        let shown = format!("{config:?}");
+        assert!(
+            !shown.contains("S3cr3tPw") && !shown.contains("R3pl1caPw"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains("db.example") && shown.contains("replica.example"),
+            "{shown}"
+        );
+    }
+
+    #[test]
     fn auth_disabled_is_fail_closed() {
         // Not requested → always fine regardless of the other flags.
         assert!(validate_insecure_no_auth(false, false, false).is_ok());
@@ -375,5 +440,25 @@ mod tests {
             err,
             ConfigError::Invalid("MAIDAN_DB_MAX_CONNECTIONS", _)
         ));
+    }
+
+    #[test]
+    fn debug_formatting_hides_the_s3_keys() {
+        let backend = ArtifactBackend::S3 {
+            endpoint: "https://acct.r2.cloudflarestorage.com".into(),
+            bucket: "maidan-artifacts".into(),
+            region: "auto".into(),
+            access_key: "R2ACCESSKEYEXAMPLE".into(),
+            secret_key: "r2-S3cr3t-value".into(),
+        };
+        let shown = format!("{backend:?}");
+        assert!(
+            !shown.contains("R2ACCESSKEYEXAMPLE") && !shown.contains("r2-S3cr3t-value"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains("maidan-artifacts") && shown.contains("auto"),
+            "{shown}"
+        );
     }
 }

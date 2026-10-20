@@ -29,13 +29,13 @@ async fn claim(
 ) -> Option<Thread> {
     if with_event {
         store
-            .claim_next_thread_with_event(channel, member, Some(60), None)
+            .claim_next_thread_with_event(channel, member, Some(60), None, None)
             .await
             .expect("claim")
             .0
     } else {
         store
-            .claim_next_thread(channel, member, Some(60))
+            .claim_next_thread(channel, member, Some(60), None)
             .await
             .expect("claim")
     }

@@ -476,16 +476,33 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A job past its timeout ends "cancelled" and never saves its cache, so a
+    # tight one starts every later run cold and fails again. At 15 minutes the
+    # cold job was cut off compiling the server test, after the search tests
+    # had passed (2026-10-15 and 2026-10-16).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      # The pgvector tests pull from Docker Hub, which failed this job on main
+      # on 2026-10-16 (`bytes remaining on stream`); the other container jobs
+      # already pull through Google's public mirror of it.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+      # Reading the dependency graph is enough to prove the default build
+      # leaves sqlite-vec out. The unit and lint jobs already compile the
+      # default build; compiling it here too took ten of the old fifteen minutes.
       - name: default build omits sqlite-vec
         run: |
-          cargo build -p maidan-search -p maidan-server --all-targets
           if cargo tree -p maidan-search -e normal -i sqlite-vec 2>/dev/null | grep -q .; then
             echo "::error::sqlite-vec must not be in the normal dependency tree without --features"
             cargo tree -p maidan-search -e normal -i sqlite-vec

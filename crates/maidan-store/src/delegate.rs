@@ -1777,8 +1777,26 @@ macro_rules! store_delegations {
                 &self,
                 new: NewThread,
                 footprint: Option<maidan_types::Footprint>,
+                attributes: Option<maidan_types::TaskAttributes>,
+                priority: Option<i64>,
             ) -> Result<(Thread, StoredEvent), StoreError> {
-                threads::create_with_footprint(self.pool(), new, footprint).await
+                threads::create_with_footprint(self.pool(), new, footprint, attributes, priority)
+                    .await
+            }
+
+            async fn get_thread_attributes(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<maidan_types::TaskAttributes, StoreError> {
+                thread_attributes::get(self.read_pool(), thread_id).await
+            }
+
+            async fn set_thread_attributes(
+                &self,
+                thread_id: ThreadId,
+                attributes: maidan_types::TaskAttributes,
+            ) -> Result<maidan_types::TaskAttributes, StoreError> {
+                thread_attributes::set(self.pool(), thread_id, attributes).await
             }
 
             async fn get_thread(&self, id: ThreadId) -> Result<Thread, StoreError> {
@@ -1836,7 +1854,8 @@ macro_rules! store_delegations {
                 actor_id: MemberId,
                 action: maidan_fsm::ThreadAction,
             ) -> Result<ThreadTransitionResult, StoreError> {
-                thread_transitions::transition(self.pool(), thread_id, actor_id, action).await
+                thread_transitions::transition(self.pool(), &self.keys, thread_id, actor_id, action)
+                    .await
             }
 
             async fn transition_thread_with_event(
@@ -1844,9 +1863,15 @@ macro_rules! store_delegations {
                 thread_id: ThreadId,
                 actor_id: MemberId,
                 action: maidan_fsm::ThreadAction,
-            ) -> Result<(ThreadTransitionResult, StoredEvent), StoreError> {
-                thread_transitions::transition_with_event(self.pool(), thread_id, actor_id, action)
-                    .await
+            ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
+                thread_transitions::transition_with_event(
+                    self.pool(),
+                    &self.keys,
+                    thread_id,
+                    actor_id,
+                    action,
+                )
+                .await
             }
 
             async fn list_thread_transitions(
@@ -2504,8 +2529,9 @@ macro_rules! store_delegations {
                 channel_id: ChannelId,
                 member_id: MemberId,
                 lease_secs: Option<i64>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<Option<Thread>, StoreError> {
-                threads::claim_next(self.pool(), channel_id, member_id, lease_secs).await
+                threads::claim_next(self.pool(), channel_id, member_id, lease_secs, engine).await
             }
 
             async fn claim_next_thread_with_event(
@@ -2514,6 +2540,7 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2521,6 +2548,7 @@ macro_rules! store_delegations {
                     member_id,
                     lease_secs,
                     repo,
+                    engine,
                 )
                 .await
             }
@@ -2531,6 +2559,7 @@ macro_rules! store_delegations {
                 member_id: MemberId,
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2538,6 +2567,7 @@ macro_rules! store_delegations {
                     member_id,
                     lease_secs,
                     repo,
+                    engine,
                 )
                 .await
             }
@@ -2619,6 +2649,23 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn change_round_previous_head(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+                commit_sha: &str,
+            ) -> Result<Option<String>, StoreError> {
+                change_metrics::round_previous_head(
+                    self.read_pool(),
+                    workspace_id,
+                    repo,
+                    pull_number,
+                    commit_sha,
+                )
+                .await
+            }
+
             async fn mark_change_pull_ready(
                 &self,
                 repo: &str,
@@ -2660,8 +2707,12 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 repo: Option<&str>,
                 since: Option<chrono::DateTime<chrono::Utc>>,
+                engine: Option<maidan_types::TaskEngine>,
+                kind: Option<maidan_types::TaskKind>,
+                size: Option<maidan_types::TaskSize>,
             ) -> Result<Vec<maidan_types::ChangePull>, StoreError> {
-                change_metrics::list(self.pool(), workspace_id, repo, since).await
+                change_metrics::list(self.pool(), workspace_id, repo, since, engine, kind, size)
+                    .await
             }
 
             async fn mark_change_pull_checked(
@@ -2693,7 +2744,7 @@ macro_rules! store_delegations {
                 repo: &str,
                 pull_number: i64,
             ) -> Result<maidan_types::ChangeSettlement, StoreError> {
-                change_metrics::settle(self.pool(), repo, pull_number).await
+                change_metrics::settle(self.pool(), &self.keys, repo, pull_number).await
             }
 
             async fn notify_change_merges(
@@ -2769,6 +2820,17 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<StoredEvent>, StoreError> {
                 threads::report_unacknowledged_claims(self.pool(), now, claimed_before, limit).await
+            }
+
+            async fn return_human_timeouts(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                declared_before: chrono::DateTime<chrono::Utc>,
+                policy: &str,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                threads::return_human_timeouts(self.pool(), now, declared_before, policy, limit)
+                    .await
             }
 
             async fn renew_claim(
@@ -3026,6 +3088,22 @@ macro_rules! store_delegations {
                 depends_on: ThreadId,
             ) -> Result<bool, StoreError> {
                 thread_deps::remove(self.pool(), thread_id, depends_on).await
+            }
+
+            async fn submit_plan(
+                &self,
+                parent_id: ThreadId,
+                member_id: MemberId,
+                plan: maidan_types::SubmitPlan,
+            ) -> Result<maidan_types::PlanOutcome, StoreError> {
+                plans::submit(self.pool(), parent_id, member_id, plan).await
+            }
+
+            async fn get_plan_state(
+                &self,
+                parent_id: ThreadId,
+            ) -> Result<Option<maidan_types::PlanState>, StoreError> {
+                plans::state(self.read_pool(), parent_id).await
             }
 
             async fn list_thread_dependencies(

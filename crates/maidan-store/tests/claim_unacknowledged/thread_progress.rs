@@ -16,13 +16,13 @@ use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
-struct Room {
-    channel: ChannelId,
-    worker: MemberId,
-    lead: MemberId,
+pub(super) struct Room {
+    pub(super) channel: ChannelId,
+    pub(super) worker: MemberId,
+    pub(super) lead: MemberId,
 }
 
-async fn room(store: &dyn Store, name: &str) -> Room {
+pub(super) async fn room(store: &dyn Store, name: &str) -> Room {
     let ws = store
         .create_workspace(NewWorkspace { name: name.into() })
         .await
@@ -58,7 +58,7 @@ async fn room(store: &dyn Store, name: &str) -> Room {
     }
 }
 
-async fn task(store: &dyn Store, room: &Room, title: &str) -> ThreadId {
+pub(super) async fn task(store: &dyn Store, room: &Room, title: &str) -> ThreadId {
     store
         .create_thread_with_event(NewThread {
             channel_id: room.channel,
@@ -118,7 +118,7 @@ async fn progress(
 
 /// Timestamps on SQLite can be second-grained; a step this long always moves
 /// a clock that should move.
-async fn tick() {
+pub(super) async fn tick() {
     tokio::time::sleep(Duration::from_millis(1100)).await;
 }
 
@@ -134,7 +134,7 @@ async fn the_holders_own_activity_moves_the_clock(store: Arc<dyn Store>) {
     );
 
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -219,7 +219,7 @@ async fn a_lease_less_assignment_or_a_thread_in_review_has_no_clock(store: Arc<d
 
     let leased = task(store.as_ref(), &room, "leased").await;
     let claimed = store
-        .claim_next_thread(room.channel, room.worker, Some(600))
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -236,7 +236,7 @@ async fn a_lease_less_assignment_or_a_thread_in_review_has_no_clock(store: Arc<d
     assert_eq!(progress(store.as_ref(), &room, leased).await, None);
 }
 
-async fn sqlite() -> Arc<dyn Store> {
+pub(super) async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect("sqlite::memory:")
@@ -247,7 +247,8 @@ async fn sqlite() -> Arc<dyn Store> {
     Arc::new(SqliteStore::for_tests(pool))
 }
 
-async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn Store>)> {
+pub(super) async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn Store>)>
+{
     let container = match Postgres::default()
         .with_name("pgvector/pgvector")
         .with_tag("pg17")

@@ -160,6 +160,13 @@ struct CreateThreadArgs {
     /// Stored with the thread, so the claim queue never sees it without one.
     #[serde(default)]
     footprint: Option<maidan_types::Footprint>,
+    /// The task's attributes, stored with the thread: its kind, the engine
+    /// it is routed to, and whether it needs a threat model.
+    #[serde(default)]
+    attributes: Option<maidan_types::TaskAttributes>,
+    /// Dispatch priority, stored with the thread.
+    #[serde(default)]
+    priority: Option<i64>,
 }
 
 /// Create a thread. `workspace:write` plus channel access, same as
@@ -180,6 +187,14 @@ pub(super) async fn create_thread(
                 .map_err(|e| McpError::InvalidParams(format!("footprint: {e}")))
         })
         .transpose()?;
+    let attributes = a
+        .attributes
+        .map(|attributes| {
+            attributes
+                .validated()
+                .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))
+        })
+        .transpose()?;
     let created = server
         .store
         .create_thread_with_footprint(
@@ -191,9 +206,12 @@ pub(super) async fn create_thread(
                 created_by: auth.attribution().map(|a| a.subject_id),
             },
             footprint,
+            attributes.clone(),
+            a.priority,
         )
         .await;
-    let (thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
+    let (mut thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
+    thread.attributes = Some(attributes.unwrap_or_default());
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
@@ -490,7 +508,9 @@ pub(super) async fn transition_thread(
             return Err(err.into());
         }
     };
-    server.publish_stored(&stored).await;
+    for event in &stored {
+        server.publish_stored(event).await;
+    }
     // Entering a terminal state can unblock dependents. Same derived
     // `ThreadReady` emit as REST — best-effort, never undoes the committed
     // transition.
@@ -997,6 +1017,10 @@ struct ClaimNextThreadArgs {
     /// Only a thread whose footprint names this repository.
     #[serde(default)]
     repo: Option<String>,
+    /// Only a thread routed to this engine; a thread routed to another
+    /// engine, or not routed at all, is never handed over.
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
 }
 
 /// The repository a claimer serves, normalized as footprints store it.
@@ -1037,6 +1061,7 @@ pub(super) async fn claim_next_thread(
             member_id,
             Some(lease_secs),
             repo.as_deref(),
+            a.engine,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -1050,6 +1075,8 @@ struct ClaimNextWorkspaceThreadArgs {
     lease_secs: Option<i64>,
     #[serde(default)]
     repo: Option<String>,
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
 }
 
 /// `claim_next_thread` across every channel of the caller's workspace it may
@@ -1077,6 +1104,7 @@ pub(super) async fn claim_next_workspace_thread(
             auth.member_id,
             Some(lease_secs),
             repo.as_deref(),
+            a.engine,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -1224,6 +1252,91 @@ pub(super) async fn set_thread_footprint(
         return Err(McpError::FootprintConflict(conflicts));
     }
     Ok(content_json(&store.get_thread_footprint(thread_id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SetThreadAttributesArgs {
+    thread_id: uuid::Uuid,
+    kind: maidan_types::TaskKind,
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
+    #[serde(default)]
+    threat_model: bool,
+    #[serde(default)]
+    size: Option<maidan_types::TaskSize>,
+    #[serde(default)]
+    acceptance: Option<String>,
+}
+
+/// Replace a thread's task attributes whole: what kind of work it is, who
+/// or what it is routed to, and whether it needs a threat model. Thread
+/// access is enforced pre-dispatch. The MCP twin of
+/// `PUT /threads/:id/attributes`.
+pub(super) async fn set_thread_attributes(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SetThreadAttributesArgs = crate::tools::parse_args(args)?;
+    let stored = store
+        .set_thread_attributes(
+            ThreadId(a.thread_id),
+            maidan_types::TaskAttributes {
+                kind: a.kind,
+                engine: a.engine,
+                threat_model: a.threat_model,
+                size: a.size,
+                acceptance: a.acceptance,
+            }
+            .validated()
+            .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,
+        )
+        .await?;
+    Ok(content_json(&stored))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SubmitPlanArgs {
+    thread_id: uuid::Uuid,
+    lease_id: ClaimLeaseId,
+    children: Vec<PlanChild>,
+}
+
+/// Make a plan parent's children, with their attributes, footprints and
+/// dependency edges, in one transaction. Thread access is enforced
+/// pre-dispatch; the store checks the caller holds the parent's live claim
+/// under `lease_id`. The MCP twin of `POST /threads/:id/plan`.
+pub(super) async fn submit_plan(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: SubmitPlanArgs = crate::tools::parse_args(args)?;
+    let plan = SubmitPlan {
+        lease_id: a.lease_id,
+        children: a.children,
+    }
+    .validated()
+    .map_err(McpError::InvalidParams)?;
+    let outcome = server
+        .store
+        .submit_plan(ThreadId(a.thread_id), auth.member_id, plan)
+        .await?;
+    match outcome {
+        PlanOutcome::Created { children, events } => {
+            for stored in &events {
+                server.publish_stored(stored).await;
+            }
+            Ok(content_json(
+                &json!({ "children": children, "replayed": false }),
+            ))
+        }
+        PlanOutcome::Replayed(children) => Ok(content_json(
+            &json!({ "children": children, "replayed": true }),
+        )),
+        PlanOutcome::Conflict(children) => Err(McpError::PlanConflict(children)),
+    }
 }
 
 #[derive(Deserialize)]

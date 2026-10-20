@@ -93,7 +93,7 @@ async fn declare(store: &dyn Store, thread: ThreadId, fp: Footprint) {
 
 async fn claim(store: &dyn Store, room: &Room, agent: usize) -> Option<Thread> {
     store
-        .claim_next_thread(room.channel, room.agents[agent], Some(600))
+        .claim_next_thread(room.channel, room.agents[agent], Some(600), None)
         .await
         .unwrap()
 }
@@ -152,7 +152,7 @@ async fn a_lapsed_lease_frees_its_footprint(store: Arc<dyn Store>) {
 
     // Branches are exclusive even when both sides say shared.
     let lapsing = store
-        .claim_next_thread(room.channel, room.agents[0], Some(1))
+        .claim_next_thread(room.channel, room.agents[0], Some(1), None)
         .await
         .unwrap()
         .unwrap();
@@ -344,7 +344,7 @@ async fn the_claims_list_keeps_to_the_read_rule(store: Arc<dyn Store>) {
     )
     .await;
     store
-        .claim_next_thread(private.id, room.agents[0], Some(600))
+        .claim_next_thread(private.id, room.agents[0], Some(600), None)
         .await
         .unwrap()
         .unwrap();
@@ -523,7 +523,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
     .await;
 
     let (claimed, _) = store
-        .claim_next_thread_with_event(room.channel, room.agents[0], Some(600), Some(REPO))
+        .claim_next_thread_with_event(room.channel, room.agents[0], Some(600), Some(REPO), None)
         .await
         .unwrap();
     assert_eq!(
@@ -532,12 +532,18 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
         "the oldest work is skipped: it is not this repository's"
     );
     let (claimed, _) = store
-        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), Some(REPO))
+        .claim_next_workspace_thread_with_event(
+            room.ws,
+            room.agents[1],
+            Some(600),
+            Some(REPO),
+            None,
+        )
         .await
         .unwrap();
     assert!(claimed.is_none(), "nothing else names the repository");
     let (claimed, _) = store
-        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), None)
+        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -551,6 +557,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             room.agents[1],
             Some(600),
             Some("example/other"),
+            None,
         )
         .await
         .unwrap();
@@ -673,7 +680,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         created_by: None,
     };
     let (created, _) = store
-        .create_thread_with_footprint(new("intake"), Some(lane))
+        .create_thread_with_footprint(new("intake"), Some(lane), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -695,7 +702,7 @@ async fn a_footprint_declared_at_creation_binds_the_first_claim(store: Arc<dyn S
         &[(FootprintKind::Path, "../outside")],
     );
     assert!(store
-        .create_thread_with_footprint(new("bad"), Some(bad))
+        .create_thread_with_footprint(new("bad"), Some(bad), None, None)
         .await
         .is_err());
     assert_eq!(
@@ -819,7 +826,13 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
             let mut claimed = 0;
             for _ in 0..ROUNDS {
                 let (thread, _) = store
-                    .claim_next_thread_with_event(room.channel, room.agents[agent], Some(600), None)
+                    .claim_next_thread_with_event(
+                        room.channel,
+                        room.agents[agent],
+                        Some(600),
+                        None,
+                        None,
+                    )
                     .await
                     .unwrap();
                 let Some(thread) = thread else {
@@ -894,6 +907,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         paths: vec!["src/a.rs".into()],
         base_branch: Some("main".into()),
         rebase: false,
+        previous_head: None,
     };
     store.record_change_round(round("c1", 10)).await.unwrap();
     store.record_change_round(round("c1", 10)).await.unwrap();
@@ -921,7 +935,10 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         .unwrap()
         .is_empty());
 
-    let pulls = store.list_change_pulls(room.ws, None, None).await.unwrap();
+    let pulls = store
+        .list_change_pulls(room.ws, None, None, None, None, None)
+        .await
+        .unwrap();
     assert_eq!(pulls.len(), 1);
     let rounds: Vec<_> = pulls[0]
         .rounds
@@ -936,7 +953,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
     );
     assert_eq!(pulls[0].merged_head_sha.as_deref(), Some("c2"));
     assert!(store
-        .list_change_pulls(room.ws, Some("example/other"), None)
+        .list_change_pulls(room.ws, Some("example/other"), None, None, None, None)
         .await
         .unwrap()
         .is_empty());
@@ -955,6 +972,7 @@ fn round_for(ws: WorkspaceId, thread: ThreadId, pull_number: i64) -> NewChangeRo
         paths: Vec::new(),
         base_branch: None,
         rebase: false,
+        previous_head: None,
     }
 }
 
@@ -1026,13 +1044,87 @@ async fn the_newest_round_names_the_head_only_for_the_workspace_that_delivered_i
             .unwrap(),
         None
     );
-    let pulls = store.list_change_pulls(mine.ws, None, None).await.unwrap();
+    let pulls = store
+        .list_change_pulls(mine.ws, None, None, None, None, None)
+        .await
+        .unwrap();
     let rebases: Vec<bool> = pulls[0].rounds.iter().map(|r| r.rebase).collect();
     assert_eq!(
         rebases,
         vec![false, true],
         "another workspace's round is not listed among this workspace's"
     );
+}
+
+/// A squash-rebase round records the head it force-moved the branch from,
+/// for the reviewer's range. It reads back, whatever the case of the repo or
+/// the SHA, only in the workspace that delivered it: the pull request row is
+/// shared, so another workspace asking about the same commit gets nothing.
+async fn a_rebase_rounds_previous_head_reads_back_only_in_its_own_workspace(store: Arc<dyn Store>) {
+    let mine = room(store.as_ref(), "range-mine", 1).await;
+    let theirs = room(store.as_ref(), "range-theirs", 1).await;
+    let thread = task(store.as_ref(), mine.channel, "change").await;
+    let other_thread = task(store.as_ref(), theirs.channel, "change").await;
+    let (old_head, new_head) = ("d1".repeat(20), "d2".repeat(20));
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: old_head.clone(),
+            ..round_for(mine.ws, thread, 9)
+        })
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: new_head.to_ascii_uppercase(),
+            base_behind: Some(0),
+            rebase: true,
+            previous_head: Some(old_head.to_ascii_uppercase()),
+            ..round_for(mine.ws, thread, 9)
+        })
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            commit_sha: "e".repeat(40),
+            ..round_for(theirs.ws, other_thread, 9)
+        })
+        .await
+        .unwrap();
+
+    let previous = |ws: WorkspaceId, sha: String| {
+        let store = store.clone();
+        async move {
+            store
+                .change_round_previous_head(ws, &REPO.to_ascii_uppercase(), 9, &sha)
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(
+        previous(mine.ws, new_head.clone()).await,
+        Some(old_head.clone())
+    );
+    assert_eq!(
+        previous(mine.ws, old_head.clone()).await,
+        None,
+        "a normal round moved nothing"
+    );
+    assert_eq!(
+        previous(theirs.ws, new_head.clone()).await,
+        None,
+        "another workspace never reads this workspace's range"
+    );
+    assert_eq!(previous(theirs.ws, "e".repeat(40)).await, None);
+    let pulls = store
+        .list_change_pulls(mine.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    let heads: Vec<Option<String>> = pulls[0]
+        .rounds
+        .iter()
+        .map(|r| r.previous_head.clone())
+        .collect();
+    assert_eq!(heads, vec![None, Some(old_head)]);
 }
 
 async fn open_order(store: &dyn Store, ws: WorkspaceId) -> Vec<i64> {
@@ -1548,6 +1640,7 @@ on_both_backends!(
     concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot,
     change_rounds_ready_and_close_are_recorded_once,
     the_newest_round_names_the_head_only_for_the_workspace_that_delivered_it,
+    a_rebase_rounds_previous_head_reads_back_only_in_its_own_workspace,
     the_refresh_reads_the_longest_unread_pull_first,
     a_closed_pull_settles_its_thread_once,
     a_merge_notifies_each_overlapping_live_claim_once,

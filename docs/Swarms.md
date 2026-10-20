@@ -40,9 +40,34 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
 1. **Intake.** A producer turns an issue into a thread: the task text, a
    `deliver_to` list saying where the result goes, and, when it knows, a
    footprint saying what part of the repository the work touches.
-2. **Planning.** A planner agent can split a large task into child threads
-   with dependencies (`add_thread_dependency`). `claim_next` never hands out a
-   thread whose dependencies are unfinished.
+2. **Planning.** A task with `kind: plan` goes to a planner, which claims it
+   and submits its children in one call: `POST /threads/{id}/plan` or the MCP
+   `submit_plan`, with the claim's `lease_id` and 1–50 children. Each child has
+   a key, a title, and optionally a description, attributes, a footprint and
+   `depends_on` (keys of other children in the plan).
+   - **All or nothing.** The children, their footprints, attributes and
+     dependency edges are made in one transaction in the plan's channel. A bad
+     child, an unknown or cyclic `depends_on`, a repository missing from the
+     workspace's `github_branch` egress allowlist, or a plan larger than the
+     spawn budget is a 400 naming the child, and nothing is created.
+   - **Retries.** The same claim sending the same keys again gets a 200 with
+     the children already made. Any other plan on a parent that has children
+     is a 409 (`plan-conflict`, MCP `-32010`) listing them.
+   - **Dispatch.** `claim_next` never hands out a thread whose dependencies
+     are unfinished, so a child becomes claimable when what it depends on
+     lands. A plan's children move through review and close while the plan
+     stays open under its planner's claim.
+   - **A child that closes without landing** (no `ThreadLanded`: closed by
+     hand, or cancelled) blocks each open dependent with a `dag` block naming
+     it, plus a message on the dependent, so no work starts on a base that
+     never merged. The plan gets one message. A person or the planner clears
+     the blocks once the work is redone.
+   - **The plan closes itself** when its last child lands, in that child's
+     transaction, through the plan's own review and close gates, with a
+     `ThreadLanded` and a message listing every child's pull request. When a
+     gate refuses, the plan stays open with one message saying why.
+   - `GET /threads/{id}` on a plan shows `plan_state: {total, closed, open,
+     blocked}`.
 3. **Claiming.** Workers call `claim_next_thread` (or the workspace-wide
    `claim_next_workspace_thread`). Each claim carries a lease and a fencing
    token (`claim_lease_id`). The worker acknowledges it when it starts
@@ -251,13 +276,69 @@ that closed or was archived some other way answers `409`. A cancel publishes
 no `ThreadReady` for the thread's dependents, but `claim_next` still counts a
 cancelled dependency as finished, as it does any closed one.
 
+## Task attributes
+
+A thread can carry attributes that say what kind of work it is, who or what
+should do it, and whether it needs a threat model:
+
+```json
+{ "kind": "change", "engine": "pi", "threat_model": false,
+  "size": "M", "acceptance": "The bridge retries twice; its test proves it." }
+```
+
+`kind` is `change` (the default), `plan` or `review`. `engine` is `pi`,
+`session` or `human`, or absent when nobody has routed the work yet.
+`threat_model` marks work that needs one. `size` (`S`, `M` or `L`) is the
+planner's estimate, and `acceptance` says how a reviewer verifies the task;
+the worker sees it in the thread context. The lane is not an attribute: it is
+a footprint item.
+
+A producer sets them, and a dispatch `priority` (higher is claimed first),
+in the call that creates the thread, under the `workspace:write` it creates
+threads with.
+
+They are set at intake, on `POST /channels/{cid}/threads` or MCP
+`create_thread`, in the same transaction as the thread, and replaced later
+with `PUT /threads/{id}/attributes` or MCP `set_thread_attributes`
+(`thread:transition`). They ride on `GET /threads/{id}`, on the thread
+context, and on each `list_active_claims` entry. A thread nobody described
+reads as a change with no engine and no threat model.
+
+Claiming respects the engine. `claim_next` (HTTP and MCP, channel and
+workspace) takes an optional `engine`, and a claimer that names one is
+handed only work routed to it. A Pi worker that passes `engine: "pi"` is
+never handed session or human work, and work nobody routed waits for a
+claim that names no engine.
+
+A worked pass through the surface: intake files a review for a Pi worker
+and a plan for a session,
+
+```http
+POST /channels/{cid}/threads
+{ "title": "review the claim queue change",
+  "attributes": { "kind": "review", "engine": "pi", "threat_model": true } }
+
+POST /channels/{cid}/threads
+{ "title": "plan the metering rollout",
+  "attributes": { "kind": "plan", "engine": "session" } }
+```
+
+The Pi worker's `claim_next` with `{ "engine": "pi" }` is handed the
+review; the plan waits for a session claim. If the review turns out to
+need a person instead, `PUT /threads/{id}/attributes` with
+`{ "kind": "review", "engine": "human", "threat_model": true }` reroutes
+it whole, and the metrics read for the workspace
+(`GET /workspaces/{id}/swarm-metrics?engine=pi`) counts only the work
+that was routed to Pi.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
-`?rounds_limit=`, `?behind_limit=`) gives, for each agent pull request the
+`?rounds_limit=`, `?behind_limit=`, `?engine=`, `?kind=`) gives, for each agent pull request the
 change flow opened:
-- its rounds (commit, diff lines, how many commits its base was behind, and
-  whether it was a squash-rebase), and `rebases`, how many were;
+- its rounds (commit, diff lines, how many commits its base was behind,
+  whether it was a squash-rebase, and for one, `previous_head`, the head it
+  moved the branch from), and `rebases`, how many were;
 - time to ready and time to merge;
 - whether it merged at the commit Maidan delivered (`merged_without_edits`);
 - the thread's model cost from the usage ledger;
@@ -270,7 +351,10 @@ means a round was built on a base 50 or more commits behind.
 
 Each repository gets a rollup: tasks, merged, merged without edits, closed
 unmerged, flagged, mean rounds, median time to ready, and cost per merged
-change. These are the numbers each ramp step is gated on.
+change. The rollup also splits its tasks and merges by the engine each task
+was routed to (`by_engine`), and each task carries its attributes, so the
+ramp can be read per kind of worker. `?engine=` and `?kind=` narrow the
+whole report to one slice. These are the numbers each ramp step is gated on.
 
 The read refreshes up to 25 open pull requests from GitHub first, so merges
 count on a stack that receives no webhooks.

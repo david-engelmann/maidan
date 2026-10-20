@@ -51,6 +51,7 @@ pub mod github;
 pub mod github_app;
 pub mod group_dm;
 pub mod health;
+pub mod human_wait;
 pub mod idempotency;
 pub mod import;
 pub mod land_gate_advisor;

@@ -618,6 +618,19 @@ fn apply_route_defaults(
     if path == "/workspaces/{id}/repo-pauses" && method == "PUT" {
         return b.json(&json!({ "repo": "example/app" }));
     }
+    if path == "/threads/{id}/plan" && method == "POST" {
+        return b.json(&json!({
+            "lease_id": "00000000-0000-0000-0000-000000000000",
+            "children": [{ "key": "a", "title": "a" }]
+        }));
+    }
+    if path == "/threads/{id}/attributes" && method == "PUT" {
+        return b.json(&json!({
+            "kind": "review",
+            "engine": "pi",
+            "threat_model": true
+        }));
+    }
     if path == "/threads/{id}/footprint" && method == "PUT" {
         return b.json(&json!({
             "repo": "example/app",

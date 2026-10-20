@@ -40,7 +40,14 @@ pub async fn get_swarm_metrics(
     crate::change_sweep::refresh_open_pulls(&state, workspace_id).await;
     let pulls = state
         .store
-        .list_change_pulls(workspace_id, repo.as_deref(), query.since)
+        .list_change_pulls(
+            workspace_id,
+            repo.as_deref(),
+            query.since,
+            query.engine,
+            query.kind,
+            query.size,
+        )
         .await?;
     Ok(Json(maidan_types::swarm_metrics(pulls, limits)))
 }

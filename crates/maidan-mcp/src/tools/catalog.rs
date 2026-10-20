@@ -396,7 +396,20 @@ pub fn catalog() -> Vec<Value> {
                             }
                         },
                         "required": ["repo", "mode"]
-                    }
+                    },
+                    "attributes": {
+                        "type": "object",
+                        "description": "the task's attributes, stored with the thread (the shape set_thread_attributes takes, without thread_id)",
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["change", "plan", "review"]},
+                            "engine": {"type": "string", "enum": ["pi", "session", "human"]},
+                            "threat_model": {"type": "boolean"},
+                            "size": {"type": "string", "enum": ["S", "M", "L"]},
+                            "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"}
+                        },
+                        "required": ["kind"]
+                    },
+                    "priority": {"type": "integer", "description": "dispatch priority, stored with the thread; higher is claimed first (default 0)"}
                 },
                 "required": ["channel_id"]
             }
@@ -1338,7 +1351,8 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "channel_id": {"type": "string", "format": "uuid"},
                     "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"},
-                    "repo": {"type": "string", "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work"}
+                    "repo": {"type": "string", "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work"},
+                    "engine": {"type": "string", "enum": ["pi", "session", "human"], "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work"}
                 },
                 "required": ["channel_id"]
             }
@@ -1358,7 +1372,8 @@ pub fn catalog() -> Vec<Value> {
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"},
                     "lease_secs": {"type": "integer", "minimum": 1, "maximum": 604800, "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)"},
-                    "repo": {"type": "string", "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work"}
+                    "repo": {"type": "string", "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work"},
+                    "engine": {"type": "string", "enum": ["pi", "session", "human"], "description": "only claim a thread routed to this engine, for a worker that serves one kind of work; a thread routed to another engine, or not routed at all, is then never claimed. Omitted, any work"}
                 },
                 "required": ["workspace_id"]
             }
@@ -1422,6 +1437,66 @@ pub fn catalog() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "set_thread_attributes",
+            "description": "Replace a thread's task attributes in full. The kind says what sort of work it is (change, plan or review), the engine says who or what it is routed to (pi, session or human), and threat_model marks work that needs a threat model. A claim_next that names an engine takes only work routed to that engine, so a Pi worker is never handed session or human work. A thread nobody described reads as a change with no engine and no threat model.",
+            "annotations": {
+                "title": "Set thread attributes",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "kind": {"type": "string", "enum": ["change", "plan", "review"]},
+                    "engine": {"type": "string", "enum": ["pi", "session", "human"], "description": "omit to leave the work unrouted"},
+                    "threat_model": {"type": "boolean"},
+                    "size": {"type": "string", "enum": ["S", "M", "L"]},
+                    "acceptance": {"type": "string", "maxLength": 4000, "description": "how a reviewer verifies the task; the worker must satisfy it"}
+                },
+                "required": ["thread_id", "kind"]
+            }
+        }),
+        json!({
+            "name": "submit_plan",
+            "description": "Make every child of a plan thread in one call. Only the member holding the plan thread's live claim can plan it, passing that claim's lease_id. Each child has a key unique in the plan, a title, and optional description, attributes, footprint and depends_on (keys of other children in the same plan). Children are created in the plan thread's channel with their dependency edges, so dependents stay off the queue until what they depend on lands; a child that closes without landing blocks its dependents, and the plan thread closes itself when its last child lands. Every child repository must be on this workspace's github_branch egress allowlist. A bad child, an unknown or cyclic depends_on, or too many children for the spawn budget creates nothing. Calling again from the same claim with the same keys answers the children already made (replayed: true); any other plan on a thread that has children is refused with error code -32010 and data.children.",
+            "annotations": {
+                "title": "Submit plan",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "the plan thread (kind plan) you hold the claim on"},
+                    "lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from your claim on the plan thread"},
+                    "children": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": {"type": "string", "maxLength": 64, "description": "unique within this plan; depends_on names children by key"},
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "attributes": {"type": "object", "description": "the child's task attributes (the shape set_thread_attributes takes, without thread_id)"},
+                                "footprint": {"type": "object", "description": "the child's footprint (the shape set_thread_footprint takes, without thread_id)"},
+                                "depends_on": {"type": "array", "items": {"type": "string"}, "description": "keys of children that must land first"}
+                            },
+                            "required": ["key", "title"],
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "required": ["thread_id", "lease_id", "children"]
+            }
+        }),
+        json!({
             "name": "set_thread_footprint",
             "description": "Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.",
             "annotations": {
@@ -1455,7 +1530,7 @@ pub fn catalog() -> Vec<Value> {
         }),
         json!({
             "name": "list_active_claims",
-            "description": "List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.",
+            "description": "List the workspace's live claims with their footprints (thread_id, assignee_id, lease_expires_at, repo, mode, items, attributes), in one repository when repo is given. Only threads you may read are listed. Use it to defer work whose footprint would overlap before claiming.",
             "annotations": {
                 "title": "List active claims",
                 "readOnlyHint": true,

@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    ChangePull, ChangeRound, ChangeSettlement, Event, MemberId, NewChangeRound, NewStaleBaseNotice,
-    PostedNotice, StoredEvent, ThreadId, ThreadNotice, ThreadNoticeKind, ThreadState, WorkspaceId,
-    NOTICE_PATH_LIMIT,
+    ChangePull, ChangeRound, ChangeSettlement, ContentKeyring, Event, MemberId, NewChangeRound,
+    NewStaleBaseNotice, PostedNotice, StoredEvent, ThreadId, ThreadNotice, ThreadNoticeKind,
+    ThreadState, WorkspaceId, NOTICE_PATH_LIMIT,
 };
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
@@ -37,8 +37,8 @@ pub async fn record_round(pool: &PgPool, new: NewChangeRound) -> Result<(), Stor
     sqlx::query(
         "INSERT INTO maidan_change_rounds
              (repo, pull_number, commit_sha, round, base_sha, base_behind, diff_lines, delivered_at,
-              paths, base_branch, rebase, workspace_id)
-         SELECT $1, $2, $3, COALESCE(MAX(round), 0) + 1, $4, $5, $6, NOW(), $7, $8, $9, $10
+              paths, base_branch, rebase, workspace_id, previous_head)
+         SELECT $1, $2, $3, COALESCE(MAX(round), 0) + 1, $4, $5, $6, NOW(), $7, $8, $9, $10, $11
          FROM maidan_change_rounds WHERE repo = $1 AND pull_number = $2
          ON CONFLICT (repo, pull_number, commit_sha) DO NOTHING",
     )
@@ -52,6 +52,7 @@ pub async fn record_round(pool: &PgPool, new: NewChangeRound) -> Result<(), Stor
     .bind(&new.base_branch)
     .bind(new.rebase)
     .bind(new.workspace_id.0)
+    .bind(new.previous_head.as_deref().map(str::to_ascii_lowercase))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -82,6 +83,32 @@ pub async fn latest_round_head(
     .bind(pull_number)
     .fetch_optional(pool)
     .await?)
+}
+
+/// The head the squash-rebase round that delivered `commit_sha` to
+/// `repo`#`pull_number` force-moved the branch from, as recorded in
+/// `workspace_id`. `None` for a normal round, an unrecorded one, or another
+/// workspace's.
+pub async fn round_previous_head(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+    commit_sha: &str,
+) -> Result<Option<String>, StoreError> {
+    let head: Option<Option<String>> = sqlx::query_scalar(
+        "SELECT r.previous_head FROM maidan_change_rounds r
+         JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
+         WHERE p.workspace_id = $1 AND r.workspace_id = $1
+           AND r.repo = $2 AND r.pull_number = $3 AND r.commit_sha = $4",
+    )
+    .bind(workspace_id.0)
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(commit_sha.to_ascii_lowercase())
+    .fetch_optional(pool)
+    .await?;
+    Ok(head.flatten())
 }
 
 /// Stamp when a tracked pull request was made ready (the first time only).
@@ -219,6 +246,7 @@ pub async fn list_unsettled(
 /// notice. See [`ChangeSettlement`].
 pub async fn settle(
     pool: &PgPool,
+    keys: &ContentKeyring,
     repo: &str,
     pull_number: i64,
 ) -> Result<ChangeSettlement, StoreError> {
@@ -300,6 +328,7 @@ pub async fn settle(
     };
     match land_in_tx(
         &mut tx,
+        keys,
         thread_id,
         actor,
         from_open,
@@ -351,6 +380,7 @@ async fn mark_settled(
 
 async fn land_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    keys: &ContentKeyring,
     thread_id: ThreadId,
     actor: MemberId,
     from_open: bool,
@@ -383,6 +413,7 @@ async fn land_in_tx(
         title: None,
     };
     stored.push(events::append_in_tx(tx, &landed).await?);
+    stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor).await?);
     Ok(stored)
 }
 
@@ -631,25 +662,36 @@ pub async fn list(
     workspace_id: WorkspaceId,
     repo: Option<&str>,
     since: Option<DateTime<Utc>>,
+    engine: Option<maidan_types::TaskEngine>,
+    kind: Option<maidan_types::TaskKind>,
+    size: Option<maidan_types::TaskSize>,
 ) -> Result<Vec<ChangePull>, StoreError> {
     let repo = repo.map(str::to_ascii_lowercase);
     let pulls = sqlx::query(
-        "SELECT repo, pull_number, thread_id, opened_at, ready_at, merged_at, merged_head_sha, closed_at
-         FROM maidan_change_pulls
-         WHERE workspace_id = $1
-           AND ($2::text IS NULL OR repo = $2)
-           AND ($3::timestamptz IS NULL OR opened_at >= $3)
-         ORDER BY opened_at, repo, pull_number
+        "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at,
+                a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
+         FROM maidan_change_pulls p
+         LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
+         WHERE p.workspace_id = $1
+           AND ($2::text IS NULL OR p.repo = $2)
+           AND ($3::timestamptz IS NULL OR p.opened_at >= $3)
+           AND ($4::text IS NULL OR a.engine = $4)
+           AND ($5::text IS NULL OR COALESCE(a.kind, 'change') = $5)
+           AND ($6::text IS NULL OR a.size = $6)
+         ORDER BY p.opened_at, p.repo, p.pull_number
          LIMIT 1000",
     )
     .bind(workspace_id.0)
     .bind(&repo)
     .bind(since)
+    .bind(engine.map(|engine| engine.as_str()))
+    .bind(kind.map(|kind| kind.as_str()))
+    .bind(size.map(|size| size.as_str()))
     .fetch_all(pool)
     .await?;
     let rounds = sqlx::query(
         "SELECT r.repo, r.pull_number, r.commit_sha, r.round, r.base_behind, r.diff_lines, r.delivered_at,
-                r.rebase
+                r.rebase, r.previous_head
          FROM maidan_change_rounds r
          JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
          WHERE p.workspace_id = $1 AND r.workspace_id = $1
@@ -670,6 +712,7 @@ pub async fn list(
                 diff_lines: row.get("diff_lines"),
                 delivered_at: row.get::<DateTime<Utc>, _>("delivered_at"),
                 rebase: row.get::<Option<bool>, _>("rebase").unwrap_or(false),
+                previous_head: row.get("previous_head"),
             });
     }
     let costs = sqlx::query(
@@ -711,5 +754,32 @@ fn pull_from(
         merged_head_sha: row.get("merged_head_sha"),
         closed_at: row.get::<Option<DateTime<Utc>>, _>("closed_at"),
         cost_usd_micros: cost.get(&thread).copied().unwrap_or(0),
+        attributes: maidan_types::TaskAttributes {
+            kind: row
+                .try_get::<Option<String>, _>("task_kind")
+                .ok()
+                .flatten()
+                .and_then(|kind| maidan_types::TaskKind::parse(&kind))
+                .unwrap_or_default(),
+            engine: row
+                .try_get::<Option<String>, _>("task_engine")
+                .ok()
+                .flatten()
+                .and_then(|engine| maidan_types::TaskEngine::parse(&engine)),
+            threat_model: row
+                .try_get::<Option<bool>, _>("threat_model")
+                .ok()
+                .flatten()
+                .unwrap_or(false),
+            size: row
+                .try_get::<Option<String>, _>("task_size")
+                .ok()
+                .flatten()
+                .and_then(|size| maidan_types::TaskSize::parse(&size)),
+            acceptance: row
+                .try_get::<Option<String>, _>("task_acceptance")
+                .ok()
+                .flatten(),
+        },
     }
 }

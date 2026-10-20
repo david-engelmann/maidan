@@ -127,7 +127,7 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     let working_channel = channel(store, ws, "working", false).await;
     let working = thread(store, working_channel).await;
     let held = store
-        .claim_next_thread_with_event(working_channel, bob, Some(LEASE_SECS), None)
+        .claim_next_thread_with_event(working_channel, bob, Some(LEASE_SECS), None, None)
         .await
         .expect("claim")
         .0
