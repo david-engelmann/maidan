@@ -8442,9 +8442,37 @@
               "null"
             ]
           },
+          "followup_fix_rate": {
+            "description": "`followup_fixed` over the same known merged tasks.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "followup_fixed": {
+            "description": "Merged tasks a later pull request said it fixed.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "mean_human_commits": {
+            "description": "Mean commits a person added, over merged tasks read so far.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "mean_rounds": {
             "format": "double",
             "type": "number"
+          },
+          "median_time_to_first_human_review_secs": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "merged": {
             "format": "int64",
@@ -8464,6 +8492,19 @@
             "format": "int64",
             "type": "integer"
           },
+          "revert_rate": {
+            "description": "`reverted` over the merged tasks whose outcome is known: reverted,\nfollowed by a fix, or merged over [`OUTCOME_WINDOW_DAYS`] ago. `None`\nwith none known.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "reverted": {
+            "description": "Merged tasks a revert undid.",
+            "format": "int64",
+            "type": "integer"
+          },
           "tasks": {
             "format": "int64",
             "type": "integer"
@@ -8475,7 +8516,9 @@
           "merged_without_edits",
           "misrouted",
           "misroute_rate",
-          "mean_rounds"
+          "mean_rounds",
+          "reverted",
+          "followup_fixed"
         ],
         "type": "object"
       },
@@ -8862,6 +8905,30 @@
             },
             "type": "array"
           },
+          "followup_fixes": {
+            "description": "Later merged pull requests that say they fix this one.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "human_commits": {
+            "description": "Commits on the pull request the change flow did not deliver: a proxy\nfor a person's edits. `None` until read after the merge.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "human_reviews": {
+            "description": "Reviews and review comments by accounts that are not bots: a proxy\nfor review effort, which GitHub cannot time.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "linear_issue": {
             "description": "The Linear issue the change is for, when known.",
             "type": [
@@ -8906,6 +8973,19 @@
           "repo": {
             "type": "string"
           },
+          "revert_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reverted": {
+            "description": "Whether a revert of it landed on the base; `None` until merged.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "rounds": {
             "items": {
               "$ref": "#/components/schemas/ChangeRound"
@@ -8914,6 +8994,14 @@
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
+          },
+          "time_to_first_human_review_secs": {
+            "description": "From ready (else opened) to the first human review or review comment.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "time_to_merge_secs": {
             "description": "Opened to merged, in seconds.",
@@ -8941,7 +9029,8 @@
           "cost_usd_micros",
           "flags",
           "rebases",
-          "attributes"
+          "attributes",
+          "followup_fixes"
         ],
         "type": "object"
       },

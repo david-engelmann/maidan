@@ -6,9 +6,10 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    ChangePull, ChangeRound, ChangeSettlement, ContentKeyring, Event, MemberId, NewChangeRound,
-    NewStaleBaseNotice, PostedNotice, StoredEvent, ThreadId, ThreadNotice, ThreadNoticeKind,
-    ThreadState, WorkspaceId, NOTICE_PATH_LIMIT,
+    ChangePull, ChangeRound, ChangeSettlement, ContentKeyring, Event, MemberId, MergedOutcome,
+    NewChangeRound, NewStaleBaseNotice, OutcomeDue, PostedNotice, StoredEvent, ThreadId,
+    ThreadNotice, ThreadNoticeKind, ThreadState, WorkspaceId, NOTICE_PATH_LIMIT,
+    OUTCOME_WINDOW_DAYS,
 };
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
@@ -209,9 +210,13 @@ pub async fn list_sweep_workspaces(
         "SELECT DISTINCT workspace_id FROM maidan_change_pulls
          WHERE closed_at IS NULL OR settled_at IS NULL
             OR (merged_at IS NOT NULL AND noticed_at IS NULL)
+            OR (merged_at >= $2 AND (outcome_checked_at IS NULL OR outcome_checked_at <= $3))
          ORDER BY workspace_id LIMIT $1",
     )
     .bind(limit)
+    // A merge inside its outcome window, due its daily check.
+    .bind(Utc::now() - chrono::Duration::days(OUTCOME_WINDOW_DAYS))
+    .bind(Utc::now() - chrono::Duration::days(1))
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -672,6 +677,8 @@ pub async fn list(
     let repo = repo.map(str::to_ascii_lowercase);
     let pulls = sqlx::query(
         "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at, p.linear_issue,
+                p.merge_commit_sha, p.reverted_at, p.revert_ref, p.followup_fixes, p.human_commits,
+                p.human_reviews, p.first_human_review_at,
                 a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
          FROM maidan_change_pulls p
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
@@ -736,6 +743,111 @@ pub async fn list(
         .collect())
 }
 
+/// The merged pull requests in `workspace_id` due an outcome check, at most
+/// `limit`: merged within the outcome window, not checked in the last day,
+/// never-checked first. None while the workspace's last batch is under an
+/// hour old, so the GitHub reads come in one batch an hour, not every tick.
+pub async fn list_outcomes_due(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<OutcomeDue>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT p.repo, p.pull_number, p.merged_at, p.linear_issue,
+                p.merge_commit_sha, p.reverted_at, p.revert_ref, p.followup_fixes, p.human_commits,
+                p.human_reviews, p.first_human_review_at,
+                (SELECT r.base_branch FROM maidan_change_rounds r
+                 WHERE r.repo = p.repo AND r.pull_number = p.pull_number
+                 ORDER BY r.round DESC LIMIT 1) AS base_branch
+         FROM maidan_change_pulls p
+         WHERE p.workspace_id = $1 AND p.merged_at IS NOT NULL AND p.merged_at >= $2
+           AND (p.outcome_checked_at IS NULL OR p.outcome_checked_at <= $3)
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_change_pulls q
+               WHERE q.workspace_id = $1 AND q.outcome_checked_at > $4)
+         ORDER BY p.outcome_checked_at NULLS FIRST, p.merged_at, p.repo, p.pull_number
+         LIMIT $5",
+    )
+    .bind(workspace_id.0)
+    .bind(now - chrono::Duration::days(OUTCOME_WINDOW_DAYS))
+    .bind(now - chrono::Duration::days(1))
+    .bind(now - chrono::Duration::hours(1))
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    let mut due = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let repo: String = row.get("repo");
+        let pull_number: i64 = row.get("pull_number");
+        let round_commits = sqlx::query_scalar(
+            "SELECT commit_sha FROM maidan_change_rounds
+             WHERE repo = $1 AND pull_number = $2 AND workspace_id = $3
+             ORDER BY round",
+        )
+        .bind(&repo)
+        .bind(pull_number)
+        .bind(workspace_id.0)
+        .fetch_all(pool)
+        .await?;
+        due.push(OutcomeDue {
+            merged_at: row.get::<DateTime<Utc>, _>("merged_at"),
+            base_branch: row.get("base_branch"),
+            linear_issue: row.get("linear_issue"),
+            outcome: outcome_from(row),
+            round_commits,
+            repo,
+            pull_number,
+        });
+    }
+    Ok(due)
+}
+
+/// Record what an outcome check found, whole, and stamp it checked.
+pub async fn record_outcome(
+    pool: &PgPool,
+    repo: &str,
+    pull_number: i64,
+    outcome: &MergedOutcome,
+    checked_at: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "UPDATE maidan_change_pulls
+         SET merge_commit_sha = $3, reverted_at = $4, revert_ref = $5, followup_fixes = $6,
+             human_commits = $7, human_reviews = $8, first_human_review_at = $9,
+             outcome_checked_at = $10
+         WHERE repo = $1 AND pull_number = $2",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(pull_number)
+    .bind(&outcome.merge_commit_sha)
+    .bind(outcome.reverted_at)
+    .bind(&outcome.revert_ref)
+    .bind(Json(&outcome.followup_fixes))
+    .bind(outcome.human_commits)
+    .bind(outcome.human_reviews)
+    .bind(outcome.first_human_review_at)
+    .bind(checked_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn outcome_from(row: &sqlx::postgres::PgRow) -> MergedOutcome {
+    MergedOutcome {
+        merge_commit_sha: row.get("merge_commit_sha"),
+        reverted_at: row.get::<Option<DateTime<Utc>>, _>("reverted_at"),
+        revert_ref: row.get("revert_ref"),
+        followup_fixes: row
+            .try_get::<Json<Vec<i64>>, _>("followup_fixes")
+            .map(|fixes| fixes.0)
+            .unwrap_or_default(),
+        human_commits: row.get("human_commits"),
+        human_reviews: row.get("human_reviews"),
+        first_human_review_at: row.get::<Option<DateTime<Utc>>, _>("first_human_review_at"),
+    }
+}
+
 fn pull_from(
     row: &sqlx::postgres::PgRow,
     rounds: &mut HashMap<(String, i64), Vec<ChangeRound>>,
@@ -758,6 +870,7 @@ fn pull_from(
         closed_at: row.get::<Option<DateTime<Utc>>, _>("closed_at"),
         cost_usd_micros: cost.get(&thread).copied().unwrap_or(0),
         linear_issue: row.get("linear_issue"),
+        outcome: outcome_from(row),
         attributes: maidan_types::TaskAttributes {
             kind: row
                 .try_get::<Option<String>, _>("task_kind")

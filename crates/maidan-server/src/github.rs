@@ -509,6 +509,33 @@ pub struct GithubPullBrief {
     pub merged_at: Option<chrono::DateTime<chrono::Utc>>,
     /// When it closed, merged or not.
     pub closed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// The commit the merge made on the base, once merged: what a revert
+    /// names.
+    pub merge_commit_sha: Option<String>,
+}
+
+/// A commit on a branch, as GitHub lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubCommitBrief {
+    pub sha: String,
+    pub message: String,
+}
+
+/// A merged pull request, as GitHub lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubMergedPull {
+    pub number: i64,
+    pub title: String,
+    pub body: String,
+    pub merged_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A review or review comment on a pull request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubReviewActivity {
+    /// The author is a bot account (`type: Bot`, or a `[bot]` login).
+    pub bot: bool,
+    pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// What flipping a pull request to ready did.
@@ -630,6 +657,36 @@ pub trait GithubGit: Send + Sync {
         repo: &str,
         pull_number: i64,
     ) -> Result<GithubPullBrief, GithubError>;
+    /// `GET /repos/{repo}/commits?sha={branch}&since=…`: up to the newest 100
+    /// commits on `branch` since `since`. A read.
+    async fn branch_commits_since(
+        &self,
+        repo: &str,
+        branch: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<GithubCommitBrief>, GithubError>;
+    /// `GET /repos/{repo}/pulls?state=closed&base={base}`: the 100 most
+    /// recently updated closed pull requests into `base`, merged ones only.
+    /// A read.
+    async fn merged_pulls_into(
+        &self,
+        repo: &str,
+        base: &str,
+    ) -> Result<Vec<GithubMergedPull>, GithubError>;
+    /// `GET /repos/{repo}/pulls/{n}/commits`: up to 100 commit SHAs. A read.
+    async fn pull_commit_shas(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Vec<String>, GithubError>;
+    /// A pull request's submitted reviews and review comments
+    /// (`/pulls/{n}/reviews` and `/pulls/{n}/comments`, up to 100 each). A
+    /// read.
+    async fn pull_review_activity(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Vec<GithubReviewActivity>, GithubError>;
     /// Flip a draft pull request to ready for review, via the GraphQL
     /// `markPullRequestReadyForReview` mutation keyed on the PR's `node_id`.
     /// GitHub's REST `PATCH /repos/{repo}/pulls/{n}` with `{"draft": false}`
@@ -1460,7 +1517,133 @@ impl GithubGit for GithubApiClient {
             labels: label_names(&value),
             merged_at: timestamp(&value, "/merged_at"),
             closed_at: timestamp(&value, "/closed_at"),
+            merge_commit_sha: value
+                .get("merge_commit_sha")
+                .and_then(serde_json::Value::as_str)
+                .filter(|sha| maidan_types::is_git_sha(sha))
+                .map(str::to_ascii_lowercase),
         })
+    }
+
+    async fn branch_commits_since(
+        &self,
+        repo: &str,
+        branch: &str,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<GithubCommitBrief>, GithubError> {
+        let branch = safe_ref_name(branch)?;
+        let since = since.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/commits?sha={branch}&since={since}&per_page=100"),
+                )
+                .await?,
+            )
+            .await?;
+        Ok(list(&value)
+            .filter_map(|commit| {
+                Some(GithubCommitBrief {
+                    sha: commit.get("sha")?.as_str()?.to_ascii_lowercase(),
+                    message: commit.pointer("/commit/message")?.as_str()?.to_string(),
+                })
+            })
+            .collect())
+    }
+
+    async fn merged_pulls_into(
+        &self,
+        repo: &str,
+        base: &str,
+    ) -> Result<Vec<GithubMergedPull>, GithubError> {
+        let base = safe_ref_name(base)?;
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!(
+                        "/pulls?state=closed&base={base}&sort=updated&direction=desc&per_page=100"
+                    ),
+                )
+                .await?,
+            )
+            .await?;
+        Ok(list(&value)
+            .filter_map(|pull| {
+                Some(GithubMergedPull {
+                    number: pull.get("number")?.as_i64()?,
+                    title: pull.get("title")?.as_str()?.to_string(),
+                    body: pull
+                        .get("body")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    merged_at: timestamp(pull, "/merged_at")?,
+                })
+            })
+            .collect())
+    }
+
+    async fn pull_commit_shas(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Vec<String>, GithubError> {
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/pulls/{pull_number}/commits?per_page=100"),
+                )
+                .await?,
+            )
+            .await?;
+        Ok(list(&value)
+            .filter_map(|commit| commit.get("sha")?.as_str().map(str::to_ascii_lowercase))
+            .collect())
+    }
+
+    async fn pull_review_activity(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Vec<GithubReviewActivity>, GithubError> {
+        let mut activity = Vec::new();
+        for (path, at) in [("reviews", "/submitted_at"), ("comments", "/created_at")] {
+            let value = self
+                .send_json(
+                    self.request(
+                        reqwest::Method::GET,
+                        repo,
+                        &format!("/pulls/{pull_number}/{path}?per_page=100"),
+                    )
+                    .await?,
+                )
+                .await?;
+            activity.extend(
+                list(&value)
+                    // A pending review is a draft nobody else can see yet.
+                    .filter(|item| {
+                        item.get("state").and_then(serde_json::Value::as_str) != Some("PENDING")
+                    })
+                    .map(|item| GithubReviewActivity {
+                        bot: item
+                            .pointer("/user/type")
+                            .and_then(serde_json::Value::as_str)
+                            == Some("Bot")
+                            || item
+                                .pointer("/user/login")
+                                .and_then(serde_json::Value::as_str)
+                                .is_some_and(|login| login.ends_with("[bot]")),
+                        at: timestamp(item, at),
+                    }),
+            );
+        }
+        Ok(activity)
     }
 
     async fn commits_behind(
@@ -1795,6 +1978,28 @@ pub async fn unlink_github_issue(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
+    }
+}
+
+/// The items of a GitHub list answer; none when it is not a list.
+fn list(value: &serde_json::Value) -> impl Iterator<Item = &serde_json::Value> {
+    value.as_array().into_iter().flatten()
+}
+
+/// A branch name safe to put in a query string unescaped, or a refusal. A
+/// read, so no branch policy applies.
+fn safe_ref_name(name: &str) -> Result<&str, GithubError> {
+    let safe = !name.is_empty()
+        && !name.contains("..")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'));
+    if safe {
+        Ok(name)
+    } else {
+        Err(GithubError::Refused(format!(
+            "`{name}` is not a branch name"
+        )))
     }
 }
 

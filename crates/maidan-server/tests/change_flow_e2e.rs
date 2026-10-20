@@ -97,6 +97,16 @@ struct Fake {
     pull_comments: Vec<(i64, String)>,
     /// Fail every comment with a 500.
     fail_comments: bool,
+    /// The merge commit each merged pull request reports.
+    merge_shas: HashMap<i64, String>,
+    /// The commits on a pull request, when a test sets them.
+    pull_commits: HashMap<i64, Vec<String>>,
+    /// Reviews and review comments, as `(pull, "reviews" | "comments", item)`.
+    reviews: Vec<(i64, &'static str, Value)>,
+    /// The base branch's recent commits, as `(sha, message)`.
+    base_commits: Vec<(String, String)>,
+    /// Merged pull requests the change flow did not open, as GitHub lists them.
+    merged_elsewhere: Vec<Value>,
 }
 
 impl Fake {
@@ -295,6 +305,44 @@ async fn github(
             fake.commits.insert(sha.clone(), commit);
             reply(StatusCode::CREATED, json!({"sha": sha}))
         }
+        ("GET", "pulls") if uri.query().unwrap_or_default().contains("state=closed") => {
+            let merged: Vec<Value> = fake
+                .pulls
+                .iter()
+                .filter(|p| p.merged_at.is_some())
+                .map(|p| json!({"number": p.number, "title": p.title, "body": p.body, "merged_at": p.merged_at}))
+                .chain(fake.merged_elsewhere.iter().cloned())
+                .collect();
+            reply(StatusCode::OK, json!(merged))
+        }
+        ("GET", "commits") => reply(
+            StatusCode::OK,
+            json!(fake
+                .base_commits
+                .iter()
+                .map(|(sha, message)| json!({"sha": sha, "commit": {"message": message}}))
+                .collect::<Vec<_>>()),
+        ),
+        ("GET", r) if r.starts_with("pulls/") && r.matches('/').count() == 2 => {
+            let (number, list) = r["pulls/".len()..].split_once('/').unwrap();
+            let number: i64 = number.parse().unwrap();
+            let items: Vec<Value> = match list {
+                "commits" => fake
+                    .pull_commits
+                    .get(&number)
+                    .into_iter()
+                    .flatten()
+                    .map(|sha| json!({"sha": sha}))
+                    .collect(),
+                kind => fake
+                    .reviews
+                    .iter()
+                    .filter(|(pull, k, _)| *pull == number && *k == kind)
+                    .map(|(_, _, item)| item.clone())
+                    .collect(),
+            };
+            reply(StatusCode::OK, json!(items))
+        }
         ("GET", "pulls") => {
             let query = uri.query().unwrap_or_default();
             let head = urlencoding::decode(
@@ -341,6 +389,7 @@ async fn github(
                         "node_id": format!("PR_{}", p.number),
                         "merged_at": p.merged_at,
                         "closed_at": p.closed_at.clone().or_else(|| p.merged_at.clone()),
+                        "merge_commit_sha": fake.merge_shas.get(&p.number),
                     }),
                 ),
                 None => not_found(),
@@ -1844,6 +1893,136 @@ async fn each_delivered_round_counts_toward_the_swarm_metrics() {
 /// workspace's tracked pull request on the same repository, still open, is
 /// left alone.
 #[tokio::test]
+async fn a_merged_change_is_checked_once_for_a_revert_follow_up_fixes_and_human_effort() {
+    let h = harness().await;
+    h.allow_change().await;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["linear_issue"] = json!("ENG-77");
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+    let ago = |hours: i64| {
+        (Utc::now() - chrono::Duration::hours(hours))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    };
+    let merge_sha = "e".repeat(40);
+    let revert_sha = "9".repeat(40);
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        let head = f.refs[BRANCH].clone();
+        let number = f.pulls[0].number;
+        f.pulls[0].merged_at = Some(ago(6));
+        f.merge_shas.insert(number, merge_sha.clone());
+        // The delivered commit, and one a person pushed.
+        f.pull_commits.insert(number, vec![head, "d".repeat(40)]);
+        f.reviews = vec![
+            (
+                number,
+                "reviews",
+                json!({"user": {"login": "coderabbitai[bot]", "type": "Bot"}, "state": "COMMENTED", "submitted_at": ago(5)}),
+            ),
+            (
+                number,
+                "reviews",
+                json!({"user": {"login": "alice", "type": "User"}, "state": "APPROVED", "submitted_at": ago(4)}),
+            ),
+            (
+                number,
+                "comments",
+                json!({"user": {"login": "bob", "type": "User"}, "created_at": ago(5)}),
+            ),
+            (
+                number,
+                "comments",
+                json!({"user": {"login": "helper[bot]", "type": "User"}, "created_at": ago(5)}),
+            ),
+            (
+                number,
+                "reviews",
+                json!({"user": {"login": "carol", "type": "User"}, "state": "PENDING"}),
+            ),
+        ];
+        f.base_commits = vec![
+            ("8".repeat(40), "Unrelated (#40)".into()),
+            (
+                revert_sha.clone(),
+                format!("Revert \"Greet the world\"\n\nThis reverts commit {merge_sha}."),
+            ),
+        ];
+        f.merged_elsewhere = vec![
+            json!({"number": 50, "title": "Fix the greeting", "body": format!("Fixes #{number}"), "merged_at": ago(1)}),
+            json!({"number": 51, "title": "Docs", "body": format!("Part of #{number}"), "merged_at": ago(1)}),
+            json!({"number": 52, "title": "ENG-77: empty names", "body": "", "merged_at": ago(1)}),
+            json!({"number": 53, "title": "Older fix", "body": format!("Fixes #{number}"), "merged_at": ago(9)}),
+        ];
+        number
+    };
+
+    change_sweep::sweep_once(&h.state).await;
+    let pulls = h
+        .store
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
+        .await
+        .unwrap();
+    let pull = pulls.iter().find(|p| p.pull_number == number).unwrap();
+    assert_eq!(pull.linear_issue.as_deref(), Some("ENG-77"));
+    let outcome = &pull.outcome;
+    assert_eq!(
+        outcome.merge_commit_sha.as_deref(),
+        Some(merge_sha.as_str())
+    );
+    assert!(outcome.reverted_at.is_some());
+    assert_eq!(outcome.revert_ref.as_deref(), Some(revert_sha.as_str()));
+    assert_eq!(outcome.followup_fixes, vec![50, 52]);
+    assert_eq!(
+        outcome.human_commits,
+        Some(1),
+        "the delivered commit is not a person's"
+    );
+    assert_eq!(
+        outcome.human_reviews,
+        Some(2),
+        "bots and a pending review are not counted"
+    );
+
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (code, metrics) = get_json(
+        &h,
+        &token,
+        &format!("/workspaces/{}/swarm-metrics", h.a.workspace_id.0),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    let task = &metrics["tasks"][0];
+    assert_eq!(task["reverted"], true);
+    assert_eq!(task["followup_fixes"], json!([50, 52]));
+    assert_eq!(task["human_commits"], 1);
+    assert_eq!(task["linear_issue"], "ENG-77");
+    assert_eq!(metrics["repos"][0]["reverted"], 1);
+    assert_eq!(metrics["repos"][0]["revert_rate"], 1.0);
+
+    // The next sweeps inside the hour read nothing more for it.
+    let outcome_reads = |h: &Harness| {
+        h.fake
+            .lock()
+            .unwrap()
+            .requests
+            .iter()
+            .filter(|r| {
+                r.starts_with("GET ")
+                    && (r.ends_with("/commits")
+                        || r.ends_with("/reviews")
+                        || r.ends_with("/comments"))
+            })
+            .count()
+    };
+    let before = outcome_reads(&h);
+    assert_eq!(before, 4, "base commits, pull commits, reviews, comments");
+    change_sweep::sweep_once(&h.state).await;
+    change_sweep::sweep_once(&h.state).await;
+    assert_eq!(outcome_reads(&h), before);
+}
+
+#[tokio::test]
 async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
     let h = harness().await;
     h.allow_change().await;
@@ -2435,7 +2614,8 @@ async fn a_rebase_round_moves_the_branch_to_one_commit_on_the_new_base_and_a_ret
             (head.clone(), true, Some(0), Some(delivered.clone())),
         ]
     );
-    let metrics = maidan_types::swarm_metrics(pulls, maidan_types::FlagLimits::default());
+    let metrics =
+        maidan_types::swarm_metrics(pulls, maidan_types::FlagLimits::default(), Utc::now());
     assert_eq!(metrics.tasks[0].rebases, 1);
 
     // A retried delivery finds its own rebase commit and writes nothing,

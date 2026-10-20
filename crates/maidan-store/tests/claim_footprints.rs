@@ -1370,9 +1370,60 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
     let swept = store.list_change_sweep_workspaces(10).await.unwrap();
     assert!(swept.contains(&other.ws));
     assert!(
-        !swept.contains(&r.ws),
-        "nothing left to read, settle or notify"
+        swept.contains(&r.ws),
+        "its merges are still due their first outcome check"
     );
+    let now = chrono::Utc::now();
+    let due = store
+        .list_change_outcomes_due(r.ws, now, 100)
+        .await
+        .unwrap();
+    assert!(!due.is_empty());
+    for item in &due {
+        store
+            .record_change_outcome(&item.repo, item.pull_number, &item.outcome, now)
+            .await
+            .unwrap();
+    }
+    assert!(
+        store
+            .list_change_outcomes_due(r.ws, now, 100)
+            .await
+            .unwrap()
+            .is_empty(),
+        "checked today, and the workspace's batch ran this hour"
+    );
+    let swept = store.list_change_sweep_workspaces(10).await.unwrap();
+    assert!(
+        !swept.contains(&r.ws),
+        "nothing left to read, settle, notify or check"
+    );
+
+    // Every outcome column reads back as written. Whole seconds: Postgres
+    // keeps microseconds.
+    let whole = |secs: i64| chrono::DateTime::from_timestamp(t0.timestamp() + secs, 0).unwrap();
+    let found = maidan_types::MergedOutcome {
+        merge_commit_sha: Some("e".repeat(40)),
+        reverted_at: Some(whole(9)),
+        revert_ref: Some("#12".into()),
+        followup_fixes: vec![30, 31],
+        human_commits: Some(2),
+        human_reviews: Some(3),
+        first_human_review_at: Some(whole(8)),
+    };
+    store
+        .record_change_outcome(&due[0].repo, due[0].pull_number, &found, now)
+        .await
+        .unwrap();
+    let pulls = store
+        .list_change_pulls(r.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    let pull = pulls
+        .iter()
+        .find(|p| p.pull_number == due[0].pull_number)
+        .unwrap();
+    assert_eq!(pull.outcome, found);
 }
 
 fn round_touching(

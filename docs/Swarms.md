@@ -375,6 +375,36 @@ gated on.
 The read refreshes up to 25 open pull requests from GitHub first, so merges
 count on a stack that receives no webhooks.
 
+**Whether a merge held.** For 30 days after a merge, the change sweep checks
+each merged pull request at most once a day, in one batch per workspace an
+hour, so the reads stay small against the token's hourly budget. A batch
+reads the base branch's recent commits and its closed pull requests once per
+repository and base, and matches every due pull request against those two
+lists:
+
+- `reverted` and `revert_ref`: a pull request titled `Revert "…"` that names
+  it (`Reverts owner/repo#N`, or `(#N)` inside the quoted title), or a commit
+  on the base whose message says `This reverts commit <merge commit>`;
+- `followup_fixes`: later merged pull requests into the same base, within the
+  30 days and not reverts, whose title or body says it fixes or follows up
+  this one (`fixes #N`, `follow-up to #N`, its URL), or names its
+  `linear_issue`;
+- `human_commits`, `human_reviews` and `time_to_first_human_review_secs`
+  (from ready, else from opened), read once after the merge:
+  - human commits are the commits on the pull request that the change flow
+    did not deliver;
+  - human reviews are the reviews and review comments by accounts that are
+    not bots (a pending review is not counted).
+
+GitHub cannot time a person's effort, so these are proxies, not hours.
+
+Each slice adds `reverted` and `followup_fixed`, with `revert_rate` and
+`followup_fix_rate` over the merged tasks whose outcome is known (something
+was found, or the 30 days have passed), plus `mean_human_commits` and the
+median time to the first human review. Each list read takes the newest 100,
+so a repository that merges more than 100 pull requests into a base within an
+hour's batch can miss some.
+
 ## Scaling notes
 
 - **Admit by build capacity, not by agent count.** Compiling and testing bind
