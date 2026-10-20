@@ -28,6 +28,10 @@
 //! reverts, follow-up fixes and human effort, in one batch per workspace an
 //! hour.
 //!
+//! Where a workspace has turned Linear claim comments on, the sweep also
+//! says a task's claim, and its release when it ends without merging, on the
+//! Linear issue its attributes name ([`post_linear_notices`]).
+//!
 //! The swarm-metrics read shares the refresh but only records closes: it runs
 //! inside a reader's request, and landing a thread there would attribute the
 //! close to whoever looked. The sweep runs in no request, so the landing is
@@ -64,6 +68,8 @@ pub struct SweepStats {
     pub noticed: usize,
     /// `rebase_needed` notices given to other claims a merge overlapped.
     pub rebase_notices: usize,
+    /// Claim and release comments queued for tasks' Linear issues.
+    pub linear_notices: usize,
 }
 
 /// Read `MAIDAN_CHANGE_SWEEP_SECS`. An unset or unparsable value keeps the
@@ -166,7 +172,107 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         notify_merges(state, workspace_id, &mut stats).await;
         crate::change_outcomes::check_outcomes(state, workspace_id).await;
     }
+    stats.linear_notices = post_linear_notices(state).await;
     stats
+}
+
+/// Queue the claim and release comments due in every workspace that turned
+/// them on. Each is recorded once, in the transaction that queues it. The
+/// issue is looked up first, because the allowlist blesses its team: an issue
+/// in a team the workspace has not blessed is recorded as skipped and never
+/// written to. A lookup that fails for another reason is tried again on the
+/// next pass.
+pub async fn post_linear_notices(state: &AppState) -> usize {
+    let Some(sender) = state.linear_sender.as_ref() else {
+        return 0;
+    };
+    let workspaces = match state
+        .store
+        .list_linear_claim_comment_workspaces(WORKSPACES_PER_TICK)
+        .await
+    {
+        Ok(workspaces) => workspaces,
+        Err(err) => {
+            tracing::warn!(error = %err, "linear notices: workspaces not read");
+            return 0;
+        }
+    };
+    let mut queued = 0;
+    for workspace_id in workspaces {
+        let due = match state
+            .store
+            .list_linear_notices_due(workspace_id, REFRESH_LIMIT)
+            .await
+        {
+            Ok(due) => due,
+            Err(err) => {
+                tracing::warn!(error = %err, "linear notices: due notices not read");
+                continue;
+            }
+        };
+        for item in due {
+            let (outcome, send) = match sender.issue(&item.issue).await {
+                Ok(found) => {
+                    let target = maidan_types::EgressTarget::Linear {
+                        team_id: found.team_id.clone(),
+                        issue: found.identifier.clone(),
+                    };
+                    match state
+                        .store
+                        .is_egress_target_allowed(
+                            workspace_id,
+                            maidan_types::EgressSurface::Linear,
+                            &target.allowlist_selector(),
+                        )
+                        .await
+                    {
+                        Ok(true) => (
+                            "queued".to_string(),
+                            Some(maidan_types::NewEgressOutbox {
+                                workspace_id,
+                                thread_id: item.thread_id,
+                                source_log_id: item.outbox_key(),
+                                target,
+                                body: item.body(),
+                                kind: maidan_types::EgressKind::Notice,
+                            }),
+                        ),
+                        Ok(false) => (
+                            format!(
+                                "skipped: team {} is not in the workspace egress allowlist",
+                                found.team_id
+                            ),
+                            None,
+                        ),
+                        Err(err) => {
+                            tracing::warn!(error = %err, "linear notices: allowlist not read");
+                            continue;
+                        }
+                    }
+                }
+                Err(crate::linear::LinearError::NotFound(_)) => {
+                    ("skipped: the issue was not found".to_string(), None)
+                }
+                Err(err) => {
+                    tracing::debug!(issue = item.issue, error = %err, "linear notices: issue not read");
+                    continue;
+                }
+            };
+            let sent = send.is_some();
+            match state
+                .store
+                .record_linear_notice(&item, &outcome, send)
+                .await
+            {
+                Ok(true) if sent => queued += 1,
+                Ok(_) => {}
+                Err(err) => {
+                    tracing::warn!(issue = item.issue, error = %err, "linear notices: not recorded");
+                }
+            }
+        }
+    }
+    queued
 }
 
 async fn notify_merges(state: &AppState, workspace_id: WorkspaceId, stats: &mut SweepStats) {

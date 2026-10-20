@@ -331,6 +331,33 @@ it whole, and the metrics read for the workspace
 (`GET /workspaces/{id}/swarm-metrics?engine=pi`) counts only the work
 that was routed to Pi.
 
+### Claim and release comments on Linear
+
+A task's attributes may name the Linear issue it is for
+(`"linear_issue": "ENG-1234"`; refused unless it is an issue key). A
+workspace can then say each task's claim and release on that issue. The
+switch is **off by default**: `PUT /workspaces/{id}/linear-claim-comments`
+with `{"enabled": true}` (`token:admin`, audited) turns it on, and `GET`
+reads it (`workspace:read`). While it is off, nothing is said on Linear.
+
+With it on, the change sweep says each of these once per task:
+
+- `CLAIM: pi/<task id> claimed in Maidan by <handle>: <title>` when the task
+  is first claimed;
+- `RELEASED: pi/<task id> ended without merging: <title>` when, after a
+  claim was said, the task closes or is archived with no merged pull
+  request.
+
+The prefix is the task's engine (`maidan` when it has none). The comments go
+out through the Linear delivery path with the same key and the same
+per-team allowlist as a result's comment. There is no assignee and no new
+identity. The issue is looked up first, and a comment is queued only when its
+team is blessed for the workspace. An issue in another team, or one that
+cannot be found, is recorded as skipped and never written to. The worker
+checks the allowlist and the team again when it posts. A notice is recorded
+in the same transaction that queues it, so it is said once even with
+several replicas sweeping.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,

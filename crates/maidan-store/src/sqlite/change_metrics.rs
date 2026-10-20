@@ -899,6 +899,7 @@ fn pull_from(
                 .try_get::<Option<String>, _>("task_acceptance")
                 .ok()
                 .flatten(),
+            linear_issue: None,
         },
     }
 }

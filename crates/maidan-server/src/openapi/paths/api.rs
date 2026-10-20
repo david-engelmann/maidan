@@ -2758,6 +2758,30 @@ pub fn list_slots() {}
     ))]
 pub fn set_slot_capacity() {}
 
+/// Whether the workspace says its tasks' claims and releases on Linear
+#[utoipa::path(get, path = "/workspaces/{id}/linear-claim-comments", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LinearClaimComments),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_linear_claim_comments() {}
+
+/// Turn the claim and release comments on a task's Linear issue on or off (off by default)
+#[utoipa::path(put, path = "/workspaces/{id}/linear-claim-comments", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = LinearClaimComments,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LinearClaimComments),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_linear_claim_comments() {}
+
 /// Remove a slot's capacity
 #[utoipa::path(delete, path = "/workspaces/{id}/slots", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SlotQuery),

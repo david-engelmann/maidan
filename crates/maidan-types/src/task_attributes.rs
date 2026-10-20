@@ -124,11 +124,27 @@ pub struct TaskAttributes {
     /// to the worker in the thread context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acceptance: Option<String>,
+    /// The Linear issue the task is for (`ENG-1234`). Where the workspace
+    /// has turned claim comments on, the task's claim and release are said
+    /// on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linear_issue: Option<String>,
 }
 
 impl TaskAttributes {
     /// Trim the acceptance text (blank reads as none) and check its length.
     pub fn validated(mut self) -> Result<Self, String> {
+        self.linear_issue = self
+            .linear_issue
+            .map(|key| key.trim().to_string())
+            .filter(|key| !key.is_empty());
+        if let Some(key) = &self.linear_issue {
+            if !crate::is_issue_key(key) {
+                return Err(format!(
+                    "linear_issue `{key}` is not an issue key such as ENG-123"
+                ));
+            }
+        }
         self.acceptance = self
             .acceptance
             .map(|text| text.trim().to_string())

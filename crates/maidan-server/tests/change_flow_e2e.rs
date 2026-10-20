@@ -1589,6 +1589,176 @@ fn change_to_linear(status: &str, base_sha: &str, team: &str, state: Option<&str
     result
 }
 
+/// A task whose attributes name `issue`, in `t`'s channel, claimed by
+/// `t`'s member.
+async fn linear_task(h: &Harness, t: &Tenant, issue: &str) -> ThreadId {
+    let (thread, _) = h
+        .store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id: t.channel_id,
+                parent_thread_id: None,
+                title: Some("Name the venue".into()),
+                description: None,
+                created_by: Some(t.member_id),
+            },
+            None,
+            Some(maidan_types::TaskAttributes {
+                engine: Some(maidan_types::TaskEngine::Pi),
+                linear_issue: Some(issue.into()),
+                ..maidan_types::TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .unwrap();
+    h.store.claim_thread(thread.id, t.member_id).await.unwrap();
+    thread.id
+}
+
+async fn admin_token(h: &Harness, t: &Tenant) -> String {
+    let secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id: t.workspace_id,
+            member_id: t.member_id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![maidan_auth::capability::TOKEN_ADMIN.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+#[tokio::test]
+async fn claim_comments_stay_off_until_the_workspace_turns_them_on_then_say_each_once() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Linear, TEAM).await;
+    h.allow(h.b.workspace_id, EgressSurface::Linear, TEAM).await;
+    let task = linear_task(&h, &h.a, ISSUE).await;
+    linear_task(&h, &h.b, ISSUE).await;
+
+    assert!(!h
+        .store
+        .linear_claim_comments(h.a.workspace_id)
+        .await
+        .unwrap());
+    assert_eq!(change_sweep::sweep_once(&h.state).await.linear_notices, 0);
+    h.drain().await;
+    assert!(
+        h.linear.comments().is_empty(),
+        "off by default: nothing is said"
+    );
+
+    let token = admin_token(&h, &h.a).await;
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::put(format!(
+            "/workspaces/{}/linear-claim-comments",
+            h.a.workspace_id.0
+        ))
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(r#"{"enabled": true}"#))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let read = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (_, switch) = get_json(
+        &h,
+        &read,
+        &format!("/workspaces/{}/linear-claim-comments", h.a.workspace_id.0),
+    )
+    .await;
+    assert_eq!(switch, json!({"enabled": true}));
+
+    assert_eq!(change_sweep::sweep_once(&h.state).await.linear_notices, 1);
+    h.drain().await;
+    let comments = h.linear.comments();
+    assert_eq!(
+        comments.len(),
+        1,
+        "tenant B's switch is still off: {comments:?}"
+    );
+    assert_eq!(comments[0].0, ISSUE_ID);
+    assert!(
+        comments[0]
+            .2
+            .starts_with(&format!("CLAIM: pi/{} claimed in Maidan by ", task.0)),
+        "{}",
+        comments[0].2
+    );
+    assert!(
+        comments[0].2.ends_with(": Name the venue"),
+        "{}",
+        comments[0].2
+    );
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.linear_notices,
+        0,
+        "said once"
+    );
+
+    // It ends without a merge: one release.
+    h.store
+        .cancel_thread(
+            task,
+            h.a.member_id,
+            "out of scope",
+            maidan_types::CancelAuthority::Creator,
+        )
+        .await
+        .unwrap();
+    assert_eq!(change_sweep::sweep_once(&h.state).await.linear_notices, 1);
+    h.drain().await;
+    let comments = h.linear.comments();
+    assert_eq!(comments.len(), 2, "{comments:?}");
+    assert_eq!(
+        comments[1].2,
+        format!(
+            "RELEASED: pi/{} ended without merging: Name the venue",
+            task.0
+        )
+    );
+    assert_eq!(change_sweep::sweep_once(&h.state).await.linear_notices, 0);
+    h.drain().await;
+    assert_eq!(h.linear.comments().len(), 2);
+}
+
+#[tokio::test]
+async fn a_claim_comment_on_an_issue_in_an_unblessed_team_is_skipped() {
+    let h = harness().await;
+    h.store
+        .set_linear_claim_comments(
+            h.a.workspace_id,
+            true,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(h.a.workspace_id),
+                actor_id: Some(h.a.member_id),
+                action: "linear.claim_comments.set".into(),
+                target_kind: None,
+                target_id: None,
+                metadata: json!({}),
+            },
+        )
+        .await
+        .unwrap();
+    linear_task(&h, &h.a, ISSUE).await;
+    assert_eq!(change_sweep::sweep_once(&h.state).await.linear_notices, 0);
+    h.drain().await;
+    assert!(h.linear.comments().is_empty());
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.linear_notices,
+        0,
+        "recorded as skipped, not tried again"
+    );
+}
+
 #[tokio::test]
 async fn a_change_comments_on_its_linear_issue_with_the_draft_pr_and_moves_it() {
     let h = harness().await;
@@ -2152,6 +2322,7 @@ async fn a_pull_request_closed_without_merging_leaves_its_task_open_with_one_not
             landed: 0,
             noticed: 1,
             rebase_notices: 0,
+            linear_notices: 0,
         }
     );
     assert_eq!(
