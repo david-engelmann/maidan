@@ -2193,6 +2193,26 @@ async fn a_merged_change_is_checked_once_for_a_revert_follow_up_fixes_and_human_
 }
 
 #[tokio::test]
+async fn the_swarm_metrics_read_only_the_named_linear_issues() {
+    let h = harness().await;
+    h.allow_change().await;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["linear_issue"] = json!("ENG-77");
+    h.route(&h.a, &result, 1).await;
+    h.drain().await;
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let read = |query: &str| format!("/workspaces/{}/swarm-metrics{query}", h.a.workspace_id.0);
+    let (_, pilot) = get_json(&h, &token, &read("?linear_issue=ENG-9,ENG-77")).await;
+    assert_eq!(pilot["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(pilot["repos"][0]["tasks"], 1);
+    let (_, other) = get_json(&h, &token, &read("?linear_issue=ENG-9")).await;
+    assert!(other["tasks"].as_array().unwrap().is_empty());
+    assert!(other["repos"].as_array().unwrap().is_empty());
+    let (code, _) = get_json(&h, &token, &read("?linear_issue=eng-77")).await;
+    assert_eq!(code, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
     let h = harness().await;
     h.allow_change().await;

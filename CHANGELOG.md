@@ -377,6 +377,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** a task's attributes may name its Linear issue (`linear_issue`, an issue key). With the new per-workspace switch on (`PUT /workspaces/{id}/linear-claim-comments`, `token:admin`, audited; `GET` reads it; off by default, migration 0188), the change sweep says once on that issue `CLAIM: pi/<task id> claimed in Maidan by <handle>: <title>` when the task is first claimed, and `RELEASED: pi/<task id> ended without merging: <title>` when it closes or is archived with no merged pull request. The comments use the Linear delivery path's key and per-team allowlist, checked when queued and again when posted. An issue in a team the workspace has not blessed is recorded as skipped and never written to.
 
+### The swarm metrics read one set of Linear issues
+
+- **Added:** `GET /workspaces/{id}/swarm-metrics?linear_issue=ENG-1,ENG-2` counts only the tasks for those issues (the task's `linear_issue` attribute, else the one its change result named), so a paired pilot is read apart from other work in the same repository. A value that is not an issue key is a 400. Each task's attributes in the metrics now carry its `linear_issue`.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

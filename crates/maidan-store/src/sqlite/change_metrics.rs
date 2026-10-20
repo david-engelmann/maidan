@@ -681,7 +681,7 @@ pub async fn list(
         "SELECT p.repo, p.pull_number, p.thread_id, p.opened_at, p.ready_at, p.merged_at, p.merged_head_sha, p.closed_at, p.linear_issue,
                 p.merge_commit_sha, p.reverted_at, p.revert_ref, p.followup_fixes, p.human_commits,
                 p.human_reviews, p.first_human_review_at,
-                a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
+                a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance, a.linear_issue AS task_linear_issue
          FROM maidan_change_pulls p
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
          WHERE p.workspace_id = ?1
@@ -899,7 +899,10 @@ fn pull_from(
                 .try_get::<Option<String>, _>("task_acceptance")
                 .ok()
                 .flatten(),
-            linear_issue: None,
+            linear_issue: row
+                .try_get::<Option<String>, _>("task_linear_issue")
+                .ok()
+                .flatten(),
         },
     }
 }

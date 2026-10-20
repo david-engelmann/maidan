@@ -396,8 +396,10 @@ Each task carries its attributes and, when known, its `linear_issue`: the
 Linear key the change result names (`"linear_issue": "ENG-1234"`, ignored
 unless it is a key), else the issue of its Linear `deliver_to` target. The
 first round that knows it records it. `?engine=`, `?kind=` and `?size=`
-narrow the whole report to one slice. These are the numbers each ramp step is
-gated on.
+narrow the whole report to one slice, and `?linear_issue=ENG-1,ENG-2`
+to the tasks for those issues (the attribute, else the one the result
+named), so a paired pilot can be read apart from other work in the same
+repository. These are the numbers each ramp step is gated on.
 
 The read refreshes up to 25 open pull requests from GitHub first, so merges
 count on a stack that receives no webhooks.
