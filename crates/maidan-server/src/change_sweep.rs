@@ -673,7 +673,6 @@ impl Notice<'_> {
 pub async fn run(state: AppState, interval: Duration) {
     use futures::FutureExt;
     tracing::info!(interval_secs = interval.as_secs(), "change sweep started");
-    crate::metrics::register_loop("change_sweep");
     loop {
         // A panic in one tick is logged and the next tick runs. Unguarded,
         // it ended this task without a trace, and every later merge,
@@ -686,15 +685,11 @@ pub async fn run(state: AppState, interval: Duration) {
                 tracing::info!(?stats, "change sweep tick");
             }
             Ok(_) => tracing::debug!("change sweep tick: nothing to do"),
-            Err(panic) => {
-                crate::metrics::record_loop_panic("change_sweep");
-                tracing::error!(
-                    panic = panic_message(panic.as_ref()),
-                    "change sweep tick panicked; the next tick runs"
-                );
-            }
+            Err(panic) => tracing::error!(
+                panic = panic_message(panic.as_ref()),
+                "change sweep tick panicked; the next tick runs"
+            ),
         }
-        crate::metrics::record_loop_tick("change_sweep");
         tokio::time::sleep(interval).await;
     }
 }

@@ -112,6 +112,7 @@ fn child(key: &str, deps: &[&str]) -> PlanChild {
         attributes: None,
         footprint: None,
         depends_on: deps.iter().map(|d| d.to_string()).collect(),
+        test: None,
     }
 }
 
