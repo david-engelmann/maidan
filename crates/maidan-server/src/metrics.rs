@@ -259,7 +259,7 @@ pub fn init() {
         );
         describe_gauge!(
             "maidan_background_loop_last_tick_seconds",
-            "Unix time the background loop last finished a tick, by loop: a stalled loop stops moving it"
+            "Unix time the background loop started or last finished a tick, by loop: a stalled loop stops moving it"
         );
         describe_counter!(
             "maidan_background_loop_panics_total",
@@ -426,6 +426,14 @@ pub fn record_retry_deferred(worker: &str) {
 /// Result-delivery trigger outcomes: `enqueued` (blessed, armed, sitting on the
 /// egress outbox) or `skipped` (unknown surface, unusable target, or not on the
 /// workspace allowlist). A skip is a recorded normal outcome, not an error.
+/// A background loop started: both of its series exist from now on, so the
+/// first panic reads as an increase from 0, and a first tick that never
+/// finishes still ages the liveness gauge into a stall alert.
+pub fn register_loop(name: &'static str) {
+    counter!("maidan_background_loop_panics_total", "loop" => name).absolute(0);
+    record_loop_tick(name);
+}
+
 /// A background loop finished a tick (panicked or not): its liveness.
 pub fn record_loop_tick(name: &'static str) {
     gauge!("maidan_background_loop_last_tick_seconds", "loop" => name)

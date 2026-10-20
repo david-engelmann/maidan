@@ -673,6 +673,7 @@ impl Notice<'_> {
 pub async fn run(state: AppState, interval: Duration) {
     use futures::FutureExt;
     tracing::info!(interval_secs = interval.as_secs(), "change sweep started");
+    crate::metrics::register_loop("change_sweep");
     loop {
         // A panic in one tick is logged and the next tick runs. Unguarded,
         // it ended this task without a trace, and every later merge,

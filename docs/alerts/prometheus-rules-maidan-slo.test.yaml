@@ -270,7 +270,8 @@ tests:
                 150 unpublished outbox rows. See Production outbox relay runbook.
 
   # A change sweep that stops ticking pages once it has been quiet for three
-  # intervals plus the five-minute hold.
+  # intervals plus the five-minute hold. The loop sets the gauge when it
+  # starts, so a first tick that never finishes reads the same.
   - interval: 1m
     input_series:
       - series: 'maidan_background_loop_last_tick_seconds{loop="change_sweep"}'
@@ -289,11 +290,12 @@ tests:
                 No change sweep tick has finished for over 6 minutes. Check the
                 maidan-server log for the sweep's last lines and restart if it is gone.
 
-  # One panicking tick warns, naming the loop.
+  # The first panic warns, naming the loop: the loop registers the counter at
+  # 0 when it starts, so one panic is an increase.
   - interval: 1m
     input_series:
       - series: 'maidan_background_loop_panics_total{loop="change_sweep"}'
-        values: "0 0 1 1 1"
+        values: "0 1 1 1 1"
     alert_rule_test:
       - alertname: MaidanBackgroundLoopPanicking
         eval_time: 4m

@@ -38,9 +38,10 @@ add a custom exporter against `GET /workspaces/:wid/automation/dlq` or SQL on
 
 A background loop that stops, or keeps panicking, fails silently: a request
 still answers while the work behind it stands still. Each loop sets
-`maidan_background_loop_last_tick_seconds{loop}` when it finishes a tick and
-counts `maidan_background_loop_panics_total{loop}` when one panics; the loop
-logs the panic at ERROR and runs its next tick. The change sweep reports them
+`maidan_background_loop_last_tick_seconds{loop}` when it starts and whenever
+it finishes a tick, and counts `maidan_background_loop_panics_total{loop}`
+(registered at 0 when it starts) when a tick panics; the loop logs the panic
+at ERROR and runs its next tick. A loop turned off exports neither. The change sweep reports them
 today.
 
 - **`MaidanChangeSweepStalled`** (critical): no sweep tick finished for 6
