@@ -5975,6 +5975,13 @@
           "key": {
             "type": "string"
           },
+          "test": {
+            "description": "The command that proves the child done (`cargo test -p x`). A plan\nsubmitted through the API must give one; it is kept at the end of the\nchild's description, where its worker reads it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": "string"
           }

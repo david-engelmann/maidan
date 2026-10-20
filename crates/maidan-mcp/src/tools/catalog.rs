@@ -1488,9 +1488,10 @@ pub fn catalog() -> Vec<Value> {
                                 "description": {"type": "string"},
                                 "attributes": {"type": "object", "description": "the child's task attributes (the shape set_thread_attributes takes, without thread_id)"},
                                 "footprint": {"type": "object", "description": "the child's footprint (the shape set_thread_footprint takes, without thread_id)"},
-                                "depends_on": {"type": "array", "items": {"type": "string"}, "description": "keys of children that must land first"}
+                                "depends_on": {"type": "array", "items": {"type": "string"}, "description": "keys of children that must land first"},
+                                "test": {"type": "string", "maxLength": 500, "description": "the command that proves the child done; kept in its description"}
                             },
-                            "required": ["key", "title"],
+                            "required": ["key", "title", "test", "attributes", "footprint"],
                             "additionalProperties": false
                         }
                     }

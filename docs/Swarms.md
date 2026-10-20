@@ -43,8 +43,14 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
 2. **Planning.** A task with `kind: plan` goes to a planner, which claims it
    and submits its children in one call: `POST /threads/{id}/plan` or the MCP
    `submit_plan`, with the claim's `lease_id` and 1–50 children. Each child has
-   a key, a title, and optionally a description, attributes, a footprint and
-   `depends_on` (keys of other children in the plan).
+   a key, a title, attributes, a footprint, a `test` command, and optionally a
+   description and `depends_on` (keys of other children in the plan).
+   - **Lint.** So each child can be worked and checked without asking the
+     planner, every child needs `attributes.acceptance`, `attributes.engine`,
+     a `test` command (kept at the end of its description as ``Test: `…` ``)
+     and a footprint with at least one item. A child with `threat_model: true`
+     goes to a session (`engine: session`). A child that misses any of these
+     is a 400 naming it, and nothing is created.
    - **All or nothing.** The children, their footprints, attributes and
      dependency edges are made in one transaction in the plan's channel. A bad
      child, an unknown or cyclic `depends_on`, a repository missing from the

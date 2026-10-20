@@ -26,7 +26,7 @@ pub async fn submit_plan(
     cap(&auth, WORKSPACE_WRITE)?;
     let parent = ThreadId(id);
     maidan_auth::authorize_thread(state.store.as_ref(), &auth, parent).await?;
-    let plan = body.validated().map_err(ApiError::BadRequest)?;
+    let plan = body.checked().map_err(ApiError::BadRequest)?;
     match state
         .store
         .submit_plan(parent, auth.member_id, plan)

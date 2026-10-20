@@ -1320,7 +1320,7 @@ pub(super) async fn submit_plan(
         lease_id: a.lease_id,
         children: a.children,
     }
-    .validated()
+    .checked()
     .map_err(McpError::InvalidParams)?;
     let outcome = server
         .store

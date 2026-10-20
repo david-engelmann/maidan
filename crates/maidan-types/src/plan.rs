@@ -37,7 +37,15 @@ pub struct PlanChild {
     /// Keys of children in the same plan this one waits for.
     #[serde(default)]
     pub depends_on: Vec<String>,
+    /// The command that proves the child done (`cargo test -p x`). A plan
+    /// submitted through the API must give one; it is kept at the end of the
+    /// child's description, where its worker reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
 }
+
+/// The most characters a child's test command may hold.
+pub const PLAN_TEST_MAX_CHARS: usize = 500;
 
 /// A plan as submitted: the planner's claim on the parent and the children.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +166,28 @@ impl SubmitPlan {
                 .map(TaskAttributes::validated)
                 .transpose()
                 .map_err(|why| format!("child `{key}`: attributes: {why}"))?;
+            child.test = child
+                .test
+                .take()
+                .map(|test| test.trim().to_string())
+                .filter(|test| !test.is_empty());
+            if let Some(test) = &child.test {
+                if test.chars().count() > PLAN_TEST_MAX_CHARS {
+                    return Err(format!(
+                        "child `{key}`: a test command is at most {PLAN_TEST_MAX_CHARS} characters"
+                    ));
+                }
+                if test.chars().any(char::is_control) {
+                    return Err(format!("child `{key}`: a test command is one line"));
+                }
+                let line = format!("Test: `{test}`");
+                child.description = Some(match child.description.take() {
+                    Some(text) if !text.trim().is_empty() => {
+                        format!("{}\n\n{line}", text.trim_end())
+                    }
+                    _ => line,
+                });
+            }
         }
         if let Some(cycle) = find_cycle(&self.children) {
             return Err(format!(
@@ -166,6 +196,52 @@ impl SubmitPlan {
             ));
         }
         Ok(self)
+    }
+
+    /// [`Self::validated`], then the lint every plan submitted through the API
+    /// must pass, so each child can be worked and checked without asking the
+    /// planner: an acceptance criterion, a test command, a footprint with at
+    /// least one item, and an engine; and a child that needs a threat model
+    /// goes to a session. Every error names the child.
+    pub fn checked(self) -> Result<Self, String> {
+        let plan = self.validated()?;
+        for child in &plan.children {
+            let key = &child.key;
+            let attributes = child.attributes.as_ref();
+            if attributes.and_then(|a| a.acceptance.as_ref()).is_none() {
+                return Err(format!(
+                    "child `{key}`: attributes.acceptance is required (how a reviewer verifies it)"
+                ));
+            }
+            if child.test.is_none() {
+                return Err(format!(
+                    "child `{key}`: test is required (the command that proves it done)"
+                ));
+            }
+            if child.footprint.is_none() {
+                return Err(format!(
+                    "child `{key}`: a footprint with at least one item is required"
+                ));
+            }
+            match attributes.and_then(|a| a.engine) {
+                None => {
+                    return Err(format!(
+                        "child `{key}`: attributes.engine is required (pi, session or human)"
+                    ))
+                }
+                Some(engine)
+                    if attributes.is_some_and(|a| a.threat_model)
+                        && engine != crate::TaskEngine::Session =>
+                {
+                    return Err(format!(
+                        "child `{key}`: a child that needs a threat model goes to a session, not {}",
+                        engine.as_str()
+                    ))
+                }
+                Some(_) => {}
+            }
+        }
+        Ok(plan)
     }
 
     /// The submitted keys, for comparing a retry with the plan it repeats.
@@ -248,7 +324,97 @@ mod tests {
             attributes: None,
             footprint: None,
             depends_on: deps.iter().map(|d| d.to_string()).collect(),
+            test: None,
         }
+    }
+
+    /// A child that passes the lint.
+    fn ready(key: &str) -> PlanChild {
+        PlanChild {
+            attributes: Some(crate::TaskAttributes {
+                engine: Some(crate::TaskEngine::Pi),
+                acceptance: Some(format!("{key} works")),
+                ..crate::TaskAttributes::default()
+            }),
+            footprint: Some(crate::Footprint {
+                repo: "example/app".into(),
+                mode: crate::FootprintMode::Exclusive,
+                items: vec![crate::FootprintItem {
+                    kind: crate::FootprintKind::Lane,
+                    value: key.into(),
+                }],
+            }),
+            test: Some(format!(" cargo test -p {key} ")),
+            ..child(key, &[])
+        }
+    }
+
+    #[test]
+    fn the_lint_names_the_child_missing_each_field() {
+        let ok = plan(vec![ready("a")]).checked().unwrap();
+        assert_eq!(
+            ok.children[0].description.as_deref(),
+            Some("Test: `cargo test -p a`"),
+            "the test command is kept in the description"
+        );
+        type Break = Box<dyn Fn(&mut PlanChild)>;
+        let cases: Vec<(&str, Break)> = vec![
+            (
+                "attributes.acceptance is required",
+                Box::new(|c| {
+                    if let Some(a) = c.attributes.as_mut() {
+                        a.acceptance = None;
+                    }
+                }),
+            ),
+            ("test is required", Box::new(|c| c.test = Some("  ".into()))),
+            (
+                "a footprint with at least one item",
+                Box::new(|c| {
+                    if let Some(f) = c.footprint.as_mut() {
+                        f.items.clear();
+                    }
+                }),
+            ),
+            (
+                "attributes.engine is required",
+                Box::new(|c| {
+                    if let Some(a) = c.attributes.as_mut() {
+                        a.engine = None;
+                    }
+                }),
+            ),
+            (
+                "goes to a session, not pi",
+                Box::new(|c| {
+                    if let Some(a) = c.attributes.as_mut() {
+                        a.threat_model = true;
+                    }
+                }),
+            ),
+        ];
+        for (want, break_it) in cases {
+            let mut b = ready("b");
+            break_it(&mut b);
+            let err = plan(vec![ready("a"), b]).checked().unwrap_err();
+            assert!(
+                err.starts_with("child `b`: ") && err.contains(want),
+                "{want}: {err}"
+            );
+        }
+        let mut risky = ready("c");
+        if let Some(a) = risky.attributes.as_mut() {
+            a.threat_model = true;
+            a.engine = Some(crate::TaskEngine::Session);
+        }
+        assert!(
+            plan(vec![risky]).checked().is_ok(),
+            "a session takes threat-model work"
+        );
+        assert!(
+            plan(vec![child("bare", &[])]).validated().is_ok(),
+            "validated alone does not lint"
+        );
     }
 
     fn plan(children: Vec<PlanChild>) -> SubmitPlan {

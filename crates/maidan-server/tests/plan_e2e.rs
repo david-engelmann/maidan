@@ -186,7 +186,8 @@ fn child(key: &str, lane: &str, deps: &[&str]) -> Value {
     json!({
         "key": key,
         "title": format!("do {key}"),
-        "attributes": { "kind": "change", "size": "S", "acceptance": format!("{key} works") },
+        "attributes": { "kind": "change", "engine": "pi", "size": "S", "acceptance": format!("{key} works") },
+        "test": format!("cargo test -p {key}"),
         "footprint": {
             "repo": REPO,
             "mode": "exclusive",

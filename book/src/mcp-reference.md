@@ -2518,13 +2518,21 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
             "maxLength": 64,
             "type": "string"
           },
+          "test": {
+            "description": "the command that proves the child done; kept in its description",
+            "maxLength": 500,
+            "type": "string"
+          },
           "title": {
             "type": "string"
           }
         },
         "required": [
           "key",
-          "title"
+          "title",
+          "test",
+          "attributes",
+          "footprint"
         ],
         "type": "object"
       },

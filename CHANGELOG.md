@@ -397,9 +397,9 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Fixed:** on Postgres, the change pulls' cost read `SUM(usd_micros)` (a NUMERIC) as a 64-bit integer and panicked once any task had model spend. Since the handoff pass reads change pulls inside the sweep, the sweep task died on its first tick, and with it merges settling, change notices, handoffs and Linear claim comments. The sum is now cast to BIGINT. A panicking tick is now logged at ERROR and the next tick runs, and a failed Linear issue lookup for a claim comment warns instead of logging at debug.
 
-### A stalled or panicking change sweep alerts
+### A plan's children must be ready to work
 
-- **Added:** `maidan_background_loop_last_tick_seconds{loop}` and `maidan_background_loop_panics_total{loop}`, reported by the change sweep, and two alert rules in `docs/alerts/prometheus-rules-maidan-slo.yaml`: `MaidanChangeSweepStalled` (critical, no tick for 6 minutes) and `MaidanBackgroundLoopPanicking` (warning), with promtool tests. They reach a person only through an alert route; `docs/alerts/README.md` says so.
+- **Changed:** `POST /threads/{id}/plan` and MCP `submit_plan` lint each child before anything is created. Every child needs `attributes.acceptance`, `attributes.engine`, a footprint with at least one item and a new `test` command, kept at the end of its description. A child with `threat_model: true` must go to `engine: session`. A child that misses one is a 400 naming it.
 
 ## [413.0.0] — 2026-10-11
 
