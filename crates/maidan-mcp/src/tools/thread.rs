@@ -1322,6 +1322,7 @@ pub(super) async fn submit_plan(
     }
     .checked()
     .map_err(McpError::InvalidParams)?;
+    let held = plan.needs_hold();
     let outcome = server
         .store
         .submit_plan(ThreadId(a.thread_id), auth.member_id, plan)
@@ -1332,11 +1333,11 @@ pub(super) async fn submit_plan(
                 server.publish_stored(stored).await;
             }
             Ok(content_json(
-                &json!({ "children": children, "replayed": false }),
+                &json!({ "children": children, "replayed": false, "held": held }),
             ))
         }
         PlanOutcome::Replayed(children) => Ok(content_json(
-            &json!({ "children": children, "replayed": true }),
+            &json!({ "children": children, "replayed": true, "held": held }),
         )),
         PlanOutcome::Conflict(children) => Err(McpError::PlanConflict(children)),
     }

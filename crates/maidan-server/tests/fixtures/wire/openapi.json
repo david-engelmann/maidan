@@ -6000,10 +6000,29 @@
               "$ref": "#/components/schemas/PlannedChild"
             },
             "type": "array"
+          },
+          "held": {
+            "description": "The plan is held for review: its children wait, blocked, until a\nMaintainer releases it.",
+            "type": "boolean"
           }
         },
         "required": [
           "children"
+        ],
+        "type": "object"
+      },
+      "PlanRelease": {
+        "description": "The children a plan release made claimable.",
+        "properties": {
+          "released": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadId"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "released"
         ],
         "type": "object"
       },
@@ -25283,6 +25302,82 @@
           }
         ],
         "summary": "Submit a plan parent's children",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/plan/release": {
+      "post": {
+        "operationId": "release_plan",
+        "parameters": [
+          {
+            "description": "The plan (parent) thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRelease"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Release a held plan: its children become claimable",
         "tags": [
           "threads"
         ]

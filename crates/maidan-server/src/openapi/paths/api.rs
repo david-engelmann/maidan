@@ -2758,6 +2758,17 @@ pub fn list_slots() {}
     ))]
 pub fn set_slot_capacity() {}
 
+/// Release a held plan: its children become claimable
+#[utoipa::path(post, path = "/threads/{id}/plan/release", tag = "threads",
+    params(("id" = Uuid, Path, description = "The plan (parent) thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = PlanRelease),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn release_plan() {}
+
 /// Track a session's pull request on its task, for the swarm metrics
 #[utoipa::path(put, path = "/threads/{id}/pull", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

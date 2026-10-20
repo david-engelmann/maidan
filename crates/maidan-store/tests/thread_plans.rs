@@ -841,6 +841,63 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
     Some((container, Arc::new(PostgresStore::for_tests(pool))))
 }
 
+/// A plan of five or more children is created held: each child carries the
+/// plan hold, so no worker claims one, until a release clears it (audited)
+/// and every child becomes claimable. A second release finds nothing held.
+async fn a_large_plan_is_held_until_released(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "held").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &room).await;
+    let children: Vec<PlanChild> = (1..=5).map(|n| child(&format!("c{n}"), &[])).collect();
+    let kids = created(
+        submit(store.as_ref(), parent, room.planner, lease, children)
+            .await
+            .unwrap(),
+    );
+    for kid in &kids {
+        let block = store
+            .get_thread_block(kid.thread_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(block.note.as_deref(), Some(PLAN_HOLD_NOTE));
+    }
+    assert!(
+        store
+            .claim_next_thread(room.channel, room.worker, Some(600), None)
+            .await
+            .unwrap()
+            .is_none(),
+        "a held plan's children wait"
+    );
+    let audit = || NewAuditEvent {
+        scope: AuditScope::Workspace(room.ws),
+        actor_id: Some(room.planner),
+        action: "plan.release".into(),
+        target_kind: Some("thread".into()),
+        target_id: Some(parent.0),
+        metadata: serde_json::json!({}),
+    };
+    let released = store.release_plan(parent, audit()).await.unwrap();
+    assert_eq!(released.len(), 5);
+    for kid in &kids {
+        assert!(store
+            .get_thread_block(kid.thread_id)
+            .await
+            .unwrap()
+            .is_none());
+    }
+    assert!(store
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
+        .await
+        .unwrap()
+        .is_some());
+    assert!(store
+        .release_plan(parent, audit())
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 on_both_backends!(
     a_plan_makes_every_child_with_its_edges,
     a_bad_child_creates_nothing,
@@ -852,4 +909,5 @@ on_both_backends!(
     the_last_landed_child_closes_the_plan,
     an_unlanded_child_keeps_the_plan_open,
     a_gate_refusal_leaves_the_plan_open,
+    a_large_plan_is_held_until_released,
 );

@@ -3189,6 +3189,14 @@ macro_rules! store_delegations {
                 thread_deps::remove(self.pool(), thread_id, depends_on).await
             }
 
+            async fn release_plan(
+                &self,
+                parent_id: ThreadId,
+                audit: NewAuditEvent,
+            ) -> Result<Vec<ThreadId>, StoreError> {
+                plans::release(self.pool(), parent_id, audit).await
+            }
+
             async fn submit_plan(
                 &self,
                 parent_id: ThreadId,

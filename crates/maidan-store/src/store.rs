@@ -2711,6 +2711,13 @@ pub trait ThreadDepStore: Send + Sync {
     /// The plan is validated by the caller ([`maidan_types::SubmitPlan::validated`]).
     /// A parent that already has children answers with them: replayed for the
     /// same lease and keys, a conflict otherwise.
+    /// Release a held plan: clear the plan hold on each child, audited in the
+    /// same transaction. Returns the children released.
+    async fn release_plan(
+        &self,
+        parent_id: ThreadId,
+        audit: NewAuditEvent,
+    ) -> Result<Vec<ThreadId>, StoreError>;
     async fn submit_plan(
         &self,
         parent_id: ThreadId,

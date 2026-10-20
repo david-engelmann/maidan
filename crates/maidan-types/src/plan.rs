@@ -44,6 +44,21 @@ pub struct PlanChild {
     pub test: Option<String>,
 }
 
+/// A plan with this many children or more is held for review.
+pub const PLAN_HOLD_CHILDREN: usize = 5;
+
+/// The note on each held child's block, which a release clears and no other
+/// block carries.
+pub const PLAN_HOLD_NOTE: &str =
+    "plan held for review: a Maintainer releases it with POST /threads/{parent}/plan/release";
+
+/// The children a plan release made claimable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PlanRelease {
+    pub released: Vec<ThreadId>,
+}
+
 /// The most characters a child's test command may hold.
 pub const PLAN_TEST_MAX_CHARS: usize = 500;
 
@@ -71,6 +86,10 @@ pub struct PlannedChild {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PlanChildren {
     pub children: Vec<PlannedChild>,
+    /// The plan is held for review: its children wait, blocked, until a
+    /// Maintainer releases it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub held: bool,
 }
 
 /// What submitting a plan did.
@@ -242,6 +261,17 @@ impl SubmitPlan {
             }
         }
         Ok(plan)
+    }
+
+    /// Whether the plan is held for review on creation: [`PLAN_HOLD_CHILDREN`]
+    /// children or more, or any child that needs a threat model. A held
+    /// plan's children are blocked until a Maintainer releases it.
+    pub fn needs_hold(&self) -> bool {
+        self.children.len() >= PLAN_HOLD_CHILDREN
+            || self
+                .children
+                .iter()
+                .any(|child| child.attributes.as_ref().is_some_and(|a| a.threat_model))
     }
 
     /// The submitted keys, for comparing a retry with the plan it repeats.

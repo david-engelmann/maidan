@@ -51,6 +51,12 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
      and a footprint with at least one item. A child with `threat_model: true`
      goes to a session (`engine: session`). A child that misses any of these
      is a 400 naming it, and nothing is created.
+   - **Held for review.** A plan with five or more children, or any child
+     with `threat_model: true`, is created held: the answer says
+     `"held": true`, and each child carries a `human` block, so `claim_next`
+     skips it and the board shows the hold. A Maintainer releases it with
+     `POST /threads/{id}/plan/release` (`token:admin`, audited), which clears
+     only the plan hold and answers the children released.
    - **All or nothing.** The children, their footprints, attributes and
      dependency edges are made in one transaction in the plan's channel. A bad
      child, an unknown or cyclic `depends_on`, a repository missing from the
