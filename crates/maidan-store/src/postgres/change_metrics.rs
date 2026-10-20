@@ -727,7 +727,7 @@ pub async fn list(
             });
     }
     let costs = sqlx::query(
-        "SELECT thread_id, COALESCE(SUM(usd_micros), 0) AS cost
+        "SELECT thread_id, COALESCE(SUM(usd_micros), 0)::BIGINT AS cost
          FROM maidan_usage_ledger WHERE workspace_id = $1
          GROUP BY thread_id",
     )

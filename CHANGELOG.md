@@ -393,6 +393,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Fixed:** the TypeScript, Python, Go and Rust SDKs now declare a thread's `attributes` (as `TaskAttributes`, with `linear_issue`), `description`, `status`, `block`, `closed_without_review`, `notices`, `plan_state`, `last_progress_at`, `stalled` and `human_wait`. Each SDK's suite checks that every member the server sends is declared, so all four had failed since task attributes landed.
 
+### The change sweep survives a bad tick, and reads task cost on Postgres
+
+- **Fixed:** on Postgres, the change pulls' cost read `SUM(usd_micros)` (a NUMERIC) as a 64-bit integer and panicked once any task had model spend. Since the handoff pass reads change pulls inside the sweep, the sweep task died on its first tick, and with it merges settling, change notices, handoffs and Linear claim comments. The sum is now cast to BIGINT. A panicking tick is now logged at ERROR and the next tick runs, and a failed Linear issue lookup for a claim comment warns instead of logging at debug.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
