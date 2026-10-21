@@ -77,8 +77,8 @@ change.
 
 ## Current state (2026-10-12)
 
-- **Releases:** latest **`v413.0.0`** (2026-10-11), with the week's
-  cross-tenant fixes. Release tags are cut when the maintainer chooses, not per
+- **Releases:** latest **`v414.0.0`** (2026-10-21), the swarm
+  release. Release tags are cut when the maintainer chooses, not per
   cluster, so some clusters were never tagged (v23–26, v78–100, v311, v350–401,
   v403, v411); their work ships in the next tag. Tagging is the maintainer's
   call.

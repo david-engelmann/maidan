@@ -148,6 +148,11 @@ async fn wait_for_member_event(
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
     let store = server.store.as_ref();
+    // Where a replay after a lag starts (see `thread::next_visible_event`).
+    let mut cursor = match since_log_id {
+        Some(since) => since,
+        None => store.max_event_id().await?,
+    };
 
     if let Some(since) = since_log_id {
         if let Some(event) = lookback_member_event(store, auth, member_id, &kinds, since).await? {
@@ -162,11 +167,20 @@ async fn wait_for_member_event(
             Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
             Ok(Some(item)) => item,
         };
-        // A lag marker means the buffer overflowed; keep waiting rather than
-        // reporting a false timeout (bounded by the same deadline).
-        let BusItem::Event(envelope) = item else {
-            continue;
+        let envelope = match item {
+            BusItem::Event(envelope) => envelope,
+            // The buffer overflowed and dropped events: read what was dropped
+            // from the log, then keep waiting on the same deadline.
+            BusItem::Lagged { .. } => {
+                if let Some(event) =
+                    lookback_member_event(store, auth, member_id, &kinds, cursor).await?
+                {
+                    return Ok(content_json(&event));
+                }
+                continue;
+            }
         };
+        cursor = cursor.max(envelope.log_id);
         // Addressed to this member, but if it lives in a thread the caller can't
         // access, don't reveal it — keep waiting.
         if !auth.bypass {
