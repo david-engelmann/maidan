@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
+
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
+
 ## [414.0.0] — 2026-10-21
 
 The first release since 413.0.0. It ships every PR merged after the 413.0.0
@@ -488,12 +494,6 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 ### The presence fan-out test waits for each subscriber's registration, not a fixed 50 ms
 
 - **Fixed:** `presence_and_typing_fan_out_between_subscribers` (#1490) read a connected member as `offline` under the coverage build. The server can take two sockets' handshakes in either order. When Bob registered before Alice, Bob showed up in Alice's snapshot, and the online diff the test waited for never came. Bob's socket, unread by the test, then hit the server's 60 s pong timeout, and the `offline` frame Alice received was real. The test now waits for each subscriber's `presence_snapshot` before going on, and every frame wait fails after 20 s rather than after the server drops a silent peer. A new test pins the other order: a member connected first is `online` in a later subscriber's snapshot.
-
-### The swarm metrics' provider and harness filters are tested on the route and over MCP
-
-`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
-same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
-that checks both answer alike, including for a name nothing was spent under.
 
 ## [413.0.0] — 2026-10-11
 
