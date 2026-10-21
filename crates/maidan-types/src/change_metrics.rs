@@ -93,6 +93,11 @@ pub enum ThreadNoticeKind {
     GateBlocked,
     /// Nothing the sweep reads holds the pull request back any more.
     GateClear,
+    /// The pull request entered its base branch's merge queue.
+    MergeQueued,
+    /// The pull request left the merge queue without merging; `reasons`
+    /// holds GitHub's reason (`MERGE_CONFLICT`, `FAILED_CHECKS`, ...).
+    MergeDequeued,
 }
 
 impl ThreadNoticeKind {
@@ -105,6 +110,8 @@ impl ThreadNoticeKind {
             Self::ChecksDone => "checks_done",
             Self::GateBlocked => "gate_blocked",
             Self::GateClear => "gate_clear",
+            Self::MergeQueued => "merge_queued",
+            Self::MergeDequeued => "merge_dequeued",
         }
     }
 
@@ -117,6 +124,8 @@ impl ThreadNoticeKind {
             "checks_done" => Some(Self::ChecksDone),
             "gate_blocked" => Some(Self::GateBlocked),
             "gate_clear" => Some(Self::GateClear),
+            "merge_queued" => Some(Self::MergeQueued),
+            "merge_dequeued" => Some(Self::MergeDequeued),
             _ => None,
         }
     }
@@ -204,6 +213,16 @@ impl ThreadNotice {
                 self.repo,
                 self.pull_number,
                 self.reasons.join("; ")
+            ),
+            ThreadNoticeKind::MergeQueued => format!(
+                "{}#{} entered the merge queue.",
+                self.repo, self.pull_number
+            ),
+            ThreadNoticeKind::MergeDequeued => format!(
+                "{}#{} left the merge queue without merging: {}.",
+                self.repo,
+                self.pull_number,
+                self.reasons.join(", ")
             ),
             ThreadNoticeKind::GateClear => format!(
                 "{}#{} is no longer held back.",

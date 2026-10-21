@@ -417,6 +417,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** the change sweep's per-tick read of a tracked pull request also reads its merge state, its review threads and the base branch's required checks. `ci` on the thread gains `merge_state`, `unresolved_threads` (with links to the first 20 and who opened them, review bots included), `missing_checks` (required checks that never reported though the rest finished) and `gate_reasons`.
 - **Added:** thread notices `gate_blocked` (with `reasons`) and `gate_clear`, said when what holds the pull request back changes. `ThreadNotice` gains `reasons`.
 
+### Maidan follows a tracked pull request through the merge queue
+
+- **Added:** `ci` on the thread gains `merge_queue`: `ready_to_merge` (the `ready-to-merge` label), `queued`, `dequeued` with GitHub's reason, or `landed`. Entering and leaving the queue are said as the notices `merge_queued` and `merge_dequeued` (with the reason in `reasons`).
+- **Changed:** a tracked pull request closed without merging lands its task, through the same `ThreadLanded` as a merge, when its head had commits its base lacked while open and is on the base branch now (a stack tool that lands commits itself and closes the pull request). A branch reset to its base and closed, or one closed with its head nowhere on the base, is still a close without a merge.
+
 ### A large or risky plan waits for a Maintainer
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.

@@ -102,8 +102,69 @@ pub struct PullCi {
     /// does.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gate_reasons: Vec<String>,
+    /// Where the pull request stands with its base branch's merge queue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_queue: Option<MergeQueue>,
     /// When the sweep last read it.
     pub updated_at: DateTime<Utc>,
+}
+
+/// Where a pull request stands with the merge queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum MergeQueueState {
+    /// It carries the `ready-to-merge` label the queue takes work from, and
+    /// is not queued yet.
+    ReadyToMerge,
+    /// It is in the merge queue.
+    Queued,
+    /// It left the queue without merging; `reason` says why.
+    Dequeued,
+    /// It landed on its base: merged, or closed by a tool that landed its
+    /// head itself.
+    Landed,
+}
+
+impl MergeQueueState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ReadyToMerge => "ready_to_merge",
+            Self::Queued => "queued",
+            Self::Dequeued => "dequeued",
+            Self::Landed => "landed",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "ready_to_merge" => Some(Self::ReadyToMerge),
+            "queued" => Some(Self::Queued),
+            "dequeued" => Some(Self::Dequeued),
+            "landed" => Some(Self::Landed),
+            _ => None,
+        }
+    }
+}
+
+/// A pull request's merge-queue state, and why it was dequeued.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MergeQueue {
+    pub state: MergeQueueState,
+    /// GitHub's reason for a dequeue (`MERGE_CONFLICT`, `FAILED_CHECKS`, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// What the last read recorded, which a new read is compared with.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PreviousRead {
+    /// The reasons that held the pull request back; `None` before any read
+    /// could say.
+    pub gate: Option<Vec<String>>,
+    /// Its merge-queue state; `None` when it had none.
+    pub merge_queue: Option<MergeQueue>,
 }
 
 fn is_zero(n: &i64) -> bool {
@@ -144,6 +205,12 @@ pub struct NewPullCi {
     /// What holds the pull request back, sorted; `None` when the read could
     /// not say, which leaves the last answer standing.
     pub gate_reasons: Option<Vec<String>>,
+    /// Its merge-queue state, read with the gate: compared only when
+    /// `gate_reasons` was read.
+    pub merge_queue: Option<MergeQueue>,
+    /// Whether the head has commits its base lacks. Kept once seen for the
+    /// same head, so a head the base caught up with still counts as ahead.
+    pub head_ahead: bool,
 }
 
 /// The notices a read owes its thread, each with the key that says it once:
@@ -156,12 +223,17 @@ pub struct NewPullCi {
 /// left. Their keys carry `change`, unique to this change, because the same
 /// reasons can come back after a clear; the caller compares under the lock
 /// that serializes reads, so a change is said once.
+///
+/// `merge_queued` and `merge_dequeued` are said, the same way, when the
+/// pull request enters the merge queue or leaves it (or leaves it again for
+/// another reason).
 pub fn ci_notices(
     new: &NewPullCi,
-    previous_gate: Option<&[String]>,
+    previous: &PreviousRead,
     change: &str,
     now: DateTime<Utc>,
 ) -> Vec<(ThreadNotice, String)> {
+    let previous_gate = previous.gate.as_deref();
     let repo = new.repo.to_ascii_lowercase();
     let head = new.head_sha.to_ascii_lowercase();
     let at = format!("{repo}#{}", new.pull_number);
@@ -225,6 +297,25 @@ pub fn ci_notices(
             }
         }
     }
+    if new.gate_reasons.is_some() && new.merge_queue != previous.merge_queue {
+        let entered = new.merge_queue.as_ref().map(|queue| queue.state);
+        match (entered, new.merge_queue.as_ref()) {
+            (Some(MergeQueueState::Queued), _) => owed.push((
+                notice(ThreadNoticeKind::MergeQueued, None, Vec::new(), Vec::new()),
+                format!("queue:{at}:{change}"),
+            )),
+            (Some(MergeQueueState::Dequeued), Some(queue)) => owed.push((
+                notice(
+                    ThreadNoticeKind::MergeDequeued,
+                    None,
+                    Vec::new(),
+                    queue.reason.iter().cloned().collect(),
+                ),
+                format!("queue:{at}:{change}"),
+            )),
+            _ => {}
+        }
+    }
     owed
 }
 
@@ -278,11 +369,63 @@ mod tests {
             unresolved_thread_links: Vec::new(),
             missing_checks: Vec::new(),
             gate_reasons: None,
+            merge_queue: None,
+            head_ahead: false,
         }
     }
 
     fn ci_notices_at(new: &NewPullCi, now: DateTime<Utc>) -> Vec<(ThreadNotice, String)> {
-        ci_notices(new, None, "c1", now)
+        ci_notices(new, &PreviousRead::default(), "c1", now)
+    }
+
+    fn prev(gate: Option<&[String]>) -> PreviousRead {
+        PreviousRead {
+            gate: gate.map(<[String]>::to_vec),
+            merge_queue: None,
+        }
+    }
+
+    #[test]
+    fn entering_and_leaving_the_queue_is_said_on_the_change() {
+        let mut new = read(CiStatus::Pending, &[], false);
+        new.gate_reasons = Some(Vec::new());
+        let queue_kinds = |owed: Vec<(ThreadNotice, String)>| {
+            owed.into_iter()
+                .filter(|(n, _)| n.kind.as_str().starts_with("merge_"))
+                .map(|(n, _)| (n.kind.as_str(), n.reasons))
+                .collect::<Vec<_>>()
+        };
+        let queued = MergeQueue {
+            state: MergeQueueState::Queued,
+            reason: None,
+        };
+        new.merge_queue = Some(queued.clone());
+        let before = PreviousRead {
+            gate: Some(Vec::new()),
+            merge_queue: None,
+        };
+        assert_eq!(
+            queue_kinds(ci_notices(&new, &before, "q1", Utc::now())),
+            vec![("merge_queued", Vec::new())]
+        );
+        let in_queue = PreviousRead {
+            merge_queue: Some(queued),
+            ..before.clone()
+        };
+        assert!(queue_kinds(ci_notices(&new, &in_queue, "q2", Utc::now())).is_empty());
+        new.merge_queue = Some(MergeQueue {
+            state: MergeQueueState::Dequeued,
+            reason: Some("MERGE_CONFLICT".into()),
+        });
+        assert_eq!(
+            queue_kinds(ci_notices(&new, &in_queue, "q3", Utc::now())),
+            vec![("merge_dequeued", vec!["MERGE_CONFLICT".to_string()])]
+        );
+        new.gate_reasons = None;
+        assert!(
+            queue_kinds(ci_notices(&new, &in_queue, "q4", Utc::now())).is_empty(),
+            "a read that carried no gate says nothing about the queue"
+        );
     }
 
     #[test]
@@ -301,12 +444,12 @@ mod tests {
         };
         new.gate_reasons = Some(Vec::new());
         assert!(
-            gate(&ci_notices(&new, None, "c1", Utc::now())).is_empty(),
+            gate(&ci_notices(&new, &prev(None), "c1", Utc::now())).is_empty(),
             "clear from the start is no news"
         );
         new.gate_reasons = Some(vec!["merge state BEHIND".into()]);
         assert_eq!(
-            gate(&ci_notices(&new, Some(&[]), "c2", Utc::now())),
+            gate(&ci_notices(&new, &prev(Some(&[])), "c2", Utc::now())),
             vec![(
                 "gate_blocked",
                 vec!["merge state BEHIND".to_string()],
@@ -314,15 +457,15 @@ mod tests {
             )]
         );
         let same = ["merge state BEHIND".to_string()];
-        assert!(gate(&ci_notices(&new, Some(&same), "c3", Utc::now())).is_empty());
+        assert!(gate(&ci_notices(&new, &prev(Some(&same)), "c3", Utc::now())).is_empty());
         new.gate_reasons = Some(Vec::new());
         assert_eq!(
-            gate(&ci_notices(&new, Some(&same), "c4", Utc::now()))[0].0,
+            gate(&ci_notices(&new, &prev(Some(&same)), "c4", Utc::now()))[0].0,
             "gate_clear"
         );
         new.gate_reasons = None;
         assert!(
-            gate(&ci_notices(&new, Some(&same), "c5", Utc::now())).is_empty(),
+            gate(&ci_notices(&new, &prev(Some(&same)), "c5", Utc::now())).is_empty(),
             "an unread gate says nothing"
         );
     }
