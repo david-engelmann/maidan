@@ -528,6 +528,15 @@ work, so compare engines within one size or one tier: across the whole
 repository the comparison mostly measures the routing. Cost per merged change
 in each engine slice is what compares Pi with sessions on cost.
 
+Two more splits compare who did the work: `by_provider` (the model provider
+that spent the most on each task: `anthropic`, `openai`, `xai`, ...) and
+`by_harness` (the harness that ran it: `claude-code`, `cursor`, `codex`, ...),
+each most tasks first with unnamed tasks last. Both come from the claimant's
+own usage reports, so a claimant names them in `report_usage`'s `evidence`
+(`{"provider": "xai", "harness": "openrouter"}`); a task whose usage named
+none lands in the unnamed slice. Each task carries its `provider` and
+`harness`, and `?provider=` and `?harness=` narrow the whole response to one.
+
 Each task carries its attributes and, when known, its `linear_issue`: the
 Linear key the change result names (`"linear_issue": "ENG-1234"`, ignored
 unless it is a key), else the issue of its Linear `deliver_to` target. The

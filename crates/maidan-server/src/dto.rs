@@ -447,6 +447,12 @@ pub struct SwarmMetricsQuery {
     pub kind: Option<maidan_types::TaskKind>,
     /// Only tasks of this size (`S`, `M` or `L`).
     pub size: Option<maidan_types::TaskSize>,
+    /// Only tasks whose spend was mostly with this model provider, as the
+    /// usage reports named it (`anthropic`, `openai`, `xai`, ...).
+    pub provider: Option<String>,
+    /// Only tasks mostly run by this harness (`claude-code`, `cursor`,
+    /// `codex`, ...).
+    pub harness: Option<String>,
     /// Only tasks for these Linear issues, comma-separated
     /// (`ENG-5843,ENG-5824`): the task's `linear_issue` attribute, else the
     /// one its change result named. Rollups count only these tasks.
