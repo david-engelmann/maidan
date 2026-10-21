@@ -79,7 +79,7 @@ pub async fn run(
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // The first tick is immediate; skip it so startup is not a repair storm.
     ticker.tick().await;
-    crate::ops_alert::start_loop("embed_repair", config.interval);
+    let _watched = crate::ops_alert::start_loop("embed_repair", config.interval);
     loop {
         ticker.tick().await;
         let tick = repair_once(search.as_ref(), &provider, &metrics, config.batch);

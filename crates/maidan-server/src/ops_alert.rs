@@ -23,6 +23,17 @@
 //! pass rather than lost, and a watchdog that wakes long after it slept takes
 //! the host to have been suspended, not every loop to have stalled at once.
 //!
+//! A tick that hangs is a stall once it has run [`STALL_INTERVALS`] intervals
+//! or [`MAX_TICK_SECS`], whichever is sooner, so a loop that ticks hourly is
+//! not given three hours. A loop that ends without saying so (it returned,
+//! or a panic outside its tick unwound it) is reported on the watchdog's
+//! next pass: its [`LoopGuard`] marks it as it drops.
+//!
+//! `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into
+//! one loop after boot, to prove each alert end to end on a running stack.
+//! It is refused with `MAIDAN_ENV=production`, and the boot line says when
+//! one is armed.
+//!
 //! Every background loop goes through here: [`start_loop`] when it starts,
 //! [`guarded_tick`] around each tick (a panic is counted, logged, alerted,
 //! and the loop runs on), and [`stop_loop`] if it ends on purpose. The
@@ -61,6 +72,12 @@ const SUSPEND_INTERVALS: i64 = 3;
 /// outage that lasts days does not grow it without end.
 const MAX_PENDING: usize = 32;
 
+/// The longest a tick may run before it is a stall, whatever its interval.
+const MAX_TICK_SECS: i64 = 900;
+
+/// Ticks a `fail` fault fails: enough for the failing alert.
+const FAULT_FAIL_TICKS: u32 = 3;
+
 /// Log targets whose warnings say a tick was slow, not that it failed.
 const NOT_FAILURES: [&str; 1] = ["sqlx"];
 
@@ -80,7 +97,33 @@ struct LoopState {
     failing_ticks: u32,
     /// The latest of those warnings.
     last_warning: Option<String>,
+    /// When the running tick started, if one is running.
+    tick_started: Option<i64>,
+    /// It ended without [`stop_loop`].
+    exited: bool,
 }
+
+/// One injected fault, from `MAIDAN_OPS_FAULT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaultKind {
+    /// The tick panics.
+    Panic,
+    /// The tick hangs past the stall threshold.
+    Stall,
+    /// Three ticks in a row log an error.
+    Fail,
+    /// The loop dies: a panic outside its tick unwinds it.
+    Exit,
+}
+
+/// A fault armed for one loop, and how many more ticks it takes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fault {
+    pub loop_name: String,
+    pub kind: FaultKind,
+}
+
+static FAULT: OnceLock<Mutex<Option<(Fault, u32)>>> = OnceLock::new();
 
 static LOOPS: OnceLock<Mutex<HashMap<&'static str, LoopState>>> = OnceLock::new();
 
@@ -127,10 +170,28 @@ fn channel_from_raw(raw: Option<String>) -> Option<String> {
 
 /// A background loop started, with its interval: its liveness gauge and
 /// panic counter exist from now on, and the watchdog expects a tick from it
-/// every interval.
-pub fn start_loop(name: &'static str, interval: Duration) {
+/// every interval. Hold the guard for the loop's life: when it drops without
+/// [`stop_loop`], the loop has died and the watchdog says so.
+pub fn start_loop(name: &'static str, interval: Duration) -> LoopGuard {
     crate::metrics::register_loop(name);
     register_loop(name, interval);
+    LoopGuard(name)
+}
+
+/// Marks its loop exited when it drops, which is when the loop's task ends:
+/// by returning, by a panic outside a guarded tick, or by being aborted.
+#[derive(Debug)]
+#[must_use = "bind it for the loop's life; dropped at once, the loop reads as exited"]
+pub struct LoopGuard(&'static str);
+
+impl Drop for LoopGuard {
+    fn drop(&mut self) {
+        if let Ok(mut loops) = loops().lock() {
+            if let Some(state) = loops.get_mut(self.0) {
+                state.exited = true;
+            }
+        }
+    }
 }
 
 /// A background loop ended on purpose: the watchdog stops expecting it, so
@@ -146,6 +207,22 @@ pub fn stop_loop(name: &'static str) {
 /// the tick counts toward the loop's liveness.
 pub async fn guarded_tick<F: Future>(name: &'static str, tick: F) -> Option<F::Output> {
     use futures::FutureExt;
+    let fault = due_fault(name);
+    if fault == Some(FaultKind::Exit) {
+        // Outside the catch below, so it unwinds the loop's task the way a
+        // real bug in the loop body would.
+        panic!("MAIDAN_OPS_FAULT: {name} loop exits");
+    }
+    let hang = Duration::from_secs(u64::try_from(tick_limit(interval_of(name)) + 120).unwrap_or(0));
+    let tick = async move {
+        match fault {
+            Some(FaultKind::Panic) => panic!("MAIDAN_OPS_FAULT: {name} tick panics"),
+            Some(FaultKind::Stall) => tokio::time::sleep(hang).await,
+            Some(FaultKind::Fail) => tracing::error!("MAIDAN_OPS_FAULT: {name} tick fails"),
+            Some(FaultKind::Exit) | None => {}
+        }
+        tick.await
+    };
     begin_tick(name);
     let out = match std::panic::AssertUnwindSafe(TICK_LOOP.scope(name, tick))
         .catch_unwind()
@@ -202,8 +279,98 @@ fn begin_tick(name: &str) {
     if let Ok(mut loops) = loops().lock() {
         if let Some(state) = loops.get_mut(name) {
             state.tick_warnings = 0;
+            state.tick_started = Some(now());
         }
     }
+}
+
+fn interval_of(name: &str) -> i64 {
+    loops()
+        .lock()
+        .ok()
+        .and_then(|loops| loops.get(name).map(|state| state.interval))
+        .unwrap_or(0)
+}
+
+/// How long one tick of a loop with this interval may run.
+fn tick_limit(interval: i64) -> i64 {
+    interval.saturating_mul(STALL_INTERVALS).min(MAX_TICK_SECS)
+}
+
+/// Read `MAIDAN_OPS_FAULT`. Unset or blank is none; a malformed value, or
+/// any value with `MAIDAN_ENV=production`, is an error boot refuses.
+pub fn fault_from_env() -> Result<Option<Fault>, String> {
+    parse_fault(
+        std::env::var("MAIDAN_OPS_FAULT").ok(),
+        crate::config::is_production(),
+    )
+}
+
+fn parse_fault(raw: Option<String>, production: bool) -> Result<Option<Fault>, String> {
+    let Some(raw) = raw
+        .map(|raw| raw.trim().to_string())
+        .filter(|raw| !raw.is_empty())
+    else {
+        return Ok(None);
+    };
+    if production {
+        return Err("MAIDAN_OPS_FAULT cannot be set when MAIDAN_ENV=production".into());
+    }
+    let (loop_name, kind) = raw.split_once(':').ok_or_else(|| {
+        format!("MAIDAN_OPS_FAULT must be <loop>:<panic|stall|fail|exit>, not {raw:?}")
+    })?;
+    let kind = match kind {
+        "panic" => FaultKind::Panic,
+        "stall" => FaultKind::Stall,
+        "fail" => FaultKind::Fail,
+        "exit" => FaultKind::Exit,
+        other => {
+            return Err(format!(
+                "MAIDAN_OPS_FAULT fault must be panic, stall, fail or exit, not {other:?}"
+            ))
+        }
+    };
+    if loop_name.is_empty() {
+        return Err("MAIDAN_OPS_FAULT names no loop".into());
+    }
+    Ok(Some(Fault {
+        loop_name: loop_name.to_string(),
+        kind,
+    }))
+}
+
+/// Arm a fault: the named loop's next ticks take it.
+pub fn arm_fault(fault: Fault) {
+    let ticks = if fault.kind == FaultKind::Fail {
+        FAULT_FAIL_TICKS
+    } else {
+        1
+    };
+    tracing::warn!(loop_name = fault.loop_name, kind = ?fault.kind, "MAIDAN_OPS_FAULT armed");
+    if let Ok(mut armed) = FAULT.get_or_init(|| Mutex::new(None)).lock() {
+        *armed = Some((fault, ticks));
+    }
+}
+
+/// The fault this tick of `name` takes, if one is armed for it.
+fn due_fault(name: &str) -> Option<FaultKind> {
+    let mut armed = FAULT.get()?.lock().ok()?;
+    let (fault, left) = armed.as_mut()?;
+    if fault.loop_name != name || *left == 0 {
+        return None;
+    }
+    *left -= 1;
+    Some(fault.kind)
+}
+
+/// The armed fault, for the boot line.
+fn armed_fault() -> Option<Fault> {
+    FAULT
+        .get()?
+        .lock()
+        .ok()?
+        .as_ref()
+        .map(|(fault, _)| fault.clone())
 }
 
 fn note_warning(name: &str, warning: String) {
@@ -220,6 +387,7 @@ pub fn note_tick(name: &'static str) {
     if let Ok(mut loops) = loops().lock() {
         if let Some(state) = loops.get_mut(name) {
             state.last_tick = now();
+            state.tick_started = None;
             if state.tick_warnings > 0 {
                 state.failing_ticks = state.failing_ticks.saturating_add(1);
             } else {
@@ -310,6 +478,15 @@ fn stalled(at: i64, last: i64, interval: i64) -> bool {
     at - last > interval.saturating_mul(STALL_INTERVALS)
 }
 
+/// Whether a loop is stalled at `at`: quiet for three intervals, or in one
+/// tick for longer than [`tick_limit`].
+fn loop_stalled(at: i64, state: &LoopState) -> bool {
+    stalled(at, state.last_tick, state.interval)
+        || state
+            .tick_started
+            .is_some_and(|started| at - started > tick_limit(state.interval))
+}
+
 /// The started loops that are stalled at `at`, with how long each has been
 /// quiet, in seconds.
 fn stalled_loops(at: i64) -> Vec<(&'static str, i64)> {
@@ -318,7 +495,7 @@ fn stalled_loops(at: i64) -> Vec<(&'static str, i64)> {
         .map(|loops| {
             loops
                 .iter()
-                .filter(|(_, state)| stalled(at, state.last_tick, state.interval))
+                .filter(|(_, state)| !state.exited && loop_stalled(at, state))
                 .map(|(name, state)| (*name, at - state.last_tick))
                 .collect()
         })
@@ -346,6 +523,25 @@ fn failing_loops() -> Vec<(&'static str, u32, String)> {
         .unwrap_or_default()
 }
 
+/// The loops that ended without [`stop_loop`], taken out of the watch: each
+/// is reported once.
+fn take_exited_loops() -> Vec<&'static str> {
+    loops()
+        .lock()
+        .map(|mut loops| {
+            let exited: Vec<&'static str> = loops
+                .iter()
+                .filter(|(_, state)| state.exited)
+                .map(|(name, _)| *name)
+                .collect();
+            for name in &exited {
+                loops.remove(name);
+            }
+            exited
+        })
+        .unwrap_or_default()
+}
+
 /// Whether a watchdog sleep of `secs` seconds that took `slept` means the
 /// host was suspended.
 fn suspended(slept: i64, secs: i64) -> bool {
@@ -358,6 +554,9 @@ fn restart_clocks(at: i64) {
     if let Ok(mut loops) = loops().lock() {
         for state in loops.values_mut() {
             state.last_tick = at;
+            if state.tick_started.is_some() {
+                state.tick_started = Some(at);
+            }
         }
     }
 }
@@ -434,10 +633,18 @@ pub async fn run(state: AppState, channel: String) {
     if SENDER.set(sender).is_err() || CHANNEL.set(channel).is_err() {
         return;
     }
+    let armed = armed_fault()
+        .map(|fault| {
+            format!(
+                " Fault injection is armed: {} {:?} (MAIDAN_OPS_FAULT).",
+                fault.loop_name, fault.kind
+            )
+        })
+        .unwrap_or_default();
     alert(
         "boot",
         &format!(
-            ":white_check_mark: Maidan {} started; operator alerts reach this channel.",
+            ":white_check_mark: Maidan {} started; operator alerts reach this channel.{armed}",
             env!("CARGO_PKG_VERSION")
         ),
     )
@@ -455,6 +662,15 @@ pub async fn run(state: AppState, channel: String) {
             restart_clocks(at);
         }
         retry_pending().await;
+        for name in take_exited_loops() {
+            alert(
+                &format!("exited:{name}"),
+                &format!(
+                    ":rotating_light: Maidan's {name} loop has exited. The work it drives has stopped until the server restarts; the log has why."
+                ),
+            )
+            .await;
+        }
         for (name, ticks, warning) in failing_loops() {
             alert(
                 &format!("failing:{name}"),
@@ -545,7 +761,7 @@ mod tests {
         let recording = Arc::new(Recording::default());
         let _ = SENDER.set(recording.clone());
         let _ = CHANNEL.set("C0123ABCDE".into());
-        start_loop("test_panicking", Duration::from_secs(60));
+        let _test_panicking = start_loop("test_panicking", Duration::from_secs(60));
         let out: Option<()> = guarded_tick("test_panicking", async { panic!("boom") }).await;
         assert_eq!(out, None);
         assert_eq!(guarded_tick("test_panicking", async { 7 }).await, Some(7));
@@ -571,7 +787,7 @@ mod tests {
                 .into_iter()
                 .find(|(name, _, _)| *name == "test_failing")
         };
-        start_loop("test_failing", Duration::from_secs(60));
+        let _test_failing = start_loop("test_failing", Duration::from_secs(60));
         for _ in 0..2 {
             guarded_tick("test_failing", async {
                 tracing::warn!(
@@ -609,7 +825,7 @@ mod tests {
         use tracing_subscriber::layer::SubscriberExt;
         let _log =
             tracing::subscriber::set_default(tracing_subscriber::registry().with(TickWarnings));
-        start_loop("test_slow", Duration::from_secs(60));
+        let _test_slow = start_loop("test_slow", Duration::from_secs(60));
         for _ in 0..3 {
             guarded_tick("test_slow", async {
                 tracing::warn!(target: "sqlx::query", "slow statement: execution time exceeded alert threshold");
@@ -651,7 +867,7 @@ mod tests {
     fn a_suspended_host_restarts_the_clocks_instead_of_alerting() {
         assert!(!suspended(180, 60));
         assert!(suspended(181, 60));
-        start_loop("test_suspended", Duration::from_secs(60));
+        let _test_suspended = start_loop("test_suspended", Duration::from_secs(60));
         let woke = now() + 3_600;
         assert!(stalled_loops(woke)
             .iter()
@@ -660,6 +876,111 @@ mod tests {
         assert!(!stalled_loops(woke + 60)
             .iter()
             .any(|(name, _)| *name == "test_suspended"));
+    }
+
+    /// A tick that hangs is a stall after three intervals or 15 minutes,
+    /// whichever is sooner, so an hourly loop is not given three hours; an
+    /// idle long-interval loop between ticks is not a stall.
+    #[test]
+    fn a_hung_tick_is_a_stall_before_three_long_intervals() {
+        let at = 100_000;
+        let hourly = |started: Option<i64>| LoopState {
+            last_tick: at - 1_000,
+            interval: 3_600,
+            tick_started: started,
+            ..LoopState::default()
+        };
+        assert!(!loop_stalled(at, &hourly(None)));
+        assert!(!loop_stalled(at, &hourly(Some(at - MAX_TICK_SECS))));
+        assert!(loop_stalled(at, &hourly(Some(at - MAX_TICK_SECS - 1))));
+        let quick = LoopState {
+            last_tick: at - 10,
+            interval: 60,
+            tick_started: Some(at - 181),
+            ..LoopState::default()
+        };
+        assert!(loop_stalled(at, &quick));
+    }
+
+    /// A loop whose guard drops without `stop_loop` is reported exited once
+    /// and is no longer watched; one stopped on purpose is not reported.
+    #[test]
+    fn a_loop_that_ends_unannounced_is_reported_once() {
+        drop(start_loop("test_exits", Duration::from_secs(60)));
+        let stopped = start_loop("test_ends_on_purpose", Duration::from_secs(60));
+        stop_loop("test_ends_on_purpose");
+        drop(stopped);
+        let exited = take_exited_loops();
+        assert!(exited.contains(&"test_exits"), "{exited:?}");
+        assert!(!exited.contains(&"test_ends_on_purpose"));
+        assert!(!take_exited_loops().contains(&"test_exits"));
+        assert!(!stalled_loops(now() + 10_000)
+            .iter()
+            .any(|(name, _)| *name == "test_exits"));
+    }
+
+    #[test]
+    fn a_fault_names_one_loop_and_one_fault_and_never_runs_in_production() {
+        assert_eq!(parse_fault(None, false), Ok(None));
+        assert_eq!(parse_fault(Some("  ".into()), true), Ok(None));
+        assert_eq!(
+            parse_fault(Some("change_sweep:fail".into()), false),
+            Ok(Some(Fault {
+                loop_name: "change_sweep".into(),
+                kind: FaultKind::Fail,
+            }))
+        );
+        for bad in ["change_sweep", "change_sweep:explode", ":panic"] {
+            assert!(parse_fault(Some(bad.into()), false).is_err(), "{bad}");
+        }
+        let refused = parse_fault(Some("change_sweep:panic".into()), true);
+        assert!(refused.is_err_and(|e| e.contains("MAIDAN_ENV=production")));
+    }
+
+    /// Each armed fault reaches only the loop it names: `fail` fails three
+    /// ticks, `panic` is contained like any panic, and `exit` unwinds the
+    /// loop's task, which is then reported exited.
+    #[tokio::test]
+    async fn an_armed_fault_takes_only_the_named_loop() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let _log =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(TickWarnings));
+        let _fault_loop = start_loop("test_fault", Duration::from_secs(60));
+        arm_fault(Fault {
+            loop_name: "test_fault".into(),
+            kind: FaultKind::Fail,
+        });
+        assert_eq!(due_fault("test_other"), None);
+        for _ in 0..FAULT_FAIL_TICKS {
+            guarded_tick("test_fault", async {}).await;
+        }
+        assert!(failing_loops()
+            .iter()
+            .any(|(name, _, _)| *name == "test_fault"));
+        guarded_tick("test_fault", async {}).await;
+        assert!(!failing_loops()
+            .iter()
+            .any(|(name, _, _)| *name == "test_fault"));
+
+        arm_fault(Fault {
+            loop_name: "test_fault".into(),
+            kind: FaultKind::Panic,
+        });
+        assert_eq!(guarded_tick("test_fault", async { 1 }).await, None);
+        assert_eq!(guarded_tick("test_fault", async { 2 }).await, Some(2));
+
+        arm_fault(Fault {
+            loop_name: "test_fault_exit".into(),
+            kind: FaultKind::Exit,
+        });
+        let task = tokio::spawn(async {
+            let _watched = start_loop("test_fault_exit", Duration::from_secs(60));
+            loop {
+                guarded_tick("test_fault_exit", async {}).await;
+            }
+        });
+        assert!(task.await.is_err_and(|e| e.is_panic()));
+        assert!(take_exited_loops().contains(&"test_fault_exit"));
     }
 
     #[test]
@@ -672,8 +993,8 @@ mod tests {
     /// stopped on purpose is not.
     #[test]
     fn a_quiet_loop_is_stalled_and_a_stopped_one_is_not() {
-        start_loop("test_quiet", Duration::from_secs(60));
-        start_loop("test_stopped", Duration::from_secs(60));
+        let _test_quiet = start_loop("test_quiet", Duration::from_secs(60));
+        let _test_stopped = start_loop("test_stopped", Duration::from_secs(60));
         stop_loop("test_stopped");
         let later = now() + 181;
         let stalled = stalled_loops(later);
@@ -708,8 +1029,10 @@ mod tests {
         ];
         for (name, source) in modules {
             assert!(
-                source.contains(&format!("start_loop(\"{name}\"")),
-                "{name} does not start_loop"
+                source.contains(&format!(
+                    "let _watched = crate::ops_alert::start_loop(\"{name}\""
+                )),
+                "{name} does not start_loop and hold its guard for the loop's life"
             );
             assert!(
                 source.contains(&format!("guarded_tick(\"{name}\"")),

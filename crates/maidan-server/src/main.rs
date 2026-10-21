@@ -138,6 +138,12 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     )
     .context("init observability")?;
 
+    // A fault for the operator alerts to report, proving them on a running
+    // stack (`MAIDAN_OPS_FAULT`); refused in production.
+    if let Some(fault) = maidan_server::ops_alert::fault_from_env().map_err(anyhow::Error::msg)? {
+        maidan_server::ops_alert::arm_fault(fault);
+    }
+
     if !unknown_env.is_empty() {
         tracing::warn!(
             unknown = %maidan_env::describe(&unknown_env),
