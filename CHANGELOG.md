@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A fault armed for a loop that never started says so
+
+- **Fixed:** when `MAIDAN_OPS_FAULT` names a loop that has not started by the first watchdog pass (a misspelt name, or a loop this deployment does not run), the operator channel gets one warning naming it. Before, the drill waited for an alert that could never come.
+
 ## [414.0.0] — 2026-10-21
 
 The first release since 413.0.0. It ships every PR merged after the 413.0.0
