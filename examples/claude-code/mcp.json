@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "maidan": {
+      "type": "http",
+      "url": "${MAIDAN_URL:-http://127.0.0.1:8080}/mcp/streamable",
+      "headers": {
+        "Authorization": "Bearer ${MAIDAN_TOKEN}"
+      }
+    }
+  }
+}

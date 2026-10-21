@@ -4230,3 +4230,170 @@ async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
         json!(["merge state BEHIND"])
     );
 }
+
+// ------------------------------------------- the session claimant's fallback
+//
+// `examples/claude-code/maidan-claimant/runbook.md` tells an interactive
+// session that a change the flow cannot commit (a binary file, or no text diff
+// at all) has no branch-only delivery, and that the session opens the pull
+// request itself and registers it on the thread. These pin both halves.
+
+const BINARY_DIFF: &str = "diff --git a/assets/logo.png b/assets/logo.png\nindex 1111111..2222222 100644\nBinary files a/assets/logo.png and b/assets/logo.png differ\n";
+
+#[tokio::test]
+async fn a_change_naming_only_a_branch_or_carrying_a_binary_patch_commits_nothing() {
+    for (diff, why) in [
+        ("", "has no `diff`"),
+        (BINARY_DIFF, "binary patches are not supported"),
+    ] {
+        let h = harness().await;
+        h.allow_change().await;
+        h.route(&h.a, &change("changed", &h.base_sha, BRANCH, diff), 1)
+            .await;
+        h.drain().await;
+
+        let row = h.delivery(&h.a, "github_branch").await;
+        assert_eq!(row.status, status::SKIPPED, "{why}");
+        let reason = row.last_error.unwrap_or_default();
+        assert!(reason.contains(why), "{why:?} not in {reason}");
+        let fake = h.fake.lock().unwrap();
+        assert!(fake.writes().is_empty(), "{why}: {:?}", fake.writes());
+        assert!(!fake.refs.contains_key(BRANCH), "{why}: no branch is made");
+        assert!(fake.pulls.is_empty(), "{why}: no pull request is opened");
+    }
+}
+
+/// Send `body` to `path` as `token` through the real router.
+async fn send_json(
+    h: &Harness,
+    method: Method,
+    token: &str,
+    path: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::builder()
+            .method(method)
+            .uri(path)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn a_seat_minted_for_a_session_claims_session_work_and_registers_the_pull_it_opened() {
+    let h = harness().await;
+    h.allow_change().await;
+    for t in [&h.a, &h.b] {
+        h.store
+            .set_thread_attributes(
+                t.thread_id,
+                maidan_types::TaskAttributes {
+                    engine: Some(maidan_types::TaskEngine::Session),
+                    ..maidan_types::TaskAttributes::default()
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    // The seat: a member and a worker token from the one admin call.
+    let admin = admin_token(&h, &h.a).await;
+    let (minted, seat) = send_json(
+        &h,
+        Method::POST,
+        &admin,
+        &format!("/workspaces/{}/agents", h.a.workspace_id.0),
+        json!({"handle": "session-seat-1"}),
+    )
+    .await;
+    assert_eq!(minted, StatusCode::CREATED, "{seat}");
+    let token = seat["token"]["secret"].as_str().unwrap().to_string();
+
+    let (claimed, thread) = send_json(
+        &h,
+        Method::POST,
+        &token,
+        &format!("/workspaces/{}/threads/claim-next", h.a.workspace_id.0),
+        json!({"engine": "session", "lease_secs": 600}),
+    )
+    .await;
+    assert_eq!(claimed, StatusCode::OK, "{thread}");
+    assert_eq!(thread["id"], json!(h.a.thread_id.0), "{thread}");
+
+    // The session pushed its own branch and opened the pull request itself.
+    h.fake.lock().unwrap().pulls.push(FakePull {
+        number: 88,
+        head: "session/replace-the-logo".into(),
+        base: "dev".into(),
+        title: "[ENG-7] Replace the logo".into(),
+        body: "Fixes ENG-7\n\n## Testing\nmake prepush\n".into(),
+        draft: true,
+        labels: Vec::new(),
+        merged_at: None,
+        closed_at: None,
+    });
+    let register = |thread: ThreadId| {
+        let path = format!("/threads/{}/pull", thread.0);
+        let (h, token) = (&h, token.as_str());
+        async move {
+            send_json(
+                h,
+                Method::PUT,
+                token,
+                &path,
+                json!({"repo": REPO, "pull_number": 88}),
+            )
+            .await
+        }
+    };
+    let (registered, pull) = register(h.a.thread_id).await;
+    assert_eq!(registered, StatusCode::OK, "{pull}");
+    assert_eq!(pull["pull_number"], 88, "{pull}");
+    // Workspace B blesses the repository too, so only the thread's workspace
+    // can refuse the seat.
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+    let (elsewhere, why) = register(h.b.thread_id).await;
+    assert_eq!(
+        elsewhere,
+        StatusCode::FORBIDDEN,
+        "a seat never registers a pull request on another workspace's thread: {why}"
+    );
+
+    change_sweep::sweep_once(&h.state).await;
+    let tracked = h
+        .store
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert!(
+        tracked
+            .iter()
+            .any(|p| p.pull_number == 88 && p.thread_id == h.a.thread_id),
+        "{tracked:?}"
+    );
+    let other = h
+        .store
+        .list_change_pulls(h.b.workspace_id, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert!(other.is_empty(), "{other:?}");
+}
