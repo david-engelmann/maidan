@@ -1391,6 +1391,50 @@ pub(super) async fn submit_plan(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct AmendPlanArgs {
+    thread_id: uuid::Uuid,
+    lease_id: ClaimLeaseId,
+    #[serde(default)]
+    cancel: Vec<String>,
+    #[serde(default)]
+    add: Vec<PlanChild>,
+    #[serde(default)]
+    rewire: Vec<maidan_types::PlanRewire>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+/// Change a submitted plan in one transaction: cancel unclaimed children,
+/// add children, rewire unclaimed children's dependencies. Thread access is
+/// enforced pre-dispatch; the store checks the parent's live claim. The MCP
+/// twin of `POST /threads/:id/plan/amend`.
+pub(super) async fn amend_plan(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AmendPlanArgs = crate::tools::parse_args(args)?;
+    let amend = maidan_types::AmendPlan {
+        lease_id: a.lease_id,
+        cancel: a.cancel,
+        add: a.add,
+        rewire: a.rewire,
+        reason: a.reason,
+    }
+    .checked()
+    .map_err(McpError::InvalidParams)?;
+    let outcome = server
+        .store
+        .amend_plan(ThreadId(a.thread_id), auth.member_id, amend)
+        .await?;
+    for stored in &outcome.events {
+        server.publish_stored(stored).await;
+    }
+    Ok(content_json(&outcome.amendment))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WatchPullArgs {
     workspace_id: uuid::Uuid,
     repo: String,

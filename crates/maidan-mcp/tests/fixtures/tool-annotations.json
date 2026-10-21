@@ -248,6 +248,25 @@
         "reason": "only records the allowlist entry; makes no outbound call"
       }
     },
+    "amend_plan": {
+      "title": "Amend plan",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "amend_plan cancels child threads, INSERTs added children with their footprints, attributes and edges, rewrites dependency edges, bumps the plan's amendment count and appends events"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "cancelling a child closes it and drops its plan row and edges; rewire replaces a child's dependency edges"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call counts against the plan's three amendments, and a repeated add of a key already in the plan is refused"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; the egress allowlist is only read"
+      }
+    },
     "approval_decide": {
       "title": "Decide an approval gate",
       "readOnlyHint": {

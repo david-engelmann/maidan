@@ -2783,6 +2783,27 @@ pub fn set_slot_capacity() {}
     ))]
 pub fn release_plan() {}
 
+/// Amend a submitted plan
+///
+/// The planner holding the plan parent's live claim cancels unclaimed
+/// children, adds children and rewires unclaimed children's dependencies in
+/// one transaction. Cancelling and adding the same key replaces the child,
+/// and its dependents wait for the new one. A claimed or finished child, or
+/// an amendment past the third, is a `409`.
+#[utoipa::path(post, path = "/threads/{id}/plan/amend", tag = "threads",
+    params(("id" = Uuid, Path, description = "Plan parent thread id")),
+    request_body = AmendPlan,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = PlanAmendment),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+        (status = 429, response = TooManyRequests),
+    ))]
+pub fn amend_plan() {}
+
 /// Track a session's pull request on its task, for the swarm metrics
 #[utoipa::path(put, path = "/threads/{id}/pull", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

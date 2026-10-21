@@ -10,6 +10,7 @@
   "add_thread_required_skill": "thread:transition",
   "advise_land_gate": "thread:transition",
   "allow_secret_egress_host": "secret:admin",
+  "amend_plan": "workspace:write",
   "approval_decide": "workspace:write",
   "assign_thread": "thread:transition",
   "attach_memory_block": "workspace:write",

@@ -425,6 +425,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "create_channel"
         | "create_thread"
         | "submit_plan"
+        | "amend_plan"
         | "watch_pull"
         | "cancel_thread"
         | "create_task_schedule"
@@ -812,6 +813,7 @@ async fn enforce_channel_access(
         | "set_thread_footprint"
         | "set_thread_attributes"
         | "submit_plan"
+        | "amend_plan"
         | "add_thread_dependency"
         | "list_thread_dependencies"
         | "remove_thread_dependency"
@@ -1021,6 +1023,7 @@ pub async fn dispatch(
         "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
         "set_thread_attributes" => thread::set_thread_attributes(store, args).await,
         "submit_plan" => thread::submit_plan(server, auth, args).await,
+        "amend_plan" => thread::amend_plan(server, auth, args).await,
         "watch_pull" => thread::watch_pull(server, auth, args).await,
         "list_active_claims" => thread::list_active_claims(store, auth, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,

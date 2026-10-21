@@ -65,6 +65,17 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    - **Retries.** The same claim sending the same keys again gets a 200 with
      the children already made. Any other plan on a parent that has children
      is a 409 (`plan-conflict`, MCP `-32010`) listing them.
+   - **Amending.** Under the same claim, the planner changes a submitted plan
+     with `POST /threads/{id}/plan/amend` or the MCP `amend_plan`: `cancel`
+     names children to cancel, `add` gives new ones (linted as above, and
+     their `depends_on` may name any child of the plan), and `rewire` sets a
+     child's `depends_on` afresh. Cancelling and adding the same key
+     replaces the child, and its dependents wait for the new thread. A
+     cancelled child leaves the plan, so its dependents stop waiting for it
+     instead of being blocked. Only open, unclaimed children can be
+     cancelled or rewired; a claimed or finished one is a 409 and nothing
+     changes. A plan takes at most three amendments. Added children are held
+     for review when the plan is held or one needs a threat model.
    - **Dispatch.** `claim_next` never hands out a thread whose dependencies
      are unfinished, so a child becomes claimable when what it depends on
      lands. A plan's children move through review and close while the plan
