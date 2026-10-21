@@ -428,6 +428,43 @@ claim said outside Maidan, else from registration) to the first sweep
 that sees the `ready-to-merge` label. It has no rounds, so its round and
 edit numbers say nothing about it.
 
+### CI on tracked pull requests
+
+The change sweep reads each open tracked pull request once a tick, in one
+GitHub GraphQL query, and the checks on its head come with that read. A pull
+request is tracked when the change flow opened it, when a session registered
+it (above), or when someone asks to watch it:
+
+| | REST | MCP |
+|---|---|---|
+| Watch a pull request (`workspace:write`) | `POST /workspaces/{id}/pull-watches` with `{"repo": "owner/name", "pull_number": N}` | `watch_pull` |
+
+The repository must be blessed for the workspace, as for a session pull
+request, because the sweep reads it with the instance's GitHub credential. A
+pull request the workspace already tracks answers with its thread
+(`"created": false`). Otherwise Maidan makes it a thread, owned by the
+watcher, in the `channel_id` given or in the workspace's public
+`pull-requests` channel (made when missing), so its notices have a home. A
+watched pull request is not an agent task: the swarm metrics and the outcome
+checks leave it out. One another workspace tracks is a `409`.
+
+Each read records `ci` on the thread (`GET /threads/{id}` and the context
+pack's tail): the head commit, `status` (`pending` until every check has
+finished, `failure` as soon as one fails, else `success`), the failing checks
+(`failing_jobs`, at most 20), and the last 4 KB of the first failing GitHub
+Actions job's log (`log_tail`), read once when a head first fails. It also
+gives the thread these notices, each once per head commit, with a message
+saying the same:
+
+- **`pr_opened`**, the first time the sweep sees the pull request open (once
+  per pull request; it names the head it was first seen at).
+- **`ci_failed`**, when a check on the head fails, naming the failing checks.
+- **`checks_done`**, when every check on the head has finished, with its
+  `status`.
+
+A push is a new head, so its checks are news again; the next tick over the
+same head says nothing. A pull request that has closed is not read again.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,

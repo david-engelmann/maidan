@@ -203,6 +203,7 @@ mod tests {
             human_wait: None,
             notices: Vec::new(),
             plan_state: None,
+            ci: Vec::new(),
             created_by: None,
         }
     }

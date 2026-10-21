@@ -864,6 +864,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/workspaces/{id}/pull-watches",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{id}/repo-pauses",
     "capability": "workspace:read",

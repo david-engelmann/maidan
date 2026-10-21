@@ -104,6 +104,7 @@ async fn build_live(
     thread.notices = store
         .list_thread_notices(thread_id, maidan_types::THREAD_NOTICE_LIMIT)
         .await?;
+    thread.ci = store.list_thread_pull_ci(thread_id).await?;
     let channel = store.get_channel(thread.channel_id).await?;
     let workspace_id = channel.workspace_id;
     let page = store

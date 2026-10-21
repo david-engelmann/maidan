@@ -2702,6 +2702,20 @@ pub fn list_deferred_threads() {}
     ))]
 pub fn get_swarm_metrics() {}
 
+/// Watch a pull request's checks, on its thread or a new one
+#[utoipa::path(post, path = "/workspaces/{id}/pull-watches", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = WatchPull,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WatchedPull),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn watch_pull() {}
+
 /// List a workspace's paused repositories
 #[utoipa::path(get, path = "/workspaces/{id}/repo-pauses", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id")),

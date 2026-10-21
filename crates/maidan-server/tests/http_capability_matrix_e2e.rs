@@ -615,6 +615,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/pull" && method == "PUT" {
         return b.json(&json!({ "repo": "example/app", "pull_number": 1 }));
     }
+    if path == "/workspaces/{id}/pull-watches" && method == "POST" {
+        return b.json(&json!({ "repo": "example/app", "pull_number": 1 }));
+    }
     if path == "/workspaces/{id}/linear-claim-comments" && method == "PUT" {
         return b.json(&json!({ "enabled": false }));
     }

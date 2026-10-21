@@ -250,5 +250,6 @@
   "wait_for_notification": "workspace:read",
   "wait_for_ready": "workspace:read",
   "wait_for_result": "workspace:read",
+  "watch_pull": "workspace:write",
   "whoami": "workspace:read"
 }

@@ -479,6 +479,11 @@ pub struct ContextTail {
     /// history, and the prefix must stay cache-stable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<crate::change_metrics::ThreadNotice>,
+    /// Where the checks stand on the thread's tracked pull requests. In the
+    /// tail for the same reason as the notices: each sweep tick may rewrite
+    /// it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ci: Vec<crate::pull_ci::PullCi>,
 }
 
 impl ContextTail {
@@ -503,6 +508,7 @@ impl ContextTail {
             prefix_sha256,
             prefix_bytes,
             notices: thread.notices.clone(),
+            ci: thread.ci.clone(),
         }
     }
 }
@@ -987,6 +993,7 @@ mod tests {
             human_wait: None,
             notices: Vec::new(),
             plan_state: None,
+            ci: Vec::new(),
             created_by: None,
         }
     }
@@ -1270,6 +1277,7 @@ mod tests {
             human_wait: None,
             notices: Vec::new(),
             plan_state: None,
+            ci: Vec::new(),
             created_by: None,
         }
     }

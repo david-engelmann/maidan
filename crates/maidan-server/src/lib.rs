@@ -24,6 +24,7 @@ pub mod change_flow;
 pub mod change_outcomes;
 pub mod change_patch;
 pub mod change_sweep;
+pub mod ci_watch;
 pub mod claim_reaper;
 pub mod compression;
 pub mod config;

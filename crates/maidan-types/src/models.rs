@@ -2027,6 +2027,11 @@ pub struct Thread {
     /// the thread; empty on the list reads.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notices: Vec<crate::change_metrics::ThreadNotice>,
+    /// Where the checks stand on each pull request tracked on the thread, as
+    /// the change sweep last read them while it was open. Read by a single-thread
+    /// read; empty on the list reads.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ci: Vec<crate::pull_ci::PullCi>,
     /// On a plan parent, how far its children have got. Read by a
     /// single-thread read only; absent on lists and on threads that are not
     /// plans with children.

@@ -85,6 +85,7 @@ fn thread() -> Thread {
         human_wait: None,
         notices: Vec::new(),
         plan_state: None,
+        ci: Vec::new(),
         created_by: None,
     }
 }
@@ -330,6 +331,9 @@ fn sample_event(kind: EventKind) -> Event {
             paths: vec!["src/bridge/x.rs".into()],
             base_branch: Some("main".into()),
             base_behind: None,
+            head_sha: None,
+            status: None,
+            failing_jobs: Vec::new(),
         },
         EventKind::ThreadHandoff => Event::ThreadHandoff {
             occurred_at,

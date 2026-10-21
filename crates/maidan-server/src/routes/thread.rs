@@ -205,6 +205,7 @@ pub async fn get_thread(
         .store
         .list_thread_notices(ThreadId(id), maidan_types::THREAD_NOTICE_LIMIT)
         .await?;
+    thread.ci = state.store.list_thread_pull_ci(ThreadId(id)).await?;
     thread.plan_state = state.store.get_plan_state(ThreadId(id)).await?;
     crate::stall::mark(std::iter::once(&mut thread), state.stall_threshold);
     crate::human_wait::mark(std::iter::once(&mut thread));
