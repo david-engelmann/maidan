@@ -651,8 +651,10 @@ pub enum Event {
     /// The change flow told a thread's worker something about its base: a
     /// merged pull request touched paths its claim's footprint covers
     /// (`rebase_needed`), or a round it delivered was built on a base far
-    /// behind its branch (`stale_base`). Each is said once. Locally derived:
-    /// not federatable.
+    /// behind its branch (`stale_base`); or the change sweep read its pull
+    /// request's checks: first seen open (`pr_opened`), a check failed
+    /// (`ci_failed`), every check finished (`checks_done`). Each is said
+    /// once. Locally derived: not federatable.
     ThreadNotice {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -672,6 +674,16 @@ pub enum Event {
         /// Commits the stale round's base was behind its branch.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base_behind: Option<i64>,
+        /// The head commit a CI notice (`pr_opened`, `ci_failed`,
+        /// `checks_done`) is about.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        head_sha: Option<String>,
+        /// How the checks stand (`ci_failed`, `checks_done`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        status: Option<crate::pull_ci::CiStatus>,
+        /// The checks that failed, at most 20.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        failing_jobs: Vec<String>,
     },
     /// A Pi task that stopped converging was handed to a session: its claim
     /// ended and its engine became `session`, so a Pi claim never takes it

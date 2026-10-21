@@ -36,6 +36,10 @@
 //! handoff packet (rounds, cost, open findings, the pull request and its
 //! head, the models used) and then the release.
 //!
+//! The same read carries the checks on each open pull request's head: the
+//! sweep records them on its thread and says what changed
+//! ([`crate::ci_watch`]).
+//!
 //! Where a workspace has turned Linear claim comments on, the sweep also
 //! says a task's claim, and its release when it ends without merging, on the
 //! Linear issue its attributes name ([`post_linear_notices`]).
@@ -80,6 +84,9 @@ pub struct SweepStats {
     pub linear_notices: usize,
     /// Non-converging Pi tasks handed to a session.
     pub handed_off: usize,
+    /// CI notices posted on tracked pull requests' threads (`pr_opened`,
+    /// `ci_failed`, `checks_done`).
+    pub ci_notices: usize,
 }
 
 /// Read `MAIDAN_CHANGE_SWEEP_SECS`. An unset or unparsable value keeps the
@@ -112,6 +119,15 @@ fn interval_from_raw(raw: Option<String>) -> Option<Duration> {
 /// a failed read leaves it open until a later pass, behind the ones read
 /// longer ago.
 pub async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
+    refresh(state, workspace_id, None).await;
+}
+
+/// [`refresh_open_pulls`], and with `stats` (the sweep's, which runs in no
+/// request) the checks each open pull request's read carried are recorded
+/// too, with the notices they owe ([`crate::ci_watch`]). A metrics read
+/// passes none: notices said inside a reader's request would be the
+/// reader's.
+async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<&mut SweepStats>) {
     let Some(git) = state.github_sender.as_ref().and_then(|s| s.git()) else {
         return;
     };
@@ -136,14 +152,27 @@ pub async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: check time not recorded");
         }
-        let brief = match git.pull_brief(&repo, pull_number).await {
-            Ok(brief) => brief,
+        // One read a tick serves the close, the ready label and the checks.
+        let snapshot = match git.pull_snapshot(&repo, pull_number).await {
+            Ok(snapshot) => snapshot,
             Err(err) => {
                 tracing::debug!(repo, pull_number, error = %err, "change sweep: pull request not refreshed");
                 continue;
             }
         };
+        let brief = &snapshot.brief;
         if brief.open {
+            if let Some(stats) = stats.as_deref_mut() {
+                stats.ci_notices += crate::ci_watch::record_checks(
+                    state,
+                    git,
+                    workspace_id,
+                    &repo,
+                    pull_number,
+                    &snapshot,
+                )
+                .await;
+            }
             // A session's pull request is ready when it carries the label;
             // the first sighting stamps it (Maidan's own flip stamps the
             // change flow's).
@@ -193,7 +222,7 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         }
     };
     for workspace_id in workspaces {
-        refresh_open_pulls(state, workspace_id).await;
+        refresh(state, workspace_id, Some(&mut stats)).await;
         settle_closed_pulls(state, workspace_id, &mut stats).await;
         notify_merges(state, workspace_id, &mut stats).await;
         hand_off_stuck(state, workspace_id, &mut stats).await;

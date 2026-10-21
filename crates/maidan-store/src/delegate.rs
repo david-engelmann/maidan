@@ -2727,6 +2727,7 @@ macro_rules! store_delegations {
                     repo,
                     pull_number,
                     claimed_at,
+                    false,
                 )
                 .await
             }
@@ -2762,6 +2763,23 @@ macro_rules! store_delegations {
                 audit: NewAuditEvent,
             ) -> Result<(), StoreError> {
                 linear_notices::set_enabled(self.pool(), workspace_id, enabled, audit).await
+            }
+
+            async fn workspace_default_engine(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::TaskEngine>, StoreError> {
+                thread_attributes::default_engine(self.pool(), workspace_id).await
+            }
+
+            async fn set_workspace_default_engine(
+                &self,
+                workspace_id: WorkspaceId,
+                engine: Option<maidan_types::TaskEngine>,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                thread_attributes::set_default_engine(self.pool(), workspace_id, engine, audit)
+                    .await
             }
 
             async fn list_linear_notices_due(
@@ -2867,6 +2885,57 @@ macro_rules! store_delegations {
                 limit: i64,
             ) -> Result<Vec<maidan_types::ThreadNotice>, StoreError> {
                 change_metrics::list_notices(self.read_pool(), thread_id, limit).await
+            }
+
+            async fn tracked_pull_thread(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<ThreadId>, StoreError> {
+                pull_ci::tracked_thread(self.pool(), workspace_id, repo, pull_number).await
+            }
+
+            async fn watch_change_pull(
+                &self,
+                workspace_id: WorkspaceId,
+                thread_id: ThreadId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<chrono::DateTime<chrono::Utc>, StoreError> {
+                change_metrics::register(
+                    self.pool(),
+                    workspace_id,
+                    thread_id,
+                    repo,
+                    pull_number,
+                    None,
+                    true,
+                )
+                .await
+            }
+
+            async fn get_pull_ci(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+            ) -> Result<Option<maidan_types::PullCi>, StoreError> {
+                pull_ci::get(self.pool(), workspace_id, repo, pull_number).await
+            }
+
+            async fn record_pull_ci(
+                &self,
+                new: maidan_types::NewPullCi,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                pull_ci::record(self.pool(), new).await
+            }
+
+            async fn list_thread_pull_ci(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<maidan_types::PullCi>, StoreError> {
+                pull_ci::list_for_thread(self.read_pool(), thread_id).await
             }
 
             async fn list_slots(

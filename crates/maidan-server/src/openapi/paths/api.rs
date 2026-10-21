@@ -2702,6 +2702,20 @@ pub fn list_deferred_threads() {}
     ))]
 pub fn get_swarm_metrics() {}
 
+/// Watch a pull request's checks, on its thread or a new one
+#[utoipa::path(post, path = "/workspaces/{id}/pull-watches", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = WatchPull,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WatchedPull),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn watch_pull() {}
+
 /// List a workspace's paused repositories
 #[utoipa::path(get, path = "/workspaces/{id}/repo-pauses", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id")),
@@ -2806,6 +2820,30 @@ pub fn get_linear_claim_comments() {}
         (status = 404, response = NotFound),
     ))]
 pub fn set_linear_claim_comments() {}
+
+/// The engine a thread created in the workspace with none named is routed to
+#[utoipa::path(get, path = "/workspaces/{id}/default-engine", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceDefaultEngine),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_workspace_default_engine() {}
+
+/// Set or clear (null) the engine a thread created with none named is routed to
+#[utoipa::path(put, path = "/workspaces/{id}/default-engine", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = WorkspaceDefaultEngine,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceDefaultEngine),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_workspace_default_engine() {}
 
 /// Remove a slot's capacity
 #[utoipa::path(delete, path = "/workspaces/{id}/slots", tag = "threads",

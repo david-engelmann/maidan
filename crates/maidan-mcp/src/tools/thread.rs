@@ -211,7 +211,20 @@ pub(super) async fn create_thread(
         )
         .await;
     let (mut thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
-    thread.attributes = Some(attributes.unwrap_or_default());
+    // With no engine given, the workspace's default engine may have routed
+    // the thread, so the attributes it reads with are read back.
+    thread.attributes = Some(match attributes {
+        Some(given) if given.engine.is_some() => given,
+        given => match server.store.get_thread_attributes(thread.id).await {
+            Ok(stored) => stored,
+            Err(err) => {
+                // The thread is committed: failing the call now would
+                // invite a retry that makes a second one.
+                tracing::warn!(error = %err, thread = %thread.id.0, "reading a new thread's attributes back failed");
+                given.unwrap_or_default()
+            }
+        },
+    });
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }
@@ -1380,6 +1393,59 @@ pub(super) async fn submit_plan(
         )),
         PlanOutcome::Conflict(children) => Err(McpError::PlanConflict(children)),
     }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WatchPullArgs {
+    workspace_id: uuid::Uuid,
+    repo: String,
+    pull_number: i64,
+    #[serde(default)]
+    channel_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    title: Option<String>,
+}
+
+/// Watch a pull request's checks, as `POST /workspaces/{id}/pull-watches`
+/// does. The workspace and a named channel are checked before dispatch.
+pub(super) async fn watch_pull(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: WatchPullArgs = crate::tools::parse_args(args)?;
+    let workspace_id = maidan_types::WorkspaceId(a.workspace_id);
+    let repo = maidan_types::normalize_repo(&a.repo)
+        .map_err(|e| McpError::InvalidParams(format!("repo: {e}")))?;
+    if a.pull_number < 1 {
+        return Err(McpError::InvalidParams("pull_number: is at least 1".into()));
+    }
+    let store = server.store.as_ref();
+    if !maidan_store::pull_watch::repo_blessed(store, workspace_id, &repo).await? {
+        return Err(McpError::Forbidden(format!(
+            "`{repo}` is not in the workspace egress allowlist"
+        )));
+    }
+    let outcome = maidan_store::pull_watch::watch_pull(
+        store,
+        maidan_store::pull_watch::WatchRequest {
+            workspace_id,
+            repo,
+            pull_number: a.pull_number,
+            channel_id: a.channel_id.map(ChannelId),
+            title: a.title,
+            created_by: auth.attribution().map(|a| a.subject_id),
+        },
+    )
+    .await?;
+    if !outcome.watched.created && !auth.bypass {
+        maidan_auth::ensure_thread_access(store, auth, outcome.watched.thread_id).await?;
+    }
+    for stored in &outcome.events {
+        server.publish_stored(stored).await;
+    }
+    Ok(content_json(&outcome.watched))
 }
 
 #[derive(Deserialize)]

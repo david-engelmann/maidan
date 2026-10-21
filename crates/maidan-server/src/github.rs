@@ -538,6 +538,39 @@ pub struct GithubReviewActivity {
     pub at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// How one check on a pull request's head stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GithubCheckState {
+    /// Queued or running, or a status still pending.
+    Pending,
+    /// Finished without failing: success, neutral or skipped.
+    Passed,
+    /// Finished failing: failure, timed out, cancelled, needing action, or
+    /// a status that errored.
+    Failed,
+}
+
+/// One check run or commit status on a pull request's head.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubCheck {
+    /// The check run's name, or the status's context.
+    pub name: String,
+    pub state: GithubCheckState,
+    /// The GitHub Actions job behind a check run, whose log can be read;
+    /// `None` for a status or another app's check.
+    pub job_id: Option<i64>,
+}
+
+/// A pull request as the change sweep reads it each tick: what the brief
+/// says, and the checks on its head.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubPullSnapshot {
+    pub brief: GithubPullBrief,
+    /// The checks on the head commit; `None` when this read did not carry
+    /// them, empty when nothing has reported yet.
+    pub checks: Option<Vec<GithubCheck>>,
+}
+
 /// What flipping a pull request to ready did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MarkReadyOutcome {
@@ -657,6 +690,30 @@ pub trait GithubGit: Send + Sync {
         repo: &str,
         pull_number: i64,
     ) -> Result<GithubPullBrief, GithubError>;
+    /// The change sweep's one read of a pull request per tick: its brief and
+    /// the checks on its head, in one GraphQL query. A read. The default
+    /// reads the brief alone, with no checks.
+    async fn pull_snapshot(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<GithubPullSnapshot, GithubError> {
+        Ok(GithubPullSnapshot {
+            brief: self.pull_brief(repo, pull_number).await?,
+            checks: None,
+        })
+    }
+    /// `GET /repos/{repo}/actions/jobs/{job_id}/logs`: the last `max_bytes`
+    /// of a GitHub Actions job's log, starting at a line. A read. The
+    /// default reads nothing.
+    async fn job_log_tail(
+        &self,
+        _repo: &str,
+        _job_id: i64,
+        _max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        Err(GithubError::Http("this client reads no job logs".into()))
+    }
     /// `GET /repos/{repo}/commits?sha={branch}&since=…`: up to the newest 100
     /// commits on `branch` since `since`. A read.
     async fn branch_commits_since(
@@ -1066,10 +1123,17 @@ impl GithubApiClient {
             .await
     }
 
-    /// A GraphQL mutation on `repo`. The endpoint is not under the
-    /// repository's path, so the repository is named and checked here.
-    async fn graphql(&self, repo: &str) -> Result<reqwest::RequestBuilder, GithubError> {
-        self.ensure_writable(repo)?;
+    /// A GraphQL request about `repo`. The endpoint is not under the
+    /// repository's path, so the repository is named here, and a mutation
+    /// (`writes`) is checked against the write list as any other write is.
+    async fn graphql(
+        &self,
+        repo: &str,
+        writes: bool,
+    ) -> Result<reqwest::RequestBuilder, GithubError> {
+        if writes {
+            self.ensure_writable(repo)?;
+        }
         self.build(
             reqwest::Method::POST,
             "/graphql",
@@ -1525,6 +1589,59 @@ impl GithubGit for GithubApiClient {
         })
     }
 
+    async fn pull_snapshot(
+        &self,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<GithubPullSnapshot, GithubError> {
+        let (owner, name) = repo
+            .split_once('/')
+            .ok_or_else(|| GithubError::Refused(format!("`{repo}` is not owner/name")))?;
+        let request = self.graphql(repo, false).await?.json(&serde_json::json!({
+            "query": PULL_SNAPSHOT_QUERY,
+            "variables": { "owner": owner, "name": name, "number": pull_number },
+        }));
+        snapshot_from(&self.send_json(request).await?)
+    }
+
+    async fn job_log_tail(
+        &self,
+        repo: &str,
+        job_id: i64,
+        max_bytes: usize,
+    ) -> Result<String, GithubError> {
+        // GitHub answers with a redirect to short-lived log storage, which
+        // the client follows; reqwest drops the bearer when the host changes.
+        let mut resp = self
+            .request(
+                reqwest::Method::GET,
+                repo,
+                &format!("/actions/jobs/{job_id}/logs"),
+            )
+            .await?
+            .send()
+            .await
+            .map_err(|e| self.http_error(e))?;
+        if !resp.status().is_success() {
+            return Err(GithubError::Api {
+                status: resp.status().as_u16(),
+                rate_limited: is_rate_limited(resp.headers()),
+            });
+        }
+        // Streamed, keeping only the end, so a long log never sits in memory
+        // whole; the client's timeout bounds how long that takes.
+        let mut tail: Vec<u8> = Vec::new();
+        let mut cut = false;
+        while let Some(chunk) = resp.chunk().await.map_err(|e| self.http_error(e))? {
+            tail.extend_from_slice(&chunk);
+            if tail.len() > max_bytes {
+                tail.drain(..tail.len() - max_bytes);
+                cut = true;
+            }
+        }
+        Ok(log_tail_text(&tail, cut))
+    }
+
     async fn branch_commits_since(
         &self,
         repo: &str,
@@ -1752,7 +1869,7 @@ impl GithubGit for GithubApiClient {
         // draft unchanged — so the flip goes through the GraphQL
         // `markPullRequestReadyForReview` mutation, on the same token.
         let request = self
-            .graphql(repo).await?
+            .graphql(repo, true).await?
             .json(&serde_json::json!({
                 "query": "mutation($nodeId: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $nodeId}) { pullRequest { isDraft } } }",
                 "variables": { "nodeId": node_id },
@@ -2003,6 +2120,169 @@ fn safe_ref_name(name: &str) -> Result<&str, GithubError> {
     }
 }
 
+/// The change sweep's per-tick read of one pull request: the brief the
+/// sweep settles closes and readiness from, and the checks on the head
+/// commit.
+pub(crate) const PULL_SNAPSHOT_QUERY: &str =
+    "query($owner: String!, $name: String!, $number: Int!) { \
+repository(owner: $owner, name: $name) { pullRequest(number: $number) { \
+id number state isDraft isCrossRepository headRefName headRefOid baseRefName \
+mergedAt closedAt mergeCommit { oid } labels(first: 50) { nodes { name } } \
+commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes { \
+__typename \
+... on CheckRun { name status conclusion databaseId checkSuite { app { slug } } } \
+... on StatusContext { context state } \
+} } } } } } } } }";
+
+/// A [`PULL_SNAPSHOT_QUERY`] answer as a snapshot. GraphQL answers a missing
+/// pull request with `200` and an `errors` array, so its error types are
+/// mapped back onto the statuses REST would have sent: `NOT_FOUND` is a 404
+/// and `RATE_LIMITED` a rate-limited 403. Only the types are kept, never a
+/// message.
+pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnapshot, GithubError> {
+    let pull = value
+        .pointer("/data/repository/pullRequest")
+        .filter(|pull| pull.is_object());
+    let Some(pull) = pull else {
+        let types: Vec<&str> = value
+            .get("errors")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.get("type").and_then(serde_json::Value::as_str))
+            .collect();
+        return Err(if types.contains(&"RATE_LIMITED") {
+            GithubError::Api {
+                status: 403,
+                rate_limited: true,
+            }
+        } else if types.contains(&"NOT_FOUND") || value.pointer("/data/repository").is_some() {
+            GithubError::Api {
+                status: 404,
+                rate_limited: false,
+            }
+        } else {
+            GithubError::Http(format!(
+                "github graphql answered no pull request: {types:?}"
+            ))
+        });
+    };
+    let number = pull
+        .get("number")
+        .and_then(serde_json::Value::as_i64)
+        .filter(|n| *n > 0)
+        .ok_or_else(|| GithubError::Http("github pull has no number".into()))?;
+    let state = pull.get("state").and_then(serde_json::Value::as_str);
+    let brief = GithubPullBrief {
+        number,
+        head: field(pull, "/headRefName")?,
+        base: field(pull, "/baseRefName")?,
+        draft: pull
+            .get("isDraft")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+        node_id: field(pull, "/id")?,
+        // A head GitHub cannot place reads as a fork, as the REST brief's
+        // missing head repository does.
+        same_repo: pull
+            .get("isCrossRepository")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false),
+        open: state == Some("OPEN"),
+        head_sha: field(pull, "/headRefOid")?.to_ascii_lowercase(),
+        labels: pull
+            .pointer("/labels/nodes")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|label| label.get("name").and_then(serde_json::Value::as_str))
+            .map(str::to_string)
+            .collect(),
+        merged_at: timestamp(pull, "/mergedAt"),
+        closed_at: timestamp(pull, "/closedAt"),
+        merge_commit_sha: pull
+            .pointer("/mergeCommit/oid")
+            .and_then(serde_json::Value::as_str)
+            .filter(|sha| maidan_types::is_git_sha(sha))
+            .map(str::to_ascii_lowercase),
+    };
+    let commit = pull.pointer("/commits/nodes/0/commit");
+    // Checks only for the head the brief names: a push between GitHub's two
+    // reads would otherwise pin one head's checks on another.
+    let checks = commit
+        .filter(|commit| {
+            commit
+                .get("oid")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|oid| oid.eq_ignore_ascii_case(&brief.head_sha))
+        })
+        .map(|commit| {
+            commit
+                .pointer("/statusCheckRollup/contexts/nodes")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(check_from)
+                .collect()
+        });
+    Ok(GithubPullSnapshot { brief, checks })
+}
+
+/// One `statusCheckRollup` context as a check, or `None` for a node this
+/// client does not know.
+fn check_from(node: &serde_json::Value) -> Option<GithubCheck> {
+    let text = |key: &str| node.get(key).and_then(serde_json::Value::as_str);
+    match text("__typename")? {
+        "CheckRun" => {
+            let state = if text("status") != Some("COMPLETED") {
+                GithubCheckState::Pending
+            } else {
+                match text("conclusion") {
+                    Some(
+                        "FAILURE" | "TIMED_OUT" | "CANCELLED" | "ACTION_REQUIRED"
+                        | "STARTUP_FAILURE",
+                    ) => GithubCheckState::Failed,
+                    _ => GithubCheckState::Passed,
+                }
+            };
+            let actions = node
+                .pointer("/checkSuite/app/slug")
+                .and_then(serde_json::Value::as_str)
+                == Some("github-actions");
+            Some(GithubCheck {
+                name: text("name")?.to_string(),
+                state,
+                job_id: node
+                    .get("databaseId")
+                    .and_then(serde_json::Value::as_i64)
+                    .filter(|_| actions),
+            })
+        }
+        "StatusContext" => Some(GithubCheck {
+            name: text("context")?.to_string(),
+            state: match text("state") {
+                Some("SUCCESS") => GithubCheckState::Passed,
+                Some("FAILURE" | "ERROR") => GithubCheckState::Failed,
+                _ => GithubCheckState::Pending,
+            },
+            job_id: None,
+        }),
+        _ => None,
+    }
+}
+
+/// The end of a log as text. When the start was cut away, the partial first
+/// line goes too, so the tail starts at a line.
+pub(crate) fn log_tail_text(tail: &[u8], cut: bool) -> String {
+    let text = String::from_utf8_lossy(tail);
+    if cut {
+        text.split_once('\n')
+            .map_or_else(String::new, |(_, rest)| rest.to_string())
+    } else {
+        text.into_owned()
+    }
+}
+
 /// An RFC 3339 timestamp at `pointer`, or `None` when absent or null.
 fn timestamp(value: &serde_json::Value, pointer: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     value
@@ -2170,6 +2450,91 @@ mod tests {
                 .unwrap_err();
             assert!(matches!(err, GithubError::Refused(_)), "{base}: {err}");
         }
+    }
+
+    fn snapshot_answer(
+        head: &str,
+        commit_oid: &str,
+        contexts: serde_json::Value,
+    ) -> serde_json::Value {
+        serde_json::json!({"data": {"repository": {"pullRequest": {
+            "id": "PR_7", "number": 7, "state": "OPEN", "isDraft": false,
+            "isCrossRepository": false, "headRefName": "feature/x", "headRefOid": head,
+            "baseRefName": "main", "mergedAt": null, "closedAt": null, "mergeCommit": null,
+            "labels": {"nodes": [{"name": "ready-to-merge"}]},
+            "commits": {"nodes": [{"commit": {"oid": commit_oid,
+                "statusCheckRollup": {"contexts": {"nodes": contexts}}}}]},
+        }}}})
+    }
+
+    #[test]
+    fn a_snapshot_reads_the_brief_and_classifies_each_check() {
+        let snapshot = snapshot_from(&snapshot_answer(
+            "ABC",
+            "abc",
+            serde_json::json!([
+                {"__typename": "CheckRun", "name": "lint", "status": "COMPLETED",
+                 "conclusion": "CANCELLED", "databaseId": 5, "checkSuite": {"app": {"slug": "github-actions"}}},
+                {"__typename": "CheckRun", "name": "review", "status": "QUEUED",
+                 "conclusion": null, "databaseId": 6, "checkSuite": {"app": {"slug": "other-app"}}},
+                {"__typename": "StatusContext", "context": "ci/legacy", "state": "ERROR"},
+                {"__typename": "StatusContext", "context": "ci/new", "state": "EXPECTED"},
+                {"__typename": "Unknown"},
+            ]),
+        ))
+        .unwrap();
+        assert!(snapshot.brief.open && snapshot.brief.same_repo);
+        assert_eq!(snapshot.brief.head_sha, "abc");
+        assert_eq!(snapshot.brief.labels, vec!["ready-to-merge".to_string()]);
+        let checks = snapshot.checks.unwrap();
+        let read: Vec<(&str, GithubCheckState, Option<i64>)> = checks
+            .iter()
+            .map(|c| (c.name.as_str(), c.state, c.job_id))
+            .collect();
+        assert_eq!(
+            read,
+            vec![
+                ("lint", GithubCheckState::Failed, Some(5)),
+                ("review", GithubCheckState::Pending, None),
+                ("ci/legacy", GithubCheckState::Failed, None),
+                ("ci/new", GithubCheckState::Pending, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn checks_on_another_commit_than_the_head_are_not_read() {
+        let snapshot =
+            snapshot_from(&snapshot_answer("abc", "def", serde_json::json!([]))).unwrap();
+        assert_eq!(snapshot.checks, None);
+    }
+
+    #[test]
+    fn a_graphql_miss_or_rate_limit_maps_onto_the_rest_status() {
+        let missing = serde_json::json!({
+            "data": {"repository": {"pullRequest": null}},
+            "errors": [{"type": "NOT_FOUND", "message": "no such pull"}],
+        });
+        assert!(snapshot_from(&missing).unwrap_err().is_not_found());
+        let limited = serde_json::json!({"errors": [{"type": "RATE_LIMITED"}]});
+        let err = snapshot_from(&limited).unwrap_err();
+        assert!(matches!(
+            err,
+            GithubError::Api {
+                status: 403,
+                rate_limited: true
+            }
+        ));
+        assert!(!err.is_misconfiguration());
+    }
+
+    #[test]
+    fn a_cut_log_tail_starts_at_a_line() {
+        assert_eq!(
+            log_tail_text(b"tial line\nnext\nlast\n", true),
+            "next\nlast\n"
+        );
+        assert_eq!(log_tail_text(b"whole\n", false), "whole\n");
     }
 
     #[test]

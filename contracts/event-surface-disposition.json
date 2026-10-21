@@ -199,7 +199,7 @@
     "kind": "thread_notice",
     "disposition": "internal_only",
     "internal_evidence": "crates/maidan-server/tests/change_flow_e2e.rs#a_merge_tells_the_agent_holding_its_paths_to_rebase_once",
-    "note": "The change sweep derives a rebase_needed notice from a merge, and the egress worker a stale_base notice from a delivery; clients cannot assert one."
+    "note": "The change sweep derives a rebase_needed notice from a merge and pr_opened, ci_failed and checks_done notices from a pull request's checks, and the egress worker a stale_base notice from a delivery; clients cannot assert one."
   },
   {
     "kind": "thread_handoff",

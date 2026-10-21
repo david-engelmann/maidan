@@ -132,7 +132,11 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
 
     let mut obs_config = maidan_observability::Config::from_env();
     obs_config.log_filter = config.log_filter.clone();
-    let obs_guard = maidan_observability::init(obs_config).context("init observability")?;
+    let obs_guard = maidan_observability::init_with(
+        obs_config,
+        Some(Box::new(maidan_server::ops_alert::TickWarnings)),
+    )
+    .context("init observability")?;
 
     if !unknown_env.is_empty() {
         tracing::warn!(

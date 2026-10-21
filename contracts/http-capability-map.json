@@ -864,6 +864,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/workspaces/{id}/pull-watches",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/workspaces/{id}/repo-pauses",
     "capability": "workspace:read",
@@ -902,6 +908,18 @@
   {
     "method": "PUT",
     "path": "/workspaces/{id}/linear-claim-comments",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/default-engine",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/default-engine",
     "capability": "token:admin",
     "surface": "http"
   },

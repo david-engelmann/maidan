@@ -526,6 +526,9 @@ async fn notify_merge(
             paths: covered,
             base_branch: base_branch.clone(),
             base_behind: None,
+            head_sha: None,
+            status: None,
+            failing_jobs: Vec::new(),
             created_at: Utc::now(),
         };
         let key = format!("rebase_needed:{repo}#{pull_number}");
@@ -556,6 +559,9 @@ pub async fn add_stale_base_notice(
         paths: Vec::new(),
         base_branch: new.base_branch,
         base_behind: Some(new.base_behind),
+        head_sha: None,
+        status: None,
+        failing_jobs: Vec::new(),
         created_at: Utc::now(),
     };
     let mut tx = pool.begin().await?;
@@ -564,7 +570,7 @@ pub async fn add_stale_base_notice(
     Ok(posted)
 }
 
-async fn insert_notice_in_tx(
+pub(super) async fn insert_notice_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
     notice: ThreadNotice,
@@ -574,8 +580,8 @@ async fn insert_notice_in_tx(
     let inserted = sqlx::query(
         "INSERT INTO maidan_thread_notices
              (id, workspace_id, thread_id, kind, repo, pull_number, paths, base_branch,
-              base_behind, dedupe_key, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT (thread_id, dedupe_key) DO NOTHING",
     )
     .bind(Uuid::now_v7())
@@ -589,6 +595,9 @@ async fn insert_notice_in_tx(
     .bind(notice.base_behind)
     .bind(dedupe_key)
     .bind(notice.created_at.to_rfc3339())
+    .bind(&notice.head_sha)
+    .bind(notice.status.map(|status| status.as_str()))
+    .bind(Json(&notice.failing_jobs))
     .execute(&mut **tx)
     .await?
     .rows_affected();
@@ -608,6 +617,9 @@ async fn insert_notice_in_tx(
             paths: notice.paths.clone(),
             base_branch: notice.base_branch.clone(),
             base_behind: notice.base_behind,
+            head_sha: notice.head_sha.clone(),
+            status: notice.status,
+            failing_jobs: notice.failing_jobs.clone(),
         },
     )
     .await?;
@@ -637,7 +649,8 @@ pub async fn list_notices(
     limit: i64,
 ) -> Result<Vec<ThreadNotice>, StoreError> {
     let rows = sqlx::query(
-        "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at
+        "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at,
+                head_sha, status, failing_jobs
          FROM maidan_thread_notices WHERE thread_id = ?1
          ORDER BY created_at DESC, id DESC LIMIT ?2",
     )
@@ -657,6 +670,11 @@ pub async fn list_notices(
                 paths: row.get::<Json<Vec<String>>, _>("paths").0,
                 base_branch: row.get("base_branch"),
                 base_behind: row.get("base_behind"),
+                head_sha: row.get("head_sha"),
+                status: row
+                    .get::<Option<String>, _>("status")
+                    .and_then(|status| maidan_types::CiStatus::parse(&status)),
+                failing_jobs: row.get::<Json<Vec<String>>, _>("failing_jobs").0,
                 created_at: row.get::<DateTime<Utc>, _>("created_at"),
             })
         })
@@ -685,7 +703,7 @@ pub async fn list(
                 a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance, a.linear_issue AS task_linear_issue
          FROM maidan_change_pulls p
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
-         WHERE p.workspace_id = ?1
+         WHERE p.workspace_id = ?1 AND p.watch_only = 0
            AND (?2 IS NULL OR p.repo = ?2)
            AND (?3 IS NULL OR p.opened_at >= ?3)
            AND (?4 IS NULL OR a.engine = ?4)
@@ -764,7 +782,7 @@ pub async fn list_outcomes_due(
                  WHERE r.repo = p.repo AND r.pull_number = p.pull_number
                  ORDER BY r.round DESC LIMIT 1) AS base_branch
          FROM maidan_change_pulls p
-         WHERE p.workspace_id = ?1 AND p.merged_at IS NOT NULL AND p.merged_at >= ?2
+         WHERE p.workspace_id = ?1 AND p.watch_only = 0 AND p.merged_at IS NOT NULL AND p.merged_at >= ?2
            AND (p.outcome_checked_at IS NULL OR p.outcome_checked_at <= ?3)
            AND NOT EXISTS (
                SELECT 1 FROM maidan_change_pulls q
@@ -949,6 +967,7 @@ pub async fn register(
     repo: &str,
     pull_number: i64,
     claimed_at: Option<DateTime<Utc>>,
+    watch_only: bool,
 ) -> Result<DateTime<Utc>, StoreError> {
     let repo = repo.to_ascii_lowercase();
     let mut tx = pool.begin().await?;
@@ -960,8 +979,8 @@ pub async fn register(
     .await?;
     let opened_at = claimed.or(claimed_at).unwrap_or_else(Utc::now);
     sqlx::query(
-        "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at, watch_only)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT (repo, pull_number) DO NOTHING",
     )
     .bind(&repo)
@@ -969,6 +988,7 @@ pub async fn register(
     .bind(workspace_id.0)
     .bind(thread_id.0)
     .bind(opened_at.to_rfc3339())
+    .bind(watch_only)
     .execute(&mut *tx)
     .await?;
     let row = sqlx::query(

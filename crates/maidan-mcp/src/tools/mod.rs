@@ -419,6 +419,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "create_channel"
         | "create_thread"
         | "submit_plan"
+        | "watch_pull"
         | "cancel_thread"
         | "create_task_schedule"
         | "create_recipe"
@@ -681,6 +682,7 @@ const CHANNEL_SCOPED_TOOLS: &[&str] = &[
     "list_unclaimable",
     "list_blocked_threads",
     "follow_channel",
+    "watch_pull",
 ];
 
 /// Tools whose optional `channel_id` and `thread_id` are both checked before
@@ -1013,6 +1015,7 @@ pub async fn dispatch(
         "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
         "set_thread_attributes" => thread::set_thread_attributes(store, args).await,
         "submit_plan" => thread::submit_plan(server, auth, args).await,
+        "watch_pull" => thread::watch_pull(server, auth, args).await,
         "list_active_claims" => thread::list_active_claims(store, auth, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
         "list_thread_dependencies" => thread::list_thread_dependencies(store, args).await,

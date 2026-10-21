@@ -410,9 +410,21 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Security:** RUSTSEC-2026-0382 (rustls-webpki) and RUSTSEC-2026-0381 (webpki-roots), published 2026-10-20. rustls-webpki 0.103 is bumped to the fixed 0.103.16 and webpki-roots 1.x to the fixed 1.0.10, in the root and fuzz lockfiles. The remaining rustls-webpki 0.101 is the AWS S3 client's, which has no fixed 0.101 release and only talks to a trusted endpoint. webpki-roots 0.26.11 is a shim over the fixed 1.0.10. Both are accepted with reasons in `deny.toml` and `.config/osv-scanner.toml`. The OpenHands example floors `certifi` at 2026.10.19 (GHSA-6q48-6c7w-9gw2).
 
+### Maidan reads CI on the pull requests it tracks
+
+- **Added:** `POST /workspaces/{id}/pull-watches` and the MCP tool `watch_pull` watch any pull request by repository and number, with or without a claimant. A pull request the workspace does not track yet gets a thread, in the channel named or the workspace's `pull-requests` channel. The repository must be blessed for the workspace; one another workspace tracks is a `409`.
+- **Added:** each change-sweep tick reads every open tracked pull request in one GraphQL query (the change flow's, registered session ones and watched ones) and records `ci` on its thread (`GET /threads/{id}`, the context pack): `status` (`pending`, `success`, `failure`), `failing_jobs` and the last 4 KB of the first failing job's log, read once per failing head.
+- **Added:** thread notices `pr_opened`, `ci_failed` and `checks_done` (`status`), each said once per head commit, with a `ThreadNotice` event and a message. `ThreadNotice` gains `head_sha`, `status` and `failing_jobs`.
+- **Changed:** the sweep's per-tick read of a tracked pull request is the GraphQL query instead of `GET /pulls/{n}`. A GraphQL read no longer needs the repository in `MAIDAN_GITHUB_WRITE_REPOS`; mutations still do.
+
 ### A large or risky plan waits for a Maintainer
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.
+
+### A workspace routes untagged work to its default engine
+
+- **Added:** a per-workspace default engine (migration 0190). `GET` and `PUT /workspaces/{id}/default-engine` read and set it (`pi`, `session`, `human`, or `null` for none); setting it takes `token:admin` and writes a `workspace.default_engine.set` audit row in the same transaction. A thread created in the workspace with no engine named is routed to the default inside its create transaction, on every store path: REST and MCP create, schedules, inbound A2A, a message turned into a thread, plan children and recipe runs. An engine named at creation wins, and other attributes given are kept. Before this, an engine-filtered `claim_next` (a Pi worker's `engine: "pi"`) never saw the threads Maidan itself creates.
+- **Changed:** the REST and MCP thread create responses carry the attributes the thread was stored with, including an engine the default filled in.
 
 ### A stalled or panicking change sweep alerts
 
@@ -430,6 +442,12 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 ### A claimant waits for work in the claim itself
 
 - **Added:** MCP `claim_next_workspace_thread` takes `wait_ms` (at most 300000). With nothing claimable, it waits for a signal that work may have become claimable (a thread created or made ready, a claim released or expiring, a thread reopened), claims it, or answers null at the deadline. It subscribes before its first attempt, so work filed in between still wakes it. A session claimant loops on it with `engine: "session"`, with no polling and no event-stream plumbing of its own.
+
+### A background loop that fails every tick alerts, and no alert is lost
+
+- **Added:** a loop whose last three ticks each logged a warning or an error posts `failing:<loop>` to the operator channel, quoting the latest warning. A loop that finishes its ticks but fails each one used to look healthy: on 2026-10-21 a locked table cancelled the change sweep's query on every tick for 20 minutes, and no alert came. Slow-statement warnings don't count.
+- **Fixed:** an alert Slack refused (the network not up after a host wakes, say) was dropped and its key held for 15 minutes. It is now queued and retried on every watchdog pass.
+- **Fixed:** after a host suspend, every loop looked stalled at once and alerted. A watchdog sleep that overruns three times over is now read as a suspend: every loop's clock restarts and nothing is posted.
 
 ## [413.0.0] — 2026-10-11
 

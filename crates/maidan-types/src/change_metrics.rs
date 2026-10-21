@@ -80,6 +80,13 @@ pub enum ThreadNoticeKind {
     /// A round delivered for the thread was built on a base at least
     /// `MAIDAN_STALE_BASE_COMMITS` behind its branch.
     StaleBase,
+    /// The change sweep saw the thread's pull request open for the first
+    /// time.
+    PrOpened,
+    /// A check on the pull request's head failed.
+    CiFailed,
+    /// Every check on the pull request's head finished; `status` says how.
+    ChecksDone,
 }
 
 impl ThreadNoticeKind {
@@ -87,6 +94,9 @@ impl ThreadNoticeKind {
         match self {
             Self::RebaseNeeded => "rebase_needed",
             Self::StaleBase => "stale_base",
+            Self::PrOpened => "pr_opened",
+            Self::CiFailed => "ci_failed",
+            Self::ChecksDone => "checks_done",
         }
     }
 
@@ -94,6 +104,9 @@ impl ThreadNoticeKind {
         match s {
             "rebase_needed" => Some(Self::RebaseNeeded),
             "stale_base" => Some(Self::StaleBase),
+            "pr_opened" => Some(Self::PrOpened),
+            "ci_failed" => Some(Self::CiFailed),
+            "checks_done" => Some(Self::ChecksDone),
             _ => None,
         }
     }
@@ -113,8 +126,8 @@ pub struct ThreadNotice {
     pub kind: ThreadNoticeKind,
     /// Lowercase `owner/name`.
     pub repo: String,
-    /// The merged pull request (`rebase_needed`) or the one the stale round
-    /// went to (`stale_base`).
+    /// The merged pull request (`rebase_needed`), the one the stale round
+    /// went to (`stale_base`), or the one the checks ran on.
     pub pull_number: i64,
     /// The merged paths the claim covers, at most 20 ([`NOTICE_PATH_LIMIT`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -123,6 +136,15 @@ pub struct ThreadNotice {
     pub base_branch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_behind: Option<i64>,
+    /// The head commit a CI notice is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
+    /// How the checks stand (`checks_done`, `ci_failed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::pull_ci::CiStatus>,
+    /// The checks that failed, at most [`crate::pull_ci::FAILING_JOB_LIMIT`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failing_jobs: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -144,7 +166,35 @@ impl ThreadNotice {
                 self.pull_number,
                 self.base_behind.unwrap_or_default()
             ),
+            ThreadNoticeKind::PrOpened => format!(
+                "Pull request opened: {}#{}{}.",
+                self.repo,
+                self.pull_number,
+                self.at_head()
+            ),
+            ThreadNoticeKind::CiFailed => format!(
+                "CI failed on {}#{}{}: {}.",
+                self.repo,
+                self.pull_number,
+                self.at_head(),
+                self.failing_jobs.join(", ")
+            ),
+            ThreadNoticeKind::ChecksDone => format!(
+                "Checks done on {}#{}{}: {}.",
+                self.repo,
+                self.pull_number,
+                self.at_head(),
+                self.status.map_or("unknown", |status| status.as_str())
+            ),
         }
+    }
+
+    /// ` at <short sha>`, or nothing when the notice names no head.
+    fn at_head(&self) -> String {
+        self.head_sha
+            .as_deref()
+            .map(|sha| format!(" at {}", sha.chars().take(12).collect::<String>()))
+            .unwrap_or_default()
     }
 }
 
