@@ -117,6 +117,8 @@ pub async fn get_swarm_metrics(
         kind: query.kind,
         size: query.size,
         linear_issue: query.linear_issue,
+        provider: query.provider,
+        harness: query.harness,
     }
     .check()?;
     crate::change_sweep::refresh_open_pulls(&state, workspace_id).await;

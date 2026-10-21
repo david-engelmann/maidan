@@ -67,19 +67,52 @@ fn is_control_frame(v: &serde_json::Value) -> bool {
     )
 }
 
+/// Long enough for an instrumented build, and well under the server's 60 s
+/// pong timeout: a frame that never comes fails here, rather than after the
+/// server drops a silent peer and its `offline` frame arrives instead.
+const FRAME_WAIT: Duration = Duration::from_secs(20);
+
+async fn next_frame(
+    ws: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
+    wanted: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    tokio::time::timeout(FRAME_WAIT, async {
+        loop {
+            let msg = ws.next().await.expect("ws stream").expect("ws ok");
+            if let Message::Text(payload) = msg {
+                let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+                if wanted(&v) {
+                    return v;
+                }
+            }
+        }
+    })
+    .await
+    .expect("the expected frame never arrived")
+}
+
 async fn next_ephemeral(
     ws: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
 ) -> serde_json::Value {
-    loop {
-        let msg = ws.next().await.expect("ws stream").expect("ws ok");
-        if let Message::Text(payload) = msg {
-            let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
-            if is_control_frame(&v) {
-                continue;
-            }
-            return v;
-        }
-    }
+    next_frame(ws, |v| !is_control_frame(v)).await
+}
+
+/// The roster a subscriber is sent once its presence registration exists.
+/// Waiting for it is how a test knows the server registered the connection,
+/// since the server handles two sockets' handshakes in any order.
+async fn presence_snapshot(
+    ws: &mut (impl StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin),
+) -> serde_json::Value {
+    next_frame(ws, |v| v["type"] == "presence_snapshot").await
+}
+
+fn snapshot_status(snapshot: &serde_json::Value, member_id: &str) -> Option<String> {
+    snapshot["members"]
+        .as_array()?
+        .iter()
+        .find(|m| m["member_id"] == member_id)
+        .and_then(|m| m["status"].as_str())
+        .map(str::to_string)
 }
 
 #[tokio::test]
@@ -153,6 +186,10 @@ async fn presence_and_typing_fan_out_between_subscribers() {
         .send(Message::Text(filter.to_string()))
         .await
         .unwrap();
+    // Bob's online frame reaches only subscribers registered before him; had
+    // Bob registered first, Alice would see him in her snapshot and wait for
+    // a diff that never comes (#1490).
+    presence_snapshot(&mut ws_alice).await;
 
     let filter_bob = json!({
         "filter": { "workspace_id": workspace_id },
@@ -166,7 +203,7 @@ async fn presence_and_typing_fan_out_between_subscribers() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    presence_snapshot(&mut ws_bob).await;
 
     let presence = next_ephemeral(&mut ws_alice).await;
     assert_eq!(presence["type"], "presence");
@@ -197,6 +234,74 @@ async fn presence_and_typing_fan_out_between_subscribers() {
     assert_eq!(away["type"], "presence");
     assert_eq!(away["member_id"], bob_id);
     assert_eq!(away["status"], "away");
+
+    ws_alice.close(None).await.ok();
+    ws_bob.close(None).await.ok();
+    server.abort();
+}
+
+/// A member already connected when another subscriber joins is in that
+/// subscriber's snapshot as online, and no diff repeats it. This is the order
+/// the server took under a slow, instrumented build in #1490: the old test
+/// waited for a diff here, until the server timed out the silent peer and
+/// said `offline`.
+#[tokio::test]
+async fn a_member_connected_first_is_online_in_a_later_subscribers_snapshot() {
+    let (addr, client, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws_url = format!("ws://{addr}/ws/subscribe");
+    let ws_resp: serde_json::Value = client
+        .post(format!("{base}/workspaces"))
+        .json(&json!({"name": "presence-order"}))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let workspace_id = ws_resp["id"].as_str().unwrap();
+    let member = |handle: &'static str| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let m: serde_json::Value = client
+                .post(format!("{base}/workspaces/{workspace_id}/members"))
+                .json(&json!({"handle": handle, "kind": "human"}))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            m["id"].as_str().unwrap().to_string()
+        }
+    };
+    let alice_id = member("alice").await;
+    let bob_id = member("bob").await;
+    let subscribe = |member_id: String| {
+        let ws_url = ws_url.clone();
+        async move {
+            let (mut ws, _) = connect_async(ws_url.into_client_request().unwrap())
+                .await
+                .unwrap();
+            ws.send(Message::Text(
+                json!({"filter": {"workspace_id": workspace_id}, "member_id": member_id})
+                    .to_string(),
+            ))
+            .await
+            .unwrap();
+            ws
+        }
+    };
+
+    let mut ws_bob = subscribe(bob_id.clone()).await;
+    presence_snapshot(&mut ws_bob).await;
+    let mut ws_alice = subscribe(alice_id).await;
+    let snapshot = presence_snapshot(&mut ws_alice).await;
+    assert_eq!(
+        snapshot_status(&snapshot, &bob_id).as_deref(),
+        Some("online"),
+        "{snapshot}"
+    );
 
     ws_alice.close(None).await.ok();
     ws_bob.close(None).await.ok();

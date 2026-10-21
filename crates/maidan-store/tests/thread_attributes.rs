@@ -291,9 +291,10 @@ async fn the_metrics_carry_filter_and_split_on_attributes(store: Arc<dyn Store>)
     assert_eq!(rollup.by_engine[1].numbers.tasks, 1);
 }
 
-/// A task with model spend reads its cost back. On Postgres a SUM over a
-/// BIGINT is NUMERIC: read as an i64 it panicked, and took the change sweep
-/// down on its first tick.
+/// A task with model spend reads its cost back, with the provider and the
+/// harness its usage named; usage that named none still counts toward the
+/// cost. On Postgres a SUM over a BIGINT is NUMERIC: read as an i64 it
+/// panicked, and took the change sweep down on its first tick.
 async fn a_tasks_model_spend_reads_back_as_its_cost(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "spend", 1).await;
     let agent = room.agents[0];
@@ -315,6 +316,31 @@ async fn a_tasks_model_spend_reads_back_as_its_cost(store: Arc<dyn Store>) {
                 ..Default::default()
             },
             usd_micros: 10,
+            price_snapshot: PriceSnapshot {
+                input_usd_micros_per_million: 10,
+                ..Default::default()
+            },
+            turns: 1,
+            evidence: maidan_types::UsageEvidence {
+                provider: Some("openai".into()),
+                harness: Some("codex".into()),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    store
+        .report_accounted_usage(&NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::new_v4(),
+            thread_id: thread.id,
+            reporter: agent,
+            claim_lease_id: lease,
+            model: "provider/model".into(),
+            tokens: TokenUsage {
+                input: 500_000,
+                ..Default::default()
+            },
+            usd_micros: 5,
             price_snapshot: PriceSnapshot {
                 input_usd_micros_per_million: 10,
                 ..Default::default()
@@ -346,7 +372,9 @@ async fn a_tasks_model_spend_reads_back_as_its_cost(store: Arc<dyn Store>) {
         .list_change_pulls(room.ws, None, None, None, None, None)
         .await
         .unwrap();
-    assert_eq!(pulls[0].cost_usd_micros, 10);
+    assert_eq!(pulls[0].cost_usd_micros, 15);
+    assert_eq!(pulls[0].provider.as_deref(), Some("openai"));
+    assert_eq!(pulls[0].harness.as_deref(), Some("codex"));
 }
 
 /// A pull request keeps the first Linear issue a round names: a later round

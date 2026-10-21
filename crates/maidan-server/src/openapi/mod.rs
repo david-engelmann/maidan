@@ -922,6 +922,8 @@ fn requires_credential(op: &Operation) -> bool {
         RepoRollup,
         SliceNumbers,
         EngineRollup,
+        ProviderRollup,
+        HarnessRollup,
         SizeRollup,
         RiskRollup,
         ChangeRound,

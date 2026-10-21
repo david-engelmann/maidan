@@ -572,6 +572,9 @@ pub struct GithubPullSnapshot {
     /// What else decides whether it can merge; `None` when this read did not
     /// carry it.
     pub gate: Option<GithubGate>,
+    /// Whether the head has commits its base lacks; `None` when this read
+    /// did not say.
+    pub ahead: Option<bool>,
 }
 
 /// What GitHub says about whether a pull request can merge, besides its
@@ -585,6 +588,11 @@ pub struct GithubGate {
     /// The status checks the base branch's protection requires; `None` when
     /// the credential may not read the protection, or there is none.
     pub required_checks: Option<Vec<String>>,
+    /// Whether the pull request is in the base branch's merge queue.
+    pub queued: bool,
+    /// Why it last left the merge queue (`MERGE_CONFLICT`,
+    /// `FAILED_CHECKS`, ...), when the last queue event was a removal.
+    pub dequeued: Option<String>,
 }
 
 /// What flipping a pull request to ready did.
@@ -718,7 +726,21 @@ pub trait GithubGit: Send + Sync {
             brief: self.pull_brief(repo, pull_number).await?,
             checks: None,
             gate: None,
+            ahead: None,
         })
+    }
+    /// `GET /repos/{repo}/compare/{branch}...{sha}`: whether `sha` is on
+    /// `branch` already (behind it or identical). A read, for a pull request
+    /// closed without merging whose head a stack tool landed. The default
+    /// says no, so a client that cannot compare treats every close without a
+    /// merge as one.
+    async fn commit_on_branch(
+        &self,
+        _repo: &str,
+        _branch: &str,
+        _sha: &str,
+    ) -> Result<bool, GithubError> {
+        Ok(false)
     }
     /// `GET /repos/{repo}/actions/jobs/{job_id}/logs`: the last `max_bytes`
     /// of a GitHub Actions job's log, starting at a line. A read. The
@@ -1621,6 +1643,32 @@ impl GithubGit for GithubApiClient {
         snapshot_from(&self.send_json(request).await?)
     }
 
+    async fn commit_on_branch(
+        &self,
+        repo: &str,
+        branch: &str,
+        sha: &str,
+    ) -> Result<bool, GithubError> {
+        let branch = safe_ref_name(branch)?;
+        if !maidan_types::is_git_sha(sha) {
+            return Err(GithubError::Refused(format!("`{sha}` is not a commit")));
+        }
+        let value = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/compare/{}...{sha}", encode_path(branch)),
+                )
+                .await?,
+            )
+            .await?;
+        Ok(matches!(
+            value.get("status").and_then(serde_json::Value::as_str),
+            Some("behind" | "identical")
+        ))
+    }
+
     async fn job_log_tail(
         &self,
         repo: &str,
@@ -2145,9 +2193,13 @@ pub(crate) const PULL_SNAPSHOT_QUERY: &str =
 repository(owner: $owner, name: $name) { pullRequest(number: $number) { \
 id number state isDraft isCrossRepository headRefName headRefOid baseRefName \
 mergedAt closedAt mergeCommit { oid } labels(first: 50) { nodes { name } } \
+ahead: commits { totalCount } \
 mergeStateStatus \
 reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { url author { login } } } } } \
 baseRef { branchProtectionRule { requiredStatusCheckContexts } } \
+mergeQueueEntry { state } \
+timelineItems(last: 1, itemTypes: [ADDED_TO_MERGE_QUEUE_EVENT, REMOVED_FROM_MERGE_QUEUE_EVENT]) { nodes { \
+__typename ... on RemovedFromMergeQueueEvent { reason } } } \
 commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes { \
 __typename \
 ... on CheckRun { name status conclusion databaseId checkSuite { app { slug } } } \
@@ -2285,11 +2337,32 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
             })
             .collect(),
         required_checks: text_list("/baseRef/branchProtectionRule/requiredStatusCheckContexts"),
+        queued: pull
+            .get("mergeQueueEntry")
+            .is_some_and(serde_json::Value::is_object),
+        dequeued: pull
+            .pointer("/timelineItems/nodes/0")
+            .filter(|event| {
+                event.get("__typename").and_then(serde_json::Value::as_str)
+                    == Some("RemovedFromMergeQueueEvent")
+            })
+            .map(|event| {
+                event
+                    .get("reason")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("UNKNOWN")
+                    .to_string()
+            }),
     };
     Ok(GithubPullSnapshot {
         brief,
         checks,
         gate: Some(gate),
+        // A pull request lists the commits its head has that its base lacks.
+        ahead: pull
+            .pointer("/ahead/totalCount")
+            .and_then(serde_json::Value::as_i64)
+            .map(|commits| commits > 0),
     })
 }
 
@@ -2535,6 +2608,8 @@ mod tests {
                     {"url": "https://github.com/o/r/pull/7#discussion_r2", "author": {"login": "someone"}}]}},
             ]},
             "baseRef": {"branchProtectionRule": {"requiredStatusCheckContexts": ["lint", "e2e"]}},
+            "mergeQueueEntry": null,
+            "timelineItems": {"nodes": [{"__typename": "RemovedFromMergeQueueEvent", "reason": "MERGE_CONFLICT"}]},
             "commits": {"nodes": [{"commit": {"oid": commit_oid,
                 "statusCheckRollup": {"contexts": {"nodes": contexts}}}}]},
         }}}})
@@ -2561,6 +2636,8 @@ mod tests {
         assert_eq!(snapshot.brief.labels, vec!["ready-to-merge".to_string()]);
         let gate = snapshot.gate.clone().unwrap();
         assert_eq!(gate.merge_state.as_deref(), Some("BEHIND"));
+        assert!(!gate.queued);
+        assert_eq!(gate.dequeued.as_deref(), Some("MERGE_CONFLICT"));
         assert_eq!(
             gate.required_checks,
             Some(vec!["lint".to_string(), "e2e".to_string()])

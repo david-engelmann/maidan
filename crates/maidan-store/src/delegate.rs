@@ -2939,6 +2939,17 @@ macro_rules! store_delegations {
                 pull_ci::record(self.pool(), new).await
             }
 
+            async fn pull_head_was_ahead(
+                &self,
+                workspace_id: WorkspaceId,
+                repo: &str,
+                pull_number: i64,
+                head_sha: &str,
+            ) -> Result<bool, StoreError> {
+                pull_ci::head_was_ahead(self.pool(), workspace_id, repo, pull_number, head_sha)
+                    .await
+            }
+
             async fn list_thread_pull_ci(
                 &self,
                 thread_id: ThreadId,

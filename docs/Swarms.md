@@ -478,6 +478,21 @@ reasons change, the thread gets **`gate_blocked`** with the new `reasons`, or
 Reading the protection needs a credential that may read the repository's
 administration settings; without it no check counts as missing.
 
+`ci.merge_queue` follows the pull request through the base branch's merge
+queue: `ready_to_merge` (it carries the `ready-to-merge` label and is not
+queued), `queued`, `dequeued` with GitHub's `reason` (`MERGE_CONFLICT`,
+`FAILED_CHECKS`, ...), and `landed` once its merge is recorded. Entering the
+queue is said as **`merge_queued`**, and leaving it without merging as
+**`merge_dequeued`** with the reason in `reasons`. A landing is the change
+sweep's usual one: the thread closes with `ThreadLanded`.
+
+A pull request closed without merging counts as landed only when its head
+had commits its base lacked while it was open and is on the base branch now,
+as when a stack tool lands the commits itself and closes the pull request.
+The sweep asks GitHub once, when it first sees the close. A branch reset to
+its base and closed was never ahead, so it lands nothing. Any other close is
+a close without a merge, said once and leaving the task open.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
@@ -512,6 +527,15 @@ slice with no tasks. Pi is given small and medium work and sessions the risky
 work, so compare engines within one size or one tier: across the whole
 repository the comparison mostly measures the routing. Cost per merged change
 in each engine slice is what compares Pi with sessions on cost.
+
+Two more splits compare who did the work: `by_provider` (the model provider
+that spent the most on each task: `anthropic`, `openai`, `xai`, ...) and
+`by_harness` (the harness that ran it: `claude-code`, `cursor`, `codex`, ...),
+each most tasks first with unnamed tasks last. Both come from the claimant's
+own usage reports, so a claimant names them in `report_usage`'s `evidence`
+(`{"provider": "xai", "harness": "openrouter"}`); a task whose usage named
+none lands in the unnamed slice. Each task carries its `provider` and
+`harness`, and `?provider=` and `?harness=` narrow the whole response to one.
 
 Each task carries its attributes and, when known, its `linear_issue`: the
 Linear key the change result names (`"linear_issue": "ENG-1234"`, ignored
