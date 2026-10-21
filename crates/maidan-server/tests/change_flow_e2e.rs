@@ -121,6 +121,12 @@ struct Fake {
     /// The status checks the base branch's protection requires; none when
     /// unset (the protection unreadable).
     required_checks: Option<Vec<String>>,
+    /// Pull requests in the merge queue.
+    queued: Vec<i64>,
+    /// Why a pull request last left the merge queue.
+    dequeued: HashMap<i64, String>,
+    /// Commits already on the base branch, which `compare` reports behind.
+    on_base: Vec<String>,
 }
 
 impl Fake {
@@ -402,10 +408,18 @@ async fn github(
             )
                 .into_response()
         }
-        ("GET", r) if r.starts_with("compare/") => reply(
-            StatusCode::OK,
-            json!({"ahead_by": fake.behind.unwrap_or(2)}),
-        ),
+        ("GET", r) if r.starts_with("compare/") => {
+            let head = r.rsplit("...").next().unwrap_or_default();
+            let status = if fake.on_base.iter().any(|sha| sha == head) {
+                "behind"
+            } else {
+                "diverged"
+            };
+            reply(
+                StatusCode::OK,
+                json!({"ahead_by": fake.behind.unwrap_or(2), "status": status}),
+            )
+        }
         ("GET", r) if r.starts_with("pulls/") => {
             let number: i64 = r["pulls/".len()..].parse().unwrap();
             match fake.pulls.iter().find(|p| p.number == number) {
@@ -536,6 +550,7 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
         "mergeCommit": fake.merge_shas.get(&number).map(|oid| json!({"oid": oid})),
         "labels": {"nodes": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>()},
         "commits": {"nodes": commits},
+        "ahead": {"totalCount": if fake.on_base.contains(&head) { 0 } else { 1 }},
         "mergeStateStatus": fake.merge_states.get(&number).cloned().unwrap_or_else(|| "CLEAN".into()),
         "reviewThreads": {"nodes": fake.review_threads.get(&number).into_iter().flatten().enumerate().map(|(n, (resolved, author))| json!({
             "isResolved": resolved,
@@ -545,6 +560,8 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
             }]},
         })).collect::<Vec<_>>()},
         "baseRef": {"branchProtectionRule": fake.required_checks.as_ref().map(|checks| json!({"requiredStatusCheckContexts": checks}))},
+        "mergeQueueEntry": fake.queued.contains(&number).then(|| json!({"state": "QUEUED"})),
+        "timelineItems": {"nodes": fake.dequeued.get(&number).map(|reason| json!({"__typename": "RemovedFromMergeQueueEvent", "reason": reason})).into_iter().collect::<Vec<_>>()},
     }}}})
 }
 
@@ -3990,6 +4007,140 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
             .iter()
             .all(|c| c.name != maidan_types::DEFAULT_WATCH_CHANNEL),
         "nothing was made in B"
+    );
+}
+
+/// A watched pull request's merge-queue state is recorded each tick:
+/// labelled ready, queued, dequeued with GitHub's reason, and landed once it
+/// merges. Entering and leaving the queue are each said once.
+#[tokio::test]
+async fn a_watched_pull_says_when_it_enters_and_leaves_the_merge_queue() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 94, "feature/queued");
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.checks
+            .insert(94, vec![check_run("lint", Some("SUCCESS"), Some(801))]);
+        f.pulls.last_mut().unwrap().labels = vec!["ready-to-merge".into()];
+    }
+    let token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (_, watched) = post_json(
+        &h,
+        &token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": 94}),
+    )
+    .await;
+    let thread: uuid::Uuid = watched["thread_id"].as_str().unwrap().parse().unwrap();
+    let newest = |view: &Value| view["notices"][0].clone();
+
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 2);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(
+        view["ci"][0]["merge_queue"]["state"], "ready_to_merge",
+        "{view}"
+    );
+
+    h.fake.lock().unwrap().queued.push(94);
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["merge_queue"]["state"], "queued");
+    assert_eq!(newest(&view)["kind"], "merge_queued");
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.queued.clear();
+        f.dequeued.insert(94, "MERGE_CONFLICT".into());
+    }
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(
+        view["ci"][0]["merge_queue"],
+        json!({"state": "dequeued", "reason": "MERGE_CONFLICT"})
+    );
+    assert_eq!(newest(&view)["kind"], "merge_dequeued");
+    assert_eq!(newest(&view)["reasons"], json!(["MERGE_CONFLICT"]));
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    h.fake.lock().unwrap().pulls.last_mut().unwrap().merged_at =
+        Some("2026-10-21T12:00:00Z".into());
+    assert_eq!(change_sweep::sweep_once(&h.state).await.landed, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["merge_queue"]["state"], "landed", "{view}");
+    assert_eq!(view["state"], "closed");
+}
+
+/// A stack tool that lands a pull request's head itself and then closes the
+/// pull request lands its task, through the same `ThreadLanded` as a merge.
+#[tokio::test]
+async fn a_pull_closed_after_its_head_landed_on_the_base_lands_its_task() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(901))]);
+    change_sweep::sweep_once(&h.state).await;
+    // The tool lands the head; a tick sees the base caught up before the
+    // close, and the head still counts as having been ahead.
+    {
+        let mut f = h.fake.lock().unwrap();
+        let head = f.refs[BRANCH].clone();
+        f.on_base.push(head);
+    }
+    change_sweep::sweep_once(&h.state).await;
+    h.fake.lock().unwrap().pulls[0].closed_at = Some("2026-10-21T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (1, 0), "{stats:?}");
+    let thread = h.store.get_thread(h.a.thread_id).await.unwrap();
+    assert_eq!(thread.state, ThreadState::Closed);
+    let landed = h
+        .store
+        .list_events_after(h.a.workspace_id, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(h.a.thread_id))
+        .count();
+    assert_eq!(landed, 1);
+}
+
+/// A branch reset to its base and then closed has its head on the base too,
+/// but it was never ahead of it: that close lands nothing and is said as a
+/// close without a merge.
+#[tokio::test]
+async fn a_branch_reset_to_its_base_and_closed_does_not_land() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        let base = h.base_sha.clone();
+        f.refs.insert(BRANCH.into(), base.clone());
+        f.on_base.push(base);
+        f.pulls[0].number
+    };
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(902))]);
+    change_sweep::sweep_once(&h.state).await;
+    h.fake.lock().unwrap().pulls[0].closed_at = Some("2026-10-21T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (0, 1), "{stats:?}");
+    assert_ne!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
     );
 }
 

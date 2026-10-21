@@ -53,6 +53,7 @@ use std::time::Duration;
 
 use maidan_types::{ChangeSettlement, MemberId, PostedNotice, ThreadId, WorkspaceId};
 
+use crate::github::GithubError;
 use crate::state::AppState;
 
 /// Default seconds between sweeps.
@@ -210,9 +211,42 @@ async fn refresh(
             .closed_at
             .or(brief.merged_at)
             .unwrap_or_else(chrono::Utc::now);
-        let merged_head = brief.merged_at.map(|_| brief.head_sha.as_str());
+        // A stack tool may land a pull request's head itself and then close
+        // it rather than merge it. Closed counts as landed only when its head
+        // was ahead of the base while open (a branch reset to its base and
+        // closed lands nothing) and is on the base now; any other close is
+        // not a landing. Asked once: a recorded close is not read again.
+        let was_ahead = brief.merged_at.is_none()
+            && store
+                .pull_head_was_ahead(workspace_id, &repo, pull_number, &brief.head_sha)
+                .await
+                .unwrap_or_else(|err| {
+                    tracing::warn!(repo, pull_number, error = %err, "change sweep: head not looked up");
+                    false
+                });
+        let merged_at = match brief.merged_at {
+            Some(merged_at) => Some(merged_at),
+            None if !was_ahead => None,
+            None => match git
+                .commit_on_branch(&repo, &brief.base, &brief.head_sha)
+                .await
+            {
+                Ok(true) => Some(closed_at),
+                Ok(false) => None,
+                // A head GitHub no longer has, or a ref it refuses, cannot be
+                // on the base.
+                Err(err) if err.is_not_found() || matches!(err, GithubError::Refused(_)) => None,
+                // Anything else may pass: the close waits for the next tick
+                // rather than be recorded unmerged on a failed read.
+                Err(err) => {
+                    tracing::debug!(repo, pull_number, error = %err, "change sweep: closed head not compared with its base");
+                    continue;
+                }
+            },
+        };
+        let merged_head = merged_at.map(|_| brief.head_sha.as_str());
         if let Err(err) = store
-            .close_change_pull(&repo, pull_number, brief.merged_at, merged_head, closed_at)
+            .close_change_pull(&repo, pull_number, merged_at, merged_head, closed_at)
             .await
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: close not recorded");

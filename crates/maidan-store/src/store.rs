@@ -2423,6 +2423,16 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         new: maidan_types::NewPullCi,
     ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// Whether `head_sha` is the head the last read of a tracked pull
+    /// request recorded, with commits its base lacked at some read: what a
+    /// pull request closed without merging must show to count as landed.
+    async fn pull_head_was_ahead(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+        head_sha: &str,
+    ) -> Result<bool, StoreError>;
     /// The last reads of the checks on every pull request tracked on a
     /// thread.
     async fn list_thread_pull_ci(

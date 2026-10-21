@@ -4842,6 +4842,35 @@
         },
         "type": "object"
       },
+      "MergeQueue": {
+        "description": "A pull request's merge-queue state, and why it was dequeued.",
+        "properties": {
+          "reason": {
+            "description": "GitHub's reason for a dequeue (`MERGE_CONFLICT`, `FAILED_CHECKS`, ...).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/MergeQueueState"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "MergeQueueState": {
+        "description": "Where a pull request stands with the merge queue.",
+        "enum": [
+          "ready_to_merge",
+          "queued",
+          "dequeued",
+          "landed"
+        ],
+        "type": "string"
+      },
       "Message": {
         "properties": {
           "author_id": {
@@ -6359,6 +6388,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "merge_queue": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MergeQueue",
+                "description": "Where the pull request stands with its base branch's merge queue."
+              }
             ]
           },
           "merge_state": {
@@ -9963,7 +10003,9 @@
           "ci_failed",
           "checks_done",
           "gate_blocked",
-          "gate_clear"
+          "gate_clear",
+          "merge_queued",
+          "merge_dequeued"
         ],
         "type": "string"
       },
