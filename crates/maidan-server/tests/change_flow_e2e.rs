@@ -3635,6 +3635,45 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
     assert_ne!(f.refs[BRANCH], theirs, "B rebased the head it delivered");
 }
 
+/// GitHub writes belong to the workspace whose change flow delivered the
+/// head. A workspace that only registered the pull request (tracking is
+/// read-only) is refused a rebase even with the branch blessed for it. The
+/// deliverer's rebase then goes through.
+#[tokio::test]
+async fn only_the_workspace_that_delivered_a_round_may_rebase_a_registered_pull() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.store
+        .register_change_pull(h.b.workspace_id, h.b.thread_id, REPO, number, None)
+        .await
+        .unwrap();
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+
+    h.route(&h.b, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.b, "github_branch").await;
+    assert_eq!(row.status, status::SKIPPED);
+    let reason = row.last_error.unwrap_or_default();
+    assert!(reason.contains("delivered no commit"), "{reason}");
+    {
+        let f = h.fake.lock().unwrap();
+        assert!(f.forced.is_empty(), "{:?}", f.forced);
+        assert_eq!(f.refs[BRANCH], delivered);
+    }
+
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 3).await;
+    h.drain().await;
+    let f = h.fake.lock().unwrap();
+    assert_eq!(f.forced.len(), 1, "the deliverer rebases: {:?}", f.forced);
+    assert_ne!(f.refs[BRANCH], delivered);
+}
+
 #[tokio::test]
 async fn a_rebase_conflict_is_skipped_with_no_write_and_the_reply_names_the_paths() {
     let h = harness().await;
