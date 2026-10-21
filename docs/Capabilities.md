@@ -42,6 +42,28 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v414.0.0](https://github.com/david-engelmann/maidan/releases/tag/v414.0.0) — the swarm: claims, the change flow, swarm metrics and operator alerts
+
+The first release since `v413.0.0`. It ships every PR merged after that tag,
+#1359 through #1501. The work was ranked in Open Work (Next 21 to 33) and
+the coordinator's swarm plan, and each PR carries its own retro. The table
+groups it by area, and `CHANGELOG.md` under `[414.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Claiming work** | Claim footprints keep a swarm off overlapping work. A worker claims only its own repository's work. Build slots admit work by capacity. A producer declares the footprint when it creates a task. An operator can pause one repository. The queue says why work waits. Task attributes (kind, engine, size, risk, acceptance, Linear issue) ride on threads. A workspace routes untagged threads to its default engine. A claimant can wait for work inside the claim (`wait_ms`), with no polling | `crates/maidan-store/src/claim_next.rs`, `crates/maidan-mcp/src/tools/thread.rs`, `docs/Swarms.md` |
+| **The change flow** | A ready agent PR joins its repository's merge queue, and its description stays current. A change task closes when its PR merges. `rebase_needed` and `stale_base` notices are posted, and squash-rebase rounds name the range they rewrote. PRs missing a Testing section or an issue key are flagged. A non-converging Pi task is handed to a session once. A session registers its own PR on its task. Claims, releases and results comment on Linear behind a per-workspace switch. Any PR can be watched for CI: its status, failing jobs and log tail, plus PR-opened, CI-failed and checks-done notices, what holds it back (merge state, unresolved review threads, required checks that never reported) and its merge-queue state, with closed-as-landed only for a head that was ahead of its base | `crates/maidan-server/src/change_flow.rs`, `crates/maidan-server/src/change_sweep.rs`, `crates/maidan-server/src/ci_watch.rs` |
+| **Plans** | A planner submits a plan's children in one call, and the plan closes when they land. A plan is linted before any child is created. A large or risky plan waits for a Maintainer to release it | `crates/maidan-server/src/plan.rs` |
+| **Swarm metrics** | Per agent PR: rounds, time to ready and to merge, cost, and flags. Rollups are split by engine, size, risk, provider and harness. Misroutes, reverts, follow-up fixes and human-effort proxies are counted. Metrics can be read for named Linear issues, and a swarm panel shows them in the console | `crates/maidan-types/src/change_metrics.rs`, `crates/maidan-server/src/routes/swarm_metrics.rs` |
+| **Session claimants** | A runbook and skill let Claude Code and Cursor mint a seat, claim with `wait_ms`, deliver `pi.change.result/1`, report usage and release, with a fallback for binary changes. OpenHands and Goose recipes are included | `examples/claude-code/`, `examples/cursor/`, `examples/openhands/` |
+| **Operator alerts** | Every background loop is started, guarded and watched. A panic, a stall, a loop that fails every tick, a hung tick or an exited loop posts to one Slack channel (`MAIDAN_OPS_ALERT_CHANNEL`). A refused post is retried, a host suspend is not read as a stall, and the boot line proves the route on every deploy. Liveness and panic metrics come with Prometheus rules | `crates/maidan-server/src/ops_alert.rs`, `docs/alerts/` |
+| **OAuth and keys** | RFC 8414 discovery, refresh-token rotation with lineage revocation, a revocation endpoint and resource binding. Members manage and revoke their apps' grants, and metadata-document clients are registered on first use, with rate limits. Each workspace's message keys are wrapped by a key of its own | `crates/maidan-server/src/oauth/`, `crates/maidan-store/` |
+| **Hardening** | The thread-read rule requires the reader to belong to the thread's workspace. Database URLs and S3, SMTP and Slack credentials stay out of logs. Outbound delivery needs only outbound credentials. One unreachable federation peer no longer stops the others being polled. A producer can cancel a task it created | `crates/maidan-server/`, `crates/maidan-store/` |
+| **Storage and performance** | The event log, delivery tables and audit log are partitioned by month. Responses are gzipped, with ETag revalidation, a capped live feed and an index for the notices query. Managed Postgres connects over TLS. Embedding calls run on the blocking pool. Media expires when nothing references it, under a per-workspace quota, and orphaned blob deletes are retried | `crates/maidan-store/`, `crates/maidan-server/`, `crates/maidan-artifacts/` |
+| **Console and launch** | Waitlist, invites and invited sign-up. `dev.maidan.world` runs on Cloudflare Containers. MCP server-card and catalog listing manifests. The board gains a per-task evidence timeline, stuck detection and a human-timeout state machine, with accessibility fixes throughout | `crates/maidan-server/static/ui/`, `listings/`, `deploy/` |
+
+The deploy pins move to `v414.0.0` in the PR that follows the tag.
+
 ## [v413.0.0](https://github.com/david-engelmann/maidan/releases/tag/v413.0.0) — tenant isolation, OAuth, approvals and the console
 
 The first release since `v412.0.0`. It ships every PR merged after that tag,
