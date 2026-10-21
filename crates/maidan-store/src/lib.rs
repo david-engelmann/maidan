@@ -162,6 +162,7 @@ pub mod store;
 pub mod test_support;
 pub mod thread_access;
 pub mod trace;
+pub mod usage_meters;
 mod usage_metrics;
 pub mod workspace_export;
 

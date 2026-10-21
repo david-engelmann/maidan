@@ -936,6 +936,17 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         });
     }
 
+    // Usage meters: requests and MCP calls are counted in memory and flushed
+    // to the daily rollup every `MAIDAN_USAGE_METER_FLUSH_SECS` (60 s), and
+    // once more below after the listener closes.
+    {
+        let meter_state = state.clone();
+        let interval = maidan_server::usage_meters::interval_from_env();
+        tokio::spawn(async move {
+            maidan_server::usage_meters::run(meter_state, interval).await;
+        });
+    }
+
     // Change sweep: on by default (`MAIDAN_CHANGE_SWEEP_SECS`, 120 s; `0`
     // off). A local stack gets no GitHub webhooks, so without it a merged
     // agent pull request never closes its task and its dependents wait.
@@ -1095,6 +1106,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Readiness fails first and the listener stays open for the drain delay;
     // the runtime image has no shell, so this cannot be an exec `preStop`.
     let draining = state.draining.clone();
+    let shutdown_state = state.clone();
     let drain = maidan_server::shutdown_drain_from_env();
     let shutdown = async move {
         #[cfg(unix)]
@@ -1142,6 +1154,8 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     .await
     .context("axum serve");
 
+    // The last counts since the final flush.
+    maidan_server::usage_meters::flush_once(&shutdown_state).await;
     indexer.shutdown().await;
     webhook_worker.shutdown().await;
     automation_worker.shutdown().await;

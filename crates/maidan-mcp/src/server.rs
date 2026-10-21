@@ -242,6 +242,9 @@ pub struct McpServer {
     /// Optional land-gate advisor. Unset means `advise_land_gate` is not found
     /// and no gate row is written.
     land_gate_advisor: std::sync::OnceLock<Arc<dyn crate::land_gate_advice::LandGateAdvising>>,
+    /// Where tool calls are counted for the workspace's usage meters. Unset
+    /// (tests, embedders) counts nothing.
+    usage_meters: Option<Arc<maidan_store::usage_meters::UsageMeterBuffer>>,
     /// Reads tracked pull requests from GitHub before `get_swarm_metrics`.
     /// Unset means the metrics are what the store holds. Shared by every
     /// clone, since the GitHub sender is attached after the server is built.
@@ -338,6 +341,7 @@ impl McpServer {
             slash_secret_forget: std::sync::OnceLock::new(),
             fsm_secret_forget: std::sync::OnceLock::new(),
             land_gate_advisor: std::sync::OnceLock::new(),
+            usage_meters: None,
             pull_refresher: Arc::default(),
             approval_confirmations: Arc::new(std::sync::OnceLock::new()),
         }
@@ -390,6 +394,15 @@ impl McpServer {
     /// server crate passes its own release version through here — a
     /// connected client should see the release it is talking to.
     #[must_use]
+    /// Count tool calls into `meters`, the buffer the server flushes.
+    pub fn with_usage_meters(
+        mut self,
+        meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
+    ) -> Self {
+        self.usage_meters = Some(meters);
+        self
+    }
+
     pub fn with_server_version(mut self, version: impl Into<String>) -> Self {
         self.server_version = version.into();
         self
@@ -998,6 +1011,10 @@ impl McpServer {
                 cap,
             )
             .map_err(McpError::from)?;
+        }
+        // Counted once the call is authorized to run, whatever it answers.
+        if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
+            meters.record(auth.workspace_id, maidan_types::UsageMeter::McpCalls, 1);
         }
         let deadline = tools::deadline(name);
         let call = crate::call_context::CallContext::from_params(params);

@@ -100,6 +100,7 @@ mod token_quotas;
 pub(crate) mod tokens;
 mod unclaimable;
 pub(super) mod usage_ledger;
+mod usage_meters;
 mod votes;
 mod waits;
 mod web_push_outbox;

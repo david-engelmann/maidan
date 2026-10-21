@@ -559,6 +559,17 @@ pub trait UsageLedgerStore: Send + Sync {
     /// Spend, cache shape, and cost per completed task. A thread or member
     /// outside the named workspace is `NotFound`.
     async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;
+    /// Add a flushed batch of usage-meter counts to their days' totals.
+    async fn add_usage_meters(
+        &self,
+        batch: &[maidan_types::UsageMeterDay],
+    ) -> Result<(), StoreError>;
+    /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
+    async fn list_usage_meters(
+        &self,
+        workspace_id: WorkspaceId,
+        since: chrono::NaiveDate,
+    ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError>;
 }
 
 #[async_trait]
