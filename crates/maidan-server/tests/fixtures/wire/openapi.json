@@ -6383,6 +6383,13 @@
             },
             "type": "array"
           },
+          "gate_reasons": {
+            "description": "What holds the pull request back; empty when nothing the sweep reads\ndoes.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "head_sha": {
             "description": "The head commit the checks ran on.",
             "type": "string"
@@ -6394,6 +6401,20 @@
               "null"
             ]
           },
+          "merge_state": {
+            "description": "GitHub's merge state for the pull request (`CLEAN`, `BEHIND`,\n`BLOCKED`, `DIRTY`, `DRAFT`, `UNSTABLE`, ...), when GitHub had one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "missing_checks": {
+            "description": "Checks the base branch's protection requires that never reported on\nthis head, though every check that did report has finished.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "pull_number": {
             "format": "int64",
             "type": "integer"
@@ -6404,6 +6425,18 @@
           },
           "status": {
             "$ref": "#/components/schemas/CiStatus"
+          },
+          "unresolved_thread_links": {
+            "description": "Where the first unresolved review threads are, at most 20.",
+            "items": {
+              "$ref": "#/components/schemas/ReviewThreadLink"
+            },
+            "type": "array"
+          },
+          "unresolved_threads": {
+            "description": "How many review threads are unresolved, bots' (a review bot's) as\nwell as people's.",
+            "format": "int64",
+            "type": "integer"
           },
           "updated_at": {
             "description": "When the sweep last read it.",
@@ -7418,6 +7451,25 @@
           "required_count",
           "approvals",
           "approvals_met"
+        ],
+        "type": "object"
+      },
+      "ReviewThreadLink": {
+        "description": "Where an unresolved review thread is, and who opened it.",
+        "properties": {
+          "author": {
+            "description": "The login of the first comment's author, a bot's included.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
         ],
         "type": "object"
       },
@@ -9941,6 +9993,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "reasons": {
+            "description": "What holds the pull request back (`gate_blocked`).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "repo": {
             "description": "Lowercase `owner/name`.",
             "type": "string"
@@ -9972,7 +10031,9 @@
           "stale_base",
           "pr_opened",
           "ci_failed",
-          "checks_done"
+          "checks_done",
+          "gate_blocked",
+          "gate_clear"
         ],
         "type": "string"
       },

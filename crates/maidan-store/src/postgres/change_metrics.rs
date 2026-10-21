@@ -528,6 +528,7 @@ async fn notify_merge(
             head_sha: None,
             status: None,
             failing_jobs: Vec::new(),
+            reasons: Vec::new(),
             created_at: Utc::now(),
         };
         let key = format!("rebase_needed:{repo}#{pull_number}");
@@ -561,6 +562,7 @@ pub async fn add_stale_base_notice(
         head_sha: None,
         status: None,
         failing_jobs: Vec::new(),
+        reasons: Vec::new(),
         created_at: Utc::now(),
     };
     let mut tx = pool.begin().await?;
@@ -579,8 +581,8 @@ pub(super) async fn insert_notice_in_tx(
     let inserted = sqlx::query(
         "INSERT INTO maidan_thread_notices
              (id, workspace_id, thread_id, kind, repo, pull_number, paths, base_branch,
-              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs, reasons)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          ON CONFLICT (thread_id, dedupe_key) DO NOTHING",
     )
     .bind(Uuid::now_v7())
@@ -597,6 +599,7 @@ pub(super) async fn insert_notice_in_tx(
     .bind(&notice.head_sha)
     .bind(notice.status.map(|status| status.as_str()))
     .bind(Json(&notice.failing_jobs))
+    .bind(Json(&notice.reasons))
     .execute(&mut **tx)
     .await?
     .rows_affected();
@@ -619,6 +622,7 @@ pub(super) async fn insert_notice_in_tx(
             head_sha: notice.head_sha.clone(),
             status: notice.status,
             failing_jobs: notice.failing_jobs.clone(),
+            reasons: notice.reasons.clone(),
         },
     )
     .await?;
@@ -649,7 +653,7 @@ pub async fn list_notices(
 ) -> Result<Vec<ThreadNotice>, StoreError> {
     let rows = sqlx::query(
         "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at,
-                head_sha, status, failing_jobs
+                head_sha, status, failing_jobs, reasons
          FROM maidan_thread_notices WHERE thread_id = $1
          ORDER BY created_at DESC, id DESC LIMIT $2",
     )
@@ -674,6 +678,7 @@ pub async fn list_notices(
                     .get::<Option<String>, _>("status")
                     .and_then(|status| maidan_types::CiStatus::parse(&status)),
                 failing_jobs: row.get::<Json<Vec<String>>, _>("failing_jobs").0,
+                reasons: row.get::<Json<Vec<String>>, _>("reasons").0,
                 created_at: row.get::<DateTime<Utc>, _>("created_at"),
             })
         })

@@ -334,6 +334,7 @@ fn sample_event(kind: EventKind) -> Event {
             head_sha: None,
             status: None,
             failing_jobs: Vec::new(),
+            reasons: Vec::new(),
         },
         EventKind::ThreadHandoff => Event::ThreadHandoff {
             occurred_at,

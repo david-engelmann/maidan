@@ -89,6 +89,12 @@ pub enum ThreadNoticeKind {
     CiFailed,
     /// Every check on the pull request's head finished; `status` says how.
     ChecksDone,
+    /// The pull request cannot merge yet, or not for a new reason: unresolved
+    /// review threads, a merge state such as `BEHIND` or `DIRTY`, or a
+    /// required check that never reported. `reasons` says which.
+    GateBlocked,
+    /// Nothing the sweep reads holds the pull request back any more.
+    GateClear,
 }
 
 impl ThreadNoticeKind {
@@ -99,6 +105,8 @@ impl ThreadNoticeKind {
             Self::PrOpened => "pr_opened",
             Self::CiFailed => "ci_failed",
             Self::ChecksDone => "checks_done",
+            Self::GateBlocked => "gate_blocked",
+            Self::GateClear => "gate_clear",
         }
     }
 
@@ -109,6 +117,8 @@ impl ThreadNoticeKind {
             "pr_opened" => Some(Self::PrOpened),
             "ci_failed" => Some(Self::CiFailed),
             "checks_done" => Some(Self::ChecksDone),
+            "gate_blocked" => Some(Self::GateBlocked),
+            "gate_clear" => Some(Self::GateClear),
             _ => None,
         }
     }
@@ -147,6 +157,9 @@ pub struct ThreadNotice {
     /// The checks that failed, at most [`crate::pull_ci::FAILING_JOB_LIMIT`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failing_jobs: Vec<String>,
+    /// What holds the pull request back (`gate_blocked`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -187,6 +200,16 @@ impl ThreadNotice {
                 self.pull_number,
                 self.at_head(),
                 self.status.map_or("unknown", |status| status.as_str())
+            ),
+            ThreadNoticeKind::GateBlocked => format!(
+                "{}#{} cannot merge yet: {}.",
+                self.repo,
+                self.pull_number,
+                self.reasons.join("; ")
+            ),
+            ThreadNoticeKind::GateClear => format!(
+                "{}#{} is no longer held back.",
+                self.repo, self.pull_number
             ),
         }
     }

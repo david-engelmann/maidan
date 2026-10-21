@@ -412,6 +412,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** thread notices `pr_opened`, `ci_failed` and `checks_done` (`status`), each said once per head commit, with a `ThreadNotice` event and a message. `ThreadNotice` gains `head_sha`, `status` and `failing_jobs`.
 - **Changed:** the sweep's per-tick read of a tracked pull request is the GraphQL query instead of `GET /pulls/{n}`. A GraphQL read no longer needs the repository in `MAIDAN_GITHUB_WRITE_REPOS`; mutations still do.
 
+### Maidan says what holds a tracked pull request back
+
+- **Added:** the change sweep's per-tick read of a tracked pull request also reads its merge state, its review threads and the base branch's required checks. `ci` on the thread gains `merge_state`, `unresolved_threads` (with links to the first 20 and who opened them, review bots included), `missing_checks` (required checks that never reported though the rest finished) and `gate_reasons`.
+- **Added:** thread notices `gate_blocked` (with `reasons`) and `gate_clear`, said when what holds the pull request back changes. `ThreadNotice` gains `reasons`.
+
 ### A large or risky plan waits for a Maintainer
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.
@@ -443,6 +448,12 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** a loop whose last three ticks each logged a warning or an error posts `failing:<loop>` to the operator channel, quoting the latest warning. A loop that finishes its ticks but fails each one used to look healthy: on 2026-10-21 a locked table cancelled the change sweep's query on every tick for 20 minutes, and no alert came. Slow-statement warnings don't count.
 - **Fixed:** an alert Slack refused (the network not up after a host wakes, say) was dropped and its key held for 15 minutes. It is now queued and retried on every watchdog pass.
 - **Fixed:** after a host suspend, every loop looked stalled at once and alerted. A watchdog sleep that overruns three times over is now read as a suspend: every loop's clock restarts and nothing is posted.
+
+### A hung tick or a dead loop alerts, and each alert can be proven on a running stack
+
+- **Added:** a loop that has been in one tick for three of its intervals or 15 minutes, whichever is sooner, is reported stalled. An hourly loop used to get three hours.
+- **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
+- **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
 
 ### Swarm metrics compare providers and harnesses, not only engines
 
