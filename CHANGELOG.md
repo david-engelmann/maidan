@@ -13,7 +13,6 @@ An open thread that already has a stored result is skipped by `claim_next` on
 both backends and in both scopes (channel and workspace). A reviewer sending it
 back (review to open after the result) is the explicit re-queue that makes it
 claimable again.
-=======
 
 ## [414.0.0] — 2026-10-21
 
@@ -494,7 +493,6 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
 - **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
 
-<<<<<<< HEAD
 ### Swarm metrics compare providers and harnesses, not only engines
 
 - **Added:** each task in `GET /workspaces/{id}/swarm-metrics` carries the `provider` and the `harness` that spent the most on it, read from the usage its claimants reported (`report_usage`'s `evidence.provider` and `evidence.harness`). Ties go to the most reports, then the first name, so unpriced usage still names one.
@@ -503,7 +501,6 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 ### The presence fan-out test waits for each subscriber's registration, not a fixed 50 ms
 
 - **Fixed:** `presence_and_typing_fan_out_between_subscribers` (#1490) read a connected member as `offline` under the coverage build. The server can take two sockets' handshakes in either order. When Bob registered before Alice, Bob showed up in Alice's snapshot, and the online diff the test waited for never came. Bob's socket, unread by the test, then hit the server's 60 s pong timeout, and the `offline` frame Alice received was real. The test now waits for each subscriber's `presence_snapshot` before going on, and every frame wait fails after 20 s rather than after the server drops a silent peer. A new test pins the other order: a member connected first is `online` in a later subscriber's snapshot.
->>>>>>> origin/main
 
 ## [413.0.0] — 2026-10-11
 
