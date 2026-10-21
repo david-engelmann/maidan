@@ -23,23 +23,23 @@ const LOOKBACK_BATCH: i64 = 256;
 
 /// Replay the durable event log for the earliest event of one of `kinds` with
 /// `log_id > since`, optionally pinned to `channel_id` and/or `thread_id`, in
-/// the caller's workspace. When `rbac_thread` is set, an event in a thread the
-/// caller can't access is skipped (not revealed) — the live path's rule.
-/// Returns the deserialized `Event`, or `None` if the log has no such event.
-/// Filters on the `StoredEvent` columns before deserializing.
-async fn lookback_event(
+/// `workspace_id`. With `visible`, an event the caller may not read is skipped
+/// (not revealed), by the rule the live streams apply. Returns the event's
+/// `log_id` and the deserialized `Event`, or `None` if the log has no such
+/// event. Filters on the `StoredEvent` columns before deserializing.
+pub(super) async fn lookback_event(
     store: &dyn Store,
-    auth: &AuthContext,
+    workspace_id: WorkspaceId,
     kinds: &std::collections::HashSet<EventKind>,
     channel_id: Option<ChannelId>,
     thread_id: Option<ThreadId>,
     since: i64,
-    rbac_thread: bool,
-) -> Result<Option<Event>, McpError> {
+    mut visible: Option<&mut maidan_auth::EventVisibility<'_>>,
+) -> Result<Option<(i64, Event)>, McpError> {
     let mut after = since;
     loop {
         let batch = store
-            .list_events_after(auth.workspace_id, after, LOOKBACK_BATCH)
+            .list_events_after(workspace_id, after, LOOKBACK_BATCH)
             .await?;
         let drained = (batch.len() as i64) < LOOKBACK_BATCH;
         for stored in &batch {
@@ -47,27 +47,21 @@ async fn lookback_event(
             if !kinds.contains(&stored.kind) {
                 continue;
             }
-            if let Some(cid) = channel_id {
-                if stored.channel_id != Some(cid) {
-                    continue;
-                }
+            if channel_id.is_some_and(|cid| stored.channel_id != Some(cid)) {
+                continue;
             }
-            if let Some(tid) = thread_id {
-                if stored.thread_id != Some(tid) {
+            if thread_id.is_some_and(|tid| stored.thread_id != Some(tid)) {
+                continue;
+            }
+            if let Some(visible) = visible.as_deref_mut() {
+                if !visible.allows(stored).await? {
                     continue;
                 }
             }
             let event: Event = stored
                 .opened_event()
                 .map_err(|e| McpError::Internal(e.to_string()))?;
-            if rbac_thread && !auth.bypass {
-                if let Some(tid) = event.thread_id() {
-                    if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                        continue;
-                    }
-                }
-            }
-            return Ok(Some(event));
+            return Ok(Some((stored.id, event)));
         }
         if drained {
             return Ok(None);
@@ -1986,14 +1980,28 @@ pub(super) async fn wait_for_result(
     // the thread, so any event that arrives is the one we're waiting on.
     let store = server.store.as_ref();
 
+    // Where a replay after a lag starts (see `next_visible_event`).
+    let cursor = match a.since_log_id {
+        Some(since) => since,
+        None => store.max_event_id().await?,
+    };
+
     // Lookback: a result set in the gap before this subscribe is still caught.
     // No RBAC re-check — the pre-dispatch gate already cleared the thread.
     // Subscribe-before-lookback keeps it gapless.
     if let Some(since) = a.since_log_id {
         let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
-        if lookback_event(store, auth, &kinds, None, Some(thread_id), since, false)
-            .await?
-            .is_some()
+        if lookback_event(
+            store,
+            auth.workspace_id,
+            &kinds,
+            None,
+            Some(thread_id),
+            since,
+            None,
+        )
+        .await?
+        .is_some()
         {
             let result = store.get_thread_result(thread_id).await?;
             return Ok(content_json(&result));
@@ -2007,10 +2015,28 @@ pub(super) async fn wait_for_result(
             Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
             Ok(Some(item)) => item,
         };
-        // A lag marker means the buffer overflowed; keep waiting (same deadline).
-        let maidan_bus::BusItem::Event(_) = item else {
-            continue;
-        };
+        match item {
+            maidan_bus::BusItem::Event(_) => {}
+            // The buffer overflowed and dropped events: a result set among
+            // them is in the log; with none, keep waiting on the same deadline.
+            maidan_bus::BusItem::Lagged { .. } => {
+                let kinds = std::collections::HashSet::from([EventKind::ThreadResultSet]);
+                if lookback_event(
+                    store,
+                    auth.workspace_id,
+                    &kinds,
+                    None,
+                    Some(thread_id),
+                    cursor,
+                    None,
+                )
+                .await?
+                .is_none()
+                {
+                    continue;
+                }
+            }
+        }
         let result = store.get_thread_result(thread_id).await?;
         return Ok(content_json(&result));
     }
@@ -2053,28 +2079,38 @@ pub(super) async fn get_dependency_results(
     Ok(content_json(&json!({ "dependencies": out })))
 }
 
-/// Where a single-kind `wait_for_*` looks: the caller's workspace, narrowed to
-/// a channel and/or a thread when given. Access to a named channel (and, for
-/// the tools that take one, thread) is checked before dispatch.
-struct EventWait {
-    tool: &'static str,
-    kind: EventKind,
-    channel_id: Option<ChannelId>,
-    thread_id: Option<ThreadId>,
-    timeout_ms: Option<i64>,
-    since_log_id: Option<i64>,
+/// Where a `wait_for_*` looks: a workspace, narrowed to a channel and/or a
+/// thread when given. The workspace is the caller's, and access to a named
+/// channel or thread is checked before dispatch.
+pub(super) struct EventWait {
+    pub(super) tool: &'static str,
+    pub(super) workspace_id: WorkspaceId,
+    pub(super) kinds: std::collections::HashSet<EventKind>,
+    pub(super) channel_id: Option<ChannelId>,
+    pub(super) thread_id: Option<ThreadId>,
+    /// The window, clamped to `min_ms..=MAX_WAIT_MS` (default
+    /// `DEFAULT_WAIT_MS`).
+    pub(super) timeout_ms: Option<i64>,
+    pub(super) min_ms: i64,
+    pub(super) since_log_id: Option<i64>,
 }
 
-/// Block until an event of `wait.kind` the caller may read arrives, or the
-/// window lapses: returns the event, or `null` on timeout. An event in a thread
-/// the caller can't access is skipped, not revealed, on both the lookback and
-/// the live path. The subscription opens before the lookback runs, so an event
-/// written between the two is caught by one or the other.
-async fn wait_for_event(
+/// Block until an event of one of `wait.kinds` the caller may read arrives,
+/// or the window lapses: returns its `log_id` and the event, or `None` on
+/// timeout. An event the caller may not read (a private channel it is not in,
+/// a DM it is not part of) is skipped, not revealed, on both the lookback and
+/// the live path, by the rule the live streams apply. Read access is decided
+/// once per thread or channel for the wait, so a membership revoked during it
+/// takes effect on the next call. The subscription opens before the lookback
+/// runs, so an event written between the two is caught by one or the other,
+/// and the deadline is fixed when the wait starts. When the subscription falls
+/// behind the bus and events are dropped, the log is replayed from the last
+/// event seen, so a dropped match is still the one answered.
+pub(super) async fn next_visible_event(
     server: &crate::server::McpServer,
     auth: &AuthContext,
     wait: EventWait,
-) -> Result<Value, McpError> {
+) -> Result<Option<(i64, Event)>, McpError> {
     let Some(bus) = server.event_bus.as_ref() else {
         return Err(McpError::InvalidParams(format!(
             "{} requires an event bus",
@@ -2084,14 +2120,14 @@ async fn wait_for_event(
     let window = wait
         .timeout_ms
         .unwrap_or(DEFAULT_WAIT_MS)
-        .clamp(1, MAX_WAIT_MS);
-    let kinds = std::collections::HashSet::from([wait.kind]);
+        .clamp(wait.min_ms, MAX_WAIT_MS);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(window as u64);
 
     let filter = EventFilter {
-        workspace_id: Some(auth.workspace_id),
+        workspace_id: Some(wait.workspace_id),
         channel_id: wait.channel_id,
         thread_id: wait.thread_id,
-        kinds: Some(kinds.clone()),
+        kinds: Some(wait.kinds.clone()),
         ..EventFilter::default()
     };
     let mut stream = bus
@@ -2100,42 +2136,101 @@ async fn wait_for_event(
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
     let store = server.store.as_ref();
+    let mut visible = maidan_auth::EventVisibility::new(store, auth);
+    // Where a replay after a lag starts: everything at or below it was
+    // checked by the lookback, seen live, or predates the subscription.
+    let mut cursor = match wait.since_log_id {
+        Some(since) => since,
+        None => store.max_event_id().await?,
+    };
 
     if let Some(since) = wait.since_log_id {
-        if let Some(event) = lookback_event(
+        if let Some(found) = lookback_event(
             store,
-            auth,
-            &kinds,
+            wait.workspace_id,
+            &wait.kinds,
             wait.channel_id,
             wait.thread_id,
             since,
-            true,
+            Some(&mut visible),
         )
         .await?
         {
-            return Ok(content_json(&event));
+            return Ok(Some(found));
         }
     }
 
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(window as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
             // Timed out or the bus closed: nothing arrived in the window.
-            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Err(_) | Ok(None) => return Ok(None),
             Ok(Some(item)) => item,
         };
-        // A lag marker means the buffer overflowed; keep waiting (same deadline).
-        let maidan_bus::BusItem::Event(envelope) = item else {
-            continue;
-        };
-        if !auth.bypass {
-            if let Some(tid) = envelope.event.thread_id() {
-                if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                    continue;
+        let envelope = match item {
+            maidan_bus::BusItem::Event(envelope) => envelope,
+            // The buffer overflowed and dropped events, a match perhaps among
+            // them: read what was dropped from the log, then keep waiting on
+            // the same deadline.
+            maidan_bus::BusItem::Lagged { .. } => {
+                if let Some(found) = lookback_event(
+                    store,
+                    wait.workspace_id,
+                    &wait.kinds,
+                    wait.channel_id,
+                    wait.thread_id,
+                    cursor,
+                    Some(&mut visible),
+                )
+                .await?
+                {
+                    return Ok(Some(found));
                 }
+                continue;
             }
+        };
+        cursor = cursor.max(envelope.log_id);
+        let event = &envelope.event;
+        if !visible
+            .allows_in(event.thread_id(), event.channel_id())
+            .await?
+        {
+            continue;
         }
-        return Ok(content_json(&envelope.event));
+        return Ok(Some((envelope.log_id, envelope.event)));
+    }
+}
+
+/// [`next_visible_event`] answering the event alone, or `null`.
+async fn wait_for_event(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    wait: EventWait,
+) -> Result<Value, McpError> {
+    Ok(match next_visible_event(server, auth, wait).await? {
+        Some((_, event)) => content_json(&event),
+        None => content_json(&Value::Null),
+    })
+}
+
+/// A single-kind wait in the caller's workspace.
+fn single_kind_wait(
+    auth: &AuthContext,
+    tool: &'static str,
+    kind: EventKind,
+    channel_id: Option<ChannelId>,
+    thread_id: Option<ThreadId>,
+    timeout_ms: Option<i64>,
+    since_log_id: Option<i64>,
+) -> EventWait {
+    EventWait {
+        tool,
+        workspace_id: auth.workspace_id,
+        kinds: std::collections::HashSet::from([kind]),
+        channel_id,
+        thread_id,
+        timeout_ms,
+        min_ms: 1,
+        since_log_id,
     }
 }
 
@@ -2182,19 +2277,16 @@ async fn channel_wait(
     kind: EventKind,
 ) -> Result<Value, McpError> {
     let a: ChannelWaitArgs = crate::tools::parse_args(args)?;
-    wait_for_event(
-        server,
+    let wait = single_kind_wait(
         auth,
-        EventWait {
-            tool,
-            kind,
-            channel_id: a.channel_id.map(ChannelId),
-            thread_id: None,
-            timeout_ms: a.timeout_ms,
-            since_log_id: a.since_log_id,
-        },
-    )
-    .await
+        tool,
+        kind,
+        a.channel_id.map(ChannelId),
+        None,
+        a.timeout_ms,
+        a.since_log_id,
+    );
+    wait_for_event(server, auth, wait).await
 }
 
 async fn thread_wait(
@@ -2205,19 +2297,16 @@ async fn thread_wait(
     kind: EventKind,
 ) -> Result<Value, McpError> {
     let a: ThreadWaitArgs = crate::tools::parse_args(args)?;
-    wait_for_event(
-        server,
+    let wait = single_kind_wait(
         auth,
-        EventWait {
-            tool,
-            kind,
-            channel_id: a.channel_id.map(ChannelId),
-            thread_id: a.thread_id.map(ThreadId),
-            timeout_ms: a.timeout_ms,
-            since_log_id: a.since_log_id,
-        },
-    )
-    .await
+        tool,
+        kind,
+        a.channel_id.map(ChannelId),
+        a.thread_id.map(ThreadId),
+        a.timeout_ms,
+        a.since_log_id,
+    );
+    wait_for_event(server, auth, wait).await
 }
 
 /// Block until a task becomes ready — its last blocking dependency reached a

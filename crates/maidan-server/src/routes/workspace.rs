@@ -1241,9 +1241,9 @@ pub async fn list_events(
     }
     // A member reads back what they could see anywhere else; a federation peer
     // replicates the whole log.
-    let mut visibility = auth.as_ref().map(|Extension(auth)| {
-        crate::event_visibility::EventVisibility::new(state.store.as_ref(), auth)
-    });
+    let mut visibility = auth
+        .as_ref()
+        .map(|Extension(auth)| maidan_auth::EventVisibility::new(state.store.as_ref(), auth));
     let events = crate::delivery::list_events_for_shape(
         state.store.as_ref(),
         &shape,
