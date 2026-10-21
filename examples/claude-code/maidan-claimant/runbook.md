@@ -65,9 +65,23 @@ variable read from the file:
 MAIDAN_TOKEN="$(cat ~/.config/maidan/seat-token)" claude     # or: ... cursor .
 ```
 
-The config shapes are in `examples/claude-code/mcp.json` (Claude Code's
-`.mcp.json`) and `examples/cursor/mcp.json` (Cursor's `.cursor/mcp.json`).
-Use `https` for anything but a server on this machine.
+Claude Code's `.mcp.json` (or Cursor's `.cursor/mcp.json`, which spells the
+variable `${env:MAIDAN_TOKEN}`):
+
+```json
+{
+  "mcpServers": {
+    "maidan": {
+      "type": "http",
+      "url": "${MAIDAN_URL:-http://127.0.0.1:8080}/mcp/streamable",
+      "headers": { "Authorization": "Bearer ${MAIDAN_TOKEN}" }
+    }
+  }
+}
+```
+
+Other clients take the same URL and header in their own config. Use `https`
+for anything but a server on this machine.
 
 **Check the seat.** Call `whoami`. Keep its `workspace_id` and `member_id`.
 Its capabilities must include `thread:transition` and `workspace:write`; if
@@ -174,16 +188,19 @@ envelope with the commit you started from and a text diff; Maidan applies it
 to `base_sha`, commits it on your branch, opens a **draft** pull request
 against `base`, and answers wherever `deliver_to` points.
 
-Build the envelope with `change_result.py`, the helper next to this runbook
-(`.claude/skills/maidan-claimant/` for Claude Code, `.cursor/maidan-claimant/`
-for Cursor). It takes the diff straight from git, because a diff copied by
-hand rarely applies:
+Build the envelope with `change_result.py`, the helper in the same directory
+as this runbook. Below, `$CLAIMANT_DIR` is that directory: for example
+`~/.claude/skills/maidan-claimant` for a skill installed for your user,
+`.claude/skills/maidan-claimant` for one installed in the repository, or
+`.cursor/maidan-claimant` for Cursor. The helper works on the checkout in the
+current directory, wherever it is installed. It takes the diff straight from
+git, because a diff copied by hand rarely applies:
 
 ```sh
 BRANCH=feature/agent-retry-the-bridge   # the branch from step 4
 REPO=owner/name BASE=dev                 # the github_branch target's repo and base
 git diff --quiet && git diff --cached --quiet || echo "commit first"
-python3 .claude/skills/maidan-claimant/change_result.py \
+python3 "$CLAIMANT_DIR/change_result.py" \
   --base-sha "$BASE_SHA" --branch "$BRANCH" --repo "$REPO" --base "$BASE" \
   --title "[ENG-123] Short imperative summary" \
   --summary-file /tmp/pr-body.md --linear-issue ENG-123 \
@@ -263,14 +280,11 @@ The fallback, when you hold your own push access to the repository:
 3. Register it on the thread, so Maidan tracks it, counts it and closes the
    task when it merges:
 
-   ```sh
-   printf 'Authorization: Bearer %s\n' "$(cat ~/.config/maidan/seat-token)" \
-   | curl -sS --fail-with-body -X PUT "$MAIDAN_URL/threads/$THREAD_ID/pull" -H @- \
-     -H 'Content-Type: application/json' \
-     -d '{"repo": "owner/name", "pull_number": 123}'
-   ```
+   call `register_thread_pull` with `thread_id`, `repo` (`owner/name`) and
+   `pull_number`. It is idempotent, so a retry is safe. (Over REST it is
+   `PUT /threads/{id}/pull`.)
 
-   A `403` means the repository is not on the workspace's allowlist: say so
+   A refusal naming the allowlist means the repository is not on the workspace's allowlist: say so
    on the thread and leave it to an operator.
 4. `post_message` on the thread naming the branch, the pull request and why
    it did not go through the change flow.
@@ -291,10 +305,21 @@ it needs), and carry on with step 6.
    five token tiers (`input`, `output`, `cache_read`, `cache_write_5m`,
    `cache_write_1h`), the price snapshot per million for each tier, and
    `usd_micros`, which must equal the sum of tokens times rate divided by a
-   million, rounded up. Use the figures your harness reports for the work on
-   this thread. If it reports none, send zeros with `evidence.harness` set,
-   so the ledger still shows who worked the thread. `stopped: true` in the
-   answer means the thread's budget is spent: stop.
+   million, rounded up. Always send `evidence` with `provider`, the model's
+   vendor, and `harness`, the tool that ran it, so the swarm metrics can
+   compare them (`by_provider`, `by_harness`):
+
+   | Harness | `evidence` |
+   |---|---|
+   | Claude Code | `{"provider": "anthropic", "harness": "claude-code"}` |
+   | Cursor (editor or `cursor-agent`) | `{"provider": "<the model's vendor>", "harness": "cursor"}` |
+   | Codex CLI | `{"provider": "openai", "harness": "codex"}` |
+   | An OpenRouter runner | `{"provider": "<the model's vendor, such as xai>", "harness": "openrouter"}` |
+
+   Use the figures your harness reports for the work on this thread. If it
+   reports none, send zeros with `evidence` still set, so the ledger shows
+   who worked the thread. `stopped: true` in the answer means the thread's
+   budget is spent: stop.
 2. `transition_thread` with `action: "start_review"`. Only `open` threads are
    handed out, so this is what keeps the task from coming back to the queue.
    Never `close` it: a reviewer does.

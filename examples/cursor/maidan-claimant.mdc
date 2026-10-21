@@ -13,7 +13,8 @@ hold the checkout. The `maidan` MCP server is your connection to it.
 
 Before the first Maidan call, read `.cursor/maidan-claimant/runbook.md` end to
 end and follow it exactly. It is the whole procedure, with the arguments for
-every call. The helper it names is `.cursor/maidan-claimant/change_result.py`.
+every call. Its `$CLAIMANT_DIR` is `.cursor/maidan-claimant`, which holds
+the helper `change_result.py`.
 
 The loop, in short:
 
@@ -34,8 +35,9 @@ The loop, in short:
 5. Deliver the `pi.change.result/1` envelope built by the helper with
    `PUT /threads/{id}/result`. If the helper exits `3`, use the runbook's
    fallback (your own branch and draft, registered with
-   `PUT /threads/{id}/pull`).
-6. `report_usage`, `transition_thread` `start_review`, `release_claim`;
+   `register_thread_pull`).
+6. `report_usage` with `evidence: {"provider": "<the model's vendor>",
+   "harness": "cursor"}`, `transition_thread` `start_review`, `release_claim`;
    always release.
 7. Follow-ups first: new commits on the same branch, never a force-push,
    never `"rebase": true`.

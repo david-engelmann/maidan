@@ -34,9 +34,11 @@ In short:
    `/threads/{id}/result`; Maidan commits it and opens a draft pull request.
    If the helper exits `3` (binary, symlink, submodule or too large), use the
    runbook's fallback: push your own branch, open the draft yourself, and
-   register it with `PUT /threads/{id}/pull`.
-6. **Close out.** `report_usage`, `transition_thread` `start_review`,
-   `release_claim`. Always release, even after a failure.
+   register it with `register_thread_pull`.
+6. **Close out.** `report_usage` with
+   `evidence: {"provider": "anthropic", "harness": "claude-code"}`, then
+   `transition_thread` `start_review` and `release_claim`. Always release,
+   even after a failure.
 7. **Follow-ups come first.** A thread sent back for changes gets new commits
    on the same branch. Never force-push, never send `"rebase": true`.
 
