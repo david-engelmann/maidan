@@ -156,7 +156,7 @@ pub async fn run(state: AppState, cfg: ClaimReaperConfig) {
         human_timeout_secs = cfg.human_timeout.map(|t| t.as_secs()),
         "claim reaper started"
     );
-    crate::ops_alert::start_loop("claim_reaper", cfg.tick);
+    let _watched = crate::ops_alert::start_loop("claim_reaper", cfg.tick);
     loop {
         crate::ops_alert::guarded_tick("claim_reaper", async {
             sweep_once(&state).await;
