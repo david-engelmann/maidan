@@ -1720,7 +1720,7 @@ fn catalog_tail() -> Vec<Value> {
         }),
         json!({
             "name": "get_swarm_metrics",
-            "description": "The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.",
+            "description": "The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size, risk, provider and harness. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.",
             "annotations": {
                 "title": "Get swarm metrics",
                 "readOnlyHint": true,
@@ -1739,7 +1739,9 @@ fn catalog_tail() -> Vec<Value> {
                     "engine": {"type": "string", "enum": ["pi", "session", "human"]},
                     "kind": {"type": "string", "enum": ["change", "plan", "review"]},
                     "size": {"type": "string", "enum": ["S", "M", "L"]},
-                    "linear_issue": {"type": "string", "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)"}
+                    "linear_issue": {"type": "string", "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)"},
+                    "provider": {"type": "string", "description": "only tasks whose spend was mostly with this model provider, as usage reports named it (anthropic, openai, xai, ...)"},
+                    "harness": {"type": "string", "description": "only tasks mostly run by this harness (claude-code, cursor, codex, ...)"}
                 },
                 "required": ["workspace_id"]
             }

@@ -401,6 +401,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Changed:** `POST /threads/{id}/plan` and MCP `submit_plan` lint each child before anything is created. Every child needs `attributes.acceptance`, `attributes.engine`, a footprint with at least one item and a new `test` command, kept at the end of its description. A child with `threat_model: true` must go to `engine: session`. A child that misses one is a 400 naming it.
 
+### A Claude Code or Cursor session can take Maidan work
+
+- **Added:** `examples/claude-code/` (a Claude Code skill) and `examples/cursor/` (a Cursor rule), sharing one runbook for a session claimant: mint a seat with `POST /workspaces/{wid}/agents` and keep its token in a file, connect over MCP with the token from an environment variable, claim with `claim_next_workspace_thread` (`engine: "session"`, `wait_ms`), renew while working, run the repository's pre-push gate, hand back a `pi.change.result/1` so Maidan opens the draft pull request, then report usage, start review and release. Follow-ups are new commits on the same branch, never a force-push. A standard-library helper builds the envelope from git and refuses what the change flow would refuse.
+- **Added:** a change the flow cannot commit (a binary file, or no text diff) has a tested fallback: the session opens its own draft and registers it with `PUT /threads/{id}/pull`, using the seat's own worker token.
+
 ### Two certificate-trust advisories handled
 
 - **Security:** RUSTSEC-2026-0382 (rustls-webpki) and RUSTSEC-2026-0381 (webpki-roots), published 2026-10-20. rustls-webpki 0.103 is bumped to the fixed 0.103.16 and webpki-roots 1.x to the fixed 1.0.10, in the root and fuzz lockfiles. The remaining rustls-webpki 0.101 is the AWS S3 client's, which has no fixed 0.101 release and only talks to a trusted endpoint. webpki-roots 0.26.11 is a shim over the fixed 1.0.10. Both are accepted with reasons in `deny.toml` and `.config/osv-scanner.toml`. The OpenHands example floors `certifi` at 2026.10.19 (GHSA-6q48-6c7w-9gw2).
@@ -411,6 +416,16 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** each change-sweep tick reads every open tracked pull request in one GraphQL query (the change flow's, registered session ones and watched ones) and records `ci` on its thread (`GET /threads/{id}`, the context pack): `status` (`pending`, `success`, `failure`), `failing_jobs` and the last 4 KB of the first failing job's log, read once per failing head.
 - **Added:** thread notices `pr_opened`, `ci_failed` and `checks_done` (`status`), each said once per head commit, with a `ThreadNotice` event and a message. `ThreadNotice` gains `head_sha`, `status` and `failing_jobs`.
 - **Changed:** the sweep's per-tick read of a tracked pull request is the GraphQL query instead of `GET /pulls/{n}`. A GraphQL read no longer needs the repository in `MAIDAN_GITHUB_WRITE_REPOS`; mutations still do.
+
+### Maidan says what holds a tracked pull request back
+
+- **Added:** the change sweep's per-tick read of a tracked pull request also reads its merge state, its review threads and the base branch's required checks. `ci` on the thread gains `merge_state`, `unresolved_threads` (with links to the first 20 and who opened them, review bots included), `missing_checks` (required checks that never reported though the rest finished) and `gate_reasons`.
+- **Added:** thread notices `gate_blocked` (with `reasons`) and `gate_clear`, said when what holds the pull request back changes. `ThreadNotice` gains `reasons`.
+
+### Maidan follows a tracked pull request through the merge queue
+
+- **Added:** `ci` on the thread gains `merge_queue`: `ready_to_merge` (the `ready-to-merge` label), `queued`, `dequeued` with GitHub's reason, or `landed`. Entering and leaving the queue are said as the notices `merge_queued` and `merge_dequeued` (with the reason in `reasons`).
+- **Changed:** a tracked pull request closed without merging lands its task, through the same `ThreadLanded` as a merge, when its head had commits its base lacked while open and is on the base branch now (a stack tool that lands commits itself and closes the pull request). A branch reset to its base and closed, or one closed with its head nowhere on the base, is still a close without a merge.
 
 ### A large or risky plan waits for a Maintainer
 
@@ -459,6 +474,15 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** a loop that has been in one tick for three of its intervals or 15 minutes, whichever is sooner, is reported stalled. An hourly loop used to get three hours.
 - **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
 - **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
+
+### Swarm metrics compare providers and harnesses, not only engines
+
+- **Added:** each task in `GET /workspaces/{id}/swarm-metrics` carries the `provider` and the `harness` that spent the most on it, read from the usage its claimants reported (`report_usage`'s `evidence.provider` and `evidence.harness`). Ties go to the most reports, then the first name, so unpriced usage still names one.
+- **Added:** each repository rollup gains `by_provider` and `by_harness` splits (most tasks first, unnamed last) beside `by_engine`, and `?provider=` and `?harness=` narrow the response to one. Claude Code, Cursor, Codex and OpenRouter-served models can now be compared on the same numbers.
+
+### The presence fan-out test waits for each subscriber's registration, not a fixed 50 ms
+
+- **Fixed:** `presence_and_typing_fan_out_between_subscribers` (#1490) read a connected member as `offline` under the coverage build. The server can take two sockets' handshakes in either order. When Bob registered before Alice, Bob showed up in Alice's snapshot, and the online diff the test waited for never came. Bob's socket, unread by the test, then hit the server's 60 s pong timeout, and the `offline` frame Alice received was real. The test now waits for each subscriber's `presence_snapshot` before going on, and every frame wait fails after 20 s rather than after the server drops a silent peer. A new test pins the other order: a member connected first is `online` in a later subscriber's snapshot.
 
 ## [413.0.0] — 2026-10-11
 
