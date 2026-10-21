@@ -61,7 +61,7 @@ pub async fn list_events_for_shape(
     shape: &ProjectorShape,
     after_id: i64,
     limit: i64,
-    mut visible: Option<&mut crate::event_visibility::EventVisibility<'_>>,
+    mut visible: Option<&mut maidan_auth::EventVisibility<'_>>,
 ) -> Result<Vec<StoredEvent>, StoreError> {
     store
         .ensure_cursor_fresh(shape.workspace_id, after_id)

@@ -9,6 +9,7 @@ pub mod capability_set;
 pub mod context;
 pub mod egress;
 pub mod error;
+pub mod event_visibility;
 pub mod export_sign;
 pub mod peer_secret;
 pub mod resolve;
@@ -33,6 +34,7 @@ pub use capability_set::{
 pub use context::AuthContext;
 pub use egress::*;
 pub use error::AuthError;
+pub use event_visibility::EventVisibility;
 pub use export_sign::{
     export_signing_key_from_env, export_verify_keys_from_env, sign_export, verify_export,
     ExportSignError, ExportSigningKey, ExportVerifyError,

@@ -4751,6 +4751,25 @@
         "reason": "only reads Maidan's event bus/log for ClaimFailed; makes no outbound call"
       }
     },
+    "wait_for_event": {
+      "title": "Wait for event",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "subscribes to the event bus and reads the event log (list_events_after); writes nothing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating waits again with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's event bus and store; no outbound call"
+      }
+    },
     "wait_for_landed": {
       "title": "Wait for landed",
       "readOnlyHint": {

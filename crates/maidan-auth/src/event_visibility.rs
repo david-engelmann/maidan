@@ -4,7 +4,9 @@
 //! member reading it back sees what they could see anywhere else: nothing from a
 //! private channel they are not in, and nothing from a DM they are not part of.
 //! The live streams apply the same rule (`subscribe_grants`); this is the
-//! backfill's half. Federation peers and bypass callers read the whole log.
+//! backfill's half, and the per-event check a one-shot MCP waiter
+//! (`wait_for_event`) applies to what it is handed live. Federation peers and
+//! bypass callers read the whole log.
 //!
 //! Withdrawn words need no filter here: withdrawal shreds the message's
 //! content key, so its posted and edited events read back as sealed
@@ -12,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use maidan_auth::{AuthContext, AuthError};
+use crate::{AuthContext, AuthError};
 use maidan_store::{Store, StoreError};
 use maidan_types::{ChannelId, StoredEvent, ThreadId, DM_CHANNEL_NAME};
 
@@ -39,19 +41,28 @@ impl<'a> EventVisibility<'a> {
     /// are never shown: DM access is per conversation, and those events name
     /// none. Events of neither are workspace-wide.
     pub async fn allows(&mut self, event: &StoredEvent) -> Result<bool, StoreError> {
+        self.allows_in(event.thread_id, event.channel_id).await
+    }
+
+    /// [`Self::allows`] for an event known by where it happened, as a live
+    /// event off the bus is.
+    pub async fn allows_in(
+        &mut self,
+        thread_id: Option<ThreadId>,
+        channel_id: Option<ChannelId>,
+    ) -> Result<bool, StoreError> {
         if self.auth.bypass {
             return Ok(true);
         }
-        if let Some(thread_id) = event.thread_id {
+        if let Some(thread_id) = thread_id {
             if let Some(&seen) = self.threads.get(&thread_id) {
                 return Ok(seen);
             }
-            let allowed =
-                settle(maidan_auth::can_access_thread(self.store, self.auth, thread_id).await)?;
+            let allowed = settle(crate::can_access_thread(self.store, self.auth, thread_id).await)?;
             self.threads.insert(thread_id, allowed);
             return Ok(allowed);
         }
-        if let Some(channel_id) = event.channel_id {
+        if let Some(channel_id) = channel_id {
             if let Some(&seen) = self.channels.get(&channel_id) {
                 return Ok(seen);
             }

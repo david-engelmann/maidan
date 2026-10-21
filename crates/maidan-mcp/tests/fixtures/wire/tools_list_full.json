@@ -2924,6 +2924,53 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Wait for event"
+      },
+      "description": "Block until the first event of any of kinds that you may read arrives in your workspace (or in thread_id), and return {log_id, event}, or null when timeout_ms lapses. kinds are event kind names such as thread_landed or message_posted; an unknown name is refused. Events in a private channel you are not in, or a DM you are not part of, never wake it. Pass the log_id of the last event you handled as after_log_id to replay the log first: a loop that must see every event passes it on every call, since without it an event between two calls can be missed. timeout_ms 0 only replays, and needs after_log_id.",
+      "inputSchema": {
+        "properties": {
+          "after_log_id": {
+            "description": "replay logged events after this log_id before waiting",
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "event kind names in snake_case",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "thread_id": {
+            "description": "only events in this thread",
+            "format": "uuid",
+            "type": "string"
+          },
+          "timeout_ms": {
+            "description": "how long to wait (default 30000)",
+            "maximum": 300000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "workspace_id": {
+            "description": "your own workspace (whoami's workspace_id); omitted, the same",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kinds"
+        ],
+        "type": "object"
+      },
+      "name": "wait_for_event"
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,
