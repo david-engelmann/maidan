@@ -412,6 +412,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** thread notices `pr_opened`, `ci_failed` and `checks_done` (`status`), each said once per head commit, with a `ThreadNotice` event and a message. `ThreadNotice` gains `head_sha`, `status` and `failing_jobs`.
 - **Changed:** the sweep's per-tick read of a tracked pull request is the GraphQL query instead of `GET /pulls/{n}`. A GraphQL read no longer needs the repository in `MAIDAN_GITHUB_WRITE_REPOS`; mutations still do.
 
+### Maidan says what holds a tracked pull request back
+
+- **Added:** the change sweep's per-tick read of a tracked pull request also reads its merge state, its review threads and the base branch's required checks. `ci` on the thread gains `merge_state`, `unresolved_threads` (with links to the first 20 and who opened them, review bots included), `missing_checks` (required checks that never reported though the rest finished) and `gate_reasons`.
+- **Added:** thread notices `gate_blocked` (with `reasons`) and `gate_clear`, said when what holds the pull request back changes. `ThreadNotice` gains `reasons`.
+
 ### A large or risky plan waits for a Maintainer
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.
