@@ -2886,7 +2886,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_swarm_metrics`
 
-**Get swarm metrics.** The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.
+**Get swarm metrics.** The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size, risk, provider and harness. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.
 
 **Capability:** `workspace:read`
 
@@ -2907,6 +2907,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "harness": {
+      "description": "only tasks mostly run by this harness (claude-code, cursor, codex, ...)",
+      "type": "string"
+    },
     "kind": {
       "enum": [
         "change",
@@ -2917,6 +2921,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "linear_issue": {
       "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)",
+      "type": "string"
+    },
+    "provider": {
+      "description": "only tasks whose spend was mostly with this model provider, as usage reports named it (anthropic, openai, xai, ...)",
       "type": "string"
     },
     "repo": {

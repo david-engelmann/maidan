@@ -14,12 +14,20 @@
 //! that never reported. A change in those is said as `gate_blocked` with the
 //! reasons, or `gate_clear`.
 //!
+//! It also says where the pull request stands with the merge queue
+//! ([`merge_queue`]): `ready_to_merge` (the label the queue takes work
+//! from), `queued`, `dequeued` with GitHub's reason, or `landed` once its
+//! merge is recorded. Entering and leaving the queue are said as
+//! `merge_queued` and `merge_dequeued`; a landing is the change sweep's
+//! `ThreadLanded`, as for any merge.
+//!
 //! The one extra GitHub read is a failing job's log, and only when a head
 //! first fails: the record keeps its last 4 KB, so a worker sees why without
 //! opening GitHub, and later ticks over the same failing head reuse it.
 
 use maidan_types::{
-    CiStatus, NewPullCi, WorkspaceId, FAILING_JOB_LIMIT, LOG_TAIL_BYTES, REVIEW_THREAD_LINK_LIMIT,
+    CiStatus, MergeQueue, MergeQueueState, NewPullCi, WorkspaceId, FAILING_JOB_LIMIT,
+    LOG_TAIL_BYTES, READY_LABEL, REVIEW_THREAD_LINK_LIMIT,
 };
 
 use crate::github::{GithubCheck, GithubCheckState, GithubGate, GithubGit, GithubPullSnapshot};
@@ -129,6 +137,30 @@ pub fn gate(read: &GithubGate, checks: &[GithubCheck]) -> Gate {
     }
 }
 
+/// Where an open pull request stands with the merge queue: in it, out of it
+/// again (and why), or labelled for it; `None` when none of these.
+pub fn merge_queue(read: &GithubGate, labels: &[String]) -> Option<MergeQueue> {
+    if read.queued {
+        return Some(MergeQueue {
+            state: MergeQueueState::Queued,
+            reason: None,
+        });
+    }
+    if let Some(reason) = &read.dequeued {
+        return Some(MergeQueue {
+            state: MergeQueueState::Dequeued,
+            reason: Some(reason.clone()),
+        });
+    }
+    labels
+        .iter()
+        .any(|label| label == READY_LABEL)
+        .then_some(MergeQueue {
+            state: MergeQueueState::ReadyToMerge,
+            reason: None,
+        })
+}
+
 /// Record the checks an open pull request's snapshot carried, and post the
 /// notices they owe its thread. Returns how many were posted. Best effort: a
 /// failed write is logged and the next tick reads again.
@@ -177,6 +209,8 @@ pub async fn record_checks(
                 .map(|held| held.missing_checks.clone())
                 .unwrap_or_default(),
             gate_reasons: held.map(|held| held.reasons),
+            merge_queue: read_gate.and_then(|read| merge_queue(read, &snapshot.brief.labels)),
+            head_ahead: snapshot.ahead.unwrap_or(false),
         })
         .await
     {
@@ -250,7 +284,33 @@ mod tests {
                 })
                 .collect(),
             required_checks: Some(required.iter().map(|r| r.to_string()).collect()),
+            queued: false,
+            dequeued: None,
         }
+    }
+
+    #[test]
+    fn the_queue_outranks_a_dequeue_and_a_dequeue_outranks_the_label() {
+        let ready = vec![READY_LABEL.to_string()];
+        let mut read = github_gate("CLEAN", 0, &[]);
+        assert_eq!(
+            merge_queue(&read, &ready).map(|q| q.state),
+            Some(MergeQueueState::ReadyToMerge)
+        );
+        assert_eq!(merge_queue(&read, &[]), None);
+        read.dequeued = Some("MERGE_CONFLICT".into());
+        assert_eq!(
+            merge_queue(&read, &ready),
+            Some(MergeQueue {
+                state: MergeQueueState::Dequeued,
+                reason: Some("MERGE_CONFLICT".into())
+            })
+        );
+        read.queued = true;
+        assert_eq!(
+            merge_queue(&read, &ready).map(|q| q.state),
+            Some(MergeQueueState::Queued)
+        );
     }
 
     #[test]
