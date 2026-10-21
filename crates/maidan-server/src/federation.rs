@@ -568,6 +568,8 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             status,
             failing_jobs,
             reasons,
+            environment,
+            deploy_url,
         } => ThreadNotice {
             occurred_at,
             workspace_id,
@@ -583,6 +585,8 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             status,
             failing_jobs,
             reasons,
+            environment,
+            deploy_url,
         },
         // Non-federatable (a locally-derived handoff) — never actually
         // ingested/remapped, but the exhaustive match must classify it.

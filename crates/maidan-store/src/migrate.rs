@@ -289,6 +289,7 @@ const POSTGRES_UP_V191: &str = include_str!("../../../migrations/postgres/0191_p
 const POSTGRES_UP_V192: &str = include_str!("../../../migrations/postgres/0192_pull_gate.sql");
 const POSTGRES_UP_V193: &str =
     include_str!("../../../migrations/postgres/0193_pull_merge_queue.sql");
+const POSTGRES_UP_V195: &str = include_str!("../../../migrations/postgres/0195_deploys.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
 const SQLITE_UP_V2: &str = include_str!("../../../migrations/sqlite/0002_search.sql");
 const SQLITE_UP_V3: &str = include_str!("../../../migrations/sqlite/0003_embeddings.sql");
@@ -518,6 +519,7 @@ const SQLITE_UP_V190: &str =
 const SQLITE_UP_V191: &str = include_str!("../../../migrations/sqlite/0191_pull_ci.sql");
 const SQLITE_UP_V192: &str = include_str!("../../../migrations/sqlite/0192_pull_gate.sql");
 const SQLITE_UP_V193: &str = include_str!("../../../migrations/sqlite/0193_pull_merge_queue.sql");
+const SQLITE_UP_V195: &str = include_str!("../../../migrations/sqlite/0195_deploys.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
 /// as long as it is stable across replicas; this is the ASCII for `"migr"`,
@@ -763,6 +765,9 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 191, POSTGRES_UP_V191).await?;
     apply_postgres(pool, &applied, 192, POSTGRES_UP_V192).await?;
     apply_postgres(pool, &applied, 193, POSTGRES_UP_V193).await?;
+    // 0194 (the change-pull workspace key) lands in its own pull request;
+    // 0195 does not depend on it, so either may apply first.
+    apply_postgres(pool, &applied, 195, POSTGRES_UP_V195).await?;
     // The partitioned tables need their months ready before the first write,
     // or rows land in DEFAULT until the first retention sweep.
     crate::postgres::partitions::maintain(pool, chrono::Utc::now()).await?;
@@ -963,6 +968,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 191, SQLITE_UP_V191).await?;
     apply_sqlite(pool, &applied, 192, SQLITE_UP_V192).await?;
     apply_sqlite(pool, &applied, 193, SQLITE_UP_V193).await?;
+    // 0195 does not depend on 0194, which lands in its own pull request.
+    apply_sqlite(pool, &applied, 195, SQLITE_UP_V195).await?;
     Ok(())
 }
 

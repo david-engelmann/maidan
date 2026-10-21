@@ -10004,6 +10004,20 @@
             "format": "date-time",
             "type": "string"
           },
+          "deploy_url": {
+            "description": "The deploy's own page, as the hook sent it (`deployed`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environment": {
+            "description": "Where a `deployed` notice's commit went (`production`, `staging`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "failing_jobs": {
             "description": "The checks that failed, at most [`crate::pull_ci::FAILING_JOB_LIMIT`].",
             "items": {
@@ -10075,7 +10089,8 @@
           "gate_blocked",
           "gate_clear",
           "merge_queued",
-          "merge_dequeued"
+          "merge_dequeued",
+          "deployed"
         ],
         "type": "string"
       },

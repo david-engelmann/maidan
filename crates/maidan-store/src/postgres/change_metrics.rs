@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
     ChangePull, ChangeRound, ChangeSettlement, ContentKeyring, Event, MemberId, MergedOutcome,
-    NewChangeRound, NewStaleBaseNotice, OutcomeDue, PostedNotice, StoredEvent, ThreadId,
+    NewChangeRound, NewDeploy, NewStaleBaseNotice, OutcomeDue, PostedNotice, StoredEvent, ThreadId,
     ThreadNotice, ThreadNoticeKind, ThreadState, WorkspaceId, NOTICE_PATH_LIMIT,
     OUTCOME_WINDOW_DAYS,
 };
@@ -529,6 +529,8 @@ async fn notify_merge(
             status: None,
             failing_jobs: Vec::new(),
             reasons: Vec::new(),
+            environment: None,
+            deploy_url: None,
             created_at: Utc::now(),
         };
         let key = format!("rebase_needed:{repo}#{pull_number}");
@@ -563,10 +565,85 @@ pub async fn add_stale_base_notice(
         status: None,
         failing_jobs: Vec::new(),
         reasons: Vec::new(),
+        environment: None,
+        deploy_url: None,
         created_at: Utc::now(),
     };
     let mut tx = pool.begin().await?;
     let posted = insert_notice_in_tx(&mut tx, new.thread_id, notice, &key).await?;
+    tx.commit().await?;
+    Ok(posted)
+}
+
+/// Record a deploy on every merged pull request whose merge (or merged head)
+/// commit it names. The deploy row and the notice commit together, so a
+/// retried hook call finds both and says nothing twice.
+pub async fn record_deploy(
+    pool: &PgPool,
+    deploy: NewDeploy,
+) -> Result<Vec<PostedNotice>, StoreError> {
+    let repo = deploy.repo.to_ascii_lowercase();
+    let sha = deploy.sha.to_ascii_lowercase();
+    let mut tx = pool.begin().await?;
+    // Every workspace that tracks the pull request hears of it: the hook
+    // names a commit, and each tracking workspace merged that commit.
+    let matched = sqlx::query(
+        "SELECT workspace_id, pull_number, thread_id FROM maidan_change_pulls
+         WHERE repo = $1 AND merged_at IS NOT NULL
+           AND (LOWER(merge_commit_sha) = $2 OR LOWER(merged_head_sha) = $2)
+         ORDER BY pull_number",
+    )
+    .bind(&repo)
+    .bind(&sha)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut posted = Vec::new();
+    for row in matched {
+        let workspace_id: Uuid = row.get("workspace_id");
+        let pull_number: i64 = row.get("pull_number");
+        let thread_id = ThreadId(row.get::<Uuid, _>("thread_id"));
+        sqlx::query(
+            "INSERT INTO maidan_deploys
+                 (id, workspace_id, thread_id, repo, pull_number, sha, environment, status, url, received_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (workspace_id, repo, pull_number, sha, environment, status) DO NOTHING",
+        )
+        .bind(Uuid::now_v7())
+        .bind(workspace_id)
+        .bind(thread_id.0)
+        .bind(&repo)
+        .bind(pull_number)
+        .bind(&sha)
+        .bind(&deploy.environment)
+        .bind(deploy.status.as_str())
+        .bind(&deploy.url)
+        .bind(Utc::now())
+        .execute(&mut *tx)
+        .await?;
+        let key = format!(
+            "deployed:{repo}#{pull_number}@{sha}:{}:{}",
+            deploy.environment,
+            deploy.status.as_str()
+        );
+        let notice = ThreadNotice {
+            kind: ThreadNoticeKind::Deployed,
+            repo: repo.clone(),
+            pull_number,
+            paths: Vec::new(),
+            base_branch: None,
+            base_behind: None,
+            head_sha: Some(sha.clone()),
+            status: Some(deploy.status),
+            failing_jobs: Vec::new(),
+            reasons: Vec::new(),
+            environment: Some(deploy.environment.clone()),
+            deploy_url: deploy.url.clone(),
+            created_at: Utc::now(),
+        };
+        if let Some(one) = insert_notice_in_tx(&mut tx, thread_id, notice, &key).await? {
+            posted.push(one);
+        }
+    }
     tx.commit().await?;
     Ok(posted)
 }
@@ -581,8 +658,9 @@ pub(super) async fn insert_notice_in_tx(
     let inserted = sqlx::query(
         "INSERT INTO maidan_thread_notices
              (id, workspace_id, thread_id, kind, repo, pull_number, paths, base_branch,
-              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs, reasons)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs, reasons,
+              environment, deploy_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          ON CONFLICT (thread_id, dedupe_key) DO NOTHING",
     )
     .bind(Uuid::now_v7())
@@ -600,6 +678,8 @@ pub(super) async fn insert_notice_in_tx(
     .bind(notice.status.map(|status| status.as_str()))
     .bind(Json(&notice.failing_jobs))
     .bind(Json(&notice.reasons))
+    .bind(&notice.environment)
+    .bind(&notice.deploy_url)
     .execute(&mut **tx)
     .await?
     .rows_affected();
@@ -623,6 +703,8 @@ pub(super) async fn insert_notice_in_tx(
             status: notice.status,
             failing_jobs: notice.failing_jobs.clone(),
             reasons: notice.reasons.clone(),
+            environment: notice.environment.clone(),
+            deploy_url: notice.deploy_url.clone(),
         },
     )
     .await?;
@@ -653,7 +735,7 @@ pub async fn list_notices(
 ) -> Result<Vec<ThreadNotice>, StoreError> {
     let rows = sqlx::query(
         "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at,
-                head_sha, status, failing_jobs, reasons
+                head_sha, status, failing_jobs, reasons, environment, deploy_url
          FROM maidan_thread_notices WHERE thread_id = $1
          ORDER BY created_at DESC, id DESC LIMIT $2",
     )
@@ -679,6 +761,8 @@ pub async fn list_notices(
                     .and_then(|status| maidan_types::CiStatus::parse(&status)),
                 failing_jobs: row.get::<Json<Vec<String>>, _>("failing_jobs").0,
                 reasons: row.get::<Json<Vec<String>>, _>("reasons").0,
+                environment: row.get("environment"),
+                deploy_url: row.get("deploy_url"),
                 created_at: row.get::<DateTime<Utc>, _>("created_at"),
             })
         })

@@ -2879,6 +2879,13 @@ macro_rules! store_delegations {
                 change_metrics::add_stale_base_notice(self.pool(), notice).await
             }
 
+            async fn record_deploy(
+                &self,
+                deploy: maidan_types::NewDeploy,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::record_deploy(self.pool(), deploy).await
+            }
+
             async fn list_thread_notices(
                 &self,
                 thread_id: ThreadId,

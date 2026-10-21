@@ -213,6 +213,10 @@ pub struct AppState {
     /// `None` when unset — the `/integrations/github/events` route then returns
     /// `404`. Set via [`AppState::attach_github`].
     pub github: Option<Arc<crate::github::GithubConfig>>,
+    /// The deploy hook, set when `MAIDAN_DEPLOY_HOOK_SECRET` is. `None`
+    /// leaves `/integrations/deploys/events` a 404. Set via
+    /// [`AppState::attach_deploy_hook`].
+    pub deploy_hook: Option<Arc<crate::deploy_ingest::DeployHookConfig>>,
     /// GitHub projector egress sender, an issue-comment client set when
     /// `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
     /// still works). Set via [`AppState::attach_github_sender`]; tests inject a
@@ -378,6 +382,7 @@ impl AppState {
             slack_sender: None,
             linear_sender: None,
             github: None,
+            deploy_hook: None,
             github_sender: None,
             mark_ready_app_id: None,
             mark_ready_bases: maidan_types::MarkReadyBases::default(),
@@ -467,6 +472,12 @@ impl AppState {
     /// `MAIDAN_GITHUB_WEBHOOK_SECRET` is set; left `None` otherwise.
     pub fn attach_github(&mut self, cfg: Arc<crate::github::GithubConfig>) {
         self.github = Some(cfg);
+    }
+
+    /// Wire the deploy hook. Called by the server binary when
+    /// `MAIDAN_DEPLOY_HOOK_SECRET` is set; tests attach one directly.
+    pub fn attach_deploy_hook(&mut self, cfg: Arc<crate::deploy_ingest::DeployHookConfig>) {
+        self.deploy_hook = Some(cfg);
     }
 
     /// Wire the GitHub egress sender. Called by the server binary when

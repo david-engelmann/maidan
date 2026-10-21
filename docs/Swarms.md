@@ -493,6 +493,31 @@ The sweep asks GitHub once, when it first sees the close. A branch reset to
 its base and closed was never ahead, so it lands nothing. Any other close is
 a close without a merge, said once and leaving the task open.
 
+### Deploys
+
+A deploy pipeline can tell Maidan where a merged change went. It is opt-in,
+and the route is a 404 until `MAIDAN_DEPLOY_HOOK_SECRET` is set. The
+pipeline posts to `POST /integrations/deploys/events`, signing the body as
+GitHub signs its webhooks (`X-Maidan-Signature-256: sha256=<hex
+HMAC-SHA256(secret, body)>`):
+
+```json
+{"repo": "owner/name", "sha": "<full 40-character commit>",
+ "environment": "production", "status": "success",
+ "url": "https://deploys.example/42"}
+```
+
+`status` is `success` or `failure` (`error` counts as a failure); any other
+status, such as `in_progress`, is acknowledged and says nothing, because only
+an outcome is news. `url` is optional and must be `https://`. Each tracked
+pull request in `repo` that merged at `sha` (its merge commit or its merged
+head) gets one **`deployed`** notice on its thread. The notice carries
+`environment`, `status` and `deploy_url`, in every workspace that tracks the
+pull request and in no other. The same deploy and outcome said again (a
+retried or replayed call) says nothing, so the signature needs no replay
+window. The answer is `{"noticed": n}`. A deploy that arrives before the
+change sweep has read the merge is not matched; send it again later.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,

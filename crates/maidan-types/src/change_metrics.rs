@@ -100,6 +100,9 @@ pub enum ThreadNoticeKind {
     /// The pull request left the merge queue without merging; `reasons`
     /// holds GitHub's reason (`MERGE_CONFLICT`, `FAILED_CHECKS`, ...).
     MergeDequeued,
+    /// A deploy hook reported the pull request's merge commit deployed to
+    /// `environment`; `status` says whether it succeeded.
+    Deployed,
 }
 
 impl ThreadNoticeKind {
@@ -114,6 +117,7 @@ impl ThreadNoticeKind {
             Self::GateClear => "gate_clear",
             Self::MergeQueued => "merge_queued",
             Self::MergeDequeued => "merge_dequeued",
+            Self::Deployed => "deployed",
         }
     }
 
@@ -128,6 +132,7 @@ impl ThreadNoticeKind {
             "gate_clear" => Some(Self::GateClear),
             "merge_queued" => Some(Self::MergeQueued),
             "merge_dequeued" => Some(Self::MergeDequeued),
+            "deployed" => Some(Self::Deployed),
             _ => None,
         }
     }
@@ -169,6 +174,12 @@ pub struct ThreadNotice {
     /// What holds the pull request back (`gate_blocked`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reasons: Vec<String>,
+    /// Where a `deployed` notice's commit went (`production`, `staging`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    /// The deploy's own page, as the hook sent it (`deployed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deploy_url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -230,6 +241,29 @@ impl ThreadNotice {
                 "{}#{} is no longer held back.",
                 self.repo, self.pull_number
             ),
+            ThreadNoticeKind::Deployed => {
+                let environment = self.environment.as_deref().unwrap_or("an environment");
+                let link = self
+                    .deploy_url
+                    .as_deref()
+                    .map(|url| format!(" ({url})"))
+                    .unwrap_or_default();
+                if self.status == Some(crate::pull_ci::CiStatus::Failure) {
+                    format!(
+                        "Deploy to {environment} failed for {}#{}{}{link}.",
+                        self.repo,
+                        self.pull_number,
+                        self.at_head()
+                    )
+                } else {
+                    format!(
+                        "{}#{} is deployed to {environment}{}{link}.",
+                        self.repo,
+                        self.pull_number,
+                        self.at_head()
+                    )
+                }
+            }
         }
     }
 
@@ -251,6 +285,21 @@ pub struct PostedNotice {
     pub notice: ThreadNotice,
     pub event: StoredEvent,
     pub author_id: Option<MemberId>,
+}
+
+/// A deploy a deploy hook reported: `sha` reached `environment`, or failed
+/// to. Matched to the merged pull requests whose merge (or merged head)
+/// commit it names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewDeploy {
+    /// Lowercase `owner/name`.
+    pub repo: String,
+    /// The full commit SHA, lowercase.
+    pub sha: String,
+    pub environment: String,
+    /// `success` or `failure`; a deploy still running says nothing yet.
+    pub status: crate::pull_ci::CiStatus,
+    pub url: Option<String>,
 }
 
 /// A stale-base notice for the thread a round was delivered on, said once per
