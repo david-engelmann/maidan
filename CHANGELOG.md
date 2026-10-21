@@ -7,12 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### claim_next no longer hands out finished work whose claim lapsed
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
 
-An open thread that already has a stored result is skipped by `claim_next` on
-both backends and in both scopes (channel and workspace). A reviewer sending it
-back (review to open after the result) is the explicit re-queue that makes it
-claimable again.
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
 
 ## [414.0.0] — 2026-10-21
 

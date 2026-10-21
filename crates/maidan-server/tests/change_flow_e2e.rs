@@ -2833,6 +2833,120 @@ async fn the_swarm_metrics_read_only_the_named_linear_issues() {
     assert_eq!(code, StatusCode::BAD_REQUEST);
 }
 
+/// `?provider=` and `?harness=` keep only the tasks whose spend was mostly
+/// with that provider or harness, on the route and on its MCP twin alike; a
+/// name nothing spent under keeps nothing.
+#[test]
+fn the_swarm_metrics_read_only_the_named_provider_and_harness() {
+    // An MCP call through the router in an unoptimized build needs nearly
+    // all of a 2 MiB test thread's stack, as in
+    // `a_session_registers_its_pull_and_reads_the_metrics_over_mcp`.
+    std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(provider_and_harness_filters())
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+async fn provider_and_harness_filters() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let thread = h.store.get_thread(h.a.thread_id).await.unwrap();
+    let lease = match thread.claim_lease_id {
+        Some(lease) => lease,
+        None => h
+            .store
+            .claim_thread(h.a.thread_id, h.a.member_id)
+            .await
+            .unwrap()
+            .thread
+            .claim_lease_id
+            .unwrap(),
+    };
+    h.store
+        .report_accounted_usage(&maidan_types::NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::new_v4(),
+            thread_id: h.a.thread_id,
+            reporter: h.a.member_id,
+            claim_lease_id: lease,
+            model: "provider/model".into(),
+            tokens: maidan_types::TokenUsage {
+                input: 1_000_000,
+                ..Default::default()
+            },
+            usd_micros: 10,
+            price_snapshot: maidan_types::PriceSnapshot {
+                input_usd_micros_per_million: 10,
+                ..Default::default()
+            },
+            turns: 1,
+            evidence: maidan_types::UsageEvidence {
+                provider: Some("openai".into()),
+                harness: Some("codex".into()),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let read = |query: &str| format!("/workspaces/{}/swarm-metrics{query}", h.a.workspace_id.0);
+    let ws = h.a.workspace_id.0;
+    for (query, args, kept) in [
+        (
+            "?provider=openai",
+            json!({"workspace_id": ws, "provider": "openai"}),
+            1,
+        ),
+        (
+            "?harness=codex",
+            json!({"workspace_id": ws, "harness": "codex"}),
+            1,
+        ),
+        (
+            "?provider=openai&harness=codex",
+            json!({"workspace_id": ws, "provider": "openai", "harness": "codex"}),
+            1,
+        ),
+        (
+            "?provider=anthropic",
+            json!({"workspace_id": ws, "provider": "anthropic"}),
+            0,
+        ),
+        (
+            "?harness=cursor",
+            json!({"workspace_id": ws, "harness": "cursor"}),
+            0,
+        ),
+    ] {
+        let (status, rest) = get_json(&h, &token, &read(query)).await;
+        assert_eq!(status, StatusCode::OK, "{query}: {rest}");
+        assert_eq!(
+            rest["tasks"].as_array().unwrap().len(),
+            kept,
+            "{query}: {rest}"
+        );
+        let mcp = tool_json(&call_tool(&h, &token, "get_swarm_metrics", args).await);
+        assert_eq!(
+            mcp["tasks"], rest["tasks"],
+            "the MCP twin agrees on {query}"
+        );
+        if kept == 1 {
+            assert_eq!(rest["tasks"][0]["provider"], "openai");
+            assert_eq!(rest["tasks"][0]["harness"], "codex");
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
     let h = harness().await;
