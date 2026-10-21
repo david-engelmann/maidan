@@ -3,7 +3,9 @@
 //! thread was never described.
 
 use chrono::Utc;
-use maidan_types::{TaskAttributes, TaskEngine, TaskKind, TaskSize, ThreadId};
+use maidan_types::{
+    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskSize, ThreadId, WorkspaceId,
+};
 use sqlx::{Row, SqlitePool};
 
 use crate::error::StoreError;
@@ -30,6 +32,66 @@ pub(crate) async fn insert_on(
     .bind(Utc::now().to_rfc3339())
     .execute(&mut *conn)
     .await?;
+    Ok(())
+}
+
+/// Route `thread_id` to its workspace's default engine when it has none;
+/// see the Postgres twin.
+pub(crate) async fn apply_default_engine_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_thread_attributes (thread_id, engine, updated_at)
+         SELECT t.id, w.default_engine, ?2
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         JOIN maidan_workspaces w ON w.id = c.workspace_id
+         WHERE t.id = ?1 AND w.default_engine IS NOT NULL
+         ON CONFLICT (thread_id) DO UPDATE SET engine = excluded.engine
+         WHERE maidan_thread_attributes.engine IS NULL",
+    )
+    .bind(thread_id.0)
+    .bind(Utc::now().to_rfc3339())
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
+}
+
+/// The workspace's default engine; see the Postgres twin.
+pub async fn default_engine(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Option<TaskEngine>, StoreError> {
+    let row: Option<Option<String>> =
+        sqlx::query_scalar("SELECT default_engine FROM maidan_workspaces WHERE id = ?1")
+            .bind(workspace_id.0)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row
+        .ok_or(StoreError::NotFound)?
+        .and_then(|engine| TaskEngine::parse(&engine)))
+}
+
+/// Set or clear the workspace's default engine, audited in the same
+/// transaction.
+pub async fn set_default_engine(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    engine: Option<TaskEngine>,
+    audit: NewAuditEvent,
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await?;
+    let updated = sqlx::query("UPDATE maidan_workspaces SET default_engine = ?2 WHERE id = ?1")
+        .bind(workspace_id.0)
+        .bind(engine.map(TaskEngine::as_str))
+        .execute(&mut *tx)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    super::audit::append_counted(&mut tx, audit).await?;
+    tx.commit().await?;
     Ok(())
 }
 

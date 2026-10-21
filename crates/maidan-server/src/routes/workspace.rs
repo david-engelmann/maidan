@@ -213,6 +213,53 @@ pub async fn set_linear_claim_comments(
     Ok(Json(body))
 }
 
+/// `GET /workspaces/:id/default-engine` — the engine a thread created in
+/// the workspace with none named is routed to. `workspace:read`.
+pub async fn get_workspace_default_engine(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<WorkspaceDefaultEngine>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let engine = state.store.workspace_default_engine(workspace_id).await?;
+    Ok(Json(WorkspaceDefaultEngine { engine }))
+}
+
+/// `PUT /workspaces/:id/default-engine` — set or clear (`null`) the default
+/// engine. It decides which workers every untagged thread Maidan creates
+/// from now on goes to, schedules and inbound A2A included, so it takes
+/// `token:admin` and is audited.
+pub async fn set_workspace_default_engine(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<WorkspaceDefaultEngine>,
+) -> ApiResult<Json<WorkspaceDefaultEngine>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state
+        .store
+        .set_workspace_default_engine(
+            workspace_id,
+            body.engine,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "workspace.default_engine.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({
+                    "engine": body.engine.map(TaskEngine::as_str),
+                }),
+            },
+        )
+        .await?;
+    Ok(Json(body))
+}
+
 /// Export the whole workspace content graph as a signed
 /// `maidan.workspace.export/1` envelope. Gated on `token:admin`. Tokens die on
 /// export — secrets are omitted and the envelope records `token_policy`.

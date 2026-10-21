@@ -530,3 +530,133 @@ async fn a_producer_sets_priority_size_and_acceptance_at_intake() {
     .await;
     assert!(status.is_client_error(), "an unknown size is refused");
 }
+
+async fn default_engine(
+    base: &str,
+    token: &str,
+    ws: WorkspaceId,
+    put: Option<Value>,
+) -> (StatusCode, Value) {
+    let url = format!("{base}/workspaces/{}/default-engine", ws.0);
+    let client = reqwest::Client::new();
+    let request = match put {
+        Some(body) => client.put(url).json(&body),
+        None => client.get(url),
+    };
+    let response = request.bearer_auth(token).send().await.unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn a_default_engine_routes_an_untagged_thread_to_its_engine_claimer() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "defaults").await;
+    let (_admin, admin) = member_with(
+        store.as_ref(),
+        room.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+
+    let (status, unset) = default_engine(&base, &room.token, room.ws, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unset, json!({ "engine": null }));
+    // Routing every untagged thread is an operator's call.
+    let (status, _) =
+        default_engine(&base, &room.token, room.ws, Some(json!({ "engine": "pi" }))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, set) =
+        default_engine(&base, &admin, room.ws, Some(json!({ "engine": "pi" }))).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    assert_eq!(set, json!({ "engine": "pi" }));
+    let audit = store
+        .list_audit_for_workspace(room.ws, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.action == "workspace.default_engine.set")
+        .expect("the change is audited");
+    assert_eq!(audit.metadata, json!({ "engine": "pi" }));
+
+    let (status, created) = create_thread(&base, &room, json!({ "title": "untagged" })).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["attributes"]["engine"], "pi", "{created}");
+    let thread_id = created["id"].as_str().unwrap().to_string();
+
+    let claim = |engine: &'static str| {
+        let url = format!("{base}/channels/{}/threads/claim-next", room.channel.0);
+        let token = room.token.clone();
+        async move {
+            reqwest::Client::new()
+                .post(url)
+                .bearer_auth(token)
+                .json(&json!({ "lease_secs": 600, "engine": engine }))
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let session = claim("session").await;
+    assert!(
+        session.is_null(),
+        "a session claimer must not take pi work: {session}"
+    );
+    let pi = claim("pi").await;
+    assert_eq!(pi["id"], thread_id.as_str(), "{pi}");
+}
+
+#[tokio::test]
+async fn another_workspace_cannot_read_or_set_the_default_engine() {
+    let (base, store) = spawn().await;
+    let victim = room(store.as_ref(), "victim").await;
+    let attacker = room(store.as_ref(), "attacker").await;
+    let (_m, victim_admin) = member_with(
+        store.as_ref(),
+        victim.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+    let (_m, attacker_admin) = member_with(
+        store.as_ref(),
+        attacker.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+
+    let (status, _) = default_engine(
+        &base,
+        &victim_admin,
+        victim.ws,
+        Some(json!({ "engine": "human" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, attacker_own) = default_engine(&base, &attacker_admin, attacker.ws, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        attacker_own,
+        json!({ "engine": null }),
+        "the victim's default does not reach another workspace"
+    );
+
+    for put in [None, Some(json!({ "engine": "pi" }))] {
+        let (status, body) = default_engine(&base, &attacker_admin, victim.ws, put).await;
+        assert!(
+            status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+            "another tenant must be refused, got {status}: {body}"
+        );
+    }
+    let (_, read) = default_engine(&base, &victim_admin, victim.ws, None).await;
+    assert_eq!(
+        read,
+        json!({ "engine": "human" }),
+        "the victim's default holds"
+    );
+}

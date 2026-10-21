@@ -409,6 +409,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.
 
+### A workspace routes untagged work to its default engine
+
+- **Added:** a per-workspace default engine (migration 0190). `GET` and `PUT /workspaces/{id}/default-engine` read and set it (`pi`, `session`, `human`, or `null` for none); setting it takes `token:admin` and writes a `workspace.default_engine.set` audit row in the same transaction. A thread created in the workspace with no engine named is routed to the default inside its create transaction, on every store path: REST and MCP create, schedules, inbound A2A, a message turned into a thread, plan children and recipe runs. An engine named at creation wins, and other attributes given are kept. Before this, an engine-filtered `claim_next` (a Pi worker's `engine: "pi"`) never saw the threads Maidan itself creates.
+- **Changed:** the REST and MCP thread create responses carry the attributes the thread was stored with, including an engine the default filled in.
+
 ### A stalled or panicking change sweep alerts
 
 - **Added:** `maidan_background_loop_last_tick_seconds{loop}` and `maidan_background_loop_panics_total{loop}`, reported by the change sweep, and two alert rules in `docs/alerts/prometheus-rules-maidan-slo.yaml`: `MaidanChangeSweepStalled` (critical, no tick for 6 minutes) and `MaidanBackgroundLoopPanicking` (warning), with promtool tests. They reach a person only through an alert route; `docs/alerts/README.md` says so.

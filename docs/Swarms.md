@@ -330,6 +330,17 @@ handed only work routed to it. A Pi worker that passes `engine: "pi"` is
 never handed session or human work, and work nobody routed waits for a
 claim that names no engine.
 
+A workspace can route that work by default. Maidan creates threads that name
+no engine: schedules fire them, inbound A2A messages open them, a message
+becomes one, and a plan child or a REST or MCP create can leave the engine out.
+`PUT /workspaces/{id}/default-engine` with `{ "engine": "pi" }` (`token:admin`,
+audited as `workspace.default_engine.set`) routes every thread created in the
+workspace afterwards with no engine to `pi`, in the transaction that creates
+it, so a Pi worker's `claim_next` with `engine: "pi"` is handed it. An engine
+named at creation still wins, threads created before keep their routing, and
+`{ "engine": null }` turns the default off. `GET` on the same path reads it
+(`workspace:read`).
+
 A worked pass through the surface: intake files a review for a Pi worker
 and a plan for a session,
 

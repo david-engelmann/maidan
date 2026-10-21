@@ -618,6 +618,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{id}/linear-claim-comments" && method == "PUT" {
         return b.json(&json!({ "enabled": false }));
     }
+    if path == "/workspaces/{id}/default-engine" && method == "PUT" {
+        return b.json(&json!({ "engine": null }));
+    }
     if path == "/workspaces/{id}/slots" && method == "PUT" {
         return b.json(&json!({ "slot": "rust-build", "capacity": 2 }));
     }

@@ -68,9 +68,21 @@ pub async fn create_thread(
         .await;
     let actor = (!auth.bypass).then_some(auth.member_id);
     let (mut t, stored) = observe_spawn_denial(&state, actor, created).await?;
-    // The response carries the attributes the thread now reads with: the
-    // ones stored, or the defaults when intake gave none.
-    t.attributes = Some(attributes.unwrap_or_default());
+    // The response carries the attributes the thread now reads with. With
+    // no engine given, the workspace's default engine may have routed it,
+    // so those are read back.
+    t.attributes = Some(match attributes {
+        Some(given) if given.engine.is_some() => given,
+        given => match state.store.get_thread_attributes(t.id).await {
+            Ok(stored) => stored,
+            Err(err) => {
+                // The thread is committed: failing the create now would
+                // invite a retry that makes a second one.
+                tracing::warn!(error = %err, thread = %t.id.0, "reading a new thread's attributes back failed");
+                given.unwrap_or_default()
+            }
+        },
+    });
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(t)))
 }
