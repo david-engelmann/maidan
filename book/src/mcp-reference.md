@@ -2312,6 +2312,12 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "description": "only claim a thread whose footprint names this repository (owner/name or a GitHub clone URL), for a worker whose checkout is that repository; a thread without a footprint is then never claimed. Omitted, any work",
       "type": "string"
     },
+    "wait_ms": {
+      "description": "with nothing claimable, wait up to this long for work to become claimable (a new thread, a dependency finishing, a claim released or expiring) and claim it, instead of answering null at once. The claimant's wake-up: no polling loop. Omitted or 0, one try",
+      "maximum": 300000,
+      "minimum": 0,
+      "type": "integer"
+    },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
       "format": "uuid",

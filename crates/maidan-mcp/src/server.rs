@@ -2441,6 +2441,130 @@ mod tests {
         .is_null());
     }
 
+    /// A waiting workspace claim takes work filed while it waits, waking on
+    /// the thread's creation rather than polling; with nothing filed it
+    /// answers null at its deadline, and without `wait_ms` it does not wait.
+    #[tokio::test]
+    async fn a_waiting_claim_takes_work_filed_while_it_waits() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_bus::InMemoryBus;
+        use std::time::{Duration, Instant};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "wait".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "session".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "work".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        )
+        .with_event_bus(Arc::new(InMemoryBus::new()));
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), THREAD_TRANSITION.to_string()],
+        );
+        let unwrap_content = |v: Value| -> Value {
+            serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
+        };
+        let claim = |wait_ms: i64| json!({ "workspace_id": ws.id.0, "engine": "session", "wait_ms": wait_ms });
+
+        // Nothing claimable and no wait: null at once.
+        let started = Instant::now();
+        let no_wait = json!({ "workspace_id": ws.id.0 });
+        let none = server
+            .call_tool(&auth, "claim_next_workspace_thread", &no_wait)
+            .await
+            .unwrap();
+        assert!(unwrap_content(none).is_null());
+        assert!(started.elapsed() < Duration::from_millis(500));
+
+        // Pi work filed during the wait does not end a session claimant's
+        // wait; the session work filed after it is what the claim takes.
+        let file = |title: &'static str, engine: TaskEngine| {
+            let store = store.clone();
+            let server = &server;
+            async move {
+                let (_, stored) = store
+                    .create_thread_with_footprint(
+                        NewThread {
+                            channel_id: channel.id,
+                            parent_thread_id: None,
+                            title: Some(title.into()),
+                            description: None,
+                            created_by: None,
+                        },
+                        None,
+                        Some(TaskAttributes {
+                            engine: Some(engine),
+                            ..TaskAttributes::default()
+                        }),
+                        None,
+                    )
+                    .await
+                    .unwrap();
+                server.publish_stored(&stored).await;
+            }
+        };
+        let waiting = claim(5_000);
+        let (out, _) = tokio::join!(
+            server.call_tool(&auth, "claim_next_workspace_thread", &waiting),
+            async {
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                file("pi work", TaskEngine::Pi).await;
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                file("session work", TaskEngine::Session).await;
+            }
+        );
+        let got = unwrap_content(out.unwrap());
+        assert_eq!(got["title"], json!("session work"), "{got}");
+        assert_eq!(got["assignee_id"], json!(agent.id.0));
+
+        // Waiting with nothing it may claim answers null at its deadline,
+        // though the Pi work is still queued.
+        let started = Instant::now();
+        let short = claim(300);
+        let out = server
+            .call_tool(&auth, "claim_next_workspace_thread", &short)
+            .await
+            .unwrap();
+        assert!(unwrap_content(out).is_null());
+        assert!(started.elapsed() >= Duration::from_millis(250));
+    }
+
     #[tokio::test]
     async fn wait_for_ready_returns_next_ready_and_filters_private() {
         use chrono::Utc;

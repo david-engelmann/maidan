@@ -316,6 +316,14 @@ with `PUT /threads/{id}/attributes` or MCP `set_thread_attributes`
 context, and on each `list_active_claims` entry. A thread nobody described
 reads as a change with no engine and no threat model.
 
+A claimant waits for work without polling: MCP
+`claim_next_workspace_thread` takes `wait_ms` (up to 300000). With nothing
+claimable it waits for work to become claimable (a new thread, a dependency
+finishing, a claim released or expiring, a thread reopened) and claims it,
+or answers null at the deadline. A session claimant calls it in a loop with
+`engine: "session"` and a long `wait_ms`, and needs no event stream of its
+own.
+
 Claiming respects the engine. `claim_next` (HTTP and MCP, channel and
 workspace) takes an optional `engine`, and a claimer that names one is
 handed only work routed to it. A Pi worker that passes `engine: "pi"` is

@@ -422,6 +422,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** all eleven background loops now run each tick through one guard: the change sweep, egress worker, web push and mail workers, retention, chain verification, scheduler, claim reaper, wait sweeper, digest and embedding repair. A panic is counted, logged at ERROR and posted to the operator Slack channel, and the loop runs on. Each tick also feeds the liveness gauge and the stall watchdog, so a loop that panics or stops anywhere in the process alerts within three of its intervals. Before, a panic in any loop but the change sweep ended that loop silently. Embedding repair, which ends on purpose when the backend has no embeddings, deregisters first so its silence is not a stall. A contract test fails if `main.rs` spawns a loop that is not started and guarded.
 
+### A claimant waits for work in the claim itself
+
+- **Added:** MCP `claim_next_workspace_thread` takes `wait_ms` (at most 300000). With nothing claimable, it waits for a signal that work may have become claimable (a thread created or made ready, a claim released or expiring, a thread reopened), claims it, or answers null at the deadline. It subscribes before its first attempt, so work filed in between still wakes it. A session claimant loops on it with `engine: "session"`, with no polling and no event-stream plumbing of its own.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
