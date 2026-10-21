@@ -83,9 +83,45 @@ pub struct PullCi {
     /// it. Read once, when the head first fails.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_tail: Option<String>,
+    /// GitHub's merge state for the pull request (`CLEAN`, `BEHIND`,
+    /// `BLOCKED`, `DIRTY`, `DRAFT`, `UNSTABLE`, ...), when GitHub had one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_state: Option<String>,
+    /// How many review threads are unresolved, bots' (a review bot's) as
+    /// well as people's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unresolved_threads: i64,
+    /// Where the first unresolved review threads are, at most 20.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unresolved_thread_links: Vec<ReviewThreadLink>,
+    /// Checks the base branch's protection requires that never reported on
+    /// this head, though every check that did report has finished.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_checks: Vec<String>,
+    /// What holds the pull request back; empty when nothing the sweep reads
+    /// does.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gate_reasons: Vec<String>,
     /// When the sweep last read it.
     pub updated_at: DateTime<Utc>,
 }
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
+}
+
+/// Where an unresolved review thread is, and who opened it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ReviewThreadLink {
+    pub url: String,
+    /// The login of the first comment's author, a bot's included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+}
+
+/// Review-thread links a record keeps, at most.
+pub const REVIEW_THREAD_LINK_LIMIT: usize = 20;
 
 /// A fresh read of a tracked pull request's checks, to record.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,16 +137,35 @@ pub struct NewPullCi {
     /// Whether every check on the head has finished. A failure is said as
     /// soon as it happens; the checks are done only once nothing still runs.
     pub finished: bool,
+    pub merge_state: Option<String>,
+    pub unresolved_threads: i64,
+    pub unresolved_thread_links: Vec<ReviewThreadLink>,
+    pub missing_checks: Vec<String>,
+    /// What holds the pull request back, sorted; `None` when the read could
+    /// not say, which leaves the last answer standing.
+    pub gate_reasons: Option<Vec<String>>,
 }
 
 /// The notices a read owes its thread, each with the key that says it once:
 /// `pr_opened` once per pull request (the first head it was seen at is the
 /// one it names), `ci_failed` and `checks_done` once per head commit.
-pub fn ci_notices(new: &NewPullCi, now: DateTime<Utc>) -> Vec<(ThreadNotice, String)> {
+///
+/// `gate_blocked` and `gate_clear` are said when what holds the pull request
+/// back changed since `previous_gate` (the last read's reasons; `None` before
+/// the first read): blocked with the new reasons, clear when there are none
+/// left. Their keys carry `change`, unique to this change, because the same
+/// reasons can come back after a clear; the caller compares under the lock
+/// that serializes reads, so a change is said once.
+pub fn ci_notices(
+    new: &NewPullCi,
+    previous_gate: Option<&[String]>,
+    change: &str,
+    now: DateTime<Utc>,
+) -> Vec<(ThreadNotice, String)> {
     let repo = new.repo.to_ascii_lowercase();
     let head = new.head_sha.to_ascii_lowercase();
     let at = format!("{repo}#{}", new.pull_number);
-    let notice = |kind, status, failing_jobs| ThreadNotice {
+    let notice = |kind, status, failing_jobs, reasons| ThreadNotice {
         kind,
         repo: repo.clone(),
         pull_number: new.pull_number,
@@ -120,10 +175,11 @@ pub fn ci_notices(new: &NewPullCi, now: DateTime<Utc>) -> Vec<(ThreadNotice, Str
         head_sha: Some(head.clone()),
         status,
         failing_jobs,
+        reasons,
         created_at: now,
     };
     let mut owed = vec![(
-        notice(ThreadNoticeKind::PrOpened, None, Vec::new()),
+        notice(ThreadNoticeKind::PrOpened, None, Vec::new(), Vec::new()),
         format!("pr_opened:{at}"),
     )];
     if !new.failing_jobs.is_empty() {
@@ -132,6 +188,7 @@ pub fn ci_notices(new: &NewPullCi, now: DateTime<Utc>) -> Vec<(ThreadNotice, Str
                 ThreadNoticeKind::CiFailed,
                 Some(CiStatus::Failure),
                 new.failing_jobs.clone(),
+                Vec::new(),
             ),
             format!("ci_failed:{at}@{head}"),
         ));
@@ -142,9 +199,31 @@ pub fn ci_notices(new: &NewPullCi, now: DateTime<Utc>) -> Vec<(ThreadNotice, Str
                 ThreadNoticeKind::ChecksDone,
                 Some(new.status),
                 new.failing_jobs.clone(),
+                Vec::new(),
             ),
             format!("checks_done:{at}@{head}"),
         ));
+    }
+    if let Some(reasons) = &new.gate_reasons {
+        let before = previous_gate.unwrap_or_default();
+        if reasons.as_slice() != before {
+            if !reasons.is_empty() {
+                owed.push((
+                    notice(
+                        ThreadNoticeKind::GateBlocked,
+                        None,
+                        Vec::new(),
+                        reasons.clone(),
+                    ),
+                    format!("gate:{at}:{change}"),
+                ));
+            } else {
+                owed.push((
+                    notice(ThreadNoticeKind::GateClear, None, Vec::new(), Vec::new()),
+                    format!("gate:{at}:{change}"),
+                ));
+            }
+        }
     }
     owed
 }
@@ -194,7 +273,58 @@ mod tests {
             failing_jobs: failing.iter().map(|job| job.to_string()).collect(),
             log_tail: None,
             finished,
+            merge_state: None,
+            unresolved_threads: 0,
+            unresolved_thread_links: Vec::new(),
+            missing_checks: Vec::new(),
+            gate_reasons: None,
         }
+    }
+
+    fn ci_notices_at(new: &NewPullCi, now: DateTime<Utc>) -> Vec<(ThreadNotice, String)> {
+        ci_notices(new, None, "c1", now)
+    }
+
+    #[test]
+    fn a_gate_is_said_only_when_what_holds_it_changes() {
+        let mut new = read(CiStatus::Pending, &[], false);
+        let gate = |owed: &[(ThreadNotice, String)]| {
+            owed.iter()
+                .filter(|(n, _)| {
+                    matches!(
+                        n.kind,
+                        ThreadNoticeKind::GateBlocked | ThreadNoticeKind::GateClear
+                    )
+                })
+                .map(|(n, key)| (n.kind.as_str(), n.reasons.clone(), key.clone()))
+                .collect::<Vec<_>>()
+        };
+        new.gate_reasons = Some(Vec::new());
+        assert!(
+            gate(&ci_notices(&new, None, "c1", Utc::now())).is_empty(),
+            "clear from the start is no news"
+        );
+        new.gate_reasons = Some(vec!["merge state BEHIND".into()]);
+        assert_eq!(
+            gate(&ci_notices(&new, Some(&[]), "c2", Utc::now())),
+            vec![(
+                "gate_blocked",
+                vec!["merge state BEHIND".to_string()],
+                "gate:example/app#7:c2".to_string()
+            )]
+        );
+        let same = ["merge state BEHIND".to_string()];
+        assert!(gate(&ci_notices(&new, Some(&same), "c3", Utc::now())).is_empty());
+        new.gate_reasons = Some(Vec::new());
+        assert_eq!(
+            gate(&ci_notices(&new, Some(&same), "c4", Utc::now()))[0].0,
+            "gate_clear"
+        );
+        new.gate_reasons = None;
+        assert!(
+            gate(&ci_notices(&new, Some(&same), "c5", Utc::now())).is_empty(),
+            "an unread gate says nothing"
+        );
     }
 
     fn kinds(owed: &[(ThreadNotice, String)]) -> Vec<(&'static str, &str)> {
@@ -205,13 +335,13 @@ mod tests {
 
     #[test]
     fn a_pending_head_owes_only_the_opened_notice() {
-        let owed = ci_notices(&read(CiStatus::Pending, &[], false), Utc::now());
+        let owed = ci_notices_at(&read(CiStatus::Pending, &[], false), Utc::now());
         assert_eq!(kinds(&owed), vec![("pr_opened", "pr_opened:example/app#7")]);
     }
 
     #[test]
     fn a_failure_while_others_run_is_said_before_the_checks_are_done() {
-        let running = ci_notices(&read(CiStatus::Failure, &["unit tests"], false), Utc::now());
+        let running = ci_notices_at(&read(CiStatus::Failure, &["unit tests"], false), Utc::now());
         assert_eq!(
             kinds(&running),
             vec![
@@ -219,7 +349,7 @@ mod tests {
                 ("ci_failed", "ci_failed:example/app#7@abc123"),
             ]
         );
-        let owed = ci_notices(&read(CiStatus::Failure, &["unit tests"], true), Utc::now());
+        let owed = ci_notices_at(&read(CiStatus::Failure, &["unit tests"], true), Utc::now());
         assert_eq!(
             kinds(&owed),
             vec![
@@ -234,7 +364,7 @@ mod tests {
 
     #[test]
     fn a_green_head_says_its_checks_are_done_with_success() {
-        let owed = ci_notices(&read(CiStatus::Success, &[], true), Utc::now());
+        let owed = ci_notices_at(&read(CiStatus::Success, &[], true), Utc::now());
         let done = &owed[1].0;
         assert_eq!(done.kind, ThreadNoticeKind::ChecksDone);
         assert_eq!(done.status, Some(CiStatus::Success));
