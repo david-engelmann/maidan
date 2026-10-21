@@ -9,6 +9,16 @@
 use serde_json::{json, Value};
 
 pub fn catalog() -> Vec<Value> {
+    let mut tools = catalog_head();
+    tools.extend(catalog_tail());
+    tools
+}
+
+// The catalog is split in two because an unoptimized build gives one function
+// a stack slot for every `json!` literal in it: as one function, its frame
+// outgrew a test thread's 2 MiB stack once it held 254 tools. Each half's
+// frame is freed before the other runs.
+fn catalog_head() -> Vec<Value> {
     vec![
         json!({
             "name": "whoami",
@@ -1678,6 +1688,58 @@ pub fn catalog() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"}
+                },
+                "required": ["workspace_id"]
+            }
+        }),
+    ]
+}
+
+fn catalog_tail() -> Vec<Value> {
+    vec![
+        json!({
+            "name": "register_thread_pull",
+            "description": "Track a pull request the change flow did not open (yours, from a session) on its task's thread, so the change sweep refreshes it and get_swarm_metrics counts it: its time to ready runs from the task's CLAIM: comment (else claimed_at, else now) to the ready-to-merge label, and its merge closes the task. The repository must be in the workspace egress allowlist (github or github_branch). A pull request another thread tracks is refused. The twin of PUT /threads/{id}/pull.",
+            "annotations": {
+                "title": "Register thread pull request",
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid"},
+                    "repo": {"type": "string", "description": "owner/name, or a GitHub clone URL"},
+                    "pull_number": {"type": "integer", "minimum": 1},
+                    "claimed_at": {"type": "string", "format": "date-time", "description": "when the task was claimed, for a claim said outside Maidan; a CLAIM: comment Maidan posted takes precedence"}
+                },
+                "required": ["thread_id", "repo", "pull_number"]
+            }
+        }),
+        json!({
+            "name": "get_swarm_metrics",
+            "description": "The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.",
+            "annotations": {
+                "title": "Get swarm metrics",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": true
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"},
+                    "repo": {"type": "string", "description": "owner/name or a GitHub clone URL; omitted, every repository"},
+                    "since": {"type": "string", "format": "date-time", "description": "only pull requests opened at or after this time"},
+                    "rounds_limit": {"type": "integer", "description": "rounds after which an unmerged task is flagged non-converging (default 3)"},
+                    "behind_limit": {"type": "integer", "description": "commits behind at which a round's base is flagged stale (default 50)"},
+                    "engine": {"type": "string", "enum": ["pi", "session", "human"]},
+                    "kind": {"type": "string", "enum": ["change", "plan", "review"]},
+                    "size": {"type": "string", "enum": ["S", "M", "L"]},
+                    "linear_issue": {"type": "string", "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)"}
                 },
                 "required": ["workspace_id"]
             }

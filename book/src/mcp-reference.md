@@ -2846,6 +2846,113 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `register_thread_pull`
+
+**Register thread pull request.** Track a pull request the change flow did not open (yours, from a session) on its task's thread, so the change sweep refreshes it and get_swarm_metrics counts it: its time to ready runs from the task's CLAIM: comment (else claimed_at, else now) to the ready-to-merge label, and its merge closes the task. The repository must be in the workspace egress allowlist (github or github_branch). A pull request another thread tracks is refused. The twin of PUT /threads/{id}/pull.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "claimed_at": {
+      "description": "when the task was claimed, for a claim said outside Maidan; a CLAIM: comment Maidan posted takes precedence",
+      "format": "date-time",
+      "type": "string"
+    },
+    "pull_number": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "repo": {
+      "description": "owner/name, or a GitHub clone URL",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "repo",
+    "pull_number"
+  ],
+  "type": "object"
+}
+```
+
+### `get_swarm_metrics`
+
+**Get swarm metrics.** The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true`
+
+```json
+{
+  "properties": {
+    "behind_limit": {
+      "description": "commits behind at which a round's base is flagged stale (default 50)",
+      "type": "integer"
+    },
+    "engine": {
+      "enum": [
+        "pi",
+        "session",
+        "human"
+      ],
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "change",
+        "plan",
+        "review"
+      ],
+      "type": "string"
+    },
+    "linear_issue": {
+      "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)",
+      "type": "string"
+    },
+    "repo": {
+      "description": "owner/name or a GitHub clone URL; omitted, every repository",
+      "type": "string"
+    },
+    "rounds_limit": {
+      "description": "rounds after which an unmerged task is flagged non-converging (default 3)",
+      "type": "integer"
+    },
+    "since": {
+      "description": "only pull requests opened at or after this time",
+      "format": "date-time",
+      "type": "string"
+    },
+    "size": {
+      "enum": [
+        "S",
+        "M",
+        "L"
+      ],
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id)",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_thread_lineage`
 
 **Set thread lineage.** Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.

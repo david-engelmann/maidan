@@ -1692,6 +1692,25 @@
         "reason": "confined to Maidan's database"
       }
     },
+    "get_swarm_metrics": {
+      "title": "Get swarm metrics",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "reads change_pulls; the GitHub refresh first only records what GitHub already reports about tracked pull requests (no event, audit or Maidan-authored state), the same refresh GET /workspaces/{id}/swarm-metrics runs and is classified a read for"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": true,
+        "reason": "reads each open tracked pull request from GitHub before computing, when the server has a GitHub client"
+      }
+    },
     "get_tool_transcript": {
       "title": "Get tool transcript",
       "readOnlyHint": {
@@ -3362,6 +3381,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "store delete + in-tx audit row only"
+      }
+    },
+    "register_thread_pull": {
+      "title": "Register thread pull request",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "store.register_change_pull inserts the tracked change_pulls row"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "additive: tracks a pull request; one another thread tracks is refused, never taken over"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "registering the same pull request on the same thread again leaves the one row as it was"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; the change sweep reads GitHub later, in the background"
       }
     },
     "remove_member_skill": {

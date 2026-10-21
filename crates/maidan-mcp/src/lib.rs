@@ -28,6 +28,7 @@ mod land_gate_advice;
 pub mod profiles;
 pub mod prompts;
 pub mod protocol;
+mod pull_refresh;
 pub mod reference;
 mod request_log;
 pub mod resource_updates;
@@ -44,6 +45,7 @@ pub use error::McpError;
 pub use land_gate_advice::{LandGateAdviseError, LandGateAdvising};
 pub use profiles::Profile;
 pub use protocol::{JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
+pub use pull_refresh::OpenPullRefresher;
 pub use server::{
     is_supported_protocol_version, negotiate_protocol_version, preferred_protocol_version,
     ApprovalConfirmationKeys, McpServer, PresenceReader, DEFAULT_CONFIRMATION_TTL, INSTRUCTIONS,

@@ -418,7 +418,8 @@ The swarm metrics count a handed-off task as misrouted, and each task says
 The change flow records the pull requests it opens. A session opens its own,
 so to compare engines a session's pull request is registered on its task:
 `PUT /threads/{id}/pull` with `{"repo": "owner/name", "pull_number": N}`
-(`workspace:write` and thread access). The repository must be blessed for the
+(`workspace:write` and thread access), or the MCP tool `register_thread_pull`
+with the same fields and `thread_id`. The repository must be blessed for the
 workspace, for GitHub comments or agent branches. A task with no thread yet
 gets one first, through `create_thread` with `engine: "session"` and its
 `linear_issue`. From then on, the change sweep refreshes the pull request
@@ -468,8 +469,9 @@ same head says nothing. A pull request that has closed is not read again.
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,
-`?rounds_limit=`, `?behind_limit=`, `?engine=`, `?kind=`) gives, for each agent pull request the
-change flow opened:
+`?rounds_limit=`, `?behind_limit=`, `?engine=`, `?kind=`), or the MCP tool
+`get_swarm_metrics` with the same filters as arguments, gives, for each agent
+pull request the change flow opened:
 - its rounds (commit, diff lines, how many commits its base was behind,
   whether it was a squash-rebase, and for one, `previous_head`, the head it
   moved the branch from), and `rebases`, how many were;

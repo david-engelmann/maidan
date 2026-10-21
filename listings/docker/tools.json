@@ -337,6 +337,14 @@
       "name": "get_workspace_occupancy"
     },
     {
+      "description": "Track a pull request the change flow did not open (yours, from a session) on its task's thread, so the change sweep refreshes it and get_swarm_metrics counts it: its time to ready runs from the task's CLAIM: comment (else claimed_at, else now) to the ready-to-merge label, and its merge closes the task. The repository must be in the workspace egress allowlist (github or github_branch). A pull request another thread tracks is refused. The twin of PUT /threads/{id}/pull.",
+      "name": "register_thread_pull"
+    },
+    {
+      "description": "The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.",
+      "name": "get_swarm_metrics"
+    },
+    {
       "description": "Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.",
       "name": "set_thread_lineage"
     },

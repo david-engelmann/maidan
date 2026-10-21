@@ -127,6 +127,7 @@ mod attestation;
 pub mod automation_deliveries;
 pub mod blob_reap_retry;
 mod change_notices;
+pub mod change_pulls;
 mod claim_next;
 pub mod content_keyring;
 mod content_keys;

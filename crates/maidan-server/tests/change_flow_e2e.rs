@@ -2104,6 +2104,220 @@ async fn a_registered_session_pull_counts_from_its_claim_to_the_ready_label() {
     assert_eq!(metrics["repos"][0]["by_engine"][0]["engine"], "session");
 }
 
+/// A bearer token for `member` in `workspace` holding exactly `caps`.
+async fn token_with(
+    h: &Harness,
+    workspace_id: WorkspaceId,
+    member_id: MemberId,
+    caps: &[&str],
+) -> String {
+    let secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id,
+            member_id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: caps.iter().map(|c| (*c).to_string()).collect(),
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+async fn call_tool(h: &Harness, token: &str, name: &str, arguments: Value) -> Value {
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::post("/mcp")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": { "name": name, "arguments": arguments }
+                })
+                .to_string(),
+            ))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+fn tool_json(res: &Value) -> Value {
+    let text = res["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no tool result: {res}"));
+    serde_json::from_str(text).unwrap()
+}
+
+/// A session registers its pull request and reads the swarm metrics over
+/// MCP, with the route's rules: `workspace:write` and thread access to
+/// register, a blessed repository, `workspace:read` on the caller's own
+/// workspace to read, and the GitHub refresh first, so a merge counts at once.
+#[test]
+fn a_session_registers_its_pull_and_reads_the_metrics_over_mcp() {
+    // An MCP call through the router in an unoptimized build needs about
+    // 1.8 MiB of stack here, so on a 2 MiB test thread it overflowed on CI.
+    std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(session_pull_over_mcp())
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+async fn session_pull_over_mcp() {
+    let h = harness().await;
+    h.allow_change().await;
+    // Tenant B blesses the same repository, so only thread access can refuse it.
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+    h.fake.lock().unwrap().pulls.push(FakePull {
+        number: 78,
+        head: "session/rename".into(),
+        base: "dev".into(),
+        title: "Rename".into(),
+        body: String::new(),
+        draft: false,
+        labels: Vec::new(),
+        merged_at: None,
+        closed_at: None,
+    });
+    let writer = token_with(
+        &h,
+        h.a.workspace_id,
+        h.a.member_id,
+        &[
+            maidan_auth::capability::WORKSPACE_READ,
+            maidan_auth::capability::WORKSPACE_WRITE,
+        ],
+    )
+    .await;
+    let reader = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let other = token_with(
+        &h,
+        h.b.workspace_id,
+        h.b.member_id,
+        &[
+            maidan_auth::capability::WORKSPACE_READ,
+            maidan_auth::capability::WORKSPACE_WRITE,
+        ],
+    )
+    .await;
+    let register = json!({ "thread_id": h.a.thread_id.0, "repo": REPO, "pull_number": 78 });
+
+    let refused = call_tool(&h, &reader, "register_thread_pull", register.clone()).await;
+    assert!(
+        refused.get("error").is_some(),
+        "workspace:read cannot register: {refused}"
+    );
+    let refused = call_tool(&h, &other, "register_thread_pull", register.clone()).await;
+    assert_eq!(
+        refused["error"]["code"], -32003,
+        "another tenant's thread: {refused}"
+    );
+    let refused = call_tool(
+        &h,
+        &writer,
+        "register_thread_pull",
+        json!({ "thread_id": h.a.thread_id.0, "repo": "other/repo", "pull_number": 78 }),
+    )
+    .await;
+    assert_eq!(
+        refused["error"]["code"], -32003,
+        "an unblessed repository: {refused}"
+    );
+    let refused = call_tool(
+        &h,
+        &writer,
+        "register_thread_pull",
+        json!({ "thread_id": h.a.thread_id.0, "repo": REPO, "pull_number": 0 }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+
+    let registered = tool_json(&call_tool(&h, &writer, "register_thread_pull", register).await);
+    assert_eq!(registered["repo"], REPO);
+    assert_eq!(registered["pull_number"], 78);
+    assert!(
+        h.store
+            .list_change_pulls(h.b.workspace_id, None, None, None, None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "tenant B tracks nothing"
+    );
+
+    h.fake.lock().unwrap().pulls.last_mut().unwrap().merged_at =
+        Some("2026-10-20T12:00:00Z".into());
+    let metrics = tool_json(
+        &call_tool(
+            &h,
+            &reader,
+            "get_swarm_metrics",
+            json!({ "workspace_id": h.a.workspace_id.0 }),
+        )
+        .await,
+    );
+    let tasks = metrics["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1, "{metrics}");
+    assert_eq!(tasks[0]["pull_number"], 78);
+    assert_eq!(
+        tasks[0]["merged_at"], "2026-10-20T12:00:00Z",
+        "the read refreshed the pull request from GitHub first"
+    );
+    let (status, rest) = get_json(
+        &h,
+        &reader,
+        &format!("/workspaces/{}/swarm-metrics", h.a.workspace_id.0),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        rest["tasks"], metrics["tasks"],
+        "the twin answers as the route"
+    );
+
+    let refused = call_tool(
+        &h,
+        &other,
+        "get_swarm_metrics",
+        json!({ "workspace_id": h.a.workspace_id.0 }),
+    )
+    .await;
+    assert_eq!(
+        refused["error"]["code"], -32003,
+        "another tenant's metrics: {refused}"
+    );
+    let refused = call_tool(
+        &h,
+        &reader,
+        "get_swarm_metrics",
+        json!({ "workspace_id": h.a.workspace_id.0, "linear_issue": "not a key" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+}
+
 #[tokio::test]
 async fn a_claim_comment_on_an_issue_in_an_unblessed_team_is_skipped() {
     let h = harness().await;

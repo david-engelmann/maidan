@@ -242,6 +242,10 @@ pub struct McpServer {
     /// Optional land-gate advisor. Unset means `advise_land_gate` is not found
     /// and no gate row is written.
     land_gate_advisor: std::sync::OnceLock<Arc<dyn crate::land_gate_advice::LandGateAdvising>>,
+    /// Reads tracked pull requests from GitHub before `get_swarm_metrics`.
+    /// Unset means the metrics are what the store holds. Shared by every
+    /// clone, since the GitHub sender is attached after the server is built.
+    pull_refresher: Arc<std::sync::OnceLock<Arc<dyn crate::pull_refresh::OpenPullRefresher>>>,
     /// Shared by every clone, so it can be set after the server is cloned
     /// into the router's state.
     approval_confirmations: Arc<std::sync::OnceLock<ApprovalConfirmationKeys>>,
@@ -334,6 +338,7 @@ impl McpServer {
             slash_secret_forget: std::sync::OnceLock::new(),
             fsm_secret_forget: std::sync::OnceLock::new(),
             land_gate_advisor: std::sync::OnceLock::new(),
+            pull_refresher: Arc::default(),
             approval_confirmations: Arc::new(std::sync::OnceLock::new()),
         }
     }
@@ -460,6 +465,18 @@ impl McpServer {
         &self,
     ) -> Option<&Arc<dyn crate::land_gate_advice::LandGateAdvising>> {
         self.land_gate_advisor.get()
+    }
+
+    /// Install the GitHub refresh `get_swarm_metrics` runs first, as the
+    /// route does. Called once, when the GitHub sender is attached.
+    pub fn set_pull_refresher(&self, refresher: Arc<dyn crate::pull_refresh::OpenPullRefresher>) {
+        let _ = self.pull_refresher.set(refresher);
+    }
+
+    pub(crate) fn pull_refresher(
+        &self,
+    ) -> Option<&Arc<dyn crate::pull_refresh::OpenPullRefresher>> {
+        self.pull_refresher.get()
     }
 
     /// Set the instance ceiling on secret-egress hosts (lowercase hostnames).

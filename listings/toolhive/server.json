@@ -91,6 +91,8 @@
     "get_channel_occupancy",
     "get_workspace_queue_depth",
     "get_workspace_occupancy",
+    "register_thread_pull",
+    "get_swarm_metrics",
     "set_thread_lineage",
     "get_thread_lineage",
     "list_run_threads",

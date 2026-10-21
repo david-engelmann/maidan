@@ -20,6 +20,7 @@ mod artifact;
 mod automation;
 mod budget;
 mod catalog;
+mod change_pull;
 mod channel;
 mod delivery;
 mod event_log;
@@ -112,6 +113,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "get_room",
     "get_run_occupancy",
     "get_spawn_budget",
+    "get_swarm_metrics",
     "get_thread_block",
     "get_thread_budget",
     "get_thread_context",
@@ -297,6 +299,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_channel_occupancy"
         | "get_workspace_queue_depth"
         | "get_workspace_occupancy"
+        | "get_swarm_metrics"
         | "get_run_occupancy"
         | "get_thread_lineage"
         | "list_run_threads"
@@ -442,7 +445,8 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "set_task_schedule_active"
         | "delete_task_schedule"
         | "revoke_slash_command"
-        | "revoke_fsm_hook" => Ok(WORKSPACE_WRITE),
+        | "revoke_fsm_hook"
+        | "register_thread_pull" => Ok(WORKSPACE_WRITE),
         // The same as answering over REST. Accepting needs more, decided in
         // the tool: see `approval::approval_decide`.
         "approval_decide" => Ok(WORKSPACE_WRITE),
@@ -872,6 +876,7 @@ async fn enforce_channel_access(
         | "require_land_gate"
         | "clear_land_gate"
         | "advise_land_gate"
+        | "register_thread_pull"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -1063,6 +1068,8 @@ pub async fn dispatch(
         "get_workspace_queue_depth" => thread::get_workspace_queue_depth(store, auth, args).await,
         "get_workspace_occupancy" => thread::get_workspace_occupancy(store, auth, args).await,
         "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
+        "register_thread_pull" => change_pull::register_thread_pull(server, auth, args).await,
+        "get_swarm_metrics" => change_pull::get_swarm_metrics(server, auth, args).await,
         "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
         "get_thread_lineage" => thread::get_thread_lineage(store, args).await,
         "clear_thread_lineage" => thread::clear_thread_lineage(store, args).await,
