@@ -120,7 +120,20 @@ fn interval_from_raw(raw: Option<String>) -> Option<Duration> {
 /// a failed read leaves it open until a later pass, behind the ones read
 /// longer ago.
 pub async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
-    refresh(state, workspace_id, None).await;
+    if let Some(sender) = state.github_sender.as_deref() {
+        refresh_open_pulls_with(state.store.as_ref(), sender, workspace_id).await;
+    }
+}
+
+/// [`refresh_open_pulls`] given its two parts rather than the whole state, so
+/// the MCP server, which holds neither the state nor the sender, can be handed
+/// it ([`McpPullRefresher`]).
+pub async fn refresh_open_pulls_with(
+    store: &dyn maidan_store::Store,
+    sender: &dyn crate::github::GithubSender,
+    workspace_id: WorkspaceId,
+) {
+    refresh(store, sender, workspace_id, None).await;
 }
 
 /// [`refresh_open_pulls`], and with `stats` (the sweep's, which runs in no
@@ -128,12 +141,16 @@ pub async fn refresh_open_pulls(state: &AppState, workspace_id: WorkspaceId) {
 /// too, with the notices they owe ([`crate::ci_watch`]). A metrics read
 /// passes none: notices said inside a reader's request would be the
 /// reader's.
-async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<&mut SweepStats>) {
-    let Some(git) = state.github_sender.as_ref().and_then(|s| s.git()) else {
+async fn refresh(
+    store: &dyn maidan_store::Store,
+    sender: &dyn crate::github::GithubSender,
+    workspace_id: WorkspaceId,
+    mut sweep: Option<(&AppState, &mut SweepStats)>,
+) {
+    let Some(git) = sender.git() else {
         return;
     };
-    let open = match state
-        .store
+    let open = match store
         .list_open_change_pulls(workspace_id, REFRESH_LIMIT)
         .await
     {
@@ -146,8 +163,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
     for (repo, pull_number) in open {
         // Stamped whatever the read says, so a pull request GitHub keeps
         // failing on cannot hold the front of the queue.
-        if let Err(err) = state
-            .store
+        if let Err(err) = store
             .mark_change_pull_checked(workspace_id, &repo, pull_number, chrono::Utc::now())
             .await
         {
@@ -163,7 +179,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
         };
         let brief = &snapshot.brief;
         if brief.open {
-            if let Some(stats) = stats.as_deref_mut() {
+            if let Some((state, stats)) = sweep.as_mut() {
                 stats.ci_notices += crate::ci_watch::record_checks(
                     state,
                     git,
@@ -182,8 +198,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
                 .iter()
                 .any(|label| label == maidan_types::READY_LABEL)
             {
-                if let Err(err) = state
-                    .store
+                if let Err(err) = store
                     .mark_change_pull_ready(workspace_id, &repo, pull_number, chrono::Utc::now())
                     .await
                 {
@@ -202,8 +217,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
         // closed lands nothing) and is on the base now; any other close is
         // not a landing. Asked once: a recorded close is not read again.
         let was_ahead = brief.merged_at.is_none()
-            && state
-                .store
+            && store
                 .pull_head_was_ahead(workspace_id, &repo, pull_number, &brief.head_sha)
                 .await
                 .unwrap_or_else(|err| {
@@ -231,8 +245,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
             },
         };
         let merged_head = merged_at.map(|_| brief.head_sha.as_str());
-        if let Err(err) = state
-            .store
+        if let Err(err) = store
             .close_change_pull(
                 workspace_id,
                 &repo,
@@ -245,6 +258,20 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: close not recorded");
         }
+    }
+}
+
+/// The swarm-metrics refresh, handed to the MCP server so its
+/// `get_swarm_metrics` reads GitHub the way the route does.
+pub struct McpPullRefresher {
+    pub store: std::sync::Arc<dyn maidan_store::Store>,
+    pub sender: std::sync::Arc<dyn crate::github::GithubSender>,
+}
+
+#[async_trait::async_trait]
+impl maidan_mcp::OpenPullRefresher for McpPullRefresher {
+    async fn refresh_open_pulls(&self, workspace_id: WorkspaceId) {
+        refresh_open_pulls_with(self.store.as_ref(), self.sender.as_ref(), workspace_id).await;
     }
 }
 
@@ -264,7 +291,15 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         }
     };
     for workspace_id in workspaces {
-        refresh(state, workspace_id, Some(&mut stats)).await;
+        if let Some(sender) = state.github_sender.as_deref() {
+            refresh(
+                state.store.as_ref(),
+                sender,
+                workspace_id,
+                Some((state, &mut stats)),
+            )
+            .await;
+        }
         settle_closed_pulls(state, workspace_id, &mut stats).await;
         notify_merges(state, workspace_id, &mut stats).await;
         hand_off_stuck(state, workspace_id, &mut stats).await;

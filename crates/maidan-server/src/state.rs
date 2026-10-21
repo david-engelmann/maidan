@@ -473,6 +473,11 @@ impl AppState {
     /// `MAIDAN_GITHUB_TOKEN` is set; tests inject a mock. `None` disables
     /// egress.
     pub fn attach_github_sender(&mut self, sender: Arc<dyn crate::github::GithubSender>) {
+        self.mcp
+            .set_pull_refresher(Arc::new(crate::change_sweep::McpPullRefresher {
+                store: self.store.clone(),
+                sender: sender.clone(),
+            }));
         self.github_sender = Some(sender);
     }
 

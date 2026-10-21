@@ -435,6 +435,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** `maidan_background_loop_last_tick_seconds{loop}` and `maidan_background_loop_panics_total{loop}`, reported by the change sweep, and two alert rules in `docs/alerts/prometheus-rules-maidan-slo.yaml`: `MaidanChangeSweepStalled` (critical, no tick for 6 minutes) and `MaidanBackgroundLoopPanicking` (warning), with promtool tests. They reach a person only through an alert route; `docs/alerts/README.md` says so.
 
+### A session registers its pull request and reads the swarm metrics over MCP
+
+- **Added:** two MCP tools, the twins of REST-only routes, so a session no longer shells out for them. `register_thread_pull` (`workspace:write` and thread access) tracks a session's pull request on its task, as `PUT /threads/{id}/pull` does: the repository must be blessed for the thread's workspace. `get_swarm_metrics` (`workspace:read`, the caller's own workspace) answers as `GET /workspaces/{id}/swarm-metrics`, with the same filters and the same GitHub refresh first. Both run the route's code (`maidan_store::change_pulls`), not a copy.
+
 ### Operator alerts in Slack
 
 - **Added:** `MAIDAN_OPS_ALERT_CHANNEL` (a Slack channel id) turns on operator alerts through the existing Slack sender. The server posts one line on boot (proof the route works), one when a change sweep tick panics, and one when a background loop has not finished a tick for three of its intervals (checked every minute). The same alert posts at most once every 15 minutes. A stack that scrapes no `/metrics`, like the local swarm stack, otherwise had no alert route.
