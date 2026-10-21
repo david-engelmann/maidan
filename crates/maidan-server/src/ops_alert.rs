@@ -175,8 +175,8 @@ mod tests {
     #[test]
     fn only_a_channel_id_turns_alerts_on() {
         assert_eq!(
-            channel_from_raw(Some(" C0AQQDVFSFM ".into())).as_deref(),
-            Some("C0AQQDVFSFM")
+            channel_from_raw(Some(" C0123ABCDE ".into())).as_deref(),
+            Some("C0123ABCDE")
         );
         assert!(channel_from_raw(Some("G01234567".into())).is_some());
         for raw in [
