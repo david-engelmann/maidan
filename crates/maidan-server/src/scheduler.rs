@@ -156,8 +156,9 @@ async fn fire_recipe(state: &AppState, sched: &TaskSchedule) {
 /// Loop: sweep, then sleep `cfg.tick`. Spawned once at startup when configured.
 pub async fn run(state: AppState, cfg: SchedulerConfig) {
     tracing::info!(tick_secs = cfg.tick.as_secs(), "scheduler sweeper started");
+    crate::ops_alert::start_loop("scheduler", cfg.tick);
     loop {
-        sweep_once(&state).await;
+        crate::ops_alert::guarded_tick("scheduler", sweep_once(&state)).await;
         tokio::time::sleep(cfg.tick).await;
     }
 }

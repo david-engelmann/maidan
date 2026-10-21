@@ -165,8 +165,9 @@ pub async fn sweep_due(state: &AppState, now: DateTime<Utc>) -> WebPushSweepStat
 
 pub async fn run(state: AppState, cfg: WebPushWorkerConfig) {
     tracing::info!(tick_secs = cfg.tick.as_secs(), "web push worker started");
+    crate::ops_alert::start_loop("web_push_worker", cfg.tick);
     loop {
-        sweep_once(&state).await;
+        crate::ops_alert::guarded_tick("web_push_worker", sweep_once(&state)).await;
         tokio::time::sleep(cfg.tick).await;
     }
 }

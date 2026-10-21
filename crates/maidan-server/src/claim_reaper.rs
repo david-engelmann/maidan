@@ -156,16 +156,20 @@ pub async fn run(state: AppState, cfg: ClaimReaperConfig) {
         human_timeout_secs = cfg.human_timeout.map(|t| t.as_secs()),
         "claim reaper started"
     );
+    crate::ops_alert::start_loop("claim_reaper", cfg.tick);
     loop {
-        sweep_once(&state).await;
-        if let Some(ack_timeout) = cfg.ack_timeout {
-            report_unacknowledged_once(&state, ack_timeout).await;
-        }
-        // The same tick, because returning a thread to the queue is this
-        // loop's job whether the holder died or is waiting on a silence.
-        if let Some(human_timeout) = cfg.human_timeout {
-            crate::human_wait::return_timed_out_once(&state, human_timeout).await;
-        }
+        crate::ops_alert::guarded_tick("claim_reaper", async {
+            sweep_once(&state).await;
+            if let Some(ack_timeout) = cfg.ack_timeout {
+                report_unacknowledged_once(&state, ack_timeout).await;
+            }
+            // The same tick, because returning a thread to the queue is this
+            // loop's job whether the holder died or is waiting on a silence.
+            if let Some(human_timeout) = cfg.human_timeout {
+                crate::human_wait::return_timed_out_once(&state, human_timeout).await;
+            }
+        })
+        .await;
         tokio::time::sleep(cfg.tick).await;
     }
 }

@@ -79,10 +79,14 @@ pub async fn run(
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // The first tick is immediate; skip it so startup is not a repair storm.
     ticker.tick().await;
+    crate::ops_alert::start_loop("embed_repair", config.interval);
     loop {
         ticker.tick().await;
-        if !repair_once(search.as_ref(), &provider, &metrics, config.batch).await {
+        let tick = repair_once(search.as_ref(), &provider, &metrics, config.batch);
+        if crate::ops_alert::guarded_tick("embed_repair", tick).await == Some(false) {
             tracing::info!("embed repair: backend has no embeddings; stopping");
+            // Ended on purpose: its silence is not a stall.
+            crate::ops_alert::stop_loop("embed_repair");
             return;
         }
     }
