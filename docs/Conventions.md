@@ -68,7 +68,7 @@ the code before acting on it.
 
 ## Code
 
-- Rust 2021; toolchain pinned in `rust-toolchain.toml` (1.91).
+- Rust 2021; toolchain pinned in `rust-toolchain.toml` (1.99).
 - `cargo fmt --all --check` and both clippy passes must be clean:
   `cargo clippy --all-targets --workspace -- -D warnings` and
   `cargo clippy --workspace --lib --bins -- -D clippy::unwrap_used -D clippy::expect_used`.

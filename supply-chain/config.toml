@@ -68,7 +68,7 @@ version = "0.4.42"
 criteria = "safe-to-deploy"
 
 [[exemptions.async-trait]]
-version = "0.1.89"
+version = "0.1.92"
 criteria = "safe-to-deploy"
 
 [[exemptions.atoi]]
@@ -1329,6 +1329,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.syn]]
 version = "2.0.117"
+criteria = "safe-to-deploy"
+
+[[exemptions.syn]]
+version = "3.0.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.sync_wrapper]]

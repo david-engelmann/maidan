@@ -984,7 +984,7 @@ pub fn group_notifications_by_thread(
         .into_iter()
         .filter_map(|k| groups.remove(&k))
         .collect();
-    out.sort_by(|a, b| b.latest.created_at.cmp(&a.latest.created_at));
+    out.sort_by_key(|group| std::cmp::Reverse(group.latest.created_at));
     out
 }
 
@@ -2739,7 +2739,7 @@ pub fn assemble_waiting_inbox(
         item.detail = Some(declaration.note.clone());
         items.push(item);
     }
-    items.sort_by(|a, b| a.since.cmp(&b.since));
+    items.sort_by_key(|item| item.since);
     let overdue = items.iter().filter(|i| i.overdue).count();
     WaitingInbox {
         total: items.len(),

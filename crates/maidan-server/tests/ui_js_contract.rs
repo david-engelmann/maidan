@@ -2060,8 +2060,10 @@ fn team_the_rule_requires(scene: &TeamScene) -> std::collections::BTreeMap<&'sta
     let mut held: std::collections::BTreeMap<&str, Vec<&OpenTask>> =
         std::collections::BTreeMap::new();
     for th in &scene.threads {
-        if th.assignee_id.is_some() && th.state != "closed" && th.state != "archived" {
-            held.entry(th.assignee_id.unwrap()).or_default().push(th);
+        if let Some(assignee) = th.assignee_id {
+            if th.state != "closed" && th.state != "archived" {
+                held.entry(assignee).or_default().push(th);
+            }
         }
     }
     let mut out = std::collections::BTreeMap::new();

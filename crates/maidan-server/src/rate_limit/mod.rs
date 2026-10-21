@@ -458,6 +458,9 @@ pub(crate) fn authenticated_into_path(
     bypass || workspace_id.to_string() == wid
 }
 
+// The error is the response itself, ready to send: boxing it would only
+// move the allocation, once per refused request.
+#[allow(clippy::result_large_err)]
 async fn enforce_global(
     state: &crate::state::AppState,
     client: &str,
@@ -476,6 +479,9 @@ async fn enforce_global(
 
 /// The per-client bucket for a bearer that resolved. An invented bearer must
 /// not reach this: it would open a fresh bucket per secret.
+// The error is the response itself, ready to send: boxing it would only
+// move the allocation, once per refused request.
+#[allow(clippy::result_large_err)]
 pub(crate) async fn enforce_verified_bearer(
     state: &crate::state::AppState,
     secret: &str,
@@ -493,6 +499,9 @@ pub(crate) fn client_ip_key(req: &Request<Body>) -> String {
     ip_client_key(req)
 }
 
+// The error is the response itself, ready to send: boxing it would only
+// move the allocation, once per refused request.
+#[allow(clippy::result_large_err)]
 pub(crate) async fn enforce_client_key(
     state: &crate::state::AppState,
     client: &str,
@@ -503,6 +512,9 @@ pub(crate) async fn enforce_client_key(
 
 /// Charge `ws:{wid}` only when this caller is authenticated into that
 /// workspace. A miss spends nothing of the target's budget.
+// The error is the response itself, ready to send: boxing it would only
+// move the allocation, once per refused request.
+#[allow(clippy::result_large_err)]
 pub(crate) async fn enforce_workspace(
     state: &crate::state::AppState,
     path: &str,

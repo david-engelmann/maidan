@@ -413,7 +413,7 @@ docker build -f docker/Dockerfile.db -t "maidan-postgres:$MAIDAN_TAG" .   # pgve
 
 # The CLI image wraps a binary built for Debian bookworm, like CI's release CLI image.
 docker run --rm -v "$PWD":/src -w /src -e CARGO_TARGET_DIR=/src/target-cli \
-  rust:1.91-slim-bookworm sh -c \
+  rust:1.99-slim-bookworm sh -c \
   'apt-get update -qq && apt-get install -y -qq pkg-config libssl-dev >/dev/null \
    && cargo build --release -p maidan-cli'
 mkdir -p cli-image && cp target-cli/release/maidan cli-image/maidan

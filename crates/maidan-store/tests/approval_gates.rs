@@ -290,7 +290,7 @@ async fn run_paging_suite(store: &dyn Store) {
         assert_eq!(gate.created_at.nanosecond() % 1_000_000, 0, "whole ms");
     }
     let mut newest_first = gates.clone();
-    newest_first.sort_by(|a, b| (b.created_at, b.id.0).cmp(&(a.created_at, a.id.0)));
+    newest_first.sort_by_key(|g| std::cmp::Reverse((g.created_at, g.id.0)));
     let ids = |gates: &[ApprovalGate]| gates.iter().map(|g| g.id).collect::<Vec<_>>();
 
     let page = |query: PendingGateQuery| store.page_pending_approval_gates(ws.id, query);
