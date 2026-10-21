@@ -459,6 +459,13 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
 - **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
 
+### claim_next no longer hands out finished work whose claim lapsed
+
+An open thread that already has a stored result is skipped by `claim_next` on
+both backends and in both scopes (channel and workspace). A reviewer sending it
+back (review to open after the result) is the explicit re-queue that makes it
+claimable again.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
