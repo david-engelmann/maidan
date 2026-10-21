@@ -1077,7 +1077,21 @@ struct ClaimNextWorkspaceThreadArgs {
     repo: Option<String>,
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
+    /// With nothing claimable now, wait up to this long for work to become
+    /// claimable and claim it, instead of answering null at once.
+    #[serde(default)]
+    wait_ms: Option<i64>,
 }
+
+/// The events after which work may have become claimable: a new thread, a
+/// dependency finishing, a claim released or expiring, a thread reopened.
+const CLAIMABLE_SIGNALS: [EventKind; 5] = [
+    EventKind::ThreadCreated,
+    EventKind::ThreadReady,
+    EventKind::ThreadAssignmentChanged,
+    EventKind::ClaimExpired,
+    EventKind::ThreadStateChanged,
+];
 
 /// `claim_next_thread` across every channel of the caller's workspace it may
 /// read. The workspace is checked against the token before dispatch
@@ -1094,20 +1108,45 @@ pub(super) async fn claim_next_workspace_thread(
     let repo = claim_repo(a.repo.as_deref())?;
     let workspace_id = WorkspaceId(a.workspace_id);
     auth.ensure_workspace(workspace_id)?;
-    if at_wip_limit(server.store.as_ref(), workspace_id, auth.member_id).await? {
-        return Ok(content_json(&Value::Null));
+    // Subscribed before the first attempt, so work filed between an empty
+    // claim and the wait still wakes it. No bus, or no wait asked: one try.
+    let wait_ms = a.wait_ms.unwrap_or(0).clamp(0, MAX_WAIT_MS);
+    let mut signals = match (wait_ms > 0, server.event_bus.as_ref()) {
+        (true, Some(bus)) => Some(
+            bus.subscribe(EventFilter {
+                workspace_id: Some(workspace_id),
+                kinds: Some(CLAIMABLE_SIGNALS.into_iter().collect()),
+                ..EventFilter::default()
+            })
+            .await
+            .map_err(|e| McpError::Internal(e.to_string()))?,
+        ),
+        _ => None,
+    };
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait_ms as u64);
+    loop {
+        if at_wip_limit(server.store.as_ref(), workspace_id, auth.member_id).await? {
+            return Ok(content_json(&Value::Null));
+        }
+        let claimed = server
+            .store
+            .claim_next_workspace_thread_with_event(
+                workspace_id,
+                auth.member_id,
+                Some(lease_secs),
+                repo.as_deref(),
+                a.engine,
+            )
+            .await?;
+        let Some(stream) = signals.as_mut().filter(|_| claimed.0.is_none()) else {
+            return publish_claim(server, claimed).await;
+        };
+        publish_claim(server, claimed).await?;
+        match tokio::time::timeout_at(deadline, stream.next()).await {
+            Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
+            Ok(Some(_)) => continue,
+        }
     }
-    let claimed = server
-        .store
-        .claim_next_workspace_thread_with_event(
-            workspace_id,
-            auth.member_id,
-            Some(lease_secs),
-            repo.as_deref(),
-            a.engine,
-        )
-        .await?;
-    publish_claim(server, claimed).await
 }
 
 /// Publish a `claim_next`'s events in order and shape its answer.
