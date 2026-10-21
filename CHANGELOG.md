@@ -13,6 +13,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **Changed:** every MCP `wait_for_*` tool, and the log replay behind it, now decides what a caller may see with the event log's rule (`maidan_auth::EventVisibility`, moved from the server so both share one copy). That rule also hides a private channel's events that name no thread, which `wait_for_event` can ask for.
 - **Fixed:** a `wait_for_*` whose bus subscription fell behind skipped the lag marker, so a match among the dropped events was lost and a later one answered in its place. The `after_log_id` cursor then moved past the lost match. Every MCP wait now replays the log from the last event it saw (or from where it subscribed) and answers the first match. Found by red-team review.
 
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
+
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
+
 ### Rust 1.99
 
 - **Changed:** the toolchain is Rust 1.99 (`rust-toolchain.toml`, `rust-version`, and `RUST_VERSION` in the Dockerfiles), from 1.91. async-trait 0.1.92 replaces 0.1.89, whose generated code tripped 1.99's `double_must_use` lint on every async trait. The FSM hook worker boxes each hook dispatch, whose future was too deep for 1.99 to lay out inline. The lints 1.99 adds are fixed; the rate-limit and MCP quota helpers now return their refusal response boxed, which keeps every `?` on their success path small.
