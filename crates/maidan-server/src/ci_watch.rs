@@ -8,13 +8,21 @@
 //! `checks_done`, each said once per head commit
 //! ([`maidan_types::ci_notices`]).
 //!
+//! The same read says what else holds the pull request back
+//! ([`gate`]): unresolved review threads (a review bot's count), a merge
+//! state such as `BEHIND` or `DIRTY`, and checks the base branch requires
+//! that never reported. A change in those is said as `gate_blocked` with the
+//! reasons, or `gate_clear`.
+//!
 //! The one extra GitHub read is a failing job's log, and only when a head
 //! first fails: the record keeps its last 4 KB, so a worker sees why without
 //! opening GitHub, and later ticks over the same failing head reuse it.
 
-use maidan_types::{CiStatus, NewPullCi, WorkspaceId, FAILING_JOB_LIMIT, LOG_TAIL_BYTES};
+use maidan_types::{
+    CiStatus, NewPullCi, WorkspaceId, FAILING_JOB_LIMIT, LOG_TAIL_BYTES, REVIEW_THREAD_LINK_LIMIT,
+};
 
-use crate::github::{GithubCheck, GithubCheckState, GithubGit, GithubPullSnapshot};
+use crate::github::{GithubCheck, GithubCheckState, GithubGate, GithubGit, GithubPullSnapshot};
 use crate::state::AppState;
 
 /// Where a head's checks stand.
@@ -65,6 +73,62 @@ pub fn summarize(checks: &[GithubCheck]) -> CiSummary {
     }
 }
 
+/// Merge states that hold a pull request back. `UNSTABLE` (a check that is
+/// not required failed) and `UNKNOWN` (GitHub still computing) do not.
+const BLOCKING_MERGE_STATES: &[&str] = &["BEHIND", "BLOCKED", "DIRTY", "DRAFT"];
+
+/// What holds a pull request back, besides failing checks.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Gate {
+    /// Required checks that never reported though every check that did has
+    /// finished: one that is not coming without a push or a rerun.
+    pub missing_checks: Vec<String>,
+    /// Each reason in a sentence, sorted, so two reads compare equal when
+    /// nothing changed.
+    pub reasons: Vec<String>,
+}
+
+/// What holds a pull request back, from GitHub's gate and the checks on its
+/// head.
+pub fn gate(read: &GithubGate, checks: &[GithubCheck]) -> Gate {
+    let mut reasons = Vec::new();
+    let unresolved = read.unresolved_threads.len();
+    if unresolved > 0 {
+        reasons.push(format!(
+            "{unresolved} unresolved review thread{}",
+            if unresolved == 1 { "" } else { "s" }
+        ));
+    }
+    if let Some(state) = read
+        .merge_state
+        .as_deref()
+        .filter(|state| BLOCKING_MERGE_STATES.contains(state))
+    {
+        reasons.push(format!("merge state {state}"));
+    }
+    let settled = !checks.is_empty() && checks.iter().all(|c| c.state != GithubCheckState::Pending);
+    let missing_checks: Vec<String> = if settled {
+        read.required_checks
+            .iter()
+            .flatten()
+            .filter(|required| !checks.iter().any(|c| &c.name == *required))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    reasons.extend(
+        missing_checks
+            .iter()
+            .map(|name| format!("required check `{name}` never reported")),
+    );
+    reasons.sort();
+    Gate {
+        missing_checks,
+        reasons,
+    }
+}
+
 /// Record the checks an open pull request's snapshot carried, and post the
 /// notices they owe its thread. Returns how many were posted. Best effort: a
 /// failed write is logged and the next tick reads again.
@@ -86,6 +150,11 @@ pub async fn record_checks(
     } else {
         failing_log_tail(state, git, workspace_id, repo, pull_number, &head, &summary).await
     };
+    let read_gate = snapshot.gate.as_ref();
+    let held = read_gate.map(|read| gate(read, checks));
+    let unresolved = read_gate
+        .map(|read| read.unresolved_threads.clone())
+        .unwrap_or_default();
     let posted = match state
         .store
         .record_pull_ci(NewPullCi {
@@ -97,6 +166,17 @@ pub async fn record_checks(
             failing_jobs: summary.failing_jobs,
             log_tail,
             finished: summary.finished,
+            merge_state: read_gate.and_then(|read| read.merge_state.clone()),
+            unresolved_threads: unresolved.len() as i64,
+            unresolved_thread_links: unresolved
+                .into_iter()
+                .take(REVIEW_THREAD_LINK_LIMIT)
+                .collect(),
+            missing_checks: held
+                .as_ref()
+                .map(|held| held.missing_checks.clone())
+                .unwrap_or_default(),
+            gate_reasons: held.map(|held| held.reasons),
         })
         .await
     {
@@ -158,6 +238,58 @@ mod tests {
             state,
             job_id,
         }
+    }
+
+    fn github_gate(merge_state: &str, threads: usize, required: &[&str]) -> GithubGate {
+        GithubGate {
+            merge_state: Some(merge_state.into()),
+            unresolved_threads: (0..threads)
+                .map(|n| maidan_types::ReviewThreadLink {
+                    url: format!("https://example.test/{n}"),
+                    author: None,
+                })
+                .collect(),
+            required_checks: Some(required.iter().map(|r| r.to_string()).collect()),
+        }
+    }
+
+    #[test]
+    fn a_clean_pull_with_its_required_checks_in_is_not_held() {
+        let checks = [check("lint", GithubCheckState::Passed, Some(1))];
+        assert_eq!(
+            gate(&github_gate("CLEAN", 0, &["lint"]), &checks),
+            Gate::default()
+        );
+        assert_eq!(
+            gate(&github_gate("UNSTABLE", 0, &[]), &checks),
+            Gate::default(),
+            "a failing check that is not required holds nothing"
+        );
+    }
+
+    #[test]
+    fn threads_merge_state_and_a_missing_required_check_each_hold_it() {
+        let checks = [check("lint", GithubCheckState::Passed, Some(1))];
+        let held = gate(&github_gate("BEHIND", 2, &["lint", "e2e"]), &checks);
+        assert_eq!(held.missing_checks, vec!["e2e".to_string()]);
+        assert_eq!(
+            held.reasons,
+            vec![
+                "2 unresolved review threads".to_string(),
+                "merge state BEHIND".to_string(),
+                "required check `e2e` never reported".to_string(),
+            ]
+        );
+        let running = [
+            check("lint", GithubCheckState::Passed, Some(1)),
+            check("unit", GithubCheckState::Pending, Some(2)),
+        ];
+        assert!(
+            gate(&github_gate("CLEAN", 0, &["e2e"]), &running)
+                .missing_checks
+                .is_empty(),
+            "a required check may still report while others run"
+        );
     }
 
     #[test]
