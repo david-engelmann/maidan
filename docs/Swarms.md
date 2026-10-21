@@ -466,6 +466,18 @@ saying the same:
 A push is a new head, so its checks are news again; the next tick over the
 same head says nothing. A pull request that has closed is not read again.
 
+The same read says what else holds the pull request back, and `ci` records
+it: GitHub's `merge_state`, the unresolved review threads (a review bot's
+count too: `unresolved_threads`, and links to the first 20 with who opened
+them), and `missing_checks`, the checks the base branch's protection requires
+that never reported though every check that did has finished. Together they
+make `gate_reasons`: one sentence each for unresolved threads, a merge state
+of `BEHIND`, `BLOCKED`, `DIRTY` or `DRAFT`, and each missing check. When the
+reasons change, the thread gets **`gate_blocked`** with the new `reasons`, or
+**`gate_clear`** when none are left; a read that says the same says nothing.
+Reading the protection needs a credential that may read the repository's
+administration settings; without it no check counts as missing.
+
 ## Measuring the ramp
 
 `GET /workspaces/{id}/swarm-metrics` (`workspace:read`; `?repo=`, `?since=`,

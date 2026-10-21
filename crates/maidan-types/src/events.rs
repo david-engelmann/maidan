@@ -653,8 +653,9 @@ pub enum Event {
     /// (`rebase_needed`), or a round it delivered was built on a base far
     /// behind its branch (`stale_base`); or the change sweep read its pull
     /// request's checks: first seen open (`pr_opened`), a check failed
-    /// (`ci_failed`), every check finished (`checks_done`). Each is said
-    /// once. Locally derived: not federatable.
+    /// (`ci_failed`), every check finished (`checks_done`), what holds it
+    /// back changed (`gate_blocked`, `gate_clear`). Each is said once.
+    /// Locally derived: not federatable.
     ThreadNotice {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -684,6 +685,9 @@ pub enum Event {
         /// The checks that failed, at most 20.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         failing_jobs: Vec<String>,
+        /// What holds the pull request back (`gate_blocked`).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        reasons: Vec<String>,
     },
     /// A Pi task that stopped converging was handed to a session: its claim
     /// ended and its engine became `session`, so a Pi claim never takes it

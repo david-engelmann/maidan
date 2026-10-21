@@ -89,7 +89,82 @@ fn read(
         failing_jobs: failing.iter().map(|job| job.to_string()).collect(),
         log_tail: (!failing.is_empty()).then(|| "error: test failed".to_string()),
         finished,
+        merge_state: None,
+        unresolved_threads: 0,
+        unresolved_thread_links: Vec::new(),
+        missing_checks: Vec::new(),
+        gate_reasons: None,
     }
+}
+
+/// What holds a pull request back is said when it changes, and only then:
+/// blocked with the reasons, clear when none are left, nothing for a read
+/// that could not say (which keeps the last answer).
+async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "gate").await;
+    let thread = task(store.as_ref(), &room).await;
+    let s = store.as_ref();
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let gated = |reasons: Option<&[&str]>| NewPullCi {
+        merge_state: Some("BLOCKED".into()),
+        unresolved_threads: 1,
+        unresolved_thread_links: vec![ReviewThreadLink {
+            url: "https://example.test/r1".into(),
+            author: Some("review-bot[bot]".into()),
+        }],
+        missing_checks: vec!["e2e".into()],
+        gate_reasons: reasons.map(|r| r.iter().map(|x| x.to_string()).collect()),
+        ..read(room.ws, "aaa1", CiStatus::Pending, &[], false)
+    };
+    let gate_kinds = |posted: Vec<PostedNotice>| -> Vec<(ThreadNoticeKind, Vec<String>)> {
+        posted
+            .into_iter()
+            .filter(|p| p.notice.kind != ThreadNoticeKind::PrOpened)
+            .map(|p| (p.notice.kind, p.notice.reasons))
+            .collect()
+    };
+    let held = ["1 unresolved review thread", "merge state BLOCKED"];
+    assert_eq!(
+        gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()),
+        vec![(
+            ThreadNoticeKind::GateBlocked,
+            held.iter().map(|r| r.to_string()).collect()
+        )]
+    );
+    assert!(gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).is_empty());
+    assert!(
+        gate_kinds(s.record_pull_ci(gated(None)).await.unwrap()).is_empty(),
+        "an unread gate says nothing"
+    );
+    let ci = s.get_pull_ci(room.ws, REPO, 7).await.unwrap().unwrap();
+    assert_eq!(
+        ci.gate_reasons,
+        held.iter().map(|r| r.to_string()).collect::<Vec<_>>()
+    );
+    assert_eq!(ci.merge_state.as_deref(), Some("BLOCKED"));
+    assert_eq!(ci.unresolved_threads, 1);
+    assert_eq!(
+        ci.unresolved_thread_links[0].author.as_deref(),
+        Some("review-bot[bot]")
+    );
+    assert_eq!(ci.missing_checks, vec!["e2e".to_string()]);
+    assert_eq!(
+        gate_kinds(s.record_pull_ci(gated(Some(&[]))).await.unwrap()),
+        vec![(ThreadNoticeKind::GateClear, Vec::new())]
+    );
+    assert_eq!(
+        gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).len(),
+        1,
+        "held again after a clear is news again"
+    );
+    let notices = s.list_thread_notices(thread, 10).await.unwrap();
+    let blocked = notices
+        .iter()
+        .find(|n| n.kind == ThreadNoticeKind::GateBlocked)
+        .unwrap();
+    assert_eq!(blocked.reasons.len(), 2);
 }
 
 fn kinds(posted: &[PostedNotice]) -> Vec<ThreadNoticeKind> {
@@ -400,4 +475,5 @@ on_both_backends!(
     a_ci_read_says_each_notice_once_per_head,
     watching_makes_one_thread_and_stays_out_of_the_metrics,
     another_workspaces_pull_is_neither_watched_nor_recorded,
+    a_gate_change_is_said_once,
 );
