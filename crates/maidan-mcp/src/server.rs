@@ -1001,15 +1001,18 @@ impl McpServer {
         }
         let deadline = tools::deadline(name);
         let call = crate::call_context::CallContext::from_params(params);
-        let result =
-            tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args, &call))
-                .await
-                .map_err(|_| {
-                    McpError::Internal(format!(
-                        "tool {name} exceeded its {}s deadline",
-                        deadline.as_secs()
-                    ))
-                })??;
+        // Boxed: the dispatch future is as large as its largest tool's, and
+        // carried inline through every caller an unoptimized build ran out of
+        // a 2 MiB thread stack.
+        let dispatch = Box::pin(tools::dispatch(self, auth, name, &args, &call));
+        let result = tokio::time::timeout(deadline, dispatch)
+            .await
+            .map_err(|_| {
+                McpError::Internal(format!(
+                    "tool {name} exceeded its {}s deadline",
+                    deadline.as_secs()
+                ))
+            })??;
         self.queue_resource_updates(name, &args, &result, auth)
             .await;
         Ok(result)

@@ -952,9 +952,6 @@ pub async fn dispatch(
     check_argument_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
-    let artifacts = &server.artifacts;
-    let search = &server.search;
-    let embedding_provider = &server.embedding_provider;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,
         "create_channel" => channel::create_channel(server, auth, args).await,
@@ -1087,6 +1084,25 @@ pub async fn dispatch(
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
         "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
+        // The rest are matched in a second function, boxed: an unoptimized
+        // build gives a function a stack slot for every tool future it can
+        // build, and as one function the dispatch outgrew a 2 MiB thread.
+        other => Box::pin(dispatch_rest(server, auth, other, args, call)).await,
+    }
+}
+
+async fn dispatch_rest(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    name: &str,
+    args: &Value,
+    call: &crate::call_context::CallContext,
+) -> Result<Value, McpError> {
+    let store = &server.store;
+    let artifacts = &server.artifacts;
+    let search = &server.search;
+    let embedding_provider = &server.embedding_provider;
+    match name {
         "get_thread_steer" => thread::get_thread_steer(store, args).await,
         "wait_for_result" => thread::wait_for_result(server, auth, args).await,
         "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,
