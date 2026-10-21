@@ -131,83 +131,7 @@ impl SubmitPlan {
                 "a plan has 1 to {PLAN_MAX_CHILDREN} children, not {count}"
             ));
         }
-        let mut keys = HashSet::with_capacity(count);
-        for child in &mut self.children {
-            child.key = child.key.trim().to_string();
-            let key = &child.key;
-            if key.is_empty() {
-                return Err("every child needs a non-empty key".into());
-            }
-            if key.chars().count() > PLAN_KEY_MAX_CHARS {
-                return Err(format!(
-                    "child `{key}`: a key is at most {PLAN_KEY_MAX_CHARS} characters"
-                ));
-            }
-            if key.chars().any(char::is_control) {
-                return Err(format!("child `{key}`: a key has no control characters"));
-            }
-            if !keys.insert(key.clone()) {
-                return Err(format!("child `{key}`: keys must be unique in a plan"));
-            }
-            child.title = child.title.trim().to_string();
-            if child.title.is_empty() {
-                return Err(format!("child `{key}`: a title is required"));
-            }
-        }
-        for child in &mut self.children {
-            let key = child.key.clone();
-            let mut seen = HashSet::new();
-            child.depends_on = std::mem::take(&mut child.depends_on)
-                .into_iter()
-                .map(|dep| dep.trim().to_string())
-                .filter(|dep| seen.insert(dep.clone()))
-                .collect();
-            for dep in &child.depends_on {
-                if dep == &key {
-                    return Err(format!("child `{key}`: a child cannot depend on itself"));
-                }
-                if !keys.contains(dep) {
-                    return Err(format!(
-                        "child `{key}`: depends_on names `{dep}`, which is not a key in this plan"
-                    ));
-                }
-            }
-            child.footprint = child
-                .footprint
-                .take()
-                .map(Footprint::validated)
-                .transpose()
-                .map_err(|why| format!("child `{key}`: footprint: {why}"))?
-                .filter(|footprint| !footprint.items.is_empty());
-            child.attributes = child
-                .attributes
-                .take()
-                .map(TaskAttributes::validated)
-                .transpose()
-                .map_err(|why| format!("child `{key}`: attributes: {why}"))?;
-            child.test = child
-                .test
-                .take()
-                .map(|test| test.trim().to_string())
-                .filter(|test| !test.is_empty());
-            if let Some(test) = &child.test {
-                if test.chars().count() > PLAN_TEST_MAX_CHARS {
-                    return Err(format!(
-                        "child `{key}`: a test command is at most {PLAN_TEST_MAX_CHARS} characters"
-                    ));
-                }
-                if test.chars().any(char::is_control) {
-                    return Err(format!("child `{key}`: a test command is one line"));
-                }
-                let line = format!("Test: `{test}`");
-                child.description = Some(match child.description.take() {
-                    Some(text) if !text.trim().is_empty() => {
-                        format!("{}\n\n{line}", text.trim_end())
-                    }
-                    _ => line,
-                });
-            }
-        }
+        self.children = validate_children(self.children, DependsOn::WithinThese)?;
         if let Some(cycle) = find_cycle(&self.children) {
             return Err(format!(
                 "the plan's dependencies loop: {}",
@@ -224,42 +148,7 @@ impl SubmitPlan {
     /// goes to a session. Every error names the child.
     pub fn checked(self) -> Result<Self, String> {
         let plan = self.validated()?;
-        for child in &plan.children {
-            let key = &child.key;
-            let attributes = child.attributes.as_ref();
-            if attributes.and_then(|a| a.acceptance.as_ref()).is_none() {
-                return Err(format!(
-                    "child `{key}`: attributes.acceptance is required (how a reviewer verifies it)"
-                ));
-            }
-            if child.test.is_none() {
-                return Err(format!(
-                    "child `{key}`: test is required (the command that proves it done)"
-                ));
-            }
-            if child.footprint.is_none() {
-                return Err(format!(
-                    "child `{key}`: a footprint with at least one item is required"
-                ));
-            }
-            match attributes.and_then(|a| a.engine) {
-                None => {
-                    return Err(format!(
-                        "child `{key}`: attributes.engine is required (pi, session or human)"
-                    ))
-                }
-                Some(engine)
-                    if attributes.is_some_and(|a| a.threat_model)
-                        && engine != crate::TaskEngine::Session =>
-                {
-                    return Err(format!(
-                        "child `{key}`: a child that needs a threat model goes to a session, not {}",
-                        engine.as_str()
-                    ))
-                }
-                Some(_) => {}
-            }
-        }
+        lint_children(&plan.children)?;
         Ok(plan)
     }
 
@@ -280,31 +169,452 @@ impl SubmitPlan {
     }
 }
 
+/// The most amendments one plan takes; the next is refused.
+pub const PLAN_MAX_AMENDMENTS: i64 = 3;
+
+/// A new `depends_on` for a child already in the plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct PlanRewire {
+    pub key: String,
+    /// The keys it waits for from now on, replacing the ones it had.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+}
+
+/// A change to a submitted plan, made in one transaction by the planner
+/// holding the parent's claim: cancel unclaimed children, add children, and
+/// rewire the dependencies of unclaimed ones. A key that is cancelled and
+/// added in the same amendment is replaced: its dependents wait for the new
+/// child instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct AmendPlan {
+    /// The parent's `claim_lease_id`, as for `submit_plan`.
+    pub lease_id: ClaimLeaseId,
+    /// Keys of unclaimed children to cancel.
+    #[serde(default)]
+    pub cancel: Vec<String>,
+    /// Children to add; their `depends_on` may name any key the amended
+    /// plan keeps. Linted as `submit_plan`'s children are.
+    #[serde(default)]
+    pub add: Vec<PlanChild>,
+    #[serde(default)]
+    pub rewire: Vec<PlanRewire>,
+    /// Why, on each cancelled child's notice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// What an amendment did, as the amend routes answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PlanAmendment {
+    pub cancelled: Vec<PlannedChild>,
+    pub added: Vec<PlannedChild>,
+    /// Keys whose dependencies changed: the rewired ones, and those that
+    /// waited for a cancelled or replaced child.
+    pub rewired: Vec<String>,
+    /// Amendments this plan has taken, this one included.
+    pub amendments: i64,
+    /// The added children are held for review with the rest of the plan.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub held: bool,
+}
+
+/// What amending a plan did: the answer, and the events to publish.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendOutcome {
+    pub amendment: PlanAmendment,
+    pub events: Vec<StoredEvent>,
+}
+
+/// A child already in the plan, as the store reads it for an amendment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExistingPlanChild {
+    pub key: String,
+    pub thread_id: ThreadId,
+    /// Open with nobody holding it: the only kind an amendment may change.
+    pub unclaimed: bool,
+    pub depends_on: Vec<String>,
+}
+
+/// The writes an amendment needs, worked out from the plan as it stands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AmendmentSteps {
+    /// Children to cancel, out of the plan first so their dependents are not
+    /// blocked by the cancel.
+    pub cancel: Vec<PlannedChild>,
+    pub add: Vec<PlanChild>,
+    /// Each child whose dependencies are rewritten, with every key it now
+    /// waits for (all in the amended plan).
+    pub rewrite: Vec<(String, Vec<String>)>,
+}
+
+/// Why an amendment cannot be made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AmendRefusal {
+    /// A malformed amendment: a 400 naming the child.
+    Invalid(String),
+    /// A child that is claimed or finished cannot change: a 409.
+    Settled(String),
+}
+
+impl AmendPlan {
+    /// Check the amendment's shape and lint its new children, before the
+    /// store reads the plan. Every error names the child.
+    pub fn checked(mut self) -> Result<Self, String> {
+        self.cancel = normalized_keys(self.cancel);
+        for key in &self.cancel {
+            check_key(key)?;
+        }
+        self.add = validate_children(self.add, DependsOn::AnyKey)?;
+        lint_children(&self.add)?;
+        let mut rewired = HashSet::new();
+        for rewire in &mut self.rewire {
+            rewire.key = rewire.key.trim().to_string();
+            check_key(&rewire.key)?;
+            if !rewired.insert(rewire.key.clone()) {
+                return Err(format!("child `{}`: rewired twice", rewire.key));
+            }
+            rewire.depends_on = normalized_keys(std::mem::take(&mut rewire.depends_on));
+            if rewire.depends_on.contains(&rewire.key) {
+                return Err(format!(
+                    "child `{}`: a child cannot depend on itself",
+                    rewire.key
+                ));
+            }
+        }
+        if self.cancel.is_empty() && self.add.is_empty() && self.rewire.is_empty() {
+            return Err("an amendment cancels, adds or rewires at least one child".into());
+        }
+        if self.add.len() > PLAN_MAX_CHILDREN {
+            return Err(format!(
+                "an amendment adds at most {PLAN_MAX_CHILDREN} children"
+            ));
+        }
+        self.reason = self
+            .reason
+            .take()
+            .map(|reason| reason.trim().to_string())
+            .filter(|reason| !reason.is_empty());
+        Ok(self)
+    }
+
+    /// Whether the added children are held regardless of the plan: any that
+    /// needs a threat model is.
+    pub fn adds_need_hold(&self) -> bool {
+        self.add
+            .iter()
+            .any(|child| child.attributes.as_ref().is_some_and(|a| a.threat_model))
+    }
+
+    /// Work out the amendment against the plan as it stands: what to cancel,
+    /// what to add and which children's dependencies to rewrite, or why not.
+    pub fn steps(&self, existing: &[ExistingPlanChild]) -> Result<AmendmentSteps, AmendRefusal> {
+        let by_key: HashMap<&str, &ExistingPlanChild> =
+            existing.iter().map(|c| (c.key.as_str(), c)).collect();
+        let settled = |key: &str, what: &str| {
+            AmendRefusal::Settled(format!(
+                "child `{key}` is claimed or finished, so it cannot be {what}"
+            ))
+        };
+        let mut cancel = Vec::with_capacity(self.cancel.len());
+        for key in &self.cancel {
+            let child = by_key.get(key.as_str()).ok_or_else(|| {
+                AmendRefusal::Invalid(format!("child `{key}`: not a key in this plan"))
+            })?;
+            if !child.unclaimed {
+                return Err(settled(key, "cancelled"));
+            }
+            cancel.push(PlannedChild {
+                key: key.clone(),
+                thread_id: child.thread_id,
+            });
+        }
+        let cancelled: HashSet<&str> = self.cancel.iter().map(String::as_str).collect();
+        let added: HashSet<&str> = self.add.iter().map(|c| c.key.as_str()).collect();
+        for key in &added {
+            if by_key.contains_key(key) && !cancelled.contains(key) {
+                return Err(AmendRefusal::Invalid(format!(
+                    "child `{key}`: already in the plan; cancel it in the same amendment to replace it"
+                )));
+            }
+        }
+        let kept = |key: &str| {
+            added.contains(key) || (by_key.contains_key(key) && !cancelled.contains(key))
+        };
+        let rewires: HashMap<&str, &PlanRewire> =
+            self.rewire.iter().map(|r| (r.key.as_str(), r)).collect();
+        for rewire in &self.rewire {
+            let key = rewire.key.as_str();
+            if added.contains(key) {
+                return Err(AmendRefusal::Invalid(format!(
+                    "child `{key}`: an added child takes its depends_on where it is added"
+                )));
+            }
+            let child = by_key
+                .get(key)
+                .filter(|_| !cancelled.contains(key))
+                .ok_or_else(|| {
+                    AmendRefusal::Invalid(format!(
+                        "child `{key}`: not a key the amended plan keeps"
+                    ))
+                })?;
+            if !child.unclaimed {
+                return Err(settled(key, "rewired"));
+            }
+        }
+        // The amended plan's graph, by key: added children as given,
+        // rewired ones as rewired, the rest as they were less any cancelled
+        // (not replaced) child they waited for.
+        let mut graph: Vec<(String, Vec<String>)> = Vec::new();
+        let mut rewrite = Vec::new();
+        for child in existing
+            .iter()
+            .filter(|c| !cancelled.contains(c.key.as_str()))
+        {
+            let deps = match rewires.get(child.key.as_str()) {
+                Some(rewire) => {
+                    rewrite.push((child.key.clone(), rewire.depends_on.clone()));
+                    rewire.depends_on.clone()
+                }
+                None if child
+                    .depends_on
+                    .iter()
+                    .any(|d| cancelled.contains(d.as_str())) =>
+                {
+                    let deps: Vec<String> = child
+                        .depends_on
+                        .iter()
+                        .filter(|d| kept(d))
+                        .cloned()
+                        .collect();
+                    rewrite.push((child.key.clone(), deps.clone()));
+                    deps
+                }
+                None => child.depends_on.clone(),
+            };
+            graph.push((child.key.clone(), deps));
+        }
+        for child in &self.add {
+            graph.push((child.key.clone(), child.depends_on.clone()));
+        }
+        for (key, deps) in &graph {
+            if let Some(dep) = deps.iter().find(|dep| !kept(dep)) {
+                return Err(AmendRefusal::Invalid(format!(
+                    "child `{key}`: depends_on names `{dep}`, which the amended plan does not keep"
+                )));
+            }
+        }
+        let nodes: Vec<(&str, &[String])> = graph
+            .iter()
+            .map(|(key, deps)| (key.as_str(), deps.as_slice()))
+            .collect();
+        if let Some(cycle) = find_key_cycle(&nodes) {
+            return Err(AmendRefusal::Invalid(format!(
+                "the amended plan's dependencies loop: {}",
+                cycle.join(" -> ")
+            )));
+        }
+        if graph.len() > PLAN_MAX_CHILDREN {
+            return Err(AmendRefusal::Invalid(format!(
+                "a plan has at most {PLAN_MAX_CHILDREN} children; amended it would have {}",
+                graph.len()
+            )));
+        }
+        Ok(AmendmentSteps {
+            cancel,
+            add: self.add.clone(),
+            rewrite,
+        })
+    }
+}
+
+/// Where a child's `depends_on` keys may point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DependsOn {
+    /// Only at children in the same list (a plan as submitted).
+    WithinThese,
+    /// Also at children already in the plan, which only the store knows (an
+    /// amendment's new children); the store checks those keys.
+    AnyKey,
+}
+
+/// Check each child's key, title, dependencies, footprint, attributes and
+/// test command, returning them normalized. Every error names the child.
+fn validate_children(
+    mut children: Vec<PlanChild>,
+    depends_on: DependsOn,
+) -> Result<Vec<PlanChild>, String> {
+    let mut keys = HashSet::with_capacity(children.len());
+    for child in &mut children {
+        child.key = child.key.trim().to_string();
+        check_key(&child.key)?;
+        let key = &child.key;
+        if !keys.insert(key.clone()) {
+            return Err(format!("child `{key}`: keys must be unique in a plan"));
+        }
+        child.title = child.title.trim().to_string();
+        if child.title.is_empty() {
+            return Err(format!("child `{key}`: a title is required"));
+        }
+    }
+    for child in &mut children {
+        let key = child.key.clone();
+        child.depends_on = normalized_keys(std::mem::take(&mut child.depends_on));
+        for dep in &child.depends_on {
+            if dep == &key {
+                return Err(format!("child `{key}`: a child cannot depend on itself"));
+            }
+            if depends_on == DependsOn::WithinThese && !keys.contains(dep) {
+                return Err(format!(
+                    "child `{key}`: depends_on names `{dep}`, which is not a key in this plan"
+                ));
+            }
+        }
+        child.footprint = child
+            .footprint
+            .take()
+            .map(Footprint::validated)
+            .transpose()
+            .map_err(|why| format!("child `{key}`: footprint: {why}"))?
+            .filter(|footprint| !footprint.items.is_empty());
+        child.attributes = child
+            .attributes
+            .take()
+            .map(TaskAttributes::validated)
+            .transpose()
+            .map_err(|why| format!("child `{key}`: attributes: {why}"))?;
+        child.test = child
+            .test
+            .take()
+            .map(|test| test.trim().to_string())
+            .filter(|test| !test.is_empty());
+        if let Some(test) = &child.test {
+            if test.chars().count() > PLAN_TEST_MAX_CHARS {
+                return Err(format!(
+                    "child `{key}`: a test command is at most {PLAN_TEST_MAX_CHARS} characters"
+                ));
+            }
+            if test.chars().any(char::is_control) {
+                return Err(format!("child `{key}`: a test command is one line"));
+            }
+            let line = format!("Test: `{test}`");
+            child.description = Some(match child.description.take() {
+                Some(text) if !text.trim().is_empty() => {
+                    format!("{}\n\n{line}", text.trim_end())
+                }
+                _ => line,
+            });
+        }
+    }
+    Ok(children)
+}
+
+/// A key is non-empty, at most [`PLAN_KEY_MAX_CHARS`], and has no control
+/// characters.
+fn check_key(key: &str) -> Result<(), String> {
+    if key.is_empty() {
+        return Err("every child needs a non-empty key".into());
+    }
+    if key.chars().count() > PLAN_KEY_MAX_CHARS {
+        return Err(format!(
+            "child `{key}`: a key is at most {PLAN_KEY_MAX_CHARS} characters"
+        ));
+    }
+    if key.chars().any(char::is_control) {
+        return Err(format!("child `{key}`: a key has no control characters"));
+    }
+    Ok(())
+}
+
+/// Keys trimmed, first occurrence kept.
+fn normalized_keys(keys: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    keys.into_iter()
+        .map(|key| key.trim().to_string())
+        .filter(|key| seen.insert(key.clone()))
+        .collect()
+}
+
+/// The lint every child submitted through the API must pass (see
+/// [`SubmitPlan::checked`]).
+fn lint_children(children: &[PlanChild]) -> Result<(), String> {
+    for child in children {
+        let key = &child.key;
+        let attributes = child.attributes.as_ref();
+        if attributes.and_then(|a| a.acceptance.as_ref()).is_none() {
+            return Err(format!(
+                "child `{key}`: attributes.acceptance is required (how a reviewer verifies it)"
+            ));
+        }
+        if child.test.is_none() {
+            return Err(format!(
+                "child `{key}`: test is required (the command that proves it done)"
+            ));
+        }
+        if child.footprint.is_none() {
+            return Err(format!(
+                "child `{key}`: a footprint with at least one item is required"
+            ));
+        }
+        match attributes.and_then(|a| a.engine) {
+            None => {
+                return Err(format!(
+                    "child `{key}`: attributes.engine is required (pi, session or human)"
+                ))
+            }
+            Some(engine)
+                if attributes.is_some_and(|a| a.threat_model)
+                    && engine != crate::TaskEngine::Session =>
+            {
+                return Err(format!(
+                    "child `{key}`: a child that needs a threat model goes to a session, not {}",
+                    engine.as_str()
+                ))
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
+}
+
 /// A dependency loop as the keys around it, first key repeated at the end, or
 /// `None`. Iterative depth-first search, so a 50-child chain uses no stack.
 fn find_cycle(children: &[PlanChild]) -> Option<Vec<String>> {
+    let nodes: Vec<(&str, &[String])> = children
+        .iter()
+        .map(|c| (c.key.as_str(), c.depends_on.as_slice()))
+        .collect();
+    find_key_cycle(&nodes)
+}
+
+/// [`find_cycle`] over `(key, depends_on)` pairs.
+fn find_key_cycle(nodes: &[(&str, &[String])]) -> Option<Vec<String>> {
     #[derive(Clone, Copy, PartialEq)]
     enum Mark {
         New,
         Open,
         Done,
     }
-    let index: HashMap<&str, usize> = children
+    let index: HashMap<&str, usize> = nodes
         .iter()
         .enumerate()
-        .map(|(i, c)| (c.key.as_str(), i))
+        .map(|(i, (key, _))| (*key, i))
         .collect();
-    let edges: Vec<Vec<usize>> = children
+    let edges: Vec<Vec<usize>> = nodes
         .iter()
-        .map(|c| {
-            c.depends_on
-                .iter()
+        .map(|(_, deps)| {
+            deps.iter()
                 .filter_map(|d| index.get(d.as_str()).copied())
                 .collect()
         })
         .collect();
-    let mut mark = vec![Mark::New; children.len()];
-    for start in 0..children.len() {
+    let mut mark = vec![Mark::New; nodes.len()];
+    for start in 0..nodes.len() {
         if mark[start] != Mark::New {
             continue;
         }
@@ -320,9 +630,9 @@ fn find_cycle(children: &[PlanChild]) -> Option<Vec<String>> {
                         let from = path.iter().position(|&n| n == to).unwrap_or(0);
                         let mut cycle: Vec<String> = path[from..]
                             .iter()
-                            .map(|&n| children[n].key.clone())
+                            .map(|&n| nodes[n].0.to_string())
                             .collect();
-                        cycle.push(children[to].key.clone());
+                        cycle.push(nodes[to].0.to_string());
                         return Some(cycle);
                     }
                     Mark::New => {
@@ -452,6 +762,113 @@ mod tests {
             lease_id: ClaimLeaseId(uuid::Uuid::nil()),
             children,
         }
+    }
+
+    fn existing(key: &str, unclaimed: bool, deps: &[&str]) -> ExistingPlanChild {
+        ExistingPlanChild {
+            key: key.into(),
+            thread_id: ThreadId(uuid::Uuid::now_v7()),
+            unclaimed,
+            depends_on: deps.iter().map(|d| d.to_string()).collect(),
+        }
+    }
+
+    fn amend(cancel: &[&str], add: Vec<PlanChild>, rewire: &[(&str, &[&str])]) -> AmendPlan {
+        AmendPlan {
+            lease_id: ClaimLeaseId(uuid::Uuid::nil()),
+            cancel: cancel.iter().map(|k| k.to_string()).collect(),
+            add,
+            rewire: rewire
+                .iter()
+                .map(|(key, deps)| PlanRewire {
+                    key: key.to_string(),
+                    depends_on: deps.iter().map(|d| d.to_string()).collect(),
+                })
+                .collect(),
+            reason: None,
+        }
+    }
+
+    #[test]
+    fn a_replaced_child_keeps_its_dependents_and_a_cancelled_one_lets_them_go() {
+        let plan = [
+            existing("a", true, &[]),
+            existing("b", true, &["a"]),
+            existing("c", false, &["a"]),
+        ];
+        let replaced = amend(&["a"], vec![ready("a")], &[]).checked().unwrap();
+        let steps = replaced.steps(&plan).unwrap();
+        assert_eq!(steps.cancel.len(), 1);
+        assert_eq!(
+            steps.rewrite,
+            vec![
+                ("b".to_string(), vec!["a".to_string()]),
+                ("c".to_string(), vec!["a".to_string()])
+            ],
+            "dependents wait for the new `a`"
+        );
+        let dropped = amend(&["a"], vec![], &[]).checked().unwrap();
+        assert_eq!(
+            dropped.steps(&plan).unwrap().rewrite,
+            vec![("b".to_string(), vec![]), ("c".to_string(), vec![])],
+            "a cancelled child is waited for no longer"
+        );
+    }
+
+    #[test]
+    fn a_claimed_child_cannot_be_cancelled_or_rewired() {
+        let plan = [existing("a", true, &[]), existing("b", false, &[])];
+        for amendment in [
+            amend(&["b"], vec![], &[]),
+            amend(&[], vec![], &[("b", &["a"])]),
+        ] {
+            assert!(matches!(
+                amendment.checked().unwrap().steps(&plan),
+                Err(AmendRefusal::Settled(why)) if why.contains("child `b`")
+            ));
+        }
+    }
+
+    #[test]
+    fn an_amendment_that_loops_or_names_a_missing_key_is_refused() {
+        let plan = [existing("a", true, &[]), existing("b", true, &["a"])];
+        let looped = amend(&[], vec![], &[("a", &["b"])]).checked().unwrap();
+        assert!(matches!(
+            looped.steps(&plan),
+            Err(AmendRefusal::Invalid(why)) if why.contains("loop")
+        ));
+        let mut ghost = ready("c");
+        ghost.depends_on = vec!["ghost".into()];
+        assert!(matches!(
+            amend(&[], vec![ghost], &[]).checked().unwrap().steps(&plan),
+            Err(AmendRefusal::Invalid(why)) if why.contains("`ghost`")
+        ));
+        assert!(matches!(
+            amend(&[], vec![ready("a")], &[]).checked().unwrap().steps(&plan),
+            Err(AmendRefusal::Invalid(why)) if why.contains("already in the plan")
+        ));
+        assert!(
+            amend(&[], vec![], &[]).checked().is_err(),
+            "an empty amendment"
+        );
+        assert!(
+            amend(&[], vec![child("bare", &[])], &[]).checked().is_err(),
+            "added children are linted"
+        );
+    }
+
+    #[test]
+    fn an_added_child_may_wait_for_a_child_already_in_the_plan() {
+        let plan = [existing("a", false, &[])];
+        let mut b = ready("b");
+        b.depends_on = vec!["a".into()];
+        let steps = amend(&[], vec![b], &[])
+            .checked()
+            .unwrap()
+            .steps(&plan)
+            .unwrap();
+        assert_eq!(steps.add.len(), 1);
+        assert!(steps.rewrite.is_empty());
     }
 
     #[test]
