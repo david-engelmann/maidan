@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### A thread is found from its Slack message or pull request
+
+- **Added:** `GET /workspaces/{id}/thread-lookup` and its MCP twin `find_thread` (`workspace:read`, read-only) find the thread an external reference points at. `?repo=&pr_number=` matches the pull request a thread tracks (the change flow's, or a session's registered one), then a GitHub issue link, then a result delivery commenting on it. `?slack_channel=&slack_ts=` matches the result delivery posted as that message or into that Slack thread, and `?slack_channel=` alone matches the thread the channel is linked to. The answer is the thread, or 404 (MCP: `null`) when nothing the caller may read in its workspace matches, so a private channel's thread is not confirmed. The MCP workspace defaults to the caller's. `find` joins the read-only verbs for MCP tool names.
+
 ## [414.0.0] — 2026-10-21
 
 The first release since 413.0.0. It ships every PR merged after the 413.0.0
@@ -455,9 +459,6 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** two MCP tools, the twins of REST-only routes, so a session no longer shells out for them. `register_thread_pull` (`workspace:write` and thread access) tracks a session's pull request on its task, as `PUT /threads/{id}/pull` does: the repository must be blessed for the thread's workspace. `get_swarm_metrics` (`workspace:read`, the caller's own workspace) answers as `GET /workspaces/{id}/swarm-metrics`, with the same filters and the same GitHub refresh first. Both run the route's code (`maidan_store::change_pulls`), not a copy.
 
-### A thread is found from its Slack message or pull request
-
-- **Added:** `GET /workspaces/{id}/thread-lookup` and its MCP twin `find_thread` (`workspace:read`, read-only) find the thread an external reference points at. `?repo=&pr_number=` matches the pull request a thread tracks (the change flow's, or a session's registered one), then a GitHub issue link, then a result delivery commenting on it. `?slack_channel=&slack_ts=` matches the result delivery posted as that message or into that Slack thread, and `?slack_channel=` alone matches the thread the channel is linked to. The answer is the thread, or 404 (MCP: `null`) when nothing the caller may read in its workspace matches, so a private channel's thread is not confirmed. The MCP workspace defaults to the caller's. `find` joins the read-only verbs for MCP tool names.
 ### A session waits on any event it names
 
 - **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
