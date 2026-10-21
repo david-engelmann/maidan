@@ -68,7 +68,7 @@ pub async fn streamable(
         Err(refused) => return Ok(*refused),
     };
     if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(&state, &auth, &request).await {
-        return Ok(Json(resp).into_response());
+        return Ok(Json(*resp).into_response());
     }
 
     // Every anonymous caller is the same member, so a session one of them

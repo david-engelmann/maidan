@@ -458,14 +458,11 @@ pub(crate) fn authenticated_into_path(
     bypass || workspace_id.to_string() == wid
 }
 
-// The error is the response itself, ready to send: boxing it would only
-// move the allocation, once per refused request.
-#[allow(clippy::result_large_err)]
 async fn enforce_global(
     state: &crate::state::AppState,
     client: &str,
     is_mcp: bool,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let Some(cfg) = resolve_global(state.rate_limit_default_on) else {
         return Ok(());
     };
@@ -473,20 +470,17 @@ async fn enforce_global(
     if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
         Ok(())
     } else {
-        Err(too_many(cfg.window, cfg.max, is_mcp))
+        Err(Box::new(too_many(cfg.window, cfg.max, is_mcp)))
     }
 }
 
 /// The per-client bucket for a bearer that resolved. An invented bearer must
 /// not reach this: it would open a fresh bucket per secret.
-// The error is the response itself, ready to send: boxing it would only
-// move the allocation, once per refused request.
-#[allow(clippy::result_large_err)]
 pub(crate) async fn enforce_verified_bearer(
     state: &crate::state::AppState,
     secret: &str,
     is_mcp: bool,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     enforce_global(state, &bearer_client_key(secret), is_mcp).await
 }
 
@@ -499,28 +493,22 @@ pub(crate) fn client_ip_key(req: &Request<Body>) -> String {
     ip_client_key(req)
 }
 
-// The error is the response itself, ready to send: boxing it would only
-// move the allocation, once per refused request.
-#[allow(clippy::result_large_err)]
 pub(crate) async fn enforce_client_key(
     state: &crate::state::AppState,
     client: &str,
     is_mcp: bool,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     enforce_global(state, client, is_mcp).await
 }
 
 /// Charge `ws:{wid}` only when this caller is authenticated into that
 /// workspace. A miss spends nothing of the target's budget.
-// The error is the response itself, ready to send: boxing it would only
-// move the allocation, once per refused request.
-#[allow(clippy::result_large_err)]
 pub(crate) async fn enforce_workspace(
     state: &crate::state::AppState,
     path: &str,
     bypass: bool,
     workspace_id: &maidan_types::WorkspaceId,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     if !authenticated_into_path(bypass, workspace_id, path) {
         return Ok(());
     }
@@ -534,7 +522,11 @@ pub(crate) async fn enforce_workspace(
     if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
         Ok(())
     } else {
-        Err(too_many(cfg.window, cfg.max, is_mcp_jsonrpc_path(path)))
+        Err(Box::new(too_many(
+            cfg.window,
+            cfg.max,
+            is_mcp_jsonrpc_path(path),
+        )))
     }
 }
 

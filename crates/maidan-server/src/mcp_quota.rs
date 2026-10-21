@@ -14,14 +14,11 @@ pub fn tool_capability(request: &JsonRpcRequest) -> Option<&'static str> {
     maidan_mcp::tools::required_capability(name).ok()
 }
 
-// The error is the response itself, ready to send: boxing it would only
-// move the allocation, once per refused request.
-#[allow(clippy::result_large_err)]
 pub async fn enforce_mcp_quota(
     state: &AppState,
     auth: &AuthContext,
     request: &JsonRpcRequest,
-) -> Result<(), JsonRpcResponse> {
+) -> Result<(), Box<JsonRpcResponse>> {
     if auth.bypass {
         return Ok(());
     }
@@ -34,14 +31,14 @@ pub async fn enforce_mcp_quota(
     if let Err(err) = quota::enforce_token_quota(state, token_id, cap).await {
         let id = request.id.clone().unwrap_or(serde_json::Value::Null);
         let msg = err.detail();
-        return Err(JsonRpcResponse::failure(
+        return Err(Box::new(JsonRpcResponse::failure(
             id,
             JsonRpcError {
                 code: -32029,
                 message: msg,
                 data: None,
             },
-        ));
+        )));
     }
     Ok(())
 }
