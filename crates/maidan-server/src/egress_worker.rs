@@ -1380,7 +1380,7 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
 /// sender is configured.
 pub async fn run(state: AppState, cfg: EgressWorkerConfig) {
     tracing::info!(tick_secs = cfg.tick.as_secs(), "egress worker started");
-    crate::ops_alert::start_loop("egress_worker", cfg.tick);
+    let _watched = crate::ops_alert::start_loop("egress_worker", cfg.tick);
     loop {
         crate::ops_alert::guarded_tick("egress_worker", sweep_once(&state)).await;
         tokio::time::sleep(cfg.tick).await;

@@ -371,7 +371,7 @@ pub async fn run(store: Arc<dyn Store>, artifacts: Arc<dyn ArtifactStore>, cfg: 
         sweep_secs = cfg.sweep.as_secs(),
         "retention sweeper started"
     );
-    crate::ops_alert::start_loop("retention", cfg.sweep);
+    let _watched = crate::ops_alert::start_loop("retention", cfg.sweep);
     loop {
         crate::ops_alert::guarded_tick("retention", sweep_once(&store, &artifacts, &cfg)).await;
         tokio::time::sleep(cfg.sweep).await;

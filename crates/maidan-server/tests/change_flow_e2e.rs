@@ -114,6 +114,13 @@ struct Fake {
     /// GitHub Actions job logs, served behind the redirect GitHub answers
     /// `actions/jobs/{id}/logs` with.
     job_logs: HashMap<i64, String>,
+    /// A pull request's `mergeStateStatus`; `CLEAN` when unset.
+    merge_states: HashMap<i64, String>,
+    /// A pull request's review threads, as `(resolved, author)`.
+    review_threads: HashMap<i64, Vec<(bool, String)>>,
+    /// The status checks the base branch's protection requires; none when
+    /// unset (the protection unreadable).
+    required_checks: Option<Vec<String>>,
 }
 
 impl Fake {
@@ -529,6 +536,15 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
         "mergeCommit": fake.merge_shas.get(&number).map(|oid| json!({"oid": oid})),
         "labels": {"nodes": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>()},
         "commits": {"nodes": commits},
+        "mergeStateStatus": fake.merge_states.get(&number).cloned().unwrap_or_else(|| "CLEAN".into()),
+        "reviewThreads": {"nodes": fake.review_threads.get(&number).into_iter().flatten().enumerate().map(|(n, (resolved, author))| json!({
+            "isResolved": resolved,
+            "comments": {"nodes": [{
+                "url": format!("https://github.com/{REPO}/pull/{number}#discussion_r{n}"),
+                "author": {"login": author},
+            }]},
+        })).collect::<Vec<_>>()},
+        "baseRef": {"branchProtectionRule": fake.required_checks.as_ref().map(|checks| json!({"requiredStatusCheckContexts": checks}))},
     }}}})
 }
 
@@ -3760,6 +3776,93 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
             .iter()
             .all(|c| c.name != maidan_types::DEFAULT_WATCH_CHANNEL),
         "nothing was made in B"
+    );
+}
+
+/// The same read says what else holds a watched pull request back: an
+/// unresolved review thread (a review bot's counts), a merge state such as
+/// `BLOCKED` or `BEHIND`, a required check that never reported. Each change
+/// is said once, as `gate_blocked` with the reasons or `gate_clear`.
+#[tokio::test]
+async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 93, "feature/held");
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.checks
+            .insert(93, vec![check_run("lint", Some("SUCCESS"), Some(701))]);
+        f.required_checks = Some(vec!["lint".into(), "e2e".into()]);
+        f.review_threads.insert(
+            93,
+            vec![(false, "review-bot[bot]".into()), (true, "someone".into())],
+        );
+        f.merge_states.insert(93, "BLOCKED".into());
+    }
+    let token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (_, watched) = post_json(
+        &h,
+        &token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": 93}),
+    )
+    .await;
+    let thread: uuid::Uuid = watched["thread_id"].as_str().unwrap().parse().unwrap();
+    let gate_notices = |view: &Value| -> Vec<Value> {
+        view["notices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|n| n["kind"].as_str().unwrap().starts_with("gate_"))
+            .cloned()
+            .collect()
+    };
+
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 3);
+    let view = thread_view(&h, &token, thread).await;
+    let ci = &view["ci"][0];
+    assert_eq!(ci["merge_state"], "BLOCKED", "{view}");
+    assert_eq!(ci["unresolved_threads"], 1);
+    assert_eq!(
+        ci["unresolved_thread_links"][0]["author"],
+        "review-bot[bot]"
+    );
+    assert_eq!(ci["missing_checks"], json!(["e2e"]));
+    let held = json!([
+        "1 unresolved review thread",
+        "merge state BLOCKED",
+        "required check `e2e` never reported"
+    ]);
+    assert_eq!(ci["gate_reasons"], held);
+    let gates = gate_notices(&view);
+    assert_eq!(gates.len(), 1);
+    assert_eq!(gates[0]["kind"], "gate_blocked");
+    assert_eq!(gates[0]["reasons"], held);
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.review_threads
+            .insert(93, vec![(true, "review-bot[bot]".into())]);
+        f.merge_states.insert(93, "CLEAN".into());
+        f.required_checks = Some(vec!["lint".into()]);
+    }
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(gate_notices(&view)[0]["kind"], "gate_clear", "{view}");
+    assert!(view["ci"][0].get("gate_reasons").is_none());
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    h.fake
+        .lock()
+        .unwrap()
+        .merge_states
+        .insert(93, "BEHIND".into());
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(
+        gate_notices(&view)[0]["reasons"],
+        json!(["merge state BEHIND"])
     );
 }
 

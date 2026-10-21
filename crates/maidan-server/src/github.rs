@@ -569,6 +569,22 @@ pub struct GithubPullSnapshot {
     /// The checks on the head commit; `None` when this read did not carry
     /// them, empty when nothing has reported yet.
     pub checks: Option<Vec<GithubCheck>>,
+    /// What else decides whether it can merge; `None` when this read did not
+    /// carry it.
+    pub gate: Option<GithubGate>,
+}
+
+/// What GitHub says about whether a pull request can merge, besides its
+/// checks.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GithubGate {
+    /// `mergeStateStatus`: `CLEAN`, `BEHIND`, `BLOCKED`, `DIRTY`, ...
+    pub merge_state: Option<String>,
+    /// The unresolved review threads among the first 100, bots' included.
+    pub unresolved_threads: Vec<maidan_types::ReviewThreadLink>,
+    /// The status checks the base branch's protection requires; `None` when
+    /// the credential may not read the protection, or there is none.
+    pub required_checks: Option<Vec<String>>,
 }
 
 /// What flipping a pull request to ready did.
@@ -701,6 +717,7 @@ pub trait GithubGit: Send + Sync {
         Ok(GithubPullSnapshot {
             brief: self.pull_brief(repo, pull_number).await?,
             checks: None,
+            gate: None,
         })
     }
     /// `GET /repos/{repo}/actions/jobs/{job_id}/logs`: the last `max_bytes`
@@ -2128,6 +2145,9 @@ pub(crate) const PULL_SNAPSHOT_QUERY: &str =
 repository(owner: $owner, name: $name) { pullRequest(number: $number) { \
 id number state isDraft isCrossRepository headRefName headRefOid baseRefName \
 mergedAt closedAt mergeCommit { oid } labels(first: 50) { nodes { name } } \
+mergeStateStatus \
+reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { url author { login } } } } } \
+baseRef { branchProtectionRule { requiredStatusCheckContexts } } \
 commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes { \
 __typename \
 ... on CheckRun { name status conclusion databaseId checkSuite { app { slug } } } \
@@ -2225,7 +2245,52 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
                 .filter_map(check_from)
                 .collect()
         });
-    Ok(GithubPullSnapshot { brief, checks })
+    let text_list = |pointer: &str| {
+        pull.pointer(pointer)
+            .and_then(serde_json::Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+    };
+    let gate = GithubGate {
+        merge_state: pull
+            .get("mergeStateStatus")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        unresolved_threads: pull
+            .pointer("/reviewThreads/nodes")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|thread| {
+                thread
+                    .get("isResolved")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+            })
+            .map(|thread| maidan_types::ReviewThreadLink {
+                url: thread
+                    .pointer("/comments/nodes/0/url")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                author: thread
+                    .pointer("/comments/nodes/0/author/login")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string),
+            })
+            .collect(),
+        required_checks: text_list("/baseRef/branchProtectionRule/requiredStatusCheckContexts"),
+    };
+    Ok(GithubPullSnapshot {
+        brief,
+        checks,
+        gate: Some(gate),
+    })
 }
 
 /// One `statusCheckRollup` context as a check, or `None` for a node this
@@ -2462,6 +2527,14 @@ mod tests {
             "isCrossRepository": false, "headRefName": "feature/x", "headRefOid": head,
             "baseRefName": "main", "mergedAt": null, "closedAt": null, "mergeCommit": null,
             "labels": {"nodes": [{"name": "ready-to-merge"}]},
+            "mergeStateStatus": "BEHIND",
+            "reviewThreads": {"nodes": [
+                {"isResolved": false, "comments": {"nodes": [
+                    {"url": "https://github.com/o/r/pull/7#discussion_r1", "author": {"login": "review-bot[bot]"}}]}},
+                {"isResolved": true, "comments": {"nodes": [
+                    {"url": "https://github.com/o/r/pull/7#discussion_r2", "author": {"login": "someone"}}]}},
+            ]},
+            "baseRef": {"branchProtectionRule": {"requiredStatusCheckContexts": ["lint", "e2e"]}},
             "commits": {"nodes": [{"commit": {"oid": commit_oid,
                 "statusCheckRollup": {"contexts": {"nodes": contexts}}}}]},
         }}}})
@@ -2486,6 +2559,19 @@ mod tests {
         assert!(snapshot.brief.open && snapshot.brief.same_repo);
         assert_eq!(snapshot.brief.head_sha, "abc");
         assert_eq!(snapshot.brief.labels, vec!["ready-to-merge".to_string()]);
+        let gate = snapshot.gate.clone().unwrap();
+        assert_eq!(gate.merge_state.as_deref(), Some("BEHIND"));
+        assert_eq!(
+            gate.required_checks,
+            Some(vec!["lint".to_string(), "e2e".to_string()])
+        );
+        assert_eq!(
+            gate.unresolved_threads,
+            vec![maidan_types::ReviewThreadLink {
+                url: "https://github.com/o/r/pull/7#discussion_r1".into(),
+                author: Some("review-bot[bot]".into()),
+            }]
+        );
         let checks = snapshot.checks.unwrap();
         let read: Vec<(&str, GithubCheckState, Option<i64>)> = checks
             .iter()

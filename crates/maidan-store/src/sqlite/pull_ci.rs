@@ -45,7 +45,9 @@ pub async fn get(
     pull_number: i64,
 ) -> Result<Option<PullCi>, StoreError> {
     let row = sqlx::query(
-        "SELECT repo, pull_number, head_sha, status, failing_jobs, log_tail, updated_at
+        "SELECT repo, pull_number, head_sha, status, failing_jobs, log_tail, updated_at,
+                merge_state, unresolved_threads, unresolved_thread_links, missing_checks,
+                gate_reasons
          FROM maidan_pull_ci WHERE workspace_id = ?1 AND repo = ?2 AND pull_number = ?3",
     )
     .bind(workspace_id.0)
@@ -62,7 +64,9 @@ pub async fn list_for_thread(
     thread_id: ThreadId,
 ) -> Result<Vec<PullCi>, StoreError> {
     let rows = sqlx::query(
-        "SELECT c.repo, c.pull_number, c.head_sha, c.status, c.failing_jobs, c.log_tail, c.updated_at
+        "SELECT c.repo, c.pull_number, c.head_sha, c.status, c.failing_jobs, c.log_tail, c.updated_at,
+                c.merge_state, c.unresolved_threads, c.unresolved_thread_links, c.missing_checks,
+                c.gate_reasons
          FROM maidan_pull_ci c
          JOIN maidan_change_pulls p
            ON p.repo = c.repo AND p.pull_number = c.pull_number AND p.workspace_id = c.workspace_id
@@ -94,15 +98,29 @@ pub async fn record(pool: &SqlitePool, new: NewPullCi) -> Result<Vec<PostedNotic
     let Some(thread) = thread else {
         return Ok(Vec::new());
     };
+    let previous_gate: Option<Json<Vec<String>>> = sqlx::query_scalar(
+        "SELECT gate_reasons FROM maidan_pull_ci WHERE repo = ?1 AND pull_number = ?2",
+    )
+    .bind(&repo)
+    .bind(new.pull_number)
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten();
+    let previous_gate = previous_gate.map(|reasons| reasons.0);
     let now = Utc::now();
     sqlx::query(
         "INSERT INTO maidan_pull_ci
-             (repo, pull_number, workspace_id, head_sha, status, failing_jobs, log_tail, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             (repo, pull_number, workspace_id, head_sha, status, failing_jobs, log_tail, updated_at,
+              merge_state, unresolved_threads, unresolved_thread_links, missing_checks, gate_reasons)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT (repo, pull_number) DO UPDATE SET
              head_sha = excluded.head_sha, status = excluded.status,
              failing_jobs = excluded.failing_jobs, log_tail = excluded.log_tail,
-             updated_at = excluded.updated_at
+             updated_at = excluded.updated_at, merge_state = excluded.merge_state,
+             unresolved_threads = excluded.unresolved_threads,
+             unresolved_thread_links = excluded.unresolved_thread_links,
+             missing_checks = excluded.missing_checks,
+             gate_reasons = COALESCE(excluded.gate_reasons, maidan_pull_ci.gate_reasons)
          WHERE maidan_pull_ci.workspace_id = excluded.workspace_id",
     )
     .bind(&repo)
@@ -113,10 +131,16 @@ pub async fn record(pool: &SqlitePool, new: NewPullCi) -> Result<Vec<PostedNotic
     .bind(Json(&new.failing_jobs))
     .bind(&new.log_tail)
     .bind(now.to_rfc3339())
+    .bind(&new.merge_state)
+    .bind(new.unresolved_threads)
+    .bind(Json(&new.unresolved_thread_links))
+    .bind(Json(&new.missing_checks))
+    .bind(new.gate_reasons.as_ref().map(Json))
     .execute(&mut *tx)
     .await?;
     let mut posted = Vec::new();
-    for (notice, key) in maidan_types::ci_notices(&new, now) {
+    let change = Uuid::now_v7().to_string();
+    for (notice, key) in maidan_types::ci_notices(&new, previous_gate.as_deref(), &change, now) {
         if let Some(p) = insert_notice_in_tx(&mut tx, ThreadId(thread), notice, &key).await? {
             posted.push(p);
         }
@@ -135,6 +159,16 @@ fn ci_from(row: &sqlx::sqlite::SqliteRow) -> Result<PullCi, StoreError> {
             .ok_or_else(|| StoreError::InvalidInput(format!("unknown CI status `{status}`")))?,
         failing_jobs: row.get::<Json<Vec<String>>, _>("failing_jobs").0,
         log_tail: row.get("log_tail"),
+        merge_state: row.get("merge_state"),
+        unresolved_threads: row.get("unresolved_threads"),
+        unresolved_thread_links: row
+            .get::<Json<Vec<maidan_types::ReviewThreadLink>>, _>("unresolved_thread_links")
+            .0,
+        missing_checks: row.get::<Json<Vec<String>>, _>("missing_checks").0,
+        gate_reasons: row
+            .get::<Option<Json<Vec<String>>>, _>("gate_reasons")
+            .map(|reasons| reasons.0)
+            .unwrap_or_default(),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
     })
 }
