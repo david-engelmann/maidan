@@ -268,3 +268,45 @@ tests:
               summary: Outbox relay backlog
               description: |
                 150 unpublished outbox rows. See Production outbox relay runbook.
+
+  # A change sweep that stops ticking pages once it has been quiet for three
+  # intervals plus the five-minute hold. The loop sets the gauge when it
+  # starts, so a first tick that never finishes reads the same.
+  - interval: 1m
+    input_series:
+      - series: 'maidan_background_loop_last_tick_seconds{loop="change_sweep"}'
+        values: "0x20"
+    alert_rule_test:
+      - alertname: MaidanChangeSweepStalled
+        eval_time: 12m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              slo: background_loops
+              loop: change_sweep
+            exp_annotations:
+              summary: Change sweep stalled
+              description: |
+                No change sweep tick has finished for over 6 minutes. Check the
+                maidan-server log for the sweep's last lines and restart if it is gone.
+
+  # The first panic warns, naming the loop: the loop registers the counter at
+  # 0 when it starts, so one panic is an increase.
+  - interval: 1m
+    input_series:
+      - series: 'maidan_background_loop_panics_total{loop="change_sweep"}'
+        values: "0 1 1 1 1"
+    alert_rule_test:
+      - alertname: MaidanBackgroundLoopPanicking
+        eval_time: 4m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: background_loops
+              loop: change_sweep
+            exp_annotations:
+              summary: Background loop tick panicked
+              description: |
+                The change_sweep loop panicked in the last 15 minutes; it runs on,
+                but the work after the panic in that tick was skipped. The panic message
+                is in the maidan-server log at ERROR.

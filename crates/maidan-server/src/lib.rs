@@ -70,6 +70,7 @@ pub mod notification_router;
 pub mod oauth;
 pub mod oidc;
 pub mod openapi;
+pub mod ops_alert;
 pub mod outbox_relay;
 pub mod panic_guard;
 pub mod presence;
