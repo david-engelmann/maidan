@@ -113,6 +113,15 @@ impl Guard {
 /// feature off, only plain `tracing` is installed (OTLP is compiled out); an
 /// `OTLP_ENDPOINT` set in that build is reported and otherwise ignored.
 pub fn init(config: Config) -> Result<Guard, InitError> {
+    init_with(config, None)
+}
+
+/// [`init`], plus one more layer that sees every event the log filter lets
+/// through, such as the server's count of warnings per background loop tick.
+pub fn init_with(
+    config: Config,
+    extra: Option<Box<dyn tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync>>,
+) -> Result<Guard, InitError> {
     let filter = EnvFilter::try_new(&config.log_filter).unwrap_or_else(|_| EnvFilter::new("info"));
 
     let fmt_layer = match config.log_format {
@@ -123,7 +132,10 @@ pub fn init(config: Config) -> Result<Guard, InitError> {
             .boxed(),
     };
 
-    let registry = tracing_subscriber::registry().with(filter).with(fmt_layer);
+    let registry = tracing_subscriber::registry()
+        .with(extra)
+        .with(filter)
+        .with(fmt_layer);
 
     #[cfg(feature = "otel")]
     let guard = {
