@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [414.0.0] — 2026-10-21
+
+The first release since 413.0.0. It ships every PR merged after the 413.0.0
+tag, from #1359 through #1501: the swarm's claiming (footprints, repository
+filters, build slots, task attributes, a workspace default engine, waiting
+claims), the change flow end to end (merge queue, close on merge, notices,
+handoff, session pull requests, CI and merge-queue ingestion), plans, swarm
+metrics by engine, size, risk, provider and harness, session claimant
+recipes, operator alerts for every background loop, OAuth grant management
+and per-workspace keys, monthly partitions, and the waitlist.
+
 ### A planner submits a plan's children in one call, and the plan closes when they land
 
 - **Added:** `POST /threads/{id}/plan` and MCP `submit_plan`. The member holding a `kind: plan` thread's live claim sends its `lease_id` and 1–50 children (key, title, optional description, attributes, footprint and `depends_on` keys). Every child is made in the plan's channel with its footprint, attributes and dependency edges in one transaction (migration 0184, both backends): `maidan_thread_plans` and `maidan_thread_plan_children`.
@@ -447,6 +458,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 ### A thread is found from its Slack message or pull request
 
 - **Added:** `GET /workspaces/{id}/thread-lookup` and its MCP twin `find_thread` (`workspace:read`, read-only) find the thread an external reference points at. `?repo=&pr_number=` matches the pull request a thread tracks (the change flow's, or a session's registered one), then a GitHub issue link, then a result delivery commenting on it. `?slack_channel=&slack_ts=` matches the result delivery posted as that message or into that Slack thread, and `?slack_channel=` alone matches the thread the channel is linked to. The answer is the thread, or 404 (MCP: `null`) when nothing the caller may read in its workspace matches, so a private channel's thread is not confirmed. The MCP workspace defaults to the caller's. `find` joins the read-only verbs for MCP tool names.
+### A session waits on any event it names
+
+- **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
+- **Changed:** every MCP `wait_for_*` tool, and the log replay behind it, now decides what a caller may see with the event log's rule (`maidan_auth::EventVisibility`, moved from the server so both share one copy). That rule also hides a private channel's events that name no thread, which `wait_for_event` can ask for.
+- **Fixed:** a `wait_for_*` whose bus subscription fell behind skipped the lag marker, so a match among the dropped events was lost and a later one answered in its place. The `after_log_id` cursor then moved past the lost match. Every MCP wait now replays the log from the last event it saw (or from where it subscribed) and answers the first match. Found by red-team review.
 
 ### Operator alerts in Slack
 

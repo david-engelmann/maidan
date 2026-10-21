@@ -1017,7 +1017,18 @@ block until their signal arrives or the timeout lapses. They need
 `workspace:read`, take `timeout_ms` (default 30 000, at most 300 000) and,
 all but `wait_for_memory_block`, `since_log_id`, and return `null` when the
 window lapses with nothing to report. Each sees only its own workspace, and
-skips an event in a thread you cannot read.
+skips an event you cannot read: one in a thread or private channel you are
+not in, or in a DM you are not part of.
+
+`wait_for_event` is the general form: `kinds` names one or more event kinds
+(`["thread_landed", "claim_failed"]`; an unknown name is refused), `thread_id`
+narrows it to one thread, and `workspace_id` may be omitted. It returns
+`{log_id, event}` for the first match. Pass the last `log_id` you handled as
+`after_log_id` and it replays the log before it waits, so nothing that happened
+between two calls is missed. A loop that must see every event passes it on
+every call. `timeout_ms` 0 only replays, so it needs `after_log_id`. When a
+wait falls behind the bus and events are dropped, it reads them back from the
+log, so it still answers the first match.
 
 | Tool | Returns | Scope |
 |------|---------|-------|

@@ -246,16 +246,50 @@ pub(super) async fn wait_for_memory_block(
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
 
+    // Where a replay after a lag starts: everything at or below it was seen
+    // live or predates the subscription.
+    let mut cursor = server.store.max_event_id().await?;
+    let kinds = std::collections::HashSet::from([EventKind::MemoryBlockUpdated]);
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait as u64);
     loop {
         let item = match tokio::time::timeout_at(deadline, stream.next()).await {
             Err(_) | Ok(None) => return Ok(content_json(&Value::Null)),
             Ok(Some(item)) => item,
         };
-        let maidan_bus::BusItem::Event(env) = item else {
-            continue; // a lag marker — keep waiting on the same deadline.
+        let updated = match item {
+            maidan_bus::BusItem::Event(env) => {
+                cursor = cursor.max(env.log_id);
+                env.event
+            }
+            // The buffer overflowed and dropped events: an update to this
+            // block among them is in the log; with none, keep waiting on the
+            // same deadline.
+            maidan_bus::BusItem::Lagged { .. } => {
+                let mut found = None;
+                while let Some((log_id, event)) = super::thread::lookback_event(
+                    server.store.as_ref(),
+                    auth.workspace_id,
+                    &kinds,
+                    None,
+                    None,
+                    cursor,
+                    None,
+                )
+                .await?
+                {
+                    cursor = log_id;
+                    if matches!(&event, Event::MemoryBlockUpdated { label: l, .. } if l == &label) {
+                        found = Some(event);
+                        break;
+                    }
+                }
+                match found {
+                    Some(event) => event,
+                    None => continue,
+                }
+            }
         };
-        if let Event::MemoryBlockUpdated { label: l, .. } = &env.event {
+        if let Event::MemoryBlockUpdated { label: l, .. } = &updated {
             if l == &label {
                 let block = server
                     .store
