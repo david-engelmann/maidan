@@ -246,6 +246,7 @@
   "wait_for_blocked_resolved": "workspace:read",
   "wait_for_claim_expired": "workspace:read",
   "wait_for_claim_failed": "workspace:read",
+  "wait_for_event": "workspace:read",
   "wait_for_landed": "workspace:read",
   "wait_for_memory_block": "workspace:read",
   "wait_for_mention": "workspace:read",

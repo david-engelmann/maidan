@@ -24,6 +24,7 @@ mod change_pull;
 mod channel;
 mod delivery;
 mod event_log;
+mod event_wait;
 mod explorer;
 mod export;
 mod freeze;
@@ -194,6 +195,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "wait_for_blocked_resolved",
     "wait_for_claim_expired",
     "wait_for_claim_failed",
+    "wait_for_event",
     "wait_for_landed",
     "wait_for_memory_block",
     "wait_for_mention",
@@ -294,6 +296,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_claim_expired"
         | "wait_for_claim_failed"
         | "wait_for_landed"
+        | "wait_for_event"
         | "wait_for_blocked_resolved"
         | "get_queue_depth"
         | "get_channel_occupancy"
@@ -877,6 +880,7 @@ async fn enforce_channel_access(
         | "clear_land_gate"
         | "advise_land_gate"
         | "register_thread_pull"
+        | "wait_for_event"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -1063,6 +1067,7 @@ pub async fn dispatch(
         "wait_for_claim_failed" => thread::wait_for_claim_failed(server, auth, args).await,
         "wait_for_blocked_resolved" => thread::wait_for_blocked_resolved(server, auth, args).await,
         "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
+        "wait_for_event" => event_wait::wait_for_event(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, auth, args).await,
         "get_channel_occupancy" => thread::get_channel_occupancy(store, auth, args).await,
         "get_workspace_queue_depth" => thread::get_workspace_queue_depth(store, auth, args).await,
