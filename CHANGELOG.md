@@ -464,6 +464,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
 - **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
 
+### Swarm metrics compare providers and harnesses, not only engines
+
+- **Added:** each task in `GET /workspaces/{id}/swarm-metrics` carries the `provider` and the `harness` that spent the most on it, read from the usage its claimants reported (`report_usage`'s `evidence.provider` and `evidence.harness`). Ties go to the most reports, then the first name, so unpriced usage still names one.
+- **Added:** each repository rollup gains `by_provider` and `by_harness` splits (most tasks first, unnamed last) beside `by_engine`, and `?provider=` and `?harness=` narrow the response to one. Claude Code, Cursor, Codex and OpenRouter-served models can now be compared on the same numbers.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

@@ -78,6 +78,10 @@ struct SwarmMetricsArgs {
     size: Option<TaskSize>,
     #[serde(default)]
     linear_issue: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    harness: Option<String>,
 }
 
 /// The workspace's ramp metrics, after the same GitHub refresh the route
@@ -101,6 +105,8 @@ pub(super) async fn get_swarm_metrics(
         kind: a.kind,
         size: a.size,
         linear_issue: a.linear_issue,
+        provider: a.provider,
+        harness: a.harness,
     }
     .check()?;
     if let Some(refresher) = server.pull_refresher() {
