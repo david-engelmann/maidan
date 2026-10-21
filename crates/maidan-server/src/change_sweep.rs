@@ -148,7 +148,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
         // failing on cannot hold the front of the queue.
         if let Err(err) = state
             .store
-            .mark_change_pull_checked(&repo, pull_number, chrono::Utc::now())
+            .mark_change_pull_checked(workspace_id, &repo, pull_number, chrono::Utc::now())
             .await
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: check time not recorded");
@@ -184,7 +184,7 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
             {
                 if let Err(err) = state
                     .store
-                    .mark_change_pull_ready(&repo, pull_number, chrono::Utc::now())
+                    .mark_change_pull_ready(workspace_id, &repo, pull_number, chrono::Utc::now())
                     .await
                 {
                     tracing::warn!(repo, pull_number, error = %err, "change sweep: ready not recorded");
@@ -233,7 +233,14 @@ async fn refresh(state: &AppState, workspace_id: WorkspaceId, mut stats: Option<
         let merged_head = merged_at.map(|_| brief.head_sha.as_str());
         if let Err(err) = state
             .store
-            .close_change_pull(&repo, pull_number, merged_at, merged_head, closed_at)
+            .close_change_pull(
+                workspace_id,
+                &repo,
+                pull_number,
+                merged_at,
+                merged_head,
+                closed_at,
+            )
             .await
         {
             tracing::warn!(repo, pull_number, error = %err, "change sweep: close not recorded");
@@ -643,7 +650,11 @@ async fn settle_closed_pulls(state: &AppState, workspace_id: WorkspaceId, stats:
         }
     };
     for (repo, pull_number) in closed {
-        match state.store.settle_change_pull(&repo, pull_number).await {
+        match state
+            .store
+            .settle_change_pull(workspace_id, &repo, pull_number)
+            .await
+        {
             Ok(ChangeSettlement::Landed(stored)) => {
                 for event in stored {
                     crate::routes::publish_stored(state, event).await;
