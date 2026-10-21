@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### claim_next no longer hands out finished work whose claim lapsed
+
+An open thread that already has a stored result is skipped by `claim_next` on
+both backends and in both scopes (channel and workspace). A reviewer sending it
+back (review to open after the result) is the explicit re-queue that makes it
+claimable again.
+=======
+
+## [414.0.0] — 2026-10-21
+
+The first release since 413.0.0. It ships every PR merged after the 413.0.0
+tag, from #1359 through #1501: the swarm's claiming (footprints, repository
+filters, build slots, task attributes, a workspace default engine, waiting
+claims), the change flow end to end (merge queue, close on merge, notices,
+handoff, session pull requests, CI and merge-queue ingestion), plans, swarm
+metrics by engine, size, risk, provider and harness, session claimant
+recipes, operator alerts for every background loop, OAuth grant management
+and per-workspace keys, monthly partitions, and the waitlist.
+
 ### A planner submits a plan's children in one call, and the plan closes when they land
 
 - **Added:** `POST /threads/{id}/plan` and MCP `submit_plan`. The member holding a `kind: plan` thread's live claim sends its `lease_id` and 1–50 children (key, title, optional description, attributes, footprint and `depends_on` keys). Every child is made in the plan's channel with its footprint, attributes and dependency edges in one transaction (migration 0184, both backends): `maidan_thread_plans` and `maidan_thread_plan_children`.
@@ -401,6 +420,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Changed:** `POST /threads/{id}/plan` and MCP `submit_plan` lint each child before anything is created. Every child needs `attributes.acceptance`, `attributes.engine`, a footprint with at least one item and a new `test` command, kept at the end of its description. A child with `threat_model: true` must go to `engine: session`. A child that misses one is a 400 naming it.
 
+### A Claude Code or Cursor session can take Maidan work
+
+- **Added:** `examples/claude-code/` (a Claude Code skill) and `examples/cursor/` (a Cursor rule), sharing one runbook for a session claimant: mint a seat with `POST /workspaces/{wid}/agents` and keep its token in a file, connect over MCP with the token from an environment variable, claim with `claim_next_workspace_thread` (`engine: "session"`, `wait_ms`), renew while working, run the repository's pre-push gate, hand back a `pi.change.result/1` so Maidan opens the draft pull request, then report usage, start review and release. Follow-ups are new commits on the same branch, never a force-push. A standard-library helper builds the envelope from git and refuses what the change flow would refuse.
+- **Added:** a change the flow cannot commit (a binary file, or no text diff) has a tested fallback: the session opens its own draft and registers it with `PUT /threads/{id}/pull`, using the seat's own worker token.
+
 ### Two certificate-trust advisories handled
 
 - **Security:** RUSTSEC-2026-0382 (rustls-webpki) and RUSTSEC-2026-0381 (webpki-roots), published 2026-10-20. rustls-webpki 0.103 is bumped to the fixed 0.103.16 and webpki-roots 1.x to the fixed 1.0.10, in the root and fuzz lockfiles. The remaining rustls-webpki 0.101 is the AWS S3 client's, which has no fixed 0.101 release and only talks to a trusted endpoint. webpki-roots 0.26.11 is a shim over the fixed 1.0.10. Both are accepted with reasons in `deny.toml` and `.config/osv-scanner.toml`. The OpenHands example floors `certifi` at 2026.10.19 (GHSA-6q48-6c7w-9gw2).
@@ -416,6 +440,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** the change sweep's per-tick read of a tracked pull request also reads its merge state, its review threads and the base branch's required checks. `ci` on the thread gains `merge_state`, `unresolved_threads` (with links to the first 20 and who opened them, review bots included), `missing_checks` (required checks that never reported though the rest finished) and `gate_reasons`.
 - **Added:** thread notices `gate_blocked` (with `reasons`) and `gate_clear`, said when what holds the pull request back changes. `ThreadNotice` gains `reasons`.
+
+### Maidan follows a tracked pull request through the merge queue
+
+- **Added:** `ci` on the thread gains `merge_queue`: `ready_to_merge` (the `ready-to-merge` label), `queued`, `dequeued` with GitHub's reason, or `landed`. Entering and leaving the queue are said as the notices `merge_queued` and `merge_dequeued` (with the reason in `reasons`).
+- **Changed:** a tracked pull request closed without merging lands its task, through the same `ThreadLanded` as a merge, when its head had commits its base lacked while open and is on the base branch now (a stack tool that lands commits itself and closes the pull request). A branch reset to its base and closed, or one closed with its head nowhere on the base, is still a close without a merge.
 
 ### A large or risky plan waits for a Maintainer
 
@@ -433,6 +462,12 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 ### A session registers its pull request and reads the swarm metrics over MCP
 
 - **Added:** two MCP tools, the twins of REST-only routes, so a session no longer shells out for them. `register_thread_pull` (`workspace:write` and thread access) tracks a session's pull request on its task, as `PUT /threads/{id}/pull` does: the repository must be blessed for the thread's workspace. `get_swarm_metrics` (`workspace:read`, the caller's own workspace) answers as `GET /workspaces/{id}/swarm-metrics`, with the same filters and the same GitHub refresh first. Both run the route's code (`maidan_store::change_pulls`), not a copy.
+
+### A session waits on any event it names
+
+- **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
+- **Changed:** every MCP `wait_for_*` tool, and the log replay behind it, now decides what a caller may see with the event log's rule (`maidan_auth::EventVisibility`, moved from the server so both share one copy). That rule also hides a private channel's events that name no thread, which `wait_for_event` can ask for.
+- **Fixed:** a `wait_for_*` whose bus subscription fell behind skipped the lag marker, so a match among the dropped events was lost and a later one answered in its place. The `after_log_id` cursor then moved past the lost match. Every MCP wait now replays the log from the last event it saw (or from where it subscribed) and answers the first match. Found by red-team review.
 
 ### Operator alerts in Slack
 
@@ -459,12 +494,16 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
 - **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
 
-### claim_next no longer hands out finished work whose claim lapsed
+<<<<<<< HEAD
+### Swarm metrics compare providers and harnesses, not only engines
 
-An open thread that already has a stored result is skipped by `claim_next` on
-both backends and in both scopes (channel and workspace). A reviewer sending it
-back (review to open after the result) is the explicit re-queue that makes it
-claimable again.
+- **Added:** each task in `GET /workspaces/{id}/swarm-metrics` carries the `provider` and the `harness` that spent the most on it, read from the usage its claimants reported (`report_usage`'s `evidence.provider` and `evidence.harness`). Ties go to the most reports, then the first name, so unpriced usage still names one.
+- **Added:** each repository rollup gains `by_provider` and `by_harness` splits (most tasks first, unnamed last) beside `by_engine`, and `?provider=` and `?harness=` narrow the response to one. Claude Code, Cursor, Codex and OpenRouter-served models can now be compared on the same numbers.
+
+### The presence fan-out test waits for each subscriber's registration, not a fixed 50 ms
+
+- **Fixed:** `presence_and_typing_fan_out_between_subscribers` (#1490) read a connected member as `offline` under the coverage build. The server can take two sockets' handshakes in either order. When Bob registered before Alice, Bob showed up in Alice's snapshot, and the online diff the test waited for never came. Bob's socket, unread by the test, then hit the server's 60 s pong timeout, and the `offline` frame Alice received was real. The test now waits for each subscriber's `presence_snapshot` before going on, and every frame wait fails after 20 s rather than after the server drops a silent peer. A new test pins the other order: a member connected first is `online` in a later subscriber's snapshot.
+>>>>>>> origin/main
 
 ## [413.0.0] — 2026-10-11
 

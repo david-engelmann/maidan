@@ -75,6 +75,10 @@ pub struct SwarmMetricsFilter {
     pub size: Option<TaskSize>,
     /// Comma-separated Linear issue keys.
     pub linear_issue: Option<String>,
+    /// The provider, or the harness, that spent the most on each task, as
+    /// its usage reports named it.
+    pub provider: Option<String>,
+    pub harness: Option<String>,
 }
 
 /// [`SwarmMetricsFilter`] checked, ready for [`swarm_metrics`]. Checked
@@ -88,6 +92,8 @@ pub struct SwarmMetricsQuery {
     kind: Option<TaskKind>,
     size: Option<TaskSize>,
     issues: Option<Vec<String>>,
+    provider: Option<String>,
+    harness: Option<String>,
 }
 
 impl SwarmMetricsFilter {
@@ -125,6 +131,8 @@ impl SwarmMetricsFilter {
             kind: self.kind,
             size: self.size,
             issues,
+            provider: self.provider,
+            harness: self.harness,
         })
     }
 }
@@ -147,6 +155,12 @@ pub async fn swarm_metrics(
             query.size,
         )
         .await?;
+    if let Some(provider) = query.provider.as_deref() {
+        pulls.retain(|pull| pull.provider.as_deref() == Some(provider));
+    }
+    if let Some(harness) = query.harness.as_deref() {
+        pulls.retain(|pull| pull.harness.as_deref() == Some(harness));
+    }
     if let Some(issues) = &query.issues {
         pulls.retain(|pull| {
             pull.attributes

@@ -121,6 +121,12 @@ struct Fake {
     /// The status checks the base branch's protection requires; none when
     /// unset (the protection unreadable).
     required_checks: Option<Vec<String>>,
+    /// Pull requests in the merge queue.
+    queued: Vec<i64>,
+    /// Why a pull request last left the merge queue.
+    dequeued: HashMap<i64, String>,
+    /// Commits already on the base branch, which `compare` reports behind.
+    on_base: Vec<String>,
 }
 
 impl Fake {
@@ -402,10 +408,18 @@ async fn github(
             )
                 .into_response()
         }
-        ("GET", r) if r.starts_with("compare/") => reply(
-            StatusCode::OK,
-            json!({"ahead_by": fake.behind.unwrap_or(2)}),
-        ),
+        ("GET", r) if r.starts_with("compare/") => {
+            let head = r.rsplit("...").next().unwrap_or_default();
+            let status = if fake.on_base.iter().any(|sha| sha == head) {
+                "behind"
+            } else {
+                "diverged"
+            };
+            reply(
+                StatusCode::OK,
+                json!({"ahead_by": fake.behind.unwrap_or(2), "status": status}),
+            )
+        }
         ("GET", r) if r.starts_with("pulls/") => {
             let number: i64 = r["pulls/".len()..].parse().unwrap();
             match fake.pulls.iter().find(|p| p.number == number) {
@@ -536,6 +550,7 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
         "mergeCommit": fake.merge_shas.get(&number).map(|oid| json!({"oid": oid})),
         "labels": {"nodes": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>()},
         "commits": {"nodes": commits},
+        "ahead": {"totalCount": if fake.on_base.contains(&head) { 0 } else { 1 }},
         "mergeStateStatus": fake.merge_states.get(&number).cloned().unwrap_or_else(|| "CLEAN".into()),
         "reviewThreads": {"nodes": fake.review_threads.get(&number).into_iter().flatten().enumerate().map(|(n, (resolved, author))| json!({
             "isResolved": resolved,
@@ -545,6 +560,8 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
             }]},
         })).collect::<Vec<_>>()},
         "baseRef": {"branchProtectionRule": fake.required_checks.as_ref().map(|checks| json!({"requiredStatusCheckContexts": checks}))},
+        "mergeQueueEntry": fake.queued.contains(&number).then(|| json!({"state": "QUEUED"})),
+        "timelineItems": {"nodes": fake.dequeued.get(&number).map(|reason| json!({"__typename": "RemovedFromMergeQueueEvent", "reason": reason})).into_iter().collect::<Vec<_>>()},
     }}}})
 }
 
@@ -3993,6 +4010,140 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
     );
 }
 
+/// A watched pull request's merge-queue state is recorded each tick:
+/// labelled ready, queued, dequeued with GitHub's reason, and landed once it
+/// merges. Entering and leaving the queue are each said once.
+#[tokio::test]
+async fn a_watched_pull_says_when_it_enters_and_leaves_the_merge_queue() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 94, "feature/queued");
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.checks
+            .insert(94, vec![check_run("lint", Some("SUCCESS"), Some(801))]);
+        f.pulls.last_mut().unwrap().labels = vec!["ready-to-merge".into()];
+    }
+    let token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (_, watched) = post_json(
+        &h,
+        &token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": 94}),
+    )
+    .await;
+    let thread: uuid::Uuid = watched["thread_id"].as_str().unwrap().parse().unwrap();
+    let newest = |view: &Value| view["notices"][0].clone();
+
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 2);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(
+        view["ci"][0]["merge_queue"]["state"], "ready_to_merge",
+        "{view}"
+    );
+
+    h.fake.lock().unwrap().queued.push(94);
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["merge_queue"]["state"], "queued");
+    assert_eq!(newest(&view)["kind"], "merge_queued");
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.queued.clear();
+        f.dequeued.insert(94, "MERGE_CONFLICT".into());
+    }
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(
+        view["ci"][0]["merge_queue"],
+        json!({"state": "dequeued", "reason": "MERGE_CONFLICT"})
+    );
+    assert_eq!(newest(&view)["kind"], "merge_dequeued");
+    assert_eq!(newest(&view)["reasons"], json!(["MERGE_CONFLICT"]));
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    h.fake.lock().unwrap().pulls.last_mut().unwrap().merged_at =
+        Some("2026-10-21T12:00:00Z".into());
+    assert_eq!(change_sweep::sweep_once(&h.state).await.landed, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["merge_queue"]["state"], "landed", "{view}");
+    assert_eq!(view["state"], "closed");
+}
+
+/// A stack tool that lands a pull request's head itself and then closes the
+/// pull request lands its task, through the same `ThreadLanded` as a merge.
+#[tokio::test]
+async fn a_pull_closed_after_its_head_landed_on_the_base_lands_its_task() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(901))]);
+    change_sweep::sweep_once(&h.state).await;
+    // The tool lands the head; a tick sees the base caught up before the
+    // close, and the head still counts as having been ahead.
+    {
+        let mut f = h.fake.lock().unwrap();
+        let head = f.refs[BRANCH].clone();
+        f.on_base.push(head);
+    }
+    change_sweep::sweep_once(&h.state).await;
+    h.fake.lock().unwrap().pulls[0].closed_at = Some("2026-10-21T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (1, 0), "{stats:?}");
+    let thread = h.store.get_thread(h.a.thread_id).await.unwrap();
+    assert_eq!(thread.state, ThreadState::Closed);
+    let landed = h
+        .store
+        .list_events_after(h.a.workspace_id, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(h.a.thread_id))
+        .count();
+    assert_eq!(landed, 1);
+}
+
+/// A branch reset to its base and then closed has its head on the base too,
+/// but it was never ahead of it: that close lands nothing and is said as a
+/// close without a merge.
+#[tokio::test]
+async fn a_branch_reset_to_its_base_and_closed_does_not_land() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = {
+        let mut f = h.fake.lock().unwrap();
+        let base = h.base_sha.clone();
+        f.refs.insert(BRANCH.into(), base.clone());
+        f.on_base.push(base);
+        f.pulls[0].number
+    };
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(902))]);
+    change_sweep::sweep_once(&h.state).await;
+    h.fake.lock().unwrap().pulls[0].closed_at = Some("2026-10-21T12:00:00Z".into());
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (0, 1), "{stats:?}");
+    assert_ne!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+}
+
 /// The same read says what else holds a watched pull request back: an
 /// unresolved review thread (a review bot's counts), a merge state such as
 /// `BLOCKED` or `BEHIND`, a required check that never reported. Each change
@@ -4078,4 +4229,171 @@ async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
         gate_notices(&view)[0]["reasons"],
         json!(["merge state BEHIND"])
     );
+}
+
+// ------------------------------------------- the session claimant's fallback
+//
+// `examples/claude-code/maidan-claimant/runbook.md` tells an interactive
+// session that a change the flow cannot commit (a binary file, or no text diff
+// at all) has no branch-only delivery, and that the session opens the pull
+// request itself and registers it on the thread. These pin both halves.
+
+const BINARY_DIFF: &str = "diff --git a/assets/logo.png b/assets/logo.png\nindex 1111111..2222222 100644\nBinary files a/assets/logo.png and b/assets/logo.png differ\n";
+
+#[tokio::test]
+async fn a_change_naming_only_a_branch_or_carrying_a_binary_patch_commits_nothing() {
+    for (diff, why) in [
+        ("", "has no `diff`"),
+        (BINARY_DIFF, "binary patches are not supported"),
+    ] {
+        let h = harness().await;
+        h.allow_change().await;
+        h.route(&h.a, &change("changed", &h.base_sha, BRANCH, diff), 1)
+            .await;
+        h.drain().await;
+
+        let row = h.delivery(&h.a, "github_branch").await;
+        assert_eq!(row.status, status::SKIPPED, "{why}");
+        let reason = row.last_error.unwrap_or_default();
+        assert!(reason.contains(why), "{why:?} not in {reason}");
+        let fake = h.fake.lock().unwrap();
+        assert!(fake.writes().is_empty(), "{why}: {:?}", fake.writes());
+        assert!(!fake.refs.contains_key(BRANCH), "{why}: no branch is made");
+        assert!(fake.pulls.is_empty(), "{why}: no pull request is opened");
+    }
+}
+
+/// Send `body` to `path` as `token` through the real router.
+async fn send_json(
+    h: &Harness,
+    method: Method,
+    token: &str,
+    path: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::builder()
+            .method(method)
+            .uri(path)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn a_seat_minted_for_a_session_claims_session_work_and_registers_the_pull_it_opened() {
+    let h = harness().await;
+    h.allow_change().await;
+    for t in [&h.a, &h.b] {
+        h.store
+            .set_thread_attributes(
+                t.thread_id,
+                maidan_types::TaskAttributes {
+                    engine: Some(maidan_types::TaskEngine::Session),
+                    ..maidan_types::TaskAttributes::default()
+                },
+            )
+            .await
+            .unwrap();
+    }
+
+    // The seat: a member and a worker token from the one admin call.
+    let admin = admin_token(&h, &h.a).await;
+    let (minted, seat) = send_json(
+        &h,
+        Method::POST,
+        &admin,
+        &format!("/workspaces/{}/agents", h.a.workspace_id.0),
+        json!({"handle": "session-seat-1"}),
+    )
+    .await;
+    assert_eq!(minted, StatusCode::CREATED, "{seat}");
+    let token = seat["token"]["secret"].as_str().unwrap().to_string();
+
+    let (claimed, thread) = send_json(
+        &h,
+        Method::POST,
+        &token,
+        &format!("/workspaces/{}/threads/claim-next", h.a.workspace_id.0),
+        json!({"engine": "session", "lease_secs": 600}),
+    )
+    .await;
+    assert_eq!(claimed, StatusCode::OK, "{thread}");
+    assert_eq!(thread["id"], json!(h.a.thread_id.0), "{thread}");
+
+    // The session pushed its own branch and opened the pull request itself.
+    h.fake.lock().unwrap().pulls.push(FakePull {
+        number: 88,
+        head: "session/replace-the-logo".into(),
+        base: "dev".into(),
+        title: "[ENG-7] Replace the logo".into(),
+        body: "Fixes ENG-7\n\n## Testing\nmake prepush\n".into(),
+        draft: true,
+        labels: Vec::new(),
+        merged_at: None,
+        closed_at: None,
+    });
+    let register = |thread: ThreadId| {
+        let path = format!("/threads/{}/pull", thread.0);
+        let (h, token) = (&h, token.as_str());
+        async move {
+            send_json(
+                h,
+                Method::PUT,
+                token,
+                &path,
+                json!({"repo": REPO, "pull_number": 88}),
+            )
+            .await
+        }
+    };
+    let (registered, pull) = register(h.a.thread_id).await;
+    assert_eq!(registered, StatusCode::OK, "{pull}");
+    assert_eq!(pull["pull_number"], 88, "{pull}");
+    // Workspace B blesses the repository too, so only the thread's workspace
+    // can refuse the seat.
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+    let (elsewhere, why) = register(h.b.thread_id).await;
+    assert_eq!(
+        elsewhere,
+        StatusCode::FORBIDDEN,
+        "a seat never registers a pull request on another workspace's thread: {why}"
+    );
+
+    change_sweep::sweep_once(&h.state).await;
+    let tracked = h
+        .store
+        .list_change_pulls(h.a.workspace_id, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert!(
+        tracked
+            .iter()
+            .any(|p| p.pull_number == 88 && p.thread_id == h.a.thread_id),
+        "{tracked:?}"
+    );
+    let other = h
+        .store
+        .list_change_pulls(h.b.workspace_id, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert!(other.is_empty(), "{other:?}");
 }

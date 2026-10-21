@@ -1720,7 +1720,7 @@ fn catalog_tail() -> Vec<Value> {
         }),
         json!({
             "name": "get_swarm_metrics",
-            "description": "The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.",
+            "description": "The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size, risk, provider and harness. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.",
             "annotations": {
                 "title": "Get swarm metrics",
                 "readOnlyHint": true,
@@ -1739,9 +1739,33 @@ fn catalog_tail() -> Vec<Value> {
                     "engine": {"type": "string", "enum": ["pi", "session", "human"]},
                     "kind": {"type": "string", "enum": ["change", "plan", "review"]},
                     "size": {"type": "string", "enum": ["S", "M", "L"]},
-                    "linear_issue": {"type": "string", "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)"}
+                    "linear_issue": {"type": "string", "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)"},
+                    "provider": {"type": "string", "description": "only tasks whose spend was mostly with this model provider, as usage reports named it (anthropic, openai, xai, ...)"},
+                    "harness": {"type": "string", "description": "only tasks mostly run by this harness (claude-code, cursor, codex, ...)"}
                 },
                 "required": ["workspace_id"]
+            }
+        }),
+        json!({
+            "name": "wait_for_event",
+            "description": "Block until the first event of any of kinds that you may read arrives in your workspace (or in thread_id), and return {log_id, event}, or null when timeout_ms lapses. kinds are event kind names such as thread_landed or message_posted; an unknown name is refused. Events in a private channel you are not in, or a DM you are not part of, never wake it. Pass the log_id of the last event you handled as after_log_id to replay the log first: a loop that must see every event passes it on every call, since without it an event between two calls can be missed. timeout_ms 0 only replays, and needs after_log_id.",
+            "annotations": {
+                "title": "Wait for event",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id); omitted, the same"},
+                    "kinds": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "event kind names in snake_case"},
+                    "thread_id": {"type": "string", "format": "uuid", "description": "only events in this thread"},
+                    "timeout_ms": {"type": "integer", "minimum": 0, "maximum": 300000, "description": "how long to wait (default 30000)"},
+                    "after_log_id": {"type": "integer", "description": "replay logged events after this log_id before waiting"}
+                },
+                "required": ["kinds"]
             }
         }),
         json!({

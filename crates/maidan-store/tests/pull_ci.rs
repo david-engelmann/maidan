@@ -94,6 +94,8 @@ fn read(
         unresolved_thread_links: Vec::new(),
         missing_checks: Vec::new(),
         gate_reasons: None,
+        merge_queue: None,
+        head_ahead: false,
     }
 }
 
@@ -158,6 +160,70 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
         gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).len(),
         1,
         "held again after a clear is news again"
+    );
+    let dequeued = MergeQueue {
+        state: MergeQueueState::Dequeued,
+        reason: Some("MERGE_CONFLICT".into()),
+    };
+    let posted = s
+        .record_pull_ci(NewPullCi {
+            merge_queue: Some(dequeued.clone()),
+            ..gated(Some(&held))
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        gate_kinds(posted),
+        vec![(
+            ThreadNoticeKind::MergeDequeued,
+            vec!["MERGE_CONFLICT".to_string()]
+        )]
+    );
+    assert_eq!(
+        s.get_pull_ci(room.ws, REPO, 7)
+            .await
+            .unwrap()
+            .unwrap()
+            .merge_queue,
+        Some(dequeued)
+    );
+    // A head once ahead of its base stays so while it is the head, even
+    // after the base catches up; a new head starts over.
+    for ahead in [true, false] {
+        s.record_pull_ci(NewPullCi {
+            head_ahead: ahead,
+            ..gated(None)
+        })
+        .await
+        .unwrap();
+    }
+    assert!(s
+        .pull_head_was_ahead(room.ws, REPO, 7, "aaa1")
+        .await
+        .unwrap());
+    let other = self::room(s, "other-ahead").await;
+    assert!(
+        !s.pull_head_was_ahead(other.ws, REPO, 7, "aaa1")
+            .await
+            .unwrap(),
+        "another workspace's read says nothing"
+    );
+    s.close_change_pull(
+        REPO,
+        7,
+        Some(chrono::Utc::now()),
+        Some("aaa1"),
+        chrono::Utc::now(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        s.list_thread_pull_ci(thread).await.unwrap()[0]
+            .merge_queue
+            .as_ref()
+            .map(|queue| queue.state),
+        Some(MergeQueueState::Landed),
+        "a recorded merge reads as landed"
     );
     let notices = s.list_thread_notices(thread, 10).await.unwrap();
     let blocked = notices

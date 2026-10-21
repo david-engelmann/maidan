@@ -2886,7 +2886,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_swarm_metrics`
 
-**Get swarm metrics.** The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size and risk. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.
+**Get swarm metrics.** The workspace's swarm ramp metrics: per agent pull request the rounds it took, time to ready and to merge, whether it merged as delivered, its cost and whether it needs a look, with rollups per repository, engine, size, risk, provider and harness. Pull requests not yet seen closed are read from GitHub first when the server has a GitHub client. The twin of GET /workspaces/{id}/swarm-metrics.
 
 **Capability:** `workspace:read`
 
@@ -2907,6 +2907,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "harness": {
+      "description": "only tasks mostly run by this harness (claude-code, cursor, codex, ...)",
+      "type": "string"
+    },
     "kind": {
       "enum": [
         "change",
@@ -2917,6 +2921,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "linear_issue": {
       "description": "only tasks for these Linear issues, comma-separated (ENG-123,ENG-124)",
+      "type": "string"
+    },
+    "provider": {
+      "description": "only tasks whose spend was mostly with this model provider, as usage reports named it (anthropic, openai, xai, ...)",
       "type": "string"
     },
     "repo": {
@@ -2948,6 +2956,53 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   },
   "required": [
     "workspace_id"
+  ],
+  "type": "object"
+}
+```
+
+### `wait_for_event`
+
+**Wait for event.** Block until the first event of any of kinds that you may read arrives in your workspace (or in thread_id), and return {log_id, event}, or null when timeout_ms lapses. kinds are event kind names such as thread_landed or message_posted; an unknown name is refused. Events in a private channel you are not in, or a DM you are not part of, never wake it. Pass the log_id of the last event you handled as after_log_id to replay the log first: a loop that must see every event passes it on every call, since without it an event between two calls can be missed. timeout_ms 0 only replays, and needs after_log_id.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "after_log_id": {
+      "description": "replay logged events after this log_id before waiting",
+      "type": "integer"
+    },
+    "kinds": {
+      "description": "event kind names in snake_case",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "thread_id": {
+      "description": "only events in this thread",
+      "format": "uuid",
+      "type": "string"
+    },
+    "timeout_ms": {
+      "description": "how long to wait (default 30000)",
+      "maximum": 300000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id); omitted, the same",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kinds"
   ],
   "type": "object"
 }

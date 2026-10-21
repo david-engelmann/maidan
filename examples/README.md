@@ -61,6 +61,20 @@ does it with OpenHands' terminal and file editor, asks a person before anything
 irreversible, and hands the result back for review. `--check` verifies the
 connection and the token's tools without a model.
 
+## Claude Code and Cursor sessions
+
+[`claude-code/`](claude-code/) is a Claude Code skill and [`cursor/`](cursor/) a
+Cursor rule that let an interactive coding session take Maidan work the way an
+unattended worker does. Both follow one
+[runbook](claude-code/maidan-claimant/runbook.md): mint a seat with
+`POST /workspaces/{wid}/agents`, connect over MCP with the token from a file,
+claim with `claim_next_workspace_thread` (`engine: "session"`, `wait_ms`),
+work and run the repository's pre-push gate while renewing the claim, hand back
+a `pi.change.result/1` so Maidan opens the draft pull request, then report
+usage, start review and release. A change the flow cannot commit (binary files,
+or over the request limit) goes out as the session's own draft, registered on
+the thread with `PUT /threads/{id}/pull`.
+
 ## Semantic search with a local model
 
 [`embeddings/compose.ollama.yaml`](embeddings/compose.ollama.yaml) layers Ollama onto the
@@ -112,6 +126,7 @@ change an example or the surface it calls. Owner: the maintainer.
 | `goose/maidan-waiter.yaml` | 2026-09-25 | `main` @ `2c2a6e2f` + this change | Not run inside Goose (needs an LLM provider). The recipe's eight steps were replayed as MCP calls with an app token holding exactly its three capabilities: all ten tools it names are visible, the gate held until accepted, and the thread ended `in_review` and unclaimable | recipe schema per Goose's recipe reference, 2026-09 |
 | `openhands/maidan_claimant.py` | 2026-10-16 | `main` @ `466c2ec6`, auth on | `--check` connected over streamable HTTP (MCP `2025-11-25`) with an app token holding exactly its three capabilities: 173 tools visible, all ten the loop names among them, and the agent filtered to those ten plus `terminal` and `file_editor`. The full run wasn't done (it needs an LLM provider). The loop's calls were replayed as MCP calls with the same token: claim, acknowledge, context, post, renew, a pending gate, result, `in_review`, release, then no claimable work | openhands-sdk 1.55.1, openhands-tools 1.55.1, Python 3.12 |
 | `embeddings/compose.ollama.yaml` | 2026-10-16 | `main` @ `466c2ec6` + the embedding-provider fix (#1456), release image | `full` profile with the overlay came up healthy; the server probed 768 dimensions and ran the Postgres indexer; three semantic queries each returned the matching message first, `embedding_model: nomic-embed-text` | Docker Compose, `ollama/ollama:0.40.5`, `nomic-embed-text` |
+| `claude-code/`, `cursor/` | 2026-10-21 | `main` @ `22eadedd` + this change, auth on, SQLite | Not run inside Claude Code or Cursor (each needs a model). The runbook was replayed as its own calls with a seat minted by its command: `whoami`, a `session` claim with `wait_ms`, acknowledge, context, the opening message's `deliver_to`, the attributes over REST, footprint, renew, the helper's envelope `PUT` (the `github_branch` row armed), `PUT /threads/{id}/pull` (200; 403 for an unblessed repository), usage, `in_review`, release; the next claim answered null after its 2 s wait | Python 3.12 |
 | `cursor-mcp.json`, `claude-desktop-mcp.json` | 2026-09-25 | — | JSON shape checked in CI; not run inside Cursor or Claude Desktop | — |
 
 `a2a_interop.py` needs a token: A2A messages are posted as the token's member,
