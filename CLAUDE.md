@@ -129,7 +129,10 @@ Working beside other agents (several PRs are usually open at once):
   two identical edits into one, so after a rebase recount (`grep -o '\.route('
   crates/maidan-server/src/app.rs | wc -l`, which counts what the test counts)
   rather than trusting the number, and take
-  the next free migration number on `main` plus the open PRs.
+  the next free migration number on `main` plus the open PRs. A conflict in a
+  golden or a catalog copy (the tool count, `contracts/mcp-tool-names.json`, the
+  listings, `tools_list_*.json`, the profile golden, the MCP reference) is
+  resolved by taking either side and running `make regen`.
 - **Contracts new code must satisfy:** a route in
   `contracts/http-operation-kinds.json`; a `MAIDAN_*` name in
   `crates/maidan-env/src/lib.rs`; `NewAuditEvent` needs a
