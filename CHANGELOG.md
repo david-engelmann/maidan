@@ -401,6 +401,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Changed:** `POST /threads/{id}/plan` and MCP `submit_plan` lint each child before anything is created. Every child needs `attributes.acceptance`, `attributes.engine`, a footprint with at least one item and a new `test` command, kept at the end of its description. A child with `threat_model: true` must go to `engine: session`. A child that misses one is a 400 naming it.
 
+### A Claude Code or Cursor session can take Maidan work
+
+- **Added:** `examples/claude-code/` (a Claude Code skill) and `examples/cursor/` (a Cursor rule), sharing one runbook for a session claimant: mint a seat with `POST /workspaces/{wid}/agents` and keep its token in a file, connect over MCP with the token from an environment variable, claim with `claim_next_workspace_thread` (`engine: "session"`, `wait_ms`), renew while working, run the repository's pre-push gate, hand back a `pi.change.result/1` so Maidan opens the draft pull request, then report usage, start review and release. Follow-ups are new commits on the same branch, never a force-push. A standard-library helper builds the envelope from git and refuses what the change flow would refuse.
+- **Added:** a change the flow cannot commit (a binary file, or no text diff) has a tested fallback: the session opens its own draft and registers it with `PUT /threads/{id}/pull`, using the seat's own worker token.
+
 ### Two certificate-trust advisories handled
 
 - **Security:** RUSTSEC-2026-0382 (rustls-webpki) and RUSTSEC-2026-0381 (webpki-roots), published 2026-10-20. rustls-webpki 0.103 is bumped to the fixed 0.103.16 and webpki-roots 1.x to the fixed 1.0.10, in the root and fuzz lockfiles. The remaining rustls-webpki 0.101 is the AWS S3 client's, which has no fixed 0.101 release and only talks to a trusted endpoint. webpki-roots 0.26.11 is a shim over the fixed 1.0.10. Both are accepted with reasons in `deny.toml` and `.config/osv-scanner.toml`. The OpenHands example floors `certifi` at 2026.10.19 (GHSA-6q48-6c7w-9gw2).
