@@ -448,6 +448,12 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Fixed:** an alert Slack refused (the network not up after a host wakes, say) was dropped and its key held for 15 minutes. It is now queued and retried on every watchdog pass.
 - **Fixed:** after a host suspend, every loop looked stalled at once and alerted. A watchdog sleep that overruns three times over is now read as a suspend: every loop's clock restarts and nothing is posted.
 
+### A hung tick or a dead loop alerts, and each alert can be proven on a running stack
+
+- **Added:** a loop that has been in one tick for three of its intervals or 15 minutes, whichever is sooner, is reported stalled. An hourly loop used to get three hours.
+- **Added:** a loop whose task ends without `stop_loop` (it returned, a panic outside its tick unwound it, or it was aborted) posts `exited:<loop>` on the watchdog's next pass. `start_loop` returns a guard each loop holds for its life, and the started-and-guarded contract test now checks that every loop holds it.
+- **Added:** `MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` injects one fault into one loop after boot, so an operator can prove each alert end to end. The boot line says when one is armed. The server refuses to start with it when `MAIDAN_ENV=production`.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

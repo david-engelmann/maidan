@@ -54,10 +54,25 @@ at ERROR and runs its next tick. A loop turned off exports neither. Every backgr
 A stack that scrapes no `/metrics` can still get the two that matter most
 in Slack: set `MAIDAN_OPS_ALERT_CHANNEL` to a channel id (`C…`, not the
 name) that Maidan's Slack bot is a member of. The server then posts one line
-on boot (proof the route works, every deploy), one when a loop's tick
-panics, and one when a loop has not finished a tick for three of its
-intervals, checked every minute. The same alert posts at most once every 15
-minutes.
+on boot (proof the route works, every deploy), and one when a loop:
+
+- panics in a tick;
+- has not finished a tick for three of its intervals, or has been in one
+  tick for three intervals or 15 minutes, whichever is sooner;
+- logged a warning or an error in each of its last three ticks (it is
+  running, but failing);
+- has exited.
+
+The watchdog checks every minute. The same alert posts at most once every
+15 minutes, and a post Slack refuses is retried every minute until it goes.
+After the host sleeps (a laptop lid), every loop's clock restarts, so a
+suspend is not reported as every loop stalling.
+
+To prove each alert on a running stack, set
+`MAIDAN_OPS_FAULT=<loop>:<panic|stall|fail|exit>` (for example
+`change_sweep:fail`) and restart. The named loop takes that one fault after
+boot, and the boot line says it is armed. The server refuses to start with it
+when `MAIDAN_ENV=production`.
 
 The Prometheus rules above reach a person only through an alert route. A stack that scrapes no
 `/metrics` gets neither: wire Alertmanager (`alertmanager-routes.example.yaml`)

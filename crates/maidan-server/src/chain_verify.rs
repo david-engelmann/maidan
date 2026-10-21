@@ -86,7 +86,7 @@ pub async fn run(store: Arc<dyn Store>, interval: Duration) {
         interval_secs = interval.as_secs(),
         "event-log chain verifier started"
     );
-    crate::ops_alert::start_loop("chain_verify", interval);
+    let _watched = crate::ops_alert::start_loop("chain_verify", interval);
     loop {
         match crate::ops_alert::guarded_tick("chain_verify", sweep_once(&store)).await {
             Some((checked, broken)) if broken > 0 => {

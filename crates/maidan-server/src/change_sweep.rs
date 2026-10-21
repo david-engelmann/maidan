@@ -737,7 +737,7 @@ impl Notice<'_> {
 /// The sweep loop, spawned by `main.rs` unless turned off.
 pub async fn run(state: AppState, interval: Duration) {
     tracing::info!(interval_secs = interval.as_secs(), "change sweep started");
-    crate::ops_alert::start_loop("change_sweep", interval);
+    let _watched = crate::ops_alert::start_loop("change_sweep", interval);
     loop {
         match crate::ops_alert::guarded_tick("change_sweep", sweep_once(&state)).await {
             Some(stats) if stats != SweepStats::default() => {
