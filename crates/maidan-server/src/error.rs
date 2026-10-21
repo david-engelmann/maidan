@@ -356,6 +356,17 @@ impl From<maidan_router::RouterError> for ApiError {
     }
 }
 
+impl From<maidan_store::change_pulls::ChangePullError> for ApiError {
+    fn from(err: maidan_store::change_pulls::ChangePullError) -> Self {
+        use maidan_store::change_pulls::ChangePullError;
+        match err {
+            ChangePullError::Invalid(msg) => Self::BadRequest(msg),
+            ChangePullError::NotAllowed(msg) => Self::Forbidden(msg),
+            ChangePullError::Store(err) => err.into(),
+        }
+    }
+}
+
 impl From<StoreError> for ApiError {
     fn from(err: StoreError) -> Self {
         match err {

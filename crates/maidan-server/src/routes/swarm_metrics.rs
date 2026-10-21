@@ -5,7 +5,8 @@
 use axum::{extract::State, Extension, Json};
 use maidan_auth::capability::WORKSPACE_READ;
 use maidan_auth::AuthContext;
-use maidan_types::{FlagLimits, SwarmMetrics, WorkspaceId};
+use maidan_store::change_pulls::SwarmMetricsFilter;
+use maidan_types::{SwarmMetrics, WorkspaceId};
 
 use crate::dto::SwarmMetricsQuery;
 use crate::error::ApiError;
@@ -30,32 +31,14 @@ pub async fn register_thread_pull(
     cap(&auth, maidan_auth::capability::WORKSPACE_WRITE)?;
     let thread_id = maidan_types::ThreadId(id);
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
-    let repo = maidan_types::normalize_repo(&body.repo).map_err(ApiError::BadRequest)?;
-    if body.pull_number < 1 {
-        return Err(ApiError::BadRequest("pull_number is at least 1".into()));
-    }
-    if !maidan_store::pull_watch::repo_blessed(state.store.as_ref(), ctx.workspace_id, &repo)
-        .await?
-    {
-        return Err(ApiError::Forbidden(format!(
-            "`{repo}` is not in the workspace egress allowlist"
-        )));
-    }
-    let opened_at = state
-        .store
-        .register_change_pull(
-            ctx.workspace_id,
-            thread_id,
-            &repo,
-            body.pull_number,
-            body.claimed_at,
-        )
-        .await?;
-    Ok(Json(maidan_types::RegisteredPull {
-        repo,
-        pull_number: body.pull_number,
-        opened_at,
-    }))
+    let registered = maidan_store::change_pulls::register_session_pull(
+        state.store.as_ref(),
+        ctx.workspace_id,
+        thread_id,
+        &body,
+    )
+    .await?;
+    Ok(Json(registered))
 }
 
 /// `POST /workspaces/:id/pull-watches` — watch a pull request: the change
@@ -125,55 +108,20 @@ pub async fn get_swarm_metrics(
     cap(&auth, WORKSPACE_READ)?;
     let workspace_id = WorkspaceId(id);
     ensure_workspace(&auth, workspace_id)?;
-    let repo = query
-        .repo
-        .map(|repo| maidan_types::normalize_repo(&repo).map_err(ApiError::BadRequest))
-        .transpose()?;
-    let defaults = FlagLimits::default();
-    let limits = FlagLimits {
-        rounds: query.rounds_limit.unwrap_or(defaults.rounds).max(1),
-        behind: query.behind_limit.unwrap_or(defaults.behind).max(1),
-    };
-    let issues: Option<Vec<String>> = query.linear_issue.as_deref().map(|list| {
-        list.split(',')
-            .map(str::trim)
-            .filter(|key| !key.is_empty())
-            .map(str::to_string)
-            .collect()
-    });
-    if let Some(bad) = issues
-        .iter()
-        .flatten()
-        .find(|key| !maidan_types::is_issue_key(key))
-    {
-        return Err(ApiError::BadRequest(format!(
-            "linear_issue `{bad}` is not an issue key such as ENG-123"
-        )));
+    let query = SwarmMetricsFilter {
+        repo: query.repo,
+        since: query.since,
+        rounds_limit: query.rounds_limit,
+        behind_limit: query.behind_limit,
+        engine: query.engine,
+        kind: query.kind,
+        size: query.size,
+        linear_issue: query.linear_issue,
     }
+    .check()?;
     crate::change_sweep::refresh_open_pulls(&state, workspace_id).await;
-    let mut pulls = state
-        .store
-        .list_change_pulls(
-            workspace_id,
-            repo.as_deref(),
-            query.since,
-            query.engine,
-            query.kind,
-            query.size,
-        )
-        .await?;
-    if let Some(issues) = issues {
-        pulls.retain(|pull| {
-            pull.attributes
-                .linear_issue
-                .as_ref()
-                .or(pull.linear_issue.as_ref())
-                .is_some_and(|key| issues.contains(key))
-        });
-    }
-    Ok(Json(maidan_types::swarm_metrics(
-        pulls,
-        limits,
-        chrono::Utc::now(),
-    )))
+    let metrics =
+        maidan_store::change_pulls::swarm_metrics(state.store.as_ref(), workspace_id, &query)
+            .await?;
+    Ok(Json(metrics))
 }

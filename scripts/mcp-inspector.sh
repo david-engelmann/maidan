@@ -179,6 +179,7 @@ approval|get_approval_gate|gate_id=${gate}|get_approval_gate|gate_id=not-a-uuid|
 artifact|get_artifact_metadata|sha256=${sha}|get_artifact_metadata|sha256=not-a-digest|sha256
 automation|list_slash_commands|workspace_id=${ws}|list_slash_commands|workspace_id=not-a-uuid|workspace_id
 budget|usage_rollup|workspace_id=${ws}|usage_rollup|workspace_id=not-a-uuid|workspace_id
+change_pull|get_swarm_metrics|workspace_id=${ws}|get_swarm_metrics|workspace_id=not-a-uuid|workspace_id
 channel|list_channels|workspace_id=${ws}|list_channels|workspace_id=not-a-uuid|workspace_id
 delivery|list_result_deliveries|thread_id=${thread}|list_result_deliveries|thread_id=not-a-uuid|thread_id
 event_log|get_log_snapshot|workspace_id=${ws}|get_log_snapshot|workspace_id=not-a-uuid|workspace_id
