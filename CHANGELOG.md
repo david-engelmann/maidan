@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [414.0.0] — 2026-10-21
+
+The first release since 413.0.0. It ships every PR merged after the 413.0.0
+tag, from #1359 through #1501: the swarm's claiming (footprints, repository
+filters, build slots, task attributes, a workspace default engine, waiting
+claims), the change flow end to end (merge queue, close on merge, notices,
+handoff, session pull requests, CI and merge-queue ingestion), plans, swarm
+metrics by engine, size, risk, provider and harness, session claimant
+recipes, operator alerts for every background loop, OAuth grant management
+and per-workspace keys, monthly partitions, and the waitlist.
+
 ### A planner submits a plan's children in one call, and the plan closes when they land
 
 - **Added:** `POST /threads/{id}/plan` and MCP `submit_plan`. The member holding a `kind: plan` thread's live claim sends its `lease_id` and 1–50 children (key, title, optional description, attributes, footprint and `depends_on` keys). Every child is made in the plan's channel with its footprint, attributes and dependency edges in one transaction (migration 0184, both backends): `maidan_thread_plans` and `maidan_thread_plan_children`.
