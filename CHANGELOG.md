@@ -405,6 +405,13 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Security:** RUSTSEC-2026-0382 (rustls-webpki) and RUSTSEC-2026-0381 (webpki-roots), published 2026-10-20. rustls-webpki 0.103 is bumped to the fixed 0.103.16 and webpki-roots 1.x to the fixed 1.0.10, in the root and fuzz lockfiles. The remaining rustls-webpki 0.101 is the AWS S3 client's, which has no fixed 0.101 release and only talks to a trusted endpoint. webpki-roots 0.26.11 is a shim over the fixed 1.0.10. Both are accepted with reasons in `deny.toml` and `.config/osv-scanner.toml`. The OpenHands example floors `certifi` at 2026.10.19 (GHSA-6q48-6c7w-9gw2).
 
+### Maidan reads CI on the pull requests it tracks
+
+- **Added:** `POST /workspaces/{id}/pull-watches` and the MCP tool `watch_pull` watch any pull request by repository and number, with or without a claimant. A pull request the workspace does not track yet gets a thread, in the channel named or the workspace's `pull-requests` channel. The repository must be blessed for the workspace; one another workspace tracks is a `409`.
+- **Added:** each change-sweep tick reads every open tracked pull request in one GraphQL query (the change flow's, registered session ones and watched ones) and records `ci` on its thread (`GET /threads/{id}`, the context pack): `status` (`pending`, `success`, `failure`), `failing_jobs` and the last 4 KB of the first failing job's log, read once per failing head.
+- **Added:** thread notices `pr_opened`, `ci_failed` and `checks_done` (`status`), each said once per head commit, with a `ThreadNotice` event and a message. `ThreadNotice` gains `head_sha`, `status` and `failing_jobs`.
+- **Changed:** the sweep's per-tick read of a tracked pull request is the GraphQL query instead of `GET /pulls/{n}`. A GraphQL read no longer needs the repository in `MAIDAN_GITHUB_WRITE_REPOS`; mutations still do.
+
 ### A large or risky plan waits for a Maintainer
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.

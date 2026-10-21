@@ -148,6 +148,7 @@ pub mod media_retention;
 pub mod migrate;
 pub mod outbox;
 pub mod postgres;
+pub mod pull_watch;
 mod queue_counts;
 pub mod result_delivery;
 pub mod retention_policy;

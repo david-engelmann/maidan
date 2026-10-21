@@ -107,6 +107,13 @@ struct Fake {
     base_commits: Vec<(String, String)>,
     /// Merged pull requests the change flow did not open, as GitHub lists them.
     merged_elsewhere: Vec<Value>,
+    /// The `statusCheckRollup` contexts on a pull request's head, when a test
+    /// sets them. A pull request without any answers the snapshot query with
+    /// no commit, so the sweep records no checks for it.
+    checks: HashMap<i64, Vec<Value>>,
+    /// GitHub Actions job logs, served behind the redirect GitHub answers
+    /// `actions/jobs/{id}/logs` with.
+    job_logs: HashMap<i64, String>,
 }
 
 impl Fake {
@@ -172,6 +179,15 @@ async fn github(
     let path = urlencoding::decode(uri.path()).unwrap().into_owned();
     fake.requests.push(format!("{method} {path}"));
     let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    if method == Method::POST && path == "/graphql" {
+        return reply(StatusCode::OK, pull_snapshot(&fake, &body));
+    }
+    if let Some(job) = path.strip_prefix("/log-storage/") {
+        return match fake.job_logs.get(&job.parse::<i64>().unwrap()) {
+            Some(log) => log.clone().into_response(),
+            None => reply(StatusCode::NOT_FOUND, json!({})),
+        };
+    }
     let Some(rest) = path.strip_prefix(&format!("/repos/{REPO}/")) else {
         return reply(StatusCode::NOT_FOUND, json!({}));
     };
@@ -371,6 +387,14 @@ async fn github(
                 .collect();
             reply(StatusCode::OK, json!(open))
         }
+        ("GET", r) if r.starts_with("actions/jobs/") && r.ends_with("/logs") => {
+            let job = &r["actions/jobs/".len()..r.len() - "/logs".len()];
+            (
+                StatusCode::FOUND,
+                [("location", format!("/log-storage/{job}"))],
+            )
+                .into_response()
+        }
         ("GET", r) if r.starts_with("compare/") => reply(
             StatusCode::OK,
             json!({"ahead_by": fake.behind.unwrap_or(2)}),
@@ -448,6 +472,64 @@ async fn github(
         }
         _ => not_found(),
     }
+}
+
+/// The change sweep's GraphQL read of one pull request, answered from the
+/// fake's state as GitHub would.
+fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
+    assert!(
+        body["query"]
+            .as_str()
+            .unwrap()
+            .contains("statusCheckRollup"),
+        "the only GraphQL query this fake answers is the sweep's read"
+    );
+    assert_eq!(
+        format!(
+            "{}/{}",
+            body["variables"]["owner"].as_str().unwrap(),
+            body["variables"]["name"].as_str().unwrap()
+        ),
+        REPO
+    );
+    let number = body["variables"]["number"].as_i64().unwrap();
+    let Some(p) = fake.pulls.iter().find(|p| p.number == number) else {
+        return json!({
+            "data": {"repository": {"pullRequest": null}},
+            "errors": [{"type": "NOT_FOUND", "message": "Could not resolve to a PullRequest"}],
+        });
+    };
+    let head = fake.refs.get(&p.head).cloned().unwrap_or_default();
+    let state = if p.merged_at.is_some() {
+        "MERGED"
+    } else if p.closed_at.is_some() {
+        "CLOSED"
+    } else {
+        "OPEN"
+    };
+    let commits: Vec<Value> = fake
+        .checks
+        .get(&number)
+        .map(|contexts| {
+            json!({"commit": {"oid": head, "statusCheckRollup": {"contexts": {"nodes": contexts}}}})
+        })
+        .into_iter()
+        .collect();
+    json!({"data": {"repository": {"pullRequest": {
+        "id": format!("PR_{number}"),
+        "number": number,
+        "state": state,
+        "isDraft": p.draft,
+        "isCrossRepository": false,
+        "headRefName": p.head,
+        "headRefOid": head,
+        "baseRefName": p.base,
+        "mergedAt": p.merged_at,
+        "closedAt": p.closed_at.clone().or_else(|| p.merged_at.clone()),
+        "mergeCommit": fake.merge_shas.get(&number).map(|oid| json!({"oid": oid})),
+        "labels": {"nodes": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>()},
+        "commits": {"nodes": commits},
+    }}}})
 }
 
 async fn spawn_github(fake: Shared) -> String {
@@ -2636,6 +2718,7 @@ async fn a_pull_request_closed_without_merging_leaves_its_task_open_with_one_not
             rebase_notices: 0,
             linear_notices: 0,
             handed_off: 0,
+            ci_notices: 0,
         }
     );
     assert_eq!(
@@ -3338,4 +3421,344 @@ async fn a_rebase_conflict_is_skipped_with_no_write_and_the_reply_names_the_path
     ] {
         assert!(text.contains(part), "{part:?} not in {text}");
     }
+}
+
+// ---------------------------------------------------------------- CI watch
+
+/// A token for `member` in `workspace` that may read and write it.
+async fn write_token(h: &Harness, workspace_id: WorkspaceId, member_id: MemberId) -> String {
+    let secret = maidan_auth::TokenSecret::generate();
+    h.store
+        .create_api_token(maidan_types::NewApiToken {
+            workspace_id,
+            member_id,
+            app_installation_id: None,
+            token_hash: maidan_auth::hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![
+                maidan_auth::capability::WORKSPACE_READ.into(),
+                maidan_auth::capability::WORKSPACE_WRITE.into(),
+            ],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    secret.as_str().to_string()
+}
+
+async fn post_json(h: &Harness, token: &str, path: &str, body: Value) -> (StatusCode, Value) {
+    let response = tower::ServiceExt::oneshot(
+        maidan_server::router(h.state.clone()),
+        axum::http::Request::post(path)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// A check run as GitHub's `statusCheckRollup` lists it; `job` makes it a
+/// GitHub Actions job whose log can be read.
+fn check_run(name: &str, conclusion: Option<&str>, job: Option<i64>) -> Value {
+    json!({
+        "__typename": "CheckRun",
+        "name": name,
+        "status": if conclusion.is_some() { "COMPLETED" } else { "IN_PROGRESS" },
+        "conclusion": conclusion,
+        "databaseId": job.unwrap_or(9_000),
+        "checkSuite": {"app": {"slug": if job.is_some() { "github-actions" } else { "other-ci" }}},
+    })
+}
+
+/// An open pull request someone else's tool opened, on a head of its own.
+fn open_someone_elses_pull(h: &Harness, number: i64, head: &str) -> String {
+    let mut f = h.fake.lock().unwrap();
+    let base = f.refs["dev"].clone();
+    let sha = f.commit_files(&[("README.md", head)], vec![base]);
+    f.refs.insert(head.into(), sha.clone());
+    f.pulls.push(FakePull {
+        number,
+        head: head.into(),
+        base: "dev".into(),
+        title: "Someone else's change".into(),
+        body: String::new(),
+        draft: false,
+        labels: Vec::new(),
+        merged_at: None,
+        closed_at: None,
+    });
+    sha
+}
+
+async fn thread_view(h: &Harness, token: &str, thread: uuid::Uuid) -> Value {
+    get_json(h, token, &format!("/threads/{thread}")).await.1
+}
+
+fn log_reads(h: &Harness, job: i64) -> usize {
+    let wanted = format!("GET /repos/{REPO}/actions/jobs/{job}/logs");
+    h.fake
+        .lock()
+        .unwrap()
+        .requests
+        .iter()
+        .filter(|r| **r == wanted)
+        .count()
+}
+
+/// A pull request nobody claimed, watched by repository and number: Maidan
+/// makes it a thread, and each sweep records its checks there and says, once
+/// per head, that it opened, that a check failed (with the end of the
+/// failing job's log, read once) and that the checks are done.
+#[tokio::test]
+async fn a_watched_pull_says_it_opened_failed_and_finished_once_per_head() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 90, "feature/someone");
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(90, vec![check_run("lint", None, Some(501))]);
+    let token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let watch = format!("/workspaces/{}/pull-watches", h.a.workspace_id.0);
+
+    let (status, watched) = post_json(
+        &h,
+        &token,
+        &watch,
+        json!({"repo": "https://github.com/Example/App", "pull_number": 90}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{watched}");
+    assert_eq!(watched["created"], true);
+    assert_eq!(watched["repo"], REPO);
+    let thread: uuid::Uuid = watched["thread_id"].as_str().unwrap().parse().unwrap();
+    let (_, again) = post_json(&h, &token, &watch, json!({"repo": REPO, "pull_number": 90})).await;
+    assert_eq!(again["created"], false);
+    assert_eq!(again["thread_id"], watched["thread_id"]);
+    let (status, _) = post_json(
+        &h,
+        &token,
+        &watch,
+        json!({"repo": "other/repo", "pull_number": 90}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "only a blessed repository");
+
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["status"], "pending", "{view}");
+    assert_eq!(view["notices"][0]["kind"], "pr_opened", "{view}");
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    let log = format!(
+        "{}\nerror: assertion failed in lint\n",
+        "noise line\n".repeat(600)
+    );
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.job_logs.insert(501, log);
+        f.checks.insert(
+            90,
+            vec![
+                check_run("lint", Some("FAILURE"), Some(501)),
+                check_run("unit tests", None, Some(502)),
+            ],
+        );
+    }
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    let ci = &view["ci"][0];
+    assert_eq!(ci["status"], "failure", "{view}");
+    assert_eq!(ci["failing_jobs"], json!(["lint"]));
+    let tail = ci["log_tail"].as_str().unwrap();
+    assert!(tail.len() <= maidan_types::LOG_TAIL_BYTES, "{}", tail.len());
+    assert!(
+        tail.ends_with("error: assertion failed in lint\n"),
+        "{tail}"
+    );
+    assert!(tail.starts_with("noise line"), "starts at a line: {tail:?}");
+    assert_eq!(view["notices"][0]["kind"], "ci_failed");
+    assert_eq!(log_reads(&h, 501), 1);
+
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.ci_notices,
+        0,
+        "unit tests still run: nothing new"
+    );
+    assert_eq!(
+        log_reads(&h, 501),
+        1,
+        "the log is read once per failing head"
+    );
+    assert!(thread_view(&h, &token, thread).await["ci"][0]["log_tail"].is_string());
+
+    h.fake.lock().unwrap().checks.insert(
+        90,
+        vec![
+            check_run("lint", Some("FAILURE"), Some(501)),
+            check_run("unit tests", Some("SUCCESS"), Some(502)),
+        ],
+    );
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["notices"][0]["kind"], "checks_done");
+    assert_eq!(view["notices"][0]["status"], "failure");
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
+
+    // A push: the new head's checks are news; the open is not said again.
+    let new_head = {
+        let mut f = h.fake.lock().unwrap();
+        let parent = f.refs["feature/someone"].clone();
+        let sha = f.commit_files(&[("README.md", "fixed")], vec![parent]);
+        f.refs.insert("feature/someone".into(), sha.clone());
+        f.checks.insert(
+            90,
+            vec![
+                check_run("lint", Some("SUCCESS"), Some(503)),
+                check_run("unit tests", Some("SUCCESS"), Some(504)),
+                json!({"__typename": "StatusContext", "context": "ci/legacy", "state": "SUCCESS"}),
+            ],
+        );
+        sha
+    };
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
+    let view = thread_view(&h, &token, thread).await;
+    assert_eq!(view["ci"][0]["head_sha"], new_head);
+    assert_eq!(view["ci"][0]["status"], "success");
+    assert!(view["ci"][0].get("log_tail").is_none(), "{view}");
+    assert_eq!(view["notices"][0]["kind"], "checks_done");
+    assert_eq!(view["notices"][0]["status"], "success");
+    assert_eq!(view["notices"][0]["head_sha"], new_head);
+
+    let said: Vec<String> = h
+        .store
+        .list_messages(ThreadId(thread), 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|m| m.body)
+        .collect();
+    assert_eq!(said.len(), 4, "one message per notice: {said:?}");
+    assert!(
+        said.iter().any(
+            |body| body.starts_with("CI failed on example/app#90") && body.ends_with(": lint.")
+        ),
+        "{said:?}"
+    );
+}
+
+/// A pull request the change flow opened is watched without anyone asking:
+/// its task's thread hears that it failed.
+#[tokio::test]
+async fn a_change_flow_pull_is_watched_without_asking() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.fake.lock().unwrap().checks.insert(
+        number,
+        vec![check_run("unit tests", Some("TIMED_OUT"), Some(601))],
+    );
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 3);
+    let mut kinds: Vec<&str> = h
+        .store
+        .list_thread_notices(h.a.thread_id, 10)
+        .await
+        .unwrap()
+        .iter()
+        .map(|n| n.kind.as_str())
+        .collect();
+    kinds.sort_unstable();
+    assert_eq!(kinds, vec!["checks_done", "ci_failed", "pr_opened"]);
+    let ci = h.store.list_thread_pull_ci(h.a.thread_id).await.unwrap();
+    assert_eq!(ci[0].failing_jobs, vec!["unit tests".to_string()]);
+    assert_eq!(ci[0].log_tail, None, "a job with no log leaves no tail");
+}
+
+/// Tenant B cannot watch a pull request tenant A watches, read A's watch
+/// thread, or watch into A's workspace or channel, even with the
+/// repository blessed for B as well.
+#[tokio::test]
+async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    h.allow(h.b.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 91, "feature/shared");
+    let a_token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let b_token = write_token(&h, h.b.workspace_id, h.b.member_id).await;
+    let (status, watched) = post_json(
+        &h,
+        &a_token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": 91}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let thread = watched["thread_id"].as_str().unwrap();
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(91, vec![check_run("lint", Some("FAILURE"), None)]);
+    change_sweep::sweep_once(&h.state).await;
+
+    let b_watch = format!("/workspaces/{}/pull-watches", h.b.workspace_id.0);
+    let (status, _) = post_json(
+        &h,
+        &b_token,
+        &b_watch,
+        json!({"repo": REPO, "pull_number": 91}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "A tracks it");
+    let (status, _) = post_json(
+        &h,
+        &b_token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": 92}),
+    )
+    .await;
+    assert!(
+        matches!(status, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "not B's workspace: {status}"
+    );
+    let (status, _) = post_json(
+        &h,
+        &b_token,
+        &b_watch,
+        json!({"repo": REPO, "pull_number": 92, "channel_id": h.a.channel_id.0}),
+    )
+    .await;
+    assert!(
+        matches!(status, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "not B's channel: {status}"
+    );
+    let (status, body) = get_json(&h, &b_token, &format!("/threads/{thread}")).await;
+    assert!(
+        matches!(status, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "{status} {body}"
+    );
+    assert!(body.get("ci").is_none(), "{body}");
+    assert!(
+        h.store
+            .list_channels(h.b.workspace_id)
+            .await
+            .unwrap()
+            .iter()
+            .all(|c| c.name != maidan_types::DEFAULT_WATCH_CHANNEL),
+        "nothing was made in B"
+    );
 }

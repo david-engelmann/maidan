@@ -377,6 +377,7 @@
   {"method":"DELETE","path":"/workspaces/{id}/legal-holds/{hold_id}","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/linear-claim-comments","kind":"reads"},
   {"method":"PUT","path":"/workspaces/{id}/linear-claim-comments","kind":"changes"},
+  {"method":"POST","path":"/workspaces/{id}/pull-watches","kind":"changes"},
   {"method":"POST","path":"/workspaces/{id}/purge","kind":"changes"},
   {"method":"DELETE","path":"/workspaces/{id}/repo-pauses","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/repo-pauses","kind":"reads"},

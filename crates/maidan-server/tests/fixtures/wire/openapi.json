@@ -1461,6 +1461,15 @@
         ],
         "type": "object"
       },
+      "CiStatus": {
+        "description": "How the checks on a pull request's head stand.",
+        "enum": [
+          "pending",
+          "success",
+          "failure"
+        ],
+        "type": "string"
+      },
       "ClaimLeaseId": {
         "format": "uuid",
         "type": "string"
@@ -1829,6 +1838,13 @@
               "string",
               "null"
             ]
+          },
+          "ci": {
+            "description": "Where the checks stand on the thread's tracked pull requests. In the\ntail for the same reason as the notices: each sweep tick may rewrite\nit.",
+            "items": {
+              "$ref": "#/components/schemas/PullCi"
+            },
+            "type": "array"
           },
           "claim_lease_id": {
             "oneOf": [
@@ -6317,6 +6333,53 @@
         ],
         "type": "object"
       },
+      "PullCi": {
+        "description": "Where the checks on a tracked pull request stand, as the change sweep last\nread them.",
+        "properties": {
+          "failing_jobs": {
+            "description": "The checks that failed on this head, at most 20.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "head_sha": {
+            "description": "The head commit the checks ran on.",
+            "type": "string"
+          },
+          "log_tail": {
+            "description": "The last 4 KB of the first failing job's log, when GitHub Actions ran\nit. Read once, when the head first fails.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Lowercase `owner/name`.",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CiStatus"
+          },
+          "updated_at": {
+            "description": "When the sweep last read it.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "pull_number",
+          "head_sha",
+          "status",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "PushKeys": {
         "description": "The keys of a browser `PushSubscription` — base64url.",
         "properties": {
@@ -9266,6 +9329,13 @@
           "channel_id": {
             "$ref": "#/components/schemas/ChannelId"
           },
+          "ci": {
+            "description": "Where the checks stand on each pull request tracked on the thread, as\nthe change sweep last read them while it was open. Read by a single-thread\nread; empty on the list reads.",
+            "items": {
+              "$ref": "#/components/schemas/PullCi"
+            },
+            "type": "array"
+          },
           "claim_lease_id": {
             "oneOf": [
               {
@@ -9772,6 +9842,20 @@
             "format": "date-time",
             "type": "string"
           },
+          "failing_jobs": {
+            "description": "The checks that failed, at most [`crate::pull_ci::FAILING_JOB_LIMIT`].",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "head_sha": {
+            "description": "The head commit a CI notice is about.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "kind": {
             "$ref": "#/components/schemas/ThreadNoticeKind"
           },
@@ -9783,13 +9867,24 @@
             "type": "array"
           },
           "pull_number": {
-            "description": "The merged pull request (`rebase_needed`) or the one the stale round\nwent to (`stale_base`).",
+            "description": "The merged pull request (`rebase_needed`), the one the stale round\nwent to (`stale_base`), or the one the checks ran on.",
             "format": "int64",
             "type": "integer"
           },
           "repo": {
             "description": "Lowercase `owner/name`.",
             "type": "string"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CiStatus",
+                "description": "How the checks stand (`checks_done`, `ci_failed`)."
+              }
+            ]
           }
         },
         "required": [
@@ -9804,7 +9899,10 @@
         "description": "What a change notice tells a thread's worker.",
         "enum": [
           "rebase_needed",
-          "stale_base"
+          "stale_base",
+          "pr_opened",
+          "ci_failed",
+          "checks_done"
         ],
         "type": "string"
       },
@@ -10892,6 +10990,69 @@
           "consented_at",
           "status",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "WatchPull": {
+        "description": "Watch a pull request: track it, so each change-sweep tick reads its\nchecks, and give it a thread when it has none.",
+        "properties": {
+          "channel_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChannelId",
+                "description": "Where a new watch thread goes; the workspace's `pull-requests`\nchannel (created when missing) when omitted. Unused when the pull\nrequest already has a thread."
+              }
+            ]
+          },
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "`owner/name`; it must be in the workspace's GitHub egress allowlist.",
+            "type": "string"
+          },
+          "title": {
+            "description": "A new watch thread's title; `owner/name#N` when omitted.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "repo",
+          "pull_number"
+        ],
+        "type": "object"
+      },
+      "WatchedPull": {
+        "description": "A watched pull request and the thread its notices go to.",
+        "properties": {
+          "created": {
+            "description": "Whether this call made the thread; `false` when the pull request was\nalready tracked on one.",
+            "type": "boolean"
+          },
+          "pull_number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Lowercase `owner/name`.",
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        "required": [
+          "repo",
+          "pull_number",
+          "thread_id",
+          "created"
         ],
         "type": "object"
       },
@@ -31472,6 +31633,98 @@
         "summary": "Turn the claim and release comments on a task's Linear issue on or off (off by default)",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/pull-watches": {
+      "post": {
+        "operationId": "watch_pull",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchPull"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchedPull"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Watch a pull request's checks, on its thread or a new one",
+        "tags": [
+          "threads"
         ]
       }
     },

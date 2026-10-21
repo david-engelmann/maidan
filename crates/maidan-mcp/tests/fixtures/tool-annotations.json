@@ -4238,6 +4238,25 @@
         "reason": "confined to Maidan's database"
       }
     },
+    "watch_pull": {
+      "title": "Watch pull request",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "watch_pull INSERTs the tracked pull request and, when it has no thread, a thread (and the pull-requests channel when missing) with their created events"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "only adds rows; a pull request already tracked is answered with its thread, never moved or replaced"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "a repeat answers the thread the first call made (created: false) and creates nothing"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "the call writes only Maidan's own store; GitHub is read later by the change sweep, not by this call"
+      }
+    },
     "submit_plan": {
       "title": "Submit plan",
       "readOnlyHint": {

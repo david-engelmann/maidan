@@ -238,6 +238,7 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{id}/swarm-metrics",
             get(routes::get_swarm_metrics),
         )
+        .route("/workspaces/{id}/pull-watches", post(routes::watch_pull))
         .route(
             "/workspaces/{id}/repo-pauses",
             get(routes::list_repo_pauses)

@@ -55,6 +55,7 @@ fn thread(channel_id: ChannelId) -> Thread {
         human_wait: None,
         notices: Vec::new(),
         plan_state: None,
+        ci: Vec::new(),
         created_by: None,
     }
 }

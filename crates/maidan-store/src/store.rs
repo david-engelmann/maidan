@@ -2387,6 +2387,48 @@ pub trait AssignmentStore: Send + Sync {
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<maidan_types::ThreadNotice>, StoreError>;
+    /// The thread `repo`#`pull_number` is tracked on in `workspace_id`;
+    /// `None` when no workspace tracks it. One another workspace tracks is a
+    /// conflict, as registering it would be.
+    async fn tracked_pull_thread(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<ThreadId>, StoreError>;
+    /// Track a pull request only to read its checks, on the thread made for
+    /// it: the sweep reads it, but it is no agent task, so the swarm metrics
+    /// and the outcome checks leave it out. A pull request another thread or
+    /// workspace tracks is a conflict, as for [`Self::register_change_pull`].
+    async fn watch_change_pull(
+        &self,
+        workspace_id: WorkspaceId,
+        thread_id: ThreadId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<chrono::DateTime<chrono::Utc>, StoreError>;
+    /// The change sweep's last read of a tracked pull request's checks in
+    /// `workspace_id`.
+    async fn get_pull_ci(
+        &self,
+        workspace_id: WorkspaceId,
+        repo: &str,
+        pull_number: i64,
+    ) -> Result<Option<maidan_types::PullCi>, StoreError>;
+    /// Record a read of a tracked pull request's checks and the notices it
+    /// owes its thread (`pr_opened`, `ci_failed`, `checks_done`), each said
+    /// once, with their `ThreadNotice` events, in one transaction. Nothing
+    /// when the pull request is not tracked in the read's workspace.
+    async fn record_pull_ci(
+        &self,
+        new: maidan_types::NewPullCi,
+    ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// The last reads of the checks on every pull request tracked on a
+    /// thread.
+    async fn list_thread_pull_ci(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<maidan_types::PullCi>, StoreError>;
     /// The slots in a workspace: each with a capacity, and each in use, with
     /// how many live claims hold it.
     async fn list_slots(

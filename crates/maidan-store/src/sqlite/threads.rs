@@ -1494,6 +1494,7 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         human_wait: None,
         notices: Vec::new(),
         plan_state: None,
+        ci: Vec::new(),
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })
 }

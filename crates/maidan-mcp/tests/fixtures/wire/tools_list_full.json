@@ -2453,6 +2453,48 @@
         "idempotentHint": true,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Watch pull request"
+      },
+      "description": "Watch a GitHub pull request's checks. Each change-sweep tick reads it once and records on its thread where the checks on its head stand (ci: status pending, success or failure, the failing jobs, and the last 4 KB of the first failing job's log), with a notice when it is first seen open (pr_opened), when a check fails (ci_failed) and when every check has finished (checks_done), each once per head commit. A pull request the workspace already tracks (one the change flow opened, or a session registered on its task) answers with its thread (created: false); otherwise a thread is made for it in channel_id, or the workspace's public pull-requests channel. The repository must be on this workspace's github or github_branch egress allowlist. A pull request another workspace tracks is a conflict.",
+      "inputSchema": {
+        "properties": {
+          "channel_id": {
+            "description": "where a new watch thread goes; the workspace's pull-requests channel when omitted",
+            "format": "uuid",
+            "type": "string"
+          },
+          "pull_number": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repo": {
+            "description": "owner/name",
+            "type": "string"
+          },
+          "title": {
+            "description": "a new watch thread's title; owner/name#N when omitted",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "repo",
+          "pull_number"
+        ],
+        "type": "object"
+      },
+      "name": "watch_pull"
+    },
+    {
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Submit plan"
       },
       "description": "Make every child of a plan thread in one call. Only the member holding the plan thread's live claim can plan it, passing that claim's lease_id. Each child has a key unique in the plan, a title, and optional description, attributes, footprint and depends_on (keys of other children in the same plan). Children are created in the plan thread's channel with their dependency edges, so dependents stay off the queue until what they depend on lands; a child that closes without landing blocks its dependents, and the plan thread closes itself when its last child lands. Every child repository must be on this workspace's github_branch egress allowlist. A bad child, an unknown or cyclic depends_on, or too many children for the spawn budget creates nothing. Calling again from the same claim with the same keys answers the children already made (replayed: true); any other plan on a thread that has children is refused with error code -32010 and data.children.",
