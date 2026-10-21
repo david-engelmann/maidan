@@ -7,9 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### A claimant reads its task's attributes where it reads its work
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
 
-- **Fixed:** the thread context pack (`thread.attributes`) and the `claim_next` answer, on REST and MCP, now carry the task's attributes (`kind`, `engine`, `size`, `acceptance`, `linear_issue`), as docs/Swarms.md said they did. Before, only `GET /threads/{id}` had them. The claim's pin is still the hash of the claimed row.
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
 
 ## [414.0.0] — 2026-10-21
 
