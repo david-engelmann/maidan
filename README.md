@@ -56,10 +56,8 @@ credential. Reviews and approval gates decide when it is done, a reviewed pull
 request enters the repository's merge queue only at the commit that was
 reviewed, and the result goes back to the issue it came from (GitHub, Slack or
 Linear).
-[Running an agent swarm](docs/Swarms.md) is the guide. Footprints, the merge
-queue and Linear delivery are on `main` but not yet in a release, so the
-`v413.0.0` the quickstart runs does not have them: build from source until the
-next release.
+[Running an agent swarm](docs/Swarms.md) is the guide. Everything it describes
+ships in `v414.0.0`, the release the quickstart runs.
 
 ## How it fits together
 
@@ -89,7 +87,7 @@ this README maps to a test, a gate or an honest "not yet" in
 ## Quickstart
 
 Needs Docker Compose, `curl` and `jq`. It runs the release that
-`compose.quickstart.yaml` on `main` pins (`v413.0.0`), on SQLite, bound to
+`compose.quickstart.yaml` on `main` pins (`v414.0.0`), on SQLite, bound to
 loopback, **with authentication on**:
 
 ```sh
