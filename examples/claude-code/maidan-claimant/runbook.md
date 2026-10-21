@@ -96,7 +96,7 @@ Call `claim_next_workspace_thread` with:
 | `workspace_id` | `whoami`'s `workspace_id` |
 | `engine` | `"session"`: only work routed to sessions |
 | `repo` | this checkout's `owner/name` (`gh repo view --json nameWithOwner -q .nameWithOwner`), so you are handed only work for this repository |
-| `lease_secs` | `900` |
+| `lease_secs` | `3600`: an hour. Size it to your longest step (step 4) |
 | `wait_ms` | `300000`, the most it takes (the range is 0 to 300000) |
 
 `wait_ms` is the wake-up. With nothing claimable, the call waits up to that
@@ -166,9 +166,31 @@ not `pending`. Go ahead only on `accepted`. Never approve your own request.
 4. Do the work. Commit locally as you go; never push this branch (Maidan
    writes it).
 5. Keep the claim alive: `renew_claim` with `thread_id`, `claim_lease_id` and
-   `lease_secs: 900` every five minutes and before every long step (a build,
-   a full test run). If a renewal is refused, the claim is gone (it lapsed,
-   or the task was cancelled): stop and deliver nothing.
+   `lease_secs` every fifteen minutes or so. **A command that blocks your
+   session cannot renew**, and a pre-push gate can take most of an hour on a
+   busy machine (it waits for a build slot). Before any long step, renew with a
+   lease longer than the step can take: `lease_secs: 3600`, or more, up to
+   `604800`. For a step with no known bound, renew in the background while it
+   runs, over REST with the token on stdin, and stop the loop after:
+
+   ```sh
+   ( while sleep 600; do
+       printf 'Authorization: Bearer %s\n' "$(cat ~/.config/maidan/seat-token)" \
+       | curl -sS --fail-with-body -X POST "$MAIDAN_URL/threads/$THREAD_ID/claim/renew" \
+           -H @- -H 'Content-Type: application/json' \
+           -d "{\"claim_lease_id\":\"$CLAIM_LEASE_ID\",\"lease_secs\":1800}" >/dev/null \
+       || break
+     done ) & RENEWER=$!
+   make prepush; status=$?
+   kill "$RENEWER" 2>/dev/null
+   ```
+
+   If a renewal is refused, the claim is gone: it lapsed, or the task was
+   cancelled. If the work is already done and committed locally, read the
+   thread (`get_thread`). When it is still `open` with no assignee, take it
+   back with `claim_thread` (the thread's id), acknowledge, and deliver the
+   same local commit. Anything else (cancelled, closed, held by another
+   claimant): post what you had on the thread, deliver nothing, and stop.
 6. Show progress with a short `post_message` on the thread now and then. A
    live claim with no progress for fifteen minutes shows as stalled.
 7. **Run the repository's pre-push gate** before you deliver: `make prepush`
