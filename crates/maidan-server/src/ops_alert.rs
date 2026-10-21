@@ -179,13 +179,7 @@ mod tests {
             Some("C0123ABCDE")
         );
         assert!(channel_from_raw(Some("G01234567".into())).is_some());
-        for raw in [
-            "#release-soundcheck",
-            "release-soundcheck",
-            "C01",
-            "c0aqqdvfsfm",
-            "",
-        ] {
+        for raw in ["#ops-alerts", "ops-alerts", "C01", "c0123abcde", ""] {
             assert!(channel_from_raw(Some(raw.into())).is_none(), "{raw}");
         }
         assert!(channel_from_raw(None).is_none());
