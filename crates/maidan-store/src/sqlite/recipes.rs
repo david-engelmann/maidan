@@ -121,6 +121,7 @@ async fn insert_thread(
     .fetch_one(&mut **tx)
     .await?;
     let thread = threads::row_to_thread(&row)?;
+    super::thread_attributes::apply_default_engine_on(tx, thread.id).await?;
     let event = Event::ThreadCreated {
         occurred_at: Utc::now(),
         workspace_id,

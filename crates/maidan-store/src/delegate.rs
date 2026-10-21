@@ -2764,6 +2764,23 @@ macro_rules! store_delegations {
                 linear_notices::set_enabled(self.pool(), workspace_id, enabled, audit).await
             }
 
+            async fn workspace_default_engine(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::TaskEngine>, StoreError> {
+                thread_attributes::default_engine(self.pool(), workspace_id).await
+            }
+
+            async fn set_workspace_default_engine(
+                &self,
+                workspace_id: WorkspaceId,
+                engine: Option<maidan_types::TaskEngine>,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                thread_attributes::set_default_engine(self.pool(), workspace_id, engine, audit)
+                    .await
+            }
+
             async fn list_linear_notices_due(
                 &self,
                 workspace_id: WorkspaceId,

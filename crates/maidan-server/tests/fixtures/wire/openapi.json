@@ -8952,7 +8952,7 @@
         "type": "object"
       },
       "TaskEngine": {
-        "description": "Who or what a task is meant for. `None` on a thread means nobody has\nrouted it yet; an engine-filtered claim never takes a thread routed to\nanother engine, nor one not routed at all.",
+        "description": "Who or what a task is meant for. `None` on a thread means nobody has\nrouted it yet; an engine-filtered claim never takes a thread routed to\nanother engine, nor one not routed at all. A workspace's default engine\nroutes the threads created there without one.",
         "enum": [
           "pi",
           "session",
@@ -11213,6 +11213,22 @@
           "channels",
           "threads"
         ],
+        "type": "object"
+      },
+      "WorkspaceDefaultEngine": {
+        "description": "A workspace's default engine: where a thread created there with no\nengine named is routed. `None` leaves such threads unrouted, and an\nengine-filtered claim never takes them.",
+        "properties": {
+          "engine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskEngine"
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "WorkspaceEraseResult": {
@@ -30369,6 +30385,155 @@
         "summary": "List a workspace's live claims and their footprints",
         "tags": [
           "threads"
+        ]
+      }
+    },
+    "/workspaces/{id}/default-engine": {
+      "get": {
+        "operationId": "get_workspace_default_engine",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDefaultEngine"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The engine a thread created in the workspace with none named is routed to",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "put": {
+        "operationId": "set_workspace_default_engine",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceDefaultEngine"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDefaultEngine"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set or clear (null) the engine a thread created with none named is routed to",
+        "tags": [
+          "workspaces"
         ]
       }
     },

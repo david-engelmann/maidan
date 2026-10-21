@@ -93,6 +93,7 @@ pub async fn submit(
         if let Some(attributes) = &child.attributes {
             thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
         }
+        thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
         sqlx::query(
             "INSERT INTO maidan_thread_plan_children (parent_thread_id, child_key, child_thread_id, position)
              VALUES (?, ?, ?, ?)",

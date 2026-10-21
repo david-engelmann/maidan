@@ -2283,6 +2283,20 @@ pub trait AssignmentStore: Send + Sync {
         enabled: bool,
         audit: NewAuditEvent,
     ) -> Result<(), StoreError>;
+    /// The engine a thread created in the workspace with none named is
+    /// routed to; `None` leaves such threads unrouted.
+    async fn workspace_default_engine(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::TaskEngine>, StoreError>;
+    /// Set or clear the workspace's default engine, audited in the same
+    /// transaction. Applies to threads created afterwards.
+    async fn set_workspace_default_engine(
+        &self,
+        workspace_id: WorkspaceId,
+        engine: Option<maidan_types::TaskEngine>,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
     /// Claim and release notices due on tasks' Linear issues in a workspace.
     async fn list_linear_notices_due(
         &self,

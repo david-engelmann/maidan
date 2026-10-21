@@ -211,7 +211,20 @@ pub(super) async fn create_thread(
         )
         .await;
     let (mut thread, stored) = super::message::observe_spawn_denial(server, actor, created).await?;
-    thread.attributes = Some(attributes.unwrap_or_default());
+    // With no engine given, the workspace's default engine may have routed
+    // the thread, so the attributes it reads with are read back.
+    thread.attributes = Some(match attributes {
+        Some(given) if given.engine.is_some() => given,
+        given => match server.store.get_thread_attributes(thread.id).await {
+            Ok(stored) => stored,
+            Err(err) => {
+                // The thread is committed: failing the call now would
+                // invite a retry that makes a second one.
+                tracing::warn!(error = %err, thread = %thread.id.0, "reading a new thread's attributes back failed");
+                given.unwrap_or_default()
+            }
+        },
+    });
     server.publish_stored(&stored).await;
     Ok(content_json(&thread))
 }

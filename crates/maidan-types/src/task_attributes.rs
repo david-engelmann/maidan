@@ -45,7 +45,8 @@ impl TaskKind {
 
 /// Who or what a task is meant for. `None` on a thread means nobody has
 /// routed it yet; an engine-filtered claim never takes a thread routed to
-/// another engine, nor one not routed at all.
+/// another engine, nor one not routed at all. A workspace's default engine
+/// routes the threads created there without one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -103,6 +104,15 @@ impl TaskSize {
             _ => None,
         }
     }
+}
+
+/// A workspace's default engine: where a thread created there with no
+/// engine named is routed. `None` leaves such threads unrouted, and an
+/// engine-filtered claim never takes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WorkspaceDefaultEngine {
+    pub engine: Option<TaskEngine>,
 }
 
 /// The most characters an acceptance criterion may hold.

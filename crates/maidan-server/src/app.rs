@@ -199,6 +199,11 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{id}/linear-claim-comments",
             get(routes::get_linear_claim_comments).merge(put(routes::set_linear_claim_comments)),
         )
+        .route(
+            "/workspaces/{id}/default-engine",
+            get(routes::get_workspace_default_engine)
+                .merge(put(routes::set_workspace_default_engine)),
+        )
         .route("/workspaces/{id}", delete(routes::erase_workspace))
         .route("/workspaces/{id}/audit", get(routes::list_workspace_audit))
         .route("/workspaces/{id}/export", get(routes::export_workspace))

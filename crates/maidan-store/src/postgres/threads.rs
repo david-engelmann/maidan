@@ -20,6 +20,9 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
     let id = Uuid::now_v7();
+    // The thread and its default routing land together, so no claimer sees
+    // it unrouted.
+    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -31,9 +34,12 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     .bind(new.title.as_deref())
     .bind(new.description.as_deref())
     .bind(new.created_by.map(|m| m.0))
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
-    row_to_thread(&row)
+    let thread = row_to_thread(&row)?;
+    super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    tx.commit().await?;
+    Ok(thread)
 }
 
 /// Insert a thread and append its `ThreadCreated` event in one transaction —
@@ -107,6 +113,7 @@ pub async fn create_with_footprint(
     if let Some(attributes) = &attributes {
         super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
     }
+    super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
     if let Some((priority, by)) = priority_by {
         sqlx::query(
             "INSERT INTO maidan_thread_priorities (thread_id, priority, set_by, set_at) VALUES ($1, $2, $3, NOW())",
