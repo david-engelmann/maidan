@@ -612,6 +612,9 @@ fn apply_route_defaults(
     if path == "/threads/{id}/result" && method == "PUT" {
         return b.json(&json!({ "result": { "ok": true } }));
     }
+    if path == "/operator/workspaces/{id}/suspension" && method == "PUT" {
+        return b.json(&json!({ "reason": "probe" }));
+    }
     if path == "/threads/{id}/pull" && method == "PUT" {
         return b.json(&json!({ "repo": "example/app", "pull_number": 1 }));
     }

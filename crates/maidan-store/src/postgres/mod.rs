@@ -85,6 +85,7 @@ mod slack_links;
 mod slash_commands;
 mod spawn;
 mod status;
+mod suspensions;
 mod tap_cursor;
 mod task_schedules;
 mod thread_attributes;

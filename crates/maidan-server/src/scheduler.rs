@@ -56,6 +56,11 @@ pub async fn sweep_once(state: &AppState) -> u32 {
             }
         };
         fired += 1;
+        // Claimed and advanced, so a suspended workspace's run is skipped,
+        // not owed: it does not fire a backlog when the suspension lifts.
+        if crate::suspension::held_back(state, sched.workspace_id).await {
+            continue;
+        }
         match sched.recipe_id {
             Some(_) => fire_recipe(state, &sched).await,
             None => fire_bare_thread(state, &sched).await,

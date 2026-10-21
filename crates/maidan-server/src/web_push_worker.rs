@@ -81,6 +81,14 @@ pub async fn sweep_due(state: &AppState, now: DateTime<Utc>) -> WebPushSweepStat
                 break;
             }
         };
+        if crate::suspension::member_held_back(state, entry.member_id).await {
+            let until = Utc::now() + crate::suspension::SUSPENDED_DEFER;
+            if let Err(e) = state.store.defer_web_push(entry.id, until).await {
+                tracing::warn!(error = %e, id = %entry.id, "web push worker: deferral failed");
+            }
+            stats.deferred += 1;
+            continue;
+        }
         let subs = match state.store.list_push_subscriptions(entry.member_id).await {
             Ok(subs) => subs,
             Err(err) => {

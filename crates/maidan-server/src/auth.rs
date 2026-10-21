@@ -218,6 +218,11 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     } else {
         resolve_bearer(state.store.as_ref(), &secret).await
     };
+    // A good credential of a suspended workspace: say so, rather than the
+    // 401 that would send its client to look for a new token.
+    if let Err(maidan_auth::AuthError::Forbidden(reason)) = &resolved {
+        return ApiError::Forbidden(reason.clone()).into_response();
+    }
     if let Ok(ctx) = resolved {
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
@@ -233,6 +238,11 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     }
 
     if let Ok(peer) = resolve_peer_bearer(state.store.as_ref(), &secret).await {
+        if let Err(err) =
+            maidan_auth::ensure_workspace_active(state.store.as_ref(), peer.workspace_id).await
+        {
+            return ApiError::from(err).into_response();
+        }
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
         {
@@ -420,7 +430,11 @@ async fn session_or_bearer(
 
     if let Some(secret) = bearer_from_headers(req.headers()).map(str::to_owned) {
         let ip_key = crate::rate_limit::client_ip_key(&req);
-        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), &secret).await {
+        let resolved = resolve_bearer(state.store.as_ref(), &secret).await;
+        if let Err(maidan_auth::AuthError::Forbidden(reason)) = &resolved {
+            return ApiError::Forbidden(reason.clone()).into_response();
+        }
+        if let Ok(ctx) = resolved {
             // The outer limiter left this bearer uncounted so a secret that
             // does not resolve cannot open its own bucket. This one did.
             if let Err(response) =

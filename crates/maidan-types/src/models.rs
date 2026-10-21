@@ -1484,6 +1484,9 @@ pub struct MemberEmail {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MailOutbox {
     pub id: MailOutboxId,
+    /// Owning workspace, `None` for mail with no tenant context; the worker
+    /// holds a suspended workspace's mail back.
+    pub workspace_id: Option<WorkspaceId>,
     pub to_address: String,
     pub subject: String,
     pub body: String,

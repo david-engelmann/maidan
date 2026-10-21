@@ -284,6 +284,9 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         }
     };
     for workspace_id in workspaces {
+        if crate::suspension::held_back(state, workspace_id).await {
+            continue;
+        }
         if let Some(sender) = state.github_sender.as_deref() {
             refresh(
                 state.store.as_ref(),
@@ -596,6 +599,9 @@ pub async fn post_linear_notices(state: &AppState) -> usize {
     };
     let mut queued = 0;
     for workspace_id in workspaces {
+        if crate::suspension::held_back(state, workspace_id).await {
+            continue;
+        }
         let due = match state
             .store
             .list_linear_notices_due(workspace_id, REFRESH_LIMIT)

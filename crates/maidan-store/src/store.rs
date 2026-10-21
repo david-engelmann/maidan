@@ -257,6 +257,27 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Option<WorkspaceHandle>, StoreError>;
+    /// Suspend a workspace (or replace a standing suspension's reason),
+    /// audited in the same transaction. `NotFound` for no such workspace.
+    async fn suspend_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        suspended_by: Option<MemberId>,
+        audit: NewAuditEvent,
+    ) -> Result<maidan_types::WorkspaceSuspension, StoreError>;
+    /// Lift a suspension, audited in the same transaction; `false` (and no
+    /// audit row) when the workspace was not suspended.
+    async fn lift_workspace_suspension(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// The suspension in force on a workspace, if any.
+    async fn get_workspace_suspension(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::WorkspaceSuspension>, StoreError>;
 }
 
 #[async_trait]

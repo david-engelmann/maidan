@@ -18,7 +18,7 @@ use axum::response::sse::Event;
 use futures::{Stream, StreamExt as _};
 use maidan_auth::AuthContext;
 use maidan_store::Store;
-use maidan_types::{ApiTokenId, MemberId};
+use maidan_types::{ApiTokenId, MemberId, WorkspaceId};
 use tokio::time::{Instant, Interval, MissedTickBehavior};
 
 /// The shortest time between two checks while frames flow. A burst of frames
@@ -42,9 +42,13 @@ pub enum StreamCredential {
     /// It must still pass the bearer test, and the members it speaks for must
     /// not be deactivated.
     Token(ApiTokenId),
-    /// No token behind the context (e.g. the dev anonymous reader): only the
-    /// members are checked.
-    Members(Vec<MemberId>),
+    /// No token behind the context (e.g. the dev anonymous reader, an OIDC
+    /// session): the workspace must not be suspended and the members must
+    /// not be deactivated.
+    Members {
+        workspace_id: WorkspaceId,
+        members: Vec<MemberId>,
+    },
 }
 
 impl StreamCredential {
@@ -54,7 +58,10 @@ impl StreamCredential {
         }
         match auth.token_id {
             Some(token_id) => Self::Token(token_id),
-            None => Self::Members(members_of(auth)),
+            None => Self::Members {
+                workspace_id: auth.workspace_id,
+                members: members_of(auth),
+            },
         }
     }
 
@@ -65,12 +72,28 @@ impl StreamCredential {
         let members = match self {
             Self::Open => return Ok(()),
             Self::Token(token_id) => {
-                let ctx = maidan_auth::resolve_token_id(store, *token_id)
-                    .await
-                    .map_err(|_| "token no longer valid")?;
+                let ctx = match maidan_auth::resolve_token_id(store, *token_id).await {
+                    Ok(ctx) => ctx,
+                    Err(maidan_auth::AuthError::Forbidden(_)) => {
+                        return Err(maidan_types::WORKSPACE_SUSPENDED)
+                    }
+                    Err(_) => return Err("token no longer valid"),
+                };
                 members_of(&ctx)
             }
-            Self::Members(members) => members.clone(),
+            Self::Members {
+                workspace_id,
+                members,
+            } => {
+                match maidan_auth::ensure_workspace_active(store, *workspace_id).await {
+                    Ok(()) => {}
+                    Err(maidan_auth::AuthError::Forbidden(_)) => {
+                        return Err(maidan_types::WORKSPACE_SUSPENDED)
+                    }
+                    Err(_) => return Err("credential check failed"),
+                }
+                members.clone()
+            }
         };
         for member in members {
             match store.get_scim_user(member).await {

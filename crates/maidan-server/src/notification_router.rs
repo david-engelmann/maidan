@@ -1092,6 +1092,10 @@ pub async fn deliver_notification_web_push(
         crate::metrics::record_web_push_delivered("skipped_vapid_unset");
         return;
     };
+    if crate::suspension::member_held_back(state, member_id).await {
+        crate::metrics::record_web_push_delivered("skipped_suspended");
+        return;
+    }
     // Presence gate: skip when the member is currently connected (seen within the
     // live window). Fail-open (a read error → send): a duplicate push to an online
     // member is harmless; dropping one to an offline member defeats the feature.

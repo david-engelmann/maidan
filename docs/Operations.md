@@ -89,6 +89,35 @@ Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KE
 keyring; rotate with `FEDERATION_DECRYPT_KEYS`. See
 [Production.md](Production.md) for the full config surface.
 
+## Suspending a workspace
+
+The hosted service's abuse control. An operator (a token with
+`operator:global`, which provisioned tenants never hold) suspends a workspace
+with a reason:
+
+```sh
+curl -X PUT "$MAIDAN/operator/workspaces/$WS/suspension" \
+  -H "authorization: Bearer $OPERATOR_TOKEN" -H 'content-type: application/json' \
+  -d '{"reason": "abuse report 17"}'
+curl "$MAIDAN/operator/workspaces/$WS/suspension" -H "authorization: Bearer $OPERATOR_TOKEN"
+curl -X DELETE "$MAIDAN/operator/workspaces/$WS/suspension" -H "authorization: Bearer $OPERATOR_TOKEN"
+```
+
+While it stands:
+- every token and browser session of the workspace gets a 403 `workspace
+  suspended`, on REST, MCP, WebSocket, SSE and A2A, and an open stream ends at
+  its next credential re-check;
+- the change sweep, Linear notices and the scheduler skip it, and the egress,
+  mail and web push workers defer its deliveries, so nothing leaves on its
+  behalf;
+- its data, tokens and sessions are kept.
+
+Lifting restores access at once. Deferred deliveries go out at their next
+attempt, within five minutes. A scheduled run missed while suspended is not
+replayed. Both acts are in the workspace's audit log (`workspace.suspend`,
+`workspace.suspension_lift`), attributed to the operator. An operator cannot
+suspend its own workspace, since that would lock out the credential that lifts it.
+
 ## Load & soak testing
 
 `scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread
