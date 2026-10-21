@@ -10,6 +10,8 @@
 //! warnings (a task that is not converging, a round built on a stale base)
 //! are computed from those rows ([`SwarmMetrics`]).
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -326,6 +328,10 @@ pub struct ChangePull {
     pub rounds: Vec<ChangeRound>,
     /// What the thread's model use cost, from the usage ledger.
     pub cost_usd_micros: i64,
+    /// The provider and the harness that spent the most on the thread, from
+    /// the usage its claimants reported; `None` when none was named.
+    pub provider: Option<String>,
+    pub harness: Option<String>,
     /// The task's attributes; the defaults when the thread was never
     /// described.
     pub attributes: crate::TaskAttributes,
@@ -381,6 +387,14 @@ pub struct TaskMetrics {
     /// delivered, so nobody else pushed to it; `None` until merged.
     pub merged_without_edits: Option<bool>,
     pub cost_usd_micros: i64,
+    /// The model provider that spent the most on the task (`anthropic`,
+    /// `openai`, `xai`, ...), as its usage reports named it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// The harness that ran the work and spent the most (`claude-code`,
+    /// `cursor`, `codex`, `pi`, ...), as its usage reports named it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<String>,
     pub flags: Vec<TaskFlag>,
     /// How many of the rounds were squash-rebases.
     pub rebases: i64,
@@ -451,6 +465,28 @@ pub struct EngineRollup {
     pub numbers: SliceNumbers,
 }
 
+/// The tasks whose spend was mostly with one model provider.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProviderRollup {
+    /// `None` for tasks whose usage named no provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(flatten)]
+    pub numbers: SliceNumbers,
+}
+
+/// The tasks mostly run by one harness.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HarnessRollup {
+    /// `None` for tasks whose usage named no harness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harness: Option<String>,
+    #[serde(flatten)]
+    pub numbers: SliceNumbers,
+}
+
 /// The tasks of one size.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -490,8 +526,94 @@ pub struct RepoRollup {
     /// By size, `S` to `L` with unsized tasks last.
     pub by_size: Vec<SizeRollup>,
     /// By risk tier, standard first. Slices with no tasks are omitted from
-    /// all three splits.
+    /// every split.
     pub by_risk: Vec<RiskRollup>,
+    /// By the provider that spent the most on each task, most tasks first,
+    /// unnamed last: so providers are compared as well as engines.
+    pub by_provider: Vec<ProviderRollup>,
+    /// By the harness that ran each task, most tasks first, unnamed last.
+    pub by_harness: Vec<HarnessRollup>,
+}
+
+/// One usage-ledger group: what a thread's reports for one provider and
+/// harness cost, and how many there were.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpendRow {
+    pub thread_id: ThreadId,
+    pub provider: Option<String>,
+    pub harness: Option<String>,
+    pub usd_micros: i64,
+    pub reports: i64,
+}
+
+/// A thread's spend: its total, and who spent the most of it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThreadSpend {
+    pub cost_usd_micros: i64,
+    pub provider: Option<String>,
+    pub harness: Option<String>,
+}
+
+/// Each thread's [`ThreadSpend`]. The provider (and the harness) is the
+/// named one with the most spend, then the most reports, then the first by
+/// name, so the answer does not depend on row order; unpriced usage still
+/// names one by its report count.
+pub fn thread_spend(rows: impl IntoIterator<Item = SpendRow>) -> HashMap<ThreadId, ThreadSpend> {
+    type Tally = HashMap<String, (i64, i64)>;
+    let mut by_thread: HashMap<ThreadId, (i64, Tally, Tally)> = HashMap::new();
+    for row in rows {
+        let (total, providers, harnesses) = by_thread.entry(row.thread_id).or_default();
+        *total = total.saturating_add(row.usd_micros);
+        for (name, tally) in [
+            (row.provider, &mut *providers),
+            (row.harness, &mut *harnesses),
+        ] {
+            if let Some(name) = name {
+                let entry = tally.entry(name).or_default();
+                entry.0 = entry.0.saturating_add(row.usd_micros);
+                entry.1 = entry.1.saturating_add(row.reports);
+            }
+        }
+    }
+    let top = |tally: Tally| {
+        tally
+            .into_iter()
+            .max_by(|(a_name, a), (b_name, b)| a.cmp(b).then_with(|| b_name.cmp(a_name)))
+            .map(|(name, _)| name)
+    };
+    by_thread
+        .into_iter()
+        .map(|(thread, (cost_usd_micros, providers, harnesses))| {
+            (
+                thread,
+                ThreadSpend {
+                    cost_usd_micros,
+                    provider: top(providers),
+                    harness: top(harnesses),
+                },
+            )
+        })
+        .collect()
+}
+
+/// The distinct values `key` takes over `tasks`, most tasks first, then by
+/// name, with `None` last.
+fn by_count(
+    tasks: &[&TaskMetrics],
+    key: fn(&TaskMetrics) -> Option<&String>,
+) -> Vec<Option<String>> {
+    let mut counts: HashMap<Option<String>, usize> = HashMap::new();
+    for task in tasks {
+        *counts.entry(key(task).cloned()).or_default() += 1;
+    }
+    let mut values: Vec<(Option<String>, usize)> = counts.into_iter().collect();
+    values.sort_by(|(a, a_count), (b, b_count)| {
+        a.is_none()
+            .cmp(&b.is_none())
+            .then(b_count.cmp(a_count))
+            .then_with(|| a.cmp(b))
+    });
+    values.into_iter().map(|(value, _)| value).collect()
 }
 
 /// The ramp metrics for a workspace.
@@ -581,6 +703,8 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
         time_to_merge_secs: secs(pull.merged_at),
         merged_without_edits,
         cost_usd_micros: pull.cost_usd_micros,
+        provider: pull.provider,
+        harness: pull.harness,
         flags,
         rebases: pull.rounds.iter().filter(|r| r.rebase).count() as i64,
         rounds: pull.rounds,
@@ -643,6 +767,18 @@ fn rollup(
             })
         })
         .collect();
+    let by_provider = by_count(tasks, |t| t.provider.as_ref())
+        .into_iter()
+        .filter_map(|provider| {
+            slice(&|t| t.provider == provider).map(|numbers| ProviderRollup { provider, numbers })
+        })
+        .collect();
+    let by_harness = by_count(tasks, |t| t.harness.as_ref())
+        .into_iter()
+        .filter_map(|harness| {
+            slice(&|t| t.harness == harness).map(|numbers| HarnessRollup { harness, numbers })
+        })
+        .collect();
     RepoRollup {
         repo,
         totals: numbers(tasks, round_limit, as_of),
@@ -658,6 +794,8 @@ fn rollup(
         by_engine,
         by_size,
         by_risk,
+        by_provider,
+        by_harness,
     }
 }
 
@@ -802,6 +940,8 @@ mod tests {
             closed_at: None,
             rounds,
             cost_usd_micros: 300,
+            provider: None,
+            harness: None,
             attributes: crate::TaskAttributes::default(),
             linear_issue: None,
             outcome: MergedOutcome::default(),
@@ -894,6 +1034,87 @@ mod tests {
             ..crate::TaskAttributes::default()
         };
         p
+    }
+
+    /// A thread's provider and harness are the ones that spent the most;
+    /// unpriced reports break the tie by count, then by name, and unnamed
+    /// usage still counts toward the total.
+    #[test]
+    fn a_threads_provider_is_the_one_that_spent_the_most() {
+        let t = ThreadId(uuid::Uuid::from_u128(1));
+        let u = ThreadId(uuid::Uuid::from_u128(2));
+        let row = |thread, provider: Option<&str>, harness: Option<&str>, usd, reports| SpendRow {
+            thread_id: thread,
+            provider: provider.map(str::to_string),
+            harness: harness.map(str::to_string),
+            usd_micros: usd,
+            reports,
+        };
+        let spend = thread_spend([
+            row(t, Some("anthropic"), Some("claude-code"), 500, 1),
+            row(t, Some("openai"), Some("codex"), 900, 1),
+            row(t, None, None, 50, 3),
+            row(u, Some("xai"), Some("openrouter"), 0, 2),
+            row(u, Some("anthropic"), Some("cursor"), 0, 2),
+        ]);
+        assert_eq!(
+            spend[&t],
+            ThreadSpend {
+                cost_usd_micros: 1_450,
+                provider: Some("openai".into()),
+                harness: Some("codex".into()),
+            }
+        );
+        assert_eq!(spend[&u].provider.as_deref(), Some("anthropic"));
+        assert_eq!(spend[&u].harness.as_deref(), Some("cursor"));
+    }
+
+    /// Each repository's rollup is split by provider and by harness, most
+    /// tasks first and unnamed last, so a provider comparison reads beside
+    /// the engine one.
+    #[test]
+    fn each_rollup_splits_by_provider_and_harness() {
+        let named = |provider: Option<&str>, harness: Option<&str>| {
+            let mut p = pull(vec![round(1, "x", 5, None)]);
+            p.provider = provider.map(str::to_string);
+            p.harness = harness.map(str::to_string);
+            p
+        };
+        let m = swarm_metrics(
+            vec![
+                named(Some("xai"), Some("openrouter")),
+                named(Some("anthropic"), Some("claude-code")),
+                named(Some("anthropic"), Some("cursor")),
+                named(None, None),
+            ],
+            FlagLimits::default(),
+            at(0),
+        );
+        let repo = &m.repos[0];
+        let providers: Vec<_> = repo
+            .by_provider
+            .iter()
+            .map(|r| (r.provider.as_deref(), r.numbers.tasks))
+            .collect();
+        assert_eq!(
+            providers,
+            vec![(Some("anthropic"), 2), (Some("xai"), 1), (None, 1)]
+        );
+        let harnesses: Vec<_> = repo
+            .by_harness
+            .iter()
+            .map(|r| r.harness.as_deref())
+            .collect();
+        assert_eq!(
+            harnesses,
+            vec![
+                Some("claude-code"),
+                Some("cursor"),
+                Some("openrouter"),
+                None
+            ]
+        );
+        assert_eq!(m.tasks[0].provider.as_deref(), Some("xai"));
     }
 
     #[test]

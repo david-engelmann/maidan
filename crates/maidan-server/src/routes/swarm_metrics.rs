@@ -162,6 +162,12 @@ pub async fn get_swarm_metrics(
             query.size,
         )
         .await?;
+    if let Some(provider) = query.provider.as_deref() {
+        pulls.retain(|pull| pull.provider.as_deref() == Some(provider));
+    }
+    if let Some(harness) = query.harness.as_deref() {
+        pulls.retain(|pull| pull.harness.as_deref() == Some(harness));
+    }
     if let Some(issues) = issues {
         pulls.retain(|pull| {
             pull.attributes

@@ -444,6 +444,11 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Fixed:** an alert Slack refused (the network not up after a host wakes, say) was dropped and its key held for 15 minutes. It is now queued and retried on every watchdog pass.
 - **Fixed:** after a host suspend, every loop looked stalled at once and alerted. A watchdog sleep that overruns three times over is now read as a suspend: every loop's clock restarts and nothing is posted.
 
+### Swarm metrics compare providers and harnesses, not only engines
+
+- **Added:** each task in `GET /workspaces/{id}/swarm-metrics` carries the `provider` and the `harness` that spent the most on it, read from the usage its claimants reported (`report_usage`'s `evidence.provider` and `evidence.harness`). Ties go to the most reports, then the first name, so unpriced usage still names one.
+- **Added:** each repository rollup gains `by_provider` and `by_harness` splits (most tasks first, unnamed last) beside `by_engine`, and `?provider=` and `?harness=` narrow the response to one. Claude Code, Cursor, Codex and OpenRouter-served models can now be compared on the same numbers.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

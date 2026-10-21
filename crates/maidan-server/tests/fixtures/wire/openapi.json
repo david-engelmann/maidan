@@ -3644,6 +3644,26 @@
         "format": "uuid",
         "type": "string"
       },
+      "HarnessRollup": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "harness": {
+                "description": "`None` for tasks whose usage named no harness.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "The tasks mostly run by one harness."
+      },
       "HealthResponse": {
         "properties": {
           "bus": {
@@ -6301,6 +6321,26 @@
         ],
         "type": "object"
       },
+      "ProviderRollup": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "provider": {
+                "description": "`None` for tasks whose usage named no provider.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        ],
+        "description": "The tasks whose spend was mostly with one model provider."
+      },
       "ProvisionWorkspace": {
         "description": "Body for `POST /operator/workspaces`. Opens another workspace and its first\nadmin. Both fields are trimmed. Blank is a 400 after the capability check,\nso a body of `{}` still reaches it.",
         "properties": {
@@ -7064,8 +7104,22 @@
                 },
                 "type": "array"
               },
+              "by_harness": {
+                "description": "By the harness that ran each task, most tasks first, unnamed last.",
+                "items": {
+                  "$ref": "#/components/schemas/HarnessRollup"
+                },
+                "type": "array"
+              },
+              "by_provider": {
+                "description": "By the provider that spent the most on each task, most tasks first,\nunnamed last: so providers are compared as well as engines.",
+                "items": {
+                  "$ref": "#/components/schemas/ProviderRollup"
+                },
+                "type": "array"
+              },
               "by_risk": {
-                "description": "By risk tier, standard first. Slices with no tasks are omitted from\nall three splits.",
+                "description": "By risk tier, standard first. Slices with no tasks are omitted from\nevery split.",
                 "items": {
                   "$ref": "#/components/schemas/RiskRollup"
                 },
@@ -7103,7 +7157,9 @@
               "flagged",
               "by_engine",
               "by_size",
-              "by_risk"
+              "by_risk",
+              "by_provider",
+              "by_harness"
             ],
             "type": "object"
           }
@@ -9076,6 +9132,13 @@
             "description": "Handed to a session at `non_converging`: counted as misrouted.",
             "type": "boolean"
           },
+          "harness": {
+            "description": "The harness that ran the work and spent the most (`claude-code`,\n`cursor`, `codex`, `pi`, ...), as its usage reports named it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "human_commits": {
             "description": "Commits on the pull request the change flow did not deliver: a proxy\nfor a person's edits. `None` until read after the merge.",
             "format": "int64",
@@ -9116,6 +9179,13 @@
           "opened_at": {
             "format": "date-time",
             "type": "string"
+          },
+          "provider": {
+            "description": "The model provider that spent the most on the task (`anthropic`,\n`openai`, `xai`, ...), as its usage reports named it.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "pull_number": {
             "format": "int64",
@@ -32905,6 +32975,24 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/TaskSize"
+            }
+          },
+          {
+            "description": "Only tasks whose spend was mostly with this model provider, as the\nusage reports named it (`anthropic`, `openai`, `xai`, ...).",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only tasks mostly run by this harness (`claude-code`, `cursor`,\n`codex`, ...).",
+            "in": "query",
+            "name": "harness",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {

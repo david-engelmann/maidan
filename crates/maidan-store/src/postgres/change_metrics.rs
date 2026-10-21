@@ -744,18 +744,22 @@ pub async fn list(
                 previous_head: row.get("previous_head"),
             });
     }
-    let costs = sqlx::query(
-        "SELECT thread_id, COALESCE(SUM(usd_micros), 0)::BIGINT AS cost
+    let spend_rows = sqlx::query(
+        "SELECT thread_id, provider, harness,
+                COALESCE(SUM(usd_micros), 0)::BIGINT AS cost, COUNT(*)::BIGINT AS reports
          FROM maidan_usage_ledger WHERE workspace_id = $1
-         GROUP BY thread_id",
+         GROUP BY thread_id, provider, harness",
     )
     .bind(workspace_id.0)
     .fetch_all(pool)
     .await?;
-    let cost: HashMap<Uuid, i64> = costs
-        .iter()
-        .map(|row| (row.get("thread_id"), row.get("cost")))
-        .collect();
+    let cost = maidan_types::thread_spend(spend_rows.iter().map(|row| maidan_types::SpendRow {
+        thread_id: ThreadId(row.get("thread_id")),
+        provider: row.get("provider"),
+        harness: row.get("harness"),
+        usd_micros: row.get("cost"),
+        reports: row.get("reports"),
+    }));
     Ok(pulls
         .iter()
         .map(|row| pull_from(row, &mut by_pull, &cost))
@@ -1012,11 +1016,12 @@ pub async fn register(
 fn pull_from(
     row: &sqlx::postgres::PgRow,
     rounds: &mut HashMap<(String, i64), Vec<ChangeRound>>,
-    cost: &HashMap<Uuid, i64>,
+    cost: &HashMap<ThreadId, maidan_types::ThreadSpend>,
 ) -> ChangePull {
     let repo: String = row.get("repo");
     let pull_number: i64 = row.get("pull_number");
     let thread: Uuid = row.get("thread_id");
+    let spend = cost.get(&ThreadId(thread));
     ChangePull {
         thread_id: ThreadId(thread),
         rounds: rounds
@@ -1029,7 +1034,9 @@ fn pull_from(
         merged_at: row.get::<Option<DateTime<Utc>>, _>("merged_at"),
         merged_head_sha: row.get("merged_head_sha"),
         closed_at: row.get::<Option<DateTime<Utc>>, _>("closed_at"),
-        cost_usd_micros: cost.get(&thread).copied().unwrap_or(0),
+        cost_usd_micros: spend.map_or(0, |spend| spend.cost_usd_micros),
+        provider: spend.and_then(|spend| spend.provider.clone()),
+        harness: spend.and_then(|spend| spend.harness.clone()),
         linear_issue: row.get("linear_issue"),
         outcome: outcome_from(row),
         handed_off_at: row.get::<Option<DateTime<Utc>>, _>("handed_off_at"),
