@@ -169,6 +169,9 @@ impl SubmitPlan {
     }
 }
 
+/// The reason on a child an amendment cancels, when it gives none.
+pub const PLAN_AMEND_CANCEL_REASON: &str = "cancelled by an amendment to its plan";
+
 /// The most amendments one plan takes; the next is refused.
 pub const PLAN_MAX_AMENDMENTS: i64 = 3;
 
@@ -295,11 +298,12 @@ impl AmendPlan {
                 "an amendment adds at most {PLAN_MAX_CHILDREN} children"
             ));
         }
-        self.reason = self
-            .reason
-            .take()
-            .map(|reason| reason.trim().to_string())
-            .filter(|reason| !reason.is_empty());
+        self.reason = match self.reason.take() {
+            Some(reason) if !reason.trim().is_empty() => {
+                Some(crate::validated_cancel_reason(&reason)?.to_string())
+            }
+            _ => None,
+        };
         Ok(self)
     }
 
