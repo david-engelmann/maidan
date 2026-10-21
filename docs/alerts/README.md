@@ -41,8 +41,7 @@ still answers while the work behind it stands still. Each loop sets
 `maidan_background_loop_last_tick_seconds{loop}` when it starts and whenever
 it finishes a tick, and counts `maidan_background_loop_panics_total{loop}`
 (registered at 0 when it starts) when a tick panics; the loop logs the panic
-at ERROR and runs its next tick. A loop turned off exports neither. The change sweep reports them
-today.
+at ERROR and runs its next tick. A loop turned off exports neither. Every background loop reports them.
 
 - **`MaidanChangeSweepStalled`** (critical): no sweep tick finished for 6
   minutes, three default intervals, held for 5. Merges settling, change

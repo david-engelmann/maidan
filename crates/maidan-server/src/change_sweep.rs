@@ -671,67 +671,23 @@ impl Notice<'_> {
 
 /// The sweep loop, spawned by `main.rs` unless turned off.
 pub async fn run(state: AppState, interval: Duration) {
-    use futures::FutureExt;
     tracing::info!(interval_secs = interval.as_secs(), "change sweep started");
-    crate::metrics::register_loop("change_sweep");
-    crate::ops_alert::register_loop("change_sweep", interval);
+    crate::ops_alert::start_loop("change_sweep", interval);
     loop {
-        // A panic in one tick is logged and the next tick runs. Unguarded,
-        // it ended this task without a trace, and every later merge,
-        // notice and claim comment with it.
-        match std::panic::AssertUnwindSafe(sweep_once(&state))
-            .catch_unwind()
-            .await
-        {
-            Ok(stats) if stats != SweepStats::default() => {
+        match crate::ops_alert::guarded_tick("change_sweep", sweep_once(&state)).await {
+            Some(stats) if stats != SweepStats::default() => {
                 tracing::info!(?stats, "change sweep tick");
             }
-            Ok(_) => tracing::debug!("change sweep tick: nothing to do"),
-            Err(panic) => {
-                crate::metrics::record_loop_panic("change_sweep");
-                let message = panic_message(panic.as_ref());
-                tracing::error!(
-                    panic = message,
-                    "change sweep tick panicked; the next tick runs"
-                );
-                crate::ops_alert::alert(
-                    &state,
-                    "panic:change_sweep",
-                    &format!(
-                        ":rotating_light: Maidan's change sweep tick panicked: {message}. The loop runs on, but the rest of that tick was skipped; the log has the details."
-                    ),
-                )
-                .await;
-            }
+            Some(_) => tracing::debug!("change sweep tick: nothing to do"),
+            None => {}
         }
-        crate::metrics::record_loop_tick("change_sweep");
-        crate::ops_alert::note_tick("change_sweep");
         tokio::time::sleep(interval).await;
     }
-}
-
-/// The message a panic carried, when it carried text.
-fn panic_message(panic: &(dyn std::any::Any + Send)) -> &str {
-    panic
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("a panic without a message")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_panic_message_is_read_from_either_string_form() {
-        let fixed: Box<dyn std::any::Any + Send> = Box::new("boom");
-        let owned: Box<dyn std::any::Any + Send> = Box::new(String::from("bang"));
-        let other: Box<dyn std::any::Any + Send> = Box::new(7_u8);
-        assert_eq!(panic_message(fixed.as_ref()), "boom");
-        assert_eq!(panic_message(owned.as_ref()), "bang");
-        assert_eq!(panic_message(other.as_ref()), "a panic without a message");
-    }
 
     #[test]
     fn the_sweep_is_on_by_default_and_zero_turns_it_off() {

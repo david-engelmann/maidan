@@ -418,6 +418,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 - **Added:** `MAIDAN_OPS_ALERT_CHANNEL` (a Slack channel id) turns on operator alerts through the existing Slack sender. The server posts one line on boot (proof the route works), one when a change sweep tick panics, and one when a background loop has not finished a tick for three of its intervals (checked every minute). The same alert posts at most once every 15 minutes. A stack that scrapes no `/metrics`, like the local swarm stack, otherwise had no alert route.
 - **Fixed:** #1478's squash had dropped #1477 (the loop liveness and panic metrics, their alert rules and tests, and the README section) from `main`; they are restored.
 
+### Every background loop is watched, not just the change sweep
+
+- **Added:** all eleven background loops now run each tick through one guard: the change sweep, egress worker, web push and mail workers, retention, chain verification, scheduler, claim reaper, wait sweeper, digest and embedding repair. A panic is counted, logged at ERROR and posted to the operator Slack channel, and the loop runs on. Each tick also feeds the liveness gauge and the stall watchdog, so a loop that panics or stops anywhere in the process alerts within three of its intervals. Before, a panic in any loop but the change sweep ended that loop silently. Embedding repair, which ends on purpose when the backend has no embeddings, deregisters first so its silence is not a stall. A contract test fails if `main.rs` spawns a loop that is not started and guarded.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0
