@@ -7,13 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Two workspaces can track the same pull request, each on its own row
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
 
-Tracked pull requests, their delivery rounds and their CI reads are keyed by
-workspace as well as repo and number (migration 0194, both backends). A second
-workspace watching or delivering to a pull request another one tracks now gets
-its own thread and notices instead of being refused, and closing, settling or
-recording an outcome touches only the caller's row.
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
 
 ## [414.0.0] — 2026-10-21
 
