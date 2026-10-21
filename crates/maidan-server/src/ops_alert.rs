@@ -14,6 +14,15 @@
 //! posted at most once every [`REPEAT_SECS`], so a loop that panics every
 //! tick does not flood the channel.
 //!
+//! Alive is not healthy. A loop whose every tick logs a warning or an error
+//! (a database that refuses its queries, say) still finishes its ticks, so
+//! [`TickWarnings`] counts the warnings each tick logs and the watchdog posts
+//! when a loop has failed three ticks in a row: on 2026-10-21 a locked table
+//! cancelled the change sweep's query on every tick for 20 minutes and the
+//! stall alert never came. A post Slack refuses is retried each watchdog
+//! pass rather than lost, and a watchdog that wakes long after it slept takes
+//! the host to have been suspended, not every loop to have stalled at once.
+//!
 //! Every background loop goes through here: [`start_loop`] when it starts,
 //! [`guarded_tick`] around each tick (a panic is counted, logged, alerted,
 //! and the loop runs on), and [`stop_loop`] if it ends on purpose. The
@@ -25,6 +34,11 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use tracing::field::{Field, Visit};
+use tracing::{Event, Level, Subscriber};
+use tracing_subscriber::layer::Context;
+use tracing_subscriber::Layer;
+
 use crate::slack::SlackSender;
 use crate::state::AppState;
 
@@ -34,20 +48,54 @@ pub const REPEAT_SECS: i64 = 900;
 /// How often the watchdog looks.
 const WATCHDOG_SECS: u64 = 60;
 
-/// A loop is stalled after this many of its intervals without a tick.
+/// A loop is stalled after this many of its intervals without a tick, and
+/// failing after this many ticks in a row that logged a warning.
 const STALL_INTERVALS: i64 = 3;
+
+/// A watchdog sleep that overran by this many of its own intervals means the
+/// host was suspended: every loop missed its ticks together, through no
+/// fault of its own.
+const SUSPEND_INTERVALS: i64 = 3;
+
+/// Posts Slack refused, waiting for the next watchdog pass. Bounded, so an
+/// outage that lasts days does not grow it without end.
+const MAX_PENDING: usize = 32;
+
+/// Log targets whose warnings say a tick was slow, not that it failed.
+const NOT_FAILURES: [&str; 1] = ["sqlx"];
 
 static CHANNEL: OnceLock<String> = OnceLock::new();
 static SENDER: OnceLock<Arc<dyn SlackSender>> = OnceLock::new();
 
-/// Each registered loop's last tick (unix seconds) and its interval.
-static LOOPS: OnceLock<Mutex<HashMap<&'static str, (i64, i64)>>> = OnceLock::new();
+/// What the watchdog knows about one started loop.
+#[derive(Debug, Clone, Default)]
+struct LoopState {
+    /// When it last finished a tick (unix seconds).
+    last_tick: i64,
+    /// Its interval, in seconds.
+    interval: i64,
+    /// Warnings the running tick has logged so far.
+    tick_warnings: u32,
+    /// Ticks in a row that logged a warning.
+    failing_ticks: u32,
+    /// The latest of those warnings.
+    last_warning: Option<String>,
+}
+
+static LOOPS: OnceLock<Mutex<HashMap<&'static str, LoopState>>> = OnceLock::new();
 
 /// When each alert key last posted (unix seconds).
 static SENT: OnceLock<Mutex<HashMap<String, i64>>> = OnceLock::new();
 
-fn loops() -> &'static Mutex<HashMap<&'static str, (i64, i64)>> {
+/// Alerts Slack refused, as (key, text), oldest first.
+static PENDING: OnceLock<Mutex<Vec<(String, String)>>> = OnceLock::new();
+
+fn loops() -> &'static Mutex<HashMap<&'static str, LoopState>> {
     LOOPS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn pending() -> &'static Mutex<Vec<(String, String)>> {
+    PENDING.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 fn sent() -> &'static Mutex<HashMap<String, i64>> {
@@ -98,7 +146,11 @@ pub fn stop_loop(name: &'static str) {
 /// the tick counts toward the loop's liveness.
 pub async fn guarded_tick<F: Future>(name: &'static str, tick: F) -> Option<F::Output> {
     use futures::FutureExt;
-    let out = match std::panic::AssertUnwindSafe(tick).catch_unwind().await {
+    begin_tick(name);
+    let out = match std::panic::AssertUnwindSafe(TICK_LOOP.scope(name, tick))
+        .catch_unwind()
+        .await
+    {
         Ok(out) => Some(out),
         Err(panic) => {
             crate::metrics::record_loop_panic(name);
@@ -135,21 +187,121 @@ pub(crate) fn panic_message(panic: &(dyn std::any::Any + Send)) -> &str {
 fn register_loop(name: &'static str, interval: Duration) {
     let interval = i64::try_from(interval.as_secs()).unwrap_or(i64::MAX);
     if let Ok(mut loops) = loops().lock() {
-        loops.insert(name, (now(), interval));
+        loops.insert(
+            name,
+            LoopState {
+                last_tick: now(),
+                interval,
+                ..LoopState::default()
+            },
+        );
+    }
+}
+
+fn begin_tick(name: &str) {
+    if let Ok(mut loops) = loops().lock() {
+        if let Some(state) = loops.get_mut(name) {
+            state.tick_warnings = 0;
+        }
+    }
+}
+
+fn note_warning(name: &str, warning: String) {
+    if let Ok(mut loops) = loops().lock() {
+        if let Some(state) = loops.get_mut(name) {
+            state.tick_warnings = state.tick_warnings.saturating_add(1);
+            state.last_warning = Some(warning);
+        }
     }
 }
 
 /// A registered loop finished a tick.
 pub fn note_tick(name: &'static str) {
     if let Ok(mut loops) = loops().lock() {
-        if let Some(entry) = loops.get_mut(name) {
-            entry.0 = now();
+        if let Some(state) = loops.get_mut(name) {
+            state.last_tick = now();
+            if state.tick_warnings > 0 {
+                state.failing_ticks = state.failing_ticks.saturating_add(1);
+            } else {
+                state.failing_ticks = 0;
+                state.last_warning = None;
+            }
         }
+    }
+}
+
+/// Counts the warnings and errors logged inside a guarded tick against its
+/// loop, so a loop that fails every tick is not mistaken for a healthy one.
+/// Installed with the server's other log layers.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TickWarnings;
+
+tokio::task_local! {
+    /// The loop whose tick is running on this task. A task-local rather than
+    /// a span: a span per tick would prefix every log line and ship one more
+    /// trace span per tick to the OTLP collector.
+    static TICK_LOOP: &'static str;
+}
+
+/// An event's message and error, as text.
+#[derive(Default)]
+struct Fields {
+    message: Option<String>,
+    error: Option<String>,
+}
+
+impl Visit for Fields {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        match field.name() {
+            "message" => self.message = Some(value.to_string()),
+            "error" => self.error = Some(value.to_string()),
+            _ => {}
+        }
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        match field.name() {
+            "message" => self.message = Some(format!("{value:?}")),
+            "error" => self.error = Some(format!("{value:?}")),
+            _ => {}
+        }
+    }
+}
+
+impl<S: Subscriber> Layer<S> for TickWarnings {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        let meta = event.metadata();
+        if *meta.level() > Level::WARN
+            || NOT_FAILURES
+                .iter()
+                .any(|target| meta.target().starts_with(target))
+        {
+            return;
+        }
+        let Ok(name) = TICK_LOOP.try_with(|name| *name) else {
+            return;
+        };
+        let mut fields = Fields::default();
+        event.record(&mut fields);
+        let warning = match (fields.message, fields.error) {
+            (Some(message), Some(error)) => format!("{message}: {error}"),
+            (Some(text), None) | (None, Some(text)) => text,
+            (None, None) => meta.name().to_string(),
+        };
+        note_warning(name, warning);
     }
 }
 
 fn now() -> i64 {
     chrono::Utc::now().timestamp()
+}
+
+/// At most `max` characters of `text`, so one long error cannot fill a post.
+fn truncate(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((end, _)) => format!("{}…", &text[..end]),
+        None => text.to_string(),
+    }
 }
 
 /// Whether a loop that last ticked at `last`, every `interval` seconds, is
@@ -166,11 +318,78 @@ fn stalled_loops(at: i64) -> Vec<(&'static str, i64)> {
         .map(|loops| {
             loops
                 .iter()
-                .filter(|(_, (last, interval))| stalled(at, *last, *interval))
-                .map(|(name, (last, _))| (*name, at - last))
+                .filter(|(_, state)| stalled(at, state.last_tick, state.interval))
+                .map(|(name, state)| (*name, at - state.last_tick))
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The started loops whose last ticks all logged a warning, with how many
+/// in a row and the latest warning.
+fn failing_loops() -> Vec<(&'static str, u32, String)> {
+    loops()
+        .lock()
+        .map(|loops| {
+            loops
+                .iter()
+                .filter(|(_, state)| i64::from(state.failing_ticks) >= STALL_INTERVALS)
+                .map(|(name, state)| {
+                    (
+                        *name,
+                        state.failing_ticks,
+                        state.last_warning.clone().unwrap_or_default(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Whether a watchdog sleep of `secs` seconds that took `slept` means the
+/// host was suspended.
+fn suspended(slept: i64, secs: i64) -> bool {
+    slept > secs.saturating_mul(SUSPEND_INTERVALS)
+}
+
+/// After a suspend every loop starts its clock again: the ticks it missed
+/// were the host's, and it gets its full intervals to tick again.
+fn restart_clocks(at: i64) {
+    if let Ok(mut loops) = loops().lock() {
+        for state in loops.values_mut() {
+            state.last_tick = at;
+        }
+    }
+}
+
+/// Keep a refused post for the next pass: a newer text for the same key
+/// replaces the older, and past [`MAX_PENDING`] the oldest goes.
+fn queue_retry(queue: &mut Vec<(String, String)>, key: &str, text: &str) {
+    queue.retain(|(queued, _)| queued != key);
+    queue.push((key.to_string(), text.to_string()));
+    if queue.len() > MAX_PENDING {
+        let excess = queue.len() - MAX_PENDING;
+        queue.drain(..excess);
+    }
+}
+
+/// Post every alert Slack refused before; one refused again waits again.
+async fn retry_pending() {
+    let (Some(channel), Some(sender)) = (CHANNEL.get(), SENDER.get()) else {
+        return;
+    };
+    let queued = pending()
+        .lock()
+        .map(|mut queue| std::mem::take(&mut *queue))
+        .unwrap_or_default();
+    for (key, text) in queued {
+        if let Err(err) = sender.post_message(channel, &text, None).await {
+            tracing::warn!(error = %err, key, "operator alert not posted; retrying next pass");
+            if let Ok(mut queue) = pending().lock() {
+                queue_retry(&mut queue, &key, &text);
+            }
+        }
+    }
 }
 
 /// Whether `key` may post at `at`, recording it when it may.
@@ -185,8 +404,8 @@ fn may_send(log: &mut HashMap<String, i64>, key: &str, at: i64) -> bool {
 }
 
 /// Post `text` to the operator channel, unless the same `key` posted in the
-/// last [`REPEAT_SECS`]. A no-op when alerts are off. Best effort: a failed
-/// post is logged at WARN.
+/// last [`REPEAT_SECS`]. A no-op when alerts are off. A post Slack refuses
+/// is logged at WARN and retried on each watchdog pass until it goes.
 pub async fn alert(key: &str, text: &str) {
     let (Some(channel), Some(sender)) = (CHANNEL.get(), SENDER.get()) else {
         return;
@@ -199,7 +418,10 @@ pub async fn alert(key: &str, text: &str) {
         return;
     }
     if let Err(err) = sender.post_message(channel, text, None).await {
-        tracing::warn!(error = %err, key, "operator alert not posted");
+        tracing::warn!(error = %err, key, "operator alert not posted; retrying next pass");
+        if let Ok(mut queue) = pending().lock() {
+            queue_retry(&mut queue, key, text);
+        }
     }
 }
 
@@ -220,9 +442,30 @@ pub async fn run(state: AppState, channel: String) {
         ),
     )
     .await;
+    let watchdog_secs = i64::try_from(WATCHDOG_SECS).unwrap_or(i64::MAX);
     loop {
+        let slept_from = now();
         tokio::time::sleep(Duration::from_secs(WATCHDOG_SECS)).await;
-        for (name, quiet) in stalled_loops(now()) {
+        let at = now();
+        if suspended(at - slept_from, watchdog_secs) {
+            tracing::info!(
+                away_secs = at - slept_from,
+                "the host was suspended; background loop clocks restart"
+            );
+            restart_clocks(at);
+        }
+        retry_pending().await;
+        for (name, ticks, warning) in failing_loops() {
+            alert(
+                &format!("failing:{name}"),
+                &format!(
+                    ":rotating_light: Maidan's {name} loop is running but its last {ticks} ticks failed. Latest: {}",
+                    truncate(&warning, 300)
+                ),
+            )
+            .await;
+        }
+        for (name, quiet) in stalled_loops(at) {
             alert(
                 &format!("stall:{name}"),
                 &format!(
@@ -312,6 +555,117 @@ mod tests {
                 && text.contains("test_panicking loop tick panicked: boom")),
             "{posts:?}"
         );
+    }
+
+    /// A loop that finishes every tick but logs a warning in each is failing
+    /// after three in a row, named with its latest warning; one clean tick
+    /// clears it. The 2026-10-21 lock test: the sweep's query was cancelled
+    /// on every tick and the loop still looked alive.
+    #[tokio::test]
+    async fn a_loop_whose_every_tick_warns_is_failing_and_a_clean_tick_clears_it() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let _log =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(TickWarnings));
+        let is_failing = || {
+            failing_loops()
+                .into_iter()
+                .find(|(name, _, _)| *name == "test_failing")
+        };
+        start_loop("test_failing", Duration::from_secs(60));
+        for _ in 0..2 {
+            guarded_tick("test_failing", async {
+                tracing::warn!(
+                    error = "canceling statement due to lock timeout",
+                    "workspaces not read"
+                );
+            })
+            .await;
+        }
+        assert!(
+            is_failing().is_none(),
+            "two failed ticks are not yet failing"
+        );
+        guarded_tick("test_failing", async {
+            tracing::warn!(
+                error = "canceling statement due to lock timeout",
+                "workspaces not read"
+            );
+        })
+        .await;
+        let (_, ticks, warning) = is_failing().expect("failing after three");
+        assert_eq!(ticks, 3);
+        assert_eq!(
+            warning,
+            "workspaces not read: canceling statement due to lock timeout"
+        );
+        guarded_tick("test_failing", async {}).await;
+        assert!(is_failing().is_none(), "a clean tick clears it");
+    }
+
+    /// A slow statement is not a failed tick, and a warning logged outside
+    /// any tick counts against no loop.
+    #[tokio::test]
+    async fn a_slow_statement_or_an_untracked_warning_is_not_a_failure() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let _log =
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(TickWarnings));
+        start_loop("test_slow", Duration::from_secs(60));
+        for _ in 0..3 {
+            guarded_tick("test_slow", async {
+                tracing::warn!(target: "sqlx::query", "slow statement: execution time exceeded alert threshold");
+            })
+            .await;
+            tracing::warn!("a warning from no loop");
+            note_tick("test_slow");
+        }
+        assert!(!failing_loops()
+            .iter()
+            .any(|(name, _, _)| *name == "test_slow"));
+    }
+
+    /// A post Slack refused is kept for the next pass, once per key with its
+    /// newest text, and the queue keeps only the newest [`MAX_PENDING`].
+    #[test]
+    fn a_refused_post_waits_for_the_next_pass() {
+        let mut queue = Vec::new();
+        queue_retry(&mut queue, "stall:a", "first");
+        queue_retry(&mut queue, "panic:b", "boom");
+        queue_retry(&mut queue, "stall:a", "second");
+        assert_eq!(
+            queue,
+            vec![
+                ("panic:b".to_string(), "boom".to_string()),
+                ("stall:a".to_string(), "second".to_string()),
+            ]
+        );
+        for n in 0..MAX_PENDING + 5 {
+            queue_retry(&mut queue, &format!("k{n}"), "t");
+        }
+        assert_eq!(queue.len(), MAX_PENDING);
+        assert_eq!(queue.first().map(|(key, _)| key.as_str()), Some("k5"));
+    }
+
+    /// A watchdog that slept far past its interval saw a suspended host, and
+    /// every loop gets its full intervals again rather than an alert.
+    #[test]
+    fn a_suspended_host_restarts_the_clocks_instead_of_alerting() {
+        assert!(!suspended(180, 60));
+        assert!(suspended(181, 60));
+        start_loop("test_suspended", Duration::from_secs(60));
+        let woke = now() + 3_600;
+        assert!(stalled_loops(woke)
+            .iter()
+            .any(|(name, _)| *name == "test_suspended"));
+        restart_clocks(woke);
+        assert!(!stalled_loops(woke + 60)
+            .iter()
+            .any(|(name, _)| *name == "test_suspended"));
+    }
+
+    #[test]
+    fn a_long_warning_is_cut_short() {
+        assert_eq!(truncate("abc", 5), "abc");
+        assert_eq!(truncate("abcdef", 3), "abc…");
     }
 
     /// A started loop that stops ticking is reported stalled; one that
