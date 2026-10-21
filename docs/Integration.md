@@ -998,6 +998,16 @@ A message's `metadata.maidan.citations` is an optional list of
 the stored message's `metadata.citations`. Malformed hashes fail closed
 (`InvalidParams`).
 
+### Finding a thread from a Slack message or a pull request
+
+A session that holds only an external reference finds its task with
+`GET /workspaces/{id}/thread-lookup` or the MCP tool `find_thread`
+(`workspace:read`). Give `repo` and `pr_number` for a pull request (the thread
+tracking it, linked to it, or commenting on it), `slack_channel` and `slack_ts`
+for a Slack message a result was posted as or into, or `slack_channel` alone
+for the thread a Slack channel is linked to. The answer is the thread, or 404
+(`null` over MCP) when nothing you may read matches.
+
 ### Long-poll waits (`wait_for_*`)
 
 The MCP `wait_for_mention` / `wait_for_notification` / `wait_for_result` /

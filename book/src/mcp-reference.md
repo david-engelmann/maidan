@@ -2953,6 +2953,43 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `find_thread`
+
+**Find thread.** Find the thread an external reference points at: a Slack message (slack_channel and slack_ts: the thread whose result was posted as that message or into that Slack thread), a Slack channel alone (the thread it is linked to), or a GitHub pull request (repo and pr_number: the thread tracking it, linked to it, or delivering to it). Returns the thread, or null when nothing in your workspace that you may read matches. The twin of GET /workspaces/{id}/thread-lookup.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "pr_number": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "repo": {
+      "description": "owner/name or a GitHub clone URL; with pr_number",
+      "type": "string"
+    },
+    "slack_channel": {
+      "description": "a Slack channel id such as C0123ABCD",
+      "type": "string"
+    },
+    "slack_ts": {
+      "description": "a Slack message ts such as 1700000000.000100; needs slack_channel",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id); omitted, the same",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
 ### `set_thread_lineage`
 
 **Set thread lineage.** Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.

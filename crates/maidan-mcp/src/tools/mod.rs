@@ -47,6 +47,7 @@ mod snapshot;
 mod social;
 mod spawn;
 mod thread;
+mod thread_lookup;
 mod whoami;
 
 #[cfg(test)]
@@ -85,6 +86,7 @@ pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
 pub const READ_ONLY_TOOLS: &[&str] = &[
     "advise_land_gate",
     "catch_up_events",
+    "find_thread",
     "get_approval_gate",
     "get_artifact",
     "get_artifact_metadata",
@@ -300,6 +302,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_workspace_queue_depth"
         | "get_workspace_occupancy"
         | "get_swarm_metrics"
+        | "find_thread"
         | "get_run_occupancy"
         | "get_thread_lineage"
         | "list_run_threads"
@@ -1070,6 +1073,7 @@ pub async fn dispatch(
         "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
         "register_thread_pull" => change_pull::register_thread_pull(server, auth, args).await,
         "get_swarm_metrics" => change_pull::get_swarm_metrics(server, auth, args).await,
+        "find_thread" => thread_lookup::find_thread(server, auth, args).await,
         "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
         "get_thread_lineage" => thread::get_thread_lineage(store, args).await,
         "clear_thread_lineage" => thread::clear_thread_lineage(store, args).await,

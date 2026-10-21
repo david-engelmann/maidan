@@ -429,6 +429,10 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** two MCP tools, the twins of REST-only routes, so a session no longer shells out for them. `register_thread_pull` (`workspace:write` and thread access) tracks a session's pull request on its task, as `PUT /threads/{id}/pull` does: the repository must be blessed for the thread's workspace. `get_swarm_metrics` (`workspace:read`, the caller's own workspace) answers as `GET /workspaces/{id}/swarm-metrics`, with the same filters and the same GitHub refresh first. Both run the route's code (`maidan_store::change_pulls`), not a copy.
 
+### A thread is found from its Slack message or pull request
+
+- **Added:** `GET /workspaces/{id}/thread-lookup` and its MCP twin `find_thread` (`workspace:read`, read-only) find the thread an external reference points at. `?repo=&pr_number=` matches the pull request a thread tracks (the change flow's, or a session's registered one), then a GitHub issue link, then a result delivery commenting on it. `?slack_channel=&slack_ts=` matches the result delivery posted as that message or into that Slack thread, and `?slack_channel=` alone matches the thread the channel is linked to. The answer is the thread, or 404 (MCP: `null`) when nothing the caller may read in its workspace matches, so a private channel's thread is not confirmed. The MCP workspace defaults to the caller's. `find` joins the read-only verbs for MCP tool names.
+
 ### Operator alerts in Slack
 
 - **Added:** `MAIDAN_OPS_ALERT_CHANNEL` (a Slack channel id) turns on operator alerts through the existing Slack sender. The server posts one line on boot (proof the route works), one when a change sweep tick panics, and one when a background loop has not finished a tick for three of its intervals (checked every minute). The same alert posts at most once every 15 minutes. A stack that scrapes no `/metrics`, like the local swarm stack, otherwise had no alert route.

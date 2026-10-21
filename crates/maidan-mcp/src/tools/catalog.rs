@@ -1745,6 +1745,27 @@ fn catalog_tail() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "find_thread",
+            "description": "Find the thread an external reference points at: a Slack message (slack_channel and slack_ts: the thread whose result was posted as that message or into that Slack thread), a Slack channel alone (the thread it is linked to), or a GitHub pull request (repo and pr_number: the thread tracking it, linked to it, or delivering to it). Returns the thread, or null when nothing in your workspace that you may read matches. The twin of GET /workspaces/{id}/thread-lookup.",
+            "annotations": {
+                "title": "Find thread",
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id); omitted, the same"},
+                    "slack_channel": {"type": "string", "description": "a Slack channel id such as C0123ABCD"},
+                    "slack_ts": {"type": "string", "description": "a Slack message ts such as 1700000000.000100; needs slack_channel"},
+                    "repo": {"type": "string", "description": "owner/name or a GitHub clone URL; with pr_number"},
+                    "pr_number": {"type": "integer", "minimum": 1}
+                }
+            }
+        }),
+        json!({
             "name": "set_thread_lineage",
             "description": "Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.",
             "annotations": {
