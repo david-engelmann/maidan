@@ -936,6 +936,25 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         });
     }
 
+    // Operator alerts (`MAIDAN_OPS_ALERT_CHANNEL`): a background loop that
+    // panics or stalls says so in that Slack channel, and boot says it is
+    // wired. A stack that scrapes no /metrics has no other alert route.
+    match (
+        maidan_server::ops_alert::channel_from_env(),
+        state.slack_sender.is_some(),
+    ) {
+        (Some(channel), true) => {
+            let alert_state = state.clone();
+            tokio::spawn(async move {
+                maidan_server::ops_alert::run(alert_state, channel).await;
+            });
+        }
+        (Some(_), false) => tracing::warn!(
+            "MAIDAN_OPS_ALERT_CHANNEL is set but no Slack sender is configured; operator alerts are off"
+        ),
+        (None, _) => {}
+    }
+
     // Background wait-timer sweeper: opt-in via `MAIDAN_WAIT_SWEEP_TICK_SECS`.
     // Fires each thread wait past its deadline — emitting `WaitTimedOut` and
     // (per policy) parking the thread.

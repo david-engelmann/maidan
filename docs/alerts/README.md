@@ -34,6 +34,36 @@ here use **`maidan_automation_delivery_total{outcome="failure"}`** rate and
 add a custom exporter against `GET /workspaces/:wid/automation/dlq` or SQL on
 `maidan_automation_deliveries` where `quarantined_at IS NOT NULL`.
 
+## Background loops
+
+A background loop that stops, or keeps panicking, fails silently: a request
+still answers while the work behind it stands still. Each loop sets
+`maidan_background_loop_last_tick_seconds{loop}` when it starts and whenever
+it finishes a tick, and counts `maidan_background_loop_panics_total{loop}`
+(registered at 0 when it starts) when a tick panics; the loop logs the panic
+at ERROR and runs its next tick. A loop turned off exports neither. The change sweep reports them
+today.
+
+- **`MaidanChangeSweepStalled`** (critical): no sweep tick finished for 6
+  minutes, three default intervals, held for 5. Merges settling, change
+  notices, handoffs and Linear claim comments have stopped. Read the sweep's
+  last log lines, and restart the server if the task is gone.
+- **`MaidanBackgroundLoopPanicking`** (warning): a tick panicked in the last
+  15 minutes. The loop runs on, but the rest of that tick was skipped, and a
+  panic that repeats skips it every tick. The message is in the log at ERROR.
+
+A stack that scrapes no `/metrics` can still get the two that matter most
+in Slack: set `MAIDAN_OPS_ALERT_CHANNEL` to a channel id (`C…`, not the
+name) that Maidan's Slack bot is a member of. The server then posts one line
+on boot (proof the route works, every deploy), one when a loop's tick
+panics, and one when a loop has not finished a tick for three of its
+intervals, checked every minute. The same alert posts at most once every 15
+minutes.
+
+The Prometheus rules above reach a person only through an alert route. A stack that scrapes no
+`/metrics` gets neither: wire Alertmanager (`alertmanager-routes.example.yaml`)
+or Grafana alerting before relying on them.
+
 ## Validate locally
 
 ```bash

@@ -409,6 +409,15 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 
 - **Added:** a plan with five or more children, or any child that needs a threat model, is created held. Its answer says `"held": true` (HTTP and MCP), and each child is blocked, so no worker claims one. `POST /threads/{id}/plan/release` (`token:admin`, audited) clears the hold and answers the children released; any other block on a child stays.
 
+### A stalled or panicking change sweep alerts
+
+- **Added:** `maidan_background_loop_last_tick_seconds{loop}` and `maidan_background_loop_panics_total{loop}`, reported by the change sweep, and two alert rules in `docs/alerts/prometheus-rules-maidan-slo.yaml`: `MaidanChangeSweepStalled` (critical, no tick for 6 minutes) and `MaidanBackgroundLoopPanicking` (warning), with promtool tests. They reach a person only through an alert route; `docs/alerts/README.md` says so.
+
+### Operator alerts in Slack
+
+- **Added:** `MAIDAN_OPS_ALERT_CHANNEL` (a Slack channel id) turns on operator alerts through the existing Slack sender. The server posts one line on boot (proof the route works), one when a change sweep tick panics, and one when a background loop has not finished a tick for three of its intervals (checked every minute). The same alert posts at most once every 15 minutes. A stack that scrapes no `/metrics`, like the local swarm stack, otherwise had no alert route.
+- **Fixed:** #1478's squash had dropped #1477 (the loop liveness and panic metrics, their alert rules and tests, and the README section) from `main`; they are restored.
+
 ## [413.0.0] — 2026-10-11
 
 The first release since 412.0.0. It ships every PR merged after the 412.0.0

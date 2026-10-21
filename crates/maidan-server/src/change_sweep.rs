@@ -673,6 +673,8 @@ impl Notice<'_> {
 pub async fn run(state: AppState, interval: Duration) {
     use futures::FutureExt;
     tracing::info!(interval_secs = interval.as_secs(), "change sweep started");
+    crate::metrics::register_loop("change_sweep");
+    crate::ops_alert::register_loop("change_sweep", interval);
     loop {
         // A panic in one tick is logged and the next tick runs. Unguarded,
         // it ended this task without a trace, and every later merge,
@@ -685,11 +687,25 @@ pub async fn run(state: AppState, interval: Duration) {
                 tracing::info!(?stats, "change sweep tick");
             }
             Ok(_) => tracing::debug!("change sweep tick: nothing to do"),
-            Err(panic) => tracing::error!(
-                panic = panic_message(panic.as_ref()),
-                "change sweep tick panicked; the next tick runs"
-            ),
+            Err(panic) => {
+                crate::metrics::record_loop_panic("change_sweep");
+                let message = panic_message(panic.as_ref());
+                tracing::error!(
+                    panic = message,
+                    "change sweep tick panicked; the next tick runs"
+                );
+                crate::ops_alert::alert(
+                    &state,
+                    "panic:change_sweep",
+                    &format!(
+                        ":rotating_light: Maidan's change sweep tick panicked: {message}. The loop runs on, but the rest of that tick was skipped; the log has the details."
+                    ),
+                )
+                .await;
+            }
         }
+        crate::metrics::record_loop_tick("change_sweep");
+        crate::ops_alert::note_tick("change_sweep");
         tokio::time::sleep(interval).await;
     }
 }
