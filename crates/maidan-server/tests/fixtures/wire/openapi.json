@@ -8734,11 +8734,27 @@
       "SliceNumbers": {
         "description": "How a set of tasks did: a whole repository, or one slice of it.",
         "properties": {
+          "claim_lapses": {
+            "format": "int64",
+            "type": "integer"
+          },
           "cost_usd_micros_per_merged": {
             "description": "Total cost of the tasks over the merged ones; `None` before the first\nmerge.",
             "format": "int64",
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "deliveries_skipped": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_ci_pass_rate": {
+            "description": "Tasks whose first delivered head passed CI, over those whose first\nhead's checks finished; `None` with none finished.",
+            "format": "double",
+            "type": [
+              "number",
               "null"
             ]
           },
@@ -8766,6 +8782,25 @@
           "mean_rounds": {
             "format": "double",
             "type": "number"
+          },
+          "mean_sent_back": {
+            "description": "Reviews that sent work back, per task.",
+            "format": "double",
+            "type": "number"
+          },
+          "median_claim_to_first_delivery_secs": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "median_review_wait_secs": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "median_time_to_first_human_review_secs": {
             "format": "int64",
@@ -8818,7 +8853,10 @@
           "misroute_rate",
           "mean_rounds",
           "reverted",
-          "followup_fixed"
+          "followup_fixed",
+          "mean_sent_back",
+          "claim_lapses",
+          "deliveries_skipped"
         ],
         "type": "object"
       },
@@ -9195,6 +9233,27 @@
             "$ref": "#/components/schemas/TaskAttributes",
             "description": "The task's attributes; the defaults when the thread was never\ndescribed."
           },
+          "claim_lapses": {
+            "description": "Claims that lapsed before the work was handed in.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "claim_to_first_delivery_secs": {
+            "description": "First claim to the first round delivered, in seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "claimed_at": {
+            "description": "When the task was first claimed.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "closed_at": {
             "format": "date-time",
             "type": [
@@ -9205,6 +9264,22 @@
           "cost_usd_micros": {
             "format": "int64",
             "type": "integer"
+          },
+          "deliveries_skipped": {
+            "description": "Result deliveries skipped or failed.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_delivery_ci": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CiStatus",
+                "description": "How the checks stood on the first delivered head."
+              }
+            ]
           },
           "flags": {
             "items": {
@@ -9311,11 +9386,24 @@
               "null"
             ]
           },
+          "review_wait_secs": {
+            "description": "From the first green CI on a head (else the first move to review) to\nthe first review submitted, in seconds: how long finished work waited\nfor a reviewer, not for CI.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "rounds": {
             "items": {
               "$ref": "#/components/schemas/ChangeRound"
             },
             "type": "array"
+          },
+          "sent_back": {
+            "description": "Reviews that sent the work back.",
+            "format": "int64",
+            "type": "integer"
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
@@ -9356,7 +9444,10 @@
           "rebases",
           "attributes",
           "followup_fixes",
-          "handed_off"
+          "handed_off",
+          "sent_back",
+          "claim_lapses",
+          "deliveries_skipped"
         ],
         "type": "object"
       },
@@ -33038,6 +33129,16 @@
             "description": "Only pull requests opened at or after this time (RFC 3339).",
             "in": "query",
             "name": "since",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only pull requests opened before this time (RFC 3339): with `since`,\none time window.",
+            "in": "query",
+            "name": "until",
             "required": false,
             "schema": {
               "format": "date-time",

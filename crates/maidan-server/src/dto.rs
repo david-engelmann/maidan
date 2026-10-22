@@ -436,6 +436,9 @@ pub struct SwarmMetricsQuery {
     pub repo: Option<String>,
     /// Only pull requests opened at or after this time (RFC 3339).
     pub since: Option<chrono::DateTime<chrono::Utc>>,
+    /// Only pull requests opened before this time (RFC 3339): with `since`,
+    /// one time window.
+    pub until: Option<chrono::DateTime<chrono::Utc>>,
     /// Rounds after which an unmerged task is flagged non-converging (default 3).
     pub rounds_limit: Option<i64>,
     /// Commits behind at which a round's base is flagged stale (default 50).

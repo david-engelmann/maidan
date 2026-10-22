@@ -1734,6 +1734,7 @@ fn catalog_tail() -> Vec<Value> {
                     "workspace_id": {"type": "string", "format": "uuid", "description": "your own workspace (whoami's workspace_id)"},
                     "repo": {"type": "string", "description": "owner/name or a GitHub clone URL; omitted, every repository"},
                     "since": {"type": "string", "format": "date-time", "description": "only pull requests opened at or after this time"},
+                    "until": {"type": "string", "format": "date-time", "description": "only pull requests opened before this time; with since, one window"},
                     "rounds_limit": {"type": "integer", "description": "rounds after which an unmerged task is flagged non-converging (default 3)"},
                     "behind_limit": {"type": "integer", "description": "commits behind at which a round's base is flagged stale (default 50)"},
                     "engine": {"type": "string", "enum": ["pi", "session", "human"]},

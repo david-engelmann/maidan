@@ -302,7 +302,10 @@ async fn a_tasks_model_spend_reads_back_as_its_cost(store: Arc<dyn Store>) {
         .create_thread_with_footprint(new_thread(room.channel, "spent"), None, None, None)
         .await
         .unwrap();
-    let claimed = store.claim_thread(thread.id, agent).await.unwrap();
+    let (claimed, _event) = store
+        .claim_thread_with_event(thread.id, agent)
+        .await
+        .unwrap();
     let lease = claimed.thread.claim_lease_id.unwrap();
     store
         .report_accounted_usage(&NewUsageLedgerEntry {
@@ -375,6 +378,36 @@ async fn a_tasks_model_spend_reads_back_as_its_cost(store: Arc<dyn Store>) {
     assert_eq!(pulls[0].cost_usd_micros, 15);
     assert_eq!(pulls[0].provider.as_deref(), Some("openai"));
     assert_eq!(pulls[0].harness.as_deref(), Some("codex"));
+
+    // The claim is in the flow, and a skipped delivery counts. The event and
+    // delivery reads run on both backends here.
+    assert!(pulls[0].flow.claimed_at.is_some(), "{:?}", pulls[0].flow);
+    assert_eq!(pulls[0].flow.deliveries_skipped, 0);
+    let row = store
+        .arm_unroutable_result_delivery(thread.id, "nowhere", "x", chrono::Utc::now())
+        .await
+        .unwrap()
+        .expect("armed");
+    store
+        .mark_result_delivery_skipped(row.id, "unknown surface")
+        .await
+        .unwrap();
+    let pulls = store
+        .list_change_pulls(room.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(pulls[0].flow.deliveries_skipped, 1);
+    assert_eq!(
+        pulls[0].first_delivery_ci, None,
+        "no CI notice names the head"
+    );
+    let metrics = maidan_types::swarm_metrics(
+        pulls,
+        maidan_types::FlagLimits::default(),
+        chrono::Utc::now(),
+    );
+    assert!(metrics.tasks[0].claim_to_first_delivery_secs.is_some());
+    assert_eq!(metrics.repos[0].totals.deliveries_skipped, 1);
 }
 
 /// A pull request keeps the first Linear issue a round names: a later round
