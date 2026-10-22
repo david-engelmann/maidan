@@ -784,6 +784,7 @@ async fn claim_next_in_tx(
             dm_channel: "$5",
             repo: "$6::text",
             engine: "$7::text",
+            requeued_after_result: "tr.occurred_at >= r.produced_at",
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (cand.assignment_expires_at - cand.work_started_at)))::bigint) ELSE 0 END",
