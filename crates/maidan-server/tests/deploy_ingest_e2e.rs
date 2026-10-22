@@ -103,7 +103,7 @@ async fn merged_thread(store: &dyn Store, head: &str) -> ThreadId {
         .unwrap();
     let at = chrono::Utc::now();
     store
-        .close_change_pull("example/app", 7, Some(at), Some(head), at)
+        .close_change_pull(ws.id, "example/app", 7, Some(at), Some(head), at)
         .await
         .unwrap();
     thread

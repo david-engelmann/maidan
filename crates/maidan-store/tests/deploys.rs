@@ -95,7 +95,7 @@ async fn merged(store: &dyn Store, room: &Room, thread: ThreadId, pull_number: i
         .unwrap();
     let at = chrono::Utc::now();
     store
-        .close_change_pull(REPO, pull_number, Some(at), Some(head), at)
+        .close_change_pull(room.ws, REPO, pull_number, Some(at), Some(head), at)
         .await
         .unwrap();
 }
