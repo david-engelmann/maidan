@@ -636,6 +636,13 @@ fn apply_route_defaults(
             "children": [{ "key": "a", "title": "a" }]
         }));
     }
+    if path == "/threads/{id}/plan/amend" && method == "POST" {
+        return b.json(&json!({
+            "lease_id": "00000000-0000-0000-0000-000000000000",
+            "add": [{ "key": "b", "title": "b" }],
+            "reason": "the plan missed a step"
+        }));
+    }
     if path == "/threads/{id}/attributes" && method == "PUT" {
         return b.json(&json!({
             "kind": "review",

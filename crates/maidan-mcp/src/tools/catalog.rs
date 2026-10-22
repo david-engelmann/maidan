@@ -1533,6 +1533,58 @@ fn catalog_head() -> Vec<Value> {
             }
         }),
         json!({
+            "name": "amend_plan",
+            "description": "Change a plan you already submitted, holding the plan thread's live claim (pass its lease_id). cancel names children to cancel; add gives new children (the shape submit_plan takes, depends_on may name any child of the plan); rewire sets a child's depends_on afresh. Cancel and add the same key to replace a child: its dependents wait for the new one. A cancelled child's dependents stop waiting for it. Only children that are open and unclaimed can be cancelled or rewired: a claimed or finished one is refused, as is a fourth amendment of the same plan (error code -32010). reason is kept on each cancelled child. Everything happens in one transaction, or nothing does. Added children are held for review when the plan is held or one of them needs a threat model.",
+            "annotations": {
+                "title": "Amend plan",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": false,
+                "openWorldHint": false
+            },
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "format": "uuid", "description": "the plan thread you hold the claim on"},
+                    "lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from your claim on the plan thread"},
+                    "cancel": {"type": "array", "maxItems": 50, "items": {"type": "string", "maxLength": 64}, "description": "keys of unclaimed children to cancel"},
+                    "add": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": {"type": "string", "maxLength": 64},
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "attributes": {"type": "object"},
+                                "footprint": {"type": "object"},
+                                "depends_on": {"type": "array", "items": {"type": "string"}, "description": "keys of any children in the plan"},
+                                "test": {"type": "string", "maxLength": 500}
+                            },
+                            "required": ["key", "title", "test", "attributes", "footprint"],
+                            "additionalProperties": false
+                        }
+                    },
+                    "rewire": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": {"type": "string", "maxLength": 64},
+                                "depends_on": {"type": "array", "items": {"type": "string"}}
+                            },
+                            "required": ["key", "depends_on"],
+                            "additionalProperties": false
+                        }
+                    },
+                    "reason": {"type": "string", "maxLength": 500, "description": "why the plan changed; kept on each cancelled child"}
+                },
+                "required": ["thread_id", "lease_id"]
+            }
+        }),
+        json!({
             "name": "set_thread_footprint",
             "description": "Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.",
             "annotations": {

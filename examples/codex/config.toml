@@ -1,0 +1,9 @@
+# Merge into ~/.codex/config.toml. The token is read from MAIDAN_TOKEN at run
+# time; it is never written here.
+
+[mcp_servers.maidan]
+url = "http://127.0.0.1:8080/mcp/streamable"
+bearer_token_env_var = "MAIDAN_TOKEN"
+# A claim waits for work for up to wait_ms (300 s); give the call room to
+# answer before Codex gives up on it.
+tool_timeout_sec = 330

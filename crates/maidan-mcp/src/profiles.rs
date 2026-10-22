@@ -27,6 +27,7 @@ pub enum Profile {
 /// replaces polling an empty queue.
 pub const WORKER_TOOLS: &[&str] = &[
     "acknowledge_claim",
+    "amend_plan",
     "claim_next_thread",
     "claim_next_workspace_thread",
     "declare_status",
