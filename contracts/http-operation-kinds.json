@@ -61,6 +61,7 @@
   {"method":"GET","path":"/health","kind":"reads"},
   {"method":"GET","path":"/health/live","kind":"reads"},
   {"method":"GET","path":"/health/ready","kind":"reads"},
+  {"method":"POST","path":"/integrations/deploys/events","kind":"changes"},
   {"method":"POST","path":"/integrations/github/events","kind":"changes"},
   {"method":"POST","path":"/integrations/slack/events","kind":"changes"},
   {"method":"GET","path":"/llms.txt","kind":"reads"},

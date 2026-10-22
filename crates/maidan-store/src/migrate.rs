@@ -291,6 +291,7 @@ const POSTGRES_UP_V193: &str =
     include_str!("../../../migrations/postgres/0193_pull_merge_queue.sql");
 const POSTGRES_UP_V194: &str =
     include_str!("../../../migrations/postgres/0194_change_pulls_workspace_key.sql");
+const POSTGRES_UP_V195: &str = include_str!("../../../migrations/postgres/0195_deploys.sql");
 const POSTGRES_UP_V198: &str =
     include_str!("../../../migrations/postgres/0198_plan_amendments.sql");
 const SQLITE_UP_V1: &str = include_str!("../../../migrations/sqlite/0001_core_up.sql");
@@ -524,6 +525,7 @@ const SQLITE_UP_V192: &str = include_str!("../../../migrations/sqlite/0192_pull_
 const SQLITE_UP_V193: &str = include_str!("../../../migrations/sqlite/0193_pull_merge_queue.sql");
 const SQLITE_UP_V194: &str =
     include_str!("../../../migrations/sqlite/0194_change_pulls_workspace_key.sql");
+const SQLITE_UP_V195: &str = include_str!("../../../migrations/sqlite/0195_deploys.sql");
 const SQLITE_UP_V198: &str = include_str!("../../../migrations/sqlite/0198_plan_amendments.sql");
 
 /// Session advisory-lock key guarding boot-time migrations. Any constant works
@@ -771,7 +773,8 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 192, POSTGRES_UP_V192).await?;
     apply_postgres(pool, &applied, 193, POSTGRES_UP_V193).await?;
     apply_postgres(pool, &applied, 194, POSTGRES_UP_V194).await?;
-    // 0195 to 0197 land in their own pull requests; 0198 depends on none.
+    apply_postgres(pool, &applied, 195, POSTGRES_UP_V195).await?;
+    // 0196 and 0197 land in their own pull requests; 0198 depends on neither.
     apply_postgres(pool, &applied, 198, POSTGRES_UP_V198).await?;
     // The partitioned tables need their months ready before the first write,
     // or rows land in DEFAULT until the first retention sweep.
@@ -974,7 +977,8 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 192, SQLITE_UP_V192).await?;
     apply_sqlite(pool, &applied, 193, SQLITE_UP_V193).await?;
     apply_sqlite(pool, &applied, 194, SQLITE_UP_V194).await?;
-    // 0195 to 0197 land in their own pull requests; 0198 depends on none.
+    apply_sqlite(pool, &applied, 195, SQLITE_UP_V195).await?;
+    // 0196 and 0197 land in their own pull requests; 0198 depends on neither.
     apply_sqlite(pool, &applied, 198, SQLITE_UP_V198).await?;
     Ok(())
 }

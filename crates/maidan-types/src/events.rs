@@ -688,6 +688,12 @@ pub enum Event {
         /// What holds the pull request back (`gate_blocked`).
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         reasons: Vec<String>,
+        /// Where a `deployed` notice's commit went.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        environment: Option<String>,
+        /// The deploy's own page, as the hook sent it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deploy_url: Option<String>,
     },
     /// A Pi task that stopped converging was handed to a session: its claim
     /// ended and its engine became `session`, so a Pi claim never takes it

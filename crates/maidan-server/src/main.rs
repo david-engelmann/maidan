@@ -745,6 +745,13 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         tracing::info!("linear result delivery configured");
     }
 
+    // Deploy push-ingest: `/integrations/deploys/events` stays a 404 until
+    // `MAIDAN_DEPLOY_HOOK_SECRET` is set.
+    if let Some(hook) = maidan_server::deploy_ingest::DeployHookConfig::from_env() {
+        state.attach_deploy_hook(std::sync::Arc::new(hook));
+        tracing::info!("deploy hook configured");
+    }
+
     // Git/GitHub projector: wire the ingress config when
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
     // `/integrations/github/events` stays disabled (404). A projector, not a

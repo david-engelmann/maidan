@@ -1628,6 +1628,10 @@ pub fn router(state: AppState) -> Router {
         // GitHub projector ingress: unauthed — GitHub authenticates via its
         // X-Hub-Signature-256, verified in-handler. 404 unless configured.
         .route("/integrations/github/events", post(github::github_events))
+        .route(
+            "/integrations/deploys/events",
+            post(crate::deploy_ingest::deploy_events),
+        )
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))
