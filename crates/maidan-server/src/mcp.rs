@@ -437,7 +437,7 @@ async fn single_response(
         return StatusCode::ACCEPTED.into_response();
     }
     if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(state, auth, &request).await {
-        return Json(resp).into_response();
+        return Json(*resp).into_response();
     }
     reply(era, answer(state, auth, request, profile).await)
 }
@@ -472,7 +472,7 @@ async fn batch_response(
         let is_notification = request.id.is_none();
         if let Err(resp) = crate::mcp_quota::enforce_mcp_quota(state, auth, &request).await {
             if !is_notification {
-                responses.push(resp);
+                responses.push(*resp);
             }
             continue;
         }

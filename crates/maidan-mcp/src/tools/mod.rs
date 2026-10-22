@@ -1485,7 +1485,7 @@ mod self_scope_tests {
                     return true;
                 };
                 let rest = &catalog[start + 8..];
-                let end = rest.find("\"name\": \"").map_or(rest.len(), |i| i);
+                let end = rest.find("\"name\": \"").unwrap_or(rest.len());
                 !rest[..end].contains("\"member_id\"")
             })
             .collect();

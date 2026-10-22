@@ -9709,6 +9709,17 @@
       "ThreadBrief": {
         "description": "What working a thread does not change: a post, a claim or a renewal leaves\nit as it was, so it belongs in the cached prefix. State and the lease are\nin the tail.",
         "properties": {
+          "attributes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskAttributes",
+                "description": "The task's attributes (kind, engine, size, acceptance, Linear issue),\nso the worker reading the pack sees what it is asked to do and how it\nis checked. Absent from an as-of pack: they are current routing state,\nnot history."
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"

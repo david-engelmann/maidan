@@ -26,9 +26,8 @@ pub async fn record_round(pool: &SqlitePool, new: NewChangeRound) -> Result<(), 
     sqlx::query(
         "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at, linear_issue)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT (repo, pull_number) DO UPDATE
-             SET linear_issue = COALESCE(maidan_change_pulls.linear_issue, excluded.linear_issue)
-             WHERE maidan_change_pulls.workspace_id = excluded.workspace_id",
+         ON CONFLICT (workspace_id, repo, pull_number) DO UPDATE
+             SET linear_issue = COALESCE(maidan_change_pulls.linear_issue, excluded.linear_issue)",
     )
     .bind(&repo)
     .bind(new.pull_number)
@@ -43,8 +42,8 @@ pub async fn record_round(pool: &SqlitePool, new: NewChangeRound) -> Result<(), 
              (repo, pull_number, commit_sha, round, base_sha, base_behind, diff_lines, delivered_at,
               paths, base_branch, rebase, workspace_id, previous_head)
          SELECT ?1, ?2, ?3, COALESCE(MAX(round), 0) + 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
-         FROM maidan_change_rounds WHERE repo = ?1 AND pull_number = ?2
-         ON CONFLICT (repo, pull_number, commit_sha) DO NOTHING",
+         FROM maidan_change_rounds WHERE workspace_id = ?11 AND repo = ?1 AND pull_number = ?2
+         ON CONFLICT (workspace_id, repo, pull_number, commit_sha) DO NOTHING",
     )
     .bind(&repo)
     .bind(new.pull_number)
@@ -77,7 +76,8 @@ pub async fn latest_round_head(
 ) -> Result<Option<String>, StoreError> {
     Ok(sqlx::query_scalar(
         "SELECT r.commit_sha FROM maidan_change_rounds r
-         JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
+         JOIN maidan_change_pulls p
+           ON p.workspace_id = r.workspace_id AND p.repo = r.repo AND p.pull_number = r.pull_number
          WHERE p.workspace_id = ?1 AND r.workspace_id = ?1
            AND r.repo = ?2 AND r.pull_number = ?3
          ORDER BY r.round DESC
@@ -103,7 +103,8 @@ pub async fn round_previous_head(
 ) -> Result<Option<String>, StoreError> {
     let head: Option<Option<String>> = sqlx::query_scalar(
         "SELECT r.previous_head FROM maidan_change_rounds r
-         JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
+         JOIN maidan_change_pulls p
+           ON p.workspace_id = r.workspace_id AND p.repo = r.repo AND p.pull_number = r.pull_number
          WHERE p.workspace_id = ?1 AND r.workspace_id = ?1
            AND r.repo = ?2 AND r.pull_number = ?3 AND r.commit_sha = ?4",
     )
@@ -119,17 +120,19 @@ pub async fn round_previous_head(
 /// Stamp when a tracked pull request was made ready (the first time only).
 pub async fn mark_ready(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
     at: DateTime<Utc>,
 ) -> Result<(), StoreError> {
     sqlx::query(
         "UPDATE maidan_change_pulls SET ready_at = COALESCE(ready_at, ?3)
-         WHERE repo = ?1 AND pull_number = ?2",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4",
     )
     .bind(repo.to_ascii_lowercase())
     .bind(pull_number)
     .bind(at.to_rfc3339())
+    .bind(workspace_id.0)
     .execute(pool)
     .await?;
     Ok(())
@@ -138,6 +141,7 @@ pub async fn mark_ready(
 /// Record that a tracked pull request closed, merged or not.
 pub async fn close(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
     merged_at: Option<DateTime<Utc>>,
@@ -147,13 +151,14 @@ pub async fn close(
     sqlx::query(
         "UPDATE maidan_change_pulls
          SET merged_at = ?3, merged_head_sha = ?4, closed_at = ?5
-         WHERE repo = ?1 AND pull_number = ?2 AND closed_at IS NULL",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?6 AND closed_at IS NULL",
     )
     .bind(repo.to_ascii_lowercase())
     .bind(pull_number)
     .bind(merged_at.map(|at| at.to_rfc3339()))
     .bind(merged_head_sha.map(str::to_ascii_lowercase))
     .bind(closed_at.to_rfc3339())
+    .bind(workspace_id.0)
     .execute(pool)
     .await?;
     Ok(())
@@ -186,17 +191,19 @@ pub async fn list_open(
 /// Stamp when a tracked pull request was last read from GitHub.
 pub async fn mark_checked(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
     at: DateTime<Utc>,
 ) -> Result<(), StoreError> {
     sqlx::query(
         "UPDATE maidan_change_pulls SET checked_at = ?3
-         WHERE repo = ?1 AND pull_number = ?2",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4",
     )
     .bind(repo.to_ascii_lowercase())
     .bind(pull_number)
     .bind(at.to_rfc3339())
+    .bind(workspace_id.0)
     .execute(pool)
     .await?;
     Ok(())
@@ -256,6 +263,7 @@ pub async fn list_unsettled(
 pub async fn settle(
     pool: &SqlitePool,
     keys: &ContentKeyring,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
 ) -> Result<ChangeSettlement, StoreError> {
@@ -267,18 +275,19 @@ pub async fn settle(
          FROM maidan_change_pulls p
          JOIN maidan_threads t ON t.id = p.thread_id
          LEFT JOIN maidan_thread_results r ON r.thread_id = p.thread_id
-         WHERE p.repo = ?1 AND p.pull_number = ?2
+         WHERE p.repo = ?1 AND p.pull_number = ?2 AND p.workspace_id = ?3
            AND p.closed_at IS NOT NULL AND p.settled_at IS NULL",
     )
     .bind(&repo)
     .bind(pull_number)
+    .bind(workspace_id.0)
     .fetch_optional(&mut *tx)
     .await?
     else {
         return Ok(ChangeSettlement::Unchanged);
     };
     // Claimed before acting, so two replicas sweeping at once settle it once.
-    if mark_settled(&mut tx, &repo, pull_number).await? == 0 {
+    if mark_settled(&mut tx, workspace_id, &repo, pull_number).await? == 0 {
         return Ok(ChangeSettlement::Unchanged);
     }
     let thread_id = ThreadId(row.get("thread_id"));
@@ -354,7 +363,7 @@ pub async fn settle(
             // The merge stands whatever the thread's gates say, so the close
             // is settled now and the refusal said once, not retried each tick.
             let mut tx = pool.begin().await?;
-            let claimed = mark_settled(&mut tx, &repo, pull_number).await?;
+            let claimed = mark_settled(&mut tx, workspace_id, &repo, pull_number).await?;
             tx.commit().await?;
             if claimed == 0 {
                 return Ok(ChangeSettlement::Unchanged);
@@ -371,16 +380,18 @@ pub async fn settle(
 
 async fn mark_settled(
     conn: &mut <sqlx::Sqlite as sqlx::Database>::Connection,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
 ) -> Result<u64, StoreError> {
     Ok(sqlx::query(
         "UPDATE maidan_change_pulls SET settled_at = ?3
-         WHERE repo = ?1 AND pull_number = ?2 AND settled_at IS NULL",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4 AND settled_at IS NULL",
     )
     .bind(repo)
     .bind(pull_number)
     .bind(Utc::now().to_rfc3339())
+    .bind(workspace_id.0)
     .execute(conn)
     .await?
     .rows_affected())
@@ -447,7 +458,7 @@ pub async fn notify_merges(
     let mut posted = Vec::new();
     for row in &rows {
         let repo: String = row.get("repo");
-        posted.extend(notify_merge(pool, &repo, row.get("pull_number")).await?);
+        posted.extend(notify_merge(pool, workspace_id, &repo, row.get("pull_number")).await?);
     }
     Ok(posted)
 }
@@ -457,38 +468,42 @@ pub async fn notify_merges(
 /// notify it once, and a failure leaves it for the next pass.
 async fn notify_merge(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
 ) -> Result<Vec<PostedNotice>, StoreError> {
     let mut tx = pool.begin().await?;
     let claimed = sqlx::query(
         "UPDATE maidan_change_pulls SET noticed_at = ?3
-         WHERE repo = ?1 AND pull_number = ?2 AND merged_at IS NOT NULL AND noticed_at IS NULL",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?4
+           AND merged_at IS NOT NULL AND noticed_at IS NULL",
     )
     .bind(repo)
     .bind(pull_number)
     .bind(Utc::now().to_rfc3339())
+    .bind(workspace_id.0)
     .execute(&mut *tx)
     .await?
     .rows_affected();
     if claimed == 0 {
         return Ok(Vec::new());
     }
-    let pull = sqlx::query(
-        "SELECT workspace_id, thread_id FROM maidan_change_pulls WHERE repo = ?1 AND pull_number = ?2",
+    let own_thread: Uuid = sqlx::query_scalar(
+        "SELECT thread_id FROM maidan_change_pulls
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?3",
     )
     .bind(repo)
     .bind(pull_number)
+    .bind(workspace_id.0)
     .fetch_one(&mut *tx)
     .await?;
-    let workspace_id: Uuid = pull.get("workspace_id");
-    let own_thread: Uuid = pull.get("thread_id");
     let rounds = sqlx::query(
         "SELECT paths, base_branch FROM maidan_change_rounds
-         WHERE repo = ?1 AND pull_number = ?2 ORDER BY round",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?3 ORDER BY round",
     )
     .bind(repo)
     .bind(pull_number)
+    .bind(workspace_id.0)
     .fetch_all(&mut *tx)
     .await?;
     let (paths, base_branch) = merged_paths(rounds.iter().map(|row| {
@@ -504,7 +519,7 @@ async fn notify_merge(
     let keys = sqlx::query(&crate::footprints::live_path_keys_select(
         "?1", "?2", "?3", "?4",
     ))
-    .bind(workspace_id)
+    .bind(workspace_id.0)
     .bind(repo)
     .bind(own_thread)
     .bind(Utc::now().to_rfc3339())
@@ -876,7 +891,8 @@ pub async fn list(
         "SELECT r.repo, r.pull_number, r.commit_sha, r.round, r.base_behind, r.diff_lines, r.delivered_at,
                 r.rebase, r.previous_head
          FROM maidan_change_rounds r
-         JOIN maidan_change_pulls p ON p.repo = r.repo AND p.pull_number = r.pull_number
+         JOIN maidan_change_pulls p
+           ON p.workspace_id = r.workspace_id AND p.repo = r.repo AND p.pull_number = r.pull_number
          WHERE p.workspace_id = ?1 AND r.workspace_id = ?1
          ORDER BY r.repo, r.pull_number, r.round",
     )
@@ -935,7 +951,8 @@ pub async fn list_outcomes_due(
                 p.merge_commit_sha, p.reverted_at, p.revert_ref, p.followup_fixes, p.human_commits,
                 p.human_reviews, p.first_human_review_at,
                 (SELECT r.base_branch FROM maidan_change_rounds r
-                 WHERE r.repo = p.repo AND r.pull_number = p.pull_number
+                 WHERE r.workspace_id = p.workspace_id AND r.repo = p.repo
+                   AND r.pull_number = p.pull_number
                  ORDER BY r.round DESC LIMIT 1) AS base_branch
          FROM maidan_change_pulls p
          WHERE p.workspace_id = ?1 AND p.watch_only = 0 AND p.merged_at IS NOT NULL AND p.merged_at >= ?2
@@ -983,6 +1000,7 @@ pub async fn list_outcomes_due(
 /// Record what an outcome check found, whole, and stamp it checked.
 pub async fn record_outcome(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     repo: &str,
     pull_number: i64,
     outcome: &MergedOutcome,
@@ -993,7 +1011,7 @@ pub async fn record_outcome(
          SET merge_commit_sha = ?3, reverted_at = ?4, revert_ref = ?5, followup_fixes = ?6,
              human_commits = ?7, human_reviews = ?8, first_human_review_at = ?9,
              outcome_checked_at = ?10
-         WHERE repo = ?1 AND pull_number = ?2",
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?11",
     )
     .bind(repo.to_ascii_lowercase())
     .bind(pull_number)
@@ -1005,6 +1023,7 @@ pub async fn record_outcome(
     .bind(outcome.human_reviews)
     .bind(outcome.first_human_review_at.map(|at| at.to_rfc3339()))
     .bind(checked_at.to_rfc3339())
+    .bind(workspace_id.0)
     .execute(pool)
     .await?;
     Ok(())
@@ -1114,8 +1133,11 @@ pub async fn hand_off(
 
 /// Track a pull request the change flow did not open (a session's) on
 /// `thread_id`. Its time to ready starts at the thread's `CLAIM:` notice,
-/// else `claimed_at` (a claim said outside Maidan), else now. Registering it again on the same thread answers the same;
-/// one another thread or workspace tracks is a conflict.
+/// else `claimed_at` (a claim said outside Maidan), else now. Registering it
+/// again on the same thread answers the same; one another thread in the same
+/// workspace tracks is a conflict. Another workspace tracking the same pull
+/// request is not: each workspace keeps its own row, so none can claim a
+/// pull request first and lock the others out of it.
 pub async fn register(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -1137,7 +1159,7 @@ pub async fn register(
     sqlx::query(
         "INSERT INTO maidan_change_pulls (repo, pull_number, workspace_id, thread_id, opened_at, watch_only)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT (repo, pull_number) DO NOTHING",
+         ON CONFLICT (workspace_id, repo, pull_number) DO NOTHING",
     )
     .bind(&repo)
     .bind(pull_number)
@@ -1148,16 +1170,15 @@ pub async fn register(
     .execute(&mut *tx)
     .await?;
     let row = sqlx::query(
-        "SELECT workspace_id, thread_id, opened_at FROM maidan_change_pulls
-         WHERE repo = ?1 AND pull_number = ?2",
+        "SELECT thread_id, opened_at FROM maidan_change_pulls
+         WHERE repo = ?1 AND pull_number = ?2 AND workspace_id = ?3",
     )
     .bind(&repo)
     .bind(pull_number)
+    .bind(workspace_id.0)
     .fetch_one(&mut *tx)
     .await?;
-    if row.get::<Uuid, _>("workspace_id") != workspace_id.0
-        || row.get::<Uuid, _>("thread_id") != thread_id.0
-    {
+    if row.get::<Uuid, _>("thread_id") != thread_id.0 {
         return Err(StoreError::Conflict(format!(
             "{repo}#{pull_number} is already tracked on another task"
         )));

@@ -13,7 +13,7 @@
 # `MAIDAN_ENABLE_BOOTSTRAP=1` (CI smoke / local seed). Production deploys
 # should leave the build arg at 0.
 
-ARG RUST_VERSION=1.91
+ARG RUST_VERSION=1.99
 ARG DEBIAN_CODENAME=bookworm
 ARG MAIDAN_ENABLE_BOOTSTRAP=0
 

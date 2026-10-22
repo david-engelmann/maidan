@@ -20,13 +20,18 @@ review and releases the claim.
    token). Runbook step 0 has the command: it calls
    `POST /workspaces/{wid}/agents` and writes the new token to
    `~/.config/maidan/seat-token` without printing it.
-2. **Install the skill** in the repository you work in (or in
-   `~/.claude/skills/` for every repository):
+2. **Install the skill** for your user, so every repository you open has it:
 
    ```sh
-   mkdir -p .claude/skills
-   cp -R /path/to/maidan/examples/claude-code/maidan-claimant .claude/skills/
+   mkdir -p ~/.claude/skills && cp -R examples/claude-code/maidan-claimant ~/.claude/skills/
    ```
+
+   (from a checkout of Maidan). The skill holds no paths into this
+   repository: the runbook calls the helper as
+   `"$CLAIMANT_DIR/change_result.py"`, which is
+   `~/.claude/skills/maidan-claimant/change_result.py` here, and the helper
+   works on whatever checkout it is run in. To install it for one repository
+   only, copy the directory to that repository's `.claude/skills/` instead.
 
 3. **Connect.** Merge [`mcp.json`](mcp.json) into the repository's
    `.mcp.json`. It names `MAIDAN_URL` and `MAIDAN_TOKEN`, never the token
@@ -57,9 +62,12 @@ when it comes back empty. If Claude Code times the call out first, raise
   A change the flow cannot commit (binary files, symlinks, submodules, a
   result over the request limit) goes through the fallback in the runbook:
   the session pushes its own branch, opens the draft itself, and registers
-  it on the thread with `PUT /threads/{id}/pull`.
+  it on the thread with `register_thread_pull`.
 - **Follow-ups are new commits.** Never a force-push.
 - **The merge gate is unchanged.** The session never marks a pull request
   ready, approves, merges, labels or requests reviewers.
+- **It names itself in `report_usage`:**
+  `evidence: {"provider": "anthropic", "harness": "claude-code"}`, which
+  the swarm metrics slice on.
 - **Release on every exit.** A finished thread goes to review first, so it
   is not handed out again.

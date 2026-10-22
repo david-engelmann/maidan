@@ -19,6 +19,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
 that checks both answer alike, including for a name nothing was spent under.
 
+### Rust 1.99
+
+- **Changed:** the toolchain is Rust 1.99 (`rust-toolchain.toml`, `rust-version`, and `RUST_VERSION` in the Dockerfiles), from 1.91. async-trait 0.1.92 replaces 0.1.89, whose generated code tripped 1.99's `double_must_use` lint on every async trait. The FSM hook worker boxes each hook dispatch, whose future was too deep for 1.99 to lay out inline. The lints 1.99 adds are fixed; the rate-limit and MCP quota helpers now return their refusal response boxed, which keeps every `?` on their success path small.
+
 ## [414.0.0] — 2026-10-21
 
 The first release since 413.0.0. It ships every PR merged after the 413.0.0

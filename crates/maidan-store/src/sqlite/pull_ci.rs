@@ -13,7 +13,7 @@ use super::change_metrics::insert_notice_in_tx;
 use crate::error::StoreError;
 
 /// The thread `repo`#`pull_number` is tracked on in `workspace_id`; `None`
-/// when no workspace tracks it, and a conflict when another one does.
+/// when this workspace does not track it, whoever else does.
 pub async fn tracked_thread(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -21,23 +21,16 @@ pub async fn tracked_thread(
     pull_number: i64,
 ) -> Result<Option<ThreadId>, StoreError> {
     let repo = repo.to_ascii_lowercase();
-    let row = sqlx::query(
-        "SELECT workspace_id, thread_id FROM maidan_change_pulls
-         WHERE repo = ?1 AND pull_number = ?2",
+    let thread: Option<Uuid> = sqlx::query_scalar(
+        "SELECT thread_id FROM maidan_change_pulls
+         WHERE workspace_id = ?1 AND repo = ?2 AND pull_number = ?3",
     )
+    .bind(workspace_id.0)
     .bind(&repo)
     .bind(pull_number)
     .fetch_optional(pool)
     .await?;
-    match row {
-        None => Ok(None),
-        Some(row) if row.get::<Uuid, _>("workspace_id") == workspace_id.0 => {
-            Ok(Some(ThreadId(row.get("thread_id"))))
-        }
-        Some(_) => Err(StoreError::Conflict(format!(
-            "{repo}#{pull_number} is already tracked on another task"
-        ))),
-    }
+    Ok(thread.map(ThreadId))
 }
 
 /// Whether `head_sha` was the head the last read of `repo`#`pull_number`
@@ -131,8 +124,9 @@ pub async fn record(pool: &SqlitePool, new: NewPullCi) -> Result<Vec<PostedNotic
     };
     let previous = sqlx::query(
         "SELECT gate_reasons, merge_queue, merge_queue_reason FROM maidan_pull_ci
-         WHERE repo = ?1 AND pull_number = ?2",
+         WHERE workspace_id = ?1 AND repo = ?2 AND pull_number = ?3",
     )
+    .bind(new.workspace_id.0)
     .bind(&repo)
     .bind(new.pull_number)
     .fetch_optional(&mut *tx)
@@ -151,7 +145,7 @@ pub async fn record(pool: &SqlitePool, new: NewPullCi) -> Result<Vec<PostedNotic
               merge_state, unresolved_threads, unresolved_thread_links, missing_checks, gate_reasons,
               merge_queue, merge_queue_reason, head_ahead)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
-         ON CONFLICT (repo, pull_number) DO UPDATE SET
+         ON CONFLICT (workspace_id, repo, pull_number) DO UPDATE SET
              head_sha = excluded.head_sha, status = excluded.status,
              failing_jobs = excluded.failing_jobs, log_tail = excluded.log_tail,
              updated_at = excluded.updated_at, merge_state = excluded.merge_state,
@@ -165,8 +159,7 @@ pub async fn record(pool: &SqlitePool, new: NewPullCi) -> Result<Vec<PostedNotic
                  THEN maidan_pull_ci.merge_queue_reason ELSE excluded.merge_queue_reason END,
              head_ahead = CASE WHEN maidan_pull_ci.head_sha = excluded.head_sha
                  THEN (maidan_pull_ci.head_ahead OR excluded.head_ahead)
-                 ELSE excluded.head_ahead END
-         WHERE maidan_pull_ci.workspace_id = excluded.workspace_id",
+                 ELSE excluded.head_ahead END",
     )
     .bind(&repo)
     .bind(new.pull_number)
