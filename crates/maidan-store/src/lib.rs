@@ -136,6 +136,7 @@ mod delegation_grants;
 mod footprints;
 #[macro_use]
 mod delegate;
+mod claimability;
 pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;

@@ -3875,7 +3875,9 @@ mod tests {
         );
         assert_eq!(occ["parent_run_id"], json!(PRODUCER_RUN_ID));
         assert_eq!(occ["open"], json!(2));
-        assert_eq!(occ["queued"], json!(2));
+        // The parent holds its result, so claim_next will not hand it out.
+        assert_eq!(occ["queued"], json!(1));
+        assert_eq!(occ["blocked"], json!(1));
 
         store.mute_thread(agent.id, child.id).await.unwrap();
         let occ_muted = unwrap_content(
