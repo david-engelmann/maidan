@@ -147,6 +147,15 @@ async fn worker_delivers_a_queued_message_once() {
     let stats = egress_worker::sweep_once(&state).await;
     assert_eq!(stats.sent, 1);
     assert_eq!(sender.attempts.load(Ordering::SeqCst), 1);
+    // A sent delivery is metered for its workspace.
+    let deliveries: Vec<_> = state
+        .usage_meters
+        .take()
+        .into_iter()
+        .filter(|row| row.meter == maidan_types::UsageMeter::Deliveries)
+        .map(|row| (row.workspace_id, row.quantity))
+        .collect();
+    assert_eq!(deliveries, vec![(ws, 1)]);
     assert_eq!(
         sender.sent.lock().unwrap().as_slice(),
         [("C1".to_string(), "hi from maidan".to_string())]

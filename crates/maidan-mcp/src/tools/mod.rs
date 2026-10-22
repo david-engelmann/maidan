@@ -1207,7 +1207,15 @@ async fn dispatch_rest(
         "get_artifact_metadata" => artifact::get_artifact_metadata(store, auth, args).await,
         "get_artifact" => artifact::get_artifact(server, auth, args).await,
         "search_messages" => {
-            search::search_messages(search, embedding_provider, store, auth, args).await
+            search::search_messages(
+                search,
+                embedding_provider,
+                store,
+                auth,
+                args,
+                server.usage_meters(),
+            )
+            .await
         }
         "register_slash_command" => automation::register_slash_command(store, auth, args).await,
         "list_slash_commands" => automation::list_slash_commands(store, auth, args).await,

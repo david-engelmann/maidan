@@ -100,3 +100,102 @@ async fn requests_and_mcp_calls_count_for_the_callers_workspace_only() {
     assert_eq!(meters(store, a).await.len(), 2, "A unchanged");
     assert_eq!(maidan_server::usage_meters::flush_once(&state).await, 0);
 }
+
+/// A semantic search embeds its query, and that embedding is metered for the
+/// searcher's workspace.
+#[tokio::test]
+async fn a_semantic_search_counts_one_embedding_for_the_searchers_workspace() {
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| state = Some(s.clone())).await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let a = workspace(store, "a").await;
+    let b = workspace(store, "b").await;
+    let reader = member(store, a, "agent", MemberKind::Agent).await;
+    let bearer = token(
+        store,
+        a,
+        reader,
+        vec![
+            capability::WORKSPACE_READ.to_string(),
+            capability::SEARCH_QUERY.to_string(),
+        ],
+    )
+    .await;
+    let res = h
+        .client
+        .get(h.url(&format!("/workspaces/{}/search", a.0)))
+        .bearer_auth(&bearer)
+        .query(&[("q", "anything"), ("mode", "semantic")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    maidan_server::usage_meters::flush_once(&state).await;
+    assert!(meters(store, a)
+        .await
+        .contains(&(UsageMeter::EmbeddingCalls, 1)));
+    assert!(meters(store, b).await.is_empty());
+}
+
+/// What each workspace stores is measured once a day, its own messages and
+/// artifacts only, and a second tick the same day measures nothing new.
+#[tokio::test]
+async fn stored_bytes_are_measured_once_a_day_per_workspace() {
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| state = Some(s.clone())).await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let a = workspace(store, "a").await;
+    let b = workspace(store, "b").await;
+    let author = member(store, a, "agent", MemberKind::Agent).await;
+    let channel = store
+        .create_channel(maidan_types::NewChannel {
+            workspace_id: a,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(maidan_types::NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: None,
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .post_message(maidan_types::NewMessage {
+            thread_id: thread.id,
+            author_id: author,
+            body: "twelve bytes".into(),
+            metadata: json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(maidan_server::usage_meters::measure_stored_bytes(&state).await >= 2);
+    let stored = |ws| async move {
+        meters(store, ws)
+            .await
+            .into_iter()
+            .find(|(meter, _)| *meter == UsageMeter::StoredBytes)
+            .map(|(_, quantity)| quantity)
+    };
+    assert_eq!(stored(a).await, Some(12));
+    assert_eq!(
+        stored(b).await,
+        Some(0),
+        "B is measured, and stores nothing of A's"
+    );
+    assert_eq!(
+        maidan_server::usage_meters::measure_stored_bytes(&state).await,
+        0,
+        "measured once a day"
+    );
+}

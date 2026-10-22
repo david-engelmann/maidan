@@ -388,6 +388,12 @@ impl McpServer {
         self
     }
 
+    pub(crate) fn usage_meters(
+        &self,
+    ) -> Option<&Arc<maidan_store::usage_meters::UsageMeterBuffer>> {
+        self.usage_meters.as_ref()
+    }
+
     /// Count tool calls into `meters`, the buffer the server flushes.
     #[must_use]
     pub fn with_usage_meters(

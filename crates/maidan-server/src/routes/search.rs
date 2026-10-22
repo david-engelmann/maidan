@@ -52,6 +52,13 @@ pub async fn search_messages(
             let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
                 .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
+            if !auth.bypass {
+                state.usage_meters.record(
+                    workspace_id,
+                    maidan_types::UsageMeter::EmbeddingCalls,
+                    1,
+                );
+            }
             let model = q
                 .embedding_model
                 .as_deref()
@@ -65,6 +72,13 @@ pub async fn search_messages(
             let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
                 .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
+            if !auth.bypass {
+                state.usage_meters.record(
+                    workspace_id,
+                    maidan_types::UsageMeter::EmbeddingCalls,
+                    1,
+                );
+            }
             let model = q
                 .embedding_model
                 .as_deref()

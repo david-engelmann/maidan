@@ -564,6 +564,20 @@ pub trait UsageLedgerStore: Send + Sync {
         &self,
         batch: &[maidan_types::UsageMeterDay],
     ) -> Result<(), StoreError>;
+    /// Replace each row's day value, for a gauge meter.
+    async fn set_usage_meters(
+        &self,
+        batch: &[maidan_types::UsageMeterDay],
+    ) -> Result<(), StoreError>;
+    /// Live workspaces with no `meter` row on `day`, at most `limit`.
+    async fn list_unmeasured_workspaces(
+        &self,
+        day: chrono::NaiveDate,
+        meter: maidan_types::UsageMeter,
+        limit: i64,
+    ) -> Result<Vec<WorkspaceId>, StoreError>;
+    /// The bytes a workspace stores now: its artifacts and message bodies.
+    async fn workspace_stored_bytes(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError>;
     /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
     async fn list_usage_meters(
         &self,

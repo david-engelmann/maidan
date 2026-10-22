@@ -1315,6 +1315,11 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     "egress worker: delivered"
                 );
                 crate::metrics::record_egress_delivery(surface, "sent");
+                state.usage_meters.record(
+                    entry.workspace_id,
+                    maidan_types::UsageMeter::Deliveries,
+                    1,
+                );
                 stats.sent += 1;
             }
             Err(failure) if failure.misconfiguration && entry.kind != EgressKind::Projector => {

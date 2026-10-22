@@ -1130,7 +1130,16 @@ pub async fn deliver_notification_web_push(
     maidan_store::trace::maybe_scope(trace, async {
         for sub in subs {
             match sender.send(&sub, payload.as_bytes()).await {
-                Ok(()) => crate::metrics::record_web_push_delivered("sent"),
+                Ok(()) => {
+                    crate::metrics::record_web_push_delivered("sent");
+                    crate::usage_meters::record_for_member(
+                        state,
+                        member_id,
+                        maidan_types::UsageMeter::Deliveries,
+                        1,
+                    )
+                    .await;
+                }
                 Err(err) if err.is_gone() => {
                     crate::metrics::record_web_push_delivered("pruned");
                     if let Err(e) = state
