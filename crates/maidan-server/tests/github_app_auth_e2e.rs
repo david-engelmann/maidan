@@ -446,10 +446,10 @@ async fn the_server_boots_with_the_app_key_from_a_file_and_never_logs_it() {
     let url = format!("http://127.0.0.1:{port}/health/ready");
     let deadline = Instant::now() + Duration::from_secs(60);
     let ready = loop {
-        if let Ok(response) = client.get(&url).send().await {
-            if response.status().is_success() {
-                break true;
-            }
+        if let Ok(response) = client.get(&url).send().await
+            && response.status().is_success()
+        {
+            break true;
         }
         if Instant::now() > deadline || child.try_wait().unwrap().is_some() {
             break false;

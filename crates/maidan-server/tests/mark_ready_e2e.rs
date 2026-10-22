@@ -78,8 +78,8 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
             .unwrap_or("");
         let pull = {
             let ignore_flip = fake.ignore_flip;
-            let found = fake
-                .pulls
+
+            fake.pulls
                 .values_mut()
                 .find(|p| p.node_id == node_id)
                 .map(|p| {
@@ -87,8 +87,7 @@ async fn github(State(fake): State<Shared>, method: Method, uri: Uri, body: Byte
                         p.draft = false;
                     }
                     p.draft
-                });
-            found
+                })
         };
         match pull {
             None => {

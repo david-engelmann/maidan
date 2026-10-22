@@ -810,10 +810,10 @@ async fn debug_recent(pool: &SqlitePool) {
             .expect("timestamps");
             for row in rows {
                 let text: String = row.get(0);
-                if let Some(at) = parse_stamp(&text) {
-                    if (at - now()).num_seconds().abs() < 120 {
-                        eprintln!("capture_server: recent {table}.{col} = {text}");
-                    }
+                if let Some(at) = parse_stamp(&text)
+                    && (at - now()).num_seconds().abs() < 120
+                {
+                    eprintln!("capture_server: recent {table}.{col} = {text}");
                 }
             }
         }

@@ -85,10 +85,10 @@ pub async fn streamable(
     // A follow-up on an open `2024-11-05` session stays on it — if this caller
     // opened it; anyone else's session id is no session at all.
     let registry = state.mcp.streamable_sessions();
-    if let Some(existing) = session_header.filter(|s| !s.is_empty()) {
-        if registry.is_open_for(existing, &Principal::of(&auth)).await {
-            return follow_up_on_open_session(&state, &auth, existing, request).await;
-        }
+    if let Some(existing) = session_header.filter(|s| !s.is_empty())
+        && registry.is_open_for(existing, &Principal::of(&auth)).await
+    {
+        return follow_up_on_open_session(&state, &auth, existing, request).await;
     }
 
     // Every revision from `2025-03-26` on is stateless (Protocols.md J3.3-4): a
@@ -171,11 +171,10 @@ async fn open_new_streamable_session(
             tokio::select! {
                 next = listener.recv() => {
                     let Some(notification) = next else { break };
-                    if let Ok(data) = serde_json::to_string(&notification) {
-                        if !registry_bg.push(&session_bg, data).await {
+                    if let Ok(data) = serde_json::to_string(&notification)
+                        && !registry_bg.push(&session_bg, data).await {
                             break;
                         }
-                    }
                 }
                 _ = liveness.tick() => {
                     if !registry_bg.is_open_for(&session_bg, &owner).await {

@@ -14,7 +14,9 @@ maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
 aws-config = "1"
 aws-credential-types = "1"
-aws-sdk-s3 = "1"
+# Without the default `rustls` feature, the legacy hyper 0.14 / rustls 0.21 /
+# h2 0.3 client is not built; `default-https-client` is the hyper 1 one.
+aws-sdk-s3 = { version = "1", default-features = false, features = ["sigv4a", "http-1x", "default-https-client", "rt-tokio"] }
 bytes.workspace = true
 sha2.workspace = true
 thiserror.workspace = true

@@ -7,8 +7,7 @@ use crate::error::StoreError;
 
 /// Every audit read selects these, in this order, so a new column cannot be
 /// missed by one query and silently read as `None`.
-const AUDIT_COLUMNS: &str =
-    "id, occurred_at, actor_id, subject_id, grant_id, action, target_kind, target_id, metadata, workspace_id";
+const AUDIT_COLUMNS: &str = "id, occurred_at, actor_id, subject_id, grant_id, action, target_kind, target_id, metadata, workspace_id";
 
 pub async fn append(pool: &SqlitePool, new: NewAuditEvent) -> Result<AuditEvent, StoreError> {
     let mut conn = pool.acquire().await?;

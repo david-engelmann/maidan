@@ -25,21 +25,19 @@ use crate::state::AppState;
 const TEST_MEMBER_HEADER: &str = "maidan-test-member-id";
 
 async fn auth_disabled_context(state: &AppState, headers: &axum::http::HeaderMap) -> AuthContext {
-    if state.test_identity_header {
-        if let Some(member_id) = headers
+    if state.test_identity_header
+        && let Some(member_id) = headers
             .get(TEST_MEMBER_HEADER)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<uuid::Uuid>().ok())
             .map(maidan_types::MemberId)
-        {
-            if let Ok(member) = state.store.get_member(member_id).await {
-                return AuthContext::from_session(
-                    member_id,
-                    member.workspace_id,
-                    maidan_auth::capability::all(),
-                );
-            }
-        }
+        && let Ok(member) = state.store.get_member(member_id).await
+    {
+        return AuthContext::from_session(
+            member_id,
+            member.workspace_id,
+            maidan_auth::capability::all(),
+        );
     }
     AuthContext::bypass()
 }
@@ -171,23 +169,24 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     let ip_key = crate::rate_limit::client_ip_key(&req);
 
     let Some(secret) = bearer else {
-        if is_mcp && req.method() == Method::POST {
-            if let Some(reader) = state.dev_anonymous_reader.clone() {
-                // Every anonymous caller is one member, so each is limited by
-                // its client address before the shared workspace budget.
-                if let Err(response) =
-                    crate::rate_limit::enforce_client_key(&state, &ip_key, true).await
-                {
-                    return *response;
-                }
-                if let Err(response) =
-                    crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id)
-                        .await
-                {
-                    return *response;
-                }
-                return run_authorized(&state, req, next, reader).await;
+        if is_mcp
+            && req.method() == Method::POST
+            && let Some(reader) = state.dev_anonymous_reader.clone()
+        {
+            // Every anonymous caller is one member, so each is limited by
+            // its client address before the shared workspace budget.
+            if let Err(response) =
+                crate::rate_limit::enforce_client_key(&state, &ip_key, true).await
+            {
+                return *response;
             }
+            if let Err(response) =
+                crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id)
+                    .await
+            {
+                return *response;
+            }
+            return run_authorized(&state, req, next, reader).await;
         }
         // A page that exchanged its token for a session sends no bearer.
         // Its client IP was already counted by the outer limiter.
@@ -218,6 +217,17 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     } else {
         resolve_bearer(state.store.as_ref(), &secret).await
     };
+    // A good credential of a suspended workspace: say so, rather than the
+    // 401 that would send its client to look for a new token.
+    if let Err(maidan_auth::AuthError::Forbidden(reason)) = &resolved {
+        // Counted first: a suspended workspace's token is still rate limited.
+        if let Err(response) =
+            crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
+        {
+            return *response;
+        }
+        return ApiError::Forbidden(reason.clone()).into_response();
+    }
     if let Ok(ctx) = resolved {
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
@@ -233,6 +243,11 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     }
 
     if let Ok(peer) = resolve_peer_bearer(state.store.as_ref(), &secret).await {
+        if let Err(err) =
+            maidan_auth::ensure_workspace_active(state.store.as_ref(), peer.workspace_id).await
+        {
+            return ApiError::from(err).into_response();
+        }
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
         {
@@ -427,7 +442,16 @@ async fn session_or_bearer(
 
     if let Some(secret) = bearer_from_headers(req.headers()).map(str::to_owned) {
         let ip_key = crate::rate_limit::client_ip_key(&req);
-        if let Ok(ctx) = resolve_bearer(state.store.as_ref(), &secret).await {
+        let resolved = resolve_bearer(state.store.as_ref(), &secret).await;
+        if let Err(maidan_auth::AuthError::Forbidden(reason)) = &resolved {
+            if let Err(response) =
+                crate::rate_limit::enforce_verified_bearer(state, &secret, false).await
+            {
+                return *response;
+            }
+            return ApiError::Forbidden(reason.clone()).into_response();
+        }
+        if let Ok(ctx) = resolved {
             // The outer limiter left this bearer uncounted so a secret that
             // does not resolve cannot open its own bucket. This one did.
             if let Err(response) =

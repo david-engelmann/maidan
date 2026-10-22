@@ -292,6 +292,8 @@ const POSTGRES_UP_V193: &str =
 const POSTGRES_UP_V194: &str =
     include_str!("../../../migrations/postgres/0194_change_pulls_workspace_key.sql");
 const POSTGRES_UP_V195: &str = include_str!("../../../migrations/postgres/0195_deploys.sql");
+const POSTGRES_UP_V196: &str =
+    include_str!("../../../migrations/postgres/0196_workspace_suspensions.sql");
 const POSTGRES_UP_V197: &str = include_str!("../../../migrations/postgres/0197_usage_meters.sql");
 const POSTGRES_UP_V198: &str =
     include_str!("../../../migrations/postgres/0198_plan_amendments.sql");
@@ -527,6 +529,8 @@ const SQLITE_UP_V193: &str = include_str!("../../../migrations/sqlite/0193_pull_
 const SQLITE_UP_V194: &str =
     include_str!("../../../migrations/sqlite/0194_change_pulls_workspace_key.sql");
 const SQLITE_UP_V195: &str = include_str!("../../../migrations/sqlite/0195_deploys.sql");
+const SQLITE_UP_V196: &str =
+    include_str!("../../../migrations/sqlite/0196_workspace_suspensions.sql");
 const SQLITE_UP_V197: &str = include_str!("../../../migrations/sqlite/0197_usage_meters.sql");
 const SQLITE_UP_V198: &str = include_str!("../../../migrations/sqlite/0198_plan_amendments.sql");
 
@@ -776,6 +780,7 @@ async fn apply_all_postgres(pool: &PgPool) -> Result<(), StoreError> {
     apply_postgres(pool, &applied, 193, POSTGRES_UP_V193).await?;
     apply_postgres(pool, &applied, 194, POSTGRES_UP_V194).await?;
     apply_postgres(pool, &applied, 195, POSTGRES_UP_V195).await?;
+    apply_postgres(pool, &applied, 196, POSTGRES_UP_V196).await?;
     apply_postgres(pool, &applied, 197, POSTGRES_UP_V197).await?;
     apply_postgres(pool, &applied, 198, POSTGRES_UP_V198).await?;
     // The partitioned tables need their months ready before the first write,
@@ -980,6 +985,7 @@ pub async fn run_sqlite_migrations(pool: &SqlitePool) -> Result<(), StoreError> 
     apply_sqlite(pool, &applied, 193, SQLITE_UP_V193).await?;
     apply_sqlite(pool, &applied, 194, SQLITE_UP_V194).await?;
     apply_sqlite(pool, &applied, 195, SQLITE_UP_V195).await?;
+    apply_sqlite(pool, &applied, 196, SQLITE_UP_V196).await?;
     apply_sqlite(pool, &applied, 197, SQLITE_UP_V197).await?;
     apply_sqlite(pool, &applied, 198, SQLITE_UP_V198).await?;
     Ok(())

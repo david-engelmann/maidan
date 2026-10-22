@@ -2188,8 +2188,7 @@ fn safe_ref_name(name: &str) -> Result<&str, GithubError> {
 /// The change sweep's per-tick read of one pull request: the brief the
 /// sweep settles closes and readiness from, and the checks on the head
 /// commit.
-pub(crate) const PULL_SNAPSHOT_QUERY: &str =
-    "query($owner: String!, $name: String!, $number: Int!) { \
+pub(crate) const PULL_SNAPSHOT_QUERY: &str = "query($owner: String!, $name: String!, $number: Int!) { \
 repository(owner: $owner, name: $name) { pullRequest(number: $number) { \
 id number state isDraft isCrossRepository headRefName headRefOid baseRefName \
 mergedAt closedAt mergeCommit { oid } labels(first: 50) { nodes { name } } \

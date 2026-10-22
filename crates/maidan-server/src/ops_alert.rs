@@ -186,10 +186,10 @@ pub struct LoopGuard(&'static str);
 
 impl Drop for LoopGuard {
     fn drop(&mut self) {
-        if let Ok(mut loops) = loops().lock() {
-            if let Some(state) = loops.get_mut(self.0) {
-                state.exited = true;
-            }
+        if let Ok(mut loops) = loops().lock()
+            && let Some(state) = loops.get_mut(self.0)
+        {
+            state.exited = true;
         }
     }
 }
@@ -276,11 +276,11 @@ fn register_loop(name: &'static str, interval: Duration) {
 }
 
 fn begin_tick(name: &str) {
-    if let Ok(mut loops) = loops().lock() {
-        if let Some(state) = loops.get_mut(name) {
-            state.tick_warnings = 0;
-            state.tick_started = Some(now());
-        }
+    if let Ok(mut loops) = loops().lock()
+        && let Some(state) = loops.get_mut(name)
+    {
+        state.tick_warnings = 0;
+        state.tick_started = Some(now());
     }
 }
 
@@ -327,7 +327,7 @@ fn parse_fault(raw: Option<String>, production: bool) -> Result<Option<Fault>, S
         other => {
             return Err(format!(
                 "MAIDAN_OPS_FAULT fault must be panic, stall, fail or exit, not {other:?}"
-            ))
+            ));
         }
     };
     if loop_name.is_empty() {
@@ -374,26 +374,26 @@ fn armed_fault() -> Option<Fault> {
 }
 
 fn note_warning(name: &str, warning: String) {
-    if let Ok(mut loops) = loops().lock() {
-        if let Some(state) = loops.get_mut(name) {
-            state.tick_warnings = state.tick_warnings.saturating_add(1);
-            state.last_warning = Some(warning);
-        }
+    if let Ok(mut loops) = loops().lock()
+        && let Some(state) = loops.get_mut(name)
+    {
+        state.tick_warnings = state.tick_warnings.saturating_add(1);
+        state.last_warning = Some(warning);
     }
 }
 
 /// A registered loop finished a tick.
 pub fn note_tick(name: &'static str) {
-    if let Ok(mut loops) = loops().lock() {
-        if let Some(state) = loops.get_mut(name) {
-            state.last_tick = now();
-            state.tick_started = None;
-            if state.tick_warnings > 0 {
-                state.failing_ticks = state.failing_ticks.saturating_add(1);
-            } else {
-                state.failing_ticks = 0;
-                state.last_warning = None;
-            }
+    if let Ok(mut loops) = loops().lock()
+        && let Some(state) = loops.get_mut(name)
+    {
+        state.last_tick = now();
+        state.tick_started = None;
+        if state.tick_warnings > 0 {
+            state.failing_ticks = state.failing_ticks.saturating_add(1);
+        } else {
+            state.failing_ticks = 0;
+            state.last_warning = None;
         }
     }
 }

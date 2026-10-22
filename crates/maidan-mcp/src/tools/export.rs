@@ -175,7 +175,7 @@ pub(super) async fn import_workspace(
         other => {
             return Err(McpError::InvalidParams(format!(
                 "unknown import mode {other:?}; expected new or restore"
-            )))
+            )));
         }
     };
 

@@ -182,7 +182,7 @@ impl ListTasksQuery {
             Some(v) => {
                 return Err(A2aError::invalid_params(format!(
                     "includeArtifacts must be true or false, got {v}"
-                )))
+                )));
             }
         };
         Ok(ListTasksRequest {
@@ -327,7 +327,7 @@ pub async fn rest_create_push_config(
         Some(named) if named != task_id => {
             return error(&A2aError::invalid_params(
                 "the body's taskId does not match the path",
-            ))
+            ));
         }
         _ => {}
     }

@@ -90,7 +90,7 @@ pub fn public_origin_from(raw: Option<&str>) -> Result<Option<String>, String> {
         _ => {
             return Err(format!(
                 "MAIDAN_PUBLIC_ORIGIN must use https (http only on a loopback host), not {raw:?}"
-            ))
+            ));
         }
     }
     Ok(Some(url.origin().ascii_serialization()))
@@ -207,14 +207,14 @@ pub fn challenge_value(origin: &str) -> String {
 pub async fn challenge(State(state): State<AppState>, req: Request, next: Next) -> Response {
     let mcp = req.uri().path() == MCP_RESOURCE_PATH;
     let mut response = next.run(req).await;
-    if mcp && response.status() == StatusCode::UNAUTHORIZED {
-        if let Some(origin) = state.public_origin.as_deref() {
-            if let Ok(value) = HeaderValue::from_str(&challenge_value(origin)) {
-                response
-                    .headers_mut()
-                    .insert(header::WWW_AUTHENTICATE, value);
-            }
-        }
+    if mcp
+        && response.status() == StatusCode::UNAUTHORIZED
+        && let Some(origin) = state.public_origin.as_deref()
+        && let Ok(value) = HeaderValue::from_str(&challenge_value(origin))
+    {
+        response
+            .headers_mut()
+            .insert(header::WWW_AUTHENTICATE, value);
     }
     response
 }

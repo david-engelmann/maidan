@@ -239,10 +239,10 @@ pub(crate) async fn insert_grant_on(
     .fetch_one(&mut *conn)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(ref db) = e {
-            if db.is_unique_violation() {
-                return StoreError::Conflict("oauth grant already exists".into());
-            }
+        if let sqlx::Error::Database(ref db) = e
+            && db.is_unique_violation()
+        {
+            return StoreError::Conflict("oauth grant already exists".into());
         }
         StoreError::Database(e)
     })?;

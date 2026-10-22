@@ -34,10 +34,10 @@ use axum::{
 use crate::{error::ApiError, AppState};
 
 pub async fn middleware(State(state): State<AppState>, req: Request, next: Next) -> Response {
-    if rides_an_open_mode(&state, &req) {
-        if let Err(reason) = judge(&state.allowed_hosts, req.headers()) {
-            return ApiError::Forbidden(reason.into()).into_response();
-        }
+    if rides_an_open_mode(&state, &req)
+        && let Err(reason) = judge(&state.allowed_hosts, req.headers())
+    {
+        return ApiError::Forbidden(reason.into()).into_response();
     }
     next.run(req).await
 }
@@ -66,7 +66,9 @@ pub(crate) fn judge(allowed_hosts: &[String], headers: &HeaderMap) -> Result<(),
         || name.parse::<std::net::IpAddr>().is_ok()
         || allowed_hosts.contains(&name);
     if !named {
-        return Err("a request with no credential must name this server: a loopback name, a name without a dot, an IP address, or a host in MAIDAN_ALLOWED_HOSTS");
+        return Err(
+            "a request with no credential must name this server: a loopback name, a name without a dot, an IP address, or a host in MAIDAN_ALLOWED_HOSTS",
+        );
     }
     if let Some(origin) = headers.get(header::ORIGIN) {
         let authority = origin

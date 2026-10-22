@@ -61,7 +61,7 @@ change.
   Slack-shaped surface (workspaces, channels, threads, messages) with a task
   queue, reviews, approval gates and a hash-chained event log, backed by
   Postgres or SQLite and content-addressed artifacts. The name is load-bearing.
-- **Rust 2021**, toolchain pinned in `rust-toolchain.toml` (1.99).
+- **Rust 2024**, toolchain pinned in `rust-toolchain.toml` (1.99).
   Workspace with 15 member crates.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).

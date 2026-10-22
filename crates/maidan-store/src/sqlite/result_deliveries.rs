@@ -7,8 +7,11 @@
 use chrono::{DateTime, Utc};
 use sqlx::{Row, SqlitePool};
 
+use super::events;
 use crate::StoreError;
-use maidan_types::{status, EgressTarget, ResultDelivery, ResultDeliveryId, ThreadId};
+use maidan_types::{
+    status, EgressTarget, Event, ResultDelivery, ResultDeliveryId, StoredEvent, ThreadId,
+};
 
 const COLS: &str = "id, thread_id, surface, selector, status, external_ref, \
                     armed_revision, delivered_revision, attempts, last_error, \
@@ -95,40 +98,89 @@ pub async fn mark_failed(
     pool: &SqlitePool,
     id: ResultDeliveryId,
     error: &str,
-) -> Result<(), StoreError> {
-    let now = Utc::now().to_rfc3339();
-    sqlx::query(&format!(
-        "UPDATE maidan_result_deliveries
-         SET status = '{failed}', attempts = attempts + 1, last_error = ?, updated_at = ?
-         WHERE id = ?",
-        failed = status::FAILED
-    ))
-    .bind(error)
-    .bind(&now)
-    .bind(id.0)
-    .execute(pool)
-    .await?;
-    Ok(())
+) -> Result<Option<StoredEvent>, StoreError> {
+    mark_undelivered(pool, id, status::FAILED, error, true).await
 }
 
 pub async fn mark_skipped(
     pool: &SqlitePool,
     id: ResultDeliveryId,
     reason: &str,
-) -> Result<(), StoreError> {
-    let now = Utc::now().to_rfc3339();
-    sqlx::query(&format!(
+) -> Result<Option<StoredEvent>, StoreError> {
+    mark_undelivered(pool, id, status::SKIPPED, reason, false).await
+}
+
+/// Record a target as `failed` or `skipped` and, when the row moved into that
+/// status, append `ResultDeliveryFailed` in the same transaction, so a relay
+/// hears each outcome once and never hears one that was not recorded.
+async fn mark_undelivered(
+    pool: &SqlitePool,
+    id: ResultDeliveryId,
+    to: &str,
+    why: &str,
+    count_attempt: bool,
+) -> Result<Option<StoredEvent>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let now = Utc::now();
+    let attempts = if count_attempt {
+        ", attempts = attempts + 1"
+    } else {
+        ""
+    };
+    // The write that moves the row is the one that says so: it takes SQLite's
+    // write lock first, so a second recorder of the same row sees the new
+    // status and only updates the reason.
+    let moved = sqlx::query(&format!(
         "UPDATE maidan_result_deliveries
-         SET status = '{skipped}', last_error = ?, updated_at = ?
-         WHERE id = ?",
-        skipped = status::SKIPPED
+         SET status = ?1, last_error = ?2, updated_at = ?3{attempts}
+         WHERE id = ?4 AND status <> ?1"
     ))
-    .bind(reason)
-    .bind(&now)
+    .bind(to)
+    .bind(why)
+    .bind(now.to_rfc3339())
     .bind(id.0)
-    .execute(pool)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        > 0;
+    if !moved {
+        sqlx::query(&format!(
+            "UPDATE maidan_result_deliveries
+             SET last_error = ?1, updated_at = ?2{attempts}
+             WHERE id = ?3"
+        ))
+        .bind(why)
+        .bind(now.to_rfc3339())
+        .bind(id.0)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        return Ok(None);
+    }
+    let row = sqlx::query(
+        "SELECT thread_id, surface, selector FROM maidan_result_deliveries WHERE id = ?",
+    )
+    .bind(id.0)
+    .fetch_one(&mut *tx)
     .await?;
-    Ok(())
+    let thread_id = ThreadId(row.get("thread_id"));
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let event = events::append_in_tx(
+        &mut tx,
+        &Event::ResultDeliveryFailed {
+            occurred_at: now,
+            workspace_id,
+            channel_id,
+            thread_id,
+            surface: row.get("surface"),
+            selector: row.get("selector"),
+            status: to.to_string(),
+            last_error: Some(why.to_string()),
+        },
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(event))
 }
 
 pub async fn get(

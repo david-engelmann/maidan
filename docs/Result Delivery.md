@@ -655,6 +655,24 @@ One row per `(thread, target)`:
 Replay re-enqueues one row and **re-checks the allowlist**: an unblessed target
 stays `skipped` (status is not policy). It does not bump `armed_revision`.
 
+**A target that was not reached is said on the event stream.** Each time a row
+moves into `failed` or `skipped`, Maidan appends a `result_delivery_failed`
+event in the same transaction, scoped to the thread's workspace, channel and
+thread:
+
+```json
+{"kind": "result_delivery_failed", "workspace_id": "…", "channel_id": "…",
+ "thread_id": "…", "surface": "slack", "selector": "C0123ABCDEF",
+ "status": "skipped", "last_error": "target not in the workspace egress allowlist"}
+```
+
+It is said once per transition: recording the same outcome again (a replay
+against a still-unblessed target) adds nothing, while a new revision of the
+result that re-arms the row and is skipped again says it again. A delivered
+target says nothing. A relay subscribed to the workspace with
+`kinds=result_delivery_failed` (on the WebSocket filter or `GET /mcp/stream`)
+can tell the task's own thread where its result did not go.
+
 ---
 
 ## What Maidan will never deliver

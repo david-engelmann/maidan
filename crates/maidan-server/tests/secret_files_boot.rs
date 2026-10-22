@@ -94,10 +94,10 @@ async fn the_server_boots_on_secrets_read_from_files_and_never_logs_them() {
     let url = format!("http://127.0.0.1:{port}/health/ready");
     let deadline = Instant::now() + Duration::from_secs(60);
     let ready = loop {
-        if let Ok(response) = client.get(&url).send().await {
-            if response.status().is_success() {
-                break true;
-            }
+        if let Ok(response) = client.get(&url).send().await
+            && response.status().is_success()
+        {
+            break true;
         }
         if Instant::now() > deadline || child.try_wait().unwrap().is_some() {
             break false;
@@ -154,10 +154,10 @@ async fn egress_runs_on_its_own_credentials_without_the_ingress_secrets() {
     let base = format!("http://127.0.0.1:{port}");
     let deadline = Instant::now() + Duration::from_secs(60);
     let ready = loop {
-        if let Ok(response) = client.get(format!("{base}/health/ready")).send().await {
-            if response.status().is_success() {
-                break true;
-            }
+        if let Ok(response) = client.get(format!("{base}/health/ready")).send().await
+            && response.status().is_success()
+        {
+            break true;
         }
         if Instant::now() > deadline || child.try_wait().unwrap().is_some() {
             break false;

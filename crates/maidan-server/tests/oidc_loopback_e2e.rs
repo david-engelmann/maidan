@@ -267,8 +267,12 @@ impl EnvGuard {
             .collect();
         for (name, value) in values {
             match value {
-                Some(value) => std::env::set_var(name, value),
-                None => std::env::remove_var(name),
+                // SAFETY: test setup. Maidan reads this variable only through std,
+                // whose environment lock serializes the read with this write.
+                Some(value) => unsafe { std::env::set_var(name, value) },
+                // SAFETY: test setup. Maidan reads this variable only through std,
+                // whose environment lock serializes the read with this write.
+                None => unsafe { std::env::remove_var(name) },
             }
         }
         Self(previous)
@@ -279,8 +283,12 @@ impl Drop for EnvGuard {
     fn drop(&mut self) {
         for (name, value) in self.0.drain(..) {
             match value {
-                Some(value) => std::env::set_var(name, value),
-                None => std::env::remove_var(name),
+                // SAFETY: test setup. Maidan reads this variable only through std,
+                // whose environment lock serializes the read with this write.
+                Some(value) => unsafe { std::env::set_var(name, value) },
+                // SAFETY: test setup. Maidan reads this variable only through std,
+                // whose environment lock serializes the read with this write.
+                None => unsafe { std::env::remove_var(name) },
             }
         }
     }

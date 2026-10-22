@@ -197,13 +197,11 @@ async fn refresh(
                 .labels
                 .iter()
                 .any(|label| label == maidan_types::READY_LABEL)
-            {
-                if let Err(err) = store
+                && let Err(err) = store
                     .mark_change_pull_ready(workspace_id, &repo, pull_number, chrono::Utc::now())
                     .await
-                {
-                    tracing::warn!(repo, pull_number, error = %err, "change sweep: ready not recorded");
-                }
+            {
+                tracing::warn!(repo, pull_number, error = %err, "change sweep: ready not recorded");
             }
             continue;
         }
@@ -291,6 +289,9 @@ pub async fn sweep_once(state: &AppState) -> SweepStats {
         }
     };
     for workspace_id in workspaces {
+        if crate::suspension::held_back(state, workspace_id).await {
+            continue;
+        }
         if let Some(sender) = state.github_sender.as_deref() {
             refresh(
                 state.store.as_ref(),
@@ -603,6 +604,9 @@ pub async fn post_linear_notices(state: &AppState) -> usize {
     };
     let mut queued = 0;
     for workspace_id in workspaces {
+        if crate::suspension::held_back(state, workspace_id).await {
+            continue;
+        }
         let due = match state
             .store
             .list_linear_notices_due(workspace_id, REFRESH_LIMIT)

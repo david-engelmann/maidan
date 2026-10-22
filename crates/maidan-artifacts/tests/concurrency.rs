@@ -82,10 +82,10 @@ fn walk_count(root: &std::path::Path, filter: impl Fn(&str) -> bool + Copy) -> u
             let path = entry.path();
             if path.is_dir() {
                 n += walk_count(&path, filter);
-            } else if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                if filter(name) {
-                    n += 1;
-                }
+            } else if let Some(name) = path.file_name().and_then(|s| s.to_str())
+                && filter(name)
+            {
+                n += 1;
             }
         }
     }

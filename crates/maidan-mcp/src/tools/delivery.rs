@@ -44,10 +44,11 @@ struct ReplayArgs {
 /// Re-enqueue one delivery. Unblessed stays skipped; unroutable is
 /// InvalidParams. Thread access is enforced pre-dispatch.
 pub(super) async fn replay_result_delivery_tool(
-    store: &Arc<dyn Store>,
+    server: &crate::server::McpServer,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
+    let store = &server.store;
     let a: ReplayArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
     let delivery_id = ResultDeliveryId(a.delivery_id);
@@ -77,7 +78,13 @@ pub(super) async fn replay_result_delivery_tool(
                 "this target cannot be delivered — the surface is unknown or unusable".into(),
             ));
         }
-        ResultDeliveryReplay::Skipped(row) | ResultDeliveryReplay::Enqueued(row) => row,
+        ResultDeliveryReplay::Skipped(row, event) => {
+            if let Some(event) = event {
+                server.publish_stored(&event).await;
+            }
+            row
+        }
+        ResultDeliveryReplay::Enqueued(row) => row,
     };
     if let Err(err) = store
         .append_audit(NewAuditEvent {

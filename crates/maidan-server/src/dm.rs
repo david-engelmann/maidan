@@ -76,12 +76,12 @@ pub async fn expand_event_filter(
     // no longer tail a DM / group-DM by supplying its `dm_conversation_id`
     // (expanded to `thread_id` above) or its `thread_id` directly — the events
     // analog of the 180 read gap. Bypass is exempt.
-    if let Some(thread_id) = filter.thread_id {
-        if !auth.bypass {
-            maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id)
-                .await
-                .map_err(ApiError::from)?;
-        }
+    if let Some(thread_id) = filter.thread_id
+        && !auth.bypass
+    {
+        maidan_auth::ensure_thread_access(state.store.as_ref(), auth, thread_id)
+            .await
+            .map_err(ApiError::from)?;
     }
     Ok(())
 }
@@ -189,15 +189,13 @@ pub async fn post_dm_message(
         .store
         .get_member_in(dm.workspace_id, auth.member_id)
         .await
+        && member.kind == MemberKind::Human
+        && let Err(e) = state.store.clear_thread_status(dm.thread_id).await
     {
-        if member.kind == MemberKind::Human {
-            if let Err(e) = state.store.clear_thread_status(dm.thread_id).await {
-                tracing::warn!(
-                    thread_id = %dm.thread_id.0,
-                    "clearing thread status after human DM post failed: {e}"
-                );
-            }
-        }
+        tracing::warn!(
+            thread_id = %dm.thread_id.0,
+            "clearing thread status after human DM post failed: {e}"
+        );
     }
     let uris = maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), m.id).await;
     state.mcp.publish_resource_uris(uris).await;

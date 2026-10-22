@@ -543,14 +543,14 @@ pub async fn set_thread_result(
     }
     // Home the producer's `run_id` as `parent_run_id` when present. Best-effort
     // — a lineage hiccup must not undo a stored result.
-    if let Some(run_id) = run_id_from_payload(&body.result) {
-        if let Err(err) = state.store.set_thread_lineage(thread_id, run_id).await {
-            tracing::warn!(
-                error = %err,
-                %thread_id,
-                "lineage home from result failed; result is stored"
-            );
-        }
+    if let Some(run_id) = run_id_from_payload(&body.result)
+        && let Err(err) = state.store.set_thread_lineage(thread_id, run_id).await
+    {
+        tracing::warn!(
+            error = %err,
+            %thread_id,
+            "lineage home from result failed; result is stored"
+        );
     }
     super::publish(
         &state,
@@ -637,8 +637,15 @@ pub async fn replay_thread_delivery(
         Some(maidan_store::ResultDeliveryReplay::Unroutable(_)) => Err(ApiError::BadRequest(
             "this target cannot be delivered — the surface is unknown or unusable".into(),
         )),
-        Some(maidan_store::ResultDeliveryReplay::Skipped(row))
-        | Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
+        Some(maidan_store::ResultDeliveryReplay::Skipped(row, event)) => {
+            if let Some(event) = event {
+                super::publish_stored(&state, *event).await;
+            }
+            let actor_id = (!auth.bypass).then_some(auth.member_id);
+            crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
+            Ok(Json(row))
+        }
+        Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
             let actor_id = (!auth.bypass).then_some(auth.member_id);
             crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))

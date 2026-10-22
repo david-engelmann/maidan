@@ -70,7 +70,7 @@ pub async fn create_with_footprint(
         (Some(_), None) => {
             return Err(StoreError::InvalidInput(
                 "a priority at creation needs an attributed caller".into(),
-            ))
+            ));
         }
         (None, _) => None,
     };

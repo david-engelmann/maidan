@@ -2944,6 +2944,7 @@
           "thread_landed",
           "thread_notice",
           "thread_handoff",
+          "result_delivery_failed",
           "review_submitted",
           "wait_timed_out",
           "schedule_skipped",
@@ -4324,6 +4325,19 @@
       "LegalHoldId": {
         "format": "uuid",
         "type": "string"
+      },
+      "LiftedSuspension": {
+        "description": "The answer to `DELETE /operator/workspaces/{id}/suspension`.",
+        "properties": {
+          "lifted": {
+            "description": "`false` when the workspace was not suspended.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "lifted"
+        ],
+        "type": "object"
       },
       "LinearClaimComments": {
         "description": "Whether a workspace says its tasks' claims and releases on Linear.",
@@ -9233,6 +9247,19 @@
           }
         ]
       },
+      "SuspendWorkspace": {
+        "description": "The body of `PUT /operator/workspaces/{id}/suspension`.",
+        "properties": {
+          "reason": {
+            "description": "Why, for the audit log and for the workspace's own operators.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
       "SwarmMetrics": {
         "description": "The ramp metrics for a workspace.",
         "properties": {
@@ -9348,7 +9375,7 @@
             ]
           },
           "claimed_at": {
-            "description": "When the task was first claimed.",
+            "description": "When the thread was first assigned: a claim, or a person assigning\nit by hand.",
             "format": "date-time",
             "type": [
               "string",
@@ -11898,6 +11925,38 @@
           "content_keys_destroyed",
           "artifacts_removed",
           "occurred_at"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSuspension": {
+        "description": "A suspension in force.",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "suspended_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "suspended_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberId",
+                "description": "The operator who suspended it."
+              }
+            ]
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "reason",
+          "suspended_at"
         ],
         "type": "object"
       },
@@ -21055,6 +21114,226 @@
           }
         ],
         "summary": "Open another workspace and its first admin",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
+    "/operator/workspaces/{id}/suspension": {
+      "delete": {
+        "operationId": "lift_workspace_suspension",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiftedSuspension"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Lift a workspace's suspension",
+        "tags": [
+          "operator"
+        ]
+      },
+      "get": {
+        "operationId": "get_workspace_suspension",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSuspension"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The suspension in force on a workspace",
+        "tags": [
+          "operator"
+        ]
+      },
+      "put": {
+        "operationId": "suspend_workspace",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendWorkspace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSuspension"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Suspend a workspace: every credential of it is refused and its outbound and background work stops; its data is kept",
         "tags": [
           "operator"
         ]

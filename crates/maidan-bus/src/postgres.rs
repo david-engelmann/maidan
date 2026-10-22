@@ -203,10 +203,10 @@ enum NotifyOutcome {
 }
 
 fn decode_notify_payload(payload: &str, stats: &HydrateStats) -> Result<NotifyOutcome, BusError> {
-    if let Ok(pointer) = serde_json::from_str::<NotifyPointerPayload>(payload) {
-        if pointer.is_pointer() {
-            return Ok(NotifyOutcome::Pointer(pointer.log_id));
-        }
+    if let Ok(pointer) = serde_json::from_str::<NotifyPointerPayload>(payload)
+        && pointer.is_pointer()
+    {
+        return Ok(NotifyOutcome::Pointer(pointer.log_id));
     }
     match serde_json::from_str::<BusEnvelope>(payload) {
         Ok(envelope) => Ok(NotifyOutcome::Envelope(Box::new(envelope))),

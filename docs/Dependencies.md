@@ -74,21 +74,21 @@ the sole source of three accepted exceptions:
 ignore** from `[advisories]`. Until then the ignore stands with the reasoning
 above.
 
-## Edition 2024 — evaluated, deferred (Track V/X)
+## Edition 2024
 
-The workspace **compiles cleanly** under edition 2024 (`cargo build --workspace`
-on the pinned 1.91 toolchain). Adoption is **deferred** to a focused Track-V/X
-migration PR because:
+The workspace is on edition 2024 (`edition` in the root `Cargo.toml`). The
+move was `cargo fix --edition`, then clippy's let-chain fixes
+(`collapsible_if`), and a review of what `cargo fix` wrote:
 
-- `cargo clippy --all-targets -- -D warnings` surfaces `clippy::collapsible_if`
-  (the let-chains lint) across several crates (`maidan-types`,
-  `maidan-observability`, …) — mechanical but cross-cutting fixes.
-- Edition 2024 changes `if let` temporary scope (temporaries drop at the end of
-  the `if let`, not the enclosing block), which can shift drop/lock timing — so
-  adoption needs the **full integration suite** to validate behavior, not just a
-  clean build.
-
-The migration is `cargo fix --edition` + the clippy fixes + a full e2e run.
+- Macro fragments are plain `expr`, not `expr_2021`: a macro here never
+  needed to refuse `_` or `const {}` as an expression.
+- `if let ... else` reads as written. Its temporaries now drop before the
+  `else` branch runs, which no branch here relies on.
+- Environment writes are in `unsafe` blocks, as `std::env::set_var` now is.
+  Outside tests the only one is `maidan_env::load_secret_files`, which `main`
+  calls before any other thread starts.
+- `rustfmt.toml` keeps `style_edition = "2021"`. The 2024 style reformats most
+  of the tree, which is a change of its own.
 
 ## See also
 

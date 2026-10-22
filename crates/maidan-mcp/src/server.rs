@@ -143,17 +143,17 @@ fn server_capabilities(protocol_version: &str) -> Value {
 /// only to a client that declared it, so every other client's handshake is
 /// unchanged.
 fn with_ui_extension(mut capabilities: Value, ui: crate::call_context::UiSupport) -> Value {
-    if ui == crate::call_context::UiSupport::Declared {
-        if let Some(object) = capabilities.as_object_mut() {
-            object.insert(
-                "extensions".into(),
-                json!({
-                    crate::call_context::UI_EXTENSION: {
-                        "mimeTypes": [crate::call_context::UI_MIME_TYPE]
-                    }
-                }),
-            );
-        }
+    if ui == crate::call_context::UiSupport::Declared
+        && let Some(object) = capabilities.as_object_mut()
+    {
+        object.insert(
+            "extensions".into(),
+            json!({
+                crate::call_context::UI_EXTENSION: {
+                    "mimeTypes": [crate::call_context::UI_MIME_TYPE]
+                }
+            }),
+        );
     }
     capabilities
 }
@@ -580,10 +580,10 @@ impl McpServer {
     /// `Event` from the stored payload; a missing bus (embedded use) is a no-op.
     /// Unlike [`Self::publish_event`], this does NOT append (no double-log).
     pub(crate) async fn publish_stored(&self, stored: &StoredEvent) {
-        if let Some(bus) = self.event_bus.as_ref() {
-            if let Ok(envelope) = BusEnvelope::from_stored(stored) {
-                let _ = bus.publish(envelope).await;
-            }
+        if let Some(bus) = self.event_bus.as_ref()
+            && let Ok(envelope) = BusEnvelope::from_stored(stored)
+        {
+            let _ = bus.publish(envelope).await;
         }
     }
 
@@ -599,11 +599,11 @@ impl McpServer {
         auth: &AuthContext,
     ) -> String {
         let registry = self.streamable_sessions();
-        if let Some(id) = existing.filter(|s| !s.is_empty()) {
-            if registry.is_open_for(id, &Principal::of(auth)).await {
-                registry.touch(id).await;
-                return id.to_string();
-            }
+        if let Some(id) = existing.filter(|s| !s.is_empty())
+            && registry.is_open_for(id, &Principal::of(auth)).await
+        {
+            registry.touch(id).await;
+            return id.to_string();
         }
         uuid::Uuid::new_v4().to_string()
     }
@@ -996,13 +996,13 @@ impl McpServer {
         profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
         let (name, args) = tools::tool_call(params)?;
-        if let Some(profile) = profile {
-            if !profile.contains(name) {
-                return Err(McpError::Forbidden(format!(
-                    "{name} is not on the {} profile",
-                    profile.name()
-                )));
-            }
+        if let Some(profile) = profile
+            && !profile.contains(name)
+        {
+            return Err(McpError::Forbidden(format!(
+                "{name} is not on the {} profile",
+                profile.name()
+            )));
         }
         if !auth.bypass {
             let cap = tools::required_capability(name)?;
@@ -1330,18 +1330,17 @@ impl McpServer {
                 if !auth.bypass && auth.workspace_id != workspace_id {
                     continue;
                 }
-                if !self.address(subscriber.clone(), auth, &watch.uri).await {
-                    if let Err(err) = self
+                if !self.address(subscriber.clone(), auth, &watch.uri).await
+                    && let Err(err) = self
                         .store
                         .unsubscribe_mcp_resource(&watch.subscriber, &watch.uri)
                         .await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            uri = %watch.uri,
-                            "mcp subscription outlived its access: removing it failed"
-                        );
-                    }
+                {
+                    tracing::warn!(
+                        error = %err,
+                        uri = %watch.uri,
+                        "mcp subscription outlived its access: removing it failed"
+                    );
                 }
             }
         }

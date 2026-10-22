@@ -68,11 +68,11 @@ impl SearchTap {
             return Err(fault.clone());
         }
         // Already broken: keep walking, project nothing for this tenant.
-        if let Some(ws) = row.workspace_id {
-            if self.faults.contains_key(&ws) {
-                self.history_hw = self.history_hw.max(row.id);
-                return Ok(false);
-            }
+        if let Some(ws) = row.workspace_id
+            && self.faults.contains_key(&ws)
+        {
+            self.history_hw = self.history_hw.max(row.id);
+            return Ok(false);
         }
         let previous = row.workspace_id.and_then(|ws| self.last_link.get(&ws));
         let report = verify_catch_up(previous, std::slice::from_ref(row));
@@ -187,11 +187,11 @@ where
         .list_events_after_global(0, 1)
         .await
         .map_err(|_| TapFault::MissingHistory)?;
-    if let Some(row) = oldest.first() {
-        if let Some(fault) = SearchTap::gap_fault(tap.history_hw, row.id, row.workspace_id) {
-            tap.fault = Some(fault.clone());
-            return Err(fault);
-        }
+    if let Some(row) = oldest.first()
+        && let Some(fault) = SearchTap::gap_fault(tap.history_hw, row.id, row.workspace_id)
+    {
+        tap.fault = Some(fault.clone());
+        return Err(fault);
     }
     // Resume where the last run finished. The pruned-gap check above already
     // refused a cursor that fell into a pruned range, so this is either 0 (a
@@ -215,18 +215,15 @@ where
             // row as a genesis — verification that looks like it ran and did
             // not. Re-derive the predecessor from the log rather than storing a
             // second copy of the hashes, which could drift from it.
-            if resumed_from > 0 {
-                if let Some(ws) = row.workspace_id {
-                    if !tap.has_link(ws) {
-                        if let Some(link) = store
-                            .workspace_event_at_or_before(ws, resumed_from)
-                            .await
-                            .map_err(|_| TapFault::MissingHistory)?
-                        {
-                            tap.seed_link(ws, link);
-                        }
-                    }
-                }
+            if resumed_from > 0
+                && let Some(ws) = row.workspace_id
+                && !tap.has_link(ws)
+                && let Some(link) = store
+                    .workspace_event_at_or_before(ws, resumed_from)
+                    .await
+                    .map_err(|_| TapFault::MissingHistory)?
+            {
+                tap.seed_link(ws, link);
             }
             let project = tap.ingest(&row)?;
             if project {

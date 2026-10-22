@@ -70,7 +70,7 @@ pub async fn claim_next_due(
         "UPDATE maidan_mail_outbox
          SET attempts = attempts + 1, next_attempt_at = ?, updated_at = ?
          WHERE id = ?
-         RETURNING id, to_address, subject, body, attempts",
+         RETURNING id, workspace_id, to_address, subject, body, attempts",
     )
     .bind(&lease)
     .bind(&now_s)
@@ -223,6 +223,9 @@ fn row_to_dead(row: &sqlx::sqlite::SqliteRow) -> DeadMail {
 fn row_to_mail(row: &sqlx::sqlite::SqliteRow) -> MailOutbox {
     MailOutbox {
         id: MailOutboxId(row.get("id")),
+        workspace_id: row
+            .get::<Option<uuid::Uuid>, _>("workspace_id")
+            .map(WorkspaceId),
         to_address: row.get("to_address"),
         subject: row.get("subject"),
         body: row.get("body"),
