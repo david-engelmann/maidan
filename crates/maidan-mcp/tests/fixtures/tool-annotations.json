@@ -11,6 +11,7 @@
   "read_verbs": [
     "advise",
     "catch",
+    "find",
     "get",
     "list",
     "parse",
@@ -930,6 +931,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "signs with a local key and returns the envelope to the caller; no federation peer or outbound call"
+      }
+    },
+    "find_thread": {
+      "title": "Find thread",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "SELECTs via store.find_thread_by_external_ref, can_access_thread and get_thread; writes nothing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; matches recorded Slack and GitHub references without calling either"
       }
     },
     "follow_channel": {
@@ -4749,6 +4769,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "only reads Maidan's event bus/log for ClaimFailed; makes no outbound call"
+      }
+    },
+    "wait_for_event": {
+      "title": "Wait for event",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "subscribes to the event bus and reads the event log (list_events_after); writes nothing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating waits again with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's event bus and store; no outbound call"
       }
     },
     "wait_for_landed": {

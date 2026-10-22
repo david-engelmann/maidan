@@ -998,6 +998,16 @@ A message's `metadata.maidan.citations` is an optional list of
 the stored message's `metadata.citations`. Malformed hashes fail closed
 (`InvalidParams`).
 
+### Finding a thread from a Slack message or a pull request
+
+A session that holds only an external reference finds its task with
+`GET /workspaces/{id}/thread-lookup` or the MCP tool `find_thread`
+(`workspace:read`). Give `repo` and `pr_number` for a pull request (the thread
+tracking it, linked to it, or commenting on it), `slack_channel` and `slack_ts`
+for a Slack message a result was posted as or into, or `slack_channel` alone
+for the thread a Slack channel is linked to. The answer is the thread, or 404
+(`null` over MCP) when nothing you may read matches.
+
 ### Long-poll waits (`wait_for_*`)
 
 The MCP `wait_for_mention` / `wait_for_notification` / `wait_for_result` /
@@ -1007,7 +1017,18 @@ block until their signal arrives or the timeout lapses. They need
 `workspace:read`, take `timeout_ms` (default 30 000, at most 300 000) and,
 all but `wait_for_memory_block`, `since_log_id`, and return `null` when the
 window lapses with nothing to report. Each sees only its own workspace, and
-skips an event in a thread you cannot read.
+skips an event you cannot read: one in a thread or private channel you are
+not in, or in a DM you are not part of.
+
+`wait_for_event` is the general form: `kinds` names one or more event kinds
+(`["thread_landed", "claim_failed"]`; an unknown name is refused), `thread_id`
+narrows it to one thread, and `workspace_id` may be omitted. It returns
+`{log_id, event}` for the first match. Pass the last `log_id` you handled as
+`after_log_id` and it replays the log before it waits, so nothing that happened
+between two calls is missed. A loop that must see every event passes it on
+every call. `timeout_ms` 0 only replays, so it needs `after_log_id`. When a
+wait falls behind the bus and events are dropped, it reads them back from the
+log, so it still answers the first match.
 
 | Tool | Returns | Scope |
 |------|---------|-------|

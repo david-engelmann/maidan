@@ -313,7 +313,9 @@ They are set at intake, on `POST /channels/{cid}/threads` or MCP
 `create_thread`, in the same transaction as the thread, and replaced later
 with `PUT /threads/{id}/attributes` or MCP `set_thread_attributes`
 (`thread:transition`). They ride on `GET /threads/{id}`, on the thread
-context, and on each `list_active_claims` entry. A thread nobody described
+context (`thread.attributes`, REST and MCP), on the `claim_next` answer
+(REST and MCP, channel and workspace), and on each `list_active_claims`
+entry. A thread nobody described
 reads as a change with no engine and no threat model.
 
 A claimant waits for work without polling: MCP

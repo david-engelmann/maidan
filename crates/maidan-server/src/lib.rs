@@ -42,7 +42,6 @@ pub mod egress_worker;
 pub mod embed_repair;
 pub mod error;
 pub mod event_stream;
-pub mod event_visibility;
 pub mod export;
 pub mod extract;
 pub mod federation;

@@ -121,7 +121,7 @@ pub async fn flip_pull_ready_guarded(
         )));
     }
     if !brief.draft {
-        note_ready(store, repo, pull_number).await;
+        note_ready(store, workspace_id, repo, pull_number).await;
         return Ok(MarkReadyOutcome::AlreadyReady {
             number: brief.number,
             head: brief.head,
@@ -136,7 +136,7 @@ pub async fn flip_pull_ready_guarded(
     )
     .await
     .map_err(MarkReadyGuard::Github)?;
-    note_ready(store, repo, pull_number).await;
+    note_ready(store, workspace_id, repo, pull_number).await;
     Ok(MarkReadyOutcome::Marked {
         number: brief.number,
         head: brief.head,
@@ -429,9 +429,14 @@ pub async fn mark_pull_ready(
 /// Stamp the ramp metrics' ready time. Best effort: a pull request the
 /// change flow did not open is not tracked, and a failed write never undoes
 /// a flip.
-async fn note_ready(store: &dyn maidan_store::Store, repo: &str, pull_number: i64) {
+async fn note_ready(
+    store: &dyn maidan_store::Store,
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+) {
     if let Err(err) = store
-        .mark_change_pull_ready(repo, pull_number, chrono::Utc::now())
+        .mark_change_pull_ready(workspace_id, repo, pull_number, chrono::Utc::now())
         .await
     {
         tracing::warn!(repo, pull_number, error = %err, "mark-ready: ready time not recorded");

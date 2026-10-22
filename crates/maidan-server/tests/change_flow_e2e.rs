@@ -2833,6 +2833,120 @@ async fn the_swarm_metrics_read_only_the_named_linear_issues() {
     assert_eq!(code, StatusCode::BAD_REQUEST);
 }
 
+/// `?provider=` and `?harness=` keep only the tasks whose spend was mostly
+/// with that provider or harness, on the route and on its MCP twin alike; a
+/// name nothing spent under keeps nothing.
+#[test]
+fn the_swarm_metrics_read_only_the_named_provider_and_harness() {
+    // An MCP call through the router in an unoptimized build needs nearly
+    // all of a 2 MiB test thread's stack, as in
+    // `a_session_registers_its_pull_and_reads_the_metrics_over_mcp`.
+    std::thread::Builder::new()
+        .stack_size(8 << 20)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(provider_and_harness_filters())
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+async fn provider_and_harness_filters() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let thread = h.store.get_thread(h.a.thread_id).await.unwrap();
+    let lease = match thread.claim_lease_id {
+        Some(lease) => lease,
+        None => h
+            .store
+            .claim_thread(h.a.thread_id, h.a.member_id)
+            .await
+            .unwrap()
+            .thread
+            .claim_lease_id
+            .unwrap(),
+    };
+    h.store
+        .report_accounted_usage(&maidan_types::NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::new_v4(),
+            thread_id: h.a.thread_id,
+            reporter: h.a.member_id,
+            claim_lease_id: lease,
+            model: "provider/model".into(),
+            tokens: maidan_types::TokenUsage {
+                input: 1_000_000,
+                ..Default::default()
+            },
+            usd_micros: 10,
+            price_snapshot: maidan_types::PriceSnapshot {
+                input_usd_micros_per_million: 10,
+                ..Default::default()
+            },
+            turns: 1,
+            evidence: maidan_types::UsageEvidence {
+                provider: Some("openai".into()),
+                harness: Some("codex".into()),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    let token = read_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let read = |query: &str| format!("/workspaces/{}/swarm-metrics{query}", h.a.workspace_id.0);
+    let ws = h.a.workspace_id.0;
+    for (query, args, kept) in [
+        (
+            "?provider=openai",
+            json!({"workspace_id": ws, "provider": "openai"}),
+            1,
+        ),
+        (
+            "?harness=codex",
+            json!({"workspace_id": ws, "harness": "codex"}),
+            1,
+        ),
+        (
+            "?provider=openai&harness=codex",
+            json!({"workspace_id": ws, "provider": "openai", "harness": "codex"}),
+            1,
+        ),
+        (
+            "?provider=anthropic",
+            json!({"workspace_id": ws, "provider": "anthropic"}),
+            0,
+        ),
+        (
+            "?harness=cursor",
+            json!({"workspace_id": ws, "harness": "cursor"}),
+            0,
+        ),
+    ] {
+        let (status, rest) = get_json(&h, &token, &read(query)).await;
+        assert_eq!(status, StatusCode::OK, "{query}: {rest}");
+        assert_eq!(
+            rest["tasks"].as_array().unwrap().len(),
+            kept,
+            "{query}: {rest}"
+        );
+        let mcp = tool_json(&call_tool(&h, &token, "get_swarm_metrics", args).await);
+        assert_eq!(
+            mcp["tasks"], rest["tasks"],
+            "the MCP twin agrees on {query}"
+        );
+        if kept == 1 {
+            assert_eq!(rest["tasks"][0]["provider"], "openai");
+            assert_eq!(rest["tasks"][0]["harness"], "codex");
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
     let h = harness().await;
@@ -3581,8 +3695,9 @@ async fn a_rebase_with_no_open_pull_request_or_a_diff_that_does_not_apply_writes
 }
 
 /// Two workspaces on one pull request: a commit another workspace delivered
-/// is someone else's push to this one, and a workspace that delivered
-/// nothing to the pull request may never force it.
+/// is someone else's push to this one, so it never vouches for the first
+/// workspace's rebase. The workspace that did deliver the head is vouched for
+/// by its own row.
 #[tokio::test]
 async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
     let h = harness().await;
@@ -3628,12 +3743,49 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
     h.route(&h.b, &rebase_change(&new_base, DIFF), 3).await;
     h.drain().await;
     let row = h.delivery(&h.b, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let f = h.fake.lock().unwrap();
+    assert_eq!(f.forced.len(), 1, "{:?}", f.forced);
+    assert_ne!(f.refs[BRANCH], theirs, "B rebased the head it delivered");
+}
+
+/// GitHub writes belong to the workspace whose change flow delivered the
+/// head. A workspace that only registered the pull request (tracking is
+/// read-only) is refused a rebase even with the branch blessed for it. The
+/// deliverer's rebase then goes through.
+#[tokio::test]
+async fn only_the_workspace_that_delivered_a_round_may_rebase_a_registered_pull() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.store
+        .register_change_pull(h.b.workspace_id, h.b.thread_id, REPO, number, None)
+        .await
+        .unwrap();
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+
+    h.route(&h.b, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.b, "github_branch").await;
     assert_eq!(row.status, status::SKIPPED);
     let reason = row.last_error.unwrap_or_default();
     assert!(reason.contains("delivered no commit"), "{reason}");
+    {
+        let f = h.fake.lock().unwrap();
+        assert!(f.forced.is_empty(), "{:?}", f.forced);
+        assert_eq!(f.refs[BRANCH], delivered);
+    }
+
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 3).await;
+    h.drain().await;
     let f = h.fake.lock().unwrap();
-    assert!(f.forced.is_empty(), "{:?}", f.forced);
-    assert_eq!(f.refs[BRANCH], theirs);
+    assert_eq!(f.forced.len(), 1, "the deliverer rebases: {:?}", f.forced);
+    assert_ne!(f.refs[BRANCH], delivered);
 }
 
 #[tokio::test]
@@ -3935,11 +4087,11 @@ async fn a_change_flow_pull_is_watched_without_asking() {
     assert_eq!(ci[0].log_tail, None, "a job with no log leaves no tail");
 }
 
-/// Tenant B cannot watch a pull request tenant A watches, read A's watch
-/// thread, or watch into A's workspace or channel, even with the
-/// repository blessed for B as well.
+/// Tenant B watching a pull request tenant A watches gets its own thread,
+/// and still cannot read A's watch thread or watch into A's workspace or
+/// channel, even with the repository blessed for B as well.
 #[tokio::test]
-async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
+async fn another_tenant_watches_on_its_own_thread_and_cannot_read_a_watched_pull() {
     let h = harness().await;
     h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
     h.allow(h.b.workspace_id, EgressSurface::Github, REPO).await;
@@ -3963,14 +4115,15 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
     change_sweep::sweep_once(&h.state).await;
 
     let b_watch = format!("/workspaces/{}/pull-watches", h.b.workspace_id.0);
-    let (status, _) = post_json(
+    let (status, b_watched) = post_json(
         &h,
         &b_token,
         &b_watch,
         json!({"repo": REPO, "pull_number": 91}),
     )
     .await;
-    assert_eq!(status, StatusCode::CONFLICT, "A tracks it");
+    assert_eq!(status, StatusCode::OK, "B tracks its own row");
+    assert_ne!(b_watched["thread_id"].as_str(), Some(thread), "{b_watched}");
     let (status, _) = post_json(
         &h,
         &b_token,
@@ -4001,12 +4154,14 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
     assert!(body.get("ci").is_none(), "{body}");
     assert!(
         h.store
-            .list_channels(h.b.workspace_id)
+            .list_channels(h.a.workspace_id)
             .await
             .unwrap()
             .iter()
-            .all(|c| c.name != maidan_types::DEFAULT_WATCH_CHANNEL),
-        "nothing was made in B"
+            .filter(|c| c.name == maidan_types::DEFAULT_WATCH_CHANNEL)
+            .count()
+            == 1,
+        "B's watch made nothing in A"
     );
 }
 

@@ -1001,15 +1001,18 @@ impl McpServer {
         }
         let deadline = tools::deadline(name);
         let call = crate::call_context::CallContext::from_params(params);
-        let result =
-            tokio::time::timeout(deadline, tools::dispatch(self, auth, name, &args, &call))
-                .await
-                .map_err(|_| {
-                    McpError::Internal(format!(
-                        "tool {name} exceeded its {}s deadline",
-                        deadline.as_secs()
-                    ))
-                })??;
+        // Boxed: the dispatch future is as large as its largest tool's, and
+        // carried inline through every caller an unoptimized build ran out of
+        // a 2 MiB thread stack.
+        let dispatch = Box::pin(tools::dispatch(self, auth, name, &args, &call));
+        let result = tokio::time::timeout(deadline, dispatch)
+            .await
+            .map_err(|_| {
+                McpError::Internal(format!(
+                    "tool {name} exceeded its {}s deadline",
+                    deadline.as_secs()
+                ))
+            })??;
         self.queue_resource_updates(name, &args, &result, auth)
             .await;
         Ok(result)
@@ -3029,8 +3032,11 @@ mod tests {
     }
 
     async fn wait_fixture(caps: &[&str]) -> WaitFixture {
-        use maidan_bus::InMemoryBus;
+        wait_fixture_on(caps, maidan_bus::InMemoryBus::new()).await
+    }
 
+    /// [`wait_fixture`] on a given bus, so a test can make it lag.
+    async fn wait_fixture_on(caps: &[&str], bus: maidan_bus::InMemoryBus) -> WaitFixture {
         let pool = SqlitePoolOptions::new()
             .max_connections(2)
             .connect("sqlite::memory:")
@@ -3091,7 +3097,7 @@ mod tests {
             Arc::new(maidan_search::SqliteSearch::new(pool)),
             Arc::new(HashV1Provider),
         )
-        .with_event_bus(Arc::new(InMemoryBus::new()));
+        .with_event_bus(Arc::new(bus));
         let auth =
             AuthContext::from_session(agent.id, ws, caps.iter().map(|c| c.to_string()).collect());
         WaitFixture {
@@ -3201,6 +3207,199 @@ mod tests {
                 )
                 .await;
             assert!(refused.is_err(), "channel {channel_id:?} was not refused");
+        }
+    }
+
+    /// A one-slot bus drops all but the newest of a burst, so the waiter sees a
+    /// lag marker. The log replay after it still answers the first match, not
+    /// a later one that the caller's next `after_log_id` would skip past.
+    /// (Found by the red-team review of #1488.)
+    #[tokio::test]
+    async fn a_lagged_wait_answers_the_first_match_from_the_log() {
+        use chrono::Utc;
+        use maidan_auth::capability::WORKSPACE_READ;
+        use std::time::Duration;
+
+        let f = wait_fixture_on(&[WORKSPACE_READ], maidan_bus::InMemoryBus::with_capacity(1)).await;
+        let bus = f.server.event_bus.clone().unwrap();
+        let failed = |thread: &Thread| Event::ClaimFailed {
+            occurred_at: Utc::now(),
+            workspace_id: f.ws,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            member_id: f.agent.id,
+            reason: "tokens".into(),
+            thread: thread.clone(),
+        };
+        let resolved = |thread: &Thread| Event::BlockedResolved {
+            occurred_at: Utc::now(),
+            workspace_id: f.ws,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            reason: BlockedReason::Human,
+            resolved_by: f.agent.id,
+        };
+        // A burst after the wait parks: the first match, two other kinds, then
+        // a second match. With one slot, the first match is dropped.
+        let burst = || async {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            let first = f.store.append_event(&failed(&f.public)).await.unwrap();
+            let x = f.store.append_event(&resolved(&f.public)).await.unwrap();
+            let y = f.store.append_event(&resolved(&f.public)).await.unwrap();
+            let second = f
+                .store
+                .append_event(&failed(&f.public_sibling))
+                .await
+                .unwrap();
+            for stored in [&first, &x, &y, &second] {
+                bus.publish(BusEnvelope::from_stored(stored).unwrap())
+                    .await
+                    .unwrap();
+            }
+            first.id
+        };
+
+        // With after_log_id, and without one.
+        let start = f.store.append_event(&resolved(&f.public)).await.unwrap().id;
+        for args in [
+            json!({ "kinds": ["claim_failed"], "after_log_id": start, "timeout_ms": 3000 }),
+            json!({ "kinds": ["claim_failed"], "timeout_ms": 3000 }),
+        ] {
+            let (got, first) = tokio::join!(
+                f.server.call_tool(&f.auth, "wait_for_event", &args),
+                burst()
+            );
+            let got = tool_content(got.unwrap());
+            assert_eq!(got["log_id"].as_i64(), Some(first), "{args}: {got}");
+        }
+
+        // A single-kind wait shares the path.
+        let args = json!({ "timeout_ms": 3000 });
+        let (got, _) = tokio::join!(
+            f.server.call_tool(&f.auth, "wait_for_claim_failed", &args),
+            burst()
+        );
+        let got = tool_content(got.unwrap());
+        assert_eq!(got["thread_id"], json!(f.public.id.0), "{got}");
+    }
+
+    #[tokio::test]
+    async fn wait_for_event_wakes_on_a_named_kind_it_may_read_and_on_nothing_else() {
+        use chrono::Utc;
+        use maidan_auth::capability::WORKSPACE_READ;
+        use std::time::Duration;
+
+        let f = wait_fixture(&[WORKSPACE_READ]).await;
+        let failed = |ws: WorkspaceId, thread: &Thread| Event::ClaimFailed {
+            occurred_at: Utc::now(),
+            workspace_id: ws,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            member_id: f.agent.id,
+            reason: "tokens".into(),
+            thread: thread.clone(),
+        };
+        let resolved = |thread: &Thread| Event::BlockedResolved {
+            occurred_at: Utc::now(),
+            workspace_id: f.ws,
+            channel_id: thread.channel_id,
+            thread_id: thread.id,
+            reason: BlockedReason::Human,
+            resolved_by: f.agent.id,
+        };
+        let secret_channel = f.store.get_channel(f.secret.channel_id).await.unwrap();
+        let call = |args: Value| {
+            let (server, auth) = (&f.server, &f.auth);
+            async move {
+                tool_content(
+                    server
+                        .call_tool(auth, "wait_for_event", &args)
+                        .await
+                        .unwrap(),
+                )
+            }
+        };
+        let kinds = json!(["claim_failed", "channel_created"]);
+
+        // A named kind published during the wait wakes it, with its log id;
+        // another kind first does not.
+        let (got, _) = tokio::join!(call(json!({ "kinds": kinds, "timeout_ms": 5000 })), async {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            f.server.publish_event(resolved(&f.public)).await;
+            f.server.publish_event(failed(f.ws, &f.public)).await;
+        });
+        assert_eq!(got["event"]["kind"], json!("claim_failed"), "{got}");
+        assert_eq!(got["event"]["thread_id"], json!(f.public.id.0));
+        assert!(got["log_id"].as_i64().is_some(), "{got}");
+
+        // Nothing happens: null once the fixed window lapses.
+        let started = tokio::time::Instant::now();
+        assert!(call(json!({ "kinds": kinds, "timeout_ms": 200 }))
+            .await
+            .is_null());
+        assert!(started.elapsed() >= Duration::from_millis(200));
+
+        // A private channel's thread event, a private channel's own event, and
+        // another workspace's event never wake it.
+        let (got, _) = tokio::join!(call(json!({ "kinds": kinds, "timeout_ms": 400 })), async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            f.server.publish_event(failed(f.ws, &f.secret)).await;
+            f.server
+                .publish_event(Event::ChannelCreated {
+                    occurred_at: Utc::now(),
+                    workspace_id: f.ws,
+                    channel: secret_channel.clone(),
+                })
+                .await;
+            f.server.publish_event(failed(f.other_ws, &f.other)).await;
+        });
+        assert!(got.is_null(), "a private or foreign event leaked: {got}");
+
+        // A thread scope narrows it to that thread.
+        let (got, _) = tokio::join!(
+            call(json!({ "kinds": kinds, "thread_id": f.public_sibling.id.0, "timeout_ms": 5000 })),
+            async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                f.server.publish_event(failed(f.ws, &f.public)).await;
+                f.server
+                    .publish_event(failed(f.ws, &f.public_sibling))
+                    .await;
+            }
+        );
+        assert_eq!(
+            got["event"]["thread_id"],
+            json!(f.public_sibling.id.0),
+            "{got}"
+        );
+
+        // after_log_id replays what happened before the call, under the same
+        // rules; timeout_ms 0 only replays.
+        let id = f
+            .server
+            .publish_event(failed(f.ws, &f.public))
+            .await
+            .unwrap();
+        let got = call(json!({ "kinds": kinds, "timeout_ms": 0, "after_log_id": id - 1 })).await;
+        assert_eq!(got["log_id"], json!(id), "{got}");
+        for (ws, thread) in [(f.ws, &f.secret), (f.other_ws, &f.other)] {
+            let id = f.server.publish_event(failed(ws, thread)).await.unwrap();
+            assert!(
+                call(json!({ "kinds": kinds, "timeout_ms": 0, "after_log_id": id - 1 }))
+                    .await
+                    .is_null()
+            );
+        }
+
+        // Refused before it parks: an unknown kind, a thread it can't read,
+        // another workspace.
+        for args in [
+            json!({ "kinds": ["claim_failed", "no_such_kind"] }),
+            json!({ "kinds": kinds, "thread_id": f.secret.id.0 }),
+            json!({ "kinds": kinds, "thread_id": f.other.id.0 }),
+            json!({ "kinds": kinds, "workspace_id": f.other_ws.0 }),
+        ] {
+            let refused = f.server.call_tool(&f.auth, "wait_for_event", &args).await;
+            assert!(refused.is_err(), "{args} was not refused");
         }
     }
 

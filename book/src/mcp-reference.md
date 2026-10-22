@@ -2961,6 +2961,90 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `wait_for_event`
+
+**Wait for event.** Block until the first event of any of kinds that you may read arrives in your workspace (or in thread_id), and return {log_id, event}, or null when timeout_ms lapses. kinds are event kind names such as thread_landed or message_posted; an unknown name is refused. Events in a private channel you are not in, or a DM you are not part of, never wake it. Pass the log_id of the last event you handled as after_log_id to replay the log first: a loop that must see every event passes it on every call, since without it an event between two calls can be missed. timeout_ms 0 only replays, and needs after_log_id.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "after_log_id": {
+      "description": "replay logged events after this log_id before waiting",
+      "type": "integer"
+    },
+    "kinds": {
+      "description": "event kind names in snake_case",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "thread_id": {
+      "description": "only events in this thread",
+      "format": "uuid",
+      "type": "string"
+    },
+    "timeout_ms": {
+      "description": "how long to wait (default 30000)",
+      "maximum": 300000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id); omitted, the same",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kinds"
+  ],
+  "type": "object"
+}
+```
+
+### `find_thread`
+
+**Find thread.** Find the thread an external reference points at: a Slack message (slack_channel and slack_ts: the thread whose result was posted as that message or into that Slack thread), a Slack channel alone (the thread it is linked to), or a GitHub pull request (repo and pr_number: the thread tracking it, linked to it, or delivering to it). Returns the thread, or null when nothing in your workspace that you may read matches. The twin of GET /workspaces/{id}/thread-lookup.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "pr_number": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "repo": {
+      "description": "owner/name or a GitHub clone URL; with pr_number",
+      "type": "string"
+    },
+    "slack_channel": {
+      "description": "a Slack channel id such as C0123ABCD",
+      "type": "string"
+    },
+    "slack_ts": {
+      "description": "a Slack message ts such as 1700000000.000100; needs slack_channel",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id); omitted, the same",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
 ### `set_thread_lineage`
 
 **Set thread lineage.** Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.

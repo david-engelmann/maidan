@@ -19,7 +19,7 @@ In short:
    as `MAIDAN_TOKEN`. Never print it, paste it or commit it. Check the seat
    with `whoami`.
 2. **Claim.** `claim_next_workspace_thread` with `engine: "session"`, this
-   checkout's `repo`, `lease_secs: 900` and `wait_ms: 300000`. `null` at the
+   checkout's `repo`, `lease_secs: 3600` and `wait_ms: 300000`. `null` at the
    deadline means call again at once. Never sleep or poll. Then
    `acknowledge_claim`.
 3. **Read.** `get_thread_context` (the task, `change_requests`, `notices`), the
@@ -27,8 +27,12 @@ In short:
    and any previous result (`get_thread_result`).
 4. **Work.** A `feature/agent-<slug>` branch from the base, `base_sha` read
    before any edit, the branch declared with `set_thread_footprint`.
-   `renew_claim` every five minutes and before long steps. Run the
-   repository's pre-push gate (`make prepush` or its equivalent).
+   `renew_claim` every fifteen minutes. A blocking command cannot renew, so
+   before a long step renew with a lease longer than it can take, or renew in
+   the background over REST while it runs (the runbook's Work step 5). Run the
+   repository's pre-push gate (`make prepush` or its equivalent). A refused
+   renewal with the work committed: re-take the thread with `claim_thread` if
+   it is still open and unassigned, and deliver the same commit.
 5. **Deliver.** Build the `pi.change.result/1` envelope with
    [`change_result.py`](change_result.py) and `PUT` it to
    `/threads/{id}/result`; Maidan commits it and opens a draft pull request.

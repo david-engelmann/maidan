@@ -53,7 +53,7 @@ pub async fn check_outcomes(state: &AppState, workspace_id: WorkspaceId) {
         let outcome = check_one(git, &mut lists, &item).await;
         if let Err(err) = state
             .store
-            .record_change_outcome(&item.repo, item.pull_number, &outcome, now)
+            .record_change_outcome(workspace_id, &item.repo, item.pull_number, &outcome, now)
             .await
         {
             tracing::warn!(repo = item.repo, pull_number = item.pull_number, error = %err, "outcome check: not recorded");

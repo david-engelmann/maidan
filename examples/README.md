@@ -86,6 +86,7 @@ itself. Each claims with `engine: "session"` and `wait_ms`, delivers a
 `pi.change.result/1`, reports usage with `evidence: {provider, harness}`
 and releases the claim.
 
+
 ## Semantic search with a local model
 
 [`embeddings/compose.ollama.yaml`](embeddings/compose.ollama.yaml) layers Ollama onto the

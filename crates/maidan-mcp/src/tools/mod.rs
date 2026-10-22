@@ -24,6 +24,7 @@ mod change_pull;
 mod channel;
 mod delivery;
 mod event_log;
+mod event_wait;
 mod explorer;
 mod export;
 mod freeze;
@@ -47,6 +48,7 @@ mod snapshot;
 mod social;
 mod spawn;
 mod thread;
+mod thread_lookup;
 mod whoami;
 
 #[cfg(test)]
@@ -85,6 +87,7 @@ pub fn catalog_for(auth: &AuthContext) -> Vec<Value> {
 pub const READ_ONLY_TOOLS: &[&str] = &[
     "advise_land_gate",
     "catch_up_events",
+    "find_thread",
     "get_approval_gate",
     "get_artifact",
     "get_artifact_metadata",
@@ -194,6 +197,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "wait_for_blocked_resolved",
     "wait_for_claim_expired",
     "wait_for_claim_failed",
+    "wait_for_event",
     "wait_for_landed",
     "wait_for_memory_block",
     "wait_for_mention",
@@ -294,12 +298,14 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "wait_for_claim_expired"
         | "wait_for_claim_failed"
         | "wait_for_landed"
+        | "wait_for_event"
         | "wait_for_blocked_resolved"
         | "get_queue_depth"
         | "get_channel_occupancy"
         | "get_workspace_queue_depth"
         | "get_workspace_occupancy"
         | "get_swarm_metrics"
+        | "find_thread"
         | "get_run_occupancy"
         | "get_thread_lineage"
         | "list_run_threads"
@@ -877,6 +883,7 @@ async fn enforce_channel_access(
         | "clear_land_gate"
         | "advise_land_gate"
         | "register_thread_pull"
+        | "wait_for_event"
         | "follow_thread" => {
             if let Some(id) = field("thread_id") {
                 maidan_auth::ensure_thread_access(store, auth, maidan_types::ThreadId(id)).await?;
@@ -948,9 +955,6 @@ pub async fn dispatch(
     check_argument_scope(auth, name, args)?;
     enforce_channel_access(server, auth, name, args).await?;
     let store = &server.store;
-    let artifacts = &server.artifacts;
-    let search = &server.search;
-    let embedding_provider = &server.embedding_provider;
     match name {
         "list_channels" => channel::list_channels(store, auth, args).await,
         "create_channel" => channel::create_channel(server, auth, args).await,
@@ -1063,6 +1067,7 @@ pub async fn dispatch(
         "wait_for_claim_failed" => thread::wait_for_claim_failed(server, auth, args).await,
         "wait_for_blocked_resolved" => thread::wait_for_blocked_resolved(server, auth, args).await,
         "wait_for_landed" => thread::wait_for_landed(server, auth, args).await,
+        "wait_for_event" => event_wait::wait_for_event(server, auth, args).await,
         "get_queue_depth" => thread::get_queue_depth(store, auth, args).await,
         "get_channel_occupancy" => thread::get_channel_occupancy(store, auth, args).await,
         "get_workspace_queue_depth" => thread::get_workspace_queue_depth(store, auth, args).await,
@@ -1070,6 +1075,7 @@ pub async fn dispatch(
         "get_run_occupancy" => thread::get_run_occupancy(store, auth, args).await,
         "register_thread_pull" => change_pull::register_thread_pull(server, auth, args).await,
         "get_swarm_metrics" => change_pull::get_swarm_metrics(server, auth, args).await,
+        "find_thread" => thread_lookup::find_thread(server, auth, args).await,
         "set_thread_lineage" => thread::set_thread_lineage(store, args).await,
         "get_thread_lineage" => thread::get_thread_lineage(store, args).await,
         "clear_thread_lineage" => thread::clear_thread_lineage(store, args).await,
@@ -1082,6 +1088,25 @@ pub async fn dispatch(
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
         "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
+        // The rest are matched in a second function, boxed: an unoptimized
+        // build gives a function a stack slot for every tool future it can
+        // build, and as one function the dispatch outgrew a 2 MiB thread.
+        other => Box::pin(dispatch_rest(server, auth, other, args, call)).await,
+    }
+}
+
+async fn dispatch_rest(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    name: &str,
+    args: &Value,
+    call: &crate::call_context::CallContext,
+) -> Result<Value, McpError> {
+    let store = &server.store;
+    let artifacts = &server.artifacts;
+    let search = &server.search;
+    let embedding_provider = &server.embedding_provider;
+    match name {
         "get_thread_steer" => thread::get_thread_steer(store, args).await,
         "wait_for_result" => thread::wait_for_result(server, auth, args).await,
         "get_dependency_results" => thread::get_dependency_results(store, auth, args).await,

@@ -7,14 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### The Cursor CLI, Codex and any OpenRouter model can claim Maidan work
+### A session waits on any event it names
 
-- **Added:** claimant recipes for the command line, each one task per run on the shared claimant runbook: `examples/cursor-agent/` (`cursor-agent -p` with the Cursor rule), `examples/codex/` (`codex exec`, a `config.toml` entry that reads the token from `MAIDAN_TOKEN` and gives a waiting claim room, and a prompt) and `examples/openrouter/claimant.py`, a standard-library runner that has any OpenRouter model do the coding while it runs the Maidan side itself: claim with `wait_ms`, renew, gate, deliver a `pi.change.result/1`, priced usage with `evidence: {provider, harness}`, review and release. The OpenRouter key is read from `OPENROUTER_API_KEY` only.
+- **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
+- **Changed:** every MCP `wait_for_*` tool, and the log replay behind it, now decides what a caller may see with the event log's rule (`maidan_auth::EventVisibility`, moved from the server so both share one copy). That rule also hides a private channel's events that name no thread, which `wait_for_event` can ask for.
+- **Fixed:** a `wait_for_*` whose bus subscription fell behind skipped the lag marker, so a match among the dropped events was lost and a later one answered in its place. The `after_log_id` cursor then moved past the lost match. Every MCP wait now replays the log from the last event it saw (or from where it subscribed) and answers the first match. Found by red-team review.
 
-### The Claude Code claimant skill installs for your user, and names its harness
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
 
-- **Changed:** `examples/claude-code/maidan-claimant/` works when copied to `~/.claude/skills/maidan-claimant/`: the runbook names no path in this repository, calls the helper as `$CLAIMANT_DIR/change_result.py`, and carries the MCP config inline. The README's install line copies it there.
-- **Changed:** the runbook's `report_usage` always sends `evidence` with `provider` and `harness` (Claude Code: `{"provider": "anthropic", "harness": "claude-code"}`), which the swarm metrics slice on, and the fallback registers its own pull request with the MCP `register_thread_pull` instead of curl.
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
 
 ## [414.0.0] — 2026-10-21
 

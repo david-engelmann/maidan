@@ -93,6 +93,8 @@
     "get_workspace_occupancy",
     "register_thread_pull",
     "get_swarm_metrics",
+    "wait_for_event",
+    "find_thread",
     "set_thread_lineage",
     "get_thread_lineage",
     "list_run_threads",
