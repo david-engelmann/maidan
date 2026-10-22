@@ -279,10 +279,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Repo gotchas
 
-- **A new migration is not picked up on its own.** Register it as an
-  `include_str!` constant plus an `apply_postgres`/`apply_sqlite` call in
-  `crates/maidan-store/src/migrate.rs`, for both backends
-  (`tests/migration_register.rs` checks). `schema_parity` then checks both
+- **A new migration is a new file.** `crates/maidan-store/build.rs` registers
+  every `migrations/{postgres,sqlite}/NNNN_<slug>.sql` by its version; add the
+  file on both backends and nothing else. `schema_parity` then checks both
   backends build the same tables, columns, keys and foreign keys.
 - **A module for one backend only** goes in `POSTGRES_ONLY_MODULES` or
   `SQLITE_ONLY_MODULES` in `crates/maidan-store/tests/backend_parity.rs`.
