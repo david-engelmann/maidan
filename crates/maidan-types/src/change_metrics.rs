@@ -100,6 +100,9 @@ pub enum ThreadNoticeKind {
     /// The pull request left the merge queue without merging; `reasons`
     /// holds GitHub's reason (`MERGE_CONFLICT`, `FAILED_CHECKS`, ...).
     MergeDequeued,
+    /// A deploy hook reported the pull request's merge commit deployed to
+    /// `environment`; `status` says whether it succeeded.
+    Deployed,
 }
 
 impl ThreadNoticeKind {
@@ -114,6 +117,7 @@ impl ThreadNoticeKind {
             Self::GateClear => "gate_clear",
             Self::MergeQueued => "merge_queued",
             Self::MergeDequeued => "merge_dequeued",
+            Self::Deployed => "deployed",
         }
     }
 
@@ -128,6 +132,7 @@ impl ThreadNoticeKind {
             "gate_clear" => Some(Self::GateClear),
             "merge_queued" => Some(Self::MergeQueued),
             "merge_dequeued" => Some(Self::MergeDequeued),
+            "deployed" => Some(Self::Deployed),
             _ => None,
         }
     }
@@ -169,6 +174,12 @@ pub struct ThreadNotice {
     /// What holds the pull request back (`gate_blocked`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reasons: Vec<String>,
+    /// Where a `deployed` notice's commit went (`production`, `staging`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+    /// The deploy's own page, as the hook sent it (`deployed`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deploy_url: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -230,6 +241,29 @@ impl ThreadNotice {
                 "{}#{} is no longer held back.",
                 self.repo, self.pull_number
             ),
+            ThreadNoticeKind::Deployed => {
+                let environment = self.environment.as_deref().unwrap_or("an environment");
+                let link = self
+                    .deploy_url
+                    .as_deref()
+                    .map(|url| format!(" ({url})"))
+                    .unwrap_or_default();
+                if self.status == Some(crate::pull_ci::CiStatus::Failure) {
+                    format!(
+                        "Deploy to {environment} failed for {}#{}{}{link}.",
+                        self.repo,
+                        self.pull_number,
+                        self.at_head()
+                    )
+                } else {
+                    format!(
+                        "{}#{} is deployed to {environment}{}{link}.",
+                        self.repo,
+                        self.pull_number,
+                        self.at_head()
+                    )
+                }
+            }
         }
     }
 
@@ -251,6 +285,42 @@ pub struct PostedNotice {
     pub notice: ThreadNotice,
     pub event: StoredEvent,
     pub author_id: Option<MemberId>,
+}
+
+/// A deploy a deploy hook reported: `sha` reached `environment`, or failed
+/// to. Matched to the merged pull requests whose merge (or merged head)
+/// commit it names, and to those in `contains` the server found `sha`
+/// carries as an ancestor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewDeploy {
+    /// Lowercase `owner/name`.
+    pub repo: String,
+    /// The full commit SHA, lowercase.
+    pub sha: String,
+    pub environment: String,
+    /// `success` or `failure`; a deploy still running says nothing yet.
+    pub status: crate::pull_ci::CiStatus,
+    pub url: Option<String>,
+    /// Merged pull requests, each in its own workspace, whose merge commit
+    /// is an ancestor of `sha`: a deploy of a later commit shipped them too.
+    pub contains: Vec<DeployedPull>,
+}
+
+/// A tracked pull request, named by the workspace that tracks it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployedPull {
+    pub workspace_id: crate::WorkspaceId,
+    pub pull_number: i64,
+}
+
+/// A merged pull request a deploy of a later commit might have shipped:
+/// tracked in `workspace_id`, merged as `merge_sha`, and not yet deployed to
+/// the environment asked about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployCandidate {
+    pub workspace_id: crate::WorkspaceId,
+    pub pull_number: i64,
+    pub merge_sha: String,
 }
 
 /// A stale-base notice for the thread a round was delivered on, said once per
@@ -383,6 +453,33 @@ pub struct ChangePull {
     pub outcome: MergedOutcome,
     /// When it was handed to a session at `non_converging`, if it was.
     pub handed_off_at: Option<DateTime<Utc>>,
+    /// The task's claim, review and delivery history, from the event log
+    /// and its result deliveries.
+    pub flow: ThreadFlow,
+    /// How the checks stood on the head of the first round delivered: the
+    /// first-try CI pass rate the scale test stops on. `None` while no CI
+    /// notice names that head.
+    pub first_delivery_ci: Option<crate::pull_ci::CiStatus>,
+}
+
+/// What happened to a task's thread around its pull request.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThreadFlow {
+    /// The first time a claimant was assigned the thread.
+    pub claimed_at: Option<DateTime<Utc>>,
+    /// The first move to `in_review`.
+    pub review_requested_at: Option<DateTime<Utc>>,
+    /// The first time a head's checks finished green (`checks_done`,
+    /// success): when the work was really ready for a reviewer.
+    pub ci_green_at: Option<DateTime<Utc>>,
+    /// The first review submitted.
+    pub first_review_at: Option<DateTime<Utc>>,
+    /// Reviews that sent the work back (`request_changes`).
+    pub sent_back: i64,
+    /// Claims on the thread that lapsed (`ClaimExpired`).
+    pub claim_lapses: i64,
+    /// Result deliveries recorded as skipped or failed.
+    pub deliveries_skipped: i64,
 }
 
 /// A task the change sweep handed to a session: the `ThreadHandoff` event
@@ -462,6 +559,26 @@ pub struct TaskMetrics {
     pub time_to_first_human_review_secs: Option<i64>,
     /// Handed to a session at `non_converging`: counted as misrouted.
     pub handed_off: bool,
+    /// When the task was first claimed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_at: Option<DateTime<Utc>>,
+    /// First claim to the first round delivered, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_to_first_delivery_secs: Option<i64>,
+    /// How the checks stood on the first delivered head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_delivery_ci: Option<crate::pull_ci::CiStatus>,
+    /// From the first green CI on a head (else the first move to review) to
+    /// the first review submitted, in seconds: how long finished work waited
+    /// for a reviewer, not for CI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_wait_secs: Option<i64>,
+    /// Reviews that sent the work back.
+    pub sent_back: i64,
+    /// Claims that lapsed before the work was handed in.
+    pub claim_lapses: i64,
+    /// Result deliveries skipped or failed.
+    pub deliveries_skipped: i64,
 }
 
 /// How a set of tasks did: a whole repository, or one slice of it.
@@ -494,6 +611,15 @@ pub struct SliceNumbers {
     /// Mean commits a person added, over merged tasks read so far.
     pub mean_human_commits: Option<f64>,
     pub median_time_to_first_human_review_secs: Option<i64>,
+    /// Tasks whose first delivered head passed CI, over those whose first
+    /// head's checks finished; `None` with none finished.
+    pub first_ci_pass_rate: Option<f64>,
+    pub median_claim_to_first_delivery_secs: Option<i64>,
+    pub median_review_wait_secs: Option<i64>,
+    /// Reviews that sent work back, per task.
+    pub mean_sent_back: f64,
+    pub claim_lapses: i64,
+    pub deliveries_skipped: i64,
 }
 
 /// The tasks routed to one engine.
@@ -712,6 +838,7 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
                 _ => false,
             },
         );
+    let first_delivered = pull.rounds.first().map(|round| round.delivered_at);
     let mut flags = Vec::new();
     let open = pull.merged_at.is_none() && pull.closed_at.is_none();
     let growing = pull.rounds.len() >= 3
@@ -763,7 +890,30 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
                 .max(0)
         }),
         handed_off: pull.handed_off_at.is_some(),
+        claimed_at: pull.flow.claimed_at,
+        claim_to_first_delivery_secs: pull
+            .flow
+            .claimed_at
+            .zip(first_delivered)
+            .map(|(claimed, delivered)| (delivered - claimed).num_seconds().max(0)),
+        first_delivery_ci: pull.first_delivery_ci,
+        review_wait_secs: pull
+            .flow
+            .ci_green_at
+            .or(pull.flow.review_requested_at)
+            .zip(pull.flow.first_review_at)
+            .filter(|(asked, reviewed)| reviewed >= asked)
+            .map(|(asked, reviewed)| (reviewed - asked).num_seconds()),
+        sent_back: pull.flow.sent_back,
+        claim_lapses: pull.flow.claim_lapses,
+        deliveries_skipped: pull.flow.deliveries_skipped,
     }
+}
+
+/// The middle value of `values`, which it sorts.
+fn median(mut values: Vec<i64>) -> Option<i64> {
+    values.sort_unstable();
+    values.get(values.len() / 2).copied()
 }
 
 fn rollup(
@@ -911,6 +1061,28 @@ fn numbers(tasks: &[&TaskMetrics], round_limit: i64, as_of: DateTime<Utc>) -> Sl
         mean_human_commits: (!human.is_empty())
             .then(|| human.iter().sum::<i64>() as f64 / human.len() as f64),
         median_time_to_first_human_review_secs: first_review.get(first_review.len() / 2).copied(),
+        first_ci_pass_rate: {
+            let finished: Vec<crate::pull_ci::CiStatus> = tasks
+                .iter()
+                .filter_map(|t| t.first_delivery_ci)
+                .filter(|status| *status != crate::pull_ci::CiStatus::Pending)
+                .collect();
+            let passed = finished
+                .iter()
+                .filter(|status| **status == crate::pull_ci::CiStatus::Success)
+                .count() as i64;
+            rate(passed, finished.len() as i64)
+        },
+        median_claim_to_first_delivery_secs: median(
+            tasks
+                .iter()
+                .filter_map(|t| t.claim_to_first_delivery_secs)
+                .collect(),
+        ),
+        median_review_wait_secs: median(tasks.iter().filter_map(|t| t.review_wait_secs).collect()),
+        mean_sent_back: per_task(tasks.iter().map(|t| t.sent_back as f64).sum()),
+        claim_lapses: tasks.iter().map(|t| t.claim_lapses).sum(),
+        deliveries_skipped: tasks.iter().map(|t| t.deliveries_skipped).sum(),
     }
 }
 
@@ -988,6 +1160,8 @@ mod tests {
             linear_issue: None,
             outcome: MergedOutcome::default(),
             handed_off_at: None,
+            flow: ThreadFlow::default(),
+            first_delivery_ci: None,
         }
     }
 
@@ -1076,6 +1250,64 @@ mod tests {
             ..crate::TaskAttributes::default()
         };
         p
+    }
+
+    /// The scale test's numbers: claim to first delivery, the first head's
+    /// CI, review wait from the first green CI (else the move to review),
+    /// work sent back, lapses and skipped deliveries, per task and per slice.
+    #[test]
+    fn each_task_and_slice_carries_the_scale_test_numbers() {
+        let mut quick = pull(vec![round(1, "aaa", 10, Some(0))]);
+        quick.flow = ThreadFlow {
+            claimed_at: Some(at(-600)),
+            review_requested_at: Some(at(100)),
+            ci_green_at: Some(at(400)),
+            first_review_at: Some(at(1_000)),
+            sent_back: 1,
+            claim_lapses: 1,
+            deliveries_skipped: 2,
+        };
+        quick.first_delivery_ci = Some(crate::pull_ci::CiStatus::Success);
+        let mut red = pull(vec![round(1, "bbb", 10, Some(0))]);
+        red.pull_number = 8;
+        red.flow = ThreadFlow {
+            review_requested_at: Some(at(0)),
+            first_review_at: Some(at(300)),
+            ..ThreadFlow::default()
+        };
+        red.first_delivery_ci = Some(crate::pull_ci::CiStatus::Failure);
+        let mut pending = pull(vec![round(1, "ccc", 10, Some(0))]);
+        pending.pull_number = 9;
+        pending.first_delivery_ci = Some(crate::pull_ci::CiStatus::Pending);
+        let delivered = quick.rounds[0].delivered_at;
+
+        let m = swarm_metrics(vec![quick, red, pending], FlagLimits::default(), at(2_000));
+        let first = &m.tasks[0];
+        assert_eq!(
+            first.claim_to_first_delivery_secs,
+            Some((delivered - at(-600)).num_seconds())
+        );
+        assert_eq!(
+            first.review_wait_secs,
+            Some(600),
+            "from the green CI, not the move to review"
+        );
+        assert_eq!(
+            m.tasks[1].review_wait_secs,
+            Some(300),
+            "no CI record: from the move to review"
+        );
+        assert_eq!(m.tasks[2].review_wait_secs, None);
+        let totals = &m.repos[0].totals;
+        assert_eq!(
+            totals.first_ci_pass_rate,
+            Some(0.5),
+            "pending heads are left out"
+        );
+        assert_eq!(totals.mean_sent_back, 1.0 / 3.0);
+        assert_eq!(totals.claim_lapses, 1);
+        assert_eq!(totals.deliveries_skipped, 2);
+        assert_eq!(totals.median_review_wait_secs, Some(600));
     }
 
     /// A thread's provider and harness are the ones that spent the most;

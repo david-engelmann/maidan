@@ -67,6 +67,8 @@ struct SwarmMetricsArgs {
     #[serde(default)]
     since: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(default)]
+    until: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
     rounds_limit: Option<i64>,
     #[serde(default)]
     behind_limit: Option<i64>,
@@ -99,6 +101,7 @@ pub(super) async fn get_swarm_metrics(
     let query = SwarmMetricsFilter {
         repo: a.repo,
         since: a.since,
+        until: a.until,
         rounds_limit: a.rounds_limit,
         behind_limit: a.behind_limit,
         engine: a.engine,

@@ -75,6 +75,18 @@ usage, start review and release. A change the flow cannot commit (binary files,
 or over the request limit) goes out as the session's own draft, registered on
 the thread with `register_thread_pull`.
 
+## Command-line claimants: Cursor CLI, Codex, OpenRouter
+
+The same runbook, run from a terminal, one task per run:
+[`cursor-agent/`](cursor-agent/) (the Cursor CLI, reusing the Cursor rule),
+[`codex/`](codex/) (`codex exec` with a prompt and a `config.toml` entry) and
+[`openrouter/`](openrouter/), a standard-library runner that puts any
+OpenRouter model (Grok, for example) on a task and runs the Maidan side
+itself. Each claims with `engine: "session"` and `wait_ms`, delivers a
+`pi.change.result/1`, reports usage with `evidence: {provider, harness}`
+and releases the claim.
+
+
 ## Semantic search with a local model
 
 [`embeddings/compose.ollama.yaml`](embeddings/compose.ollama.yaml) layers Ollama onto the

@@ -230,7 +230,9 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
 
 1. Land a release-record PR: a `## [vX.0.0]` section in `docs/Capabilities.md`
    (linking the GitHub release) naming what it contains, a `## [X.0.0]` section in
-   `CHANGELOG.md` (the `[Unreleased]` entries move under it), the
+   `CHANGELOG.md` (`bash scripts/changelog-fragments.sh release X.0.0` moves the
+   `[Unreleased]` entries and every `changelog.d/` fragment under it; then write
+   its summary paragraph), the
    `latest **\`vX.0.0\`**` line in `CLAUDE.md`, and the image pins in `README.md`.
    `bash scripts/check-release-records.sh --tag vX.0.0` must pass.
 2. Tag `main` and push the tag:

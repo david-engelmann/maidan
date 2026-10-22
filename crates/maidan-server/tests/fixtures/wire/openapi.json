@@ -399,6 +399,47 @@
         ],
         "type": "object"
       },
+      "AmendPlan": {
+        "additionalProperties": false,
+        "description": "A change to a submitted plan, made in one transaction by the planner\nholding the parent's claim: cancel unclaimed children, add children, and\nrewire the dependencies of unclaimed ones. A key that is cancelled and\nadded in the same amendment is replaced: its dependents wait for the new\nchild instead.",
+        "properties": {
+          "add": {
+            "description": "Children to add; their `depends_on` may name any key the amended\nplan keeps. Linted as `submit_plan`'s children are.",
+            "items": {
+              "$ref": "#/components/schemas/PlanChild"
+            },
+            "type": "array"
+          },
+          "cancel": {
+            "description": "Keys of unclaimed children to cancel.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "lease_id": {
+            "$ref": "#/components/schemas/ClaimLeaseId",
+            "description": "The parent's `claim_lease_id`, as for `submit_plan`."
+          },
+          "reason": {
+            "description": "Why, on each cancelled child's notice.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rewire": {
+            "items": {
+              "$ref": "#/components/schemas/PlanRewire"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "lease_id"
+        ],
+        "type": "object"
+      },
       "AnswerApprovalGate": {
         "description": "Answer a human-approval gate: accept / decline / cancel, with the HMAC\n`request_state` the server issued alongside the pending gate.",
         "properties": {
@@ -5999,6 +6040,46 @@
         ],
         "type": "object"
       },
+      "PlanAmendment": {
+        "description": "What an amendment did, as the amend routes answer.",
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedChild"
+            },
+            "type": "array"
+          },
+          "amendments": {
+            "description": "Amendments this plan has taken, this one included.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "cancelled": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedChild"
+            },
+            "type": "array"
+          },
+          "held": {
+            "description": "The added children are held for review with the rest of the plan.",
+            "type": "boolean"
+          },
+          "rewired": {
+            "description": "Keys whose dependencies changed: the rewired ones, and those that\nwaited for a cancelled or replaced child.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cancelled",
+          "added",
+          "rewired",
+          "amendments"
+        ],
+        "type": "object"
+      },
       "PlanChild": {
         "additionalProperties": false,
         "description": "One child of a plan, as the planner submits it.",
@@ -6088,6 +6169,26 @@
         },
         "required": [
           "released"
+        ],
+        "type": "object"
+      },
+      "PlanRewire": {
+        "additionalProperties": false,
+        "description": "A new `depends_on` for a child already in the plan.",
+        "properties": {
+          "depends_on": {
+            "description": "The keys it waits for from now on, replacing the ones it had.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
         ],
         "type": "object"
       },
@@ -8734,11 +8835,27 @@
       "SliceNumbers": {
         "description": "How a set of tasks did: a whole repository, or one slice of it.",
         "properties": {
+          "claim_lapses": {
+            "format": "int64",
+            "type": "integer"
+          },
           "cost_usd_micros_per_merged": {
             "description": "Total cost of the tasks over the merged ones; `None` before the first\nmerge.",
             "format": "int64",
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "deliveries_skipped": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_ci_pass_rate": {
+            "description": "Tasks whose first delivered head passed CI, over those whose first\nhead's checks finished; `None` with none finished.",
+            "format": "double",
+            "type": [
+              "number",
               "null"
             ]
           },
@@ -8766,6 +8883,25 @@
           "mean_rounds": {
             "format": "double",
             "type": "number"
+          },
+          "mean_sent_back": {
+            "description": "Reviews that sent work back, per task.",
+            "format": "double",
+            "type": "number"
+          },
+          "median_claim_to_first_delivery_secs": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "median_review_wait_secs": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "median_time_to_first_human_review_secs": {
             "format": "int64",
@@ -8818,7 +8954,10 @@
           "misroute_rate",
           "mean_rounds",
           "reverted",
-          "followup_fixed"
+          "followup_fixed",
+          "mean_sent_back",
+          "claim_lapses",
+          "deliveries_skipped"
         ],
         "type": "object"
       },
@@ -9195,6 +9334,27 @@
             "$ref": "#/components/schemas/TaskAttributes",
             "description": "The task's attributes; the defaults when the thread was never\ndescribed."
           },
+          "claim_lapses": {
+            "description": "Claims that lapsed before the work was handed in.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "claim_to_first_delivery_secs": {
+            "description": "First claim to the first round delivered, in seconds.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "claimed_at": {
+            "description": "When the task was first claimed.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "closed_at": {
             "format": "date-time",
             "type": [
@@ -9205,6 +9365,22 @@
           "cost_usd_micros": {
             "format": "int64",
             "type": "integer"
+          },
+          "deliveries_skipped": {
+            "description": "Result deliveries skipped or failed.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "first_delivery_ci": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CiStatus",
+                "description": "How the checks stood on the first delivered head."
+              }
+            ]
           },
           "flags": {
             "items": {
@@ -9311,11 +9487,24 @@
               "null"
             ]
           },
+          "review_wait_secs": {
+            "description": "From the first green CI on a head (else the first move to review) to\nthe first review submitted, in seconds: how long finished work waited\nfor a reviewer, not for CI.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "rounds": {
             "items": {
               "$ref": "#/components/schemas/ChangeRound"
             },
             "type": "array"
+          },
+          "sent_back": {
+            "description": "Reviews that sent the work back.",
+            "format": "int64",
+            "type": "integer"
           },
           "thread_id": {
             "$ref": "#/components/schemas/ThreadId"
@@ -9356,7 +9545,10 @@
           "rebases",
           "attributes",
           "followup_fixes",
-          "handed_off"
+          "handed_off",
+          "sent_back",
+          "claim_lapses",
+          "deliveries_skipped"
         ],
         "type": "object"
       },
@@ -10015,6 +10207,20 @@
             "format": "date-time",
             "type": "string"
           },
+          "deploy_url": {
+            "description": "The deploy's own page, as the hook sent it (`deployed`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environment": {
+            "description": "Where a `deployed` notice's commit went (`production`, `staging`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "failing_jobs": {
             "description": "The checks that failed, at most [`crate::pull_ci::FAILING_JOB_LIMIT`].",
             "items": {
@@ -10086,7 +10292,8 @@
           "gate_blocked",
           "gate_clear",
           "merge_queued",
-          "merge_dequeued"
+          "merge_dequeued",
+          "deployed"
         ],
         "type": "string"
       },
@@ -25668,6 +25875,99 @@
         ]
       }
     },
+    "/threads/{id}/plan/amend": {
+      "post": {
+        "description": "The planner holding the plan parent's live claim cancels unclaimed\nchildren, adds children and rewires unclaimed children's dependencies in\none transaction. Cancelling and adding the same key replaces the child,\nand its dependents wait for the new one. A claimed or finished child, or\nan amendment past the third, is a `409`.",
+        "operationId": "amend_plan",
+        "parameters": [
+          {
+            "description": "Plan parent thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmendPlan"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAmendment"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Amend a submitted plan",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/threads/{id}/plan/release": {
       "post": {
         "operationId": "release_plan",
@@ -33038,6 +33338,16 @@
             "description": "Only pull requests opened at or after this time (RFC 3339).",
             "in": "query",
             "name": "since",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only pull requests opened before this time (RFC 3339): with `since`,\none time window.",
+            "in": "query",
+            "name": "until",
             "required": false,
             "schema": {
               "format": "date-time",
