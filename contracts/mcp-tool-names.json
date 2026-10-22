@@ -46,6 +46,7 @@
   "detach_memory_block",
   "edit_message",
   "export_workspace",
+  "find_thread",
   "follow_channel",
   "follow_member",
   "follow_thread",
