@@ -92,6 +92,9 @@ struct Fake {
     /// Answer this many `POST /pulls` with a 422, as GitHub can for a branch
     /// it created a moment ago and has not indexed yet.
     pulls_unprocessable: u32,
+    /// Answer this many fast-forward `PATCH /git/refs` with a 422 and leave
+    /// the ref where it was, as GitHub can for a ref it just created.
+    refs_unprocessable: u32,
     /// What `compare` reports a delivered base behind by; 2 when unset.
     behind: Option<i64>,
     /// Every `force: true` ref move, as `(branch, from, to)`.
@@ -233,6 +236,13 @@ async fn github(
             let Some(current) = fake.refs.get(name).cloned() else {
                 return not_found();
             };
+            if body["force"] != json!(true) && fake.refs_unprocessable > 0 {
+                fake.refs_unprocessable -= 1;
+                return reply(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    json!({"message": "Reference cannot be updated"}),
+                );
+            }
             if body["force"] == json!(true) {
                 assert!(
                     name.starts_with("feature/agent-"),
@@ -1686,6 +1696,48 @@ async fn a_pull_request_github_refuses_once_after_the_commit_is_opened_on_the_re
     let row = h.delivery(&h.a, "github_branch").await;
     assert_eq!(row.status, status::DELIVERED, "{row:?}");
     assert!(row.external_ref.as_deref().unwrap_or("").starts_with(&head));
+}
+
+#[tokio::test]
+async fn a_branch_update_github_refuses_while_the_branch_has_not_moved_lands_on_the_retry() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake.lock().unwrap().refs_unprocessable = 1;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["deliver_to"] = json!([
+        {"surface": "github_branch", "repo": REPO, "branch": BRANCH, "base": "dev"},
+    ]);
+    h.route(&h.a, &result, 1).await;
+    let first = egress_worker::sweep_once(&h.state).await;
+    assert_eq!(first.retried, 1, "a 422 on an unmoved branch is retried");
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::PENDING,
+        "not refused while the branch is still at base_sha: {row:?}"
+    );
+    maidan_store::replay_result_delivery(
+        h.store.as_ref(),
+        h.a.workspace_id,
+        h.a.thread_id,
+        row.id,
+        String::new(),
+    )
+    .await
+    .unwrap();
+    h.drain().await;
+
+    {
+        let fake = h.fake.lock().unwrap();
+        assert_eq!(fake.pulls.len(), 1, "the retry opened the pull request");
+        let head = &fake.refs[BRANCH];
+        assert_eq!(
+            fake.file(head, "src/greeting.txt").as_deref(),
+            Some("line one\nhello, world\nline three\n")
+        );
+    }
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{row:?}");
 }
 
 #[tokio::test]
