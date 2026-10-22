@@ -84,7 +84,11 @@ async fn run_suite(store: &dyn Store) {
         store.list_usage_meters(a, day(23)).await.unwrap(),
         vec![row(a, 23, UsageMeter::Requests, 3)]
     );
-    assert!(store.list_usage_meters(gone, day(1)).await.unwrap().is_empty());
+    assert!(store
+        .list_usage_meters(gone, day(1))
+        .await
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
