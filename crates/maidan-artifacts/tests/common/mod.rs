@@ -39,6 +39,7 @@ pub async fn s3_store(bucket: &str) -> Option<(ContainerAsync<GenericImage>, S3S
         .get_host_port_ipv4(API_PORT)
         .await
         .expect("S3 API port");
+    wait_until_ready(port).await;
     let store = S3Store::new(S3Config {
         endpoint: format!("http://127.0.0.1:{port}"),
         bucket: bucket.to_string(),
@@ -49,6 +50,33 @@ pub async fn s3_store(bucket: &str) -> Option<(ContainerAsync<GenericImage>, S3S
     .await
     .expect("s3 store");
     Some((container, store))
+}
+
+/// MinIO prints its `API:` line when it listens, which can be before its
+/// object layer is up; a PUT in that window is a `service error` (main, run
+/// 38960122644). Its readiness probe answers 200 only once it can serve
+/// requests, so the tests start after that instead of racing it.
+async fn wait_until_ready(port: u16) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        if let Ok(mut conn) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await {
+            let probe =
+                "GET /minio/health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+            let mut head = [0u8; 12];
+            if conn.write_all(probe.as_bytes()).await.is_ok()
+                && conn.read_exact(&mut head).await.is_ok()
+                && head.ends_with(b" 200")
+            {
+                return;
+            }
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "MinIO never reported ready on port {port}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
 }
 
 /// Pings the daemon testcontainers itself would use, so `DOCKER_HOST` and its
