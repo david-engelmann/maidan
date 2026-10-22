@@ -310,8 +310,9 @@ async fn run_suite(store: &dyn Store) {
     // pass exists, the reviewer approves, then the verifier passes it. The
     // close checks the evidence the approval named and does not judge the
     // tiers again, so the pass recorded after the hand-off does not refuse
-    // it. A delegate that worked the thread posts the result with a
-    // non-worker's token: still self-reported.
+    // it. The reviewer holds the thread and a delegate posts the result on
+    // its behalf: only the holder may write it, and it is still
+    // self-reported.
     let usual = store
         .create_thread(new_thread("usual"))
         .await
@@ -319,7 +320,7 @@ async fn run_suite(store: &dyn Store) {
         .id;
     store.set_review_requirement(usual, 1).await.expect("req");
     store.require_land_gate(usual).await.expect("arm");
-    store.claim_thread(usual, outsider).await.expect("claim");
+    store.claim_thread(usual, reviewer).await.expect("claim");
     with_attribution(
         acting_as(outsider, reviewer),
         store.set_thread_result_claiming(usual, reviewer, &result),
@@ -327,7 +328,7 @@ async fn run_suite(store: &dyn Store) {
     .await
     .expect("delegate result");
     store
-        .transition_thread(usual, outsider, ThreadAction::StartReview)
+        .transition_thread(usual, reviewer, ThreadAction::StartReview)
         .await
         .expect("hand off");
     let handed = packet(store, usual).await;

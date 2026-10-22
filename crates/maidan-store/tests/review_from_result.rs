@@ -167,7 +167,11 @@ async fn run_suite(store: &dyn Store) {
     );
 
     store
-        .set_thread_result_claiming(thread.id, owner.id, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(
+            thread.id,
+            assignee.id,
+            &serde_json::json!({"status": "done"}),
+        )
         .await
         .expect("a gated thread needs a result before review");
     store

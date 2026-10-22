@@ -85,7 +85,7 @@ async fn run_suite(store: &dyn Store) {
     store.set_review_requirement(t.id, 1).await.unwrap();
     // Open -> InReview (not terminal, ungated).
     store
-        .set_thread_result_claiming(t.id, owner.id, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(t.id, assignee.id, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store
@@ -134,7 +134,7 @@ async fn run_suite(store: &dyn Store) {
     store.set_thread_owner(t2.id, Some(owner.id)).await.unwrap();
     store.assign_thread(t2.id, assignee.id).await.unwrap();
     store
-        .set_thread_result_claiming(t2.id, owner.id, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(t2.id, assignee.id, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store
