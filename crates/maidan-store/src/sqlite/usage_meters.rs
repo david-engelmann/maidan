@@ -142,3 +142,23 @@ pub async fn stored_bytes(pool: &SqlitePool, workspace_id: WorkspaceId) -> Resul
     .await?;
     Ok(artifacts.saturating_add(messages))
 }
+
+/// Every workspace's meters on days in `[since, until)`, for the operator's
+/// month view.
+pub async fn list_between(
+    pool: &SqlitePool,
+    since: NaiveDate,
+    until: NaiveDate,
+) -> Result<Vec<UsageMeterDay>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT workspace_id, day, meter, quantity FROM maidan_usage_meters
+         WHERE day >= ?1 AND day < ?2 ORDER BY workspace_id, day, meter",
+    )
+    .bind(since.to_string())
+    .bind(until.to_string())
+    .fetch_all(pool)
+    .await?;
+    rows.iter()
+        .filter_map(|row| row_to_day(row).transpose())
+        .collect()
+}

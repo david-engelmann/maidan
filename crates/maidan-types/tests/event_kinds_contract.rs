@@ -38,6 +38,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ProjectorMisconfigured,
         EventKind::MemberFrozen,
         EventKind::MemberUnfrozen,
+        EventKind::UsageOverAllowance,
         EventKind::MessagePosted,
         EventKind::MessageEdited,
         EventKind::MessageTombstoned,

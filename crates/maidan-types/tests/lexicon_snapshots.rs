@@ -406,6 +406,14 @@ fn sample_event(kind: EventKind) -> Event {
             member_id,
             unfrozen_by: maidan_types::MemberId(id(13)),
         },
+        EventKind::UsageOverAllowance => Event::UsageOverAllowance {
+            occurred_at,
+            workspace_id,
+            meter: maidan_types::UsageMeter::Requests,
+            month: "2026-10".into(),
+            quantity: 100_001,
+            allowance: 100_000,
+        },
         EventKind::MessagePosted => Event::MessagePosted {
             occurred_at,
             workspace_id,
@@ -559,6 +567,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ProjectorMisconfigured
             | EventKind::MemberFrozen
             | EventKind::MemberUnfrozen
+            | EventKind::UsageOverAllowance
             | EventKind::MessagePosted
             | EventKind::MessageEdited
             | EventKind::MessageTombstoned

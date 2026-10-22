@@ -669,6 +669,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             member_id,
             unfrozen_by,
         },
+        // Non-federatable (this deployment's allowance), classified like the
+        // freeze above.
+        UsageOverAllowance {
+            occurred_at,
+            workspace_id: _,
+            meter,
+            month,
+            quantity,
+            allowance,
+        } => UsageOverAllowance {
+            occurred_at,
+            workspace_id,
+            meter,
+            month,
+            quantity,
+            allowance,
+        },
         MessagePosted {
             occurred_at,
             workspace_id: _,

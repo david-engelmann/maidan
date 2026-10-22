@@ -468,6 +468,16 @@
     "to_state": "closed",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.usage_over_allowance/1": {
+    "$type": "maidan.event.usage_over_allowance/1",
+    "allowance": 100000,
+    "kind": "usage_over_allowance",
+    "meter": "requests",
+    "month": "2026-10",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "quantity": 100001,
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.usage_reported/1": {
     "$type": "maidan.event.usage_reported/1",
     "budget": {

@@ -100,6 +100,7 @@ mod threads;
 mod token_quotas;
 pub(crate) mod tokens;
 mod unclaimable;
+mod usage_allowance;
 pub(super) mod usage_ledger;
 mod usage_meters;
 mod votes;

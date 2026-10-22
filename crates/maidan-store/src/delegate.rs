@@ -619,6 +619,30 @@ macro_rules! store_delegations {
                 usage_meters::stored_bytes(self.read_pool(), workspace_id).await
             }
 
+            async fn list_usage_meters_between(
+                &self,
+                since: chrono::NaiveDate,
+                until: chrono::NaiveDate,
+            ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError> {
+                usage_meters::list_between(self.read_pool(), since, until).await
+            }
+
+            async fn mark_over_allowance(
+                &self,
+                mark: &maidan_types::OverAllowance,
+                admins: &[MemberId],
+            ) -> Result<Option<StoredEvent>, StoreError> {
+                usage_allowance::mark(self.pool(), mark, admins).await
+            }
+
+            async fn list_over_allowance(
+                &self,
+                workspace_id: Option<WorkspaceId>,
+                month: &str,
+            ) -> Result<Vec<maidan_types::OverAllowance>, StoreError> {
+                usage_allowance::list(self.read_pool(), workspace_id, month).await
+            }
+
             async fn list_usage_meters(
                 &self,
                 workspace_id: WorkspaceId,

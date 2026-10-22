@@ -106,6 +106,28 @@ free allowance, they do not bill. Health probes and `/metrics` are not
 metered. The loop is watched like the others (`usage_meters` in the loop
 liveness metrics).
 
+### The free allowance
+
+`MAIDAN_FREE_ALLOWANCE` sets the instance's free allowance per meter, for
+example `requests=100000,mcp_calls=50000,stored_bytes=1073741824`. A
+counter's allowance is per UTC month. `stored_bytes`' is a ceiling on its
+latest measurement. A meter not named has no allowance. The value is parsed
+at boot, and an unknown meter, a repeated one or a bad number refuses to
+start, naming it.
+
+After each flush, the `usage_meters` loop checks the workspaces it touched.
+A workspace past an allowance is marked once per meter and month
+(`maidan_usage_over_allowance`). In the same transaction it records a
+`usage_over_allowance` event and notifies each of its admins (members with a
+live `token:admin` token). Nothing is cut off or billed.
+
+- `GET /workspaces/{id}/usage-meters?month=YYYY-MM` (`workspace:read`, the
+  caller's own workspace) gives the month per meter: the quantity, the
+  allowance, and whether it is over. The board shows it at the top of the
+  Swarm tab.
+- `GET /operator/usage-meters?month=YYYY-MM` (`operator:global`) gives the
+  same for every workspace that used anything that month.
+
 ## Load & soak testing
 
 `scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread

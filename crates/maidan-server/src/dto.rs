@@ -476,6 +476,14 @@ pub struct ThreadLookupQuery {
     pub pr_number: Option<i64>,
 }
 
+/// Query params for a month of usage.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct UsageMonthQuery {
+    /// `YYYY-MM` (UTC); omitted, the current month.
+    pub month: Option<String>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

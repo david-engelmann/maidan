@@ -47,6 +47,7 @@ mod task_schedule;
 mod thread;
 mod thread_lookup;
 mod token;
+mod usage_meters;
 pub use token::mint_vocabulary;
 mod usage;
 mod waitlist;
@@ -85,6 +86,7 @@ pub use thread::*;
 pub use thread_lookup::*;
 pub use token::*;
 pub use usage::*;
+pub use usage_meters::*;
 pub use waitlist::*;
 pub use workspace::*;
 

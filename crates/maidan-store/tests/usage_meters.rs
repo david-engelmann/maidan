@@ -125,6 +125,69 @@ async fn run_suite(store: &dyn Store) {
         vec![b]
     );
     assert_eq!(store.workspace_stored_bytes(b).await.unwrap(), 0);
+
+    // A crossing is marked once per workspace, meter and month, appending its
+    // event and notifying the admins named, all in one transaction; another
+    // workspace is untouched.
+    let admin = store
+        .create_member(NewMember {
+            workspace_id: a,
+            handle: "admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap()
+        .id;
+    let mark = OverAllowance {
+        workspace_id: a,
+        meter: UsageMeter::Requests,
+        month: "2026-10".into(),
+        quantity: 11,
+        allowance: 10,
+        marked_at: chrono::Utc::now(),
+    };
+    let stored = store
+        .mark_over_allowance(&mark, &[admin])
+        .await
+        .unwrap()
+        .expect("first crossing is marked");
+    assert_eq!(stored.kind, EventKind::UsageOverAllowance);
+    assert!(
+        store
+            .mark_over_allowance(
+                &OverAllowance {
+                    quantity: 12,
+                    ..mark.clone()
+                },
+                &[admin]
+            )
+            .await
+            .unwrap()
+            .is_none(),
+        "marked once a month"
+    );
+    let marks = store.list_over_allowance(Some(a), "2026-10").await.unwrap();
+    assert_eq!((marks.len(), marks[0].quantity), (1, 11));
+    assert!(store
+        .list_over_allowance(Some(b), "2026-10")
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store
+            .list_over_allowance(None, "2026-10")
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    let told = store.list_notifications(admin, false, 10).await.unwrap();
+    assert_eq!(told.len(), 1);
+    assert_eq!(
+        (told[0].kind, told[0].source_log_id),
+        (EventKind::UsageOverAllowance, stored.id)
+    );
 }
 
 #[tokio::test]

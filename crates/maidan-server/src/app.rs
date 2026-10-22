@@ -236,6 +236,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/thread-lookup", get(routes::find_thread))
         .route(
+            "/workspaces/{id}/usage-meters",
+            get(routes::get_workspace_usage_meters),
+        )
+        .route(
             "/workspaces/{id}/swarm-metrics",
             get(routes::get_swarm_metrics),
         )
@@ -1044,6 +1048,10 @@ pub fn router(state: AppState) -> Router {
             no_store(post(routes::provision_workspace)),
         )
         .route("/operator/status", get(crate::status::operator_status))
+        .route(
+            "/operator/usage-meters",
+            get(routes::list_operator_usage_meters),
+        )
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(
             "/operator/mail/dead/{id}/requeue",
@@ -1311,6 +1319,10 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/api/channels/{cid}/threads", get(routes::list_threads))
         .route("/ui/api/threads/{tid}/messages", get(routes::list_messages))
         .route("/ui/api/threads/{tid}", get(routes::get_thread))
+        .route(
+            "/ui/api/workspaces/{wid}/usage-meters",
+            get(routes::get_workspace_usage_meters),
+        )
         .route(
             "/ui/api/threads/{tid}/review-status",
             get(routes::get_review_status),
