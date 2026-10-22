@@ -134,6 +134,13 @@ pub async fn sweep_once(state: &AppState) -> MailSweepStats {
                     tracing::warn!(error = %err, id = %entry.id, "mail worker: mark-delivered failed");
                 }
                 crate::metrics::record_email_delivered("sent");
+                if let Some(workspace_id) = entry.workspace_id {
+                    state.usage_meters.record(
+                        workspace_id,
+                        maidan_types::UsageMeter::Deliveries,
+                        1,
+                    );
+                }
                 stats.sent += 1;
             }
             Err(err) => {
