@@ -89,6 +89,42 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap()
         .is_empty());
+    // A gauge replaces its day's value; both workspaces are due a measurement
+    // until each has a row for the day.
+    let mut due = store
+        .list_unmeasured_workspaces(day(22), UsageMeter::StoredBytes, 10)
+        .await
+        .unwrap();
+    due.sort_by_key(|w| w.0);
+    let mut both = vec![a, b];
+    both.sort_by_key(|w| w.0);
+    assert_eq!(due, both);
+    store
+        .set_usage_meters(&[row(a, 22, UsageMeter::StoredBytes, 100)])
+        .await
+        .unwrap();
+    store
+        .set_usage_meters(&[row(a, 22, UsageMeter::StoredBytes, 40)])
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .list_usage_meters(a, day(22))
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|r| r.day == day(22))
+            .collect::<Vec<_>>(),
+        vec![row(a, 22, UsageMeter::StoredBytes, 40)]
+    );
+    assert_eq!(
+        store
+            .list_unmeasured_workspaces(day(22), UsageMeter::StoredBytes, 10)
+            .await
+            .unwrap(),
+        vec![b]
+    );
+    assert_eq!(store.workspace_stored_bytes(b).await.unwrap(), 0);
 }
 
 #[tokio::test]
