@@ -1,5 +1,5 @@
 use maidan_store::Store;
-use maidan_types::{ApiToken, ApiTokenId, Peer};
+use maidan_types::{ApiToken, ApiTokenId, Peer, WorkspaceId};
 
 use crate::context::AuthContext;
 use crate::error::AuthError;
@@ -62,6 +62,7 @@ async fn active_token_context(
     store: &dyn Store,
     token: ApiToken,
 ) -> Result<AuthContext, AuthError> {
+    ensure_workspace_active(store, token.workspace_id).await?;
     if let Some(grant_id) = token.delegation_grant_id {
         let grant = store.get_delegation_grant(grant_id).await?;
         return Ok(AuthContext::from_delegated_token(
@@ -74,6 +75,22 @@ async fn active_token_context(
         ));
     }
     Ok(token_to_context(token))
+}
+
+/// Refuse every credential of a suspended workspace with
+/// [`maidan_types::WORKSPACE_SUSPENDED`] (a 403, not a 401: the credential is
+/// good, the workspace is not open). Every token path resolves through here,
+/// so bearer, session, WebSocket, stream re-check and A2A refuse alike.
+pub async fn ensure_workspace_active(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+) -> Result<(), AuthError> {
+    match store.get_workspace_suspension(workspace_id).await? {
+        Some(_) => Err(AuthError::Forbidden(
+            maidan_types::WORKSPACE_SUSPENDED.to_string(),
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Resolve a federation peer bearer to a [`Peer`] row.

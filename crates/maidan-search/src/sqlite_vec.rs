@@ -14,7 +14,7 @@ static AUTO_EXT: Once = Once::new();
 
 #[cfg(feature = "sqlite-vec")]
 #[link(name = "sqlite_vec0")]
-extern "C" {
+unsafe extern "C" {
     fn sqlite3_vec_init(
         db: *mut sqlite3,
         pz_err_msg: *mut *mut c_char,

@@ -63,10 +63,10 @@ async fn subscribed(addr: std::net::SocketAddr) -> Socket {
         let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
             .await
             .expect("ack within 5s");
-        if let Some(Ok(Message::Text(text))) = frame {
-            if text.contains("subscribe_ack") {
-                return ws;
-            }
+        if let Some(Ok(Message::Text(text))) = frame
+            && text.contains("subscribe_ack")
+        {
+            return ws;
         }
     }
 }

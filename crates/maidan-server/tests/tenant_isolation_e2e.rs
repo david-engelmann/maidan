@@ -321,7 +321,7 @@ fn stream_routes() -> Vec<String> {
     let source = include_str!("../src/app.rs");
     let route_count = source.matches(".route(").count();
     assert_eq!(
-        route_count, 385,
+        route_count, 386,
         "{route_count} routes in app.rs; if one you added is a live stream, probe it in stream_probes and update both numbers"
     );
     let mut routes = std::collections::BTreeSet::new();
@@ -514,10 +514,10 @@ async fn no_live_stream_carries_another_workspaces_events() {
     for (filter, mut sock) in sockets {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(800);
         while let Ok(Some(Ok(msg))) = tokio::time::timeout_at(deadline, sock.next()).await {
-            if let Message::Text(text) = msg {
-                if leaked(&text) {
-                    leaks.push(format!("/ws/subscribe {filter}: {text}"));
-                }
+            if let Message::Text(text) = msg
+                && leaked(&text)
+            {
+                leaks.push(format!("/ws/subscribe {filter}: {text}"));
             }
         }
     }

@@ -238,11 +238,11 @@ pub fn with_current_state(body: &str, state: &str) -> String {
     let state = crate::egress_body::neutralize_github_mentions(state.trim());
     let state = clip(&state, CURRENT_STATE_MAX_CHARS);
     let section = format!("{CURRENT_STATE_START}\n{state}\n{CURRENT_STATE_END}");
-    if let Some(start) = body.find(CURRENT_STATE_START) {
-        if let Some(end) = body[start..].find(CURRENT_STATE_END) {
-            let end = start + end + CURRENT_STATE_END.len();
-            return format!("{}{section}{}", &body[..start], &body[end..]);
-        }
+    if let Some(start) = body.find(CURRENT_STATE_START)
+        && let Some(end) = body[start..].find(CURRENT_STATE_END)
+    {
+        let end = start + end + CURRENT_STATE_END.len();
+        return format!("{}{section}{}", &body[..start], &body[end..]);
     }
     if body.trim().is_empty() {
         section
@@ -344,13 +344,13 @@ pub async fn deliver_change(
     // A queued pull request lands the head it was queued with as soon as its
     // checks pass, so a commit pushed now would land separately, or not at
     // all. The caller dequeues it first (`DELETE /operator/github/enqueue`).
-    if let (Some(label), Some(pull)) = (req.merge_queue_label, existing.as_ref()) {
-        if pull.labels.iter().any(|name| name == label) {
-            return refused(format!(
+    if let (Some(label), Some(pull)) = (req.merge_queue_label, existing.as_ref())
+        && pull.labels.iter().any(|name| name == label)
+    {
+        return refused(format!(
                 "pull request #{} carries `{label}` and is in the merge queue; dequeue it before pushing another commit",
                 pull.number
             ));
-        }
     }
     let built = if change.rebase {
         rebase_commit(git, req, base_sha, &patches, &trailer, existing.as_ref()).await?

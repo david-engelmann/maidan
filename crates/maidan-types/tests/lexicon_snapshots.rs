@@ -348,6 +348,16 @@ fn sample_event(kind: EventKind) -> Event {
             pr_number: 1,
             to_engine: maidan_types::TaskEngine::Session,
         },
+        EventKind::ResultDeliveryFailed => Event::ResultDeliveryFailed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            surface: "slack".into(),
+            selector: "C0123ABCDEF".into(),
+            status: "skipped".into(),
+            last_error: Some("target not in the workspace egress allowlist".into()),
+        },
         EventKind::ReviewSubmitted => Event::ReviewSubmitted {
             occurred_at,
             workspace_id,
@@ -554,6 +564,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadLanded
             | EventKind::ThreadNotice
             | EventKind::ThreadHandoff
+            | EventKind::ResultDeliveryFailed
             | EventKind::ReviewSubmitted
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped

@@ -91,12 +91,11 @@ fn every_registered_constant_is_applied() {
     let mut declared = Vec::new();
     for line in src.lines() {
         let t = line.trim();
-        if let Some(rest) = t.strip_prefix("const ") {
-            if let Some(name) = rest.split(':').next() {
-                if name.starts_with("POSTGRES_UP_V") || name.starts_with("SQLITE_UP_V") {
-                    declared.push(name.to_string());
-                }
-            }
+        if let Some(rest) = t.strip_prefix("const ")
+            && let Some(name) = rest.split(':').next()
+            && (name.starts_with("POSTGRES_UP_V") || name.starts_with("SQLITE_UP_V"))
+        {
+            declared.push(name.to_string());
         }
     }
     assert!(

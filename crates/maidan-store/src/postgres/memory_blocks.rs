@@ -13,10 +13,8 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str =
-    "id, workspace_id, label, description, char_limit, read_only, value, owner_id, created_at, updated_at";
-const COLS_B: &str =
-    "b.id, b.workspace_id, b.label, b.description, b.char_limit, b.read_only, b.value, b.owner_id, b.created_at, b.updated_at";
+const COLS: &str = "id, workspace_id, label, description, char_limit, read_only, value, owner_id, created_at, updated_at";
+const COLS_B: &str = "b.id, b.workspace_id, b.label, b.description, b.char_limit, b.read_only, b.value, b.owner_id, b.created_at, b.updated_at";
 
 fn row_to_block(row: &sqlx::postgres::PgRow) -> MemoryBlock {
     MemoryBlock {

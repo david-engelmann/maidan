@@ -118,15 +118,15 @@ pub(crate) fn attest(
             });
         }
     }
-    if let GateReading::Recorded(pass) = gate {
-        if pass.qualifies() {
-            out.push(EvidenceAttestation {
-                kind: EvidenceKind::LandGate,
-                sha256: pass.artifact_sha.clone(),
-                tier: AttestationTier::Verified,
-                attested_by: pass.recorded_by,
-            });
-        }
+    if let GateReading::Recorded(pass) = gate
+        && pass.qualifies()
+    {
+        out.push(EvidenceAttestation {
+            kind: EvidenceKind::LandGate,
+            sha256: pass.artifact_sha.clone(),
+            tier: AttestationTier::Verified,
+            attested_by: pass.recorded_by,
+        });
     }
     out
 }

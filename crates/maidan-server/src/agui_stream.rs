@@ -237,10 +237,10 @@ async fn forward_agui(
                     name: "lagged".into(),
                     value: serde_json::json!({ "skipped": skipped, "afterId": high_water }),
                 };
-                if let Ok(data) = serde_json::to_string(&lagged) {
-                    if tx.send(Ok(SseEvent::default().data(data))).await.is_err() {
-                        break;
-                    }
+                if let Ok(data) = serde_json::to_string(&lagged)
+                    && tx.send(Ok(SseEvent::default().data(data))).await.is_err()
+                {
+                    break;
                 }
             }
         }

@@ -480,10 +480,10 @@ pub async fn route_event(state: &AppState, log_id: i64, event: &Event) -> Result
             // MessagePosted), so a per-recipient loop over the small union is
             // fine.
             let mut recipients: HashSet<MemberId> = HashSet::new();
-            if let Ok(thread) = state.store.get_thread(*thread_id).await {
-                if let Some(owner_id) = thread.owner_id {
-                    recipients.insert(owner_id);
-                }
+            if let Ok(thread) = state.store.get_thread(*thread_id).await
+                && let Some(owner_id) = thread.owner_id
+            {
+                recipients.insert(owner_id);
             }
             match state.store.thread_followers(*thread_id).await {
                 Ok(followers) => recipients.extend(followers),
@@ -856,33 +856,30 @@ async fn notify(
     // Leaf mute: a member who muted this specific thread is not notified about
     // it, even for an otherwise-unmuted kind. A thread mute is the strongest
     // scope — it suppresses even a mention (you're done with this thread).
-    if let Some(tid) = thread_id {
-        if state
+    if let Some(tid) = thread_id
+        && state
             .store
             .is_thread_muted(member_id, tid)
             .await
             .map_err(|e| e.to_string())?
-        {
-            crate::metrics::record_notification_suppressed("thread_muted");
-            return Ok(false);
-        }
+    {
+        crate::metrics::record_notification_suppressed("thread_muted");
+        return Ok(false);
     }
     // Per-channel mute: a member who muted this channel is not notified about
     // its firehose — EXCEPT a `MentionRecorded` breaks through (you muted the
     // noise but still want to be named). The thread mute above already covered
     // the "even mentions" case; an explicit kind mute (top) always wins.
-    if kind != EventKind::MentionRecorded {
-        if let Some(cid) = channel_id {
-            if state
-                .store
-                .is_channel_muted(member_id, cid)
-                .await
-                .map_err(|e| e.to_string())?
-            {
-                crate::metrics::record_notification_suppressed("channel_muted");
-                return Ok(false);
-            }
-        }
+    if kind != EventKind::MentionRecorded
+        && let Some(cid) = channel_id
+        && state
+            .store
+            .is_channel_muted(member_id, cid)
+            .await
+            .map_err(|e| e.to_string())?
+    {
+        crate::metrics::record_notification_suppressed("channel_muted");
+        return Ok(false);
     }
     write_notification(
         state,
@@ -1092,6 +1089,10 @@ pub async fn deliver_notification_web_push(
         crate::metrics::record_web_push_delivered("skipped_vapid_unset");
         return;
     };
+    if crate::suspension::member_held_back(state, member_id).await {
+        crate::metrics::record_web_push_delivered("skipped_suspended");
+        return;
+    }
     // Presence gate: skip when the member is currently connected (seen within the
     // live window). Fail-open (a read error → send): a duplicate push to an online
     // member is harmless; dropping one to an offline member defeats the feature.

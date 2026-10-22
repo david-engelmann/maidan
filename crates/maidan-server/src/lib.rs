@@ -102,6 +102,7 @@ pub mod stream_guard;
 pub mod subscribe_grants;
 pub mod subscribe_metrics;
 pub mod subscribe_resume;
+pub mod suspension;
 pub mod thread_context;
 pub mod trace_context;
 pub mod trace_redaction;

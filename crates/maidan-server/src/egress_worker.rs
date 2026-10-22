@@ -130,8 +130,9 @@ pub struct EgressSweepStats {
     pub retried: u32,
     pub dead: u32,
     pub disabled: u32,
-    /// Retries the retry budget held back, and change replies still waiting
-    /// on their branch delivery: rescheduled, not attempted.
+    /// Retries the retry budget held back, change replies still waiting on
+    /// their branch delivery, and a suspended workspace's deliveries:
+    /// rescheduled, not attempted.
     pub deferred: u32,
     /// Changes the flow refused (recorded as skipped, never retried).
     pub refused: u32,
@@ -598,13 +599,13 @@ async fn github_branch_result(
         Ok(None) => {
             return Ok(Sent::Refused(
                 "the result is no longer on the thread".into(),
-            ))
+            ));
         }
         Err(err) => {
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
-            })
+            });
         }
     };
     let Some(change) = maidan_types::parse_change_result(&stored.result) else {
@@ -658,13 +659,13 @@ async fn github_branch_result(
         Ok(false) => {
             return Ok(Sent::Refused(format!(
                 "`{selector}` is not in the workspace egress allowlist"
-            )))
+            )));
         }
         Err(err) => {
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
-            })
+            });
         }
     }
     // Only read when the result has no title; a failed read falls back to
@@ -1213,13 +1214,17 @@ async fn record_result_refused(
     else {
         return;
     };
-    if let Err(err) = state
+    match state
         .store
         .mark_result_delivery_skipped(row.id, reason)
         .await
     {
-        tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
-        return;
+        Ok(Some(event)) => crate::routes::publish_stored(state, event).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
+            return;
+        }
     }
     tracing::warn!(
         thread_id = %entry.thread_id,
@@ -1245,13 +1250,17 @@ async fn record_result_gave_up(
     else {
         return;
     };
-    if let Err(err) = state.store.mark_result_delivery_failed(row.id, error).await {
-        tracing::warn!(
-            error = %err,
-            id = %row.id,
-            "egress worker: mark-result-failed failed"
-        );
-        return;
+    match state.store.mark_result_delivery_failed(row.id, error).await {
+        Ok(Some(event)) => crate::routes::publish_stored(state, event).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                id = %row.id,
+                "egress worker: mark-result-failed failed"
+            );
+            return;
+        }
     }
     crate::metrics::record_result_delivery("failed");
 }
@@ -1349,6 +1358,14 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         };
         let surface = target.surface().as_str();
         // The claim counted this try, so a first post has `attempts == 1`.
+        if crate::suspension::held_back(state, entry.workspace_id).await {
+            let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;
+            if let Err(err) = state.store.defer_egress(entry.id, until).await {
+                tracing::warn!(error = %err, id = %entry.id, "egress worker: deferral failed");
+            }
+            stats.deferred += 1;
+            continue;
+        }
         let attempt = Attempt::after(entry.attempts - 1);
         if let Some(until) = deferred_until(
             &state.retry_budget,

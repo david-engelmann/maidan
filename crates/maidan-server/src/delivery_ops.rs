@@ -91,12 +91,12 @@ pub async fn list_deliveries(
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
-    if let Some(kind) = &q.kind {
-        if !matches!(kind.as_str(), "webhook" | "automation" | "all") {
-            return Err(ApiError::BadRequest(
-                "kind must be webhook, automation, or all".into(),
-            ));
-        }
+    if let Some(kind) = &q.kind
+        && !matches!(kind.as_str(), "webhook" | "automation" | "all")
+    {
+        return Err(ApiError::BadRequest(
+            "kind must be webhook, automation, or all".into(),
+        ));
     }
     let limit = q.limit.clamp(1, 500);
     let filter = parse_status_filter(&q);
@@ -185,7 +185,7 @@ pub async fn replay_delivery(
         other => {
             return Err(ApiError::Internal(format!(
                 "unexpected delivery kind: {other}"
-            )))
+            )));
         }
     };
     let actor_id = if auth.bypass {

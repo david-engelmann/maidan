@@ -144,7 +144,7 @@ pub async fn read(
                 other => {
                     return Err(McpError::InvalidParams(format!(
                         "unknown resource kind: {other}"
-                    )))
+                    )));
                 }
             }
         }

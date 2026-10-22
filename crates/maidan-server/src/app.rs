@@ -1044,6 +1044,12 @@ pub fn router(state: AppState) -> Router {
             "/operator/workspaces",
             no_store(post(routes::provision_workspace)),
         )
+        .route(
+            "/operator/workspaces/{id}/suspension",
+            get(routes::get_workspace_suspension)
+                .merge(put(routes::suspend_workspace))
+                .merge(delete(routes::lift_workspace_suspension)),
+        )
         .route("/operator/status", get(crate::status::operator_status))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(

@@ -287,6 +287,43 @@ pub fn list_legal_holds() {}
     ))]
 pub fn provision_workspace() {}
 
+/// The suspension in force on a workspace
+#[utoipa::path(get, path = "/operator/workspaces/{id}/suspension", tag = "operator",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceSuspension),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_workspace_suspension() {}
+
+/// Suspend a workspace: every credential of it is refused and its outbound and background work stops; its data is kept
+#[utoipa::path(put, path = "/operator/workspaces/{id}/suspension", tag = "operator",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = SuspendWorkspace,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceSuspension),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn suspend_workspace() {}
+
+/// Lift a workspace's suspension
+#[utoipa::path(delete, path = "/operator/workspaces/{id}/suspension", tag = "operator",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = LiftedSuspension),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn lift_workspace_suspension() {}
+
 /// Get operator status
 #[utoipa::path(get, path = "/operator/status", tag = "operator",
     security(("bearerAuth" = [])),

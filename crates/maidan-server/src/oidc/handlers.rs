@@ -471,7 +471,7 @@ pub async fn callback(
             match state.store.get_workspace(id).await {
                 Ok(_) => {}
                 Err(maidan_store::StoreError::NotFound) => {
-                    return Err(ApiError::Forbidden(NOT_PROVISIONED.into()))
+                    return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));
                 }
                 Err(err) => return Err(err.into()),
             }
@@ -502,7 +502,7 @@ pub async fn callback(
         OidcPendingTarget::SignUp => {
             return Err(ApiError::Internal(
                 "sign-up pending reached the sign-in resolution".into(),
-            ))
+            ));
         }
     };
     // A front-door sign-in never links by email and never provisions: it can

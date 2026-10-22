@@ -943,7 +943,9 @@ async fn receiver() -> (String, Deliveries) {
 
 #[tokio::test]
 async fn push_configs_seal_secrets_and_deliver_the_task() {
-    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
     let h = spawn().await;
     let (hook, seen) = receiver().await;
 

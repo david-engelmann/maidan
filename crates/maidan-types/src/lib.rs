@@ -41,6 +41,7 @@ pub mod share;
 pub mod signed_export;
 pub mod skills;
 pub mod spawn;
+pub mod suspension;
 pub mod tap;
 pub mod task_attributes;
 pub mod thread_lookup;
@@ -88,6 +89,9 @@ pub use share::*;
 pub use signed_export::*;
 pub use skills::*;
 pub use spawn::*;
+pub use suspension::{
+    LiftedSuspension, SuspendWorkspace, WorkspaceSuspension, WORKSPACE_SUSPENDED,
+};
 pub use tap::*;
 pub use task_attributes::*;
 pub use thread_lookup::{ExternalThreadRef, ThreadLookup};

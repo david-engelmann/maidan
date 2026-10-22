@@ -41,8 +41,12 @@ impl Server {
 /// Auth is disabled so a request reaches the extractors (auth would 401 first).
 async fn spawn() -> Server {
     // `router` reads the cap once, at build; every test sets the same value.
-    std::env::set_var("MAIDAN_MAX_BODY_BYTES", MAX_BODY_BYTES);
-    std::env::set_var("MAIDAN_ARTIFACT_MAX_BODY_BYTES", MAX_BODY_BYTES);
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_MAX_BODY_BYTES", MAX_BODY_BYTES) };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ARTIFACT_MAX_BODY_BYTES", MAX_BODY_BYTES) };
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await

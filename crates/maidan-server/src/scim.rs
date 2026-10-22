@@ -375,7 +375,7 @@ pub async fn create_user(
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("create failed: {err}"),
-            )
+            );
         }
     };
     // A delivery address, not authority: a bad one does not undo the user.
@@ -426,7 +426,7 @@ pub async fn list_users(
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("list failed: {err}"),
-            )
+            );
         }
     };
     let matching: Vec<maidan_types::MemberId> = match &filter {
@@ -447,7 +447,7 @@ pub async fn list_users(
                     return scim_error(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &format!("list failed: {err}"),
-                    )
+                    );
                 }
             }
         }
@@ -718,7 +718,7 @@ async fn apply_update(
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("update failed: {err}"),
-            )
+            );
         }
     }
     match load_resource(state, auth.workspace_id, member_id).await {
@@ -746,7 +746,7 @@ pub async fn delete_user(
             return scim_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 &format!("lookup failed: {err}"),
-            )
+            );
         }
     }
     let event = maidan_types::NewAuditEvent {

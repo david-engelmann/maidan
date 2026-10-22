@@ -25,39 +25,39 @@ pub async fn uris_for_tool_mutation(
             if let Some(tid) = uuid_arg(args, "thread_id") {
                 push_thread_chain(store, ThreadId(tid), &mut uris).await;
             }
-            if let Some(body) = tool_result_json(result) {
-                if let Ok(msg) = serde_json::from_value::<Message>(body) {
-                    push_thread_chain(store, msg.thread_id, &mut uris).await;
-                }
+            if let Some(body) = tool_result_json(result)
+                && let Ok(msg) = serde_json::from_value::<Message>(body)
+            {
+                push_thread_chain(store, msg.thread_id, &mut uris).await;
             }
         }
         "edit_message" => {
-            if let Some(mid) = uuid_arg(args, "message_id") {
-                if let Ok(msg) = store.get_message(MessageId(mid)).await {
-                    push_thread_chain(store, msg.thread_id, &mut uris).await;
-                }
+            if let Some(mid) = uuid_arg(args, "message_id")
+                && let Ok(msg) = store.get_message(MessageId(mid)).await
+            {
+                push_thread_chain(store, msg.thread_id, &mut uris).await;
             }
-            if let Some(body) = tool_result_json(result) {
-                if let Ok(msg) = serde_json::from_value::<Message>(body) {
-                    push_thread_chain(store, msg.thread_id, &mut uris).await;
-                }
+            if let Some(body) = tool_result_json(result)
+                && let Ok(msg) = serde_json::from_value::<Message>(body)
+            {
+                push_thread_chain(store, msg.thread_id, &mut uris).await;
             }
         }
         "upload_artifact" | "complete_artifact_multipart" => {
-            if let Some(body) = tool_result_json(result) {
-                if let Some(sha) = body.get("sha256").and_then(|v| v.as_str()) {
-                    uris.insert(ResourceUpdate::new(
-                        caller_workspace,
-                        format!("maidan://artifacts/{sha}"),
-                    ));
-                }
+            if let Some(body) = tool_result_json(result)
+                && let Some(sha) = body.get("sha256").and_then(|v| v.as_str())
+            {
+                uris.insert(ResourceUpdate::new(
+                    caller_workspace,
+                    format!("maidan://artifacts/{sha}"),
+                ));
             }
         }
         "record_mention" | "cast_vote" | "retract_vote" | "add_reaction" | "remove_reaction" => {
-            if let Some(mid) = uuid_arg(args, "message_id") {
-                if let Ok(msg) = store.get_message(MessageId(mid)).await {
-                    push_thread_chain(store, msg.thread_id, &mut uris).await;
-                }
+            if let Some(mid) = uuid_arg(args, "message_id")
+                && let Ok(msg) = store.get_message(MessageId(mid)).await
+            {
+                push_thread_chain(store, msg.thread_id, &mut uris).await;
             }
         }
         "pin_message" | "unpin_message" | "transition_thread" => {

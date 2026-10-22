@@ -222,6 +222,33 @@ macro_rules! store_delegations {
             ) -> Result<Option<WorkspaceHandle>, StoreError> {
                 workspace_handles::get(self.read_pool(), workspace_id).await
             }
+
+            async fn suspend_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                reason: &str,
+                suspended_by: Option<MemberId>,
+                audit: NewAuditEvent,
+            ) -> Result<maidan_types::WorkspaceSuspension, StoreError> {
+                suspensions::suspend(self.pool(), workspace_id, reason, suspended_by, audit).await
+            }
+
+            async fn lift_workspace_suspension(
+                &self,
+                workspace_id: WorkspaceId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                suspensions::lift(self.pool(), workspace_id, audit).await
+            }
+
+            // Read from the primary: a suspension must take effect on the next
+            // request, not when a replica catches up.
+            async fn get_workspace_suspension(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::WorkspaceSuspension>, StoreError> {
+                suspensions::get(self.pool(), workspace_id).await
+            }
         }
     };
     ($store:ty, MemberStore) => {
@@ -1289,7 +1316,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 error: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_failed(self.pool(), id, error).await
             }
 
@@ -1297,7 +1324,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 reason: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_skipped(self.pool(), id, reason).await
             }
 

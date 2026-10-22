@@ -559,7 +559,8 @@ pub struct TaskMetrics {
     pub time_to_first_human_review_secs: Option<i64>,
     /// Handed to a session at `non_converging`: counted as misrouted.
     pub handed_off: bool,
-    /// When the task was first claimed.
+    /// When the thread was first assigned: a claim, or a person assigning
+    /// it by hand.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_at: Option<DateTime<Utc>>,
     /// First claim to the first round delivered, in seconds.
@@ -910,6 +911,18 @@ fn task_metrics(pull: ChangePull, limits: FlagLimits) -> TaskMetrics {
     }
 }
 
+/// One task per thread. The flow counts (sends back, lapses, skipped
+/// deliveries) belong to the thread, and a thread that tracks two pull
+/// requests carries them on both, so summing over tasks counts them twice.
+fn per_thread<'a>(tasks: &[&'a TaskMetrics]) -> Vec<&'a TaskMetrics> {
+    let mut seen = std::collections::HashSet::new();
+    tasks
+        .iter()
+        .copied()
+        .filter(|t| seen.insert(t.thread_id))
+        .collect()
+}
+
 /// The middle value of `values`, which it sorts.
 fn median(mut values: Vec<i64>) -> Option<i64> {
     values.sort_unstable();
@@ -1080,9 +1093,16 @@ fn numbers(tasks: &[&TaskMetrics], round_limit: i64, as_of: DateTime<Utc>) -> Sl
                 .collect(),
         ),
         median_review_wait_secs: median(tasks.iter().filter_map(|t| t.review_wait_secs).collect()),
-        mean_sent_back: per_task(tasks.iter().map(|t| t.sent_back as f64).sum()),
-        claim_lapses: tasks.iter().map(|t| t.claim_lapses).sum(),
-        deliveries_skipped: tasks.iter().map(|t| t.deliveries_skipped).sum(),
+        mean_sent_back: {
+            let threads = per_thread(tasks);
+            if threads.is_empty() {
+                0.0
+            } else {
+                threads.iter().map(|t| t.sent_back as f64).sum::<f64>() / threads.len() as f64
+            }
+        },
+        claim_lapses: per_thread(tasks).iter().map(|t| t.claim_lapses).sum(),
+        deliveries_skipped: per_thread(tasks).iter().map(|t| t.deliveries_skipped).sum(),
     }
 }
 
@@ -1255,6 +1275,32 @@ mod tests {
     /// The scale test's numbers: claim to first delivery, the first head's
     /// CI, review wait from the first green CI (else the move to review),
     /// work sent back, lapses and skipped deliveries, per task and per slice.
+    /// A thread that tracks two pull requests counts its sends back, lapses
+    /// and skipped deliveries once in a slice, not once per pull request.
+    #[test]
+    fn a_thread_with_two_pulls_counts_its_flow_once() {
+        let mut first = pull(vec![round(1, "aaa", 10, Some(0))]);
+        first.flow = ThreadFlow {
+            sent_back: 2,
+            claim_lapses: 1,
+            deliveries_skipped: 3,
+            ..ThreadFlow::default()
+        };
+        let mut second = first.clone();
+        second.repo = "example/other".into();
+        second.pull_number = 9;
+        let m = swarm_metrics(
+            vec![first.clone(), second],
+            FlagLimits::default(),
+            at(2_000),
+        );
+        let all: Vec<&TaskMetrics> = m.tasks.iter().collect();
+        let n = numbers(&all, FlagLimits::default().rounds, at(2_000));
+        assert_eq!(n.claim_lapses, 1);
+        assert_eq!(n.deliveries_skipped, 3);
+        assert_eq!(n.mean_sent_back, 2.0);
+    }
+
     #[test]
     fn each_task_and_slice_carries_the_scale_test_numbers() {
         let mut quick = pull(vec![round(1, "aaa", 10, Some(0))]);
@@ -1270,6 +1316,7 @@ mod tests {
         quick.first_delivery_ci = Some(crate::pull_ci::CiStatus::Success);
         let mut red = pull(vec![round(1, "bbb", 10, Some(0))]);
         red.pull_number = 8;
+        red.thread_id = ThreadId(uuid::Uuid::from_u128(2));
         red.flow = ThreadFlow {
             review_requested_at: Some(at(0)),
             first_review_at: Some(at(300)),
@@ -1278,6 +1325,7 @@ mod tests {
         red.first_delivery_ci = Some(crate::pull_ci::CiStatus::Failure);
         let mut pending = pull(vec![round(1, "ccc", 10, Some(0))]);
         pending.pull_number = 9;
+        pending.thread_id = ThreadId(uuid::Uuid::from_u128(3));
         pending.first_delivery_ci = Some(crate::pull_ci::CiStatus::Pending);
         let delivered = quick.rounds[0].delivered_at;
 

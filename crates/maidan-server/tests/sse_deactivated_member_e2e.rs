@@ -392,7 +392,7 @@ impl Sse {
                 Frame::Event(name, data)
                     if data.contains(needle) || name.as_deref() == Some(STREAM_ENDED) =>
                 {
-                    return Frame::Event(name, data)
+                    return Frame::Event(name, data);
                 }
                 Frame::Event(..) => {}
                 other => return other,

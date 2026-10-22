@@ -268,10 +268,10 @@ pub fn example(doc: &Value, schema: &Value, name: &str, victim: &Victim, depth: 
     if let Some(v) = schema.get("const") {
         return v.clone();
     }
-    if let Some(Value::Array(values)) = schema.get("enum") {
-        if let Some(v) = values.iter().find(|v| !v.is_null()) {
-            return v.clone();
-        }
+    if let Some(Value::Array(values)) = schema.get("enum")
+        && let Some(v) = values.iter().find(|v| !v.is_null())
+    {
+        return v.clone();
     }
     if let Some(Value::Array(all)) = schema.get("allOf") {
         let mut merged = serde_json::Map::new();

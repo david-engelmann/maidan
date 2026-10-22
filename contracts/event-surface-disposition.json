@@ -142,6 +142,12 @@
     "note": "REST and MCP reference writers share add_reference_with_event."
   },
   {
+    "kind": "result_delivery_failed",
+    "disposition": "internal_only",
+    "internal_evidence": "crates/maidan-server/tests/result_delivery_failed_event_e2e.rs#a_skipped_delivery_publishes_one_event_naming_its_target",
+    "note": "Result delivery records a target skipped or failed and says so once per transition; clients cannot assert one."
+  },
+  {
     "kind": "review_submitted",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/review_signals_e2e.rs#a_change_request_notifies_the_last_worker_and_stays_in_its_workspace",

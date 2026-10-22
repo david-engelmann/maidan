@@ -123,7 +123,7 @@ pub async fn middleware(State(state): State<AppState>, req: Request, next: Next)
         Ok(bytes) => bytes,
         Err(_) => {
             return ApiError::PayloadTooLarge("request body exceeds the limit".into())
-                .into_response()
+                .into_response();
         }
     };
     let path = parts
