@@ -5,8 +5,9 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ChannelId, ChannelMemberRole, ChannelOccupancy, MemberId, MemberKind, NewChannel, NewMember,
-    NewThread, NewWorkspace, QueueDepth, ThreadId, WorkspaceId,
+    BudgetLimits, ChannelId, ChannelMemberRole, ChannelOccupancy, MemberId, MemberKind,
+    NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace, QueueDepth, ThreadId,
+    UsageDelta, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -234,19 +235,19 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
         occupancy,
         ChannelOccupancy {
             open: 5,
-            queued: 2,
+            queued: 1,
             claimed: 1,
             working: 1,
-            blocked: 1,
+            blocked: 2,
         },
-        "queued counts the parked thread, as the channel occupancy does"
+        "queued is ready: the parked thread is not handed out, so it is not queued"
     );
     let insider_occupancy = store
         .workspace_occupancy(ws, Some(insider))
         .await
         .expect("occupancy");
     assert_eq!(insider_occupancy.open, 7);
-    assert_eq!(insider_occupancy.queued, 4);
+    assert_eq!(insider_occupancy.queued, 3);
     assert_eq!(
         store
             .workspace_occupancy(other, Some(agent))
@@ -273,8 +274,156 @@ async fn workspace_counts_sum_the_channels_the_reader_may_read(store: &dyn Store
     );
 }
 
+/// What withholds a thread from `claim_next`, one kind per channel.
+#[derive(Debug, Clone, Copy)]
+enum Withheld {
+    Nothing,
+    Gated,
+    OverBudget,
+    Finished,
+    Parked,
+    Waiting,
+}
+
+/// `ready` is exactly what `claim_next` hands out: for each rule that withholds
+/// a thread, the channel counts it not ready, and a claim there finds nothing.
+/// Gated, over-budget and finished threads used to count as ready (and queued)
+/// while `claim_next` refused them. Another workspace's matching thread is not
+/// counted, and is not handed to this workspace's claimer.
+async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
+    let ws = workspace(store, "claimable").await;
+    let agent = member(store, ws, "claimer").await;
+    let other = workspace(store, "claimable-elsewhere").await;
+    let outsider = member(store, other, "outsider").await;
+    let foreign = channel(store, other, "foreign", false).await;
+    thread(store, foreign).await;
+    let kinds = [
+        // (kind, ready, blocked, unclaimable)
+        (Withheld::Nothing, 1, 0, 0),
+        (Withheld::Gated, 0, 1, 0),
+        (Withheld::OverBudget, 0, 0, 1),
+        (Withheld::Finished, 0, 0, 1),
+        (Withheld::Parked, 0, 0, 1),
+        (Withheld::Waiting, 0, 1, 0),
+    ];
+    for (kind, ready, blocked, unclaimable) in kinds {
+        let ch = channel(store, ws, &format!("{kind:?}").to_lowercase(), false).await;
+        let t = thread(store, ch).await;
+        let run = format!("run-{kind:?}");
+        store.set_thread_lineage(t, &run).await.expect("lineage");
+        match kind {
+            Withheld::Nothing => {}
+            Withheld::Gated => {
+                store
+                    .create_approval_gate(&NewApprovalGate {
+                        workspace_id: ws,
+                        thread_id: Some(t),
+                        requested_by: agent,
+                        prompt: "ok?".into(),
+                        schema: None,
+                        risk: Default::default(),
+                    })
+                    .await
+                    .expect("gate");
+            }
+            Withheld::OverBudget => {
+                store
+                    .set_thread_budget(
+                        t,
+                        BudgetLimits {
+                            max_turns: Some(1),
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .expect("budget");
+                store
+                    .add_thread_usage(
+                        t,
+                        UsageDelta {
+                            turns: 1,
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .expect("usage");
+            }
+            Withheld::Finished => {
+                store
+                    .set_thread_result(t, agent, &serde_json::json!({"done": true}))
+                    .await
+                    .expect("result");
+            }
+            Withheld::Parked => {
+                store
+                    .mark_thread_unclaimable(t, "needs a person", agent)
+                    .await
+                    .expect("park");
+            }
+            Withheld::Waiting => {
+                let deps = channel(store, ws, "deps", false).await;
+                let dep = thread(store, deps).await;
+                store.add_thread_dependency(t, dep).await.expect("dep");
+            }
+        }
+        let got = store
+            .channel_queue_depth(ch, Some(agent))
+            .await
+            .expect("depth");
+        assert_eq!(
+            got,
+            depth(1, ready, 0, blocked, unclaimable),
+            "{kind:?} depth"
+        );
+        let occupancy = store
+            .channel_occupancy(ch, Some(agent))
+            .await
+            .expect("occupancy");
+        assert_eq!(occupancy.queued, ready, "{kind:?} queued");
+        assert_eq!(occupancy.blocked, 1 - ready, "{kind:?} blocked");
+        let by_run = store.run_occupancy(ws, &run).await.expect("run occupancy");
+        assert_eq!(
+            (by_run.queued, by_run.blocked),
+            (occupancy.queued, occupancy.blocked),
+            "{kind:?}: the run's occupancy is the channel's"
+        );
+        assert_eq!(
+            store
+                .run_occupancy(other, &run)
+                .await
+                .expect("foreign run occupancy")
+                .open,
+            0,
+            "{kind:?}: another workspace sees none of this run"
+        );
+        let claimed = store
+            .claim_next_thread(ch, agent, Some(LEASE_SECS), None)
+            .await
+            .expect("claim");
+        assert_eq!(
+            claimed.map(|c| c.id),
+            (ready == 1).then_some(t),
+            "{kind:?}: claim_next agrees with ready"
+        );
+        assert!(
+            store
+                .claim_next_thread(foreign, agent, Some(LEASE_SECS), None)
+                .await
+                .expect("foreign claim")
+                .is_none(),
+            "{kind:?}: nothing of another workspace is handed out"
+        );
+    }
+    let foreign_depth = store
+        .channel_queue_depth(foreign, Some(outsider))
+        .await
+        .expect("foreign depth");
+    assert_eq!(foreign_depth.ready, 1, "the other workspace keeps its own");
+}
+
 async fn run_suite(store: &dyn Store) {
     workspace_counts_sum_the_channels_the_reader_may_read(store).await;
+    ready_is_what_claim_next_hands_out(store).await;
 }
 
 #[tokio::test]

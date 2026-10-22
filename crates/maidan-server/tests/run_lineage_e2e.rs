@@ -206,7 +206,11 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
         .unwrap();
     assert_eq!(occ["parent_run_id"], json!(PRODUCER_RUN_ID));
     assert_eq!(occ["open"], json!(2));
-    assert_eq!(occ["queued"], json!(2));
+    assert_eq!(
+        (occ["queued"].clone(), occ["blocked"].clone()),
+        (json!(1), json!(1)),
+        "the parent holds its result, so claim_next will not hand it out: not queued"
+    );
 
     store.mute_thread(member.id, child.id).await.unwrap();
     let occ_muted: Value = client
