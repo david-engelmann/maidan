@@ -3,6 +3,7 @@
 //! artifacts) and the root of that manifest; a later hand-off writes a new
 //! packet; no packet can be updated.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::time::Duration;
 
 use maidan_fsm::ThreadAction;
@@ -82,7 +83,7 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
     store.claim_thread(thread, worker).await.expect("claim");
     let result = json!({"status": "done", "files": ["a.rs"]});
     store
-        .set_thread_result(thread, worker, &result)
+        .set_thread_result_claiming(thread, worker, &result)
         .await
         .expect("result");
     store.record_artifact_ref(ws, HELD).await.expect("held");
@@ -153,7 +154,7 @@ async fn run_suite(store: &dyn Store) -> uuid::Uuid {
         .await
         .expect("send back");
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             thread,
             worker,
             &json!({"status": "done", "files": ["a.rs", "b.rs"]}),

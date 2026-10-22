@@ -7,6 +7,7 @@
 //! non-`reviewed` status delivers a Maidan-authored notice built from `status`
 //! alone; partial delivery is the model.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::Arc;
 
 use chrono::Utc;
@@ -105,7 +106,7 @@ fn envelope(status: &str, deliver_to: Value, rendered: &str, summary: &str) -> V
 
 async fn set_and_route(h: &Harness, result: &Value, log_id: i64) {
     h.store
-        .set_thread_result(h.thread_id, h.member_id, result)
+        .set_thread_result_claiming(h.thread_id, h.member_id, result)
         .await
         .unwrap();
     notification_router::route_event(

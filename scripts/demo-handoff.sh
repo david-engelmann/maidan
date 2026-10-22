@@ -130,7 +130,7 @@ say "${D}·${R} planner tries claim_next_thread too → ${rival}  ${D}(one holde
 
 step "$Y" "coder" "MCP post_message · set_thread_result · transition_thread start_review"
 mcp "$CT" post_message "{\"thread_id\":\"$tid\",\"body\":\"Session save wasn't awaited before redirect. Fixed; 500/500 green.\"}" >/dev/null
-result=$(mcp "$CT" set_thread_result "{\"thread_id\":\"$tid\",\"result\":{\"status\":\"fixed\",\"runs\":500,\"failures\":0}}")
+result=$(mcp "$CT" set_thread_result "$(jq -nc --arg t "$tid" --argjson c "$claim" '{thread_id:$t,claim_lease_id:$c.claim_lease_id,result:{status:"fixed",runs:500,failures:0}}')")
 review=$(mcp "$CT" transition_thread "{\"thread_id\":\"$tid\",\"action\":\"start_review\"}")
 say "${G}✓${R} result $(jq -c .result <<<"$result")  state=$(jq -r .state <<<"$review")"
 refusal=$(mcp_refused "$CT" transition_thread "{\"thread_id\":\"$tid\",\"action\":\"close\"}" "review requirement not met")

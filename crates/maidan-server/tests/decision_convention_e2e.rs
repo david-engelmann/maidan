@@ -3,6 +3,7 @@
 //! the "room supports the pattern". Auth ENABLED (real token): thread
 //! results/votes persist `produced_by`/actor as NOT-NULL FKs.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -127,10 +128,14 @@ async fn decision_supersession_and_ack_conventions_work_over_the_api() {
     let bearer = format!("Bearer {tok}");
 
     // --- decision record on A (thread_result JSON convention) ---
+    let lease = store
+        .claim_lease_for(decision_a.id, member.id)
+        .await
+        .unwrap();
     let put = client
         .put(format!("{base}/threads/{}/result", decision_a.id.0))
         .header("Authorization", &bearer)
-        .json(&json!({ "result": {
+        .json(&json!({ "claim_lease_id": lease.0, "result": {
             "kind": "decision",
             "status": "accepted",
             "context": "need a database",
@@ -172,7 +177,7 @@ async fn decision_supersession_and_ack_conventions_work_over_the_api() {
     let _ = client
         .put(format!("{base}/threads/{}/result", decision_a.id.0))
         .header("Authorization", &bearer)
-        .json(&json!({ "result": {
+        .json(&json!({ "claim_lease_id": lease.0, "result": {
             "kind": "decision", "status": "superseded",
             "decision": "postgres", "superseded_by": decision_b.id.0
         }}))

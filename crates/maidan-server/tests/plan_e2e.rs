@@ -3,6 +3,7 @@
 //! as the amendments say, dispatched in dependency order, and closed when its
 //! last child lands. Another workspace can neither plan it nor read it.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -212,7 +213,7 @@ fn key_id(children: &Value, key: &str) -> String {
 async fn land(store: &dyn Store, room: &Room, id: &str, pr: i64) {
     let thread = ThreadId(id.parse().unwrap());
     store
-        .set_thread_result(thread, room.worker, &json!({"summary": "done"}))
+        .set_thread_result_claiming(thread, room.worker, &json!({"summary": "done"}))
         .await
         .unwrap();
     store

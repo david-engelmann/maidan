@@ -7,6 +7,7 @@
 //! closed without review. Both backends.
 
 use maidan_fsm::ThreadAction;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision, Thread,
@@ -381,7 +382,7 @@ async fn run_result_gate_suite(store: &dyn Store) {
         "the refusal changes nothing"
     );
     store
-        .set_thread_result(gated, worker, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(gated, worker, &serde_json::json!({"status": "done"}))
         .await
         .expect("result");
     store

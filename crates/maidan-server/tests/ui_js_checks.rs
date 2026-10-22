@@ -43,12 +43,16 @@ fn helpers_test_mjs_passes() {
 
 /// TypeScript 5.9.3 is the compiler these projects were checked with.
 /// `npm exec` keeps that pin out of the repo and out of `node_modules`.
+/// CI fetches it into the npm cache before the tests start, and
+/// `--prefer-offline` runs it from there: fetched inside the test, a stalled
+/// registry ran the test into nextest's 3-minute kill (main, run 39706368398).
 fn tsc(project: &Path) {
     let scratch = std::env::temp_dir().join(format!("maidan-tsc-{}", std::process::id()));
     std::fs::create_dir_all(&scratch).expect("tsc scratch dir");
     let args = [
         "exec",
         "--yes",
+        "--prefer-offline",
         "--package",
         "typescript@5.9.3",
         "--",

@@ -5,6 +5,7 @@
 //! and covered by its root, so nothing after the hand-off moves them, and an
 //! approval names the tiers it was shown.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::time::Duration;
 
 use maidan_fsm::ThreadAction;
@@ -106,7 +107,7 @@ async fn run_suite(store: &dyn Store) {
     store.claim_thread(own, worker).await.expect("claim");
     let result = json!({"status": "done"});
     store
-        .set_thread_result(own, worker, &result)
+        .set_thread_result_claiming(own, worker, &result)
         .await
         .expect("result");
     store
@@ -285,7 +286,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("skill");
     store.claim_thread(gated, worker).await.expect("claim");
     store
-        .set_thread_result(gated, worker, &result)
+        .set_thread_result_claiming(gated, worker, &result)
         .await
         .expect("result");
     store.require_land_gate(gated).await.expect("arm");
@@ -309,8 +310,9 @@ async fn run_suite(store: &dyn Store) {
     // pass exists, the reviewer approves, then the verifier passes it. The
     // close checks the evidence the approval named and does not judge the
     // tiers again, so the pass recorded after the hand-off does not refuse
-    // it. A delegate that worked the thread posts the result with a
-    // non-worker's token: still self-reported.
+    // it. The reviewer holds the thread and a delegate posts the result on
+    // its behalf: only the holder may write it, and it is still
+    // self-reported.
     let usual = store
         .create_thread(new_thread("usual"))
         .await
@@ -318,15 +320,15 @@ async fn run_suite(store: &dyn Store) {
         .id;
     store.set_review_requirement(usual, 1).await.expect("req");
     store.require_land_gate(usual).await.expect("arm");
-    store.claim_thread(usual, outsider).await.expect("claim");
+    store.claim_thread(usual, reviewer).await.expect("claim");
     with_attribution(
         acting_as(outsider, reviewer),
-        store.set_thread_result(usual, reviewer, &result),
+        store.set_thread_result_claiming(usual, reviewer, &result),
     )
     .await
     .expect("delegate result");
     store
-        .transition_thread(usual, outsider, ThreadAction::StartReview)
+        .transition_thread(usual, reviewer, ThreadAction::StartReview)
         .await
         .expect("hand off");
     let handed = packet(store, usual).await;

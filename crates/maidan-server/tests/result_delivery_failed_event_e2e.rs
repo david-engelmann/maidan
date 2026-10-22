@@ -15,6 +15,7 @@ use maidan_server::{
     slack::{SlackError, SlackSender},
     AppState,
 };
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     status, ChannelId, EgressSurface, Event, EventFilter, EventKind, ExternalRef, MemberId,
@@ -171,7 +172,7 @@ impl Harness {
 
     async fn route(&self, t: &Tenant, result: &Value, log_id: i64) {
         self.store
-            .set_thread_result(t.thread_id, t.member_id, result)
+            .set_thread_result_claiming(t.thread_id, t.member_id, result)
             .await
             .unwrap();
         notification_router::route_event(

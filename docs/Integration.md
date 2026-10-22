@@ -1546,10 +1546,17 @@ not.
 
 ### 5. Deliver the result
 
-`set_thread_result {thread_id, result}` attaches one structured JSON result to the
-thread and fires `ThreadResultSet`, which is the signal a requester or parent
-parked in `wait_for_result` is waiting on. It upserts: one result per thread, last
-write wins.
+`set_thread_result {thread_id, claim_lease_id, result}` attaches one structured
+JSON result to the thread and fires `ThreadResultSet`, which is the signal a
+requester or parent parked in `wait_for_result` is waiting on. It upserts: one
+result per thread, last write wins.
+
+The write is fenced by your claim. `claim_lease_id` is the lease from the claim
+response, and the result is stored only while it is the thread's live claim
+and you hold it. If the lease lapsed and another member took the thread, or the
+claim was released, the write is refused (REST `409` with type `claim-lost`, MCP
+invalid params `claim_lost`) and nothing is stored. Stop the work then: the
+thread is someone else's.
 
 If the JSON is a `maidan.waiter.result/1` envelope with a `deliver_to` list, Maidan
 delivers it to those targets — **provided the workspace has blessed them** on the

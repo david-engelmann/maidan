@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [415.0.0] — 2026-10-22
+
+The first release since 414.0.0. It ships every PR merged after the 414.0.0
+tag, through #1538: claims that skip finished work and wait on any event,
+per-workspace pull request keys with retried GitHub writes, deploy tracking,
+plan amendment, swarm metrics for the scale test, workspace suspension and
+usage metering, hardened operator alerts, session claimant recipes, Rust 1.99
+on edition 2024, and CHANGELOG fragments.
+
 ### A session waits on any event it names
 
 - **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
@@ -22,6 +31,97 @@ that checks both answer alike, including for a name nothing was spent under.
 ### Rust 1.99
 
 - **Changed:** the toolchain is Rust 1.99 (`rust-toolchain.toml`, `rust-version`, and `RUST_VERSION` in the Dockerfiles), from 1.91. async-trait 0.1.92 replaces 0.1.89, whose generated code tripped 1.99's `double_must_use` lint on every async trait. The FSM hook worker boxes each hook dispatch, whose future was too deep for 1.99 to lay out inline. The lints 1.99 adds are fixed; the rate-limit and MCP quota helpers now return their refusal response boxed, which keeps every `?` on their success path small.
+
+### claim_next no longer hands out finished work whose claim lapsed
+
+- **Fixed:** an open thread that already has a stored result is skipped by `claim_next` on both backends and in both scopes (channel and workspace). A reviewer sending it back (review to open after the result) is the explicit re-queue that makes it claimable again.
+
+### A thread is found from its Slack message or pull request
+
+- **Added:** `GET /workspaces/{id}/thread-lookup` and its MCP twin `find_thread` (`workspace:read`, read-only) find the thread an external reference points at. `?repo=&pr_number=` matches the pull request a thread tracks (the change flow's, or a session's registered one), then a GitHub issue link, then a result delivery commenting on it. `?slack_channel=&slack_ts=` matches the result delivery posted as that message or into that Slack thread, and `?slack_channel=` alone matches the thread the channel is linked to. The answer is the thread, or 404 (MCP: `null`) when nothing the caller may read in its workspace matches, so a private channel's thread is not confirmed. The MCP workspace defaults to the caller's. `find` joins the read-only verbs for MCP tool names.
+
+### A fault armed for a loop that never started says so
+
+- **Fixed:** when `MAIDAN_OPS_FAULT` names a loop that has not started by the first watchdog pass (a misspelt name, or a loop this deployment does not run), the operator channel gets one warning naming it. Before, the drill waited for an alert that could never come.
+
+### A claimant reads its task's attributes where it reads its work
+
+- **Fixed:** the thread context pack (`thread.attributes`) and the `claim_next` answer, on REST and MCP, now carry the task's attributes (`kind`, `engine`, `size`, `acceptance`, `linear_issue`), as docs/Swarms.md said they did. Before, only `GET /threads/{id}` had them. The claim's pin is still the hash of the claimed row.
+
+### Two workspaces can track the same pull request, each on its own row
+
+- **Fixed:** tracked pull requests, their delivery rounds and their CI reads are keyed by workspace as well as repo and number (migration 0194, both backends). A second workspace watching or delivering to a pull request another one tracks now gets its own thread and notices instead of being refused. Closing, settling or recording an outcome touches only the caller's row.
+- **Security:** only the workspace that delivered a pull request's head may rebase it, push to it or enqueue it.
+
+### The Claude Code claimant skill installs for your user, and names its harness
+
+- **Changed:** `examples/claude-code/maidan-claimant/` works when copied to `~/.claude/skills/maidan-claimant/`: the runbook names no path in this repository, calls the helper as `$CLAIMANT_DIR/change_result.py`, and carries the MCP config inline. The README's install line copies it there.
+- **Changed:** the runbook's `report_usage` always sends `evidence` with `provider` and `harness` (Claude Code: `{"provider": "anthropic", "harness": "claude-code"}`), which the swarm metrics slice on, and the fallback registers its own pull request with the MCP `register_thread_pull` instead of curl.
+- **Fixed:** a claimant's lease lapsed during a long pre-push gate (the first phase 1 run, 2026-10-21: over 40 minutes waiting for a build slot), because a blocking command cannot renew. The runbook, skill and Cursor rule now claim with `lease_secs: 3600`, renew before a long step with a lease longer than it can take or in the background over REST (the exact `POST /threads/{id}/claim/renew` call, token on stdin), and, when a renewal is refused after the work is committed, re-take a still-open unassigned thread with `claim_thread` and deliver the same commit.
+
+### Changelog entries are files, so PRs stop conflicting on CHANGELOG.md
+
+- **Changed:** a change adds `changelog.d/<branch-slug>.md` (one `### ` section) instead of editing `CHANGELOG.md`. `scripts/changelog-fragments.sh release X.0.0` folds `[Unreleased]` and the fragments into the new release section, and `check` (in the `changelog (released sections)` job) holds each fragment to one heading with Keep a Changelog bullets and catches a heading filed twice. With five lanes landing together, every PR editing the end of `[Unreleased]` conflicted every other, and an entry branched before a release record merged into the released section.
+
+### One command regenerates every golden and catalog copy
+
+- **Added:** `make regen` (`scripts/regen.sh`) rewrites the profile golden, the MCP and server wire snapshots, the MCP reference, and, through `scripts/regen_derived.py`, every file that copies the MCP catalog: `contracts/mcp-tool-names.json`, `listings/docker/tools.json`, the ToolHive tool list and the tool count in `docs/Protocols.md`, `README.md` and `book/src/introduction.md`. Two PRs that each add a tool conflicted in all of these; a conflict is now resolved by taking either side and running it.
+
+### Amend a submitted plan (#1465)
+
+- **Added:** `POST /threads/{id}/plan/amend` and the MCP `amend_plan` let the planner holding a plan's claim cancel unclaimed children, add children, replace one (cancel and add the same key, so its dependents wait for the new child) and rewire unclaimed children's dependencies, all in one transaction. A claimed or finished child, or a fourth amendment, is a 409 and nothing changes. Migration 0198 adds the amendment count to `maidan_thread_plans`.
+
+### The Cursor CLI, Codex and any OpenRouter model can claim Maidan work
+
+- **Added:** claimant recipes for the command line, each one task per run on the shared claimant runbook: `examples/cursor-agent/` (`cursor-agent -p` with the Cursor rule), `examples/codex/` (`codex exec`, a `config.toml` entry that reads the token from `MAIDAN_TOKEN` and gives a waiting claim room, and a prompt) and `examples/openrouter/claimant.py`, a standard-library runner that has any OpenRouter model do the coding while it runs the Maidan side itself: claim with `wait_ms`, renew, gate, deliver a `pi.change.result/1`, priced usage with `evidence: {provider, harness}`, review and release. The OpenRouter key is read from `OPENROUTER_API_KEY` only.
+
+### A deploy pipeline tells a merged change's thread where it went
+
+- **Added:** `POST /integrations/deploys/events`, deploy push-ingest. It is opt-in, and a 404 until `MAIDAN_DEPLOY_HOOK_SECRET` (or `_FILE`) is set. The body is signed like a GitHub webhook (`X-Maidan-Signature-256`) and is `{repo, sha, environment, status, url?}`. Each tracked pull request that merged at `sha` gets one `deployed` notice on its thread, with its event and a message from the thread's owner, in the workspaces that track it and no other. `in_progress` and other non-outcomes say nothing, and a repeated deploy says nothing again.
+- **Added:** migration 0195 (both backends): `maidan_deploys`, plus `environment` and `deploy_url` on `maidan_thread_notices`. `ThreadNotice` and the `ThreadNotice` event gain `environment` and `deploy_url`.
+
+### Swarm metrics carry the scale test's stop-rule numbers
+
+- **Added:** each task in `GET /workspaces/{id}/swarm-metrics` (and MCP `get_swarm_metrics`) carries `claimed_at`, `claim_to_first_delivery_secs`, `first_delivery_ci` (how the checks stood on the first delivered head, from its CI notices), `review_wait_secs` (from the first green CI on a head, else the first move to review, to the first review submitted), `sent_back` (request_changes reviews), `claim_lapses` (ClaimExpired) and `deliveries_skipped` (skipped or failed result deliveries). Each rollup slice adds `first_ci_pass_rate` (pending heads left out), `median_claim_to_first_delivery_secs`, `median_review_wait_secs`, `mean_sent_back`, `claim_lapses` and `deliveries_skipped`, by engine, provider and harness as before.
+- **Added:** `?until=` beside `?since=`, so a time window has two ends (by pull request opened time).
+
+### A pull request GitHub refuses right after the commit is retried, not dropped
+
+- **Fixed:** when GitHub answered `POST /pulls` with a 422 for a branch the change flow had just created (GitHub can do this before it has indexed the new ref) and no pull request was open, the delivery was refused as final. The commit sat on its branch with no pull request and nothing retried it. It is now a failure the egress worker retries; the retry reuses the commit, so it makes neither a second commit nor a second pull request.
+- **Fixed:** A fast-forward of the delivery branch that GitHub answers with 422 while the branch is still at the result's `base_sha` is retried, too. Only a branch that really moved is refused.
+
+### A pull request the merge queue dropped takes its next round
+
+- **Fixed:** When GitHub's merge queue drops a pull request (a merge conflict, failed checks) and leaves the queue's label on it, the next round's delivery takes the stale label off through the dequeue guard path and is then delivered. Before, it was refused for good. The new head is not queued unreviewed, and the next `POST /operator/github/enqueue` labels it again. Clearing the label is audited as `github.enqueue` with outcome `stale_label_cleared`.
+
+### A claimant's background renewer dies with its session
+
+- **Fixed:** the runbook's background lease renewer outlived a session that died mid-gate (a spend limit, 2026-10-22) and held ENG-5650's claim for seven hours with no worker. It now checks its parent shell each pass (`kill -0`), stops at the step's longest expected run, and is killed by the shell's exit trap.
+
+### A thread's flow counts once in a swarm-metrics slice
+
+- **Fixed:** a thread that tracks two pull requests had its sends back, claim lapses and skipped deliveries counted once per pull request in each slice's sums and `mean_sent_back`. They now count once per thread. `claimed_at`'s doc says it is the first assignment, a claim or a person assigning by hand.
+
+### The workspace is on Rust edition 2024
+
+- **Changed:** every workspace crate builds as edition 2024. The edition's lints are fixed outright: nested `if let`s are let-chains, macro fragments are plain `expr`, and environment writes are in `unsafe` blocks, with the reason they hold. Formatting keeps the 2021 style (`style_edition` in `rustfmt.toml`); the 2024 style comes in its own change.
+
+### The S3 client's TLS and HTTP stack is current
+
+- **Security:** the AWS SDK is bumped (aws-config 1.13, aws-sdk-s3 1.154, aws-smithy-runtime 1.16), which Rust 1.91 held back, and the S3 client is built without the SDK's legacy `rustls` feature. That drops h2 0.3, hyper 0.14, rustls 0.21 and rustls-webpki 0.101 from the root and fuzz lockfiles, and with them the accepted RUSTSEC-2026-0258, 0098, 0099, 0104, 0346, 0349 and 0382 in `deny.toml` and `.config/osv-scanner.toml`.
+
+### A result that did not reach a target says so on the event stream
+
+- **Added:** a `result_delivery_failed` event (`workspace_id`, `channel_id`, `thread_id`, `surface`, `selector`, `status` `failed` or `skipped`, `last_error`) when a result delivery is skipped (an unblessed or unusable target, a refused change, a replay against a revoked blessing) or fails (retries spent, or a target that will never accept it). It is written in the same transaction as the delivery row's status change, once per move into `failed` or `skipped`: recording the same outcome again says nothing new, and a re-armed delivery that is skipped again says it again. A relay subscribed to the workspace can tell the task's thread where its result did not go.
+
+### An operator can suspend a workspace
+
+- **Added:** `PUT`, `GET` and `DELETE /operator/workspaces/{id}/suspension` (`operator:global`) suspend a workspace with a reason, read the suspension, and lift it. Suspending and lifting are each audited in the same transaction (`workspace.suspend`, `workspace.suspension_lift`). An operator may not suspend its own workspace.
+- **Added:** while a workspace is suspended, every token and session of it is refused with a 403 `workspace suspended`, on REST, MCP, WebSocket, SSE and A2A alike. An open stream ends at its next credential re-check. The change sweep, Linear notices and the scheduler skip it. The egress, mail and web push workers hold its deliveries back (deferred, not dropped), and inline web push is skipped. Its data is kept, and lifting restores access. Migration 0196 adds `maidan_workspace_suspensions` on both backends.
+
+### main lints clean under edition 2024 again
+
+- **Fixed:** the mail worker's suspension check is a let-chain, so clippy's collapsible_if passes on main (#1516 merged after edition 2024 with a nested if).
 
 ## [414.0.0] — 2026-10-21
 

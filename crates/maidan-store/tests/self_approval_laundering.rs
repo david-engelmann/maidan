@@ -10,6 +10,7 @@
 //! asserts the close is still refused. Both backends.
 
 use maidan_fsm::ThreadAction;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     LandColor, LandGateStatus, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
@@ -115,7 +116,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap();
     store
-        .set_thread_result(t.id, owner.id, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(t.id, owner.id, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store
@@ -167,7 +168,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap();
     store
-        .set_thread_result(g.id, owner.id, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(g.id, owner.id, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store

@@ -1,4 +1,0 @@
-### Swarm metrics carry the scale test's stop-rule numbers
-
-- **Added:** each task in `GET /workspaces/{id}/swarm-metrics` (and MCP `get_swarm_metrics`) carries `claimed_at`, `claim_to_first_delivery_secs`, `first_delivery_ci` (how the checks stood on the first delivered head, from its CI notices), `review_wait_secs` (from the first green CI on a head, else the first move to review, to the first review submitted), `sent_back` (request_changes reviews), `claim_lapses` (ClaimExpired) and `deliveries_skipped` (skipped or failed result deliveries). Each rollup slice adds `first_ci_pass_rate` (pending heads left out), `median_claim_to_first_delivery_secs`, `median_review_wait_secs`, `mean_sent_back`, `claim_lapses` and `deliveries_skipped`, by engine, provider and harness as before.
-- **Added:** `?until=` beside `?since=`, so a time window has two ends (by pull request opened time).
