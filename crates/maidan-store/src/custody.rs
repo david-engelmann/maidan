@@ -44,7 +44,12 @@ impl AwsKmsCustody {
     /// A client from the default AWS configuration chain (region,
     /// credentials, endpoint override).
     pub async fn from_default_config(key_id: impl Into<String>) -> Self {
+        use aws_smithy_http_client::tls;
+        let https = aws_smithy_http_client::Builder::new()
+            .tls_provider(tls::Provider::Rustls(tls::rustls_provider::CryptoMode::Ring))
+            .build_https();
         let shared = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .http_client(https)
             .load()
             .await;
         Self::new(aws_sdk_kms::Client::new(&shared), key_id)

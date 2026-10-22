@@ -73,7 +73,12 @@ impl S3Store {
             None,
             "maidan-artifacts",
         );
+        use aws_smithy_http_client::tls;
+        let https = aws_smithy_http_client::Builder::new()
+            .tls_provider(tls::Provider::Rustls(tls::rustls_provider::CryptoMode::Ring))
+            .build_https();
         let shared = aws_config::defaults(BehaviorVersion::latest())
+            .http_client(https)
             .endpoint_url(&config.endpoint)
             .region(Region::new(config.region.clone()))
             .credentials_provider(creds)
