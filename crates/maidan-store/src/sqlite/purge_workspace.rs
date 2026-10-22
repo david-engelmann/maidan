@@ -1,5 +1,6 @@
 use chrono::Utc;
-use maidan_types::{WorkspaceId, WorkspacePurgeResult};
+use maidan_types::{ContentKeyring, WorkspaceId, WorkspacePurgeResult, WrappedKey};
+use sqlx::Row;
 use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::embeddings_purge;
@@ -7,10 +8,11 @@ use crate::error::StoreError;
 
 pub async fn purge(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
 ) -> Result<WorkspacePurgeResult, StoreError> {
     let mut conn = pool.acquire().await?;
-    purge_on(&mut conn, workspace_id).await
+    purge_on(&mut conn, keys, workspace_id).await
 }
 
 /// Everything the purge removes goes in one transaction, which refuses a held
@@ -18,6 +20,7 @@ pub async fn purge(
 /// placed in between.
 pub(crate) async fn purge_on(
     conn: &mut SqliteConnection,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
 ) -> Result<WorkspacePurgeResult, StoreError> {
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
@@ -106,7 +109,27 @@ pub(crate) async fn purge_on(
             .bind(workspace_id.0)
             .execute(&mut *tx)
             .await?;
-    // And the workspace's own keys, after the data keys that name them.
+    // And the workspace's own keys, after the data keys that name them. A
+    // key a custody holds is destroyed there first, so a copy of its row in a
+    // backup opens nothing either; a custody that refuses fails the purge,
+    // which then changes nothing.
+    let custodied = sqlx::query(
+        "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
+         WHERE workspace_id = ? AND destroyed_at IS NULL AND custody <> 'local'",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(&mut *tx)
+    .await?;
+    for row in &custodied {
+        keys.destroy_workspace_key(
+            row.get("id"),
+            &WrappedKey {
+                kek_id: row.get("wrapping_key_id"),
+                blob: row.get("wrapped_key"),
+            },
+        )
+        .await?;
+    }
     sqlx::query("DELETE FROM maidan_workspace_keys WHERE workspace_id = ?")
         .bind(workspace_id.0)
         .execute(&mut *tx)

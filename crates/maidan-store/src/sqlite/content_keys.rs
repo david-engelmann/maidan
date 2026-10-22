@@ -1,15 +1,12 @@
 //! Per-message content keys on SQLite; see the Postgres twin.
 
 use chrono::Utc;
-use maidan_types::{parse_workspace_kek_id, ContentKey, ContentKeyring, WrappedKey};
+use maidan_types::{parse_workspace_kek_id, ContentKeyring, WrappedKey, LOCAL_CUSTODY};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
-
-/// Who wraps a workspace key: the instance KEK.
-const LOCAL_CUSTODY: &str = "local";
 
 /// The key row for `subject`, with the workspace key that wraps it. SQLite
 /// serializes writers, so the append's transaction already excludes a
@@ -61,24 +58,25 @@ pub(crate) async fn active_workspace_key(
     .await?;
     if let Some(row) = row {
         let id: Uuid = row.get("id");
-        keys.open_workspace_key(
+        keys.open_workspace_key_async(
             id,
             &WrappedKey {
                 kek_id: row.get("wrapping_key_id"),
                 blob: row.get("wrapped_key"),
             },
-        )?;
+        )
+        .await?;
         return Ok(id);
     }
     let id = Uuid::now_v7();
-    let wrapped = keys.wrap_workspace_key(id, &ContentKey::generate())?;
+    let wrapped = keys.create_workspace_key(id, workspace_id).await?;
     sqlx::query(
         "INSERT INTO maidan_workspace_keys (id, workspace_id, custody, wrapping_key_id, wrapped_key)
          VALUES (?, ?, ?, ?, ?)",
     )
     .bind(id)
     .bind(workspace_id)
-    .bind(LOCAL_CUSTODY)
+    .bind(keys.custody_name())
     .bind(&wrapped.kek_id)
     .bind(&wrapped.blob)
     .execute(&mut **tx)
@@ -193,7 +191,7 @@ pub(crate) async fn prepare_in_tx(
             let (state, joined) = state_for_update(tx, subject).await?;
             let workspace_key = match (&state, arrived_shredded) {
                 (KeyState::Live(wrapped), _) => {
-                    open_joined(keys, &wrapped.kek_id, joined)?;
+                    open_joined(keys, &wrapped.kek_id, joined).await?;
                     None
                 }
                 (KeyState::Absent, false) => {
@@ -283,7 +281,8 @@ pub async fn rewrap(
                 kek_id: row.get("wk_kek_id"),
                 blob: row.get("wk_wrapped"),
             },
-        )?;
+        )
+        .await?;
         let data_key = keys.unwrap(subject, &wrapped)?;
         let active = active_workspace_key(&mut tx, keys, row.get("workspace_id")).await?;
         let rewrapped = keys.wrap_for_workspace(active, subject, &data_key)?;
@@ -300,29 +299,45 @@ pub async fn rewrap(
     }
     changed += rows.len() as u64;
 
-    let destroyed: Vec<Uuid> = sqlx::query_scalar(
-        "UPDATE maidan_workspace_keys
-         SET wrapping_key_id = NULL, wrapped_key = NULL, destroyed_at = ?
-         WHERE id IN (
-             SELECT r.id FROM maidan_workspace_keys r
-             WHERE r.retired_at IS NOT NULL AND r.destroyed_at IS NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_content_keys k
-                   WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
-               )
-             ORDER BY r.id
-             LIMIT ?
-         )
-         RETURNING id",
+    // A retired key no live data key names is destroyed: its custody's key
+    // first, so no copy of the row opens again, then the row. A custody that
+    // fails leaves the row for the next pass.
+    let retired = sqlx::query(
+        "SELECT r.id, r.wrapping_key_id, r.wrapped_key FROM maidan_workspace_keys r
+         WHERE r.retired_at IS NOT NULL AND r.destroyed_at IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_content_keys k
+               WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
+           )
+         ORDER BY r.id
+         LIMIT ?",
     )
-    .bind(Utc::now())
     .bind(limit)
     .fetch_all(&mut *tx)
     .await?;
-    tx.commit().await?;
-    for id in &destroyed {
-        keys.forget_workspace_key(*id);
+    let mut destroyed = Vec::new();
+    for row in &retired {
+        let id: Uuid = row.get("id");
+        let wrapped = WrappedKey {
+            kek_id: row.get("wrapping_key_id"),
+            blob: row.get("wrapped_key"),
+        };
+        if let Err(err) = keys.destroy_workspace_key(id, &wrapped).await {
+            tracing::warn!(workspace_key = %id, error = %err, "retired workspace key not destroyed; retried next pass");
+            continue;
+        }
+        sqlx::query(
+            "UPDATE maidan_workspace_keys
+             SET wrapping_key_id = NULL, wrapped_key = NULL, destroyed_at = ?
+             WHERE id = ?",
+        )
+        .bind(Utc::now())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        destroyed.push(id);
     }
+    tx.commit().await?;
     changed += destroyed.len() as u64;
     Ok(changed)
 }

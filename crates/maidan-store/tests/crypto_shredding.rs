@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_store::test_support::fake_custody::{self, FakeCustody};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
@@ -1218,6 +1219,138 @@ async fn erasing_a_workspace_destroys_its_key(db: Db) {
     );
 }
 
+fn custodied(custody: &Arc<FakeCustody>) -> Arc<ContentKeyring> {
+    Arc::new(ContentKeyring::new([1; 32], Vec::new()).with_custody(custody.clone()))
+}
+
+impl Db {
+    /// A workspace's active key row: its custody and what wraps it.
+    async fn active_workspace_key(&self, workspace: WorkspaceId) -> (String, String) {
+        let sql = "SELECT custody, wrapping_key_id FROM maidan_workspace_keys
+                   WHERE workspace_id = ? AND retired_at IS NULL";
+        match self {
+            Db::Sqlite(pool) => sqlx::query_as(sql).bind(workspace.0).fetch_one(pool).await,
+            Db::Pg(pool) => {
+                sqlx::query_as(&sql.replace('?', "$1"))
+                    .bind(workspace.0)
+                    .fetch_one(pool)
+                    .await
+            }
+        }
+        .unwrap()
+    }
+}
+
+/// Under a custody, each workspace's key is a key of the custody's own, the
+/// row holds only what the custody returned, and a replica that holds nothing
+/// in memory asks the custody before it can read. A data key pointed at the
+/// other workspace's key opens nothing, and a keyring without the custody
+/// opens nothing at all.
+async fn a_custody_holds_each_workspace_key(db: Db) {
+    let custody = FakeCustody::new();
+    let store = db.store(custodied(&custody));
+    let a = room(store.as_ref(), "custody-a").await;
+    let b = room(store.as_ref(), "custody-b").await;
+    let (_, in_a) = post(store.as_ref(), &a, "words of a").await;
+    let (_, in_b) = post(store.as_ref(), &b, "words of b").await;
+
+    let (a_custody, a_wrapping) = db.active_workspace_key(a.ws.id).await;
+    let (_, b_wrapping) = db.active_workspace_key(b.ws.id).await;
+    assert_eq!(a_custody, fake_custody::NAME);
+    assert!(a_wrapping.starts_with("fake-kms:"), "{a_wrapping}");
+    assert_ne!(
+        a_wrapping, b_wrapping,
+        "each workspace key is a custody key of its own"
+    );
+    assert_eq!(custody.keys_of(a.ws.id.0).len(), 1);
+    assert_eq!(custody.unwraps(), 0, "the writer opened what it made");
+
+    let replica = db.store(custodied(&custody));
+    assert_eq!(body_of(replica.as_ref(), in_a.id).await, "words of a");
+    assert_eq!(body_of(replica.as_ref(), in_b.id).await, "words of b");
+    assert_eq!(custody.unwraps(), 2, "a cold replica asked the custody");
+    assert_eq!(body_of(replica.as_ref(), in_a.id).await, "words of a");
+    assert_eq!(custody.unwraps(), 2, "and holds what it opened");
+
+    // The database and the instance KEK alone open nothing.
+    assert!(matches!(
+        db.store(kek(1)).get_stored_event(in_a.id).await,
+        Err(StoreError::ContentKey(_))
+    ));
+
+    let subject = db.subject_of(in_a.id).await;
+    let (_, blob, _) = db.key_row(subject).await;
+    let b_key = db.key_row(db.subject_of(in_b.id).await).await.2.unwrap();
+    db.set_key_row(subject, &workspace_kek_id(b_key), &blob, Some(b_key))
+        .await;
+    assert!(matches!(
+        db.store(custodied(&custody))
+            .get_stored_event(in_a.id)
+            .await,
+        Err(StoreError::ContentKey(_))
+    ));
+    assert_eq!(
+        body_of(db.store(custodied(&custody)).as_ref(), in_b.id).await,
+        "words of b"
+    );
+}
+
+/// Rotating a workspace key under a custody makes a new custody key, rewraps
+/// the data keys without rewriting a sealed message, and destroys the old
+/// custody key once nothing needs it.
+async fn rotation_under_a_custody_destroys_the_old_custody_key(db: Db) {
+    let custody = FakeCustody::new();
+    let store = db.store(custodied(&custody));
+    let a = room(store.as_ref(), "custody-rotate").await;
+    let (_, first) = post(store.as_ref(), &a, "first").await;
+    let sealed_before = store.get_stored_event(first.id).await.unwrap().payload;
+
+    store.rotate_workspace_key(a.ws.id).await.unwrap();
+    while store.rewrap_content_keys(100).await.unwrap() > 0 {}
+    let keys = custody.keys_of(a.ws.id.0);
+    assert_eq!(keys.len(), 2);
+    assert_eq!(
+        keys.iter().filter(|(_, destroyed)| *destroyed).count(),
+        1,
+        "the retired custody key is destroyed, the active one is not"
+    );
+    let replica = db.store(custodied(&custody));
+    assert_eq!(body_of(replica.as_ref(), first.id).await, "first");
+    assert_eq!(
+        replica.get_stored_event(first.id).await.unwrap().payload,
+        sealed_before,
+        "the sealed message is the same bytes"
+    );
+}
+
+/// Erasing a workspace destroys its key in the custody, so a copy of its row
+/// opens nothing either; the other workspace is untouched. A custody that
+/// refuses fails the erasure, which then changes nothing.
+async fn erasing_a_workspace_destroys_its_custody_key(db: Db) {
+    let custody = FakeCustody::new();
+    let store = db.store(custodied(&custody));
+    let gone = room(store.as_ref(), "custody-erase").await;
+    let kept = room(store.as_ref(), "custody-keep").await;
+    post(store.as_ref(), &gone, WORDS).await;
+    let (_, survivor) = post(store.as_ref(), &kept, "kept words").await;
+
+    store.erase_workspace(gone.ws.id).await.unwrap();
+    assert_eq!(custody.keys_of(gone.ws.id.0)[0].1, true);
+    assert_eq!(custody.keys_of(kept.ws.id.0)[0].1, false);
+    assert_eq!(
+        body_of(db.store(custodied(&custody)).as_ref(), survivor.id).await,
+        "kept words"
+    );
+
+    custody.refuse_destroy();
+    assert!(store.erase_workspace(kept.ws.id).await.is_err());
+    assert_eq!(
+        body_of(db.store(custodied(&custody)).as_ref(), survivor.id).await,
+        "kept words",
+        "a refused erasure leaves the workspace as it was"
+    );
+}
+
 /// A blob delete that fails, as a blob store that is down does.
 fn failing_delete() -> BlobDelete<'static> {
     Box::new(|| Box::pin(async { Err("blob store unavailable".to_string()) }))
@@ -1392,6 +1525,9 @@ macro_rules! on_both_backends {
 }
 
 on_both_backends!(
+    a_custody_holds_each_workspace_key,
+    rotation_under_a_custody_destroys_the_old_custody_key,
+    erasing_a_workspace_destroys_its_custody_key,
     each_workspace_seals_under_its_own_key,
     a_key_from_before_workspace_keys_moves_under_its_workspace_key,
     rotating_a_workspace_key_rewraps_its_keys_and_nothing_else,

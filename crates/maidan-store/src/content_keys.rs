@@ -192,10 +192,55 @@ pub(crate) struct JoinedWorkspaceKey {
 }
 
 /// Open the workspace key a data key's `kek_id` names, from the columns a read
-/// joined beside it. A data key an instance KEK wrapped needs nothing opened.
-/// One whose workspace key row is gone or destroyed does not open, whatever
-/// this process still holds in memory: the row is the truth.
-pub(crate) fn open_joined(
+/// joined beside it, asking its custody when one holds it. A data key an
+/// instance KEK wrapped needs nothing opened. One whose workspace key row is
+/// gone or destroyed does not open, whatever this process still holds in
+/// memory: the row is the truth.
+pub(crate) async fn open_joined(
+    keys: &ContentKeyring,
+    kek_id: &str,
+    joined: JoinedWorkspaceKey,
+) -> Result<(), StoreError> {
+    let Some(workspace_key) = parse_workspace_kek_id(kek_id) else {
+        return Ok(());
+    };
+    match (joined.kek_id, joined.blob) {
+        (Some(wrapping), Some(blob)) => {
+            keys.open_workspace_key_async(
+                workspace_key,
+                &WrappedKey {
+                    kek_id: wrapping,
+                    blob,
+                },
+            )
+            .await?;
+            Ok(())
+        }
+        _ => Err(maidan_types::SealError::UnknownKek(kek_id.to_string()).into()),
+    }
+}
+
+/// Open, before a read maps its rows, the workspace key each row's data key
+/// names: a custody's open is a network call, and the mapping is
+/// synchronous. Each row is `(data key kek_id, joined workspace key)`. A row
+/// with no data key, or one an instance KEK wrapped, opens nothing.
+pub(crate) async fn open_for_rows(
+    keys: &ContentKeyring,
+    rows: Vec<(Option<String>, JoinedWorkspaceKey)>,
+) -> Result<(), StoreError> {
+    for (kek_id, joined) in rows {
+        if let Some(kek_id) = kek_id
+            && joined.kek_id.is_some()
+        {
+            open_joined(keys, &kek_id, joined).await?;
+        }
+    }
+    Ok(())
+}
+
+/// The synchronous half of [`open_joined`], for a read's row mapping after
+/// [`open_for_rows`] opened what a custody holds.
+fn open_joined_now(
     keys: &ContentKeyring,
     kek_id: &str,
     joined: JoinedWorkspaceKey,
@@ -229,7 +274,7 @@ pub(crate) fn unwrap_joined(
 ) -> Result<Option<ContentKey>, StoreError> {
     match (keys, subject, kek_id, blob) {
         (Some(keys), Some(subject), Some(kek_id), Some(blob)) => {
-            open_joined(keys, &kek_id, joined)?;
+            open_joined_now(keys, &kek_id, joined)?;
             Ok(Some(keys.unwrap(subject, &WrappedKey { kek_id, blob })?))
         }
         _ => Ok(None),

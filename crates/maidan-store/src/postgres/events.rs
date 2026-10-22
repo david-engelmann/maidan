@@ -161,6 +161,7 @@ pub async fn get_by_id(
     let Some(row) = row else {
         return Err(StoreError::NotFound);
     };
+    open_keys_for(keys, std::slice::from_ref(&row)).await?;
     row_to_stored(&row, Some(keys))
 }
 
@@ -185,6 +186,9 @@ pub async fn list_after(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    if let Some(keys) = keys {
+        open_keys_for(keys, &rows).await?;
+    }
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
@@ -237,6 +241,9 @@ pub async fn list_matching(
         query = query.bind(names);
     }
     let rows = query.bind(limit).fetch_all(pool).await?;
+    if let Some(keys) = keys {
+        open_keys_for(keys, &rows).await?;
+    }
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
@@ -265,6 +272,7 @@ pub async fn list_after_stable(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_keys_for(keys, &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -292,6 +300,7 @@ pub async fn list_after_global(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_keys_for(keys, &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -318,6 +327,7 @@ pub async fn list_after_global_each(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_keys_for(keys, &rows).await?;
     Ok(rows
         .iter()
         .map(|row| (row.get::<i64, _>("id"), row_to_stored(row, Some(keys))))
@@ -343,6 +353,7 @@ pub async fn list_through(
     .bind(through_id)
     .fetch_all(pool)
     .await?;
+    open_keys_for(keys, &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -401,6 +412,28 @@ pub async fn oldest_event_after_of_kinds(
 /// Build a [`StoredEvent`], unwrapping its joined content key when `keys` is
 /// given. A row selected without the key columns (an append's `RETURNING`)
 /// gets `content_key: None`.
+/// Open the workspace keys the rows' data keys name, before they are mapped
+/// (a custody's open is a network call; the mapping is not).
+pub(crate) async fn open_keys_for(
+    keys: &ContentKeyring,
+    rows: &[sqlx::postgres::PgRow],
+) -> Result<(), StoreError> {
+    // Collected first: no row borrow is held across the custody's await.
+    let joined = rows
+        .iter()
+        .map(|row| {
+            (
+                row.get("key_kek_id"),
+                crate::content_keys::JoinedWorkspaceKey {
+                    kek_id: row.get("wk_kek_id"),
+                    blob: row.get("wk_wrapped"),
+                },
+            )
+        })
+        .collect();
+    crate::content_keys::open_for_rows(keys, joined).await
+}
+
 fn row_to_stored(
     row: &sqlx::postgres::PgRow,
     keys: Option<&ContentKeyring>,
