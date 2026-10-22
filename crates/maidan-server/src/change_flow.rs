@@ -388,12 +388,12 @@ pub async fn deliver_change(
                 Err(err) if err.is_unprocessable() => {
                     match git.open_pull(req.repo, req.branch).await? {
                         Some(pull) => pull,
-                        None => {
-                            return refused(format!(
-                            "committed {commit_sha}, but GitHub refused a pull request into `{}`",
-                            req.base
-                        ))
-                        }
+                        // GitHub answers 422 for a branch it created a moment
+                        // ago and has not indexed yet. The commit is on the
+                        // branch and a retry reuses it, so this is a failure
+                        // to retry, not a refusal: refused, the change would
+                        // sit on its branch with no pull request.
+                        None => return Err(err),
                     }
                 }
                 Err(err) => return Err(err),

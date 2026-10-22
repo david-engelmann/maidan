@@ -89,6 +89,9 @@ struct Fake {
     /// Fail `POST /pulls` with a body that echoes the token, as a careless
     /// proxy might.
     fail_pulls: bool,
+    /// Answer this many `POST /pulls` with a 422, as GitHub can for a branch
+    /// it created a moment ago and has not indexed yet.
+    pulls_unprocessable: u32,
     /// What `compare` reports a delivered base behind by; 2 when unset.
     behind: Option<i64>,
     /// Every `force: true` ref move, as `(branch, from, to)`.
@@ -464,6 +467,13 @@ async fn github(
             fake.pull_comments
                 .push((number, body["body"].as_str().unwrap().into()));
             reply(StatusCode::CREATED, json!({"id": 1}))
+        }
+        ("POST", "pulls") if fake.pulls_unprocessable > 0 => {
+            fake.pulls_unprocessable -= 1;
+            reply(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                json!({"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]}),
+            )
         }
         ("POST", "pulls") if fake.fail_pulls => reply(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1624,6 +1634,58 @@ async fn a_rename_sent_as_a_delete_plus_an_add_moves_the_file() {
     assert_eq!(fake.file(head, "src/greeting.txt"), None);
     assert_eq!(fake.file(head, "src/hello.txt").as_deref(), Some(GREETING));
     assert_eq!(fake.file(head, "README.md").as_deref(), Some("readme\n"));
+}
+
+#[tokio::test]
+async fn a_pull_request_github_refuses_once_after_the_commit_is_opened_on_the_retry() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake.lock().unwrap().pulls_unprocessable = 1;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["deliver_to"] = json!([
+        {"surface": "github_branch", "repo": REPO, "branch": BRANCH, "base": "dev"},
+    ]);
+    h.route(&h.a, &result, 1).await;
+    let first = egress_worker::sweep_once(&h.state).await;
+    assert_eq!(
+        first.retried, 1,
+        "a 422 with no open pull request is retried"
+    );
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::PENDING,
+        "not refused while the commit waits for its pull request: {row:?}"
+    );
+    // The retry, without waiting out the backoff.
+    maidan_store::replay_result_delivery(
+        h.store.as_ref(),
+        h.a.workspace_id,
+        h.a.thread_id,
+        row.id,
+        String::new(),
+    )
+    .await
+    .unwrap();
+    h.drain().await;
+
+    let head = {
+        let fake = h.fake.lock().unwrap();
+        assert_eq!(fake.pulls.len(), 1, "the retry opened the pull request");
+        let head = fake.refs[BRANCH].clone();
+        assert_eq!(
+            fake.commits
+                .values()
+                .filter(|c| c.message.contains("Maidan-Change: "))
+                .count(),
+            1,
+            "the retry reused its own commit"
+        );
+        head
+    };
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{row:?}");
+    assert!(row.external_ref.as_deref().unwrap_or("").starts_with(&head));
 }
 
 #[tokio::test]
