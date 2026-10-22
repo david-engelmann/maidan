@@ -70,6 +70,9 @@ period is cut, and clients retry.
 | `MAIDAN_ALLOW_UNKNOWN_ENV` | no | `1` starts the server despite `MAIDAN_*` variables it does not know, logging them. Without it, boot refuses an unknown name and suggests the one it probably meant, so a misspelt variable cannot silently leave its default in place. In a Kubernetes pod the service-link variables Kubernetes injects for a Service named `maidan-…` (`MAIDAN_…_SERVICE_HOST`, `MAIDAN_…_PORT_8080_TCP`, …) are tolerated; the Helm chart and `k8s/` turn them off with `enableServiceLinks: false`. |
 | `MAIDAN_ALLOW_INSECURE_DEV_KEK` | no | `1` lets a server with no `MAIDAN_CONTENT_KEK` use the built-in development key, which is public, with a warning. For local development and CI only; refused with `MAIDAN_ENV=production`. |
 | `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. Requires `MAIDAN_CONTENT_KEK`. |
+| `MAIDAN_CONTENT_KEY_CUSTODY` | no | Who holds workspace keys: `local` (the instance KEK, the default) or `aws-kms` (an AWS KMS key per workspace key; see *Crypto-shredding*). |
+| `MAIDAN_KMS_KEY_DELETION_DAYS` | no | Under `aws-kms`, days KMS waits before deleting a destroyed workspace's key: 7 to 30, default 7. |
+| `MAIDAN_KMS_ENDPOINT` | no | Under `aws-kms`, a KMS endpoint other than the region's, such as LocalStack. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). Each tick polls every enabled peer; a peer whose target is refused, has no outbound secret, or fails to answer is logged and skipped, and the rest are still polled. Counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`). |
 | `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
@@ -1648,6 +1651,28 @@ rows. An operator holding the database alone opens nothing: the workspace keys
 need the instance KEK, which is not in the database. A server holds a workspace
 key in memory for at most five minutes after it last used it, and only while
 the stored row matches what it opened.
+
+**Workspace keys in AWS KMS.** With `MAIDAN_CONTENT_KEY_CUSTODY=aws-kms`, each
+new workspace key gets an AWS KMS key of its own (`CreateKey`, tagged
+`maidan:workspace=<workspace id>`), which wraps it under an encryption context
+naming the workspace key. The row then holds the KMS key's ARN and the
+ciphertext, so the database and the instance KEK together still open nothing
+without KMS. Erasing or purging a workspace, and the rewrap pass after a
+rotation, schedule the KMS key's deletion before the row goes, so a backup of
+the row opens nothing once the key is deleted. The deletion waits
+`MAIDAN_KMS_KEY_DELETION_DAYS` (7 to 30, default 7), the window in which KMS
+can still cancel it. A KMS that refuses the deletion fails the erasure, which
+then changes nothing; the rewrap pass retries a refused one on its next run.
+
+The server and `maidan` find region and credentials the way the AWS SDK does
+(`AWS_REGION`, the role or `AWS_*` keys); `MAIDAN_KMS_ENDPOINT` points them at
+another endpoint, such as LocalStack. The role needs `kms:CreateKey`,
+`kms:TagResource`, `kms:Encrypt`, `kms:Decrypt` and `kms:ScheduleKeyDeletion`.
+A KMS key costs a monthly fee, so this custody costs that per workspace (and
+per retired key until its deletion completes). Workspace keys made before the
+custody was chosen stay wrapped by the instance KEK, which therefore stays
+required. A server holds a KMS-opened key in memory under the same five-minute
+rule as any other.
 
 Message keys written before workspace keys existed are wrapped by the instance
 KEK directly. They still open, and the startup pass moves each under its

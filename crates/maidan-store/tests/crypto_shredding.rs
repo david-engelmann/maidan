@@ -1335,8 +1335,14 @@ async fn erasing_a_workspace_destroys_its_custody_key(db: Db) {
     let (_, survivor) = post(store.as_ref(), &kept, "kept words").await;
 
     store.erase_workspace(gone.ws.id).await.unwrap();
-    assert_eq!(custody.keys_of(gone.ws.id.0)[0].1, true);
-    assert_eq!(custody.keys_of(kept.ws.id.0)[0].1, false);
+    assert!(
+        custody.keys_of(gone.ws.id.0)[0].1,
+        "the erased workspace's key is destroyed"
+    );
+    assert!(
+        !custody.keys_of(kept.ws.id.0)[0].1,
+        "the other workspace's key is not"
+    );
     assert_eq!(
         body_of(db.store(custodied(&custody)).as_ref(), survivor.id).await,
         "kept words"

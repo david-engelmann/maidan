@@ -2321,6 +2321,6 @@ On 2026-10-04 the maintainer added three rulings.
 
 **Why.** It is the gate thread 52 set before a stranger's data lands on the hosted service (Open Work Next 25). One workspace's key opens nothing of another's, so a workspace's erasure, rotation or future custody choice is its own. Keeping the unwrap synchronous and reading the workspace key from the row a read already joins changes no read path's shape, so the event bus and the outbox relay open words exactly as before.
 
-**To revisit.** A cloud KMS is the next custody: `maidan_workspace_keys.custody` names who wraps each key (`local` today). A KMS unwrap is a network call, so it would open workspace keys in an async step before a read maps its rows, at the same three read sites per backend, and the cache would hold KMS-opened keys under the same rule.
+**Since (2026-10-22).** AWS KMS is a custody: with `MAIDAN_CONTENT_KEY_CUSTODY=aws-kms`, each new workspace key is wrapped by a KMS key of its own, and destroying the workspace key (erasure, purge, the rewrap pass after a rotation) schedules that KMS key's deletion before the row goes. A KMS unwrap is a network call, so reads open the workspace keys their rows name in an async step before they map the rows, and the cache holds KMS-opened keys under the same rule. A KMS key per workspace key costs a monthly fee per key; that is the price of an erasure that reaches backups.
 
 **Record.** Migration 0167, `maidan_types::ContentKeyring`, `maidan_store::content_keys`, `maidan rotate-workspace-key`, [Production](Production.md#crypto-shredding).

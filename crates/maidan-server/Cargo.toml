@@ -106,6 +106,9 @@ loom = ["dep:loom"]
 
 [dev-dependencies]
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
+# Points the KMS custody at a fake KMS in the custody e2e. Already in the tree
+# through maidan-store.
+aws-sdk-kms = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # Hand-written WAT for the WASI slash e2e.
 wat = "1"
 # Gunzips responses in the compression e2e. Already in the tree through

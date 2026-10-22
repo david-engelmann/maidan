@@ -13,6 +13,10 @@ description = "Storage abstraction + Postgres/SQLite implementations for Maidan.
 maidan-fsm = { path = "../maidan-fsm" }
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
+aws-config = "1"
+# Without the default `rustls` feature: the legacy hyper 0.14 / rustls 0.21
+# client stays out, as for the S3 client in maidan-artifacts.
+aws-sdk-kms = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 metrics = "0.24"
 chrono.workspace = true
 futures = "0.3"
@@ -23,6 +27,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+zeroize = "1"
 testcontainers = { version = "0.23", optional = true }
 
 [features]

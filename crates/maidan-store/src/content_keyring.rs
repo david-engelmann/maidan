@@ -2,7 +2,11 @@
 //! The design is in `docs/Decisions.md` ("Crypto-shredding of message content"
 //! and "The content KEK fails closed").
 
-use maidan_types::{parse_key_32, ContentKeyring};
+use std::sync::Arc;
+
+use maidan_types::{parse_key_32, ContentKeyring, LOCAL_CUSTODY};
+
+use crate::kms_custody::{self, AwsKmsCustody};
 
 /// Primary key-encryption key: 32 bytes, base64 or 64 hex characters.
 pub const KEK_ENV: &str = "MAIDAN_CONTENT_KEK";
@@ -11,6 +15,15 @@ pub const PREVIOUS_KEKS_ENV: &str = "MAIDAN_CONTENT_KEK_PREVIOUS";
 /// Explicit development opt-in: with no KEK set, wrap keys with the public
 /// development KEK instead of refusing to start. Rejected in production.
 pub const ALLOW_DEV_KEK_ENV: &str = "MAIDAN_ALLOW_INSECURE_DEV_KEK";
+
+/// Who holds workspace keys: `local` (the instance KEK, the default) or
+/// `aws-kms` (a KMS key per workspace key).
+pub const CUSTODY_ENV: &str = "MAIDAN_CONTENT_KEY_CUSTODY";
+/// An AWS KMS endpoint other than the region's, as for a test or LocalStack.
+pub const KMS_ENDPOINT_ENV: &str = "MAIDAN_KMS_ENDPOINT";
+/// Days KMS waits before it deletes a destroyed workspace's key (7 to 30;
+/// default 7).
+pub const KMS_DELETION_DAYS_ENV: &str = "MAIDAN_KMS_KEY_DELETION_DAYS";
 
 /// The KEK settings as read from the environment.
 #[derive(Debug, Clone, Copy, Default)]
@@ -24,8 +37,66 @@ pub struct KekConfig<'a> {
 }
 
 /// Build the keyring from `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`
-/// and `MAIDAN_ALLOW_INSECURE_DEV_KEK`.
-pub fn from_env(production: bool) -> Result<ContentKeyring, String> {
+/// and `MAIDAN_ALLOW_INSECURE_DEV_KEK`, with the workspace-key custody
+/// `MAIDAN_CONTENT_KEY_CUSTODY` names. The instance KEK stays required under a
+/// custody: it opens the workspace keys made before the custody was chosen.
+pub async fn from_env(production: bool) -> Result<ContentKeyring, String> {
+    let keyring = kek_from_env(production)?;
+    let custody = std::env::var(CUSTODY_ENV).ok();
+    match custody.as_deref().map(str::trim) {
+        None | Some("") => Ok(keyring),
+        Some(name) if name == LOCAL_CUSTODY => Ok(keyring),
+        Some(kms_custody::NAME) => {
+            let custody = aws_kms_from_env().await?;
+            tracing::info!(
+                custody = kms_custody::NAME,
+                "workspace keys are held in AWS KMS"
+            );
+            Ok(keyring.with_custody(Arc::new(custody)))
+        }
+        Some(other) => Err(format!(
+            "{CUSTODY_ENV}: `{other}` is not a key custody; use `{LOCAL_CUSTODY}` or `{}`",
+            kms_custody::NAME
+        )),
+    }
+}
+
+/// The AWS KMS custody, on the SDK's usual credential and region chain.
+async fn aws_kms_from_env() -> Result<AwsKmsCustody, String> {
+    let deletion_days = match std::env::var(KMS_DELETION_DAYS_ENV).ok() {
+        None => *kms_custody::DELETION_DAYS.start(),
+        Some(raw) => raw
+            .trim()
+            .parse::<i32>()
+            .ok()
+            .filter(|days| kms_custody::DELETION_DAYS.contains(days))
+            .ok_or_else(|| {
+                format!("{KMS_DELETION_DAYS_ENV}: a whole number of days from 7 to 30")
+            })?,
+    };
+    let shared = aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .load()
+        .await;
+    if shared.region().is_none() {
+        return Err(format!(
+            "{CUSTODY_ENV}={}: no AWS region is set (AWS_REGION)",
+            kms_custody::NAME
+        ));
+    }
+    let mut config = aws_sdk_kms::config::Builder::from(&shared);
+    if let Some(endpoint) = std::env::var(KMS_ENDPOINT_ENV)
+        .ok()
+        .filter(|endpoint| !endpoint.trim().is_empty())
+    {
+        config = config.endpoint_url(endpoint.trim());
+    }
+    Ok(AwsKmsCustody::new(
+        aws_sdk_kms::Client::from_conf(config.build()),
+        deletion_days,
+    ))
+}
+
+fn kek_from_env(production: bool) -> Result<ContentKeyring, String> {
     let primary = std::env::var(KEK_ENV).ok();
     let previous = std::env::var(PREVIOUS_KEKS_ENV).ok();
     from_config(KekConfig {

@@ -142,6 +142,7 @@ pub mod embeddings_purge;
 pub mod error;
 pub mod group_dm;
 pub mod idempotency;
+pub mod kms_custody;
 pub mod lag_resume;
 pub mod log_snapshot;
 pub mod mcp_subscriptions;
