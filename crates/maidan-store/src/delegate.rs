@@ -1418,6 +1418,14 @@ macro_rules! store_delegations {
                 slack_links::list(self.pool(), workspace_id).await
             }
 
+            async fn find_thread_by_external_ref(
+                &self,
+                workspace_id: WorkspaceId,
+                reference: &maidan_types::ExternalThreadRef,
+            ) -> Result<Option<ThreadId>, StoreError> {
+                thread_lookup::find(self.read_pool(), workspace_id, reference).await
+            }
+
             async fn unlink_slack_channel(
                 &self,
                 slack_channel_id: &str,

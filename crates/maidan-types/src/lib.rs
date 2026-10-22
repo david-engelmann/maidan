@@ -44,6 +44,7 @@ pub mod spawn;
 pub mod suspension;
 pub mod tap;
 pub mod task_attributes;
+pub mod thread_lookup;
 pub mod trace;
 pub mod usage;
 pub mod usage_ledger;
@@ -93,6 +94,7 @@ pub use suspension::{
 };
 pub use tap::*;
 pub use task_attributes::*;
+pub use thread_lookup::{ExternalThreadRef, ThreadLookup};
 pub use trace::*;
 pub use usage::*;
 pub use usage_ledger::*;

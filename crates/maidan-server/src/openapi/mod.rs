@@ -582,6 +582,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::list_deferred_threads,
         paths::get_swarm_metrics,
         paths::watch_pull,
+        paths::find_thread,
         paths::list_repo_pauses,
         paths::pause_repo,
         paths::resume_repo,

@@ -7,10 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### An operator can suspend a workspace
+### A session waits on any event it names
 
-- **Added:** `PUT`, `GET` and `DELETE /operator/workspaces/{id}/suspension` (`operator:global`) suspend a workspace with a reason, read the suspension, and lift it. Suspending and lifting are each audited in the same transaction (`workspace.suspend`, `workspace.suspension_lift`). An operator may not suspend its own workspace.
-- **Added:** while a workspace is suspended, every token and session of it is refused with a 403 `workspace suspended`, on REST, MCP, WebSocket, SSE and A2A alike. An open stream ends at its next credential re-check. The change sweep, Linear notices and the scheduler skip it. The egress, mail and web push workers hold its deliveries back (deferred, not dropped), and inline web push is skipped. Its data is kept, and lifting restores access. Migration 0196 adds `maidan_workspace_suspensions` on both backends.
+- **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
+- **Changed:** every MCP `wait_for_*` tool, and the log replay behind it, now decides what a caller may see with the event log's rule (`maidan_auth::EventVisibility`, moved from the server so both share one copy). That rule also hides a private channel's events that name no thread, which `wait_for_event` can ask for.
+- **Fixed:** a `wait_for_*` whose bus subscription fell behind skipped the lag marker, so a match among the dropped events was lost and a later one answered in its place. The `after_log_id` cursor then moved past the lost match. Every MCP wait now replays the log from the last event it saw (or from where it subscribed) and answers the first match. Found by red-team review.
+
+### The swarm metrics' provider and harness filters are tested on the route and over MCP
+
+`?provider=` and `?harness=` on `GET /workspaces/{id}/swarm-metrics`, and the
+same arguments on the MCP `get_swarm_metrics` tool, are covered by one e2e test
+that checks both answer alike, including for a name nothing was spent under.
 
 ## [414.0.0] — 2026-10-21
 
@@ -459,12 +466,6 @@ Every embedding call runs on Tokio's blocking pool: semantic and hybrid search o
 ### A session registers its pull request and reads the swarm metrics over MCP
 
 - **Added:** two MCP tools, the twins of REST-only routes, so a session no longer shells out for them. `register_thread_pull` (`workspace:write` and thread access) tracks a session's pull request on its task, as `PUT /threads/{id}/pull` does: the repository must be blessed for the thread's workspace. `get_swarm_metrics` (`workspace:read`, the caller's own workspace) answers as `GET /workspaces/{id}/swarm-metrics`, with the same filters and the same GitHub refresh first. Both run the route's code (`maidan_store::change_pulls`), not a copy.
-
-### A session waits on any event it names
-
-- **Added:** the MCP tool `wait_for_event {workspace_id?, kinds, thread_id?, timeout_ms?, after_log_id?}` (`workspace:read`) answers the first event of any named kind that the caller may read, as `{log_id, event}`, or `null` at its deadline (`timeout_ms` 0 to 300000, default 30000). The workspace defaults to the caller's, a named thread must be readable, and an unknown kind is refused by name. It subscribes before it replays, so with `after_log_id` (the last `log_id` handled) nothing between two waits is missed.
-- **Changed:** every MCP `wait_for_*` tool, and the log replay behind it, now decides what a caller may see with the event log's rule (`maidan_auth::EventVisibility`, moved from the server so both share one copy). That rule also hides a private channel's events that name no thread, which `wait_for_event` can ask for.
-- **Fixed:** a `wait_for_*` whose bus subscription fell behind skipped the lag marker, so a match among the dropped events was lost and a later one answered in its place. The `after_log_id` cursor then moved past the lost match. Every MCP wait now replays the log from the last event it saw (or from where it subscribed) and answers the first match. Found by red-team review.
 
 ### Operator alerts in Slack
 

@@ -594,6 +594,7 @@ async fn claim_next_candidate(
             dm_channel: "?4",
             repo: "?5",
             engine: "?6",
+            requeued_after_result: "julianday(tr.occurred_at) >= julianday(r.produced_at)",
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN MAX(0, CAST(strftime('%s', cand.assignment_expires_at) AS INTEGER) - CAST(strftime('%s', cand.work_started_at) AS INTEGER)) ELSE 0 END",
