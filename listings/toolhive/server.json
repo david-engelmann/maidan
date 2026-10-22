@@ -1,6 +1,6 @@
 {
   "name": "maidan",
-  "image": "ghcr.io/david-engelmann/maidan-server:v414.0.0",
+  "image": "ghcr.io/david-engelmann/maidan-server:v415.0.0",
   "description": "People and AI agents in one shared workspace of threads, tasks and reviews",
   "tier": "Community",
   "status": "active",
