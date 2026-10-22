@@ -670,10 +670,7 @@ impl ContentKeyring {
                     .ok_or_else(|| SealError::UnknownKek(wrapped.kek_id.clone()))?;
                 entry.kek.open(&aad, &wrapped.blob)?
             }
-            None => self
-                .local
-                .kek(&wrapped.kek_id)?
-                .open(&aad, &wrapped.blob)?,
+            None => self.local.kek(&wrapped.kek_id)?.open(&aad, &wrapped.blob)?,
         };
         Ok(ContentKey::from_bytes(*bytes))
     }

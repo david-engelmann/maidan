@@ -236,7 +236,7 @@ async fn run_rotate_workspace_key(
     database_url: &str,
     workspace_id: uuid::Uuid,
 ) -> anyhow::Result<()> {
-    let content_keys = content_keyring()?;
+    let content_keys = content_keyring().await?;
     let store = open_store(database_url, content_keys).await?;
     let workspace = store
         .get_workspace(maidan_types::WorkspaceId(workspace_id))
@@ -285,7 +285,7 @@ async fn run_init(
     admin_handle: &str,
 ) -> anyhow::Result<()> {
     // Before touching the database: a missing KEK refuses with nothing written.
-    let content_keys = content_keyring()?;
+    let content_keys = content_keyring().await?;
     let store = open_store(database_url, content_keys).await?;
 
     // Init is a one-time bootstrap: refuse if the store is already populated so it
@@ -410,9 +410,10 @@ async fn resolve_stdio_auth(
 
 /// The same content keyring the server uses, so messages written here are
 /// sealed under keys the server can unwrap.
-fn content_keyring() -> anyhow::Result<Arc<maidan_types::ContentKeyring>> {
+async fn content_keyring() -> anyhow::Result<Arc<maidan_types::ContentKeyring>> {
     let production = std::env::var("MAIDAN_ENV").as_deref() == Ok("production");
     maidan_store::content_keyring::from_env(production)
+        .await
         .map(Arc::new)
         .map_err(anyhow::Error::msg)
 }
@@ -422,7 +423,7 @@ async fn run_mcp_stdio(
     artifact_root: &Path,
     allow_insecure_no_auth: bool,
 ) -> anyhow::Result<()> {
-    let content_keys = content_keyring()?;
+    let content_keys = content_keyring().await?;
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     let (store, search) = match dialect {
         Dialect::Sqlite => {
