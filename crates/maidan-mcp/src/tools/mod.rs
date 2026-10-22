@@ -1087,7 +1087,7 @@ pub async fn dispatch(
         "get_thread_result" => thread::get_thread_result(store, args).await,
         "list_thread_results" => thread::list_thread_results(store, auth, args).await,
         "list_result_deliveries" => delivery::list_result_deliveries(store, args).await,
-        "replay_result_delivery" => delivery::replay_result_delivery_tool(store, auth, args).await,
+        "replay_result_delivery" => delivery::replay_result_delivery_tool(server, auth, args).await,
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
         "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,

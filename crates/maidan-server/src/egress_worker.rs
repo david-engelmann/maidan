@@ -1213,13 +1213,17 @@ async fn record_result_refused(
     else {
         return;
     };
-    if let Err(err) = state
+    match state
         .store
         .mark_result_delivery_skipped(row.id, reason)
         .await
     {
-        tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
-        return;
+        Ok(Some(event)) => crate::routes::publish_stored(state, event).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
+            return;
+        }
     }
     tracing::warn!(
         thread_id = %entry.thread_id,
@@ -1245,13 +1249,17 @@ async fn record_result_gave_up(
     else {
         return;
     };
-    if let Err(err) = state.store.mark_result_delivery_failed(row.id, error).await {
-        tracing::warn!(
-            error = %err,
-            id = %row.id,
-            "egress worker: mark-result-failed failed"
-        );
-        return;
+    match state.store.mark_result_delivery_failed(row.id, error).await {
+        Ok(Some(event)) => crate::routes::publish_stored(state, event).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                id = %row.id,
+                "egress worker: mark-result-failed failed"
+            );
+            return;
+        }
     }
     crate::metrics::record_result_delivery("failed");
 }

@@ -272,6 +272,18 @@
       "src_kind": "message"
     }
   },
+  "maidan.event.result_delivery_failed/1": {
+    "$type": "maidan.event.result_delivery_failed/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "result_delivery_failed",
+    "last_error": "target not in the workspace egress allowlist",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "selector": "C0123ABCDEF",
+    "status": "skipped",
+    "surface": "slack",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.review_submitted/1": {
     "$type": "maidan.event.review_submitted/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

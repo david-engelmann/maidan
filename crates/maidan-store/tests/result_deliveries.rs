@@ -529,19 +529,24 @@ async fn run_replay_suite(store: &dyn Store) {
         .await
         .expect("arm slack")
         .expect("won slack");
-    store
+    let said = store
         .mark_result_delivery_skipped(
             skipped_arm.id,
             "target not in the workspace egress allowlist",
         )
         .await
-        .expect("skip");
+        .expect("skip")
+        .expect("moving into skipped says so");
+    assert_eq!(said.kind, maidan_types::EventKind::ResultDeliveryFailed);
+    assert_eq!(said.workspace_id, Some(ws.id));
+    assert_eq!(said.thread_id, Some(tid));
     let replayed = replay_result_delivery(store, ws.id, tid, skipped_arm.id, "body".into())
         .await
         .expect("replay")
         .expect("found");
     match replayed {
-        ResultDeliveryReplay::Skipped(row) => {
+        ResultDeliveryReplay::Skipped(row, event) => {
+            assert!(event.is_none(), "still skipped: said once already");
             assert_eq!(row.status, status::SKIPPED);
             assert_eq!(
                 row.last_error.as_deref(),

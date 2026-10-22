@@ -601,11 +601,14 @@ async fn skip_unroutable(
 }
 
 async fn record_skip(state: &AppState, row: ResultDelivery, reason: &str) -> Result<(), String> {
-    state
+    if let Some(event) = state
         .store
         .mark_result_delivery_skipped(row.id, reason)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+    {
+        crate::routes::publish_stored(state, event).await;
+    }
     crate::metrics::record_result_delivery(status::SKIPPED);
     warn!(
         thread_id = %row.thread_id,
