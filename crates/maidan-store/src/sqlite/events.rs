@@ -161,6 +161,7 @@ pub async fn get_by_id(
     let Some(row) = row else {
         return Err(StoreError::NotFound);
     };
+    open_rows(Some(keys), std::slice::from_ref(&row)).await?;
     row_to_stored(&row, Some(keys))
 }
 
@@ -185,6 +186,7 @@ pub async fn list_after(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(keys, &rows).await?;
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
@@ -230,6 +232,7 @@ pub async fn list_matching(
         query = query.bind(kind.as_str());
     }
     let rows = query.bind(limit).fetch_all(pool).await?;
+    open_rows(keys, &rows).await?;
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
@@ -259,6 +262,7 @@ pub async fn list_after_stable(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -283,6 +287,7 @@ pub async fn list_after_global(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -354,9 +359,34 @@ pub async fn list_through(
     .bind(through_id)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
+}
+
+/// Open the workspace keys `rows` need before they are mapped. Rows carry
+/// `key_kek_id`, `wk_kek_id` and `wk_wrapped`.
+pub(crate) async fn open_rows(
+    keys: Option<&ContentKeyring>,
+    rows: &[sqlx::sqlite::SqliteRow],
+) -> Result<(), StoreError> {
+    let Some(keys) = keys else {
+        return Ok(());
+    };
+    crate::content_keys::open_workspace_keys(
+        keys,
+        rows.iter().map(|row| {
+            (
+                row.get::<Option<String>, _>("key_kek_id"),
+                crate::content_keys::JoinedWorkspaceKey {
+                    kek_id: row.get("wk_kek_id"),
+                    blob: row.get("wk_wrapped"),
+                },
+            )
+        }),
+    )
+    .await
 }
 
 /// Build a [`StoredEvent`]; see the Postgres twin.

@@ -132,6 +132,7 @@ mod claim_next;
 pub mod content_keyring;
 mod content_keys;
 pub mod context_pack;
+pub mod custody;
 mod delegation_grants;
 mod footprints;
 #[macro_use]

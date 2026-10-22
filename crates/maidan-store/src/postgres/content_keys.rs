@@ -3,7 +3,7 @@
 //! [`maidan_types::content_seal`].
 
 use chrono::Utc;
-use maidan_types::{parse_workspace_kek_id, ContentKey, ContentKeyring, WrappedKey};
+use maidan_types::{parse_workspace_kek_id, ContentKeyring, WrappedKey};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
@@ -11,7 +11,6 @@ use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
 
 /// Who wraps a workspace key: the instance KEK.
-const LOCAL_CUSTODY: &str = "local";
 
 /// The key row for `subject`, locked for the rest of the transaction so a
 /// concurrent shred cannot interleave with a seal, with the workspace key that
@@ -68,17 +67,18 @@ pub(crate) async fn active_workspace_key(
         .await?;
         if let Some(row) = row {
             let id: Uuid = row.get("id");
-            keys.open_workspace_key(
+            keys.open_workspace_keys([(
                 id,
-                &WrappedKey {
+                WrappedKey {
                     kek_id: row.get("wrapping_key_id"),
                     blob: row.get("wrapped_key"),
                 },
-            )?;
+            )])
+            .await?;
             return Ok(id);
         }
         let id = Uuid::now_v7();
-        let wrapped = keys.wrap_workspace_key(id, &ContentKey::generate())?;
+        let wrapped = keys.create_workspace_key(id).await?;
         let inserted = sqlx::query(
             "INSERT INTO maidan_workspace_keys (id, workspace_id, custody, wrapping_key_id, wrapped_key)
              VALUES ($1, $2, $3, $4, $5)
@@ -86,7 +86,7 @@ pub(crate) async fn active_workspace_key(
         )
         .bind(id)
         .bind(workspace_id)
-        .bind(LOCAL_CUSTODY)
+        .bind(keys.custody_name())
         .bind(&wrapped.kek_id)
         .bind(&wrapped.blob)
         .execute(&mut **tx)
@@ -211,7 +211,7 @@ pub(crate) async fn prepare_in_tx(
             let (state, joined) = state_for_update(tx, subject).await?;
             let workspace_key = match (&state, arrived_shredded) {
                 (KeyState::Live(wrapped), _) => {
-                    open_joined(keys, &wrapped.kek_id, joined)?;
+                    open_joined(keys, &wrapped.kek_id, joined).await?;
                     None
                 }
                 (KeyState::Absent, false) => {
@@ -250,31 +250,34 @@ pub async fn rewrap(pool: &PgPool, keys: &ContentKeyring, limit: i64) -> Result<
     let mut tx = pool.begin().await?;
     let rows = sqlx::query(
         "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
-         WHERE destroyed_at IS NULL AND custody = $1 AND wrapping_key_id <> $2
+         WHERE destroyed_at IS NULL AND wrapping_key_id <> $1
          ORDER BY id
-         LIMIT $3
+         LIMIT $2
          FOR UPDATE SKIP LOCKED",
     )
-    .bind(LOCAL_CUSTODY)
-    .bind(keys.primary_id())
+    .bind(keys.workspace_wrapping_id())
     .bind(limit)
     .fetch_all(&mut *tx)
     .await?;
     for row in &rows {
         let id: Uuid = row.get("id");
-        let rewrapped = keys.rewrap_workspace_key(
-            id,
-            &WrappedKey {
-                kek_id: row.get("wrapping_key_id"),
-                blob: row.get("wrapped_key"),
-            },
-        )?;
+        let rewrapped = keys
+            .rewrap_workspace_key(
+                id,
+                &WrappedKey {
+                    kek_id: row.get("wrapping_key_id"),
+                    blob: row.get("wrapped_key"),
+                },
+            )
+            .await?;
         sqlx::query(
-            "UPDATE maidan_workspace_keys SET wrapping_key_id = $2, wrapped_key = $3 WHERE id = $1",
+            "UPDATE maidan_workspace_keys SET wrapping_key_id = $2, wrapped_key = $3, custody = $4
+             WHERE id = $1",
         )
         .bind(id)
         .bind(&rewrapped.kek_id)
         .bind(&rewrapped.blob)
+        .bind(keys.custody_name())
         .execute(&mut *tx)
         .await?;
     }
@@ -309,7 +312,8 @@ pub async fn rewrap(pool: &PgPool, keys: &ContentKeyring, limit: i64) -> Result<
                 kek_id: row.get("wk_kek_id"),
                 blob: row.get("wk_wrapped"),
             },
-        )?;
+        )
+        .await?;
         let data_key = keys.unwrap(subject, &wrapped)?;
         let active = active_workspace_key(&mut tx, keys, row.get("workspace_id")).await?;
         let rewrapped = keys.wrap_for_workspace(active, subject, &data_key)?;
@@ -359,7 +363,7 @@ pub async fn count_needing_rewrap(pool: &PgPool, keys: &ContentKeyring) -> Resul
     let count: i64 = sqlx::query_scalar(
         "SELECT
             (SELECT COUNT(*) FROM maidan_workspace_keys
-             WHERE destroyed_at IS NULL AND custody = $2 AND wrapping_key_id <> $1)
+             WHERE destroyed_at IS NULL AND wrapping_key_id <> $1)
           + (SELECT COUNT(*) FROM maidan_content_keys k
              LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id
              WHERE k.shredded_at IS NULL
@@ -371,8 +375,7 @@ pub async fn count_needing_rewrap(pool: &PgPool, keys: &ContentKeyring) -> Resul
                    WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
                ))",
     )
-    .bind(keys.primary_id())
-    .bind(LOCAL_CUSTODY)
+    .bind(keys.workspace_wrapping_id())
     .fetch_one(pool)
     .await?;
     Ok(count as u64)

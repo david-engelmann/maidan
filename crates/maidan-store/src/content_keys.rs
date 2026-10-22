@@ -191,35 +191,74 @@ pub(crate) struct JoinedWorkspaceKey {
     pub(crate) blob: Option<Vec<u8>>,
 }
 
-/// Open the workspace key a data key's `kek_id` names, from the columns a read
-/// joined beside it. A data key an instance KEK wrapped needs nothing opened.
-/// One whose workspace key row is gone or destroyed does not open, whatever
+/// The stored workspace key a data key's `kek_id` names, from the columns a
+/// read joined beside it. `Ok(None)` for a data key an instance KEK wrapped.
+/// One whose workspace key row is gone or destroyed is an error, whatever
 /// this process still holds in memory: the row is the truth.
-pub(crate) fn open_joined(
-    keys: &ContentKeyring,
+fn joined_workspace_key(
     kek_id: &str,
     joined: JoinedWorkspaceKey,
-) -> Result<(), StoreError> {
+) -> Result<Option<(Uuid, WrappedKey)>, StoreError> {
     let Some(workspace_key) = parse_workspace_kek_id(kek_id) else {
-        return Ok(());
+        return Ok(None);
     };
     match (joined.kek_id, joined.blob) {
-        (Some(wrapping), Some(blob)) => {
-            keys.open_workspace_key(
-                workspace_key,
-                &WrappedKey {
-                    kek_id: wrapping,
-                    blob,
-                },
-            )?;
-            Ok(())
-        }
+        (Some(wrapping), Some(blob)) => Ok(Some((
+            workspace_key,
+            WrappedKey {
+                kek_id: wrapping,
+                blob,
+            },
+        ))),
         _ => Err(maidan_types::SealError::UnknownKek(kek_id.to_string()).into()),
     }
 }
 
-/// Unwrap the key a read joined beside an event. `None` when the event has no
-/// key or the key was shredded.
+/// Open, through their custody, the workspace keys a batch of rows names
+/// (each a data key's `kek_id` and the workspace key joined beside it). Every
+/// read calls this before it maps its rows; mapping then only checks the key
+/// is open ([`unwrap_joined`]). A row whose workspace key is gone is skipped
+/// here and fails when it is mapped.
+pub(crate) async fn open_workspace_keys(
+    keys: &ContentKeyring,
+    rows: impl IntoIterator<Item = (Option<String>, JoinedWorkspaceKey)>,
+) -> Result<(), StoreError> {
+    let stored: Vec<(Uuid, WrappedKey)> = rows
+        .into_iter()
+        .filter_map(|(kek_id, joined)| joined_workspace_key(kek_id.as_deref()?, joined).ok()?)
+        .collect();
+    keys.open_workspace_keys(stored).await?;
+    Ok(())
+}
+
+/// Open the workspace key one data key needs; see [`open_workspace_keys`].
+pub(crate) async fn open_joined(
+    keys: &ContentKeyring,
+    kek_id: &str,
+    joined: JoinedWorkspaceKey,
+) -> Result<(), StoreError> {
+    if let Some(stored) = joined_workspace_key(kek_id, joined)? {
+        keys.open_workspace_keys([stored]).await?;
+    }
+    Ok(())
+}
+
+/// Fail unless the workspace key a data key names is open from the stored
+/// form joined beside it.
+fn require_joined(
+    keys: &ContentKeyring,
+    kek_id: &str,
+    joined: JoinedWorkspaceKey,
+) -> Result<(), StoreError> {
+    if let Some((id, wrapped)) = joined_workspace_key(kek_id, joined)? {
+        keys.require_open(id, &wrapped)?;
+    }
+    Ok(())
+}
+
+/// Unwrap the key a read joined beside an event, its workspace key already
+/// opened by [`open_workspace_keys`]. `None` when the event has no key or the
+/// key was shredded.
 pub(crate) fn unwrap_joined(
     keys: Option<&ContentKeyring>,
     subject: Option<Uuid>,
@@ -229,7 +268,7 @@ pub(crate) fn unwrap_joined(
 ) -> Result<Option<ContentKey>, StoreError> {
     match (keys, subject, kek_id, blob) {
         (Some(keys), Some(subject), Some(kek_id), Some(blob)) => {
-            open_joined(keys, &kek_id, joined)?;
+            require_joined(keys, &kek_id, joined)?;
             Ok(Some(keys.unwrap(subject, &WrappedKey { kek_id, blob })?))
         }
         _ => Ok(None),
@@ -240,12 +279,19 @@ pub(crate) fn unwrap_joined(
 mod tests {
     use super::*;
 
+    fn create(keys: &ContentKeyring, id: Uuid) {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(keys.create_workspace_key(id))
+            .unwrap();
+    }
+
     /// A keyring with one open workspace key.
     fn keys() -> (ContentKeyring, Uuid) {
         let keys = ContentKeyring::new([4; 32], Vec::new());
         let workspace_key = Uuid::now_v7();
-        keys.wrap_workspace_key(workspace_key, &ContentKey::generate())
-            .unwrap();
+        create(&keys, workspace_key);
         (keys, workspace_key)
     }
 
@@ -270,8 +316,7 @@ mod tests {
     fn a_data_key_under_one_workspace_key_does_not_open_under_another() {
         let (keys, mine) = keys();
         let theirs = Uuid::now_v7();
-        keys.wrap_workspace_key(theirs, &ContentKey::generate())
-            .unwrap();
+        create(&keys, theirs);
         let subject = Uuid::now_v7();
         let wrapped = keys
             .wrap_for_workspace(mine, subject, &ContentKey::generate())

@@ -13,6 +13,10 @@ description = "Storage abstraction + Postgres/SQLite implementations for Maidan.
 maidan-fsm = { path = "../maidan-fsm" }
 maidan-types = { path = "../maidan-types" }
 async-trait.workspace = true
+aws-config = "1"
+# No default `rustls` feature: the legacy hyper 0.14 client is not built; the
+# HTTPS client comes from the shared aws-config.
+aws-sdk-kms = { version = "1", default-features = false, features = ["rt-tokio"] }
 metrics = "0.24"
 chrono.workspace = true
 futures = "0.3"
