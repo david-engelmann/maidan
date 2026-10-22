@@ -915,11 +915,16 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
     store.record_change_round(round("c2", 4)).await.unwrap();
     let ready = chrono::Utc::now();
     store
-        .mark_change_pull_ready("example/app", 7, ready)
+        .mark_change_pull_ready(room.ws, "example/app", 7, ready)
         .await
         .unwrap();
     store
-        .mark_change_pull_ready("example/app", 7, ready + chrono::Duration::hours(1))
+        .mark_change_pull_ready(
+            room.ws,
+            "example/app",
+            7,
+            ready + chrono::Duration::hours(1),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -927,7 +932,7 @@ async fn change_rounds_ready_and_close_are_recorded_once(store: Arc<dyn Store>) 
         vec![("example/app".to_string(), 7)]
     );
     store
-        .close_change_pull("example/app", 7, Some(ready), Some("C2"), ready)
+        .close_change_pull(room.ws, "example/app", 7, Some(ready), Some("C2"), ready)
         .await
         .unwrap();
     assert!(store
@@ -1035,9 +1040,10 @@ async fn the_newest_round_names_the_head_only_for_the_workspace_that_delivered_i
         store
             .latest_change_round_head(theirs.ws, REPO, 7)
             .await
-            .unwrap(),
-        None,
-        "a pull request another workspace tracks is never vouched for"
+            .unwrap()
+            .as_deref(),
+        Some("f".repeat(40).as_str()),
+        "each workspace is vouched for only by the rounds it delivered itself"
     );
     assert_eq!(
         store
@@ -1169,18 +1175,21 @@ async fn the_refresh_reads_the_longest_unread_pull_first(store: Arc<dyn Store>) 
     assert_eq!(open_order(store.as_ref(), mine.ws).await, vec![1, 2, 3]);
 
     let t0 = chrono::Utc::now();
-    store.mark_change_pull_checked(REPO, 1, t0).await.unwrap();
+    store
+        .mark_change_pull_checked(mine.ws, REPO, 1, t0)
+        .await
+        .unwrap();
     assert_eq!(
         open_order(store.as_ref(), mine.ws).await,
         vec![2, 3, 1],
         "a pull request never read goes before one read"
     );
     store
-        .mark_change_pull_checked(REPO, 3, t0 + chrono::Duration::seconds(1))
+        .mark_change_pull_checked(mine.ws, REPO, 3, t0 + chrono::Duration::seconds(1))
         .await
         .unwrap();
     store
-        .mark_change_pull_checked(REPO, 2, t0 + chrono::Duration::seconds(2))
+        .mark_change_pull_checked(mine.ws, REPO, 2, t0 + chrono::Duration::seconds(2))
         .await
         .unwrap();
     assert_eq!(
@@ -1235,25 +1244,26 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
     let t0 = chrono::Utc::now();
     let at = |secs: i64| t0 + chrono::Duration::seconds(secs);
     store
-        .close_change_pull(REPO, 1, Some(at(1)), Some("c1"), at(1))
+        .close_change_pull(r.ws, REPO, 1, Some(at(1)), Some("c1"), at(1))
         .await
         .unwrap();
     store
-        .close_change_pull(REPO, 2, None, None, at(2))
+        .close_change_pull(r.ws, REPO, 2, None, None, at(2))
         .await
         .unwrap();
     store
-        .close_change_pull(REPO, 3, Some(at(3)), Some("c3"), at(3))
+        .close_change_pull(r.ws, REPO, 3, Some(at(3)), Some("c3"), at(3))
         .await
         .unwrap();
     store
-        .close_change_pull(REPO, 5, Some(at(4)), Some("c5"), at(4))
+        .close_change_pull(other.ws, REPO, 5, Some(at(4)), Some("c5"), at(4))
         .await
         .unwrap();
     assert_eq!(unsettled_order(store.as_ref(), r.ws).await, vec![1, 2, 3]);
     assert_eq!(unsettled_order(store.as_ref(), other.ws).await, vec![5]);
 
-    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 1).await.unwrap() else {
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(r.ws, REPO, 1).await.unwrap()
+    else {
         panic!("a merge lands its thread");
     };
     let kinds: Vec<EventKind> = stored.iter().map(|e| e.kind).collect();
@@ -1276,13 +1286,13 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
     assert!(transitions.iter().all(|t| t.actor_id == agent));
     assert!(
         matches!(
-            store.settle_change_pull(REPO, 1).await.unwrap(),
+            store.settle_change_pull(r.ws, REPO, 1).await.unwrap(),
             ChangeSettlement::Unchanged
         ),
         "a close settles once"
     );
 
-    match store.settle_change_pull(REPO, 2).await.unwrap() {
+    match store.settle_change_pull(r.ws, REPO, 2).await.unwrap() {
         ChangeSettlement::ClosedUnmerged {
             thread_id,
             author_id,
@@ -1290,7 +1300,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
         other => panic!("a close without a merge owes a notice, got {other:?}"),
     }
     assert!(matches!(
-        store.settle_change_pull(REPO, 2).await.unwrap(),
+        store.settle_change_pull(r.ws, REPO, 2).await.unwrap(),
         ChangeSettlement::Unchanged
     ));
     assert_eq!(
@@ -1300,7 +1310,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
 
     assert!(
         matches!(
-            store.settle_change_pull(REPO, 3).await.unwrap(),
+            store.settle_change_pull(r.ws, REPO, 3).await.unwrap(),
             ChangeSettlement::Unchanged
         ),
         "pull request 4 is still open on the same thread"
@@ -1310,11 +1320,11 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
         ThreadState::Open
     );
     store
-        .close_change_pull(REPO, 4, Some(at(5)), Some("c4"), at(5))
+        .close_change_pull(r.ws, REPO, 4, Some(at(5)), Some("c4"), at(5))
         .await
         .unwrap();
     assert!(matches!(
-        store.settle_change_pull(REPO, 4).await.unwrap(),
+        store.settle_change_pull(r.ws, REPO, 4).await.unwrap(),
         ChangeSettlement::Landed(_)
     ));
     assert_eq!(
@@ -1337,18 +1347,19 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
             .unwrap();
     }
     store
-        .close_change_pull(REPO, 6, Some(at(6)), Some("c6"), at(6))
+        .close_change_pull(r.ws, REPO, 6, Some(at(6)), Some("c6"), at(6))
         .await
         .unwrap();
     assert!(matches!(
-        store.settle_change_pull(REPO, 6).await.unwrap(),
+        store.settle_change_pull(r.ws, REPO, 6).await.unwrap(),
         ChangeSettlement::Unchanged
     ));
     store
-        .close_change_pull(REPO, 7, None, None, at(7))
+        .close_change_pull(r.ws, REPO, 7, None, None, at(7))
         .await
         .unwrap();
-    let ChangeSettlement::Landed(stored) = store.settle_change_pull(REPO, 7).await.unwrap() else {
+    let ChangeSettlement::Landed(stored) = store.settle_change_pull(r.ws, REPO, 7).await.unwrap()
+    else {
         panic!("the earlier merge lands the thread once nothing is open");
     };
     let landed = stored
@@ -1381,7 +1392,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
     assert!(!due.is_empty());
     for item in &due {
         store
-            .record_change_outcome(&item.repo, item.pull_number, &item.outcome, now)
+            .record_change_outcome(r.ws, &item.repo, item.pull_number, &item.outcome, now)
             .await
             .unwrap();
     }
@@ -1412,7 +1423,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
         first_human_review_at: Some(whole(8)),
     };
     store
-        .record_change_outcome(&due[0].repo, due[0].pull_number, &found, now)
+        .record_change_outcome(r.ws, &due[0].repo, due[0].pull_number, &found, now)
         .await
         .unwrap();
     let pulls = store
@@ -1531,7 +1542,7 @@ async fn a_merge_notifies_each_overlapping_live_claim_once(store: Arc<dyn Store>
     );
 
     let now = chrono::Utc::now();
-    s.close_change_pull(REPO, 11, Some(now), Some("c2"), now)
+    s.close_change_pull(r.ws, REPO, 11, Some(now), Some("c2"), now)
         .await
         .unwrap();
     assert!(

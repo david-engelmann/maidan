@@ -235,11 +235,11 @@ async fn land(store: &dyn Store, room: &Room, id: &str, pr: i64) {
         .unwrap();
     let at = chrono::Utc::now();
     store
-        .close_change_pull(REPO, pr, Some(at), Some("c0ffee"), at)
+        .close_change_pull(room.ws, REPO, pr, Some(at), Some("c0ffee"), at)
         .await
         .unwrap();
     assert!(matches!(
-        store.settle_change_pull(REPO, pr).await.unwrap(),
+        store.settle_change_pull(room.ws, REPO, pr).await.unwrap(),
         ChangeSettlement::Landed(_)
     ));
 }

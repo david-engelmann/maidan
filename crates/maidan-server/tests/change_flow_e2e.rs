@@ -3695,8 +3695,9 @@ async fn a_rebase_with_no_open_pull_request_or_a_diff_that_does_not_apply_writes
 }
 
 /// Two workspaces on one pull request: a commit another workspace delivered
-/// is someone else's push to this one, and a workspace that delivered
-/// nothing to the pull request may never force it.
+/// is someone else's push to this one, so it never vouches for the first
+/// workspace's rebase. The workspace that did deliver the head is vouched for
+/// by its own row.
 #[tokio::test]
 async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
     let h = harness().await;
@@ -3742,12 +3743,49 @@ async fn another_workspaces_delivery_never_vouches_for_a_rebase() {
     h.route(&h.b, &rebase_change(&new_base, DIFF), 3).await;
     h.drain().await;
     let row = h.delivery(&h.b, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{:?}", row.last_error);
+    let f = h.fake.lock().unwrap();
+    assert_eq!(f.forced.len(), 1, "{:?}", f.forced);
+    assert_ne!(f.refs[BRANCH], theirs, "B rebased the head it delivered");
+}
+
+/// GitHub writes belong to the workspace whose change flow delivered the
+/// head. A workspace that only registered the pull request (tracking is
+/// read-only) is refused a rebase even with the branch blessed for it. The
+/// deliverer's rebase then goes through.
+#[tokio::test]
+async fn only_the_workspace_that_delivered_a_round_may_rebase_a_registered_pull() {
+    let h = harness().await;
+    let (delivered, new_base) = delivered_then_base_moved(&h).await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.store
+        .register_change_pull(h.b.workspace_id, h.b.thread_id, REPO, number, None)
+        .await
+        .unwrap();
+    h.allow(
+        h.b.workspace_id,
+        EgressSurface::GithubBranch,
+        &format!("{REPO}@dev"),
+    )
+    .await;
+
+    h.route(&h.b, &rebase_change(&new_base, DIFF), 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.b, "github_branch").await;
     assert_eq!(row.status, status::SKIPPED);
     let reason = row.last_error.unwrap_or_default();
     assert!(reason.contains("delivered no commit"), "{reason}");
+    {
+        let f = h.fake.lock().unwrap();
+        assert!(f.forced.is_empty(), "{:?}", f.forced);
+        assert_eq!(f.refs[BRANCH], delivered);
+    }
+
+    h.route(&h.a, &rebase_change(&new_base, DIFF), 3).await;
+    h.drain().await;
     let f = h.fake.lock().unwrap();
-    assert!(f.forced.is_empty(), "{:?}", f.forced);
-    assert_eq!(f.refs[BRANCH], theirs);
+    assert_eq!(f.forced.len(), 1, "the deliverer rebases: {:?}", f.forced);
+    assert_ne!(f.refs[BRANCH], delivered);
 }
 
 #[tokio::test]
@@ -4049,11 +4087,11 @@ async fn a_change_flow_pull_is_watched_without_asking() {
     assert_eq!(ci[0].log_tail, None, "a job with no log leaves no tail");
 }
 
-/// Tenant B cannot watch a pull request tenant A watches, read A's watch
-/// thread, or watch into A's workspace or channel, even with the
-/// repository blessed for B as well.
+/// Tenant B watching a pull request tenant A watches gets its own thread,
+/// and still cannot read A's watch thread or watch into A's workspace or
+/// channel, even with the repository blessed for B as well.
 #[tokio::test]
-async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
+async fn another_tenant_watches_on_its_own_thread_and_cannot_read_a_watched_pull() {
     let h = harness().await;
     h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
     h.allow(h.b.workspace_id, EgressSurface::Github, REPO).await;
@@ -4077,14 +4115,15 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
     change_sweep::sweep_once(&h.state).await;
 
     let b_watch = format!("/workspaces/{}/pull-watches", h.b.workspace_id.0);
-    let (status, _) = post_json(
+    let (status, b_watched) = post_json(
         &h,
         &b_token,
         &b_watch,
         json!({"repo": REPO, "pull_number": 91}),
     )
     .await;
-    assert_eq!(status, StatusCode::CONFLICT, "A tracks it");
+    assert_eq!(status, StatusCode::OK, "B tracks its own row");
+    assert_ne!(b_watched["thread_id"].as_str(), Some(thread), "{b_watched}");
     let (status, _) = post_json(
         &h,
         &b_token,
@@ -4115,12 +4154,14 @@ async fn another_tenant_cannot_watch_or_read_a_watched_pull() {
     assert!(body.get("ci").is_none(), "{body}");
     assert!(
         h.store
-            .list_channels(h.b.workspace_id)
+            .list_channels(h.a.workspace_id)
             .await
             .unwrap()
             .iter()
-            .all(|c| c.name != maidan_types::DEFAULT_WATCH_CHANNEL),
-        "nothing was made in B"
+            .filter(|c| c.name == maidan_types::DEFAULT_WATCH_CHANNEL)
+            .count()
+            == 1,
+        "B's watch made nothing in A"
     );
 }
 

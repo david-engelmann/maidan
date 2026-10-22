@@ -73,7 +73,7 @@ work and run the repository's pre-push gate while renewing the claim, hand back
 a `pi.change.result/1` so Maidan opens the draft pull request, then report
 usage, start review and release. A change the flow cannot commit (binary files,
 or over the request limit) goes out as the session's own draft, registered on
-the thread with `PUT /threads/{id}/pull`.
+the thread with `register_thread_pull`.
 
 ## Semantic search with a local model
 
