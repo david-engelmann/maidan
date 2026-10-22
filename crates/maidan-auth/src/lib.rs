@@ -45,6 +45,9 @@ pub use peer_secret::{
     decrypt_peer_secret_rotating, encrypt_peer_secret, encryption_key_from_env,
     init_decrypt_fallback_keys, PeerSecretError,
 };
-pub use resolve::{resolve_bearer, resolve_peer_bearer, resolve_resource_bearer, resolve_token_id};
+pub use resolve::{
+    ensure_workspace_active, resolve_bearer, resolve_peer_bearer, resolve_resource_bearer,
+    resolve_token_id,
+};
 pub use thread_lookup::find_readable_thread;
 pub use token::{hash_secret, ShareTicketSecret, TokenSecret};

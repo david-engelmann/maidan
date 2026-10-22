@@ -87,6 +87,18 @@ pub async fn middleware(
         }
     };
     let workspace_id = ticket.workspace_id;
+    // A share ticket is a credential of its workspace like any other, and the
+    // one facing outward: a suspended workspace's tickets are refused too.
+    match maidan_auth::ensure_workspace_active(state.store.as_ref(), workspace_id).await {
+        Ok(()) => {}
+        Err(maidan_auth::AuthError::Forbidden(reason)) => {
+            return harden_share_response(ApiError::Forbidden(reason).into_response());
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "share_ticket.suspension_check_failed");
+            return harden_share_response(ApiError::Unauthorized.into_response());
+        }
+    }
     request.extensions_mut().insert(ShareTicketContext(ticket));
     let mut response = harden_share_response(next.run(request).await);
     response

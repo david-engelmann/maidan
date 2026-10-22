@@ -130,8 +130,9 @@ pub struct EgressSweepStats {
     pub retried: u32,
     pub dead: u32,
     pub disabled: u32,
-    /// Retries the retry budget held back, and change replies still waiting
-    /// on their branch delivery: rescheduled, not attempted.
+    /// Retries the retry budget held back, change replies still waiting on
+    /// their branch delivery, and a suspended workspace's deliveries:
+    /// rescheduled, not attempted.
     pub deferred: u32,
     /// Changes the flow refused (recorded as skipped, never retried).
     pub refused: u32,
@@ -1357,6 +1358,14 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         };
         let surface = target.surface().as_str();
         // The claim counted this try, so a first post has `attempts == 1`.
+        if crate::suspension::held_back(state, entry.workspace_id).await {
+            let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;
+            if let Err(err) = state.store.defer_egress(entry.id, until).await {
+                tracing::warn!(error = %err, id = %entry.id, "egress worker: deferral failed");
+            }
+            stats.deferred += 1;
+            continue;
+        }
         let attempt = Attempt::after(entry.attempts - 1);
         if let Some(until) = deferred_until(
             &state.retry_budget,
