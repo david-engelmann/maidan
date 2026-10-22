@@ -486,6 +486,95 @@ async fn requested_linear_state(
 /// and the PR's `base` all come from the result, never from the outbox
 /// snapshot or the thread. A result that is gone, or no longer a change for
 /// this branch, is refused rather than retried.
+/// GitHub's merge queue can drop a pull request (a merge conflict, failed
+/// checks) and leave the queue's label on it. The change flow refuses to push
+/// to a labelled pull request, so the round that fixes the conflict would be
+/// refused for good, and the label would also make a later enqueue a no-op.
+/// When GitHub's own read says the pull request left the queue and is not
+/// back in it, the label is stale: it comes off through the dequeue guard
+/// path. That way the new head is not queued unreviewed, and the mark-ready
+/// app's next enqueue labels it again. Anything else (still queued, no
+/// removal event, a guard refusal) leaves the label for the change flow to
+/// refuse on, as before.
+async fn clear_stale_queue_label(
+    state: &AppState,
+    git: &dyn crate::github::GithubGit,
+    entry: &EgressOutbox,
+    repo: &str,
+    branch: &str,
+) -> Result<(), DeliveryFailure> {
+    let Some(label) = state.merge_queue_labels.label_for(repo) else {
+        return Ok(());
+    };
+    let failure = |err: crate::github::GithubError| DeliveryFailure {
+        message: err.to_string(),
+        misconfiguration: err.is_misconfiguration(),
+    };
+    let Some(pull) = git.open_pull(repo, branch).await.map_err(failure)? else {
+        return Ok(());
+    };
+    if !pull.labels.iter().any(|name| name == label) {
+        return Ok(());
+    }
+    let snapshot = git
+        .pull_snapshot(repo, pull.number)
+        .await
+        .map_err(failure)?;
+    let Some(gate) = snapshot.gate else {
+        return Ok(());
+    };
+    let Some(reason) = gate.dequeued.filter(|_| !gate.queued) else {
+        return Ok(());
+    };
+    match crate::routes::dequeue_pull_guarded(
+        state.store.as_ref(),
+        entry.workspace_id,
+        git,
+        &state.mark_ready_bases,
+        &state.merge_queue_labels,
+        repo,
+        pull.number,
+    )
+    .await
+    {
+        Ok((number, label, removed)) => {
+            if removed {
+                crate::audit::record(
+                    state,
+                    maidan_types::NewAuditEvent {
+                        scope: maidan_types::AuditScope::Workspace(entry.workspace_id),
+                        actor_id: None,
+                        action: "github.enqueue".into(),
+                        target_kind: Some("github_pull".into()),
+                        target_id: None,
+                        metadata: serde_json::json!({
+                            "repo": repo,
+                            "pull_number": number,
+                            "outcome": "stale_label_cleared",
+                            "label": label,
+                            "reason": reason,
+                        }),
+                    },
+                )
+                .await;
+            }
+            Ok(())
+        }
+        Err(crate::routes::MarkReadyGuard::Github(err)) => Err(failure(err)),
+        // A guard refusal or a store error leaves the label on; the change
+        // flow then refuses this round as it did before.
+        Err(err) => {
+            tracing::warn!(
+                ?err,
+                repo,
+                number = pull.number,
+                "egress worker: stale merge-queue label left on"
+            );
+            Ok(())
+        }
+    }
+}
+
 async fn github_branch_result(
     state: &AppState,
     entry: &EgressOutbox,
@@ -599,6 +688,7 @@ async fn github_branch_result(
     } else {
         None
     };
+    clear_stale_queue_label(state, git, entry, repo, branch).await?;
     let request = crate::change_flow::ChangeRequest {
         repo,
         branch,
