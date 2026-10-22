@@ -108,10 +108,10 @@ impl<S: crate::Store + ?Sized> SetResultClaiming for S {
         member: maidan_types::MemberId,
     ) -> Result<maidan_types::ClaimLeaseId, crate::StoreError> {
         let thread = self.get_thread(thread_id).await?;
-        if let (Some(holder), Some(lease)) = (thread.assignee_id, thread.claim_lease_id) {
-            if holder == member {
-                return Ok(lease);
-            }
+        if let (Some(holder), Some(lease)) = (thread.assignee_id, thread.claim_lease_id)
+            && holder == member
+        {
+            return Ok(lease);
         }
         let claim = self.claim_thread(thread_id, member).await?;
         match (claim.claimed, claim.thread.claim_lease_id) {
