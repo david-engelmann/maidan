@@ -73,6 +73,9 @@ To prove each alert on a running stack, set
 `change_sweep:fail`) and restart. The named loop takes that one fault after
 boot, and the boot line says it is armed. The server refuses to start with it
 when `MAIDAN_ENV=production`.
+If no loop of that name has started by the first watchdog pass (a misspelt
+name), the channel gets one warning saying so, since that fault can never
+fire.
 
 The Prometheus rules above reach a person only through an alert route. A stack that scrapes no
 `/metrics` gets neither: wire Alertmanager (`alertmanager-routes.example.yaml`)

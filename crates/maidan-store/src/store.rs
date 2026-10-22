@@ -1206,6 +1206,14 @@ pub trait ProjectorLinkStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SlackChannelLink>, StoreError>;
+    /// The thread in `workspace_id` a Slack message or channel, or a pull
+    /// request, refers to (`maidan_types::thread_lookup`); `None` when
+    /// nothing in the workspace does.
+    async fn find_thread_by_external_ref(
+        &self,
+        workspace_id: WorkspaceId,
+        reference: &maidan_types::ExternalThreadRef,
+    ) -> Result<Option<ThreadId>, StoreError>;
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
     /// Turn egress to a Slack channel off after an auth/config-class failure —
     /// a retry can't fix a revoked token or a deleted channel. Idempotent (an
@@ -2227,6 +2235,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         at: chrono::DateTime<chrono::Utc>,
@@ -2234,6 +2243,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Record that a tracked agent pull request closed, merged or not.
     async fn close_change_pull(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         merged_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -2334,6 +2344,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Record an outcome check's findings, whole, and stamp it checked.
     async fn record_change_outcome(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         outcome: &maidan_types::MergedOutcome,
@@ -2342,6 +2353,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Stamp when a tracked agent pull request was last read from GitHub.
     async fn mark_change_pull_checked(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         at: chrono::DateTime<chrono::Utc>,
@@ -2363,6 +2375,7 @@ pub trait AssignmentStore: Send + Sync {
     /// transaction. See [`maidan_types::ChangeSettlement`].
     async fn settle_change_pull(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
     ) -> Result<maidan_types::ChangeSettlement, StoreError>;

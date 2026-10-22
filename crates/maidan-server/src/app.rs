@@ -234,6 +234,7 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{id}/deferred",
             get(routes::list_deferred_threads),
         )
+        .route("/workspaces/{id}/thread-lookup", get(routes::find_thread))
         .route(
             "/workspaces/{id}/swarm-metrics",
             get(routes::get_swarm_metrics),

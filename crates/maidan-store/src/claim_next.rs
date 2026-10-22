@@ -19,6 +19,11 @@
 //! claimer that serves one engine can ask only for work routed to that
 //! engine; work routed to another engine, or not routed at all, is never
 //! handed to it.
+//! A thread that already has a stored result is finished work, so it is not
+//! handed out again (#1499) unless it was moved back to `open` after that
+//! result was produced: a reopen or a reviewer's request for changes is the
+//! explicit re-queue. Without this, a finished task nobody closed is re-handed
+//! the moment its claim lapses.
 //! It goes only to a member who may read it:
 //! the channel is in the member's workspace, a `__dm__` thread needs the member
 //! in its DM or group DM, a private channel needs a `channel_members` row. The
@@ -70,6 +75,10 @@ pub(crate) struct ClaimSql<'a> {
     /// work. A named engine takes only threads routed to it: a thread with
     /// no engine, or another engine, is not handed over.
     pub engine: &'a str,
+    /// True when transition `tr` moved `cand` to `open` at or after its
+    /// result `r` was produced. Each backend compares the two times its own
+    /// way, since SQLite stores them as text.
+    pub requeued_after_result: &'a str,
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
@@ -86,6 +95,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         lapsed_worked_secs,
         repo,
         engine,
+        requeued_after_result,
     } = sql;
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
@@ -135,6 +145,15 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
                    OR (b.max_turns > 0 AND b.used_turns >= b.max_turns)
                    OR (b.max_wall_secs > 0
                        AND b.used_wall_secs + ({lapsed_worked_secs}) >= b.max_wall_secs)
+                 )
+           )
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_thread_results r
+               WHERE r.thread_id = cand.id
+                 AND NOT EXISTS (
+                     SELECT 1 FROM maidan_thread_transitions tr
+                     WHERE tr.thread_id = cand.id AND tr.to_state = 'open'
+                       AND {requeued_after_result}
                  )
            )
            AND NOT {footprint_conflict}

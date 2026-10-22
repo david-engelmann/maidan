@@ -554,10 +554,10 @@ async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<
         .unwrap();
     let at = chrono::Utc::now();
     store
-        .close_change_pull(REPO, pr, Some(at), Some("c0ffee"), at)
+        .close_change_pull(room.ws, REPO, pr, Some(at), Some("c0ffee"), at)
         .await
         .unwrap();
-    match store.settle_change_pull(REPO, pr).await.unwrap() {
+    match store.settle_change_pull(room.ws, REPO, pr).await.unwrap() {
         ChangeSettlement::Landed(stored) => stored,
         other => panic!("a merged pull request lands its thread, got {other:?}"),
     }

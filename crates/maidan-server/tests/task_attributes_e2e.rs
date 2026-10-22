@@ -660,3 +660,66 @@ async fn another_workspace_cannot_read_or_set_the_default_engine() {
         "the victim's default holds"
     );
 }
+
+/// A worker sees what it is asked to do and how it is checked where it
+/// reads its work: the claim answer (REST and MCP) and the MCP thread
+/// context pack carry the task's attributes, as `GET /threads/{id}` does.
+#[tokio::test]
+async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "attrs-pack").await;
+    let attributes = json!({
+        "kind": "change",
+        "engine": "pi",
+        "threat_model": false,
+        "size": "M",
+        "acceptance": "The bridge retries twice; its test proves it.",
+        "linear_issue": "ENG-123"
+    });
+    for title in ["first", "second"] {
+        let (status, made) = create_thread(
+            &base,
+            &room,
+            json!({ "title": title, "attributes": attributes }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{made}");
+    }
+
+    let over_mcp = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "claim_next_thread",
+            json!({ "channel_id": room.channel.0, "engine": "pi" }),
+        )
+        .await,
+    );
+    assert_eq!(over_mcp["attributes"], attributes, "{over_mcp}");
+    let over_rest: Value = reqwest::Client::new()
+        .post(format!(
+            "{base}/channels/{}/threads/claim-next",
+            room.channel.0
+        ))
+        .bearer_auth(&room.token)
+        .json(&json!({ "lease_secs": 600, "engine": "pi" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(over_rest["attributes"], attributes, "{over_rest}");
+    assert_ne!(over_rest["id"], over_mcp["id"]);
+
+    let pack = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "get_thread_context",
+            json!({ "thread_id": over_mcp["id"] }),
+        )
+        .await,
+    );
+    assert_eq!(pack["thread"]["attributes"], attributes, "{pack}");
+}
