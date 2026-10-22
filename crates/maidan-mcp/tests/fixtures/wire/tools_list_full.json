@@ -3083,6 +3083,43 @@
     },
     {
       "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Find thread"
+      },
+      "description": "Find the thread an external reference points at: a Slack message (slack_channel and slack_ts: the thread whose result was posted as that message or into that Slack thread), a Slack channel alone (the thread it is linked to), or a GitHub pull request (repo and pr_number: the thread tracking it, linked to it, or delivering to it). Returns the thread, or null when nothing in your workspace that you may read matches. The twin of GET /workspaces/{id}/thread-lookup.",
+      "inputSchema": {
+        "properties": {
+          "pr_number": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repo": {
+            "description": "owner/name or a GitHub clone URL; with pr_number",
+            "type": "string"
+          },
+          "slack_channel": {
+            "description": "a Slack channel id such as C0123ABCD",
+            "type": "string"
+          },
+          "slack_ts": {
+            "description": "a Slack message ts such as 1700000000.000100; needs slack_channel",
+            "type": "string"
+          },
+          "workspace_id": {
+            "description": "your own workspace (whoami's workspace_id); omitted, the same",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "find_thread"
+    },
+    {
+      "annotations": {
         "destructiveHint": true,
         "idempotentHint": true,
         "openWorldHint": false,

@@ -1167,9 +1167,30 @@ async fn publish_claim(
     match claimed {
         None => Ok(content_json(&Value::Null)),
         Some(thread) => {
-            let claimed = maidan_types::claimed_thread(thread, &events)
+            let thread_id = thread.id;
+            let mut claimed = maidan_types::claimed_thread(thread, &events)
                 .map_err(|e| McpError::Internal(e.to_string()))?;
+            // Added after the pin, so the pin stays the hash of the row the
+            // store returned.
+            claimed.thread.attributes = claim_attributes(server.store.as_ref(), thread_id).await;
             Ok(content_json(&claimed))
+        }
+    }
+}
+
+/// The claimed task's attributes for the claim answer, so a claimant knows
+/// the kind, engine and acceptance of what it was just handed. Best effort:
+/// the claim has already happened, and losing its answer to a failed read
+/// would strand the lease.
+async fn claim_attributes(
+    store: &dyn maidan_store::Store,
+    thread_id: maidan_types::ThreadId,
+) -> Option<maidan_types::TaskAttributes> {
+    match store.get_thread_attributes(thread_id).await {
+        Ok(attributes) => Some(attributes),
+        Err(err) => {
+            tracing::warn!(thread_id = %thread_id.0, error = %err, "claim: attributes not read");
+            None
         }
     }
 }

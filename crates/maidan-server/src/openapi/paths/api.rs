@@ -2691,6 +2691,18 @@ pub fn list_active_claims() {}
         (status = 403, response = Forbidden),
     ))]
 pub fn list_deferred_threads() {}
+/// Find the thread a Slack message or channel, or a GitHub pull request, refers to
+#[utoipa::path(get, path = "/workspaces/{id}/thread-lookup", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id"), ThreadLookupQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Thread),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn find_thread() {}
+
 /// Swarm ramp metrics: per agent pull request and per repository
 #[utoipa::path(get, path = "/workspaces/{id}/swarm-metrics", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SwarmMetricsQuery),

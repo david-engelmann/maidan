@@ -206,6 +206,7 @@ snapshot|snapshot_thread_context|thread_id=${thread}|snapshot_thread_context|thr
 social|list_pins|thread_id=${thread}|list_pins|thread_id=not-a-uuid|thread_id
 spawn|get_spawn_budget||set_spawn_budget|max_depth=-1|max_depth
 thread|get_thread_context|thread_id=${thread}|get_thread_context|thread_id=not-a-uuid|thread_id
+thread_lookup|find_thread|repo=o/r pr_number=1|find_thread|repo=o/r|pr_number
 whoami|whoami||||
 "
 

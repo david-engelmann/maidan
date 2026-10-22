@@ -9810,6 +9810,17 @@
       "ThreadBrief": {
         "description": "What working a thread does not change: a post, a claim or a renewal leaves\nit as it was, so it belongs in the cached prefix. State and the lease are\nin the tail.",
         "properties": {
+          "attributes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskAttributes",
+                "description": "The task's attributes (kind, engine, size, acceptance, Linear issue),\nso the worker reading the pack sees what it is asked to do and how it\nis checked. Absent from an as-of pack: they are current routing state,\nnot history."
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -33338,6 +33349,102 @@
           }
         ],
         "summary": "Swarm ramp metrics: per agent pull request and per repository",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/workspaces/{id}/thread-lookup": {
+      "get": {
+        "operationId": "find_thread",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A Slack channel id (`C0123ABCD`). Alone, the thread the channel is\nlinked to.",
+            "in": "query",
+            "name": "slack_channel",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A Slack message `ts`: the thread whose result was posted as that\nmessage or into that Slack thread.",
+            "in": "query",
+            "name": "slack_ts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`owner/name` (or a GitHub clone URL), with `pr_number`.",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The pull request (or issue) number in `repo`.",
+            "in": "query",
+            "name": "pr_number",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Find the thread a Slack message or channel, or a GitHub pull request, refers to",
         "tags": [
           "threads"
         ]
