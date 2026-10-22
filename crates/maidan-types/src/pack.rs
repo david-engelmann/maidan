@@ -368,6 +368,12 @@ pub struct ThreadBrief {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub required_skills: Vec<String>,
     pub created_at: DateTime<Utc>,
+    /// The task's attributes (kind, engine, size, acceptance, Linear issue),
+    /// so the worker reading the pack sees what it is asked to do and how it
+    /// is checked. Absent from an as-of pack: they are current routing state,
+    /// not history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<crate::TaskAttributes>,
 }
 
 impl ThreadBrief {
@@ -378,6 +384,7 @@ impl ThreadBrief {
             owner_id: thread.owner_id,
             required_skills,
             created_at: thread.created_at,
+            attributes: thread.attributes.clone(),
         }
     }
 }
