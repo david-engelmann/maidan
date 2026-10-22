@@ -42,7 +42,7 @@ pub fn parse_envelope(body: Value) -> Result<Envelope, (JsonRpcId, A2aError)> {
                 return Err(invalid(
                     JsonRpcId::Null,
                     "id must be an integer or a string",
-                ))
+                ));
             }
         },
         // A2A has no notifications, and a null id is the one error responses
@@ -52,7 +52,7 @@ pub fn parse_envelope(body: Value) -> Result<Envelope, (JsonRpcId, A2aError)> {
             return Err(invalid(
                 JsonRpcId::Null,
                 "id must be an integer or a string",
-            ))
+            ));
         }
     };
     if body.get("jsonrpc").and_then(Value::as_str) != Some(JSONRPC_VERSION) {
@@ -209,7 +209,7 @@ pub fn parse_operation(method: &str, params: Value) -> Result<Operation, A2aErro
             return Err(A2aError::new(
                 A2aErrorKind::MethodNotFound,
                 format!("method not found: {other}"),
-            ))
+            ));
         }
     })
 }

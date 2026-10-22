@@ -139,7 +139,7 @@ pub async fn slack_events(
     let payload: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(e) => {
-            return ApiError::BadRequest(format!("invalid event payload: {e}")).into_response()
+            return ApiError::BadRequest(format!("invalid event payload: {e}")).into_response();
         }
     };
     match payload.get("type").and_then(|v| v.as_str()) {

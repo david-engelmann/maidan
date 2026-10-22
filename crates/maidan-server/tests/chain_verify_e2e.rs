@@ -80,22 +80,32 @@ async fn the_verifier_passes_a_clean_log_and_names_a_broken_one() {
 /// a periodic full-log read on upgrade.
 #[test]
 fn the_verifier_is_off_unless_configured() {
-    std::env::remove_var("MAIDAN_CHAIN_VERIFY_SECS");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::remove_var("MAIDAN_CHAIN_VERIFY_SECS") };
     assert!(chain_verify::interval_from_env().is_none());
 
-    std::env::set_var("MAIDAN_CHAIN_VERIFY_SECS", "0");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_CHAIN_VERIFY_SECS", "0") };
     assert!(
         chain_verify::interval_from_env().is_none(),
         "zero is off, not a busy loop"
     );
 
-    std::env::set_var("MAIDAN_CHAIN_VERIFY_SECS", "not-a-number");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_CHAIN_VERIFY_SECS", "not-a-number") };
     assert!(chain_verify::interval_from_env().is_none());
 
-    std::env::set_var("MAIDAN_CHAIN_VERIFY_SECS", "3600");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_CHAIN_VERIFY_SECS", "3600") };
     assert_eq!(
         chain_verify::interval_from_env().map(|d| d.as_secs()),
         Some(3600)
     );
-    std::env::remove_var("MAIDAN_CHAIN_VERIFY_SECS");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::remove_var("MAIDAN_CHAIN_VERIFY_SECS") };
 }

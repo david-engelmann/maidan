@@ -602,10 +602,10 @@ pub async fn set_wip_limit(
     let workspace_id = WorkspaceId(id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    if let Some(limit) = body.limit {
-        if limit < 0 {
-            return Err(ApiError::BadRequest("wip limit must be >= 0".into()));
-        }
+    if let Some(limit) = body.limit
+        && limit < 0
+    {
+        return Err(ApiError::BadRequest("wip limit must be >= 0".into()));
     }
     state.store.set_wip_limit(workspace_id, body.limit).await?;
     Ok(Json(WipLimitView { limit: body.limit }))
@@ -1286,10 +1286,10 @@ fn ensure_whole_log_read(
     workspace_id: WorkspaceId,
 ) -> ApiResult<()> {
     ensure_event_log_read(auth, peer, workspace_id)?;
-    if let Some(Extension(auth)) = auth {
-        if !auth.bypass {
-            cap(auth, TOKEN_ADMIN)?;
-        }
+    if let Some(Extension(auth)) = auth
+        && !auth.bypass
+    {
+        cap(auth, TOKEN_ADMIN)?;
     }
     Ok(())
 }

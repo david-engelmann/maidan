@@ -202,10 +202,10 @@ pub(crate) async fn rename_on(
 }
 
 fn map_member_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict("handle already exists in workspace".into());
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict("handle already exists in workspace".into());
     }
     StoreError::Database(err)
 }
@@ -218,7 +218,7 @@ fn row_to_member(row: &sqlx::postgres::PgRow) -> Result<Member, StoreError> {
         other => {
             return Err(StoreError::InvalidInput(format!(
                 "unknown member kind: {other}"
-            )))
+            )));
         }
     };
     Ok(Member {

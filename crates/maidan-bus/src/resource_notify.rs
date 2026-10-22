@@ -195,11 +195,12 @@ fn chunk_within_limit(updates: Vec<ResourceUpdate>, limit: usize) -> Vec<Vec<Res
         let len = serde_json::to_string(&current)
             .map(|s| s.len())
             .unwrap_or(0);
-        if len > limit && current.len() > 1 {
-            if let Some(last) = current.pop() {
-                batches.push(std::mem::take(&mut current));
-                current.push(last);
-            }
+        if len > limit
+            && current.len() > 1
+            && let Some(last) = current.pop()
+        {
+            batches.push(std::mem::take(&mut current));
+            current.push(last);
         }
     }
     if !current.is_empty() {

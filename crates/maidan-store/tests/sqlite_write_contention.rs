@@ -72,10 +72,10 @@ async fn run_contention(max_connections: u32) -> usize {
                     .await
                 {
                     Ok(_) => {
-                        if let Err(e) = tx.commit().await {
-                            if e.to_string().to_lowercase().contains("database is locked") {
-                                locked += 1;
-                            }
+                        if let Err(e) = tx.commit().await
+                            && e.to_string().to_lowercase().contains("database is locked")
+                        {
+                            locked += 1;
                         }
                     }
                     Err(e) => {

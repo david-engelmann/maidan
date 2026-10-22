@@ -66,21 +66,21 @@ pub async fn resolve_member_for_login(
         return Ok((identity.member_id, LoginMember::Existing));
     }
 
-    if link_email && email_verified {
-        if let Some(email) = email {
-            if let Ok(member) = store.get_member_by_handle(workspace_id, email).await {
-                store
-                    .upsert_oidc_identity(NewOidcIdentity {
-                        workspace_id,
-                        issuer: issuer.to_string(),
-                        subject: subject.to_string(),
-                        member_id: member.id,
-                        email: Some(email.to_string()),
-                    })
-                    .await?;
-                return Ok((member.id, LoginMember::Linked));
-            }
-        }
+    if link_email
+        && email_verified
+        && let Some(email) = email
+        && let Ok(member) = store.get_member_by_handle(workspace_id, email).await
+    {
+        store
+            .upsert_oidc_identity(NewOidcIdentity {
+                workspace_id,
+                issuer: issuer.to_string(),
+                subject: subject.to_string(),
+                member_id: member.id,
+                email: Some(email.to_string()),
+            })
+            .await?;
+        return Ok((member.id, LoginMember::Linked));
     }
 
     if !auto_provision {

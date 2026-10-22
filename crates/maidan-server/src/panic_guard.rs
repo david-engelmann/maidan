@@ -17,8 +17,7 @@ use tower_http::catch_panic::CatchPanicLayer;
 use crate::error::ApiError;
 
 /// What a client is told when its request panicked.
-pub const PANIC_DETAIL: &str =
-    "the server failed while handling this request; the X-Request-Id response header names it in the server log";
+pub const PANIC_DETAIL: &str = "the server failed while handling this request; the X-Request-Id response header names it in the server log";
 
 /// The panic payload as text, when it is text.
 fn panic_message(payload: &(dyn Any + Send)) -> &str {

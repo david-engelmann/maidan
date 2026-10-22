@@ -459,7 +459,9 @@ pub fn validate_allowlist_selector(
         }
         EgressSurface::GithubBranch => {
             let Some((repo, base)) = selector.split_once('@') else {
-                return Err("github_branch selector is `owner/name@base`: the repository and the one base change pull requests may target");
+                return Err(
+                    "github_branch selector is `owner/name@base`: the repository and the one base change pull requests may target",
+                );
             };
             if !is_github_repo(repo) {
                 return Err("github_branch selector must start with a repository `owner/name`");
@@ -477,7 +479,9 @@ pub fn validate_allowlist_selector(
         }
         EgressSurface::Linear => {
             if !is_linear_id(selector) {
-                return Err("linear selector is a team id (a UUID), not a team key or name: a key can be renamed and taken by another team");
+                return Err(
+                    "linear selector is a team id (a UUID), not a team key or name: a key can be renamed and taken by another team",
+                );
             }
             Ok(())
         }

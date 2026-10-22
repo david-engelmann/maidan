@@ -1377,53 +1377,52 @@ impl EventFilter {
     }
 
     pub fn matches(&self, event: &Event) -> bool {
-        if let Some(ws) = self.workspace_id {
-            if event.workspace_id() != Some(ws) {
-                return false;
-            }
+        if let Some(ws) = self.workspace_id
+            && event.workspace_id() != Some(ws)
+        {
+            return false;
         }
-        if let Event::ChannelCreated { channel, .. } = event {
-            if channel.private
-                && self.workspace_id.is_some()
-                && !self.channel_is_granted(channel.id)
-            {
-                return false;
-            }
+        if let Event::ChannelCreated { channel, .. } = event
+            && channel.private
+            && self.workspace_id.is_some()
+            && !self.channel_is_granted(channel.id)
+        {
+            return false;
         }
-        if let Some(ch) = self.channel_id {
-            if event.channel_id() != Some(ch) {
-                return false;
-            }
+        if let Some(ch) = self.channel_id
+            && event.channel_id() != Some(ch)
+        {
+            return false;
         }
         if let Some(ch) = event.channel_id() {
             if self.private_channel_deny.contains(&ch) {
                 return false;
             }
-            if let Some(ref allow) = self.channel_event_allow {
-                if !allow.contains(&ch) {
-                    return false;
-                }
-            }
-        }
-        if let Some(th) = self.thread_id {
-            if event.thread_id() != Some(th) {
+            if let Some(ref allow) = self.channel_event_allow
+                && !allow.contains(&ch)
+            {
                 return false;
             }
         }
-        if let Some(dm) = self.dm_conversation_id {
-            if event.dm_conversation_id() != Some(dm) {
-                return false;
-            }
+        if let Some(th) = self.thread_id
+            && event.thread_id() != Some(th)
+        {
+            return false;
         }
-        if let Some(m) = self.member_id {
-            if event.member_id() != Some(m) {
-                return false;
-            }
+        if let Some(dm) = self.dm_conversation_id
+            && event.dm_conversation_id() != Some(dm)
+        {
+            return false;
         }
-        if let Some(ref kinds) = self.kinds {
-            if !kinds.contains(&event.kind()) {
-                return false;
-            }
+        if let Some(m) = self.member_id
+            && event.member_id() != Some(m)
+        {
+            return false;
+        }
+        if let Some(ref kinds) = self.kinds
+            && !kinds.contains(&event.kind())
+        {
+            return false;
         }
         true
     }

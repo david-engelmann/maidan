@@ -93,10 +93,10 @@ fn count_body_files(root: &std::path::Path) -> usize {
                 let path = entry.path();
                 if path.is_dir() {
                     n += walk(&path);
-                } else if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-                    if !name.starts_with(".tmp-") {
-                        n += 1;
-                    }
+                } else if let Some(name) = path.file_name().and_then(|s| s.to_str())
+                    && !name.starts_with(".tmp-")
+                {
+                    n += 1;
                 }
             }
         }

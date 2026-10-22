@@ -119,15 +119,13 @@ pub async fn post_group_dm_message(
         .store
         .get_member_in(group.workspace_id, auth.member_id)
         .await
+        && member.kind == MemberKind::Human
+        && let Err(e) = state.store.clear_thread_status(group.thread_id).await
     {
-        if member.kind == MemberKind::Human {
-            if let Err(e) = state.store.clear_thread_status(group.thread_id).await {
-                tracing::warn!(
-                    thread_id = %group.thread_id.0,
-                    "clearing thread status after human group DM post failed: {e}"
-                );
-            }
-        }
+        tracing::warn!(
+            thread_id = %group.thread_id.0,
+            "clearing thread status after human group DM post failed: {e}"
+        );
     }
     Ok((StatusCode::CREATED, Json(m)))
 }

@@ -478,7 +478,7 @@ mod tests {
     use serde_json::json;
     use std::{collections::HashMap, net::SocketAddr};
 
-    fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+    fn lookup(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
         let values: HashMap<String, String> = pairs
             .iter()
             .map(|(name, value)| ((*name).into(), (*value).into()))

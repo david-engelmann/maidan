@@ -171,7 +171,7 @@ pub async fn answer_approval_gate(
         _ => {
             return Err(ApiError::BadRequest(
                 "action must be accept, decline, or cancel".into(),
-            ))
+            ));
         }
     };
     // The gate must exist in the caller's workspace; an out-of-workspace or

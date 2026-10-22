@@ -42,11 +42,11 @@ pub async fn reap_or_queue(
         Ok(reaped) => reaped,
         Err(err) => BlobReap::DeleteFailed(err.to_string()),
     };
-    if let BlobReap::DeleteFailed(err) = &reaped {
-        if let Err(queue_err) = store.queue_blob_reap(sha256, workspace_id, err).await {
-            // Nothing else will find these bytes, so say so loudly.
-            tracing::error!(sha = %sha256, error = %queue_err, "artifact.blob_reap_not_queued");
-        }
+    if let BlobReap::DeleteFailed(err) = &reaped
+        && let Err(queue_err) = store.queue_blob_reap(sha256, workspace_id, err).await
+    {
+        // Nothing else will find these bytes, so say so loudly.
+        tracing::error!(sha = %sha256, error = %queue_err, "artifact.blob_reap_not_queued");
     }
     reaped
 }

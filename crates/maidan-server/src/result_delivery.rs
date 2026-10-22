@@ -323,10 +323,10 @@ async fn route_one(
         Some(egress) => {
             // The hard-coded branch rules come before the allowlist: no
             // blessing can make `main` or a `prod` base writable.
-            if let DeliverTarget::GithubBranch { branch, base, .. } = target {
-                if let Err(reason) = maidan_types::check_change_target(branch, base) {
-                    return skip_routable(state, thread_id, &egress, revision, &reason).await;
-                }
+            if let DeliverTarget::GithubBranch { branch, base, .. } = target
+                && let Err(reason) = maidan_types::check_change_target(branch, base)
+            {
+                return skip_routable(state, thread_id, &egress, revision, &reason).await;
             }
             let selector = target
                 .allowlist_selector()
@@ -535,18 +535,17 @@ pub async fn change_reply_at(
                 ));
                 // The same range the pull request was told, from the round
                 // the delivery recorded. A failed read only drops the line.
-                if let (true, Some(base_sha)) = (change.rebase, change.base_sha.as_deref()) {
-                    if let Ok(Some(old_head)) = state
+                if let (true, Some(base_sha)) = (change.rebase, change.base_sha.as_deref())
+                    && let Ok(Some(old_head)) = state
                         .store
                         .change_round_previous_head(workspace_id, repo, pull_number, &commit_sha)
                         .await
-                    {
-                        lines.push(crate::change_flow::rebase_note(
-                            &old_head,
-                            &commit_sha,
-                            base_sha,
-                        ));
-                    }
+                {
+                    lines.push(crate::change_flow::rebase_note(
+                        &old_head,
+                        &commit_sha,
+                        base_sha,
+                    ));
                 }
                 lines.extend(crate::change_flow::template_note(&row.template_warnings));
             }

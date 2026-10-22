@@ -102,15 +102,14 @@ pub(super) async fn post_dm_message(
     publish_routed_mentions(server, dm.thread_id, dm.workspace_id, &msg).await;
     // A human DM reply supersedes the agent's self-reported status, mirroring
     // the channel post path. Best-effort: the message is already posted.
-    if let Ok(member) = store.get_member_in(dm.workspace_id, auth.member_id).await {
-        if member.kind == MemberKind::Human {
-            if let Err(e) = store.clear_thread_status(dm.thread_id).await {
-                tracing::warn!(
-                    thread_id = %dm.thread_id.0,
-                    "clearing thread status after human DM post failed: {e}"
-                );
-            }
-        }
+    if let Ok(member) = store.get_member_in(dm.workspace_id, auth.member_id).await
+        && member.kind == MemberKind::Human
+        && let Err(e) = store.clear_thread_status(dm.thread_id).await
+    {
+        tracing::warn!(
+            thread_id = %dm.thread_id.0,
+            "clearing thread status after human DM post failed: {e}"
+        );
     }
     Ok(content_json(&msg))
 }
@@ -320,15 +319,14 @@ pub(super) async fn post_message(
     publish_routed_mentions(server, thread_id, ctx.workspace_id, &msg).await;
     // A human response supersedes the agent's self-reported status, mirroring
     // the REST post path. Best-effort: the message is already posted.
-    if let Ok(member) = store.get_member_in(ctx.workspace_id, auth.member_id).await {
-        if member.kind == MemberKind::Human {
-            if let Err(e) = store.clear_thread_status(thread_id).await {
-                tracing::warn!(
-                    thread_id = %thread_id.0,
-                    "clearing thread status after human post failed: {e}"
-                );
-            }
-        }
+    if let Ok(member) = store.get_member_in(ctx.workspace_id, auth.member_id).await
+        && member.kind == MemberKind::Human
+        && let Err(e) = store.clear_thread_status(thread_id).await
+    {
+        tracing::warn!(
+            thread_id = %thread_id.0,
+            "clearing thread status after human post failed: {e}"
+        );
     }
     Ok(content_json(&msg))
 }
@@ -591,15 +589,13 @@ pub(super) async fn post_group_dm_message(
         .store
         .get_member_in(group.workspace_id, auth.member_id)
         .await
+        && member.kind == MemberKind::Human
+        && let Err(e) = server.store.clear_thread_status(group.thread_id).await
     {
-        if member.kind == MemberKind::Human {
-            if let Err(e) = server.store.clear_thread_status(group.thread_id).await {
-                tracing::warn!(
-                    thread_id = %group.thread_id.0,
-                    "clearing thread status after human group DM post failed: {e}"
-                );
-            }
-        }
+        tracing::warn!(
+            thread_id = %group.thread_id.0,
+            "clearing thread status after human group DM post failed: {e}"
+        );
     }
     Ok(content_json(&msg))
 }

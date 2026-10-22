@@ -20,13 +20,23 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 async fn spawn() -> String {
-    std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_MAX", "3");
-    std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS", "3600");
-    std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX", "2");
-    std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS", "3600");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_MAX", "3") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_WINDOW_SECS", "3600") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX", "2") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_WINDOW_SECS", "3600") };
     // The limiter's buckets are process-global, so the two tests steer
     // themselves into separate address buckets with forwarded addresses.
-    std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1") };
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")

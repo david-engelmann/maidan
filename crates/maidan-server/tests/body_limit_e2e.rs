@@ -51,7 +51,9 @@ async fn spawn() -> (SocketAddr, reqwest::Client, tokio::task::JoinHandle<()>) {
 #[tokio::test]
 async fn oversized_request_body_is_rejected() {
     // Set the cap before the router is built (it reads env once at build).
-    std::env::set_var("MAIDAN_MAX_BODY_BYTES", "1024");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_MAX_BODY_BYTES", "1024") };
     let (addr, client, server) = spawn().await;
     let base = format!("http://{addr}");
 
@@ -75,6 +77,8 @@ async fn oversized_request_body_is_rejected() {
         .unwrap();
     assert_eq!(ok.status(), StatusCode::CREATED);
 
-    std::env::remove_var("MAIDAN_MAX_BODY_BYTES");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::remove_var("MAIDAN_MAX_BODY_BYTES") };
     server.abort();
 }

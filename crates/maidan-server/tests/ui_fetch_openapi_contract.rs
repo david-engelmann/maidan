@@ -352,15 +352,15 @@ fn ui_session_path_templates_resolve_to_the_proxy() {
             let open = cursor + found + helper.len() - 1;
             let call = balanced_call(script(), open);
             let argument = call.trim_start();
-            if let Some(quote) = argument.as_bytes().first().copied() {
-                if matches!(quote, b'\'' | b'"' | b'`') {
-                    let literals = string_literals(argument);
-                    if let Some(path) = literals.first().and_then(|v| normalize_ui_template(v)) {
-                        assert!(
-                            proxy_paths.iter().any(|proxy| path_matches(&path, proxy)),
-                            "{helper} path {path:?} is not mounted by the session proxy"
-                        );
-                    }
+            if let Some(quote) = argument.as_bytes().first().copied()
+                && matches!(quote, b'\'' | b'"' | b'`')
+            {
+                let literals = string_literals(argument);
+                if let Some(path) = literals.first().and_then(|v| normalize_ui_template(v)) {
+                    assert!(
+                        proxy_paths.iter().any(|proxy| path_matches(&path, proxy)),
+                        "{helper} path {path:?} is not mounted by the session proxy"
+                    );
                 }
             }
             cursor = open + call.len() + 2;

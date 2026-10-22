@@ -87,10 +87,10 @@ pub async fn try_acquire(
     cfg: WindowConfig,
     redis: Option<&redis::aio::ConnectionManager>,
 ) -> bool {
-    if let Some(conn) = redis {
-        if let Some(ok) = redis_try_acquire(conn, key, cfg).await {
-            return ok;
-        }
+    if let Some(conn) = redis
+        && let Some(ok) = redis_try_acquire(conn, key, cfg).await
+    {
+        return ok;
     }
     memory_try_acquire(key, cfg)
 }

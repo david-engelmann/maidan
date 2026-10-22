@@ -464,7 +464,7 @@ pub async fn patch_group(
                 StatusCode::BAD_REQUEST,
                 "invalidSyntax",
                 &format!("invalid PatchOp: {e}"),
-            )
+            );
         }
     };
     let change = match patch_change(&patch) {

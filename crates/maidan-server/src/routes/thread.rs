@@ -543,14 +543,14 @@ pub async fn set_thread_result(
     }
     // Home the producer's `run_id` as `parent_run_id` when present. Best-effort
     // — a lineage hiccup must not undo a stored result.
-    if let Some(run_id) = run_id_from_payload(&body.result) {
-        if let Err(err) = state.store.set_thread_lineage(thread_id, run_id).await {
-            tracing::warn!(
-                error = %err,
-                %thread_id,
-                "lineage home from result failed; result is stored"
-            );
-        }
+    if let Some(run_id) = run_id_from_payload(&body.result)
+        && let Err(err) = state.store.set_thread_lineage(thread_id, run_id).await
+    {
+        tracing::warn!(
+            error = %err,
+            %thread_id,
+            "lineage home from result failed; result is stored"
+        );
     }
     super::publish(
         &state,

@@ -263,10 +263,10 @@ async fn next(socket: &mut Ws) -> Frame {
             Err(_) => return Frame::Silent,
             Ok(None) | Ok(Some(Err(_))) => return Frame::Closed(None),
             Ok(Some(Ok(Message::Close(frame)))) => {
-                return Frame::Closed(frame.map(|f| (f.code, f.reason.to_string())))
+                return Frame::Closed(frame.map(|f| (f.code, f.reason.to_string())));
             }
             Ok(Some(Ok(Message::Text(text)))) => {
-                return Frame::Json(serde_json::from_str(&text).unwrap())
+                return Frame::Json(serde_json::from_str(&text).unwrap());
             }
             Ok(Some(Ok(_))) => {}
         }

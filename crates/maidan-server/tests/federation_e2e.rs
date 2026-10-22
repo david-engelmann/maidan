@@ -859,7 +859,9 @@ async fn an_unreachable_peer_does_not_stop_another_workspaces_peer_being_polled(
 
     // The peers below live on loopback, which the egress guard refuses
     // unless the development escape hatch is on.
-    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
 
     let asked = Arc::new(AtomicUsize::new(0));
     // A stand-in remote peer, not a Maidan route, so the checked-extractor
