@@ -225,7 +225,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
         {
-            return response;
+            return *response;
         }
         return ApiError::Forbidden(reason.clone()).into_response();
     }
@@ -441,7 +441,7 @@ async fn session_or_bearer(
             if let Err(response) =
                 crate::rate_limit::enforce_verified_bearer(state, &secret, false).await
             {
-                return response;
+                return *response;
             }
             return ApiError::Forbidden(reason.clone()).into_response();
         }
