@@ -221,6 +221,12 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     // A good credential of a suspended workspace: say so, rather than the
     // 401 that would send its client to look for a new token.
     if let Err(maidan_auth::AuthError::Forbidden(reason)) = &resolved {
+        // Counted first: a suspended workspace's token is still rate limited.
+        if let Err(response) =
+            crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
+        {
+            return response;
+        }
         return ApiError::Forbidden(reason.clone()).into_response();
     }
     if let Ok(ctx) = resolved {
@@ -432,6 +438,11 @@ async fn session_or_bearer(
         let ip_key = crate::rate_limit::client_ip_key(&req);
         let resolved = resolve_bearer(state.store.as_ref(), &secret).await;
         if let Err(maidan_auth::AuthError::Forbidden(reason)) = &resolved {
+            if let Err(response) =
+                crate::rate_limit::enforce_verified_bearer(state, &secret, false).await
+            {
+                return response;
+            }
             return ApiError::Forbidden(reason.clone()).into_response();
         }
         if let Ok(ctx) = resolved {

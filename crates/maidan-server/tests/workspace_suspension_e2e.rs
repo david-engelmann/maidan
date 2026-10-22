@@ -75,6 +75,39 @@ async fn suspending_a_workspace_refuses_its_tokens_and_leaves_another_working() 
     let a_token = token(store, a, a_member, caps()).await;
     let b_member = member(store, b, "agent", MemberKind::Agent).await;
     let b_token = token(store, b, b_member, caps()).await;
+    // A share ticket of A's: the outward-facing credential.
+    let channel = store
+        .create_channel(maidan_types::NewChannel {
+            workspace_id: a,
+            name: "incident".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let (status, ticket) = send(
+        &h,
+        Method::POST,
+        &format!("/workspaces/{}/share-tickets", a.0),
+        &a_token,
+        Some(json!({
+            "channel_id": channel.id.0,
+            "expires_at": chrono::Utc::now() + chrono::Duration::hours(1),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{ticket}");
+    let share = format!("ShareTicket {}", ticket["secret"].as_str().unwrap());
+    let manifest = || async {
+        h.client
+            .get(h.url("/share/manifest"))
+            .header("authorization", &share)
+            .send()
+            .await
+            .unwrap()
+            .status()
+    };
+    assert_eq!(manifest().await, StatusCode::OK);
     let path = |ws: WorkspaceId| format!("/operator/workspaces/{}/suspension", ws.0);
     let reads = |ws: WorkspaceId| format!("/workspaces/{}", ws.0);
 
@@ -109,6 +142,11 @@ async fn suspending_a_workspace_refuses_its_tokens_and_leaves_another_working() 
     );
     let (status, refused) = whoami(&h, &a_token).await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
+    assert_eq!(
+        manifest().await,
+        StatusCode::FORBIDDEN,
+        "A's share ticket too"
+    );
     let (status, _) = send(&h, Method::GET, &reads(b), &b_token, None).await;
     assert_eq!(status, StatusCode::OK);
     let (status, answer) = whoami(&h, &b_token).await;
@@ -120,6 +158,7 @@ async fn suspending_a_workspace_refuses_its_tokens_and_leaves_another_working() 
     assert_eq!((status, &lifted["lifted"]), (StatusCode::OK, &json!(true)));
     let (status, _) = send(&h, Method::GET, &reads(a), &a_token, None).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(manifest().await, StatusCode::OK);
     let (status, lifted) = send(&h, Method::DELETE, &path(a), &operator, None).await;
     assert_eq!((status, &lifted["lifted"]), (StatusCode::OK, &json!(false)));
 

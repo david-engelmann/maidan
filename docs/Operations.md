@@ -110,7 +110,9 @@ While it stands:
 - the change sweep, Linear notices and the scheduler skip it, and the egress,
   mail and web push workers defer its deliveries, so nothing leaves on its
   behalf;
-- its data, tokens and sessions are kept.
+- its data, tokens and sessions are kept. The instance's own signed
+  ingresses (GitHub webhooks, deploy events) still write into its threads,
+  since that keeps its record whole; nothing it sends goes out.
 
 Lifting restores access at once. Deferred deliveries go out at their next
 attempt, within five minutes. A scheduled run missed while suspended is not
