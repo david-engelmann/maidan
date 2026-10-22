@@ -1,4 +1,0 @@
-### An operator can suspend a workspace
-
-- **Added:** `PUT`, `GET` and `DELETE /operator/workspaces/{id}/suspension` (`operator:global`) suspend a workspace with a reason, read the suspension, and lift it. Suspending and lifting are each audited in the same transaction (`workspace.suspend`, `workspace.suspension_lift`). An operator may not suspend its own workspace.
-- **Added:** while a workspace is suspended, every token and session of it is refused with a 403 `workspace suspended`, on REST, MCP, WebSocket, SSE and A2A alike. An open stream ends at its next credential re-check. The change sweep, Linear notices and the scheduler skip it. The egress, mail and web push workers hold its deliveries back (deferred, not dropped), and inline web push is skipped. Its data is kept, and lifting restores access. Migration 0196 adds `maidan_workspace_suspensions` on both backends.
