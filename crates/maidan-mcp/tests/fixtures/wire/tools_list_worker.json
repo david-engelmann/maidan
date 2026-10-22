@@ -32,6 +32,118 @@
     },
     {
       "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Amend plan"
+      },
+      "description": "Change a plan you already submitted, holding the plan thread's live claim (pass its lease_id). cancel names children to cancel; add gives new children (the shape submit_plan takes, depends_on may name any child of the plan); rewire sets a child's depends_on afresh. Cancel and add the same key to replace a child: its dependents wait for the new one. A cancelled child's dependents stop waiting for it. Only children that are open and unclaimed can be cancelled or rewired: a claimed or finished one is refused, as is a fourth amendment of the same plan (error code -32010). reason is kept on each cancelled child. Everything happens in one transaction, or nothing does. Added children are held for review when the plan is held or one of them needs a threat model.",
+      "inputSchema": {
+        "properties": {
+          "add": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "attributes": {
+                  "type": "object"
+                },
+                "depends_on": {
+                  "description": "keys of any children in the plan",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "footprint": {
+                  "type": "object"
+                },
+                "key": {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                "test": {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "title",
+                "test",
+                "attributes",
+                "footprint"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "cancel": {
+            "description": "keys of unclaimed children to cancel",
+            "items": {
+              "maxLength": 64,
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "lease_id": {
+            "description": "the fencing token from your claim on the plan thread",
+            "format": "uuid",
+            "type": "string"
+          },
+          "reason": {
+            "description": "why the plan changed; kept on each cancelled child",
+            "maxLength": 500,
+            "type": "string"
+          },
+          "rewire": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "depends_on": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "key": {
+                  "maxLength": 64,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "depends_on"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "thread_id": {
+            "description": "the plan thread you hold the claim on",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "lease_id"
+        ],
+        "type": "object"
+      },
+      "name": "amend_plan"
+    },
+    {
+      "annotations": {
         "destructiveHint": false,
         "idempotentHint": false,
         "openWorldHint": false,

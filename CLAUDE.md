@@ -117,19 +117,26 @@ change.
 
 Working beside other agents (several PRs are usually open at once):
 
-- **CHANGELOG:** put your entry at the end of `[Unreleased]`, immediately
-  before the first `## [N.0.0]` line, or before a heading you have checked is
-  above that line. An entry placed before a heading under a released version is
-  filed in that release. `scripts/check-changelog-released.sh` fails when the
-  newest tagged section gains an entry after its tag, and when `[Unreleased]`
-  lists an entry twice. It does not check older sections.
+- **CHANGELOG:** don't edit `CHANGELOG.md`. Add one file,
+  `changelog.d/<branch-slug>.md`, holding your `### ` section and its
+  `- **Added:**`-style bullets ([`changelog.d/README.md`](changelog.d/README.md)).
+  Every PR editing the end of `[Unreleased]` made every merge conflict every
+  other open PR, and an entry from a PR branched before a release record
+  merged into the released section. The release record folds the fragments in
+  (`scripts/changelog-fragments.sh release X.0.0`).
+  `scripts/changelog-fragments.sh check` and `scripts/check-changelog-released.sh`
+  (the `changelog (released sections)` job) check the shape, duplicates, and
+  that the newest tagged section gains nothing after its tag.
 - **Counters that two PRs can bump by the same line:** the `.route(` count
   pinned in `tenant_isolation_e2e`, the MCP tool count in `docs/Protocols.md`,
   `README.md` and `book/src/introduction.md`, and migration numbers. Git merges
   two identical edits into one, so after a rebase recount (`grep -o '\.route('
   crates/maidan-server/src/app.rs | wc -l`, which counts what the test counts)
   rather than trusting the number, and take
-  the next free migration number on `main` plus the open PRs.
+  the next free migration number on `main` plus the open PRs. A conflict in a
+  golden or a catalog copy (the tool count, `contracts/mcp-tool-names.json`, the
+  listings, `tools_list_*.json`, the profile golden, the MCP reference) is
+  resolved by taking either side and running `make regen`.
 - **Contracts new code must satisfy:** a route in
   `contracts/http-operation-kinds.json`; a `MAIDAN_*` name in
   `crates/maidan-env/src/lib.rs`; `NewAuditEvent` needs a

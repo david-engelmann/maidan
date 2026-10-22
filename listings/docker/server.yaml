@@ -7,5 +7,5 @@ tags:
   - collaboration
   - agents
   - tasks
-image: ghcr.io/david-engelmann/maidan-server:v413.0.0
+image: ghcr.io/david-engelmann/maidan-server:v414.0.0
 longLived: true

@@ -787,6 +787,8 @@ jobs:
           persist-credentials: false
       - name: Released sections match their tags
         run: bash scripts/check-changelog-released.sh
+      - name: Changelog fragments are well formed
+        run: bash scripts/changelog-fragments.sh check
 
   deploy-pins:
     # Every deploy path and install command pins the newest tagged CHANGELOG

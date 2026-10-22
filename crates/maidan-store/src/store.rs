@@ -2822,6 +2822,19 @@ pub trait ThreadDepStore: Send + Sync {
         member_id: MemberId,
         plan: maidan_types::SubmitPlan,
     ) -> Result<maidan_types::PlanOutcome, StoreError>;
+    /// Amend a submitted plan in one transaction, under the planner's live
+    /// claim as for [`Self::submit_plan`]: cancel unclaimed children (out of
+    /// the plan first, so their dependents are rewired rather than blocked),
+    /// add children, and rewire unclaimed children's dependencies. At most
+    /// [`maidan_types::PLAN_MAX_AMENDMENTS`] per plan; past that, or for a
+    /// claimed or finished child, `Conflict`. A malformed amendment against
+    /// the plan as it stands is `InvalidInput`, and nothing is written.
+    async fn amend_plan(
+        &self,
+        parent_id: ThreadId,
+        member_id: MemberId,
+        amend: maidan_types::AmendPlan,
+    ) -> Result<maidan_types::AmendOutcome, StoreError>;
     /// How far a plan parent's children have got; `None` when it has none.
     async fn get_plan_state(
         &self,

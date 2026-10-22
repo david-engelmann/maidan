@@ -5,9 +5,10 @@
 use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    BlockedReason, ClaimLeaseId, ContentKeyring, Event, MemberId, PlanOutcome, PlanState,
-    PlannedChild, SpawnAxis, SpawnDenial, StoredEvent, SubmitPlan, ThreadId, ThreadState,
-    WorkspaceId,
+    AmendOutcome, AmendPlan, AmendRefusal, BlockedReason, CancelAuthority, CancelOutcome,
+    ClaimLeaseId, ContentKeyring, Event, ExistingPlanChild, MemberId, PlanAmendment,
+    PlanChild as PlanChildSpec, PlanOutcome, PlanState, PlannedChild, SpawnAxis, SpawnDenial,
+    StoredEvent, SubmitPlan, ThreadId, ThreadState, WorkspaceId, PLAN_MAX_AMENDMENTS,
 };
 use sqlx::{Acquire, Row, SqlitePool};
 use uuid::Uuid;
@@ -34,27 +35,7 @@ pub async fn submit(
     spawn_budget(pool, parent_id, &parent, plan.children.len() as i64).await?;
 
     let mut tx = pool.begin().await?;
-    for child in &plan.children {
-        if let Some(footprint) = &child.footprint {
-            let allowed = sqlx::query(
-                "SELECT 1 AS hit FROM maidan_egress_targets
-                 WHERE workspace_id = ? AND surface = 'github_branch'
-                   AND lower(substr(selector, 1, length(?) + 1)) = lower(?) || '@'
-                 LIMIT 1",
-            )
-            .bind(parent.workspace_id)
-            .bind(&footprint.repo)
-            .bind(&footprint.repo)
-            .fetch_optional(&mut *tx)
-            .await?;
-            if allowed.is_none() {
-                return Err(StoreError::InvalidInput(format!(
-                    "child `{}`: repository {} is not on this workspace's github_branch egress allowlist",
-                    child.key, footprint.repo
-                )));
-            }
-        }
-    }
+    check_repos_in_tx(&mut tx, parent.workspace_id, &plan.children).await?;
     let now = Utc::now();
     sqlx::query(
         "INSERT INTO maidan_thread_plans (parent_thread_id, lease_id, submitted_by, created_at)
@@ -67,9 +48,85 @@ pub async fn submit(
     .execute(&mut *tx)
     .await?;
 
-    let mut children = Vec::with_capacity(plan.children.len());
-    let mut stored = Vec::with_capacity(plan.children.len());
-    for (position, child) in plan.children.iter().enumerate() {
+    let (children, stored) = insert_children_in_tx(
+        &mut tx,
+        &parent,
+        parent_id,
+        member_id,
+        &plan.children,
+        0,
+        now,
+    )
+    .await?;
+    for child in &plan.children {
+        let Some(this) = children.iter().find(|c| c.key == child.key) else {
+            continue;
+        };
+        for dep in &child.depends_on {
+            let Some(on) = children.iter().find(|c| &c.key == dep) else {
+                continue;
+            };
+            insert_dependency_in_tx(&mut tx, this.thread_id, on.thread_id, now).await?;
+        }
+    }
+    // Held for review: each child is blocked, so `claim_next` skips it and the
+    // board shows why, until a Maintainer releases the plan.
+    if plan.needs_hold() {
+        hold_in_tx(&mut tx, &children, member_id).await?;
+    }
+    tx.commit().await?;
+    Ok(PlanOutcome::Created {
+        children,
+        events: stored,
+    })
+}
+
+/// Every child's repository must be on the workspace's `github_branch`
+/// egress allowlist (read only).
+async fn check_repos_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    workspace_id: Uuid,
+    children: &[PlanChildSpec],
+) -> Result<(), StoreError> {
+    for child in children {
+        if let Some(footprint) = &child.footprint {
+            let allowed = sqlx::query(
+                "SELECT 1 AS hit FROM maidan_egress_targets
+                 WHERE workspace_id = ? AND surface = 'github_branch'
+                   AND lower(substr(selector, 1, length(?) + 1)) = lower(?) || '@'
+                 LIMIT 1",
+            )
+            .bind(workspace_id)
+            .bind(&footprint.repo)
+            .bind(&footprint.repo)
+            .fetch_optional(&mut **tx)
+            .await?;
+            if allowed.is_none() {
+                return Err(StoreError::InvalidInput(format!(
+                    "child `{}`: repository {} is not on this workspace's github_branch egress allowlist",
+                    child.key, footprint.repo
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Make `children_in` as threads under `parent_id`, each with its footprint,
+/// attributes and plan row, from `first_position` on. Returns them by key,
+/// with their `ThreadCreated` events.
+async fn insert_children_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    parent: &Parent,
+    parent_id: ThreadId,
+    member_id: MemberId,
+    children_in: &[PlanChildSpec],
+    first_position: i64,
+    now: DateTime<Utc>,
+) -> Result<(Vec<PlannedChild>, Vec<StoredEvent>), StoreError> {
+    let mut children = Vec::with_capacity(children_in.len());
+    let mut stored = Vec::with_capacity(children_in.len());
+    for (position, child) in children_in.iter().enumerate() {
         let id = Uuid::now_v7();
         let row = sqlx::query(
             "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_at, updated_at, created_by)
@@ -84,16 +141,16 @@ pub async fn submit(
         .bind(now.to_rfc3339())
         .bind(now.to_rfc3339())
         .bind(member_id.0)
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
         let thread = threads::row_to_thread(&row)?;
         if let Some(footprint) = &child.footprint {
-            footprints::insert_items_on(&mut tx, thread.id, parent.workspace_id, footprint).await?;
+            footprints::insert_items_on(tx, thread.id, parent.workspace_id, footprint).await?;
         }
         if let Some(attributes) = &child.attributes {
-            thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
+            thread_attributes::insert_on(tx, thread.id, attributes).await?;
         }
-        thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+        thread_attributes::apply_default_engine_on(tx, thread.id).await?;
         sqlx::query(
             "INSERT INTO maidan_thread_plan_children (parent_thread_id, child_key, child_thread_id, position)
              VALUES (?, ?, ?, ?)",
@@ -101,12 +158,12 @@ pub async fn submit(
         .bind(parent_id.0)
         .bind(&child.key)
         .bind(thread.id.0)
-        .bind(position as i64)
-        .execute(&mut *tx)
+        .bind(first_position + position as i64)
+        .execute(&mut **tx)
         .await?;
         stored.push(
             events::append_in_tx(
-                &mut tx,
+                tx,
                 &Event::ThreadCreated {
                     occurred_at: now,
                     workspace_id: WorkspaceId(parent.workspace_id),
@@ -121,46 +178,47 @@ pub async fn submit(
             thread_id: thread.id,
         });
     }
-    for child in &plan.children {
-        let Some(this) = children.iter().find(|c| c.key == child.key) else {
-            continue;
-        };
-        for dep in &child.depends_on {
-            let Some(on) = children.iter().find(|c| &c.key == dep) else {
-                continue;
-            };
-            sqlx::query(
-                "INSERT INTO maidan_thread_dependencies (thread_id, depends_on_thread_id, created_at)
-                 VALUES (?, ?, ?)",
-            )
-            .bind(this.thread_id.0)
-            .bind(on.thread_id.0)
-            .bind(now)
-            .execute(&mut *tx)
-            .await?;
-        }
+    Ok((children, stored))
+}
+
+async fn insert_dependency_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread: ThreadId,
+    on: ThreadId,
+    now: DateTime<Utc>,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO maidan_thread_dependencies (thread_id, depends_on_thread_id, created_at)
+         VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+    )
+    .bind(thread.0)
+    .bind(on.0)
+    .bind(now)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Block each child with the plan hold, so `claim_next` skips it and the
+/// board shows why, until a Maintainer releases the plan.
+async fn hold_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    children: &[PlannedChild],
+    member_id: MemberId,
+) -> Result<(), StoreError> {
+    for child in children {
+        sqlx::query(
+            "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, set_at, note)
+             VALUES (?1, 'human', ?2, ?3, ?4)",
+        )
+        .bind(child.thread_id.0)
+        .bind(member_id.0)
+        .bind(Utc::now().to_rfc3339())
+        .bind(maidan_types::PLAN_HOLD_NOTE)
+        .execute(&mut **tx)
+        .await?;
     }
-    // Held for review: each child is blocked, so `claim_next` skips it and the
-    // board shows why, until a Maintainer releases the plan.
-    if plan.needs_hold() {
-        for child in &children {
-            sqlx::query(
-                "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, set_at, note)
-                 VALUES (?1, 'human', ?2, ?3, ?4)",
-            )
-            .bind(child.thread_id.0)
-            .bind(member_id.0)
-            .bind(Utc::now().to_rfc3339())
-            .bind(maidan_types::PLAN_HOLD_NOTE)
-            .execute(&mut *tx)
-            .await?;
-        }
-    }
-    tx.commit().await?;
-    Ok(PlanOutcome::Created {
-        children,
-        events: stored,
-    })
+    Ok(())
 }
 
 /// The progress of `parent_id`'s plan, or `None` when it has no children
@@ -675,4 +733,202 @@ pub async fn release(
     }
     tx.commit().await?;
     Ok(released.into_iter().map(ThreadId).collect())
+}
+
+/// Amend `parent_id`'s plan in one transaction; see
+/// [`crate::ThreadDepStore::amend_plan`]. `amend` is checked by the caller.
+pub async fn amend(
+    pool: &SqlitePool,
+    keys: &ContentKeyring,
+    parent_id: ThreadId,
+    member_id: MemberId,
+    amend: AmendPlan,
+) -> Result<AmendOutcome, StoreError> {
+    let parent = parent_row(pool, parent_id).await?;
+    hold_check(&parent, member_id, amend.lease_id)?;
+    let net_adding = amend.add.len() as i64 - amend.cancel.len() as i64;
+    if net_adding > 0 {
+        spawn_budget(pool, parent_id, &parent, net_adding).await?;
+    }
+
+    let mut tx = pool.begin().await?;
+    let amendments: i64 =
+        sqlx::query_scalar("SELECT amendments FROM maidan_thread_plans WHERE parent_thread_id = ?")
+            .bind(parent_id.0)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| {
+                StoreError::Conflict("this plan has no children yet: submit it first".into())
+            })?;
+    if amendments >= PLAN_MAX_AMENDMENTS {
+        return Err(StoreError::Conflict(format!(
+            "this plan has been amended {amendments} times, the most it takes"
+        )));
+    }
+    let rows = sqlx::query(
+        "SELECT c.child_key, c.child_thread_id, c.position, t.state, t.assignee_id
+         FROM maidan_thread_plan_children c
+         JOIN maidan_threads t ON t.id = c.child_thread_id
+         WHERE c.parent_thread_id = ? ORDER BY c.position",
+    )
+    .bind(parent_id.0)
+    .fetch_all(&mut *tx)
+    .await?;
+    let edges = sqlx::query(
+        "SELECT d.thread_id, d.depends_on_thread_id
+         FROM maidan_thread_dependencies d
+         JOIN maidan_thread_plan_children a ON a.child_thread_id = d.thread_id
+         JOIN maidan_thread_plan_children b ON b.child_thread_id = d.depends_on_thread_id
+         WHERE a.parent_thread_id = ?1 AND b.parent_thread_id = ?1",
+    )
+    .bind(parent_id.0)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut next_position = 0_i64;
+    let mut existing: Vec<ExistingPlanChild> = Vec::with_capacity(rows.len());
+    for row in &rows {
+        next_position = next_position.max(row.get::<i64, _>("position") + 1);
+        let state: String = row.get("state");
+        existing.push(ExistingPlanChild {
+            key: row.get("child_key"),
+            thread_id: ThreadId(row.get("child_thread_id")),
+            unclaimed: state == "open" && row.get::<Option<Uuid>, _>("assignee_id").is_none(),
+            depends_on: Vec::new(),
+        });
+    }
+    for edge in &edges {
+        let from = ThreadId(edge.get("thread_id"));
+        let on = ThreadId(edge.get("depends_on_thread_id"));
+        let on_key = existing
+            .iter()
+            .find(|c| c.thread_id == on)
+            .map(|c| c.key.clone());
+        if let (Some(child), Some(on_key)) =
+            (existing.iter_mut().find(|c| c.thread_id == from), on_key)
+        {
+            child.depends_on.push(on_key);
+        }
+    }
+    let steps = amend.steps(&existing).map_err(refusal)?;
+    check_repos_in_tx(&mut tx, parent.workspace_id, &steps.add).await?;
+    let held = amend.adds_need_hold()
+        || sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM maidan_thread_blocks b
+             JOIN maidan_thread_plan_children c ON c.child_thread_id = b.thread_id
+             WHERE c.parent_thread_id = ? AND b.note = ?",
+        )
+        .bind(parent_id.0)
+        .bind(maidan_types::PLAN_HOLD_NOTE)
+        .fetch_one(&mut *tx)
+        .await?
+            > 0;
+
+    let now = Utc::now();
+    let reason = amend
+        .reason
+        .as_deref()
+        .unwrap_or(maidan_types::PLAN_AMEND_CANCEL_REASON);
+    let mut stored = Vec::new();
+    // Out of the plan first, so the cancel's close does not block the
+    // children that waited for it: the amendment rewires them instead.
+    for child in &steps.cancel {
+        sqlx::query("DELETE FROM maidan_thread_plan_children WHERE child_thread_id = ?")
+            .bind(child.thread_id.0)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM maidan_thread_dependencies WHERE depends_on_thread_id = ?")
+            .bind(child.thread_id.0)
+            .execute(&mut *tx)
+            .await?;
+        match super::cancel::cancel_in_tx(
+            &mut tx,
+            keys,
+            child.thread_id,
+            member_id,
+            reason,
+            CancelAuthority::Transition,
+        )
+        .await?
+        {
+            CancelOutcome::Cancelled { events, .. } => stored.extend(events),
+            _ => {
+                return Err(StoreError::Conflict(format!(
+                    "child `{}` finished while the amendment ran",
+                    child.key
+                )))
+            }
+        }
+    }
+    let (added, created) = insert_children_in_tx(
+        &mut tx,
+        &parent,
+        parent_id,
+        member_id,
+        &steps.add,
+        next_position,
+        now,
+    )
+    .await?;
+    stored.extend(created);
+    let mut thread_of: std::collections::HashMap<String, ThreadId> = existing
+        .iter()
+        .filter(|c| !steps.cancel.iter().any(|x| x.thread_id == c.thread_id))
+        .map(|c| (c.key.clone(), c.thread_id))
+        .collect();
+    thread_of.extend(added.iter().map(|c| (c.key.clone(), c.thread_id)));
+    let wire = |key: &str| {
+        thread_of.get(key).copied().ok_or_else(|| {
+            StoreError::InvalidInput(format!("`{key}` is not a key the amended plan keeps"))
+        })
+    };
+    for child in &steps.add {
+        let this = wire(&child.key)?;
+        for dep in &child.depends_on {
+            insert_dependency_in_tx(&mut tx, this, wire(dep)?, now).await?;
+        }
+    }
+    for (key, deps) in &steps.rewrite {
+        let this = wire(key)?;
+        sqlx::query(
+            "DELETE FROM maidan_thread_dependencies
+             WHERE thread_id = ?1 AND depends_on_thread_id IN (
+                 SELECT child_thread_id FROM maidan_thread_plan_children WHERE parent_thread_id = ?2)",
+        )
+        .bind(this.0)
+        .bind(parent_id.0)
+        .execute(&mut *tx)
+        .await?;
+        for dep in deps {
+            insert_dependency_in_tx(&mut tx, this, wire(dep)?, now).await?;
+        }
+    }
+    if held {
+        hold_in_tx(&mut tx, &added, member_id).await?;
+    }
+    sqlx::query(
+        "UPDATE maidan_thread_plans SET amendments = amendments + 1 WHERE parent_thread_id = ?",
+    )
+    .bind(parent_id.0)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(AmendOutcome {
+        amendment: PlanAmendment {
+            cancelled: steps.cancel,
+            added,
+            rewired: steps.rewrite.into_iter().map(|(key, _)| key).collect(),
+            amendments: amendments + 1,
+            held,
+        },
+        events: stored,
+    })
+}
+
+/// An amendment refused against the plan as it stands: a malformed one is a
+/// 400, one that would change a claimed or finished child a 409.
+fn refusal(refusal: AmendRefusal) -> StoreError {
+    match refusal {
+        AmendRefusal::Invalid(why) => StoreError::InvalidInput(why),
+        AmendRefusal::Settled(why) => StoreError::Conflict(why),
+    }
 }

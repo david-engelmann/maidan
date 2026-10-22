@@ -226,6 +226,7 @@
   {"method":"GET","path":"/threads/{id}/pins","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/pins","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/plan","kind":"changes"},
+  {"method":"POST","path":"/threads/{id}/plan/amend","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/plan/release","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/priority","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/priority","kind":"changes"},

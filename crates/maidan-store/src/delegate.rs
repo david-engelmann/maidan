@@ -3324,6 +3324,15 @@ macro_rules! store_delegations {
                 plans::submit(self.pool(), parent_id, member_id, plan).await
             }
 
+            async fn amend_plan(
+                &self,
+                parent_id: ThreadId,
+                member_id: MemberId,
+                amend: maidan_types::AmendPlan,
+            ) -> Result<maidan_types::AmendOutcome, StoreError> {
+                plans::amend(self.pool(), &self.keys, parent_id, member_id, amend).await
+            }
+
             async fn get_plan_state(
                 &self,
                 parent_id: ThreadId,
