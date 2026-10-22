@@ -8,8 +8,6 @@ use uuid::Uuid;
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
 
-/// Who wraps a workspace key: the instance KEK.
-
 /// The key row for `subject`, with the workspace key that wraps it. SQLite
 /// serializes writers, so the append's transaction already excludes a
 /// concurrent shred.

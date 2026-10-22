@@ -10,8 +10,6 @@ use uuid::Uuid;
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
 
-/// Who wraps a workspace key: the instance KEK.
-
 /// The key row for `subject`, locked for the rest of the transaction so a
 /// concurrent shred cannot interleave with a seal, with the workspace key that
 /// wraps it.
