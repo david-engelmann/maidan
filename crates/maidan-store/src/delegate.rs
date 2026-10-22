@@ -2928,6 +2928,22 @@ macro_rules! store_delegations {
                 change_metrics::add_stale_base_notice(self.pool(), notice).await
             }
 
+            async fn record_deploy(
+                &self,
+                deploy: maidan_types::NewDeploy,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::record_deploy(self.pool(), deploy).await
+            }
+
+            async fn deploy_candidates(
+                &self,
+                repo: &str,
+                environment: &str,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError> {
+                change_metrics::deploy_candidates(self.read_pool(), repo, environment, limit).await
+            }
+
             async fn list_thread_notices(
                 &self,
                 thread_id: ThreadId,
@@ -3333,6 +3349,15 @@ macro_rules! store_delegations {
                 plan: maidan_types::SubmitPlan,
             ) -> Result<maidan_types::PlanOutcome, StoreError> {
                 plans::submit(self.pool(), parent_id, member_id, plan).await
+            }
+
+            async fn amend_plan(
+                &self,
+                parent_id: ThreadId,
+                member_id: MemberId,
+                amend: maidan_types::AmendPlan,
+            ) -> Result<maidan_types::AmendOutcome, StoreError> {
+                plans::amend(self.pool(), &self.keys, parent_id, member_id, amend).await
             }
 
             async fn get_plan_state(

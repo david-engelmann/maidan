@@ -2415,6 +2415,25 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         notice: maidan_types::NewStaleBaseNotice,
     ) -> Result<Option<maidan_types::PostedNotice>, StoreError>;
+    /// Record a deploy a deploy hook reported: each merged pull request, in
+    /// any workspace, whose merge or merged head commit is `deploy.sha` in
+    /// `deploy.repo` gets one `deployed` notice on its thread, with its
+    /// event. So does each pull request in `deploy.contains`, in its own
+    /// workspace only. A repeat of the same deploy and outcome says nothing
+    /// again.
+    async fn record_deploy(
+        &self,
+        deploy: maidan_types::NewDeploy,
+    ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// The newest merged pull requests in `repo`, at most `limit`, that no
+    /// deploy to `environment` has yet succeeded for, with the commit each
+    /// merged as: what a deploy of a later commit may have shipped.
+    async fn deploy_candidates(
+        &self,
+        repo: &str,
+        environment: &str,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError>;
     /// A thread's change notices, newest first, at most `limit`.
     async fn list_thread_notices(
         &self,
@@ -2824,6 +2843,19 @@ pub trait ThreadDepStore: Send + Sync {
         member_id: MemberId,
         plan: maidan_types::SubmitPlan,
     ) -> Result<maidan_types::PlanOutcome, StoreError>;
+    /// Amend a submitted plan in one transaction, under the planner's live
+    /// claim as for [`Self::submit_plan`]: cancel unclaimed children (out of
+    /// the plan first, so their dependents are rewired rather than blocked),
+    /// add children, and rewire unclaimed children's dependencies. At most
+    /// [`maidan_types::PLAN_MAX_AMENDMENTS`] per plan; past that, or for a
+    /// claimed or finished child, `Conflict`. A malformed amendment against
+    /// the plan as it stands is `InvalidInput`, and nothing is written.
+    async fn amend_plan(
+        &self,
+        parent_id: ThreadId,
+        member_id: MemberId,
+        amend: maidan_types::AmendPlan,
+    ) -> Result<maidan_types::AmendOutcome, StoreError>;
     /// How far a plan parent's children have got; `None` when it has none.
     async fn get_plan_state(
         &self,

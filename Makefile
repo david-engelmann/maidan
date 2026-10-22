@@ -1,4 +1,4 @@
-.PHONY: ci fmt lint test build deny secrets compose-up compose-down db-up db-down migrate clean smoke
+.PHONY: ci fmt lint test build deny secrets compose-up compose-down db-up db-down migrate clean smoke regen
 
 ci: fmt lint deny test
 
@@ -17,6 +17,11 @@ build:
 
 deny:
 	cargo deny check
+
+# Every golden and every file derived from the MCP catalog; after a conflict
+# in any of them, take either side and run this.
+regen:
+	bash scripts/regen.sh
 
 secrets:
 	@command -v trufflehog >/dev/null 2>&1 || { echo "trufflehog not installed; skipping"; exit 0; }

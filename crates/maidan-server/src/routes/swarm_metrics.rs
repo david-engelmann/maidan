@@ -111,6 +111,7 @@ pub async fn get_swarm_metrics(
     let query = SwarmMetricsFilter {
         repo: query.repo,
         since: query.since,
+        until: query.until,
         rounds_limit: query.rounds_limit,
         behind_limit: query.behind_limit,
         engine: query.engine,

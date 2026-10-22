@@ -1,0 +1,3 @@
+### Changelog entries are files, so PRs stop conflicting on CHANGELOG.md
+
+- **Changed:** a change adds `changelog.d/<branch-slug>.md` (one `### ` section) instead of editing `CHANGELOG.md`. `scripts/changelog-fragments.sh release X.0.0` folds `[Unreleased]` and the fragments into the new release section, and `check` (in the `changelog (released sections)` job) holds each fragment to one heading with Keep a Changelog bullets and catches a heading filed twice. With five lanes landing together, every PR editing the end of `[Unreleased]` conflicted every other, and an entry branched before a release record merged into the released section.

@@ -388,12 +388,12 @@ pub async fn deliver_change(
                 Err(err) if err.is_unprocessable() => {
                     match git.open_pull(req.repo, req.branch).await? {
                         Some(pull) => pull,
-                        None => {
-                            return refused(format!(
-                            "committed {commit_sha}, but GitHub refused a pull request into `{}`",
-                            req.base
-                        ))
-                        }
+                        // GitHub answers 422 for a branch it created a moment
+                        // ago and has not indexed yet. The commit is on the
+                        // branch and a retry reuses it, so this is a failure
+                        // to retry, not a refusal: refused, the change would
+                        // sit on its branch with no pull request.
+                        None => return Err(err),
                     }
                 }
                 Err(err) => return Err(err),
@@ -512,10 +512,17 @@ async fn fast_forward_commit(
     let commit = commit_on(git, req, base_sha, &changes, trailer).await?;
     match git.update_branch(req.repo, req.branch, &commit).await {
         Ok(()) => Ok(Ok(commit)),
-        Err(err) if err.is_unprocessable() => Ok(Err(format!(
-            "branch `{}` moved while the commit was being made",
-            req.branch
-        ))),
+        // Only a branch that really moved is a refusal. GitHub also answers
+        // 422 for a ref it created a moment ago; with the branch still at
+        // `base_sha` the retry finds nothing in its way, and refusing would
+        // drop the change.
+        Err(err) if err.is_unprocessable() => match git.branch_head(req.repo, req.branch).await? {
+            Some(now) if now == base_sha => Err(err),
+            _ => Ok(Err(format!(
+                "branch `{}` moved while the commit was being made",
+                req.branch
+            ))),
+        },
         Err(err) => Err(err),
     }
 }

@@ -68,6 +68,8 @@ pub async fn register_session_pull(
 pub struct SwarmMetricsFilter {
     pub repo: Option<String>,
     pub since: Option<DateTime<Utc>>,
+    /// Only pull requests opened before this time, so a window has two ends.
+    pub until: Option<DateTime<Utc>>,
     pub rounds_limit: Option<i64>,
     pub behind_limit: Option<i64>,
     pub engine: Option<TaskEngine>,
@@ -87,6 +89,7 @@ pub struct SwarmMetricsFilter {
 pub struct SwarmMetricsQuery {
     repo: Option<String>,
     since: Option<DateTime<Utc>>,
+    until: Option<DateTime<Utc>>,
     limits: FlagLimits,
     engine: Option<TaskEngine>,
     kind: Option<TaskKind>,
@@ -126,6 +129,7 @@ impl SwarmMetricsFilter {
         Ok(SwarmMetricsQuery {
             repo,
             since: self.since,
+            until: self.until,
             limits,
             engine: self.engine,
             kind: self.kind,
@@ -155,6 +159,9 @@ pub async fn swarm_metrics(
             query.size,
         )
         .await?;
+    if let Some(until) = query.until {
+        pulls.retain(|pull| pull.opened_at < until);
+    }
     if let Some(provider) = query.provider.as_deref() {
         pulls.retain(|pull| pull.provider.as_deref() == Some(provider));
     }
