@@ -64,17 +64,16 @@ pub async fn apply_subscribe_grants(
                 Some(c) if !c.private || c.name == DM_CHANNEL_NAME => {
                     verified.insert(cid);
                 }
-                Some(_) => {
+                Some(_)
                     if state
                         .store
                         .channel_is_member(cid, auth.member_id)
                         .await
-                        .map_err(|e| format!("channel_is_member: {e}"))?
-                    {
-                        verified.insert(cid);
-                    }
+                        .map_err(|e| format!("channel_is_member: {e}"))? =>
+                {
+                    verified.insert(cid);
                 }
-                None => {}
+                _ => {}
             }
         }
         grants = verified;

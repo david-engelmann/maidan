@@ -77,6 +77,8 @@ async fn run(state: AppState, mut shutdown: watch::Receiver<()>) {
     }
 }
 
+// Each hook dispatch is boxed: inlined, its future made `run`'s too deep
+// for the compiler to lay out (`queries overflow the depth limit`).
 async fn consume(
     mut stream: EventStream,
     seed: i64,
@@ -104,7 +106,7 @@ async fn consume(
                         {
                             maidan_store::trace::maybe_scope(
                                 trace,
-                                dispatch_thread_state_changed(
+                                Box::pin(dispatch_thread_state_changed(
                                     state,
                                     workspace_id,
                                     channel_id,
@@ -113,7 +115,7 @@ async fn consume(
                                     from_state,
                                     to_state,
                                     thread,
-                                ),
+                                )),
                             )
                             .await;
                         }
@@ -142,7 +144,7 @@ async fn consume(
                                     {
                                         maidan_store::trace::maybe_scope(
                                             trace,
-                                            dispatch_thread_state_changed(
+                                            Box::pin(dispatch_thread_state_changed(
                                                 &state,
                                                 workspace_id,
                                                 channel_id,
@@ -151,7 +153,7 @@ async fn consume(
                                                 from_state,
                                                 to_state,
                                                 thread,
-                                            ),
+                                            )),
                                         )
                                         .await;
                                     }
