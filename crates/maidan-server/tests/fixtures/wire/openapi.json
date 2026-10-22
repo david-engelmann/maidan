@@ -9348,7 +9348,7 @@
             ]
           },
           "claimed_at": {
-            "description": "When the task was first claimed.",
+            "description": "When the thread was first assigned: a claim, or a person assigning\nit by hand.",
             "format": "date-time",
             "type": [
               "string",
