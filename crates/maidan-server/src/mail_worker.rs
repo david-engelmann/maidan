@@ -102,15 +102,15 @@ pub async fn sweep_once(state: &AppState) -> MailSweepStats {
                 break;
             }
         };
-        if let Some(workspace_id) = entry.workspace_id {
-            if crate::suspension::held_back(state, workspace_id).await {
-                let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;
-                if let Err(err) = state.store.defer_mail(entry.id, until).await {
-                    tracing::warn!(error = %err, id = %entry.id, "mail worker: deferral failed");
-                }
-                stats.deferred += 1;
-                continue;
+        if let Some(workspace_id) = entry.workspace_id
+            && crate::suspension::held_back(state, workspace_id).await
+        {
+            let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;
+            if let Err(err) = state.store.defer_mail(entry.id, until).await {
+                tracing::warn!(error = %err, id = %entry.id, "mail worker: deferral failed");
             }
+            stats.deferred += 1;
+            continue;
         }
         // The claim counted this try, so a first send has `attempts == 1`.
         let attempt = Attempt::after(entry.attempts - 1);
