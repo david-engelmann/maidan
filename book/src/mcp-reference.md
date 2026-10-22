@@ -3060,6 +3060,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "until": {
+      "description": "only pull requests opened before this time; with since, one window",
+      "format": "date-time",
+      "type": "string"
+    },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
       "format": "uuid",

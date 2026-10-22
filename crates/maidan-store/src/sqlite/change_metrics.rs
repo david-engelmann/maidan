@@ -930,10 +930,114 @@ pub async fn list(
         usd_micros: row.get("cost"),
         reports: row.get("reports"),
     }));
-    Ok(pulls
+    let mut pulls: Vec<ChangePull> = pulls
         .iter()
         .map(|row| pull_from(row, &mut by_pull, &cost))
-        .collect())
+        .collect();
+    let flows = sqlx::query(
+        "SELECT e.thread_id,
+                MIN(CASE WHEN e.kind = 'thread_assignment_changed'
+                          AND json_extract(e.payload, '$.assignee_id') IS NOT NULL
+                         THEN e.occurred_at END) AS claimed_at,
+                MIN(CASE WHEN e.kind = 'thread_state_changed'
+                          AND json_extract(e.payload, '$.to_state') = 'in_review'
+                         THEN e.occurred_at END) AS review_requested_at,
+                MIN(CASE WHEN e.kind = 'review_submitted' THEN e.occurred_at END) AS first_review_at,
+                SUM(CASE WHEN e.kind = 'review_submitted'
+                          AND json_extract(e.payload, '$.decision') = 'request_changes'
+                         THEN 1 ELSE 0 END) AS sent_back,
+                SUM(CASE WHEN e.kind = 'claim_expired' THEN 1 ELSE 0 END) AS claim_lapses
+         FROM maidan_events e
+         WHERE e.workspace_id = ?1
+           AND e.kind IN ('thread_assignment_changed', 'thread_state_changed', 'review_submitted', 'claim_expired')
+           AND e.thread_id IN (SELECT p.thread_id FROM maidan_change_pulls p WHERE p.workspace_id = ?1)
+         GROUP BY e.thread_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    let mut flow: HashMap<Uuid, maidan_types::ThreadFlow> = flows
+        .iter()
+        .map(|row| {
+            (
+                row.get("thread_id"),
+                maidan_types::ThreadFlow {
+                    claimed_at: row.get::<Option<DateTime<Utc>>, _>("claimed_at"),
+                    review_requested_at: row.get::<Option<DateTime<Utc>>, _>("review_requested_at"),
+                    ci_green_at: None,
+                    first_review_at: row.get::<Option<DateTime<Utc>>, _>("first_review_at"),
+                    sent_back: row.get::<Option<i64>, _>("sent_back").unwrap_or(0),
+                    claim_lapses: row.get::<Option<i64>, _>("claim_lapses").unwrap_or(0),
+                    deliveries_skipped: 0,
+                },
+            )
+        })
+        .collect();
+    let skipped = sqlx::query(
+        "SELECT d.thread_id, COUNT(*) AS skipped
+         FROM maidan_result_deliveries d
+         WHERE d.status IN ('skipped', 'failed')
+           AND d.thread_id IN (SELECT p.thread_id FROM maidan_change_pulls p WHERE p.workspace_id = ?1)
+         GROUP BY d.thread_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    for row in &skipped {
+        flow.entry(row.get("thread_id"))
+            .or_default()
+            .deliveries_skipped = row.get("skipped");
+    }
+    // A head's checks as its CI notices said: a failure notice wins over a
+    // finished one.
+    let ci_rows = sqlx::query(
+        "SELECT n.thread_id, n.head_sha, n.kind, n.status, n.created_at
+         FROM maidan_thread_notices n
+         WHERE n.workspace_id = ?1 AND n.kind IN ('ci_failed', 'checks_done') AND n.head_sha IS NOT NULL",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    let mut head_ci: HashMap<(Uuid, String), maidan_types::CiStatus> = HashMap::new();
+    for row in &ci_rows {
+        let status = if row.get::<String, _>("kind") == "ci_failed" {
+            Some(maidan_types::CiStatus::Failure)
+        } else {
+            row.get::<Option<String>, _>("status")
+                .and_then(|s| match s.as_str() {
+                    "success" => Some(maidan_types::CiStatus::Success),
+                    "failure" => Some(maidan_types::CiStatus::Failure),
+                    "pending" => Some(maidan_types::CiStatus::Pending),
+                    _ => None,
+                })
+        };
+        if status == Some(maidan_types::CiStatus::Success) {
+            let at: DateTime<Utc> = row.get("created_at");
+            let green = &mut flow.entry(row.get("thread_id")).or_default().ci_green_at;
+            if green.is_none_or(|first| at < first) {
+                *green = Some(at);
+            }
+        }
+        if let Some(status) = status {
+            let key = (
+                row.get::<Uuid, _>("thread_id"),
+                row.get::<String, _>("head_sha").to_ascii_lowercase(),
+            );
+            let entry = head_ci.entry(key).or_insert(status);
+            if status == maidan_types::CiStatus::Failure {
+                *entry = status;
+            }
+        }
+    }
+    for pull in &mut pulls {
+        pull.flow = flow.get(&pull.thread_id.0).cloned().unwrap_or_default();
+        pull.first_delivery_ci = pull.rounds.first().and_then(|round| {
+            head_ci
+                .get(&(pull.thread_id.0, round.commit_sha.to_ascii_lowercase()))
+                .copied()
+        });
+    }
+    Ok(pulls)
 }
 
 /// The merged pull requests in `workspace_id` due an outcome check, at most
@@ -1215,6 +1319,8 @@ fn pull_from(
         linear_issue: row.get("linear_issue"),
         outcome: outcome_from(row),
         handed_off_at: row.get::<Option<DateTime<Utc>>, _>("handed_off_at"),
+        flow: maidan_types::ThreadFlow::default(),
+        first_delivery_ci: None,
         attributes: maidan_types::TaskAttributes {
             kind: row
                 .try_get::<Option<String>, _>("task_kind")
