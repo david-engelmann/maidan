@@ -454,7 +454,7 @@ def deliver(args, maidan, key, thread_id, repo, checkout, usage, renewer):
         raise Fatal(f"the claim is gone ({renewer.lost}); delivering nothing")
     if finish.get("status") != "changed":
         detail = finish.get("error_detail") or finish.get("summary") or "no detail"
-        maidan.tool("set_thread_result", {"thread_id": thread_id,
+        maidan.tool("set_thread_result", {"thread_id": thread_id, "claim_lease_id": renewer.lease_id,
                                           "result": plain_envelope(finish.get("status", "seat_error"), detail, deliver_to)})
         return
 
@@ -472,7 +472,8 @@ def deliver(args, maidan, key, thread_id, repo, checkout, usage, renewer):
     helper = [sys.executable, str(Path(args.claimant_dir) / "change_result.py"),
               "--base-sha", base_sha, "--branch", branch, "--repo", repo, "--base", base,
               "--title", title, "--summary-file", str(summary_file),
-              "--deliver-to-file", str(deliver_file), "--repo-dir", str(checkout.root), "--out", str(out_file)]
+              "--deliver-to-file", str(deliver_file), "--repo-dir", str(checkout.root), "--out", str(out_file),
+              "--claim-lease-id", renewer.lease_id]
     if attributes.get("linear_issue"):
         helper += ["--linear-issue", attributes["linear_issue"]]
     built = subprocess.run(helper, capture_output=True, text=True, timeout=300)
@@ -484,13 +485,13 @@ def deliver(args, maidan, key, thread_id, repo, checkout, usage, renewer):
         return
     reason = built.stderr.strip()
     if built.returncode == 3 and args.allow_push:
-        fallback(maidan, thread_id, repo, base, branch, title, summary_file, checkout, reason)
+        fallback(maidan, thread_id, renewer.lease_id, repo, base, branch, title, summary_file, checkout, reason)
         return
-    maidan.tool("set_thread_result", {"thread_id": thread_id,
+    maidan.tool("set_thread_result", {"thread_id": thread_id, "claim_lease_id": renewer.lease_id,
                                       "result": plain_envelope("seat_error", reason, deliver_to)})
 
 
-def fallback(maidan, thread_id, repo, base, branch, title, summary_file, checkout, reason):
+def fallback(maidan, thread_id, lease, repo, base, branch, title, summary_file, checkout, reason):
     """The runbook's fallback: our own branch and draft, registered on the thread."""
     own = "session/" + branch.removeprefix("feature/agent-")
     checkout.git("branch", "-f", own, "HEAD")
@@ -506,7 +507,7 @@ def fallback(maidan, thread_id, repo, base, branch, title, summary_file, checkou
     maidan.tool("register_thread_pull", {"thread_id": thread_id, "repo": repo, "pull_number": number})
     maidan.tool("post_message", {"thread_id": thread_id,
                                  "body": f"Delivered outside the change flow ({reason}): {own}, {url}"})
-    maidan.tool("set_thread_result", {"thread_id": thread_id, "result": {
+    maidan.tool("set_thread_result", {"thread_id": thread_id, "claim_lease_id": lease, "result": {
         "status": "done", "summary": title, "branch": own, "pr": url}})
 
 

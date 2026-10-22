@@ -4,6 +4,7 @@
 //! allowlist names, and a repeat answers with what the first call made.
 //! Postgres runs under testcontainers (skipped without Docker).
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -531,7 +532,7 @@ macro_rules! on_both_backends {
 /// request merged, then the settle that closes it with `ThreadLanded`.
 async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<StoredEvent> {
     store
-        .set_thread_result(thread, room.worker, &serde_json::json!({"summary": "done"}))
+        .set_thread_result_claiming(thread, room.worker, &serde_json::json!({"summary": "done"}))
         .await
         .unwrap();
     store

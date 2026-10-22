@@ -1,7 +1,7 @@
 # Open work
 
 The one live list of what is being built, what comes next, and what is waiting
-on a decision. Last reconciled against `main` at `79753f42` (2026-10-21).
+on a decision. Last reconciled against `main` at `44d2ffee` (2026-10-22).
 
 **The rule.** A shipped item is deleted, not struck through: its record is the
 CHANGELOG entry and the PR. A wrong row is corrected in place, never answered
@@ -55,10 +55,6 @@ CI ran.
 
 | PR | What it does | State (2026-10-21) | Merge after |
 |---|---|---|---|
-| #1488 | MCP `wait_for_event {kinds, thread_id?, timeout_ms, after_log_id?}`: subscribe before checking, replay on a lagged bus; boxes the tool dispatch future, which halves an MCP call's stack | Red-team verdict merge; CI | — |
-| #1492 | Find a thread from a Slack message or a pull request (REST and MCP) | Green; merges after #1488 | #1488 |
-| #1500 | Change pulls keyed by workspace (#1497): a tenant can no longer claim another's pull request first; only the workspace that delivered a head may rewrite it | MaidanFadin, in progress | — |
-| — | The Rust toolchain moves off 1.91 to current stable (the maintainer, 2026-10-21), then the AWS SDK bump that 1.91 held back | Lane B, in progress | — |
 
 ## Next: ranked
 

@@ -4,6 +4,7 @@
 //! result) is the explicit re-queue that makes it claimable again. Both
 //! backends, channel and workspace claims, with and without an engine.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::time::Duration;
 
 use maidan_fsm::ThreadAction;
@@ -136,7 +137,7 @@ async fn run_suite(store: &dyn Store) {
             .expect("the open thread");
         assert_eq!(got.id, done.id);
         store
-            .set_thread_result(done.id, worker.id, &result)
+            .set_thread_result_claiming(done.id, worker.id, &result)
             .await
             .expect("result");
         tokio::time::sleep(Duration::from_millis(1_200)).await;
@@ -144,7 +145,7 @@ async fn run_suite(store: &dyn Store) {
         // Finished with no claim at all: not handed out either.
         let unclaimed = task(store, channel.id, "unclaimed", engine).await;
         store
-            .set_thread_result(unclaimed.id, worker.id, &result)
+            .set_thread_result_claiming(unclaimed.id, worker.id, &result)
             .await
             .expect("result");
         assert!(

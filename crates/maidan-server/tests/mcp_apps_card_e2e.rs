@@ -542,16 +542,26 @@ async fn the_gate_result_carries_requester_and_review_evidence_tiers() {
         .unwrap();
     // The requester works the thread and hands it to review with a result
     // only it vouches for: every attestation is self-reported.
+    let claimed = env
+        .client
+        .post(format!(
+            "{}/threads/{}/assignee/claim",
+            env.base, thread.id.0
+        ))
+        .bearer_auth(&t.requester_tok)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert!(claimed.status().is_success());
+    let claimed: serde_json::Value = claimed.json().await.unwrap();
+    let lease = claimed["thread"]["claim_lease_id"].clone();
+    assert!(lease.is_string(), "{claimed}");
     for (method, path, body) in [
-        (
-            "POST",
-            format!("/threads/{}/assignee/claim", thread.id.0),
-            json!({}),
-        ),
         (
             "PUT",
             format!("/threads/{}/result", thread.id.0),
-            json!({ "result": { "status": "done" } }),
+            json!({ "result": { "status": "done" }, "claim_lease_id": lease }),
         ),
         (
             "POST",

@@ -1,6 +1,7 @@
 //! Task structured results: set (upsert) / get a thread's result. Both
 //! backends. No routes yet.
 
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use serde_json::json;
@@ -65,7 +66,7 @@ async fn run_suite(store: &dyn Store) {
     // Set a structured result.
     let payload = json!({ "status": "ok", "score": 42, "items": ["a", "b"] });
     let set = store
-        .set_thread_result(thread.id, member.id, &payload)
+        .set_thread_result_claiming(thread.id, member.id, &payload)
         .await
         .expect("set");
     assert_eq!(set.thread_id, thread.id);
@@ -84,7 +85,7 @@ async fn run_suite(store: &dyn Store) {
     // A re-set overwrites (one result per thread).
     let payload2 = json!({ "status": "revised", "score": 100 });
     store
-        .set_thread_result(thread.id, member.id, &payload2)
+        .set_thread_result_claiming(thread.id, member.id, &payload2)
         .await
         .expect("re-set");
     let got2 = store

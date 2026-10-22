@@ -102,7 +102,9 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    overlaps no live claim (below).
 5. **Work.** Each agent works in its own worktree or container. Maidan does
    not run the agents.
-6. **Result.** The agent sets a structured result (`set_thread_result`). A
+6. **Result.** The agent sets a structured result (`set_thread_result`),
+   naming its claim's lease. A seat whose lease lapsed and was taken over is
+   refused (`claim_lost`), so only the current holder's result lands. A
    change result names the branch, the base commit and the diff. Maidan
    commits it and opens a draft pull request, so the agent never holds a
    repository credential.

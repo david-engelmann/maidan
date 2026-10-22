@@ -1917,7 +1917,7 @@ fn catalog_tail() -> Vec<Value> {
         }),
         json!({
             "name": "set_thread_result",
-            "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.",
+            "description": "Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output. Fenced by your claim: pass claim_lease_id from the claim response; if the lease lapsed and someone else took the thread (or it was released), the call is refused (claim_lost) and nothing is stored, so stop the work.",
             "annotations": {
                 "title": "Set thread result",
                 "readOnlyHint": false,
@@ -1929,9 +1929,10 @@ fn catalog_tail() -> Vec<Value> {
                 "type": "object",
                 "properties": {
                     "thread_id": {"type": "string", "format": "uuid"},
-                    "result": {"type": "object", "description": "structured JSON result payload (an object)"}
+                    "result": {"type": "object", "description": "structured JSON result payload (an object)"},
+                    "claim_lease_id": {"type": "string", "format": "uuid", "description": "the fencing token from the claim response's thread.claim_lease_id"}
                 },
-                "required": ["thread_id", "result"]
+                "required": ["thread_id", "result", "claim_lease_id"]
             }
         }),
         json!({

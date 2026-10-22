@@ -10,6 +10,7 @@
 //! PATCHes the summary and POSTs another COMMENT review). Review errors never
 //! `disable_link`.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -295,7 +296,7 @@ async fn set_result(h: &Harness, result: &Value) {
         .map(|r| r.produced_at);
     loop {
         h.store
-            .set_thread_result(h.thread_id, h.member_id, result)
+            .set_thread_result_claiming(h.thread_id, h.member_id, result)
             .await
             .unwrap();
         let after = h

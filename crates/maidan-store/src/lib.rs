@@ -137,6 +137,7 @@ mod delegation_grants;
 mod footprints;
 #[macro_use]
 mod delegate;
+mod claimability;
 pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
@@ -162,6 +163,7 @@ pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod thread_access;
+mod thread_results;
 pub mod trace;
 mod usage_metrics;
 pub mod workspace_export;

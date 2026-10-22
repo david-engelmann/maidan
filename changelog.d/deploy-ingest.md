@@ -1,4 +1,0 @@
-### A deploy pipeline tells a merged change's thread where it went
-
-- **Added:** `POST /integrations/deploys/events`, deploy push-ingest. It is opt-in, and a 404 until `MAIDAN_DEPLOY_HOOK_SECRET` (or `_FILE`) is set. The body is signed like a GitHub webhook (`X-Maidan-Signature-256`) and is `{repo, sha, environment, status, url?}`. Each tracked pull request that merged at `sha` gets one `deployed` notice on its thread, with its event and a message from the thread's owner, in the workspaces that track it and no other. `in_progress` and other non-outcomes say nothing, and a repeated deploy says nothing again.
-- **Added:** migration 0195 (both backends): `maidan_deploys`, plus `environment` and `deploy_url` on `maidan_thread_notices`. `ThreadNotice` and the `ThreadNotice` event gain `environment` and `deploy_url`.
