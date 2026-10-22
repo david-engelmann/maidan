@@ -68,6 +68,23 @@ async fn run_suite(store: &dyn Store) {
         vec![row(b, 21, UsageMeter::Requests, 7)],
         "A's counts never land on B"
     );
+
+    // A workspace gone before the flush (erased, or never there) drops its
+    // own count and fails nobody else's. (Found by the red-team review of
+    // #1518.)
+    let gone = WorkspaceId(uuid::Uuid::now_v7());
+    store
+        .add_usage_meters(&[
+            row(gone, 23, UsageMeter::Requests, 1),
+            row(a, 23, UsageMeter::Requests, 3),
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        store.list_usage_meters(a, day(23)).await.unwrap(),
+        vec![row(a, 23, UsageMeter::Requests, 3)]
+    );
+    assert!(store.list_usage_meters(gone, day(1)).await.unwrap().is_empty());
 }
 
 #[tokio::test]

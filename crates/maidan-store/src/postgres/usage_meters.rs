@@ -7,15 +7,18 @@ use sqlx::{PgPool, Row};
 use crate::StoreError;
 use maidan_types::{UsageMeter, UsageMeterDay, WorkspaceId};
 
+/// A row whose workspace is gone (erased between the count and the flush)
+/// is dropped, not written: one dead workspace must not fail the batch for
+/// every live one.
 pub async fn add(pool: &PgPool, batch: &[UsageMeterDay]) -> Result<(), StoreError> {
     if batch.is_empty() {
         return Ok(());
     }
     let mut tx = pool.begin().await?;
     for row in batch {
-        sqlx::query(
+        let written = sqlx::query(
             "INSERT INTO maidan_usage_meters (workspace_id, day, meter, quantity)
-             VALUES ($1, $2, $3, $4)
+             SELECT id, $2, $3, $4 FROM maidan_workspaces WHERE id = $1
              ON CONFLICT (workspace_id, day, meter)
              DO UPDATE SET quantity = maidan_usage_meters.quantity + EXCLUDED.quantity",
         )
@@ -25,6 +28,9 @@ pub async fn add(pool: &PgPool, batch: &[UsageMeterDay]) -> Result<(), StoreErro
         .bind(row.quantity)
         .execute(&mut *tx)
         .await?;
+        if written.rows_affected() == 0 {
+            tracing::debug!(workspace_id = %row.workspace_id.0, meter = row.meter.as_str(), "usage meters: workspace gone; count dropped");
+        }
     }
     tx.commit().await?;
     Ok(())

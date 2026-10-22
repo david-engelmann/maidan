@@ -388,13 +388,8 @@ impl McpServer {
         self
     }
 
-    /// Replace the version `initialize` reports as this server's (embedders;
-    /// the standalone default is this crate's version). The workspace crates
-    /// are versioned 0.0.0 and releases are baked in by the embedder, so the
-    /// server crate passes its own release version through here — a
-    /// connected client should see the release it is talking to.
-    #[must_use]
     /// Count tool calls into `meters`, the buffer the server flushes.
+    #[must_use]
     pub fn with_usage_meters(
         mut self,
         meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
@@ -403,6 +398,12 @@ impl McpServer {
         self
     }
 
+    /// Replace the version `initialize` reports as this server's (embedders;
+    /// the standalone default is this crate's version). The workspace crates
+    /// are versioned 0.0.0 and releases are baked in by the embedder, so the
+    /// server crate passes its own release version through here — a
+    /// connected client should see the release it is talking to.
+    #[must_use]
     pub fn with_server_version(mut self, version: impl Into<String>) -> Self {
         self.server_version = version.into();
         self

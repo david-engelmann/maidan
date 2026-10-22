@@ -32,7 +32,10 @@ pub fn unmetered(path: &str) -> bool {
 }
 
 /// Write everything counted since the last flush. A failed write puts the
-/// batch back, so the next flush carries it. Returns the rows written.
+/// batch back, so the next flush carries it; a write that committed but whose
+/// answer was lost is then counted twice, which an allowance can bear. A count
+/// for a workspace erased since is dropped by the store. Returns the rows
+/// taken.
 pub async fn flush_once(state: &AppState) -> usize {
     let batch = state.usage_meters.take();
     if batch.is_empty() {
