@@ -3,6 +3,7 @@
 //! its members', a DM's are its participants', and nothing crosses a
 //! workspace. Both backends.
 
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     BudgetLimits, ChannelId, ChannelMemberRole, ChannelOccupancy, MemberId, MemberKind,
@@ -350,7 +351,7 @@ async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
             }
             Withheld::Finished => {
                 store
-                    .set_thread_result(t, agent, &serde_json::json!({"done": true}))
+                    .set_thread_result_claiming(t, agent, &serde_json::json!({"done": true}))
                     .await
                     .expect("result");
             }
