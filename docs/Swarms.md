@@ -117,7 +117,10 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    adds the repository's merge-queue label, and only when the pull request's
    head is still the commit Maidan delivered, so nothing pushed after review
    reaches the queue. While a pull request is queued, Maidan refuses to push
-   another change to it; dequeue first (`DELETE`). The queue itself (a label
+   another change to it; dequeue first (`DELETE`). A pull request GitHub's queue dropped
+   (`merge_dequeued`) but whose label stayed is not queued: the next round's
+   delivery takes the stale label off and goes ahead, and the next enqueue
+   labels the new head. The queue itself (a label
    driven one, such as Graphite's) does the merging. A repository a person
    merges is left out of `MAIDAN_MERGE_QUEUE_LABELS` and is never enqueued.
 

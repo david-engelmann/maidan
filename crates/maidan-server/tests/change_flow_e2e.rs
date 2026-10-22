@@ -176,7 +176,8 @@ impl Fake {
     fn writes(&self) -> Vec<&String> {
         self.requests
             .iter()
-            .filter(|r| !r.starts_with("GET "))
+            // A GraphQL query is a read, though it is a POST.
+            .filter(|r| !r.starts_with("GET ") && r.as_str() != "POST /graphql")
             .collect()
     }
 }
@@ -463,6 +464,20 @@ async fn github(
                 }
                 None => not_found(),
             }
+        }
+        ("DELETE", r) if r.starts_with("issues/") && r.contains("/labels/") => {
+            let rest = &r["issues/".len()..];
+            let (number, label) = rest.split_once("/labels/").unwrap();
+            let number: i64 = number.parse().unwrap();
+            let Some(pull) = fake.pulls.iter_mut().find(|p| p.number == number) else {
+                return not_found();
+            };
+            let before = pull.labels.len();
+            pull.labels.retain(|l| l != label);
+            if pull.labels.len() == before {
+                return not_found();
+            }
+            reply(StatusCode::OK, json!([]))
         }
         ("POST", r) if r.starts_with("issues/") && r.ends_with("/comments") => {
             if fake.fail_comments {
@@ -2719,6 +2734,42 @@ async fn a_change_to_a_pull_request_in_the_merge_queue_is_refused_before_any_wri
         h.fake.lock().unwrap().writes().len(),
         writes_before,
         "nothing written"
+    );
+}
+
+#[tokio::test]
+async fn a_pull_request_the_queue_dropped_for_a_conflict_takes_the_next_round_and_can_be_enqueued_again(
+) {
+    let mut h = harness().await;
+    h.state.merge_queue_labels =
+        maidan_types::MergeQueueLabels::parse(&format!("{REPO}=ready-to-merge")).unwrap();
+    h.allow_change().await;
+    let first = change("changed", &h.base_sha, BRANCH, DIFF);
+    h.route(&h.a, &first, 1).await;
+    h.drain().await;
+    let number = {
+        // GitHub's queue took it, then dropped it for a conflict and left
+        // the label on, as it does.
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].labels.push("ready-to-merge".into());
+        let number = f.pulls[0].number;
+        f.dequeued.insert(number, "MERGE_CONFLICT".into());
+        number
+    };
+
+    h.route(&h.a, &first, 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::DELIVERED,
+        "the round after a conflict dequeue is not refused: {row:?}"
+    );
+    let f = h.fake.lock().unwrap();
+    let pull = f.pulls.iter().find(|p| p.number == number).unwrap();
+    assert!(
+        !pull.labels.iter().any(|l| l == "ready-to-merge"),
+        "the stale label came off, so the new head is not queued unreviewed and a later enqueue labels it again"
     );
 }
 
