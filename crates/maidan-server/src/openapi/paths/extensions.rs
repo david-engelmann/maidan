@@ -275,6 +275,18 @@ pub fn get_preserved_messages() {}
     ))]
 pub fn list_legal_holds() {}
 
+/// Every workspace's usage for a UTC month, each meter against the instance's free allowance
+#[utoipa::path(get, path = "/operator/usage-meters", tag = "operator",
+    params(UsageMonthQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [MonthlyUsage]),
+        (status = 400, response = BadRequest),
+        (status = 401, response = Unauthorized),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_operator_usage_meters() {}
+
 /// Open another workspace and its first admin
 #[utoipa::path(post, path = "/operator/workspaces", tag = "operator",
     request_body = ProvisionWorkspace,

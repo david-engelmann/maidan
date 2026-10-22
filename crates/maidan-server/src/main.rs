@@ -522,6 +522,10 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         state.attach_presence_notifier(presence_notifier);
     }
     state.presence.spawn_tasks();
+    // The free allowance is read once; a malformed one refuses boot.
+    state.usage_allowance = std::sync::Arc::new(
+        maidan_server::usage_meters::allowance_from_env().map_err(anyhow::Error::msg)?,
+    );
     // Built once the state is: it counts embeddings into the state's usage
     // meters.
     let indexer_last_error = Arc::new(RwLock::new(None));

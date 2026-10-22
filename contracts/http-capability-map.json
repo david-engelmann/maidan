@@ -870,6 +870,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/workspaces/{id}/usage-meters",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/workspaces/{id}/pull-watches",
     "capability": "workspace:write",
@@ -1304,6 +1310,12 @@
   {
     "method": "GET",
     "path": "/operator/status",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/usage-meters",
     "capability": "operator:global",
     "surface": "http"
   },

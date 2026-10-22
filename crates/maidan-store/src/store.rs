@@ -606,6 +606,26 @@ pub trait UsageLedgerStore: Send + Sync {
     ) -> Result<Vec<WorkspaceId>, StoreError>;
     /// The bytes a workspace stores now: its artifacts and message bodies.
     async fn workspace_stored_bytes(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError>;
+    /// Every workspace's meters on days in `[since, until)`.
+    async fn list_usage_meters_between(
+        &self,
+        since: chrono::NaiveDate,
+        until: chrono::NaiveDate,
+    ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError>;
+    /// Mark a crossing of the allowance, once per workspace, meter and month,
+    /// appending its event and notifying `admins` in the same transaction.
+    /// `None` when it was marked already.
+    async fn mark_over_allowance(
+        &self,
+        mark: &maidan_types::OverAllowance,
+        admins: &[MemberId],
+    ) -> Result<Option<StoredEvent>, StoreError>;
+    /// The crossings in `month` (`YYYY-MM`), for one workspace or all.
+    async fn list_over_allowance(
+        &self,
+        workspace_id: Option<WorkspaceId>,
+        month: &str,
+    ) -> Result<Vec<maidan_types::OverAllowance>, StoreError>;
     /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
     async fn list_usage_meters(
         &self,

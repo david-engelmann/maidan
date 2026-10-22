@@ -185,6 +185,7 @@ pub enum EventKind {
     ProjectorMisconfigured,
     MemberFrozen,
     MemberUnfrozen,
+    UsageOverAllowance,
     MessagePosted,
     MessageEdited,
     MessageTombstoned,
@@ -231,6 +232,7 @@ impl EventKind {
             Self::ProjectorMisconfigured => "projector_misconfigured",
             Self::MemberFrozen => "member_frozen",
             Self::MemberUnfrozen => "member_unfrozen",
+            Self::UsageOverAllowance => "usage_over_allowance",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
             Self::MessageTombstoned => "message_tombstoned",
@@ -277,6 +279,7 @@ impl EventKind {
             "projector_misconfigured" => Some(Self::ProjectorMisconfigured),
             "member_frozen" => Some(Self::MemberFrozen),
             "member_unfrozen" => Some(Self::MemberUnfrozen),
+            "usage_over_allowance" => Some(Self::UsageOverAllowance),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
             "message_tombstoned" => Some(Self::MessageTombstoned),
@@ -348,6 +351,7 @@ impl EventKind {
         Self::ProjectorMisconfigured,
         Self::MemberFrozen,
         Self::MemberUnfrozen,
+        Self::UsageOverAllowance,
         Self::MessagePosted,
         Self::MessageEdited,
         Self::MessageTombstoned,
@@ -457,6 +461,9 @@ impl EventKind {
             // A freeze is *this* deployment's kill-switch over its own
             // members; a peer has no standing to freeze or unfreeze one.
             Self::MemberFrozen | Self::MemberUnfrozen => false,
+            // An allowance crossing reads this deployment's meters against its
+            // own allowance; a peer has no standing to report one.
+            Self::UsageOverAllowance => false,
             // A memory-block update is a locally-derived signal over local
             // shared state; a peer must not inject one.
             Self::MemoryBlockUpdated => false,
@@ -891,6 +898,19 @@ pub enum Event {
         member_id: MemberId,
         unfrozen_by: MemberId,
     },
+    /// A workspace went past the instance's free allowance on a meter for a
+    /// UTC month. Appended once per workspace, meter and month, in the same
+    /// transaction as the mark and its admins' notifications. Workspace-scoped
+    /// and locally derived: not federatable. Nothing is cut off or billed.
+    UsageOverAllowance {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        meter: crate::UsageMeter,
+        /// `YYYY-MM`.
+        month: String,
+        quantity: i64,
+        allowance: i64,
+    },
     MessagePosted {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,
@@ -1035,6 +1055,7 @@ impl Event {
             Self::ProjectorMisconfigured { .. } => EventKind::ProjectorMisconfigured,
             Self::MemberFrozen { .. } => EventKind::MemberFrozen,
             Self::MemberUnfrozen { .. } => EventKind::MemberUnfrozen,
+            Self::UsageOverAllowance { .. } => EventKind::UsageOverAllowance,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
             Self::MessageTombstoned { .. } => EventKind::MessageTombstoned,
@@ -1081,6 +1102,7 @@ impl Event {
             | Self::ProjectorMisconfigured { occurred_at, .. }
             | Self::MemberFrozen { occurred_at, .. }
             | Self::MemberUnfrozen { occurred_at, .. }
+            | Self::UsageOverAllowance { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
             | Self::MessageTombstoned { occurred_at, .. }
@@ -1127,6 +1149,7 @@ impl Event {
             | Self::ProjectorMisconfigured { workspace_id, .. }
             | Self::MemberFrozen { workspace_id, .. }
             | Self::MemberUnfrozen { workspace_id, .. }
+            | Self::UsageOverAllowance { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
             | Self::MessageTombstoned { workspace_id, .. }
@@ -1627,6 +1650,7 @@ mod kind_tests {
                 | EventKind::ProjectorMisconfigured
                 | EventKind::MemberFrozen
                 | EventKind::MemberUnfrozen
+                | EventKind::UsageOverAllowance
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
                 | EventKind::MessageTombstoned
@@ -1715,6 +1739,7 @@ mod kind_tests {
             EventKind::ProjectorMisconfigured,
             EventKind::MemberFrozen,
             EventKind::MemberUnfrozen,
+            EventKind::UsageOverAllowance,
             EventKind::MemoryBlockUpdated,
             EventKind::UsageReported,
             EventKind::StatusDeclared,
