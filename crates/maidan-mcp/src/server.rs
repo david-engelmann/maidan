@@ -1093,14 +1093,13 @@ impl McpServer {
                 // Artifacts are deduped across tenants, so gate the read on
                 // the caller's per-workspace access ref. A missing ref is
                 // NotFound (no cross-tenant existence oracle), like REST.
-                (Some("artifacts"), Some(sha)) => {
+                (Some("artifacts"), Some(sha))
                     if !self
                         .store
                         .artifact_ref_exists(auth.workspace_id, sha)
-                        .await?
-                    {
-                        return Err(McpError::NotFound);
-                    }
+                        .await? =>
+                {
+                    return Err(McpError::NotFound);
                 }
                 _ => {}
             }

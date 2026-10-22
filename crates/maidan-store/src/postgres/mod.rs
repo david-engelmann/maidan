@@ -90,6 +90,7 @@ mod task_schedules;
 mod thread_attributes;
 mod thread_deps;
 mod thread_lineage;
+mod thread_lookup;
 mod thread_results;
 mod thread_skills;
 mod thread_steer;

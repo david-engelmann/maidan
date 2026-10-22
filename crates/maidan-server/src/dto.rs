@@ -459,6 +459,23 @@ pub struct SwarmMetricsQuery {
     pub linear_issue: Option<String>,
 }
 
+/// Query params for finding a thread from an external reference: a Slack
+/// channel (with a message `ts`), or a repository and pull request number.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ThreadLookupQuery {
+    /// A Slack channel id (`C0123ABCD`). Alone, the thread the channel is
+    /// linked to.
+    pub slack_channel: Option<String>,
+    /// A Slack message `ts`: the thread whose result was posted as that
+    /// message or into that Slack thread.
+    pub slack_ts: Option<String>,
+    /// `owner/name` (or a GitHub clone URL), with `pr_number`.
+    pub repo: Option<String>,
+    /// The pull request (or issue) number in `repo`.
+    pub pr_number: Option<i64>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

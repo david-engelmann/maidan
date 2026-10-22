@@ -152,7 +152,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         if let Err(response) =
             crate::rate_limit::enforce_workspace(&state, &path, true, &auth.workspace_id).await
         {
-            return response;
+            return *response;
         }
         req.extensions_mut().insert(auth);
         return run_as(&state, req, next).await;
@@ -178,13 +178,13 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
                 if let Err(response) =
                     crate::rate_limit::enforce_client_key(&state, &ip_key, true).await
                 {
-                    return response;
+                    return *response;
                 }
                 if let Err(response) =
                     crate::rate_limit::enforce_workspace(&state, &path, false, &reader.workspace_id)
                         .await
                 {
-                    return response;
+                    return *response;
                 }
                 return run_authorized(&state, req, next, reader).await;
             }
@@ -204,7 +204,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         if let Err(response) =
             crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
         {
-            return response;
+            return *response;
         }
         req.extensions_mut().insert(session);
         return run_authorized(&state, req, next, ctx).await;
@@ -222,12 +222,12 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
         {
-            return response;
+            return *response;
         }
         if let Err(response) =
             crate::rate_limit::enforce_workspace(&state, &path, ctx.bypass, &ctx.workspace_id).await
         {
-            return response;
+            return *response;
         }
         return run_authorized(&state, req, next, ctx).await;
     }
@@ -236,13 +236,13 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, is_mcp).await
         {
-            return response;
+            return *response;
         }
         let workspace_id = peer.workspace_id;
         if let Err(response) =
             crate::rate_limit::enforce_workspace(&state, &path, false, &workspace_id).await
         {
-            return response;
+            return *response;
         }
         req.extensions_mut().insert(PeerContext(peer));
         return tag_room(run_as(&state, req, next).await, workspace_id);
@@ -252,7 +252,7 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
     // Invented bearers share the client IP. Counting each secret opened a
     // new global bucket, so the limit never applied.
     if let Err(response) = crate::rate_limit::enforce_client_key(&state, &ip_key, is_mcp).await {
-        return response;
+        return *response;
     }
     invalid_token()
 }
@@ -433,7 +433,7 @@ async fn session_or_bearer(
             if let Err(response) =
                 crate::rate_limit::enforce_verified_bearer(state, &secret, false).await
             {
-                return response;
+                return *response;
             }
             // The bearer tree records a delegated 401/403/404. These UI groups
             // are mounted beside it, so a denied token here has to go through
@@ -441,7 +441,7 @@ async fn session_or_bearer(
             return run_authorized(state, req, next, ctx).await;
         }
         if let Err(response) = crate::rate_limit::enforce_client_key(state, &ip_key, false).await {
-            return response;
+            return *response;
         }
     }
 

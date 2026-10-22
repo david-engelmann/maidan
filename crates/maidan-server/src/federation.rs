@@ -1094,7 +1094,7 @@ pub async fn peer_auth_middleware(
             if let Err(response) =
                 crate::rate_limit::enforce_client_key(&state, &ip_key, false).await
             {
-                return response;
+                return *response;
             }
         }
         return ApiError::Unauthorized.into_response();
@@ -1105,7 +1105,7 @@ pub async fn peer_auth_middleware(
         if let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, false).await
         {
-            return response;
+            return *response;
         }
     }
     req.extensions_mut().insert(PeerContext(peer));

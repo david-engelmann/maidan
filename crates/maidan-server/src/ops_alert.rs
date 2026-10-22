@@ -542,6 +542,17 @@ fn take_exited_loops() -> Vec<&'static str> {
         .unwrap_or_default()
 }
 
+/// The loop an armed fault names when no loop of that name has started.
+/// A misspelt name would otherwise arm nothing, and the drill would wait
+/// for an alert that can never come.
+fn unstarted_fault_loop(
+    fault: Option<&Fault>,
+    started: &HashMap<&'static str, LoopState>,
+) -> Option<String> {
+    let fault = fault?;
+    (!started.contains_key(fault.loop_name.as_str())).then(|| fault.loop_name.clone())
+}
+
 /// Whether a watchdog sleep of `secs` seconds that took `slept` means the
 /// host was suspended.
 fn suspended(slept: i64, secs: i64) -> bool {
@@ -650,10 +661,28 @@ pub async fn run(state: AppState, channel: String) {
     )
     .await;
     let watchdog_secs = i64::try_from(WATCHDOG_SECS).unwrap_or(i64::MAX);
+    // Every loop registers at boot, so one watchdog pass is long enough to
+    // tell a fault aimed at a loop that never started.
+    let mut first_pass = true;
     loop {
         let slept_from = now();
         tokio::time::sleep(Duration::from_secs(WATCHDOG_SECS)).await;
         let at = now();
+        if std::mem::take(&mut first_pass) {
+            let unstarted = loops()
+                .lock()
+                .ok()
+                .and_then(|started| unstarted_fault_loop(armed_fault().as_ref(), &started));
+            if let Some(name) = unstarted {
+                alert(
+                    &format!("fault-unstarted:{name}"),
+                    &format!(
+                        ":warning: MAIDAN_OPS_FAULT is armed for {name}, which never started; no fault will fire. Check the loop name."
+                    ),
+                )
+                .await;
+            }
+        }
         if suspended(at - slept_from, watchdog_secs) {
             tracing::info!(
                 away_secs = at - slept_from,
@@ -709,6 +738,22 @@ mod tests {
             assert!(channel_from_raw(Some(raw.into())).is_none(), "{raw}");
         }
         assert!(channel_from_raw(None).is_none());
+    }
+
+    #[test]
+    fn a_fault_for_a_loop_that_never_started_is_named_and_a_started_one_is_not() {
+        let mut started = HashMap::new();
+        started.insert("outbox", LoopState::default());
+        let fault = |name: &str| Fault {
+            loop_name: name.to_string(),
+            kind: FaultKind::Stall,
+        };
+        assert_eq!(
+            unstarted_fault_loop(Some(&fault("outbx")), &started).as_deref(),
+            Some("outbx")
+        );
+        assert_eq!(unstarted_fault_loop(Some(&fault("outbox")), &started), None);
+        assert_eq!(unstarted_fault_loop(None, &started), None);
     }
 
     #[test]
