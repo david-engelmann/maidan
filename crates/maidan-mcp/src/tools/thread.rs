@@ -1784,6 +1784,8 @@ pub(super) async fn get_run_occupancy(
 struct SetThreadResultArgs {
     thread_id: uuid::Uuid,
     result: Value,
+    /// The caller's live claim: the claim response's `thread.claim_lease_id`.
+    claim_lease_id: uuid::Uuid,
 }
 
 /// Attach a task's structured result. Upserts one result per thread
@@ -1799,7 +1801,12 @@ pub(super) async fn set_thread_result(
     let thread_id = ThreadId(a.thread_id);
     let result = server
         .store
-        .set_thread_result(thread_id, auth.member_id, &a.result)
+        .set_thread_result(
+            thread_id,
+            auth.member_id,
+            ClaimLeaseId(a.claim_lease_id),
+            &a.result,
+        )
         .await?;
     // Same write-path arm as REST. The bus consumer (383.2) is every-replica /
     // replay; the tool itself must not race a close.

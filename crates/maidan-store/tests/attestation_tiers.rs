@@ -5,6 +5,7 @@
 //! and covered by its root, so nothing after the hand-off moves them, and an
 //! approval names the tiers it was shown.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::time::Duration;
 
 use maidan_fsm::ThreadAction;
@@ -106,7 +107,7 @@ async fn run_suite(store: &dyn Store) {
     store.claim_thread(own, worker).await.expect("claim");
     let result = json!({"status": "done"});
     store
-        .set_thread_result(own, worker, &result)
+        .set_thread_result_claiming(own, worker, &result)
         .await
         .expect("result");
     store
@@ -285,7 +286,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("skill");
     store.claim_thread(gated, worker).await.expect("claim");
     store
-        .set_thread_result(gated, worker, &result)
+        .set_thread_result_claiming(gated, worker, &result)
         .await
         .expect("result");
     store.require_land_gate(gated).await.expect("arm");
@@ -321,7 +322,7 @@ async fn run_suite(store: &dyn Store) {
     store.claim_thread(usual, outsider).await.expect("claim");
     with_attribution(
         acting_as(outsider, reviewer),
-        store.set_thread_result(usual, reviewer, &result),
+        store.set_thread_result_claiming(usual, reviewer, &result),
     )
     .await
     .expect("delegate result");

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    result_kind_from_payload, ChannelClosedResult, ChannelId, MemberId, ThreadId, ThreadResult,
-    ThreadState, WorkspaceId,
+    result_kind_from_payload, ChannelClosedResult, ChannelId, ClaimLeaseId, MemberId, ThreadId,
+    ThreadResult, ThreadState, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
@@ -15,15 +15,21 @@ pub async fn set(
     pool: &SqlitePool,
     thread_id: ThreadId,
     produced_by: MemberId,
+    lease_id: ClaimLeaseId,
     result: &serde_json::Value,
 ) -> Result<ThreadResult, StoreError> {
     let result_text = serde_json::to_string(result)?;
     let result_kind = result_kind_from_payload(result);
     let now = Utc::now().to_rfc3339();
+    // The claim fence is the SELECT: no row unless `produced_by` holds the
+    // thread under `lease_id` right now, in the same statement as the write.
     let row = sqlx::query(
         "INSERT INTO maidan_thread_results
              (thread_id, result, produced_by, produced_at, result_kind, produced_actor_id)
-         VALUES (?, ?, ?, ?, ?, ?)
+         SELECT t.id, ?, ?, ?, ?, ?
+         FROM maidan_threads t
+         WHERE t.id = ? AND t.assignee_id = ? AND t.claim_lease_id = ?
+           AND t.tombstoned_at IS NULL
          ON CONFLICT (thread_id) DO UPDATE SET
              result = excluded.result,
              produced_by = excluded.produced_by,
@@ -32,7 +38,6 @@ pub async fn set(
              produced_actor_id = excluded.produced_actor_id
          RETURNING thread_id, result, produced_by, produced_at",
     )
-    .bind(thread_id.0)
     .bind(&result_text)
     .bind(produced_by.0)
     .bind(&now)
@@ -44,9 +49,15 @@ pub async fn set(
             .unwrap_or(produced_by)
             .0,
     )
-    .fetch_one(pool)
+    .bind(thread_id.0)
+    .bind(produced_by.0)
+    .bind(lease_id.0)
+    .fetch_optional(pool)
     .await?;
-    row_to_result(&row)
+    match row {
+        Some(row) => row_to_result(&row),
+        None => Err(crate::thread_results::claim_lost(lease_id)),
+    }
 }
 
 /// A task's result, or `None` if none has been produced.

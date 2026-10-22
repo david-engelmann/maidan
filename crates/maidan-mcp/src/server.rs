@@ -1403,6 +1403,7 @@ impl McpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maidan_store::test_support::SetResultClaiming;
 
     use maidan_artifacts::LocalFsStore;
     use maidan_auth::AuthContext;
@@ -3608,11 +3609,16 @@ mod tests {
 
         // Set dep1's result, then read it back.
         let payload = json!({ "answer": 42, "ok": true });
+        let lease = server
+            .store
+            .claim_lease_for(dep1.id, agent.id)
+            .await
+            .unwrap();
         let set = server
             .call_tool(
                 &auth,
                 "set_thread_result",
-                &json!({ "thread_id": dep1.id.0, "result": payload }),
+                &json!({ "thread_id": dep1.id.0, "result": payload, "claim_lease_id": lease.0 }),
             )
             .await
             .unwrap();
@@ -3653,7 +3659,16 @@ mod tests {
         // wait_for_result on dep2 wakes when its result is produced after subscribe.
         let dep2_payload = json!({ "answer": 7 });
         let wait_args = json!({ "thread_id": dep2.id.0, "timeout_ms": 5000 });
-        let set_args = json!({ "thread_id": dep2.id.0, "result": dep2_payload });
+        let dep2_lease = server
+            .store
+            .claim_lease_for(dep2.id, agent.id)
+            .await
+            .unwrap();
+        let set_args = json!({
+            "thread_id": dep2.id.0,
+            "claim_lease_id": dep2_lease.0,
+            "result": dep2_payload,
+        });
         let (out, _) = tokio::join!(
             server.call_tool(&auth, "wait_for_result", &wait_args),
             async {
@@ -3786,14 +3801,21 @@ mod tests {
 
         let fixture: Value = serde_json::from_str(FIXTURE).expect("fixture");
         assert_eq!(fixture["run_id"], json!(PRODUCER_RUN_ID));
+        let lease = server
+            .store
+            .claim_lease_for(parent.id, agent.id)
+            .await
+            .unwrap();
         server
             .call_tool(
                 &auth,
                 "set_thread_result",
-                &json!({ "thread_id": parent.id.0, "result": fixture }),
+                &json!({ "thread_id": parent.id.0, "result": fixture, "claim_lease_id": lease.0 }),
             )
             .await
             .unwrap();
+        // The write needed the claim; occupancy below counts the parent as queued.
+        server.store.unassign_thread(parent.id).await.unwrap();
 
         let lined = unwrap_content(
             server
@@ -3946,7 +3968,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(review.id, agent.id, &json!({ "result_kind": REVIEW }))
+            .set_thread_result_claiming(review.id, agent.id, &json!({ "result_kind": REVIEW }))
             .await
             .unwrap();
         let plan = store
@@ -3960,7 +3982,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(plan.id, agent.id, &json!({ "result_kind": PLAN }))
+            .set_thread_result_claiming(plan.id, agent.id, &json!({ "result_kind": PLAN }))
             .await
             .unwrap();
         let hidden = store
@@ -3974,7 +3996,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(hidden.id, agent.id, &json!({ "result_kind": REVIEW }))
+            .set_thread_result_claiming(hidden.id, agent.id, &json!({ "result_kind": REVIEW }))
             .await
             .unwrap();
 
@@ -7799,7 +7821,7 @@ mod tests {
         // Handed to review with a result, the reviewer approves what it was
         // shown (as themselves) → status flips to met.
         store
-            .set_thread_result(thread.id, owner.id, &json!({ "status": "done" }))
+            .set_thread_result_claiming(thread.id, owner.id, &json!({ "status": "done" }))
             .await
             .unwrap();
         store
@@ -8262,15 +8284,6 @@ mod tests {
             })
             .await
             .unwrap();
-        let assignee = store
-            .create_member(NewMember {
-                workspace_id: ws.id,
-                handle: "assignee".into(),
-                display_name: None,
-                kind: MemberKind::Agent,
-            })
-            .await
-            .unwrap();
         let reviewer = store
             .create_member(NewMember {
                 workspace_id: ws.id,
@@ -8312,7 +8325,9 @@ mod tests {
             .set_thread_owner(thread.id, Some(owner.id))
             .await
             .unwrap();
-        store.assign_thread(thread.id, assignee.id).await.unwrap();
+        // The review-skilled producer holds the thread: a result lands only under
+        // the writer's live claim.
+        store.assign_thread(thread.id, reviewer.id).await.unwrap();
         store
             .add_member_skill(reviewer.id, REVIEW_SKILL)
             .await
@@ -8332,6 +8347,11 @@ mod tests {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
         let tid = json!(thread.id.0);
+        let lease = server
+            .store
+            .claim_lease_for(thread.id, reviewer.id)
+            .await
+            .unwrap();
 
         server
             .call_tool(
@@ -8339,6 +8359,7 @@ mod tests {
                 "set_thread_result",
                 &json!({
                     "thread_id": tid,
+                    "claim_lease_id": lease.0,
                     "result": {
                         "schema": WAITER_RESULT_SCHEMA,
                         "result_kind": EXAMPLE_REVIEW_RESULT_KIND,

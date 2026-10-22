@@ -151,7 +151,7 @@ responses are trimmed to the fields that matter.
 // → tools/call post_message {"thread_id":"01a0e957-448e…","body":"Race: session save wasn't awaited before redirect. Fixed; 500/500 green."}
 {"id":"01a0e957-45a8…","author_id":"01a0e957-4413…","posted_at":"2026-09-28T18:46:45Z"}
 
-// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","result":{"status":"fixed","runs":500,"failures":0}}
+// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","claim_lease_id":"01a0e957-4471…","result":{"status":"fixed","runs":500,"failures":0}}
 {"result":{"failures":0,"runs":500,"status":"fixed"},"produced_by":"01a0e957-4413…"}
 
 // → tools/call transition_thread {"thread_id":"01a0e957-448e…","action":"start_review"}

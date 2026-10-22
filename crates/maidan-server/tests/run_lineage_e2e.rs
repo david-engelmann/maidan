@@ -3,6 +3,7 @@
 //! child that shares the value. F7 mute is orthogonal. Auth ENABLED (real
 //! token).
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -138,14 +139,17 @@ async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
     let fixture: Value = serde_json::from_str(FIXTURE).expect("fixture");
     assert_eq!(fixture["run_id"], json!(PRODUCER_RUN_ID));
 
+    let lease = store.claim_lease_for(parent.id, member.id).await.unwrap();
     let set = client
         .put(format!("{base}/threads/{}/result", parent.id.0))
         .header("Authorization", &bearer)
-        .json(&json!({ "result": fixture }))
+        .json(&json!({ "result": fixture, "claim_lease_id": lease.0 }))
         .send()
         .await
         .unwrap();
     assert_eq!(set.status(), StatusCode::OK);
+    // The write needed the claim; occupancy below counts the parent as queued.
+    store.unassign_thread(parent.id).await.unwrap();
 
     let lined: Value = client
         .get(format!("{base}/threads/{}/lineage", parent.id.0))

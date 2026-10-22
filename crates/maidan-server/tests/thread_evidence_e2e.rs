@@ -3,6 +3,7 @@
 //! does not hold is not found, even when another workspace holds it; another
 //! workspace's caller reaches neither the version nor the links.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -285,7 +286,7 @@ async fn a_hand_off_to_review_pins_what_was_handed_over() {
     store.claim_thread(thread, worker).await.unwrap();
     let result = json!({"status": "done"});
     store
-        .set_thread_result(thread, worker, &result)
+        .set_thread_result_claiming(thread, worker, &result)
         .await
         .unwrap();
     store
@@ -479,7 +480,7 @@ async fn the_evidence_timeline_shows_every_hand_off_and_stays_in_its_workspace()
     store.claim_thread(thread, worker).await.unwrap();
     let result = json!({"status": "done"});
     store
-        .set_thread_result(thread, worker, &result)
+        .set_thread_result_claiming(thread, worker, &result)
         .await
         .unwrap();
     store

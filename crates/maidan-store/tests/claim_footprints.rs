@@ -4,6 +4,7 @@
 //! themselves when a claim ends, and nothing crosses a repository or a
 //! workspace. Postgres runs under testcontainers (skipped without Docker).
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -1225,7 +1226,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
         (foreign, other.agents[0]),
     ] {
         store
-            .set_thread_result(thread, by, &serde_json::json!({"summary": "done"}))
+            .set_thread_result_claiming(thread, by, &serde_json::json!({"summary": "done"}))
             .await
             .unwrap();
     }
@@ -1337,7 +1338,7 @@ async fn a_closed_pull_settles_its_thread_once(store: Arc<dyn Store>) {
     // without merging, and the landing names the merge.
     let sibling = task(store.as_ref(), r.channel, "sibling").await;
     store
-        .set_thread_result(sibling, agent, &serde_json::json!({"summary": "done"}))
+        .set_thread_result_claiming(sibling, agent, &serde_json::json!({"summary": "done"}))
         .await
         .unwrap();
     for n in [6, 7] {
@@ -1609,7 +1610,7 @@ async fn a_stale_base_notice_is_given_once_per_commit(store: Arc<dyn Store>) {
     let s = store.as_ref();
     let r = room(s, "stale", 1).await;
     let thread = task(s, r.channel, "change").await;
-    s.set_thread_result(thread, r.agents[0], &serde_json::json!({"summary": "x"}))
+    s.set_thread_result_claiming(thread, r.agents[0], &serde_json::json!({"summary": "x"}))
         .await
         .unwrap();
     let stale = |sha: &str, behind: i64| NewStaleBaseNotice {

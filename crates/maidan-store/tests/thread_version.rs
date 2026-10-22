@@ -3,6 +3,7 @@
 //! that changes none of it does not. Only an artifact the thread's workspace
 //! holds can be linked.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::time::Duration;
 
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
@@ -98,12 +99,12 @@ async fn run_suite(store: &dyn Store) {
         .expect("edit");
     assert_eq!(version(thread).await, 2, "an edit");
     store
-        .set_thread_result(thread, worker, &json!({"status": "done"}))
+        .set_thread_result_claiming(thread, worker, &json!({"status": "done"}))
         .await
         .expect("result");
     assert_eq!(version(thread).await, 3, "a result");
     store
-        .set_thread_result(thread, worker, &json!({"status": "done again"}))
+        .set_thread_result_claiming(thread, worker, &json!({"status": "done again"}))
         .await
         .expect("result again");
     assert_eq!(version(thread).await, 4, "a replaced result");

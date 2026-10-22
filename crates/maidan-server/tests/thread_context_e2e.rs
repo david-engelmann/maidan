@@ -1,5 +1,6 @@
 //! `GET /threads/:id/context` packs thread data for agent prompts.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use maidan_artifacts::{ArtifactStore, LocalFsStore};
@@ -547,7 +548,7 @@ async fn child_thread_context_grounds_on_its_parent() {
         .await
         .unwrap();
     store
-        .set_thread_result(parent.id, member.id, &serde_json::json!({"decision": "go"}))
+        .set_thread_result_claiming(parent.id, member.id, &serde_json::json!({"decision": "go"}))
         .await
         .unwrap();
     let child = store
@@ -704,7 +705,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             opaque.id,
             member.id,
             &serde_json::json!({"decision": "use postgres"}),
@@ -724,7 +725,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             failed.id,
             member.id,
             &serde_json::json!({
@@ -749,7 +750,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             reviewed.id,
             member.id,
             &serde_json::json!({
@@ -890,7 +891,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             dm_closed.thread_id,
             member.id,
             &serde_json::json!({"decision": "secret"}),

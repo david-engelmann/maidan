@@ -7,6 +7,7 @@
 //! recovery path if that handle is lost. Slack has no equivalent marker and
 //! re-posts. Projector rows never take this path — they keep posting.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -314,7 +315,7 @@ async fn set_result(h: &Harness, result: &Value) {
         .map(|r| r.produced_at);
     loop {
         h.store
-            .set_thread_result(h.thread_id, h.member_id, result)
+            .set_thread_result_claiming(h.thread_id, h.member_id, result)
             .await
             .unwrap();
         let after = h
