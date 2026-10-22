@@ -5,6 +5,7 @@
 //! `route_event` (no worker-loop timing); `sweep_once` is awaited directly for
 //! the send-attempt audit.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{
@@ -223,7 +224,7 @@ async fn harness(name: &str) -> Harness {
 
 async fn route(h: &Harness, result: &Value, log_id: i64) {
     h.store
-        .set_thread_result(h.thread_id, h.member_id, result)
+        .set_thread_result_claiming(h.thread_id, h.member_id, result)
         .await
         .unwrap();
     notification_router::route_event(

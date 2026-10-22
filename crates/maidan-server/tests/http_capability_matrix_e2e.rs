@@ -7,6 +7,7 @@
 //! so when instance-wide reindex moved to `operator:global` the map kept
 //! saying `token:admin` and still passed (the deny token lacked both).
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     path::PathBuf,
@@ -610,7 +611,7 @@ fn apply_route_defaults(
         return b.json(&json!({ "depends_on_thread_id": f.thread }));
     }
     if path == "/threads/{id}/result" && method == "PUT" {
-        return b.json(&json!({ "result": { "ok": true } }));
+        return b.json(&json!({ "result": { "ok": true }, "claim_lease_id": uuid::Uuid::nil() }));
     }
     if path == "/operator/workspaces/{id}/suspension" && method == "PUT" {
         return b.json(&json!({ "reason": "probe" }));
@@ -1285,7 +1286,7 @@ async fn member_decisions_are_the_members_own_and_refuse_another_workspace() {
         h.store.follow_channel(t.admin, t.channel).await.unwrap();
         h.store.claim_thread(t.thread, t.agent).await.unwrap();
         h.store
-            .set_thread_result(t.thread, t.agent, &json!({"status": "done"}))
+            .set_thread_result_claiming(t.thread, t.agent, &json!({"status": "done"}))
             .await
             .unwrap();
     }

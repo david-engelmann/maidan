@@ -4,6 +4,7 @@
 //! filtered page of size N holds N matches, not the matches that fell in
 //! an unfiltered page of size N.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::time::Duration;
 
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
@@ -60,15 +61,15 @@ async fn assert_thread_page_filters(store: &dyn Store) {
     let review = json!({ "result_kind": "example.review.result/1", "verdict": "ok" });
     let summary = json!({ "result_kind": "example.summary.result/1", "text": "done" });
     store
-        .set_thread_result(ids[1], agent.id, &review)
+        .set_thread_result_claiming(ids[1], agent.id, &review)
         .await
         .unwrap();
     store
-        .set_thread_result(ids[3], agent.id, &review)
+        .set_thread_result_claiming(ids[3], agent.id, &review)
         .await
         .unwrap();
     store
-        .set_thread_result(ids[4], agent.id, &summary)
+        .set_thread_result_claiming(ids[4], agent.id, &summary)
         .await
         .unwrap();
     for (id, status) in [

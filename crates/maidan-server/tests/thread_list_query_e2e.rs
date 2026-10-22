@@ -3,6 +3,7 @@
 //! `status` filter before the limit — the reads an agent dashboard makes
 //! instead of fetching five hundred threads to find today's.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::{atomic::AtomicI64, Arc};
 
 use maidan_artifacts::LocalFsStore;
@@ -168,11 +169,11 @@ async fn the_thread_list_orders_and_filters_over_rest() {
     }
     let review = json!({ "result_kind": "example.review.result/1", "verdict": "ok" });
     store
-        .set_thread_result(ids[1], member.id, &review)
+        .set_thread_result_claiming(ids[1], member.id, &review)
         .await
         .unwrap();
     store
-        .set_thread_result(ids[3], member.id, &review)
+        .set_thread_result_claiming(ids[3], member.id, &review)
         .await
         .unwrap();
     for (id, status) in [

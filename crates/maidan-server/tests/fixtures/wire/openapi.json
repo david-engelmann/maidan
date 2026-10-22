@@ -8382,14 +8382,19 @@
         "type": "object"
       },
       "SetThreadResult": {
-        "description": "Set a task's structured result. `result` is arbitrary JSON.",
+        "description": "Set a task's structured result. `result` is arbitrary JSON.\n`claim_lease_id` is the caller's live claim on the thread (the claim\nresponse's `thread.claim_lease_id`); a lease that lapsed and was taken\nover, or was released, is refused 409 `claim-lost` and nothing is stored.",
         "properties": {
+          "claim_lease_id": {
+            "format": "uuid",
+            "type": "string"
+          },
           "result": {
             "type": "object"
           }
         },
         "required": [
-          "result"
+          "result",
+          "claim_lease_id"
         ],
         "type": "object"
       },

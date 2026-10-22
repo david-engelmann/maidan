@@ -3,6 +3,7 @@
 //! backends. No routes yet — store foundation.
 
 use maidan_fsm::ThreadAction;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId, ThreadState,
@@ -80,7 +81,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("closed");
     store
-        .set_thread_result(closed.id, member.id, &json!({"decision": "postgres"}))
+        .set_thread_result_claiming(closed.id, member.id, &json!({"decision": "postgres"}))
         .await
         .expect("result on closed");
     close_thread(store, closed.id, member.id).await;
@@ -97,7 +98,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("open");
     store
-        .set_thread_result(open.id, member.id, &json!({"wip": true}))
+        .set_thread_result_claiming(open.id, member.id, &json!({"wip": true}))
         .await
         .expect("result on open");
 
@@ -126,7 +127,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("elsewhere");
     store
-        .set_thread_result(elsewhere.id, member.id, &json!({"nope": true}))
+        .set_thread_result_claiming(elsewhere.id, member.id, &json!({"nope": true}))
         .await
         .expect("elsewhere result");
     close_thread(store, elsewhere.id, member.id).await;
@@ -143,7 +144,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("archived");
     store
-        .set_thread_result(archived.id, member.id, &json!({"decision": "archive-me"}))
+        .set_thread_result_claiming(archived.id, member.id, &json!({"decision": "archive-me"}))
         .await
         .expect("archived result");
     close_thread(store, archived.id, member.id).await;

@@ -9,6 +9,7 @@
 //! delivered to another tenant watching its own copy. Each scenario runs on
 //! SQLite in-process and on Postgres through the cross-replica notifier.
 
+use maidan_store::test_support::SetResultClaiming;
 mod common;
 
 use std::{
@@ -432,7 +433,7 @@ async fn a_rest_close_refusal_is_heard_by_its_own_workspace_only(h: &Harness) {
         maidan_types::MemberId(uuid::Uuid::parse_str(me["member_id"].as_str().unwrap()).unwrap());
     h.store.set_review_requirement(tid, 1).await.unwrap();
     h.store
-        .set_thread_result(tid, producer, &json!({ "done": true }))
+        .set_thread_result_claiming(tid, producer, &json!({ "done": true }))
         .await
         .unwrap();
 

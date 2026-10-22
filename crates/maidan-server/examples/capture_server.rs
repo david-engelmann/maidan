@@ -19,6 +19,7 @@
 //! the seed left within two minutes of the capture clock. Run via `cargo run
 //! --example capture_server`.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
@@ -409,7 +410,7 @@ async fn seed_board(
                 .expect("start");
         }
         store
-            .set_thread_result(t, cast.server, &serde_json::json!({ "tests": "passed" }))
+            .set_thread_result_claiming(t, cast.server, &serde_json::json!({ "tests": "passed" }))
             .await
             .expect("result");
         store
@@ -507,7 +508,7 @@ async fn seed_board(
         });
     }
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             review,
             cast.server,
             &serde_json::json!({ "tests": "3 passed", "break_checks": "3 of 3 caught" }),

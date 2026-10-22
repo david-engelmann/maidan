@@ -6,6 +6,7 @@
 //! reads them, another workspace's session gets nothing of them, and neither
 //! does a member outside a private channel.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -178,7 +179,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             .id;
         store.claim_thread(thread, worker).await.unwrap();
         store
-            .set_thread_result(thread, worker, &json!({"status": "done"}))
+            .set_thread_result_claiming(thread, worker, &json!({"status": "done"}))
             .await
             .unwrap();
         store

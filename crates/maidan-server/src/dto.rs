@@ -393,10 +393,15 @@ pub struct SetGlossaryTerm {
 }
 
 /// Set a task's structured result. `result` is arbitrary JSON.
+/// `claim_lease_id` is the caller's live claim on the thread (the claim
+/// response's `thread.claim_lease_id`); a lease that lapsed and was taken
+/// over, or was released, is refused 409 `claim-lost` and nothing is stored.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadResult {
     #[schema(value_type = Object)]
     pub result: serde_json::Value,
+    #[schema(value_type = String, format = Uuid)]
+    pub claim_lease_id: uuid::Uuid,
 }
 
 /// Set a thread's persisted steer — durable steering guidance.

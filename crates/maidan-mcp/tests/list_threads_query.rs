@@ -3,6 +3,7 @@
 //! `result_kind` and `status` filter before the limit, and a garbage
 //! value is an InvalidParams error rather than a silent default view.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
@@ -80,11 +81,11 @@ async fn list_threads_orders_and_filters_over_mcp() {
     }
     let review = json!({ "result_kind": "example.review.result/1", "verdict": "ok" });
     store
-        .set_thread_result(ids[1], member.id, &review)
+        .set_thread_result_claiming(ids[1], member.id, &review)
         .await
         .unwrap();
     store
-        .set_thread_result(ids[3], member.id, &review)
+        .set_thread_result_claiming(ids[3], member.id, &review)
         .await
         .unwrap();
     store.claim_thread(ids[3], member.id).await.unwrap();

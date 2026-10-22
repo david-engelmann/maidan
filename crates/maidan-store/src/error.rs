@@ -29,6 +29,13 @@ pub enum StoreError {
     #[error("invalid input: {0}")]
     InvalidInput(String),
 
+    /// A claim-fenced write from a member that no longer holds the thread
+    /// under the lease it named: the lease lapsed and another member took
+    /// the thread, or the claim was released. Nothing was written. REST 409
+    /// `claim-lost`, MCP InvalidParams.
+    #[error("claim lost: {0}")]
+    ClaimLost(String),
+
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 
