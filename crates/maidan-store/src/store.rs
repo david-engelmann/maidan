@@ -1127,16 +1127,20 @@ pub trait EgressStore: Send + Sync {
         external_ref: Option<&str>,
         revision: DateTime<Utc>,
     ) -> Result<(), StoreError>;
+    /// Both record the target's outcome and, when the row moves into
+    /// `failed` or `skipped`, append `ResultDeliveryFailed` in the same
+    /// transaction and return it for the caller to publish. `None` when the
+    /// row was already in that status (or is gone): the outcome was said.
     async fn mark_result_delivery_failed(
         &self,
         id: ResultDeliveryId,
         error: &str,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn mark_result_delivery_skipped(
         &self,
         id: ResultDeliveryId,
         reason: &str,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn get_result_delivery(
         &self,
         thread_id: ThreadId,

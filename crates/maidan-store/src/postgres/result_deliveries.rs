@@ -4,8 +4,11 @@
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Row};
 
+use super::events;
 use crate::StoreError;
-use maidan_types::{status, EgressTarget, ResultDelivery, ResultDeliveryId, ThreadId};
+use maidan_types::{
+    status, EgressTarget, Event, ResultDelivery, ResultDeliveryId, StoredEvent, ThreadId,
+};
 
 const COLS: &str = "id, thread_id, surface, selector, status, external_ref, \
                     armed_revision, delivered_revision, attempts, last_error, \
@@ -107,18 +110,8 @@ pub async fn mark_failed(
     pool: &PgPool,
     id: ResultDeliveryId,
     error: &str,
-) -> Result<(), StoreError> {
-    sqlx::query(&format!(
-        "UPDATE maidan_result_deliveries
-         SET status = '{failed}', attempts = attempts + 1, last_error = $2, updated_at = now()
-         WHERE id = $1",
-        failed = status::FAILED
-    ))
-    .bind(id.0)
-    .bind(error)
-    .execute(pool)
-    .await?;
-    Ok(())
+) -> Result<Option<StoredEvent>, StoreError> {
+    mark_undelivered(pool, id, status::FAILED, error, true).await
 }
 
 /// Record a target we deliberately did not deliver to — an unknown surface, or
@@ -129,18 +122,71 @@ pub async fn mark_skipped(
     pool: &PgPool,
     id: ResultDeliveryId,
     reason: &str,
-) -> Result<(), StoreError> {
+) -> Result<Option<StoredEvent>, StoreError> {
+    mark_undelivered(pool, id, status::SKIPPED, reason, false).await
+}
+
+/// Record a target as `failed` or `skipped` and, when the row moved into that
+/// status, append `ResultDeliveryFailed` in the same transaction, so a relay
+/// hears each outcome once and never hears one that was not recorded. The row
+/// is locked first, so two replicas recording the same row say it once.
+async fn mark_undelivered(
+    pool: &PgPool,
+    id: ResultDeliveryId,
+    to: &str,
+    why: &str,
+    count_attempt: bool,
+) -> Result<Option<StoredEvent>, StoreError> {
+    let mut tx = pool.begin().await?;
+    let Some(row) = sqlx::query(
+        "SELECT thread_id, surface, selector, status FROM maidan_result_deliveries
+         WHERE id = $1 FOR UPDATE",
+    )
+    .bind(id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(None);
+    };
     sqlx::query(&format!(
         "UPDATE maidan_result_deliveries
-         SET status = '{skipped}', last_error = $2, updated_at = now()
+         SET status = $2, last_error = $3, updated_at = now(){attempts}
          WHERE id = $1",
-        skipped = status::SKIPPED
+        attempts = if count_attempt {
+            ", attempts = attempts + 1"
+        } else {
+            ""
+        }
     ))
     .bind(id.0)
-    .bind(reason)
-    .execute(pool)
+    .bind(to)
+    .bind(why)
+    .execute(&mut *tx)
     .await?;
-    Ok(())
+    let event = if row.get::<String, _>("status") == to {
+        None
+    } else {
+        let thread_id = ThreadId(row.get("thread_id"));
+        let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        Some(
+            events::append_in_tx(
+                &mut tx,
+                &Event::ResultDeliveryFailed {
+                    occurred_at: Utc::now(),
+                    workspace_id,
+                    channel_id,
+                    thread_id,
+                    surface: row.get("surface"),
+                    selector: row.get("selector"),
+                    status: to.to_string(),
+                    last_error: Some(why.to_string()),
+                },
+            )
+            .await?,
+        )
+    };
+    tx.commit().await?;
+    Ok(event)
 }
 
 pub async fn get(

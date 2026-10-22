@@ -1288,7 +1288,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 error: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_failed(self.pool(), id, error).await
             }
 
@@ -1296,7 +1296,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 reason: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_skipped(self.pool(), id, reason).await
             }
 

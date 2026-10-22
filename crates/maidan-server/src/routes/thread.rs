@@ -637,8 +637,15 @@ pub async fn replay_thread_delivery(
         Some(maidan_store::ResultDeliveryReplay::Unroutable(_)) => Err(ApiError::BadRequest(
             "this target cannot be delivered — the surface is unknown or unusable".into(),
         )),
-        Some(maidan_store::ResultDeliveryReplay::Skipped(row))
-        | Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
+        Some(maidan_store::ResultDeliveryReplay::Skipped(row, event)) => {
+            if let Some(event) = event {
+                super::publish_stored(&state, *event).await;
+            }
+            let actor_id = (!auth.bypass).then_some(auth.member_id);
+            crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
+            Ok(Json(row))
+        }
+        Some(maidan_store::ResultDeliveryReplay::Enqueued(row)) => {
             let actor_id = (!auth.bypass).then_some(auth.member_id);
             crate::result_delivery::audit_replay(&state, ctx.workspace_id, actor_id, &row).await;
             Ok(Json(row))

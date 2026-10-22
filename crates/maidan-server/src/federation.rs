@@ -609,6 +609,27 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             pr_number,
             to_engine,
         },
+        // Non-federatable (this deployment's own delivery outcome) — never
+        // ingested, but the exhaustive match must classify it.
+        ResultDeliveryFailed {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            surface,
+            selector,
+            status,
+            last_error,
+        } => ResultDeliveryFailed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            surface,
+            selector,
+            status,
+            last_error,
+        },
         // Non-federatable (a locally-derived wait-timer signal) — never
         // actually ingested/remapped, but the exhaustive match must classify
         // it.

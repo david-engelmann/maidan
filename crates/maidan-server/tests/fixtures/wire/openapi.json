@@ -2944,6 +2944,7 @@
           "thread_landed",
           "thread_notice",
           "thread_handoff",
+          "result_delivery_failed",
           "review_submitted",
           "wait_timed_out",
           "schedule_skipped",
