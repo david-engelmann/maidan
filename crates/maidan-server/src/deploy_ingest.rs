@@ -114,7 +114,64 @@ fn parse_deploy(body: DeployEventBody) -> Result<Option<maidan_types::NewDeploy>
         environment,
         status,
         url,
+        contains: Vec::new(),
     }))
+}
+
+/// How many merged pull requests a deploy checks for ancestry, newest first:
+/// one compare call each, so a burst of deploys stays well inside the
+/// GitHub rate limit.
+const ANCESTOR_CHECKS: i64 = 20;
+
+/// The merged pull requests, each in the workspace that tracks it, whose
+/// merge commit `deploy.sha` carries as an ancestor: a deploy of a later
+/// commit shipped them too. Needs a GitHub client to compare commits; with
+/// none, or on a failed compare, a deploy matches its exact commit only.
+async fn shipped_ancestors(
+    state: &AppState,
+    deploy: &maidan_types::NewDeploy,
+) -> Vec<maidan_types::DeployedPull> {
+    let Some(github) = state
+        .github_sender
+        .as_deref()
+        .and_then(|sender| sender.git())
+    else {
+        return Vec::new();
+    };
+    let candidates = match state
+        .store
+        .deploy_candidates(&deploy.repo, &deploy.environment, ANCESTOR_CHECKS)
+        .await
+    {
+        Ok(candidates) => candidates,
+        Err(err) => {
+            tracing::warn!(error = %err, "deploy ingest: candidates not read");
+            return Vec::new();
+        }
+    };
+    let mut shipped = Vec::new();
+    for candidate in candidates {
+        if candidate.merge_sha == deploy.sha {
+            // The exact match is the store's own; no compare needed.
+            continue;
+        }
+        // `compare/{deployed}...{merged}` is behind (or identical) exactly
+        // when the merged commit is an ancestor of the deployed one.
+        match github
+            .commit_on_branch(&deploy.repo, &deploy.sha, &candidate.merge_sha)
+            .await
+        {
+            Ok(true) => shipped.push(maidan_types::DeployedPull {
+                workspace_id: candidate.workspace_id,
+                pull_number: candidate.pull_number,
+            }),
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(error = %err, repo = %deploy.repo, "deploy ingest: compare failed");
+            }
+        }
+    }
+    shipped
 }
 
 /// `POST /integrations/deploys/events`: 404 without a hook, 401 on a bad
@@ -141,11 +198,12 @@ pub async fn deploy_events(
             return ApiError::BadRequest(format!("invalid deploy event: {err}")).into_response()
         }
     };
-    let deploy = match parse_deploy(parsed) {
+    let mut deploy = match parse_deploy(parsed) {
         Ok(Some(deploy)) => deploy,
         Ok(None) => return Json(serde_json::json!({ "noticed": 0 })).into_response(),
         Err(msg) => return ApiError::BadRequest(msg).into_response(),
     };
+    deploy.contains = shipped_ancestors(&state, &deploy).await;
     let posted = match state.store.record_deploy(deploy).await {
         Ok(posted) => posted,
         Err(err) => {

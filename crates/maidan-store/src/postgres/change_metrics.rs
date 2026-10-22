@@ -597,11 +597,38 @@ pub async fn record_deploy(
     .bind(&sha)
     .fetch_all(&mut *tx)
     .await?;
+    let mut targets: Vec<(Uuid, i64, Uuid)> = matched
+        .iter()
+        .map(|row| {
+            (
+                row.get("workspace_id"),
+                row.get("pull_number"),
+                row.get("thread_id"),
+            )
+        })
+        .collect();
+    // A pull the deployed commit carries as an ancestor, looked up in the
+    // workspace that tracks it and no other.
+    for pull in &deploy.contains {
+        let row = sqlx::query(
+            "SELECT thread_id FROM maidan_change_pulls
+             WHERE workspace_id = $1 AND repo = $2 AND pull_number = $3 AND merged_at IS NOT NULL",
+        )
+        .bind(pull.workspace_id.0)
+        .bind(&repo)
+        .bind(pull.pull_number)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(row) = row {
+            let target = (pull.workspace_id.0, pull.pull_number, row.get("thread_id"));
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+        }
+    }
     let mut posted = Vec::new();
-    for row in matched {
-        let workspace_id: Uuid = row.get("workspace_id");
-        let pull_number: i64 = row.get("pull_number");
-        let thread_id = ThreadId(row.get::<Uuid, _>("thread_id"));
+    for (workspace_id, pull_number, thread_id) in targets {
+        let thread_id = ThreadId(thread_id);
         sqlx::query(
             "INSERT INTO maidan_deploys
                  (id, workspace_id, thread_id, repo, pull_number, sha, environment, status, url, received_at)
@@ -646,6 +673,42 @@ pub async fn record_deploy(
     }
     tx.commit().await?;
     Ok(posted)
+}
+
+/// See [`crate::Store::deploy_candidates`].
+pub async fn deploy_candidates(
+    pool: &PgPool,
+    repo: &str,
+    environment: &str,
+    limit: i64,
+) -> Result<Vec<maidan_types::DeployCandidate>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT p.workspace_id, p.pull_number,
+                LOWER(COALESCE(p.merge_commit_sha, p.merged_head_sha)) AS merge_sha
+         FROM maidan_change_pulls p
+         WHERE p.repo = $1 AND p.merged_at IS NOT NULL
+           AND COALESCE(p.merge_commit_sha, p.merged_head_sha) IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_deploys d
+               WHERE d.workspace_id = p.workspace_id AND d.repo = p.repo
+                 AND d.pull_number = p.pull_number AND d.environment = $2
+                 AND d.status = 'success')
+         ORDER BY p.merged_at DESC, p.pull_number DESC
+         LIMIT $3",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(environment)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| maidan_types::DeployCandidate {
+            workspace_id: WorkspaceId(row.get("workspace_id")),
+            pull_number: row.get("pull_number"),
+            merge_sha: row.get("merge_sha"),
+        })
+        .collect())
 }
 
 pub(super) async fn insert_notice_in_tx(

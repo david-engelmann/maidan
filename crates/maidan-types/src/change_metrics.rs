@@ -289,7 +289,8 @@ pub struct PostedNotice {
 
 /// A deploy a deploy hook reported: `sha` reached `environment`, or failed
 /// to. Matched to the merged pull requests whose merge (or merged head)
-/// commit it names.
+/// commit it names, and to those in `contains` the server found `sha`
+/// carries as an ancestor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewDeploy {
     /// Lowercase `owner/name`.
@@ -300,6 +301,26 @@ pub struct NewDeploy {
     /// `success` or `failure`; a deploy still running says nothing yet.
     pub status: crate::pull_ci::CiStatus,
     pub url: Option<String>,
+    /// Merged pull requests, each in its own workspace, whose merge commit
+    /// is an ancestor of `sha`: a deploy of a later commit shipped them too.
+    pub contains: Vec<DeployedPull>,
+}
+
+/// A tracked pull request, named by the workspace that tracks it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployedPull {
+    pub workspace_id: crate::WorkspaceId,
+    pub pull_number: i64,
+}
+
+/// A merged pull request a deploy of a later commit might have shipped:
+/// tracked in `workspace_id`, merged as `merge_sha`, and not yet deployed to
+/// the environment asked about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployCandidate {
+    pub workspace_id: crate::WorkspaceId,
+    pub pull_number: i64,
+    pub merge_sha: String,
 }
 
 /// A stale-base notice for the thread a round was delivered on, said once per

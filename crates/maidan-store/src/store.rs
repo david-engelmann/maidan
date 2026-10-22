@@ -2392,11 +2392,22 @@ pub trait AssignmentStore: Send + Sync {
     /// Record a deploy a deploy hook reported: each merged pull request, in
     /// any workspace, whose merge or merged head commit is `deploy.sha` in
     /// `deploy.repo` gets one `deployed` notice on its thread, with its
-    /// event. A repeat of the same deploy and outcome says nothing again.
+    /// event. So does each pull request in `deploy.contains`, in its own
+    /// workspace only. A repeat of the same deploy and outcome says nothing
+    /// again.
     async fn record_deploy(
         &self,
         deploy: maidan_types::NewDeploy,
     ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// The newest merged pull requests in `repo`, at most `limit`, that no
+    /// deploy to `environment` has yet succeeded for, with the commit each
+    /// merged as: what a deploy of a later commit may have shipped.
+    async fn deploy_candidates(
+        &self,
+        repo: &str,
+        environment: &str,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError>;
     /// A thread's change notices, newest first, at most `limit`.
     async fn list_thread_notices(
         &self,

@@ -2894,6 +2894,15 @@ macro_rules! store_delegations {
                 change_metrics::record_deploy(self.pool(), deploy).await
             }
 
+            async fn deploy_candidates(
+                &self,
+                repo: &str,
+                environment: &str,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError> {
+                change_metrics::deploy_candidates(self.read_pool(), repo, environment, limit).await
+            }
+
             async fn list_thread_notices(
                 &self,
                 thread_id: ThreadId,

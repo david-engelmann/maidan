@@ -107,6 +107,7 @@ fn deploy(sha: &str, status: CiStatus) -> NewDeploy {
         environment: "production".into(),
         status,
         url: Some("https://deploys.example/42".into()),
+        contains: Vec::new(),
     }
 }
 
@@ -194,6 +195,75 @@ async fn a_deploy_reaches_only_the_workspace_that_merged_its_commit(store: Arc<d
     );
 }
 
+/// A deploy of a later commit ships the pulls it carries as ancestors, each
+/// in the workspace that tracks it: a `contains` entry naming a pull in a
+/// workspace that does not track it says nothing there. Once a deploy to an
+/// environment has succeeded for a pull, it is no longer a candidate there.
+async fn a_deploy_ships_its_ancestors_only_in_their_own_workspace(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let mine = room(s, "mine").await;
+    let theirs = room(s, "theirs").await;
+    let my_thread = task(s, &mine).await;
+    let their_thread = task(s, &theirs).await;
+    merged(s, &mine, my_thread, 7, &"a".repeat(40)).await;
+    merged(s, &theirs, their_thread, 8, &"d".repeat(40)).await;
+
+    let mut candidates = s
+        .deploy_candidates(REPO, "production", 20)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|c| (c.workspace_id, c.pull_number, c.merge_sha))
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|c| c.1);
+    assert_eq!(
+        candidates,
+        vec![(mine.ws, 7, "a".repeat(40)), (theirs.ws, 8, "d".repeat(40))]
+    );
+
+    let mut later = deploy(&"e".repeat(40), CiStatus::Success);
+    later.contains = vec![
+        DeployedPull {
+            workspace_id: mine.ws,
+            pull_number: 7,
+        },
+        // Their workspace tracks no #7, and mine tracks no #8.
+        DeployedPull {
+            workspace_id: theirs.ws,
+            pull_number: 7,
+        },
+        DeployedPull {
+            workspace_id: mine.ws,
+            pull_number: 8,
+        },
+    ];
+    let posted = s.record_deploy(later.clone()).await.unwrap();
+    assert_eq!(
+        posted.iter().map(|p| p.thread_id).collect::<Vec<_>>(),
+        vec![my_thread]
+    );
+    assert!(s
+        .list_thread_notices(their_thread, THREAD_NOTICE_LIMIT)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(
+        s.record_deploy(later).await.unwrap().is_empty(),
+        "the same deploy says nothing twice"
+    );
+    let left = s.deploy_candidates(REPO, "production", 20).await.unwrap();
+    assert_eq!(left.len(), 1, "{left:?}");
+    assert_eq!(left[0].workspace_id, theirs.ws);
+    assert_eq!(
+        s.deploy_candidates(REPO, "staging", 20)
+            .await
+            .unwrap()
+            .len(),
+        2,
+        "another environment has deployed neither"
+    );
+}
+
 async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -259,4 +329,5 @@ macro_rules! on_both_backends {
 on_both_backends!(
     a_deploy_is_said_once_on_the_thread_that_merged_its_commit,
     a_deploy_reaches_only_the_workspace_that_merged_its_commit,
+    a_deploy_ships_its_ancestors_only_in_their_own_workspace,
 );
