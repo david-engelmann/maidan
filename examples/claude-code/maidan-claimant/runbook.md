@@ -174,16 +174,26 @@ not `pending`. Go ahead only on `accepted`. Never approve your own request.
    runs, over REST with the token on stdin, and stop the loop after:
 
    ```sh
+   OWNER=$$                                  # this shell: the renewer dies with it
+   STOP_AT=$(( $(date +%s) + 7200 ))         # never renew past the step's longest run
    ( while sleep 600; do
+       kill -0 "$OWNER" 2>/dev/null || break
+       [ "$(date +%s)" -lt "$STOP_AT" ] || break
        printf 'Authorization: Bearer %s\n' "$(cat ~/.config/maidan/seat-token)" \
        | curl -sS --fail-with-body -X POST "$MAIDAN_URL/threads/$THREAD_ID/claim/renew" \
            -H @- -H 'Content-Type: application/json' \
            -d "{\"claim_lease_id\":\"$CLAIM_LEASE_ID\",\"lease_secs\":1800}" >/dev/null \
        || break
      done ) & RENEWER=$!
+   trap 'kill "$RENEWER" 2>/dev/null' EXIT
    make prepush; status=$?
    kill "$RENEWER" 2>/dev/null
    ```
+
+   The renewer stops when its shell is gone, so a session that dies mid-gate
+   (a spend limit, a crash) lets its lease lapse and the work return to the
+   queue, rather than holding the claim for hours with no worker. It also
+   stops at the step's longest expected run: set `STOP_AT` to that.
 
    If a renewal is refused, the claim is gone: it lapsed, or the task was
    cancelled. If the work is already done and committed locally, read the
