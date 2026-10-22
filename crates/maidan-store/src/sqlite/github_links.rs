@@ -45,12 +45,12 @@ pub async fn link(
 /// See the Postgres twin: the only uniqueness this upsert can violate is the
 /// one-link-per-thread index.
 fn map_link_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict(
-                "spawn budget: the thread already has a GitHub link (at most one per claim)".into(),
-            );
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict(
+            "spawn budget: the thread already has a GitHub link (at most one per claim)".into(),
+        );
     }
     StoreError::Database(err)
 }

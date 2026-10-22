@@ -170,10 +170,10 @@ pub fn attenuate_expiry(
         if exp <= now {
             return Err("expires_at must be in the future".into());
         }
-        if let Some(parent_exp) = parent {
-            if exp > parent_exp {
-                return Err("expires_at cannot exceed the parent token".into());
-            }
+        if let Some(parent_exp) = parent
+            && exp > parent_exp
+        {
+            return Err("expires_at cannot exceed the parent token".into());
         }
         return Ok(Some(exp));
     }

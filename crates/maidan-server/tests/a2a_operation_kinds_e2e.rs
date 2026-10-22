@@ -144,10 +144,10 @@ impl World {
         let mut text = String::new();
         while let Some(chunk) = body.next().await {
             text.push_str(&String::from_utf8_lossy(&chunk.unwrap()));
-            if let Some(line) = text.lines().find(|l| l.starts_with("data:")) {
-                if text.contains("\n\n") {
-                    return serde_json::from_str(line.trim_start_matches("data:").trim()).unwrap();
-                }
+            if let Some(line) = text.lines().find(|l| l.starts_with("data:"))
+                && text.contains("\n\n")
+            {
+                return serde_json::from_str(line.trim_start_matches("data:").trim()).unwrap();
             }
         }
         panic!("{method}: the stream ended before its first frame");

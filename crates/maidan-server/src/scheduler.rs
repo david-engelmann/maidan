@@ -115,23 +115,22 @@ async fn fire_recipe(state: &AppState, sched: &TaskSchedule) {
     };
 
     // Skip when the previous run's root thread hasn't reached a terminal state.
-    if let Ok(Some(prev)) = state.store.latest_recipe_run(recipe_id).await {
-        if let Ok(root) = state.store.get_thread(prev.root_thread_id).await {
-            if !root.state.is_terminal() {
-                let event = Event::ScheduleSkipped {
-                    occurred_at: chrono::Utc::now(),
-                    workspace_id: recipe.workspace_id,
-                    channel_id: recipe.channel_id,
-                    schedule_id: sched.id,
-                    recipe_id,
-                    reason: format!("previous run still in flight ({})", root.state.as_str()),
-                };
-                crate::routes::publish(state, event).await;
-                crate::metrics::record_task_schedule_fired("skipped");
-                tracing::info!(schedule = %sched.id, %recipe_id, "scheduler skipped: prior run in flight");
-                return;
-            }
-        }
+    if let Ok(Some(prev)) = state.store.latest_recipe_run(recipe_id).await
+        && let Ok(root) = state.store.get_thread(prev.root_thread_id).await
+        && !root.state.is_terminal()
+    {
+        let event = Event::ScheduleSkipped {
+            occurred_at: chrono::Utc::now(),
+            workspace_id: recipe.workspace_id,
+            channel_id: recipe.channel_id,
+            schedule_id: sched.id,
+            recipe_id,
+            reason: format!("previous run still in flight ({})", root.state.as_str()),
+        };
+        crate::routes::publish(state, event).await;
+        crate::metrics::record_task_schedule_fired("skipped");
+        tracing::info!(schedule = %sched.id, %recipe_id, "scheduler skipped: prior run in flight");
+        return;
     }
 
     match state

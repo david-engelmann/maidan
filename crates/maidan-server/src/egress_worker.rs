@@ -598,13 +598,13 @@ async fn github_branch_result(
         Ok(None) => {
             return Ok(Sent::Refused(
                 "the result is no longer on the thread".into(),
-            ))
+            ));
         }
         Err(err) => {
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
-            })
+            });
         }
     };
     let Some(change) = maidan_types::parse_change_result(&stored.result) else {
@@ -658,13 +658,13 @@ async fn github_branch_result(
         Ok(false) => {
             return Ok(Sent::Refused(format!(
                 "`{selector}` is not in the workspace egress allowlist"
-            )))
+            )));
         }
         Err(err) => {
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
-            })
+            });
         }
     }
     // Only read when the result has no title; a failed read falls back to

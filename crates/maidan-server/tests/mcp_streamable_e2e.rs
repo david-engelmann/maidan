@@ -763,7 +763,9 @@ async fn server_discover_answers_a_cold_2026_request_on_both_posts() {
         assert!(result["ttlMs"].is_u64(), "{path}");
         assert_eq!(result["resultType"], "complete", "{path}");
         assert!(
-            result["capabilities"]["resources"].get("subscribe").is_none(),
+            result["capabilities"]["resources"]
+                .get("subscribe")
+                .is_none(),
             "{path}: 2026 discover must not advertise resources.subscribe without subscriptions/listen"
         );
     }

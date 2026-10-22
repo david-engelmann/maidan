@@ -206,7 +206,7 @@ fn admit_current(headers: &HeaderMap, request: &JsonRpcRequest) -> Result<(), Bo
                     request.method
                 ),
                 None,
-            ))
+            ));
         }
         None => {
             return Err(refuse(
@@ -215,7 +215,7 @@ fn admit_current(headers: &HeaderMap, request: &JsonRpcRequest) -> Result<(), Bo
                 HEADER_MISMATCH,
                 "the Mcp-Method header is required".into(),
                 None,
-            ))
+            ));
         }
     }
     if let Some(target) = request_routing_name(request) {
@@ -228,7 +228,7 @@ fn admit_current(headers: &HeaderMap, request: &JsonRpcRequest) -> Result<(), Bo
                     HEADER_MISMATCH,
                     format!("Mcp-Name {name:?} does not match the request's target {target:?}"),
                     None,
-                ))
+                ));
             }
             None => {
                 return Err(refuse(
@@ -237,7 +237,7 @@ fn admit_current(headers: &HeaderMap, request: &JsonRpcRequest) -> Result<(), Bo
                     HEADER_MISMATCH,
                     format!("the Mcp-Name header is required for {}", request.method),
                     None,
-                ))
+                ));
             }
         }
     }
@@ -321,22 +321,21 @@ pub(crate) fn validate_routing_headers(
     headers: &HeaderMap,
     request: &JsonRpcRequest,
 ) -> Result<(), ApiError> {
-    if let Some(m) = headers.get("mcp-method").and_then(|v| v.to_str().ok()) {
-        if m != request.method {
-            return Err(ApiError::BadRequest(format!(
-                "Mcp-Method header {:?} does not match request method {:?}",
-                m, request.method
-            )));
-        }
+    if let Some(m) = headers.get("mcp-method").and_then(|v| v.to_str().ok())
+        && m != request.method
+    {
+        return Err(ApiError::BadRequest(format!(
+            "Mcp-Method header {:?} does not match request method {:?}",
+            m, request.method
+        )));
     }
-    if let Some(n) = headers.get("mcp-name").and_then(|v| v.to_str().ok()) {
-        if let Some(name) = request_routing_name(request) {
-            if name != n {
-                return Err(ApiError::BadRequest(format!(
-                    "Mcp-Name header {n:?} does not match request target {name:?}"
-                )));
-            }
-        }
+    if let Some(n) = headers.get("mcp-name").and_then(|v| v.to_str().ok())
+        && let Some(name) = request_routing_name(request)
+        && name != n
+    {
+        return Err(ApiError::BadRequest(format!(
+            "Mcp-Name header {n:?} does not match request target {name:?}"
+        )));
     }
     Ok(())
 }

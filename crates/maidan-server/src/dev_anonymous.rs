@@ -51,7 +51,7 @@ pub async fn from_env(
         Ok(raw) => raw,
         Err(std::env::VarError::NotPresent) => return Ok(None),
         Err(std::env::VarError::NotUnicode(_)) => {
-            return Err(ConfigError::Invalid(ENV, "is not valid Unicode".into()))
+            return Err(ConfigError::Invalid(ENV, "is not valid Unicode".into()));
         }
     };
     validate(crate::config::is_production(), auth_disabled)?;

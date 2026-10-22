@@ -5,8 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const PEER_COLS: &str =
-    "id, workspace_id, remote_workspace_id, name, base_url, token_hash, outbound_secret_ciphertext, \
+const PEER_COLS: &str = "id, workspace_id, remote_workspace_id, name, base_url, token_hash, outbound_secret_ciphertext, \
                           enabled, last_synced_event_id, created_at, updated_at";
 
 pub async fn create(pool: &SqlitePool, new: NewPeer) -> Result<Peer, StoreError> {
@@ -194,10 +193,10 @@ pub async fn is_federated_local_event(
 }
 
 fn map_peer_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict("peer token hash already exists".into());
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict("peer token hash already exists".into());
     }
     StoreError::Database(err)
 }

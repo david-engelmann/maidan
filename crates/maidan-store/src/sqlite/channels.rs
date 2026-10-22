@@ -89,10 +89,10 @@ pub async fn list(
 }
 
 fn map_channel_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict("channel name already exists in workspace".into());
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict("channel name already exists in workspace".into());
     }
     StoreError::Database(err)
 }

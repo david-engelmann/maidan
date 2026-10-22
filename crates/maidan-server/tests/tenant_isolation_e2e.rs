@@ -514,10 +514,10 @@ async fn no_live_stream_carries_another_workspaces_events() {
     for (filter, mut sock) in sockets {
         let deadline = tokio::time::Instant::now() + Duration::from_millis(800);
         while let Ok(Some(Ok(msg))) = tokio::time::timeout_at(deadline, sock.next()).await {
-            if let Message::Text(text) = msg {
-                if leaked(&text) {
-                    leaks.push(format!("/ws/subscribe {filter}: {text}"));
-                }
+            if let Message::Text(text) = msg
+                && leaked(&text)
+            {
+                leaks.push(format!("/ws/subscribe {filter}: {text}"));
             }
         }
     }

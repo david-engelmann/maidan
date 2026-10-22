@@ -681,7 +681,7 @@ pub(crate) async fn cancel_task(
                 A2aErrorKind::TaskNotCancelable,
                 "this task is a pending approval gate; answer it through the approvals API",
             )
-            .with("taskId", &req.id))
+            .with("taskId", &req.id));
         }
     };
     if is_terminal_task_state(&task.status.state) {
@@ -716,7 +716,7 @@ pub(crate) async fn subscribe(
             return Err(A2aError::unsupported(
                 "this task is a pending approval gate; follow it through the approvals API",
             )
-            .with("taskId", &req.id))
+            .with("taskId", &req.id));
         }
     };
     if is_terminal_task_state(&task.status.state) {

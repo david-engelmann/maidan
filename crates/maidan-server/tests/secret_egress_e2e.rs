@@ -104,7 +104,9 @@ struct H {
 }
 
 async fn spawn() -> H {
-    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -287,10 +289,10 @@ impl H {
                 .unwrap();
             for row in rows {
                 for i in 0..row.len() {
-                    if let Ok(Some(text)) = row.try_get::<Option<String>, _>(i) {
-                        if text.contains(needle) {
-                            hits.push(format!("{table}: {text}"));
-                        }
+                    if let Ok(Some(text)) = row.try_get::<Option<String>, _>(i)
+                        && text.contains(needle)
+                    {
+                        hits.push(format!("{table}: {text}"));
                     }
                 }
             }

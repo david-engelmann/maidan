@@ -239,21 +239,19 @@ fn client_id_from_headers_and_query(req: &Request<Body>) -> Option<String> {
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-    {
-        if let Some(encoded) = header_value
+        && let Some(encoded) = header_value
             .strip_prefix("Basic ")
             .or_else(|| header_value.strip_prefix("basic "))
+    {
+        use base64::Engine;
+        if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.trim())
+            && let Ok(pair) = String::from_utf8(decoded)
         {
-            use base64::Engine;
-            if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
-                if let Ok(pair) = String::from_utf8(decoded) {
-                    // The username is form-encoded (RFC 6749 section 2.3.1).
-                    let user = pair.split(':').next().unwrap_or_default();
-                    let user = form_decode(user).unwrap_or_else(|| user.to_string());
-                    if !user.is_empty() {
-                        return Some(user);
-                    }
-                }
+            // The username is form-encoded (RFC 6749 section 2.3.1).
+            let user = pair.split(':').next().unwrap_or_default();
+            let user = form_decode(user).unwrap_or_else(|| user.to_string());
+            if !user.is_empty() {
+                return Some(user);
             }
         }
     }
@@ -641,49 +639,50 @@ pub async fn middleware(
         // rides in the JSON body, so a small declared body is buffered,
         // read, and put back untouched for the handler, the same bargain
         // the OAuth client bucket makes with form bodies.
-        if req.uri().path() == "/waitlist" && req.method() == Method::POST {
-            if let Some(cfg) = waitlist_domain_cfg {
-                // A declared length is no part of this: a chunked request
-                // carries none and must be charged the same. The buffer cap
-                // below bounds the read, and a body past it is refused,
-                // which the handler would do anyway (its fields are capped
-                // far below the buffer).
-                let json = req
-                    .headers()
-                    .get(header::CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .is_some_and(|v| v.starts_with("application/json"));
-                if json {
-                    let (parts, body) = req.into_parts();
-                    match axum::body::to_bytes(body, 16_384).await {
-                        Ok(bytes) => {
-                            let domain = serde_json::from_slice::<serde_json::Value>(&bytes)
-                                .ok()
-                                .and_then(|v| {
-                                    v.get("email").and_then(|e| e.as_str()).map(str::to_string)
-                                })
-                                .and_then(|email| {
-                                    // Normalized the way the handler
-                                    // normalizes it, so padding an address
-                                    // cannot mint a fresh bucket.
-                                    email
-                                        .trim()
-                                        .rsplit_once('@')
-                                        .map(|(_, d)| d.trim().to_lowercase())
-                                        .filter(|d| !d.is_empty())
-                                });
-                            req = Request::from_parts(parts, Body::from(bytes));
-                            if let Some(domain) = domain {
-                                let key = format!("waitlist-domain:{domain}");
-                                if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
-                                    return too_many(cfg.window, cfg.max, false);
-                                }
+        if req.uri().path() == "/waitlist"
+            && req.method() == Method::POST
+            && let Some(cfg) = waitlist_domain_cfg
+        {
+            // A declared length is no part of this: a chunked request
+            // carries none and must be charged the same. The buffer cap
+            // below bounds the read, and a body past it is refused,
+            // which the handler would do anyway (its fields are capped
+            // far below the buffer).
+            let json = req
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| v.starts_with("application/json"));
+            if json {
+                let (parts, body) = req.into_parts();
+                match axum::body::to_bytes(body, 16_384).await {
+                    Ok(bytes) => {
+                        let domain = serde_json::from_slice::<serde_json::Value>(&bytes)
+                            .ok()
+                            .and_then(|v| {
+                                v.get("email").and_then(|e| e.as_str()).map(str::to_string)
+                            })
+                            .and_then(|email| {
+                                // Normalized the way the handler
+                                // normalizes it, so padding an address
+                                // cannot mint a fresh bucket.
+                                email
+                                    .trim()
+                                    .rsplit_once('@')
+                                    .map(|(_, d)| d.trim().to_lowercase())
+                                    .filter(|d| !d.is_empty())
+                            });
+                        req = Request::from_parts(parts, Body::from(bytes));
+                        if let Some(domain) = domain {
+                            let key = format!("waitlist-domain:{domain}");
+                            if !try_acquire(&key, cfg.into(), redis.as_ref()).await {
+                                return too_many(cfg.window, cfg.max, false);
                             }
                         }
-                        Err(_) => {
-                            return ApiError::BadRequest("request body could not be read".into())
-                                .into_response();
-                        }
+                    }
+                    Err(_) => {
+                        return ApiError::BadRequest("request body could not be read".into())
+                            .into_response();
                     }
                 }
             }

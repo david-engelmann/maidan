@@ -191,28 +191,27 @@ async fn enqueue_matches(
             .map_err(|e| e.to_string())?;
         enqueued.insert(subscription.id);
     }
-    if kind == EventKind::MentionRecorded {
-        if let Ok(Some(mention_webhook_id)) = state
+    if kind == EventKind::MentionRecorded
+        && let Ok(Some(mention_webhook_id)) = state
             .store
             .get_workspace_mention_webhook_id(workspace_id)
             .await
+    {
+        // `subs` is already scoped to this workspace (H1).
+        if !enqueued.contains(&mention_webhook_id)
+            && subs.iter().any(|s| {
+                s.subscription.id == mention_webhook_id && s.subscription.revoked_at.is_none()
+            })
         {
-            // `subs` is already scoped to this workspace (H1).
-            if !enqueued.contains(&mention_webhook_id)
-                && subs.iter().any(|s| {
-                    s.subscription.id == mention_webhook_id && s.subscription.revoked_at.is_none()
-                })
-            {
-                if payload.is_none() {
-                    payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
-                }
-                if let Some(body) = payload.as_deref() {
-                    state
-                        .store
-                        .enqueue_webhook_delivery(mention_webhook_id, log_id, body)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                }
+            if payload.is_none() {
+                payload = Some(build_payload(log_id, event).map_err(|e| e.to_string())?);
+            }
+            if let Some(body) = payload.as_deref() {
+                state
+                    .store
+                    .enqueue_webhook_delivery(mention_webhook_id, log_id, body)
+                    .await
+                    .map_err(|e| e.to_string())?;
             }
         }
     }

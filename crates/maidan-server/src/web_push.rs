@@ -424,8 +424,7 @@ mod tests {
     /// catch a wrong-but-consistent info label or delimiter; this pins the bytes.
     #[test]
     fn encrypt_payload_matches_rfc8291_appendix_a() {
-        let ua_public_b64 =
-            "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4";
+        let ua_public_b64 = "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4";
         let auth_b64 = "BTBZMqHH6r4Tts7J_aSIgg";
         let as_private_b64 = "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw";
         let salt_b64 = "DGv6ra1nlYgDCS1FRnbzlw";

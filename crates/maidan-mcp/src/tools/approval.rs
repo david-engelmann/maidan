@@ -241,7 +241,7 @@ pub(super) async fn approval_decide(
         Some(n) if n.chars().count() > MAX_NOTE_CHARS => {
             return Err(McpError::InvalidParams(format!(
                 "note: at most {MAX_NOTE_CHARS} characters"
-            )))
+            )));
         }
         other => other,
     };

@@ -289,14 +289,14 @@ pub(super) async fn wait_for_memory_block(
                 }
             }
         };
-        if let Event::MemoryBlockUpdated { label: l, .. } = &updated {
-            if l == &label {
-                let block = server
-                    .store
-                    .get_memory_block_by_label(auth.workspace_id, &label)
-                    .await?;
-                return Ok(content_json(&block));
-            }
+        if let Event::MemoryBlockUpdated { label: l, .. } = &updated
+            && l == &label
+        {
+            let block = server
+                .store
+                .get_memory_block_by_label(auth.workspace_id, &label)
+                .await?;
+            return Ok(content_json(&block));
         }
     }
 }

@@ -94,32 +94,30 @@ pub async fn enforce_token_quota(
 pub async fn middleware(State(state): State<AppState>, req: Request<Body>, next: Next) -> Response {
     let method = req.method().as_str();
     let path = req.uri().path();
-    if let Some(auth) = req.extensions().get::<AuthContext>() {
-        if !auth.bypass {
-            if let Some(token_id) = auth.token_id {
-                if let Some(cap) = route_capability(method, path) {
-                    match state.store.list_token_quotas(token_id).await {
-                        Ok(quotas) => {
-                            if let Some(q) = quotas.iter().find(|q| q.capability == cap) {
-                                let key = format!("quota:{}:{cap}", token_id.0);
-                                let cfg = WindowConfig {
-                                    max: q.max_per_window,
-                                    window: Duration::from_secs(q.window_secs),
-                                };
-                                if !try_acquire(&key, cfg, state.rate_limit_redis.as_ref()).await {
-                                    return too_many(
-                                        cfg.window,
-                                        cfg.max,
-                                        crate::rate_limit::is_mcp_jsonrpc_path(path),
-                                    );
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            tracing::warn!(error = %err, "token quota list failed");
-                        }
+    if let Some(auth) = req.extensions().get::<AuthContext>()
+        && !auth.bypass
+        && let Some(token_id) = auth.token_id
+        && let Some(cap) = route_capability(method, path)
+    {
+        match state.store.list_token_quotas(token_id).await {
+            Ok(quotas) => {
+                if let Some(q) = quotas.iter().find(|q| q.capability == cap) {
+                    let key = format!("quota:{}:{cap}", token_id.0);
+                    let cfg = WindowConfig {
+                        max: q.max_per_window,
+                        window: Duration::from_secs(q.window_secs),
+                    };
+                    if !try_acquire(&key, cfg, state.rate_limit_redis.as_ref()).await {
+                        return too_many(
+                            cfg.window,
+                            cfg.max,
+                            crate::rate_limit::is_mcp_jsonrpc_path(path),
+                        );
                     }
                 }
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "token quota list failed");
             }
         }
     }

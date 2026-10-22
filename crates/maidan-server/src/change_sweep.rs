@@ -197,13 +197,11 @@ async fn refresh(
                 .labels
                 .iter()
                 .any(|label| label == maidan_types::READY_LABEL)
-            {
-                if let Err(err) = store
+                && let Err(err) = store
                     .mark_change_pull_ready(workspace_id, &repo, pull_number, chrono::Utc::now())
                     .await
-                {
-                    tracing::warn!(repo, pull_number, error = %err, "change sweep: ready not recorded");
-                }
+            {
+                tracing::warn!(repo, pull_number, error = %err, "change sweep: ready not recorded");
             }
             continue;
         }

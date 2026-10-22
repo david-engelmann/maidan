@@ -78,13 +78,13 @@ pub async fn apply_subscribe_grants(
         }
         grants = verified;
     }
-    if filter.dm_conversation_id.is_some() {
-        if let Some(th) = filter.thread_id {
-            let ctx = resolve_thread_context(state.store.as_ref(), th)
-                .await
-                .map_err(|e| format!("{e:?}"))?;
-            grants.insert(ctx.channel_id);
-        }
+    if filter.dm_conversation_id.is_some()
+        && let Some(th) = filter.thread_id
+    {
+        let ctx = resolve_thread_context(state.store.as_ref(), th)
+            .await
+            .map_err(|e| format!("{e:?}"))?;
+        grants.insert(ctx.channel_id);
     }
     if let Some(ch) = filter.channel_id {
         let channel = channels

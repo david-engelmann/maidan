@@ -91,7 +91,9 @@ pub fn normalize_secret_egress_host(raw: &str) -> Result<String, &'static str> {
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         {
-            return Err("host may use only letters, digits, '-' and '.' (punycode for non-ASCII names; no wildcards)");
+            return Err(
+                "host may use only letters, digits, '-' and '.' (punycode for non-ASCII names; no wildcards)",
+            );
         }
         if label.starts_with('-') || label.ends_with('-') {
             return Err("host has a label that starts or ends with '-'");

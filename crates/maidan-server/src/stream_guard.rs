@@ -135,7 +135,7 @@ pub fn guard<S>(
     store: Arc<dyn Store>,
     auth: &AuthContext,
     inner: S,
-) -> impl Stream<Item = Frame> + Send + 'static
+) -> impl Stream<Item = Frame> + Send + 'static + use<S>
 where
     S: Stream<Item = Frame> + Send + 'static,
 {
@@ -149,7 +149,7 @@ pub fn guard_ending<T, S, E>(
     auth: &AuthContext,
     inner: S,
     end_with: E,
-) -> impl Stream<Item = T> + Send + 'static
+) -> impl Stream<Item = T> + Send + 'static + use<T, S, E>
 where
     T: Send + 'static,
     S: Stream<Item = T> + Send + 'static,
@@ -199,11 +199,10 @@ where
             tokio::select! {
                 next = g.inner.next() => {
                     let item = next?;
-                    if g.last_check.is_none_or(|at| at.elapsed() >= RECHECK_GAP) {
-                        if let Some(last) = g.check().await {
+                    if g.last_check.is_none_or(|at| at.elapsed() >= RECHECK_GAP)
+                        && let Some(last) = g.check().await {
                             return Some((last, g));
                         }
-                    }
                     return Some((item, g));
                 }
                 _ = g.tick.tick() => {

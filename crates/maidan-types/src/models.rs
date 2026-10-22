@@ -117,12 +117,12 @@ pub fn review_evidence(
         .map(str::trim)
         .filter(|r| !r.is_empty())
         .map(str::to_ascii_lowercase);
-    if let Some(r) = &root {
-        if r.len() != 64 || !r.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(
-                "evidence_root must be the 64-hex-character root from get_review_packet".into(),
-            );
-        }
+    if let Some(r) = &root
+        && (r.len() != 64 || !r.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err(
+            "evidence_root must be the 64-hex-character root from get_review_packet".into(),
+        );
     }
     if decision == crate::ReviewDecision::Approve && root.is_none() {
         return Err(

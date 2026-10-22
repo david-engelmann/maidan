@@ -303,7 +303,7 @@ fn classify(
             return WasiResult::fail(
                 WasiFailureKind::ExitNonZero,
                 format!("guest exited with status {code}"),
-            )
+            );
         }
         _ => {}
     }
