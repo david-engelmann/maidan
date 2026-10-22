@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_store::custody::FakeKmsCustody;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
@@ -127,6 +128,48 @@ impl Db {
             .map(|_| ()),
         }
         .unwrap()
+    }
+
+    /// A workspace's active key row: id, custody, wrapping key id, wrapped key.
+    async fn active_workspace_key(
+        &self,
+        workspace: WorkspaceId,
+    ) -> (Uuid, String, String, Vec<u8>) {
+        let sql = "SELECT id, custody, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
+                   WHERE workspace_id = ? AND retired_at IS NULL";
+        match self {
+            Db::Sqlite(pool) => sqlx::query_as(sql).bind(workspace.0).fetch_one(pool).await,
+            Db::Pg(pool) => {
+                sqlx::query_as(&sql.replace('?', "$1"))
+                    .bind(workspace.0)
+                    .fetch_one(pool)
+                    .await
+            }
+        }
+        .unwrap()
+    }
+
+    /// Overwrite a workspace key's wrapped bytes, as a database writer could.
+    async fn set_workspace_key_blob(&self, id: Uuid, blob: &[u8]) {
+        match self {
+            Db::Sqlite(pool) => {
+                sqlx::query("UPDATE maidan_workspace_keys SET wrapped_key = ? WHERE id = ?")
+                    .bind(blob)
+                    .bind(id)
+                    .execute(pool)
+                    .await
+                    .map(|_| ())
+            }
+            Db::Pg(pool) => {
+                sqlx::query("UPDATE maidan_workspace_keys SET wrapped_key = $1 WHERE id = $2")
+                    .bind(blob)
+                    .bind(id)
+                    .execute(pool)
+                    .await
+                    .map(|_| ())
+            }
+        }
+        .unwrap();
     }
 
     /// A workspace key's row: whether it is retired, and whether destroyed.
@@ -1126,6 +1169,98 @@ async fn each_workspace_seals_under_its_own_key(db: Db) {
     assert_eq!(body_of(replica.as_ref(), in_b.id).await, "words of b");
 }
 
+fn kms_keys(byte: u8, kms: &Arc<FakeKmsCustody>) -> Arc<ContentKeyring> {
+    Arc::new(ContentKeyring::new([byte; 32], Vec::new()).with_custody(kms.clone()))
+}
+
+/// Two tenants under a KMS custody: each workspace key is wrapped by the KMS
+/// and bound to its own row, so neither tenant's wrapped key opens as the
+/// other's, and a KMS that refuses one tenant's key blocks that tenant only.
+async fn a_kms_refusing_one_tenant_blocks_only_that_tenant(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("two-tenant"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "kms-a").await;
+    let b = room(store.as_ref(), "kms-b").await;
+    let (_, in_a) = post(store.as_ref(), &a, "words of a").await;
+    let (_, in_b) = post(store.as_ref(), &b, "words of b").await;
+
+    let (_, a_custody, a_wrapping, a_blob) = db.active_workspace_key(a.ws.id).await;
+    let (b_key, b_custody, _, _) = db.active_workspace_key(b.ws.id).await;
+    assert_eq!(
+        (a_custody.as_str(), b_custody.as_str()),
+        ("fake-kms", "fake-kms")
+    );
+    assert_eq!(a_wrapping, "fake-kms:two-tenant");
+
+    // A replica with nothing in memory opens each key through the KMS, once.
+    let replica = db.store(kms_keys(1, &kms));
+    let before = kms.unwraps();
+    assert_eq!(body_of(replica.as_ref(), in_a.id).await, "words of a");
+    assert_eq!(body_of(replica.as_ref(), in_a.id).await, "words of a");
+    assert_eq!(body_of(replica.as_ref(), in_b.id).await, "words of b");
+    assert_eq!(kms.unwraps() - before, 2);
+
+    // The instance KEK alone opens neither: the keys live in the KMS.
+    let local_only = db.store(kek(1));
+    for log_id in [in_a.id, in_b.id] {
+        assert!(matches!(
+            local_only.get_stored_event(log_id).await,
+            Err(StoreError::ContentKey(_))
+        ));
+    }
+
+    // The KMS stops serving B's key: B is unreadable, A is not.
+    kms.refuse(b_key);
+    let fresh = db.store(kms_keys(1, &kms));
+    assert_eq!(body_of(fresh.as_ref(), in_a.id).await, "words of a");
+    assert!(matches!(
+        fresh.get_stored_event(in_b.id).await,
+        Err(StoreError::ContentKey(_))
+    ));
+
+    // A's wrapped key copied onto B's row does not open B, nor read as A's.
+    db.set_workspace_key_blob(b_key, &a_blob).await;
+    let copied = db.store(kms_keys(1, &kms));
+    assert!(matches!(
+        copied.get_stored_event(in_b.id).await,
+        Err(StoreError::ContentKey(_))
+    ));
+    assert_eq!(body_of(copied.as_ref(), in_a.id).await, "words of a");
+}
+
+/// Switching custody to a KMS: rows the instance KEK wrapped still open, and
+/// the rewrap pass moves every workspace key into the KMS, after which the
+/// instance KEK is no longer what protects them.
+async fn moving_to_a_kms_rewraps_every_workspace_key(db: Db) {
+    let local = db.store(kek(1));
+    let room = room(local.as_ref(), "to-kms").await;
+    let (_, posted) = post(local.as_ref(), &room, WORDS).await;
+    let (_, custody, _, _) = db.active_workspace_key(room.ws.id).await;
+    assert_eq!(custody, "local");
+
+    let kms = Arc::new(FakeKmsCustody::new("move"));
+    let moved = db.store(kms_keys(1, &kms));
+    assert_eq!(body_of(moved.as_ref(), posted.id).await, WORDS);
+    assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 1);
+    assert_eq!(moved.rewrap_content_keys(100).await.unwrap(), 1);
+    assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 0);
+    let (_, custody, wrapping, _) = db.active_workspace_key(room.ws.id).await;
+    assert_eq!(
+        (custody.as_str(), wrapping.as_str()),
+        ("fake-kms", "fake-kms:move")
+    );
+
+    // A different instance KEK with the same KMS still reads the words.
+    let fresh = db.store(kms_keys(7, &kms));
+    assert_eq!(body_of(fresh.as_ref(), posted.id).await, WORDS);
+    // The instance KEK store no longer opens it, even with the old key in
+    // memory: the row now names the KMS.
+    assert!(matches!(
+        local.get_stored_event(posted.id).await,
+        Err(StoreError::ContentKey(_))
+    ));
+}
+
 /// A data key the instance KEK wrapped directly, as every key was before
 /// workspace keys, still opens, and the rewrap pass moves it under its
 /// workspace's key.
@@ -1393,6 +1528,8 @@ macro_rules! on_both_backends {
 
 on_both_backends!(
     each_workspace_seals_under_its_own_key,
+    a_kms_refusing_one_tenant_blocks_only_that_tenant,
+    moving_to_a_kms_rewraps_every_workspace_key,
     a_key_from_before_workspace_keys_moves_under_its_workspace_key,
     rotating_a_workspace_key_rewraps_its_keys_and_nothing_else,
     erasing_a_workspace_destroys_its_key,
