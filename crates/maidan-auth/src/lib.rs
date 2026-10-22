@@ -14,6 +14,7 @@ pub mod export_sign;
 pub mod peer_secret;
 pub mod resolve;
 pub mod subscribe;
+pub mod thread_lookup;
 pub mod token;
 
 pub use access::{
@@ -45,4 +46,5 @@ pub use peer_secret::{
     init_decrypt_fallback_keys, PeerSecretError,
 };
 pub use resolve::{resolve_bearer, resolve_peer_bearer, resolve_resource_bearer, resolve_token_id};
+pub use thread_lookup::find_readable_thread;
 pub use token::{hash_secret, ShareTicketSecret, TokenSecret};

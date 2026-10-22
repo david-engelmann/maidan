@@ -1206,6 +1206,14 @@ pub trait ProjectorLinkStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SlackChannelLink>, StoreError>;
+    /// The thread in `workspace_id` a Slack message or channel, or a pull
+    /// request, refers to (`maidan_types::thread_lookup`); `None` when
+    /// nothing in the workspace does.
+    async fn find_thread_by_external_ref(
+        &self,
+        workspace_id: WorkspaceId,
+        reference: &maidan_types::ExternalThreadRef,
+    ) -> Result<Option<ThreadId>, StoreError>;
     async fn unlink_slack_channel(&self, slack_channel_id: &str) -> Result<bool, StoreError>;
     /// Turn egress to a Slack channel off after an auth/config-class failure —
     /// a retry can't fix a revoked token or a deleted channel. Idempotent (an
