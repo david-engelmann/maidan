@@ -462,7 +462,7 @@ async fn enforce_global(
     state: &crate::state::AppState,
     client: &str,
     is_mcp: bool,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let Some(cfg) = resolve_global(state.rate_limit_default_on) else {
         return Ok(());
     };
@@ -470,7 +470,7 @@ async fn enforce_global(
     if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
         Ok(())
     } else {
-        Err(too_many(cfg.window, cfg.max, is_mcp))
+        Err(Box::new(too_many(cfg.window, cfg.max, is_mcp)))
     }
 }
 
@@ -480,7 +480,7 @@ pub(crate) async fn enforce_verified_bearer(
     state: &crate::state::AppState,
     secret: &str,
     is_mcp: bool,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     enforce_global(state, &bearer_client_key(secret), is_mcp).await
 }
 
@@ -497,7 +497,7 @@ pub(crate) async fn enforce_client_key(
     state: &crate::state::AppState,
     client: &str,
     is_mcp: bool,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     enforce_global(state, client, is_mcp).await
 }
 
@@ -508,7 +508,7 @@ pub(crate) async fn enforce_workspace(
     path: &str,
     bypass: bool,
     workspace_id: &maidan_types::WorkspaceId,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     if !authenticated_into_path(bypass, workspace_id, path) {
         return Ok(());
     }
@@ -522,7 +522,11 @@ pub(crate) async fn enforce_workspace(
     if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
         Ok(())
     } else {
-        Err(too_many(cfg.window, cfg.max, is_mcp_jsonrpc_path(path)))
+        Err(Box::new(too_many(
+            cfg.window,
+            cfg.max,
+            is_mcp_jsonrpc_path(path),
+        )))
     }
 }
 

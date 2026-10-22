@@ -2713,15 +2713,17 @@ macro_rules! store_delegations {
 
             async fn mark_change_pull_ready(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 pull_number: i64,
                 at: chrono::DateTime<chrono::Utc>,
             ) -> Result<(), StoreError> {
-                change_metrics::mark_ready(self.pool(), repo, pull_number, at).await
+                change_metrics::mark_ready(self.pool(), workspace_id, repo, pull_number, at).await
             }
 
             async fn close_change_pull(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 pull_number: i64,
                 merged_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -2730,6 +2732,7 @@ macro_rules! store_delegations {
             ) -> Result<(), StoreError> {
                 change_metrics::close(
                     self.pool(),
+                    workspace_id,
                     repo,
                     pull_number,
                     merged_at,
@@ -2858,22 +2861,31 @@ macro_rules! store_delegations {
 
             async fn record_change_outcome(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 pull_number: i64,
                 outcome: &maidan_types::MergedOutcome,
                 checked_at: chrono::DateTime<chrono::Utc>,
             ) -> Result<(), StoreError> {
-                change_metrics::record_outcome(self.pool(), repo, pull_number, outcome, checked_at)
-                    .await
+                change_metrics::record_outcome(
+                    self.pool(),
+                    workspace_id,
+                    repo,
+                    pull_number,
+                    outcome,
+                    checked_at,
+                )
+                .await
             }
 
             async fn mark_change_pull_checked(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 pull_number: i64,
                 at: chrono::DateTime<chrono::Utc>,
             ) -> Result<(), StoreError> {
-                change_metrics::mark_checked(self.pool(), repo, pull_number, at).await
+                change_metrics::mark_checked(self.pool(), workspace_id, repo, pull_number, at).await
             }
 
             async fn list_change_sweep_workspaces(
@@ -2893,10 +2905,12 @@ macro_rules! store_delegations {
 
             async fn settle_change_pull(
                 &self,
+                workspace_id: WorkspaceId,
                 repo: &str,
                 pull_number: i64,
             ) -> Result<maidan_types::ChangeSettlement, StoreError> {
-                change_metrics::settle(self.pool(), &self.keys, repo, pull_number).await
+                change_metrics::settle(self.pool(), &self.keys, workspace_id, repo, pull_number)
+                    .await
             }
 
             async fn notify_change_merges(

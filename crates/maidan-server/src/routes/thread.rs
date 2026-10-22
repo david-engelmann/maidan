@@ -1596,11 +1596,23 @@ async fn publish_claim(
     for stored in &events {
         super::publish_stored(state, stored.clone()).await;
     }
-    claimed
-        .map(|thread| {
-            claimed_thread(thread, &events).map_err(|e| ApiError::Internal(e.to_string()))
-        })
-        .transpose()
+    let Some(thread) = claimed else {
+        return Ok(None);
+    };
+    let thread_id = thread.id;
+    let mut claimed =
+        claimed_thread(thread, &events).map_err(|e| ApiError::Internal(e.to_string()))?;
+    // Added after the pin, so the pin stays the hash of the row the store
+    // returned. Best effort, as on MCP: the claim has happened, and a failed
+    // read must not cost the claimant its answer and so its lease.
+    claimed.thread.attributes = match state.store.get_thread_attributes(thread_id).await {
+        Ok(attributes) => Some(attributes),
+        Err(err) => {
+            tracing::warn!(thread_id = %thread_id.0, error = %err, "claim: attributes not read");
+            None
+        }
+    };
+    Ok(Some(claimed))
 }
 
 /// Extend a claimed thread's lease (heartbeat), for the current assignee only.

@@ -2256,6 +2256,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Stamp when a tracked agent pull request was made ready.
     async fn mark_change_pull_ready(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         at: chrono::DateTime<chrono::Utc>,
@@ -2263,6 +2264,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Record that a tracked agent pull request closed, merged or not.
     async fn close_change_pull(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         merged_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -2363,6 +2365,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Record an outcome check's findings, whole, and stamp it checked.
     async fn record_change_outcome(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         outcome: &maidan_types::MergedOutcome,
@@ -2371,6 +2374,7 @@ pub trait AssignmentStore: Send + Sync {
     /// Stamp when a tracked agent pull request was last read from GitHub.
     async fn mark_change_pull_checked(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
         at: chrono::DateTime<chrono::Utc>,
@@ -2392,6 +2396,7 @@ pub trait AssignmentStore: Send + Sync {
     /// transaction. See [`maidan_types::ChangeSettlement`].
     async fn settle_change_pull(
         &self,
+        workspace_id: WorkspaceId,
         repo: &str,
         pull_number: i64,
     ) -> Result<maidan_types::ChangeSettlement, StoreError>;

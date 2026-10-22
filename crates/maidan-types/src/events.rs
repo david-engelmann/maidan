@@ -1448,10 +1448,8 @@ pub fn reconstruct_messages_through(events: &[StoredEvent]) -> Vec<Message> {
                 }
                 by_id.insert(message.id, message);
             }
-            Event::MessageTombstoned { message_id, .. } => {
-                if by_id.remove(&message_id).is_some() {
-                    order.retain(|id| *id != message_id);
-                }
+            Event::MessageTombstoned { message_id, .. } if by_id.remove(&message_id).is_some() => {
+                order.retain(|id| *id != message_id);
             }
             _ => {}
         }

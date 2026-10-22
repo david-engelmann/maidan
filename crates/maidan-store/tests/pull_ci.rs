@@ -209,6 +209,7 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
         "another workspace's read says nothing"
     );
     s.close_change_pull(
+        room.ws,
         REPO,
         7,
         Some(chrono::Utc::now()),
@@ -413,10 +414,10 @@ async fn watching_makes_one_thread_and_stays_out_of_the_metrics(store: Arc<dyn S
     assert_eq!(open, vec![7, 8, 9, 10], "the sweep still reads every one");
 }
 
-/// Another workspace can neither watch a pull request this one tracks nor
-/// record checks on it, and nothing is made trying; a channel it names from
-/// this workspace is not found.
-async fn another_workspaces_pull_is_neither_watched_nor_recorded(store: Arc<dyn Store>) {
+/// Two workspaces can track the same pull request: each gets its own thread
+/// and its own check notices, and one closing or settling its row leaves the
+/// other's untouched. A channel named from another workspace is not found.
+async fn two_workspaces_track_the_same_pull_request_apart(store: Arc<dyn Store>) {
     let a = room(store.as_ref(), "a").await;
     let b = room(store.as_ref(), "b").await;
     let s = store.as_ref();
@@ -425,7 +426,7 @@ async fn another_workspaces_pull_is_neither_watched_nor_recorded(store: Arc<dyn 
         .await
         .unwrap();
 
-    let refused = watch_pull(
+    let theirs = watch_pull(
         s,
         WatchRequest {
             workspace_id: b.ws,
@@ -437,15 +438,13 @@ async fn another_workspaces_pull_is_neither_watched_nor_recorded(store: Arc<dyn 
         },
     )
     .await
-    .unwrap_err();
-    assert!(matches!(refused, StoreError::Conflict(_)), "{refused:?}");
-    assert!(
-        s.list_channels(b.ws)
-            .await
-            .unwrap()
-            .iter()
-            .all(|c| c.name != DEFAULT_WATCH_CHANNEL),
-        "nothing is made for a refused watch"
+    .unwrap();
+    assert!(theirs.watched.created);
+    assert_ne!(theirs.watched.thread_id, thread);
+    assert_eq!(
+        s.tracked_pull_thread(a.ws, REPO, 7).await.unwrap(),
+        Some(thread),
+        "the first workspace still tracks its own"
     );
     let foreign_channel = watch_pull(
         s,
@@ -465,14 +464,38 @@ async fn another_workspaces_pull_is_neither_watched_nor_recorded(store: Arc<dyn 
         "{foreign_channel:?}"
     );
 
-    assert!(s
+    assert!(!s
         .record_pull_ci(read(b.ws, "aaa1", CiStatus::Failure, &["unit tests"], true))
         .await
         .unwrap()
         .is_empty());
-    assert!(s.get_pull_ci(b.ws, REPO, 7).await.unwrap().is_none());
-    assert!(s.get_pull_ci(a.ws, REPO, 7).await.unwrap().is_none());
+    assert!(s.get_pull_ci(b.ws, REPO, 7).await.unwrap().is_some());
+    assert!(
+        s.get_pull_ci(a.ws, REPO, 7).await.unwrap().is_none(),
+        "the other workspace's read is not this one's"
+    );
     assert!(s.list_thread_notices(thread, 10).await.unwrap().is_empty());
+    assert!(!s
+        .record_pull_ci(read(a.ws, "aaa1", CiStatus::Failure, &["unit tests"], true))
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(!s.list_thread_notices(thread, 10).await.unwrap().is_empty());
+
+    let now = chrono::Utc::now();
+    s.close_change_pull(a.ws, REPO, 7, Some(now), Some("aaa1"), now)
+        .await
+        .unwrap();
+    assert!(s.list_open_change_pulls(a.ws, 25).await.unwrap().is_empty());
+    assert_eq!(
+        s.list_open_change_pulls(b.ws, 25).await.unwrap(),
+        vec![(REPO.to_string(), 7)],
+        "closing one workspace's row leaves the other's open"
+    );
+    assert!(matches!(
+        s.settle_change_pull(b.ws, REPO, 7).await.unwrap(),
+        ChangeSettlement::Unchanged
+    ));
 }
 
 macro_rules! on_both_backends {
@@ -540,6 +563,6 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
 on_both_backends!(
     a_ci_read_says_each_notice_once_per_head,
     watching_makes_one_thread_and_stays_out_of_the_metrics,
-    another_workspaces_pull_is_neither_watched_nor_recorded,
+    two_workspaces_track_the_same_pull_request_apart,
     a_gate_change_is_said_once,
 );
