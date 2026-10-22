@@ -24,18 +24,33 @@ pub async fn cancel(
     authority: CancelAuthority,
 ) -> Result<CancelOutcome, StoreError> {
     let mut tx = pool.begin().await?;
+    let outcome = cancel_in_tx(&mut tx, keys, thread_id, actor, reason, authority).await?;
+    tx.commit().await?;
+    Ok(outcome)
+}
+
+/// [`cancel`] inside the caller's transaction, so a plan amendment cancels
+/// its children in the same commit as the rest of its writes.
+pub(crate) async fn cancel_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    actor: MemberId,
+    reason: &str,
+    authority: CancelAuthority,
+) -> Result<CancelOutcome, StoreError> {
     let row = sqlx::query(&format!(
         "SELECT {THREAD_COLS} FROM maidan_threads WHERE id = ? AND tombstoned_at IS NULL"
     ))
     .bind(thread_id.0)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
     let thread = row_to_thread(&row)?;
     if authority == CancelAuthority::Creator && thread.created_by != Some(actor) {
         return Ok(CancelOutcome::NotCreator);
     }
-    if let Some(cancellation) = get_in_tx(&mut tx, thread_id).await? {
+    if let Some(cancellation) = get_in_tx(tx, thread_id).await? {
         return Ok(CancelOutcome::AlreadyCancelled(CancelledThread {
             thread,
             cancellation,
@@ -60,9 +75,9 @@ pub async fn cancel(
     .bind(thread.state.as_str())
     .bind(actor.0)
     .bind(&stamp)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
-    threads::charge_open_claim_in_tx(&mut tx, thread_id).await?;
+    threads::charge_open_claim_in_tx(tx, thread_id).await?;
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET state = 'closed', updated_at = ?,
             assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
@@ -72,7 +87,7 @@ pub async fn cancel(
     ))
     .bind(&stamp)
     .bind(thread_id.0)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let closed = row_to_thread(&row)?;
     sqlx::query(
@@ -85,7 +100,7 @@ pub async fn cancel(
     .bind(reason)
     .bind(actor.0)
     .bind(&stamp)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     sqlx::query(
         "INSERT INTO maidan_thread_cancellations (thread_id, reason, cancelled_by, cancelled_at)
@@ -95,7 +110,7 @@ pub async fn cancel(
     .bind(reason)
     .bind(actor.0)
     .bind(&stamp)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
 
     let mut stored: Vec<StoredEvent> = Vec::with_capacity(3);
@@ -104,8 +119,8 @@ pub async fn cancel(
         from_state: thread.state,
         to_state: ThreadState::Closed,
     };
-    stored.push(thread_transitions::state_changed_in_tx(&mut tx, actor, &transition).await?);
-    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    stored.push(thread_transitions::state_changed_in_tx(tx, actor, &transition).await?);
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, thread_id).await?;
     let cancelled = Event::ThreadCancelled {
         occurred_at: now,
         workspace_id,
@@ -114,7 +129,7 @@ pub async fn cancel(
         reason: reason.to_string(),
         cancelled_by: actor,
     };
-    stored.push(events::append_in_tx(&mut tx, &cancelled).await?);
+    stored.push(events::append_in_tx(tx, &cancelled).await?);
     let message_row = sqlx::query(
         "INSERT INTO maidan_messages (id, thread_id, author_id, body, metadata, content, posted_at)
          VALUES (?, ?, ?, ?, ?, NULL, ?)
@@ -126,7 +141,7 @@ pub async fn cancel(
     .bind(notice_body(reason))
     .bind(serde_json::to_string(&notice_metadata(reason))?)
     .bind(now)
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let message = messages::row_to_message(&message_row)?;
     let posted = Event::MessagePosted {
@@ -138,10 +153,9 @@ pub async fn cancel(
         message,
         sealed: None,
     };
-    stored.push(events::append_with_keys_in_tx(&mut tx, Some(keys), &posted, None).await?);
+    stored.push(events::append_with_keys_in_tx(tx, Some(keys), &posted, None).await?);
     // A cancel lands nothing, so a cancelled plan child blocks its dependents.
-    stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor).await?);
-    tx.commit().await?;
+    stored.extend(super::plans::after_close_in_tx(tx, keys, thread_id, actor).await?);
     Ok(CancelOutcome::Cancelled {
         cancelled: CancelledThread {
             thread: closed,
