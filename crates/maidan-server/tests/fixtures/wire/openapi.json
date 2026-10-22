@@ -9259,6 +9259,17 @@
           },
           "threat_model": {
             "type": "boolean"
+          },
+          "tier": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskTier",
+                "description": "The change's review tier, set at intake and restated when a new head\nchanges it. Read by the metrics only; nothing routes or gates on it."
+              }
+            ]
           }
         },
         "type": "object"
@@ -9543,6 +9554,14 @@
           "S",
           "M",
           "L"
+        ],
+        "type": "string"
+      },
+      "TaskTier": {
+        "description": "How much review a change needs before it merges: Tier A takes the fast\npath, Tier B a full review. A thread with no tier stored counts as B in\nthe metrics, while the stored value stays unset, so a later restatement\ncan tell \"never said\" from \"B\".",
+        "enum": [
+          "A",
+          "B"
         ],
         "type": "string"
       },
