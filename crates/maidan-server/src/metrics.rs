@@ -307,7 +307,7 @@ pub fn init() {
         );
         describe_counter!(
             "maidan_usage_lane_saved_usd_micros_total",
-            "Micro-USD saved by batch and flex calls against their reported standard price"
+            "Micro-USD saved by batch and flex calls against their standard price, as reported"
         );
         describe_counter!(
             "maidan_usage_write_premium_usd_micros_total",

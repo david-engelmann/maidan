@@ -29,6 +29,8 @@ pub(crate) fn record(entry: &UsageLedgerEntry) {
             .charge_usd_micros(tokens)
             .ok()
             .and_then(|at_standard| at_standard.checked_sub(entry.stamp.usd_micros));
+        // Ingest refuses a standard price below the charge, so the saving is
+        // never negative and this matches the rollup's lane_saved_usd_micros.
         if let Some(saved) = saved.filter(|saved| *saved > 0) {
             counter!("maidan_usage_lane_saved_usd_micros_total").increment(saved as u64);
         }

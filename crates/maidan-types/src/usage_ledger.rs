@@ -172,7 +172,9 @@ pub struct UsageEvidence {
     /// What the same model charges per million tokens on its standard tier,
     /// for a call that ran in a cheaper lane (batch, or a `batch` or `flex`
     /// service tier). Reporter evidence like the charged price: Maidan keeps
-    /// no discount table. The ledger shows the lane saving from it.
+    /// no discount table. The ledger shows the lane saving from it, as
+    /// reported. Its charge for the reported tokens must not overflow or fall
+    /// below the charged `usd_micros`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standard_price: Option<PriceSnapshot>,
 }
@@ -411,6 +413,20 @@ impl NewUsageLedgerEntry {
                 actual = self.usd_micros
             ));
         }
+        if let Some(standard) = self.evidence.standard_price {
+            // Checked like the charge, so no stored row can overflow the
+            // rollup, and a standard price below the charge is refused: the
+            // lane saving is never negative.
+            let at_standard = standard
+                .charge_usd_micros(self.tokens)
+                .map_err(|err| format!("standard_price: {err}"))?;
+            if at_standard < self.usd_micros {
+                return Err(format!(
+                    "standard_price charge {at_standard} is below usd_micros {actual}: a cheaper lane cannot cost more than standard",
+                    actual = self.usd_micros
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -496,10 +512,11 @@ pub struct UsageRollup {
     /// What those lane reports were charged.
     pub lane_usd_micros: i64,
     /// What the lane reports that carried a standard price would have cost
-    /// at it.
+    /// at it, as reported.
     pub lane_standard_usd_micros: i64,
-    /// The lane saving: `lane_standard_usd_micros` less what those same
-    /// reports were charged.
+    /// The lane saving, as reported: `lane_standard_usd_micros` less what
+    /// those same reports were charged. Never negative, since a standard
+    /// price below the charge is refused at ingest.
     pub lane_saved_usd_micros: i64,
     /// Lane reports with no standard price, whose saving is unknown.
     pub lane_unpriced_reports: i64,
@@ -1334,6 +1351,49 @@ mod tests {
             .charge_usd_micros(huge)
             .unwrap_err()
             .contains("overflow"));
+    }
+
+    #[test]
+    fn a_standard_price_must_not_overflow_or_undercut_the_charge() {
+        let tokens = TokenUsage {
+            input: 1_000,
+            output: 10,
+            ..TokenUsage::default()
+        };
+        let price = PriceSnapshot {
+            input_usd_micros_per_million: 1_000_000,
+            output_usd_micros_per_million: 2_000_000,
+            ..PriceSnapshot::default()
+        };
+        let usd_micros = price.charge_usd_micros(tokens).unwrap();
+        let entry = |standard: PriceSnapshot| NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::nil(),
+            thread_id: ThreadId::new(),
+            reporter: MemberId::new(),
+            claim_lease_id: ClaimLeaseId::new(),
+            model: "m".into(),
+            tokens,
+            usd_micros,
+            price_snapshot: price,
+            turns: 0,
+            evidence: UsageEvidence {
+                batch: true,
+                standard_price: Some(standard),
+                ..UsageEvidence::default()
+            },
+        };
+        assert!(entry(price).validate().is_ok(), "equal to the charge is fine");
+        let overflow = PriceSnapshot {
+            input_usd_micros_per_million: i64::MAX,
+            ..price
+        };
+        let err = entry(overflow).validate().unwrap_err();
+        assert!(err.contains("standard_price") && err.contains("overflow"), "{err}");
+        let cheaper = PriceSnapshot {
+            input_usd_micros_per_million: 500_000,
+            ..price
+        };
+        assert!(entry(cheaper).validate().unwrap_err().contains("below usd_micros"));
     }
 
     #[test]
