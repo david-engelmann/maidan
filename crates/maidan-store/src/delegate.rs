@@ -1907,6 +1907,13 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn get_task_fingerprint(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Option<maidan_types::TaskFingerprint>, StoreError> {
+                task_fingerprints::get(self.read_pool(), thread_id).await
+            }
+
             async fn get_thread_attributes(
                 &self,
                 thread_id: ThreadId,

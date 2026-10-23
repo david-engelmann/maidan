@@ -9433,6 +9433,29 @@
         ],
         "type": "string"
       },
+      "TaskFingerprint": {
+        "description": "A task's stored fingerprint, and the earlier open task with the same\nfingerprint in the same workspace that it was linked to when created.",
+        "properties": {
+          "duplicate_of": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The oldest live task in the workspace that was open or in review\nwith the same fingerprint when this one was created. `None` when\nthere was none."
+              }
+            ]
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "type": "object"
+      },
       "TaskFlag": {
         "description": "Why a task needs a look.",
         "enum": [
@@ -24739,6 +24762,66 @@
           }
         ],
         "summary": "A thread's evidence timeline",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/fingerprint": {
+      "get": {
+        "description": "The SHA-256 of the task's brief and inputs (title, description, kind,\nengine, threat-model flag, acceptance, Linear issue), and the oldest open\ntask in the workspace with the same fingerprint when this one was\ncreated. `404` when the thread has no title or description.",
+        "operationId": "get_task_fingerprint",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskFingerprint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a thread's task fingerprint",
         "tags": [
           "threads"
         ]

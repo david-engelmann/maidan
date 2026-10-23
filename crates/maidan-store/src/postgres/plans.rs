@@ -147,6 +147,12 @@ async fn insert_children_in_tx(
             thread_attributes::insert_on(tx, thread.id, attributes).await?;
         }
         thread_attributes::apply_default_engine_on(tx, thread.id).await?;
+        super::task_fingerprints::record_on(
+            tx,
+            &thread,
+            &child.attributes.clone().unwrap_or_default(),
+        )
+        .await?;
         sqlx::query(
             "INSERT INTO maidan_thread_plan_children (parent_thread_id, child_key, child_thread_id, position)
              VALUES ($1, $2, $3, $4)",

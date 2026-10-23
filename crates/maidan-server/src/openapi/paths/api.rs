@@ -2684,6 +2684,22 @@ pub fn submit_plan() {}
     ))]
 pub fn get_thread_footprint() {}
 
+/// Get a thread's task fingerprint
+///
+/// The SHA-256 of the task's brief and inputs (title, description, kind,
+/// engine, threat-model flag, acceptance, Linear issue), and the oldest open
+/// task in the workspace with the same fingerprint when this one was
+/// created. `404` when the thread has no title or description.
+#[utoipa::path(get, path = "/threads/{id}/fingerprint", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = TaskFingerprint),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_task_fingerprint() {}
+
 /// List a workspace's live claims and their footprints
 #[utoipa::path(get, path = "/workspaces/{id}/claims", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), ActiveClaimsQuery),
