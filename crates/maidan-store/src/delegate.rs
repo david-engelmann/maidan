@@ -631,6 +631,29 @@ macro_rules! store_delegations {
                 usage_meters::add(self.pool(), batch).await
             }
 
+            async fn set_usage_meters(
+                &self,
+                batch: &[maidan_types::UsageMeterDay],
+            ) -> Result<(), StoreError> {
+                usage_meters::set(self.pool(), batch).await
+            }
+
+            async fn list_unmeasured_workspaces(
+                &self,
+                day: chrono::NaiveDate,
+                meter: maidan_types::UsageMeter,
+                limit: i64,
+            ) -> Result<Vec<WorkspaceId>, StoreError> {
+                usage_meters::unmeasured(self.pool(), day, meter, limit).await
+            }
+
+            async fn workspace_stored_bytes(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<i64, StoreError> {
+                usage_meters::stored_bytes(self.read_pool(), workspace_id).await
+            }
+
             async fn list_usage_meters(
                 &self,
                 workspace_id: WorkspaceId,

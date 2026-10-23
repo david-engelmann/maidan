@@ -180,7 +180,7 @@ pub async fn pause_repo(
     .fetch_one(&mut *tx)
     .await?;
     let pause = pause_row(&row);
-    super::audit::append_counted(&mut tx, audit_for(&pause)).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit_for(&pause)).await?;
     tx.commit().await?;
     Ok(pause)
 }
@@ -201,7 +201,7 @@ pub async fn resume_repo(
         .rows_affected()
         > 0;
     if removed {
-        super::audit::append_counted(&mut tx, audit).await?;
+        super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     }
     tx.commit().await?;
     Ok(removed)
@@ -296,7 +296,7 @@ pub async fn set_slot_capacity(
     .bind(updated_by.0)
     .execute(&mut *tx)
     .await?;
-    super::audit::append_counted(&mut tx, audit).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -319,7 +319,7 @@ pub async fn clear_slot_capacity(
             .rows_affected()
             > 0;
     if removed {
-        super::audit::append_counted(&mut tx, audit).await?;
+        super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     }
     tx.commit().await?;
     Ok(removed)

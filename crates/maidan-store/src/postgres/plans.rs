@@ -735,7 +735,12 @@ pub async fn release(
     .fetch_all(&mut *tx)
     .await?;
     if !released.is_empty() {
-        super::audit::append_counted(&mut tx, audit).await?;
+        super::audit::append_scoped(
+            &mut tx,
+            crate::audit_scope::AuditOwner::Thread(parent_id),
+            audit,
+        )
+        .await?;
     }
     tx.commit().await?;
     Ok(released.into_iter().map(ThreadId).collect())

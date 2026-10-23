@@ -236,7 +236,7 @@ pub async fn resolve_audited(
     let mut tx = pool.begin().await?;
     let gate = resolve_on(&mut tx, id, resolved_by, state, content, Some(via)).await?;
     if let Some(gate) = &gate {
-        super::audit::append_counted(&mut tx, audit(gate)).await?;
+        super::audit::append_scoped(&mut tx, gate.workspace_id, audit(gate)).await?;
     }
     tx.commit().await?;
     Ok(gate)
@@ -307,7 +307,7 @@ pub async fn set_policy_audited(
         }
     }
     let policy = get_policy_on(&mut tx, workspace_id).await?;
-    super::audit::append_counted(&mut tx, audit(&policy)).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit(&policy)).await?;
     tx.commit().await?;
     Ok(policy)
 }
@@ -371,7 +371,8 @@ pub async fn issue_confirmation(
         }
     };
     if fresh {
-        super::audit::append_counted(&mut tx, audit(&confirmation)).await?;
+        super::audit::append_scoped(&mut tx, confirmation.workspace_id, audit(&confirmation))
+            .await?;
     }
     tx.commit().await?;
     Ok((confirmation, fresh))
@@ -458,7 +459,7 @@ pub async fn confirm(
     .await?;
     let outcome = match gate {
         Some(gate) => {
-            super::audit::append_counted(&mut tx, audit(&gate)).await?;
+            super::audit::append_scoped(&mut tx, workspace_id, audit(&gate)).await?;
             ConfirmOutcome::Accepted(Box::new(gate))
         }
         None => ConfirmOutcome::GateResolved,

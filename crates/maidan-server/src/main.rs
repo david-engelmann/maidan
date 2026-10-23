@@ -429,43 +429,6 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         ),
     }
 
-    let indexer_last_error = Arc::new(RwLock::new(None));
-
-    let (indexer_handler, indexer_metrics): (
-        Arc<dyn maidan_search::EventHandler>,
-        Arc<IndexerMetrics>,
-    ) = if use_embedding_indexer {
-        let config = BatchConfig::from_env();
-        let metrics = Arc::new(IndexerMetrics::new(config.queue_capacity));
-        tracing::info!(
-            queue_capacity = config.queue_capacity,
-            batch_size = config.batch_size,
-            "indexer: batched embedding generation (postgres)"
-        );
-        let handler = BatchingEmbeddingHandler::spawn(
-            store.clone(),
-            search.clone(),
-            embedding_provider.clone(),
-            config,
-            metrics.clone(),
-            Some(indexer_last_error.clone()),
-        );
-        if let Some(repair) = maidan_server::embed_repair::config_from_env() {
-            let (search, provider, metrics) =
-                (search.clone(), embedding_provider.clone(), metrics.clone());
-            tokio::spawn(async move {
-                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
-            });
-        }
-        (Arc::new(handler), metrics)
-    } else {
-        tracing::info!("indexer: logging only (sqlite)");
-        (
-            Arc::new(LoggingHandler::default()),
-            Arc::new(IndexerMetrics::default()),
-        )
-    };
-
     let auth_disabled = maidan_server::auth::auth_disabled_from_env();
     if auth_disabled {
         tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
@@ -565,6 +528,48 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         state.attach_presence_notifier(presence_notifier);
     }
     state.presence.spawn_tasks();
+    // Built once the state is: it counts embeddings into the state's usage
+    // meters.
+    let indexer_last_error = Arc::new(RwLock::new(None));
+
+    let (indexer_handler, indexer_metrics): (
+        Arc<dyn maidan_search::EventHandler>,
+        Arc<IndexerMetrics>,
+    ) = if use_embedding_indexer {
+        let config = BatchConfig::from_env();
+        let metrics = Arc::new(IndexerMetrics::new(config.queue_capacity));
+        tracing::info!(
+            queue_capacity = config.queue_capacity,
+            batch_size = config.batch_size,
+            "indexer: batched embedding generation (postgres)"
+        );
+        let handler = BatchingEmbeddingHandler::spawn(
+            state.store.clone(),
+            state.search.clone(),
+            state.embedding_provider.clone(),
+            config,
+            metrics.clone(),
+            Some(indexer_last_error.clone()),
+        )
+        .with_usage_meters(state.usage_meters.clone());
+        if let Some(repair) = maidan_server::embed_repair::config_from_env() {
+            let (search, provider, metrics) = (
+                state.search.clone(),
+                state.embedding_provider.clone(),
+                metrics.clone(),
+            );
+            tokio::spawn(async move {
+                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
+            });
+        }
+        (Arc::new(handler), metrics)
+    } else {
+        tracing::info!("indexer: logging only (sqlite)");
+        (
+            Arc::new(LoggingHandler::default()),
+            Arc::new(IndexerMetrics::default()),
+        )
+    };
     state.indexer_last_error = indexer_last_error;
     let indexer_processed = state.indexer_processed_log_id.clone();
     state.indexer_metrics = indexer_metrics;

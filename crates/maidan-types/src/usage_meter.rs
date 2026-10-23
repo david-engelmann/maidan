@@ -16,15 +16,36 @@ pub enum UsageMeter {
     Requests,
     /// MCP tool calls.
     McpCalls,
+    /// Texts embedded: messages indexed and search queries.
+    EmbeddingCalls,
+    /// Outbound deliveries sent: Slack, GitHub and Linear egress, email and
+    /// web push.
+    Deliveries,
+    /// Milliseconds of WASI handler execution.
+    WasiMs,
+    /// Bytes stored for the workspace: its artifacts and its message bodies.
+    /// A gauge: the day's row is the latest measurement, not a sum.
+    StoredBytes,
 }
 
 impl UsageMeter {
-    pub const ALL: [UsageMeter; 2] = [UsageMeter::Requests, UsageMeter::McpCalls];
+    pub const ALL: [UsageMeter; 6] = [
+        UsageMeter::Requests,
+        UsageMeter::McpCalls,
+        UsageMeter::EmbeddingCalls,
+        UsageMeter::Deliveries,
+        UsageMeter::WasiMs,
+        UsageMeter::StoredBytes,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Requests => "requests",
             Self::McpCalls => "mcp_calls",
+            Self::EmbeddingCalls => "embedding_calls",
+            Self::Deliveries => "deliveries",
+            Self::WasiMs => "wasi_ms",
+            Self::StoredBytes => "stored_bytes",
         }
     }
 

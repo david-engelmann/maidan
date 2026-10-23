@@ -250,7 +250,7 @@ pub async fn create_audited(
     let group = get_on(&mut tx, new.workspace_id, id)
         .await?
         .ok_or(StoreError::NotFound)?;
-    audit::append_counted(&mut tx, audit_for(&group)).await?;
+    audit::append_scoped(&mut tx, group.workspace_id, audit_for(&group)).await?;
     tx.commit().await?;
     Ok(group)
 }
@@ -284,7 +284,7 @@ pub async fn update_audited(
         .await?
         .ok_or(StoreError::NotFound)?;
     let write = net_change(&current.members, group);
-    audit::append_counted(&mut tx, audit_for(&write)).await?;
+    audit::append_scoped(&mut tx, workspace_id, audit_for(&write)).await?;
     tx.commit().await?;
     Ok(Some(write))
 }
@@ -317,7 +317,7 @@ pub async fn delete_audited(
     if done.rows_affected() == 0 {
         return Ok(false);
     }
-    audit::append_counted(&mut tx, event).await?;
+    audit::append_scoped(&mut tx, workspace_id, event).await?;
     tx.commit().await?;
     Ok(true)
 }
