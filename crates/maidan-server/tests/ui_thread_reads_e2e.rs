@@ -170,7 +170,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
             .create_thread(NewThread {
                 channel_id: channel.id,
                 parent_thread_id: None,
-                title: Some("Ship it".into()),
+                title: Some(distinct_brief("Ship it")),
                 description: None,
                 created_by: None,
             })
@@ -581,4 +581,11 @@ async fn every_ui_api_read_answers_as_its_bearer_twin_and_refuses_another_worksp
             }
         }
     }
+}
+
+/// `base` with a unique suffix, so fixture tasks created alike in one
+/// workspace never share a fingerprint: a live duplicate is not claimable
+/// (Context Economics C8b), and these tests are not about duplicates.
+fn distinct_brief(base: &str) -> String {
+    format!("{base} {}", uuid::Uuid::now_v7())
 }
