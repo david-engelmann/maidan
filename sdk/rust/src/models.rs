@@ -471,6 +471,7 @@ model! {
         decision: ReviewDecision,
         note: Option<String>,
         dismissed_at: Option<String>,
+        head_sha: Option<String>,
         created_at: String,
         updated_at: String,
     }

@@ -363,6 +363,8 @@ export interface ThreadReview {
   decision: ReviewDecision;
   note?: string | null;
   dismissed_at?: string | null;
+  /** Full head SHA of the change the verdict was given against. */
+  head_sha?: string | null;
   created_at: string;
   updated_at: string;
 }
