@@ -553,6 +553,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::list_thread_deliveries),
         )
         .route(
+            "/threads/{id}/transitions",
+            get(routes::list_thread_transitions),
+        )
+        .route(
             "/threads/{id}/deliveries/{did}/replay",
             post(routes::replay_thread_delivery),
         )

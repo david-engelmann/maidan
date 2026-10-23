@@ -425,6 +425,14 @@ pub struct ActiveClaimsQuery {
     pub repo: Option<String>,
 }
 
+/// Query params for a thread's transition history.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ThreadTransitionsQuery {
+    /// Maximum rows to return, oldest first (default 100, at most 500).
+    pub limit: Option<i64>,
+}
+
 /// Query params for removing a slot's capacity.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

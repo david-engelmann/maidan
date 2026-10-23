@@ -202,6 +202,7 @@
   {"method":"GET","path":"/threads/{id}/context","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/context/snapshot","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/deliveries","kind":"reads"},
+  {"method":"GET","path":"/threads/{id}/transitions","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/deliveries/{did}/replay","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/dependencies","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/dependencies","kind":"changes"},
