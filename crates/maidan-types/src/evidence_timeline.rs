@@ -232,6 +232,7 @@ mod tests {
             decision: ReviewDecision::Approve,
             note: None,
             actor_id: None,
+            head_sha: None,
             recorded_at: t(at),
         }
     }
