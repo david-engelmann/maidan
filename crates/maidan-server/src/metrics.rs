@@ -625,6 +625,9 @@ async fn refresh_runtime_gauges(state: &AppState) {
             .store
             .count_stalled_threads(now, progress_before)
             .await
+            .inspect_err(|err| {
+                tracing::warn!(error = %err, "metrics: stalled-thread count failed; gauge left as it was");
+            })
             .ok(),
         None => Some(0),
     };

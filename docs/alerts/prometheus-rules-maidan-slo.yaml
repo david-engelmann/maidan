@@ -276,7 +276,7 @@ spec:
           # A claim whose lease keeps renewing while its holder posts and
           # declares nothing: a hung agent with a live heartbeat. The board
           # marks the thread stalled; this pages once it has stayed so.
-          expr: maidan_threads_stalled > 0
+          expr: max without (instance, pod) (maidan_threads_stalled) > 0
           for: 15m
           labels:
             severity: warning

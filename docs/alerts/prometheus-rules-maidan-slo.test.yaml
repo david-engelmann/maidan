@@ -320,6 +320,26 @@ tests:
       - alertname: MaidanClaimsRenewingWithoutProgress
         eval_time: 18m
         exp_alerts: []
+  # Every replica exports the same instance-wide count; the alert pages once.
+  - interval: 1m
+    input_series:
+      - series: 'maidan_threads_stalled{instance="a:9090", pod="maidan-0"}'
+        values: "0 2x20"
+      - series: 'maidan_threads_stalled{instance="b:9090", pod="maidan-1"}'
+        values: "0 2x20"
+    alert_rule_test:
+      - alertname: MaidanClaimsRenewingWithoutProgress
+        eval_time: 17m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: stuck_work
+            exp_annotations:
+              summary: Claims renewing without progress
+              description: |
+                2 thread(s) held on a live lease with no progress by
+                the holder for MAIDAN_STALL_SECS. Filter the board for stalled
+                cards; release the claim or check the agent.
 
   # The first panic warns, naming the loop: the loop registers the counter at
   # 0 when it starts, so one panic is an increase.

@@ -3124,7 +3124,7 @@ macro_rules! store_delegations {
                 now: chrono::DateTime<chrono::Utc>,
                 progress_before: chrono::DateTime<chrono::Utc>,
             ) -> Result<i64, StoreError> {
-                threads::count_stalled_threads(self.pool(), now, progress_before).await
+                threads::count_stalled_threads(self.read_pool(), now, progress_before).await
             }
 
             async fn reap_expired_claims(
