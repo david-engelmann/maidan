@@ -237,6 +237,8 @@ async fn complete_signup(
     let Some(email) = email.filter(|_| email_verified) else {
         return Err(ApiError::Forbidden("sign-up needs a verified email".into()));
     };
+    crate::rate_limit::charge_email_domain(state, crate::rate_limit::DomainCharge::Signup, &email)
+        .await?;
 
     let gate = match pending.invite_entry_id {
         Some(entry_id) => {

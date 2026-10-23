@@ -163,6 +163,69 @@ const WAITLIST_DOMAIN: LimitSpec = LimitSpec {
     },
 };
 
+/// Per-email-domain limit for an invite mint and for a finished sign-up:
+/// 100 / 3600 s each, in separate buckets. The address budget alone lets a
+/// spread of addresses mint invites for one domain or sign one domain up
+/// over and over; this keeps either to a domain's genuine pace.
+const SIGNUP_DOMAIN: LimitSpec = LimitSpec {
+    max_var: "MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX",
+    window_var: "MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS",
+    default: RateLimitConfig {
+        max: 100,
+        window: Duration::from_secs(3600),
+    },
+};
+
+/// Which domain-charged step of the launch surface a charge is for.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DomainCharge {
+    /// The operator minting an invite for a waitlist entry.
+    Invite,
+    /// A sign-up finishing at the callback with a verified email.
+    Signup,
+}
+
+/// The domain of `email`, normalized the way the waitlist charge
+/// normalizes it; `None` when there is no domain part.
+fn email_domain(email: &str) -> Option<String> {
+    email
+        .trim()
+        .rsplit_once('@')
+        .map(|(_, d)| d.trim().to_lowercase())
+        .filter(|d| !d.is_empty())
+}
+
+/// Charge `email`'s domain for one invite mint or one finished sign-up.
+/// The email is known only inside the handler (the waitlist entry's, or
+/// the verified one the identity provider returned), so the handler calls
+/// this before it changes anything. An email with no domain is charged
+/// nothing here; the handler's own checks refuse it.
+pub(crate) async fn charge_email_domain(
+    state: &crate::state::AppState,
+    charge: DomainCharge,
+    email: &str,
+) -> Result<(), ApiError> {
+    let Some(cfg) = resolve_env(&SIGNUP_DOMAIN, state.rate_limit_default_on) else {
+        return Ok(());
+    };
+    let Some(domain) = email_domain(email) else {
+        return Ok(());
+    };
+    let key = match charge {
+        DomainCharge::Invite => format!("invite-domain:{domain}"),
+        DomainCharge::Signup => format!("signup-domain:{domain}"),
+    };
+    if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
+        Ok(())
+    } else {
+        Err(ApiError::TooManyRequests(format!(
+            "rate limit exceeded ({} requests per {}s for this email domain)",
+            cfg.max,
+            cfg.window.as_secs()
+        )))
+    }
+}
+
 fn resolve_signup_ip(default_on: bool) -> Option<RateLimitConfig> {
     resolve_env(&SIGNUP_IP, default_on)
 }
@@ -662,16 +725,10 @@ pub async fn middleware(
                             .and_then(|v| {
                                 v.get("email").and_then(|e| e.as_str()).map(str::to_string)
                             })
-                            .and_then(|email| {
-                                // Normalized the way the handler
-                                // normalizes it, so padding an address
-                                // cannot mint a fresh bucket.
-                                email
-                                    .trim()
-                                    .rsplit_once('@')
-                                    .map(|(_, d)| d.trim().to_lowercase())
-                                    .filter(|d| !d.is_empty())
-                            });
+                            // Normalized the way the handler normalizes
+                            // it, so padding an address cannot mint a
+                            // fresh bucket.
+                            .and_then(|email| email_domain(&email));
                         req = Request::from_parts(parts, Body::from(bytes));
                         if let Some(domain) = domain {
                             let key = format!("waitlist-domain:{domain}");
