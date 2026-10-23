@@ -604,6 +604,7 @@ async fn claim_next_candidate(
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
+            secs_since: "(strftime('%s','now') - strftime('%s', {col}))",
         },
     );
     Ok(sqlx::query(&sql)

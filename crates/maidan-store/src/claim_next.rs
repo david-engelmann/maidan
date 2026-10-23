@@ -81,6 +81,9 @@ pub(crate) struct ClaimSql<'a> {
     /// result `r` was produced. Each backend compares the two times its own
     /// way, since SQLite stores them as text.
     pub requeued_after_result: &'a str,
+    /// Whole seconds from the column `{col}` to now, with `{col}` replaced by
+    /// the column. Each backend does time arithmetic its own way.
+    pub secs_since: &'a str,
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
@@ -98,12 +101,14 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         repo,
         engine,
         requeued_after_result,
+        secs_since,
     } = sql;
     let in_scope = match scope {
         ClaimScope::Channel(_) => format!("cand.channel_id = {scope_id}"),
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
+    let warming = sibling_warming(now, secs_since);
     let refused = crate::review_family::refused_to(member);
     let claimable = claimability::claimable(&ThreadSql {
         now,
@@ -136,8 +141,54 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            ))
            AND NOT {refused}
            AND {readable}
+           AND NOT {warming}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC
          LIMIT 1"
+    )
+}
+
+/// How long a sibling's first claim holds the others back, at most, waiting
+/// for its first usage report. Past this the siblings fan out anyway, so a
+/// stalled or silent first claimer never starves the group.
+pub(crate) const WARM_HOLD_SECS: i64 = 120;
+
+/// How long a sibling's usage report keeps the group's prefix warm: the
+/// 5-minute cache TTL. Within it, siblings fan out without waiting again.
+pub(crate) const WARM_TTL_SECS: i64 = 300;
+
+/// True when `cand` should wait for a sibling to warm the prefix the group
+/// shares (Context Economics C5: warm, then fan out). Siblings are the
+/// children of one parent thread, such as a recipe's children. One sibling is
+/// handed out first; the rest wait while it is held on a live claim taken in
+/// the last [`WARM_HOLD_SECS`] that has reported no usage yet, unless some
+/// sibling reported usage within [`WARM_TTL_SECS`]. The first usage report
+/// means the provider has written the shared prefix, so the rest read it
+/// instead of each writing it cold.
+pub(crate) fn sibling_warming(now: &str, secs_since: &str) -> String {
+    let claimed_age = secs_since.replace("{col}", "sib.claimed_at");
+    let usage_age = secs_since.replace("{col}", "u.accepted_at");
+    format!(
+        "(cand.parent_thread_id IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM maidan_threads sib
+              WHERE sib.parent_thread_id = cand.parent_thread_id
+                AND sib.id <> cand.id
+                AND sib.assignee_id IS NOT NULL
+                AND sib.claim_lease_id IS NOT NULL
+                AND (sib.assignment_expires_at IS NULL OR sib.assignment_expires_at >= {now})
+                AND sib.claimed_at IS NOT NULL
+                AND {claimed_age} < {WARM_HOLD_SECS}
+                AND NOT EXISTS (
+                    SELECT 1 FROM maidan_usage_ledger u
+                    WHERE u.thread_id = sib.id AND u.claim_lease_id = sib.claim_lease_id
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM maidan_usage_ledger u
+              JOIN maidan_threads sib ON sib.id = u.thread_id
+              WHERE sib.parent_thread_id = cand.parent_thread_id
+                AND {usage_age} < {WARM_TTL_SECS}
+          ))"
     )
 }
 

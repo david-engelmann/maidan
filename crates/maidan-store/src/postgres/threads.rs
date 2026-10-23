@@ -794,6 +794,7 @@ async fn claim_next_in_tx(
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
+            secs_since: "EXTRACT(EPOCH FROM (NOW() - {col}))",
         },
     );
     // The CTE captures the candidate's PRE-update claim (`prev_*`) so a

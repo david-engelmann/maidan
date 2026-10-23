@@ -1,0 +1,2 @@
+### Changed
+- `claim_next` warms, then fans out (Context Economics C5): the children of one parent thread (a recipe's children, which share a prompt prefix) are handed out one first. The others wait until that claim reports usage, which means the provider has written the shared prefix, so the rest read it rather than each writing it cold. They wait at most 120 s after the first claim, and not at all while a sibling's usage report is under 5 minutes old. Work outside the group is never held back.
