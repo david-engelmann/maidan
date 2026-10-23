@@ -1537,5 +1537,5 @@ pub async fn count_stalled_threads(
     .bind(progress_before.to_rfc3339())
     .fetch_one(pool)
     .await?;
-    Ok(row.get::<i64, _>("c"))
+    Ok(row.try_get::<i64, _>("c")?)
 }
