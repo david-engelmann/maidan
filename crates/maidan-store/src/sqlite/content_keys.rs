@@ -290,11 +290,14 @@ pub async fn rewrap(
         }
     }
 
+    // Workspace keys the custody refused to open this pass: their other
+    // rows are skipped without asking it again.
+    let mut refused = std::collections::HashSet::<Uuid>::new();
     let mut after = Uuid::nil();
     loop {
         let mut tx = pool.begin().await?;
         let rows = sqlx::query(
-            "SELECT k.id, k.workspace_id, k.kek_id, k.wrapped_key,
+            "SELECT k.id, k.workspace_id, k.workspace_key_id, k.kek_id, k.wrapped_key,
                 wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped
          FROM maidan_content_keys k
          LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id
@@ -316,8 +319,14 @@ pub async fn rewrap(
             // A savepoint per row: a row the custody refuses is rolled
             // back, logged and skipped, so one workspace never holds up
             // another's rewrap or the destroy step below.
-            let mut sp = tx.begin().await?;
             let id: Uuid = row.get("id");
+            let workspace_key: Option<Uuid> = row.get("workspace_key_id");
+            if workspace_key.is_some_and(|w| refused.contains(&w)) {
+                pass.skipped += 1;
+                continue;
+            }
+            let mut sp = tx.begin().await?;
+            let mut open_refused = false;
             let done: Result<(), StoreError> = async {
                 let subject: Uuid = row.get("id");
                 let wrapped = WrappedKey {
@@ -332,7 +341,8 @@ pub async fn rewrap(
                         blob: row.get("wk_wrapped"),
                     },
                 )
-                .await?;
+                .await
+                .inspect_err(|_| open_refused = true)?;
                 let data_key = keys.unwrap(subject, &wrapped)?;
                 let active = active_workspace_key(&mut sp, keys, row.get("workspace_id")).await?;
                 let rewrapped = keys.wrap_for_workspace(active, subject, &data_key)?;
@@ -349,6 +359,9 @@ pub async fn rewrap(
                 Ok(())
             }
             .await;
+            if open_refused && let Some(w) = workspace_key {
+                refused.insert(w);
+            }
             match done {
                 Ok(()) => {
                     sp.commit().await?;

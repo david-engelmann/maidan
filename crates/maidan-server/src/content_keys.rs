@@ -10,10 +10,20 @@ use maidan_store::Store;
 /// Rows per transaction in each [`spawn_rewrap`] pass.
 const REWRAP_BATCH: i64 = 500;
 
+/// The longest [`spawn_rewrap`] waits between stalled or failed passes.
+const MAX_RETRY: Duration = Duration::from_secs(600);
+
+/// Wait `delay`, then return the next wait: doubled, at most [`MAX_RETRY`].
+async fn sleep_then_back_off(delay: Duration) -> Duration {
+    tokio::time::sleep(delay).await;
+    delay.saturating_mul(2).min(MAX_RETRY)
+}
+
 /// Rewrap every live content key still wrapped by a previous KEK, then exit.
 /// KEKs only change at a restart, so passes at boot complete a rotation. A
 /// failed pass, or one left only with rows the custody refuses (counted in
-/// `maidan_content_keys_refused`), is retried after `retry`; the task exits
+/// `maidan_content_keys_refused`), is retried after `retry`, doubling up to
+/// ten minutes until a pass makes progress; the task exits
 /// only when nothing is left. Replicas running this concurrently are safe:
 /// each page re-reads under lock.
 pub fn spawn_rewrap(store: Arc<dyn Store>, retry: Duration) -> tokio::task::JoinHandle<()> {
@@ -26,11 +36,15 @@ pub fn spawn_rewrap(store: Arc<dyn Store>, retry: Duration) -> tokio::task::Join
             Err(err) => tracing::warn!(error = %err, "content keys: rewrap count failed"),
         }
         let mut total = 0u64;
+        let mut delay = retry;
         loop {
             match store.rewrap_content_keys(REWRAP_BATCH).await {
                 Ok(pass) => {
                     total += pass.changed;
                     metrics::gauge!("maidan_content_keys_refused").set(pass.skipped as f64);
+                    if pass.changed > 0 {
+                        delay = retry;
+                    }
                     if pass.skipped == 0 {
                         if pass.changed == 0 {
                             break;
@@ -40,14 +54,19 @@ pub fn spawn_rewrap(store: Arc<dyn Store>, retry: Duration) -> tokio::task::Join
                         // on their old keys until it allows them.
                         tracing::warn!(
                             refused = pass.skipped,
+                            retry_in_secs = delay.as_secs(),
                             "content keys: rewrap stalled on rows the custody refuses; retrying"
                         );
-                        tokio::time::sleep(retry).await;
+                        delay = sleep_then_back_off(delay).await;
                     }
                 }
                 Err(err) => {
-                    tracing::warn!(error = %err, "content keys: rewrap pass failed; retrying");
-                    tokio::time::sleep(retry).await;
+                    tracing::warn!(
+                        error = %err,
+                        retry_in_secs = delay.as_secs(),
+                        "content keys: rewrap pass failed; retrying"
+                    );
+                    delay = sleep_then_back_off(delay).await;
                 }
             }
         }

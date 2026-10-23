@@ -1490,33 +1490,63 @@ async fn rt2_refused_custody_move_blocks_every_tenant(db: Db) {
     assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 1);
 }
 
-/// The red-team's third repro: tenant A's refused rows fill a whole batch,
-/// and a pass must still page on to tenant B's rows, move them, and destroy
-/// B's retired key. The pass reports A's rows as skipped, not as done.
-async fn rt3_refused_rows_filling_a_batch_starve_another_tenant(db: Db) {
-    let kms = Arc::new(FakeKmsCustody::new("rt3"));
+/// The red-team's third repro, made deterministic: whichever tenant's data
+/// key sorts first is refused, so with a batch of one the old code only ever
+/// saw that row. A pass must still page on to the other tenant, move its
+/// rows and destroy its retired key, and report the refused row as skipped.
+async fn rt3d_refused_first_row_never_starves_the_other_tenant(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("rt3d"));
     let store = db.store(kms_keys(1, &kms));
-    let a = room(store.as_ref(), "rt3-a").await;
-    let b = room(store.as_ref(), "rt3-b").await;
+    let a = room(store.as_ref(), "rt3d-a").await;
+    let b = room(store.as_ref(), "rt3d-b").await;
     post(store.as_ref(), &a, "a one").await;
-    post(store.as_ref(), &a, "a two").await;
     post(store.as_ref(), &b, "words of b").await;
     let (a_old, _, _, _) = db.active_workspace_key(a.ws.id).await;
     let (b_old, _, _, _) = db.active_workspace_key(b.ws.id).await;
     store.rotate_workspace_key(a.ws.id).await.unwrap();
     store.rotate_workspace_key(b.ws.id).await.unwrap();
-    kms.refuse(a_old);
+    let sql = "SELECT workspace_key_id FROM maidan_content_keys ORDER BY id LIMIT 1";
+    let first: Uuid = match &db {
+        Db::Sqlite(pool) => sqlx::query_scalar(sql).fetch_one(pool).await,
+        Db::Pg(pool) => sqlx::query_scalar(sql).fetch_one(pool).await,
+    }
+    .unwrap();
+    let (refused, other) = if first == a_old {
+        (a_old, b_old)
+    } else {
+        (b_old, a_old)
+    };
+    kms.refuse(refused);
     let replica = db.store(kms_keys(1, &kms));
     let pass = replica.rewrap_content_keys(1).await.unwrap();
-    assert!(kms.holds(a_old));
-    assert!(
-        !kms.holds(b_old),
-        "tenant B starved by tenant A's refused rows"
-    );
-    assert!(pass.skipped >= 2, "A's refused rows are reported: {pass:?}");
+    assert!(kms.holds(refused));
+    assert!(!kms.holds(other), "the other tenant was starved");
+    assert_eq!(pass.skipped, 1, "the refused row is reported: {pass:?}");
     let again = replica.rewrap_content_keys(1).await.unwrap();
-    assert_eq!(again.changed, 0);
-    assert_eq!(again.skipped, pass.skipped);
+    assert_eq!((again.changed, again.skipped), (0, 1));
+}
+
+/// A workspace key the custody refuses is asked once per pass, not once per
+/// data key it wraps.
+async fn a_refused_workspace_key_is_asked_once_per_pass(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("once"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "once-a").await;
+    for words in ["one", "two", "three"] {
+        post(store.as_ref(), &a, words).await;
+    }
+    let (old, _, _, _) = db.active_workspace_key(a.ws.id).await;
+    store.rotate_workspace_key(a.ws.id).await.unwrap();
+    kms.refuse(old);
+    let replica = db.store(kms_keys(1, &kms));
+    let before = kms.unwraps();
+    let pass = replica.rewrap_content_keys(1).await.unwrap();
+    assert_eq!(pass.skipped, 3);
+    assert_eq!(
+        kms.unwraps() - before,
+        1,
+        "one custody call for the refused key"
+    );
 }
 
 /// Moving to a KMS: refused workspace keys that sort ahead of another
@@ -1729,7 +1759,8 @@ on_both_backends!(
     rt_one_refused_destroy_blocks_every_tenant,
     rt2_refused_open_in_rewrap_blocks_every_tenant,
     rt2_refused_custody_move_blocks_every_tenant,
-    rt3_refused_rows_filling_a_batch_starve_another_tenant,
+    rt3d_refused_first_row_never_starves_the_other_tenant,
+    a_refused_workspace_key_is_asked_once_per_pass,
     rt3_refused_custody_moves_filling_a_batch_starve_another_tenant,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,
