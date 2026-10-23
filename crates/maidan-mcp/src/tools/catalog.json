@@ -598,6 +598,14 @@
             },
             "threat_model": {
               "type": "boolean"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "A",
+                "B"
+              ],
+              "description": "the change's review tier; omitted reads as B in the metrics"
             }
           },
           "required": [
@@ -2435,6 +2443,14 @@
         },
         "threat_model": {
           "type": "boolean"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "A",
+            "B"
+          ],
+          "description": "the change's review tier; omitted reads as B in the metrics"
         }
       },
       "required": [

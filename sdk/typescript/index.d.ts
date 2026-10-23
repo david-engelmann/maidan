@@ -253,6 +253,8 @@ export interface TaskAttributes {
   acceptance?: string;
   /** The Linear issue it is for, such as `ENG-123`. */
   linear_issue?: string;
+  /** The change's review tier; unset counts as B. */
+  tier?: "A" | "B";
 }
 
 /** A content-addressed pin (`maidan:event/{id}` + its hash). */

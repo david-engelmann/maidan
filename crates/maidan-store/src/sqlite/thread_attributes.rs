@@ -4,7 +4,7 @@
 
 use chrono::Utc;
 use maidan_types::{
-    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskSize, ThreadId, WorkspaceId,
+    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskSize, TaskTier, ThreadId, WorkspaceId,
 };
 use sqlx::{Row, SqlitePool};
 
@@ -19,8 +19,8 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -29,6 +29,7 @@ pub(crate) async fn insert_on(
     .bind(attributes.size.map(|size| size.as_str()))
     .bind(attributes.acceptance.as_deref())
     .bind(attributes.linear_issue.as_deref())
+    .bind(attributes.tier.map(TaskTier::as_str))
     .bind(Utc::now().to_rfc3339())
     .execute(&mut *conn)
     .await?;
@@ -95,10 +96,24 @@ pub async fn set_default_engine(
     Ok(())
 }
 
+/// Whether `thread_id` is a review task, read in the caller's transaction.
+pub(crate) async fn is_review_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = ? AND kind = 'review'",
+    )
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?
+        > 0)
+}
+
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue FROM maidan_thread_attributes WHERE thread_id = ?",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier FROM maidan_thread_attributes WHERE thread_id = ?",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -118,6 +133,9 @@ pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttribute
             .and_then(|size| TaskSize::parse(&size)),
         acceptance: row.try_get("acceptance")?,
         linear_issue: row.try_get("linear_issue")?,
+        tier: row
+            .try_get::<Option<String>, _>("tier")?
+            .and_then(|tier| TaskTier::parse(&tier)),
     })
 }
 
@@ -136,8 +154,8 @@ pub async fn set(
         return Err(StoreError::NotFound);
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
@@ -145,6 +163,7 @@ pub async fn set(
              size = excluded.size,
              acceptance = excluded.acceptance,
              linear_issue = excluded.linear_issue,
+             tier = excluded.tier,
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -154,6 +173,7 @@ pub async fn set(
     .bind(attributes.size.map(|size| size.as_str()))
     .bind(attributes.acceptance.as_deref())
     .bind(attributes.linear_issue.as_deref())
+    .bind(attributes.tier.map(TaskTier::as_str))
     .bind(Utc::now().to_rfc3339())
     .execute(pool)
     .await?;
