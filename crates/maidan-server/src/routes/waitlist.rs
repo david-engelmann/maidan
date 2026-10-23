@@ -207,6 +207,16 @@ pub async fn invite_waitlist_entry(
 ) -> ApiResult<Json<InviteMintedView>> {
     cap(&auth, OPERATOR_GLOBAL)?;
     require_signup(&state)?;
+    let current = state
+        .store
+        .get_waitlist_entry(WaitlistEntryId(entry_id))
+        .await?;
+    crate::rate_limit::charge_email_domain(
+        &state,
+        crate::rate_limit::DomainCharge::Invite,
+        &current.email,
+    )
+    .await?;
     let token = random_token();
     let expires_at = Utc::now() + Duration::days(INVITE_TTL_DAYS);
     let entry: WaitlistEntry = state
