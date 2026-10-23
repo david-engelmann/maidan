@@ -491,8 +491,11 @@ them), and `missing_checks`, the checks the base branch's protection requires
 that never reported though every check that did has finished. Together they
 make `gate_reasons`: one sentence each for unresolved threads, a merge state
 of `BEHIND`, `BLOCKED`, `DIRTY` or `DRAFT`, and each missing check. When the
-reasons change, the thread gets **`gate_blocked`** with the new `reasons`, or
-**`gate_clear`** when none are left; a read that says the same says nothing.
+reasons change and two reads in a row agree on the change, the thread gets
+**`gate_blocked`** with the new `reasons`, or **`gate_clear`** when none are
+left. GitHub's merge state flickers while checks and the merge queue settle,
+and a reason that holds for only one read (one change-sweep tick) says
+nothing; a real change arrives one tick later.
 Reading the protection needs a credential that may read the repository's
 administration settings; without it no check counts as missing.
 
