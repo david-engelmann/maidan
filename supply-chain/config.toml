@@ -95,6 +95,10 @@ criteria = "safe-to-deploy"
 version = "1.10.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.aws-sdk-kms]]
+version = "1.125.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.aws-sdk-s3]]
 version = "1.154.0"
 criteria = "safe-to-deploy"

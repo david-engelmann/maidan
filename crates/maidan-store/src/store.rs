@@ -11,6 +11,15 @@ use crate::error::StoreError;
 /// minimal CRUD plus the few list/query operations the server needs in
 /// Cluster A. Richer queries (search, threading rollups) arrive in later
 /// clusters via dedicated traits and crates.
+/// What one [`Store::rewrap_content_keys`] pass did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RewrapPass {
+    /// Rows moved, rewrapped or destroyed.
+    pub changed: u64,
+    /// Rows the custody refused; they stay for a later pass.
+    pub skipped: u64,
+}
+
 #[async_trait]
 pub trait MetaStore: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
@@ -3367,11 +3376,13 @@ pub trait EventStore: Send + Sync {
         event: &Event,
         origin: PeerId,
     ) -> Result<StoredEvent, StoreError>;
-    /// One batch of moving keys to where they belong: workspace keys under the
+    /// One pass of moving keys to where they belong: workspace keys under the
     /// primary instance KEK, data keys under their workspace's active key, and
-    /// retired workspace keys destroyed once nothing needs them. Returns how
-    /// many rows changed; `0` means done.
-    async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError>;
+    /// retired workspace keys destroyed once nothing needs them. The pass pages
+    /// through every row, `limit` per transaction, so rows the custody refuses
+    /// never crowd out another tenant's. Done when nothing changed and nothing
+    /// was skipped.
+    async fn rewrap_content_keys(&self, limit: i64) -> Result<RewrapPass, StoreError>;
     /// Rows [`Self::rewrap_content_keys`] has still to change.
     async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
     /// Retire the workspace's key and make a new one. The workspace's data keys

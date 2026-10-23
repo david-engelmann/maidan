@@ -188,9 +188,15 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Wraps the per-message keys that crypto-shredding destroys on withdrawal.
     let content_keys = Arc::new(
         maidan_store::content_keyring::from_env(maidan_server::config::is_production())
+            .await
             .map_err(anyhow::Error::msg)?,
     );
-    tracing::info!(kek_id = content_keys.primary_id(), "content keyring loaded");
+    tracing::info!(
+        kek_id = content_keys.primary_id(),
+        custody = content_keys.custody_name(),
+        wrapping_key_id = %content_keys.workspace_wrapping_like(),
+        "content keyring loaded"
+    );
 
     let outbox_relay;
     let outbox_backend: Option<OutboxBackend>;

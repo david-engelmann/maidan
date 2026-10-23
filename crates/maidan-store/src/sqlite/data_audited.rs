@@ -4,7 +4,7 @@
 //! ones refuse a held workspace inside that same transaction.
 
 use maidan_types::{
-    LegalHold, LegalHoldId, MemberId, MessageId, NewAuditEvent, PreservedMessage,
+    ContentKeyring, LegalHold, LegalHoldId, MemberId, MessageId, NewAuditEvent, PreservedMessage,
     WorkspaceEraseResult, WorkspaceId, WorkspaceImport, WorkspacePurgeResult,
 };
 use sqlx::SqlitePool;
@@ -14,11 +14,12 @@ use crate::{error::StoreError, AuditFor};
 
 pub async fn purge_workspace(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
     audit_for: AuditFor<WorkspacePurgeResult>,
 ) -> Result<WorkspacePurgeResult, StoreError> {
     let mut tx = pool.begin().await?;
-    let result = purge_workspace::purge_on(&mut tx, workspace_id).await?;
+    let result = purge_workspace::purge_on(&mut tx, keys, workspace_id).await?;
     audit::append_scoped(&mut tx, workspace_id, audit_for(&result)).await?;
     tx.commit().await?;
     Ok(result)
@@ -26,11 +27,12 @@ pub async fn purge_workspace(
 
 pub async fn erase_workspace(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
     audit_for: AuditFor<WorkspaceEraseResult>,
 ) -> Result<WorkspaceEraseResult, StoreError> {
     let mut tx = pool.begin().await?;
-    let result = erase_workspace::erase_on(&mut tx, workspace_id).await?;
+    let result = erase_workspace::erase_on(&mut tx, keys, workspace_id).await?;
     audit::append_scoped(&mut tx, workspace_id, audit_for(&result)).await?;
     tx.commit().await?;
     Ok(result)
@@ -40,13 +42,14 @@ pub async fn erase_workspace(
 /// in the same transaction: a failed import leaves it as it was, not gone.
 pub async fn import_workspace(
     pool: &SqlitePool,
+    keys: &ContentKeyring,
     bundle: &WorkspaceImport,
     replace_existing: bool,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
     let mut tx = pool.begin().await?;
     if replace_existing {
-        erase_workspace::erase_on(&mut tx, bundle.workspace.id).await?;
+        erase_workspace::erase_on(&mut tx, keys, bundle.workspace.id).await?;
     }
     import::import_on(&mut tx, bundle).await?;
     audit::append_scoped(&mut tx, bundle.workspace.id, event).await?;
