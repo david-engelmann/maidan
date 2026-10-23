@@ -33,6 +33,7 @@
   "thread_result_set",
   "thread_spawn_denied",
   "thread_state_changed",
+  "usage_over_allowance",
   "usage_reported",
   "vote_cast",
   "vote_retracted",
