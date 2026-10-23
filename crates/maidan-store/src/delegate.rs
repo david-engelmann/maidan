@@ -3088,6 +3088,14 @@ macro_rules! store_delegations {
                 footprints::clear_slot_capacity(self.pool(), workspace_id, slot, audit).await
             }
 
+            async fn count_stalled_threads(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                progress_before: chrono::DateTime<chrono::Utc>,
+            ) -> Result<i64, StoreError> {
+                threads::count_stalled_threads(self.pool(), now, progress_before).await
+            }
+
             async fn reap_expired_claims(
                 &self,
                 now: chrono::DateTime<chrono::Utc>,

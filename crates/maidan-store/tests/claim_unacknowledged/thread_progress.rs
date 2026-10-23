@@ -236,6 +236,87 @@ async fn a_lease_less_assignment_or_a_thread_in_review_has_no_clock(store: Arc<d
     assert_eq!(progress(store.as_ref(), &room, leased).await, None);
 }
 
+/// The instance-wide stalled count behind the renew-only alert agrees with
+/// the board's clock: a held, acknowledged thread counts once its holder's
+/// last progress is before the cutoff, a renewal does not reset it, the
+/// holder's own message does, and a declared wait takes it out.
+async fn the_stalled_count_follows_the_progress_clock(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "stalled-count").await;
+    let thread = task(store.as_ref(), &room, "quiet").await;
+    let now = chrono::Utc::now;
+    let later = || now() + chrono::Duration::hours(1);
+    assert_eq!(
+        store.count_stalled_threads(now(), later()).await.unwrap(),
+        0,
+        "unheld"
+    );
+
+    let claimed = store
+        .claim_next_thread(room.channel, room.worker, Some(600), None)
+        .await
+        .unwrap()
+        .unwrap();
+    let lease = claimed.claim_lease_id.unwrap();
+    assert_eq!(
+        store.count_stalled_threads(now(), later()).await.unwrap(),
+        0,
+        "unacknowledged is the reaper's"
+    );
+    store
+        .acknowledge_claim(thread, room.worker, lease)
+        .await
+        .unwrap();
+    let started = progress(store.as_ref(), &room, thread).await.unwrap();
+    let before = started - chrono::Duration::seconds(5);
+    assert_eq!(store.count_stalled_threads(now(), before).await.unwrap(), 0);
+    assert_eq!(
+        store.count_stalled_threads(now(), later()).await.unwrap(),
+        1
+    );
+
+    tick().await;
+    store
+        .renew_claim(thread, room.worker, lease, 600)
+        .await
+        .unwrap();
+    post(store.as_ref(), thread, room.lead, "any news?").await;
+    let after_start = now();
+    assert_eq!(
+        store
+            .count_stalled_threads(now(), after_start)
+            .await
+            .unwrap(),
+        1,
+        "a renewal and another member's message are not progress"
+    );
+
+    tick().await;
+    post(store.as_ref(), thread, room.worker, "halfway").await;
+    assert_eq!(
+        store
+            .count_stalled_threads(now(), after_start)
+            .await
+            .unwrap(),
+        0,
+        "the holder's message is progress"
+    );
+
+    store
+        .declare_thread_status(
+            thread,
+            DeclaredStatus::Blocked,
+            "waiting on creds".into(),
+            room.worker,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        store.count_stalled_threads(now(), later()).await.unwrap(),
+        0,
+        "a declared wait is not a stall"
+    );
+}
+
 pub(super) async fn sqlite() -> Arc<dyn Store> {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
@@ -302,4 +383,5 @@ macro_rules! on_both_backends {
 on_both_backends!(
     the_holders_own_activity_moves_the_clock,
     a_lease_less_assignment_or_a_thread_in_review_has_no_clock,
+    the_stalled_count_follows_the_progress_clock,
 );

@@ -1457,3 +1457,34 @@ fn parse_state(state_str: &str) -> Result<ThreadState, StoreError> {
         ))),
     }
 }
+
+/// See [`crate::Store::count_stalled_threads`].
+pub async fn count_stalled_threads(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    progress_before: DateTime<Utc>,
+) -> Result<i64, StoreError> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS c FROM maidan_threads t
+         WHERE t.state = 'open' AND t.tombstoned_at IS NULL
+           AND t.assignee_id IS NOT NULL
+           AND t.work_started_at IS NOT NULL AND t.work_started_at <= $2
+           AND t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at >= $1
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id
+                   AND (s.status <> 'working'
+                        OR (s.declared_by = t.assignee_id AND s.declared_at > $2))
+               )
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_messages m
+                 WHERE m.thread_id = t.id AND m.author_id = t.assignee_id
+                   AND m.posted_at > $2
+               )",
+    )
+    .bind(now)
+    .bind(progress_before)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get::<i64, _>("c"))
+}
