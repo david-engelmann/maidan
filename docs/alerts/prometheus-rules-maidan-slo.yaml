@@ -272,6 +272,22 @@ spec:
               No change sweep tick has finished for over 6 minutes. Check the
               maidan-server log for the sweep's last lines and restart if it is gone.
 
+        - alert: MaidanClaimsRenewingWithoutProgress
+          # A claim whose lease keeps renewing while its holder posts and
+          # declares nothing: a hung agent with a live heartbeat. The board
+          # marks the thread stalled; this pages once it has stayed so.
+          expr: maidan_threads_stalled > 0
+          for: 15m
+          labels:
+            severity: warning
+            slo: stuck_work
+          annotations:
+            summary: Claims renewing without progress
+            description: |
+              {{ $value }} thread(s) held on a live lease with no progress by
+              the holder for MAIDAN_STALL_SECS. Filter the board for stalled
+              cards; release the claim or check the agent.
+
         - alert: MaidanBackgroundLoopPanicking
           expr: increase(maidan_background_loop_panics_total[15m]) > 0
           labels:

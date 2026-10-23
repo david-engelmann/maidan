@@ -171,6 +171,10 @@ pub fn init() {
             "Postgres NOTIFY pointer hydrations by outcome"
         );
         describe_gauge!(
+            "maidan_threads_stalled",
+            "Threads held on a live lease whose holder has shown no progress for MAIDAN_STALL_SECS: a claim that only renews"
+        );
+        describe_gauge!(
             "maidan_outbox_pending",
             "Unpublished outbox rows awaiting relay (Postgres)"
         );
@@ -606,6 +610,26 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
     if let Ok(dead) = state.store.count_dead_mail().await {
         gauge!("maidan_mail_dead").set(dead as f64);
+    }
+
+    // A claim that only renews: the board marks such a thread stalled at
+    // read time, and this is the same test counted, so it can page. With
+    // detection off the gauge reads 0.
+    let now = chrono::Utc::now();
+    let stalled = match state
+        .stall_threshold
+        .and_then(|threshold| chrono::Duration::from_std(threshold).ok())
+        .and_then(|threshold| now.checked_sub_signed(threshold))
+    {
+        Some(progress_before) => state
+            .store
+            .count_stalled_threads(now, progress_before)
+            .await
+            .ok(),
+        None => Some(0),
+    };
+    if let Some(stalled) = stalled {
+        gauge!("maidan_threads_stalled").set(stalled as f64);
     }
 }
 

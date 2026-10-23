@@ -1503,3 +1503,39 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })
 }
+
+/// See [`crate::Store::count_stalled_threads`]. Timestamps go through
+/// `julianday` because a declaration's `declared_at` defaults to SQLite's
+/// space-separated form while the thread columns hold RFC 3339.
+pub async fn count_stalled_threads(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+    progress_before: DateTime<Utc>,
+) -> Result<i64, StoreError> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS c FROM maidan_threads t
+         WHERE t.state = 'open' AND t.tombstoned_at IS NULL
+           AND t.assignee_id IS NOT NULL
+           AND t.work_started_at IS NOT NULL
+           AND julianday(t.work_started_at) <= julianday(?2)
+           AND t.assignment_expires_at IS NOT NULL
+           AND julianday(t.assignment_expires_at) >= julianday(?1)
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id
+                   AND (s.status <> 'working'
+                        OR (s.declared_by = t.assignee_id
+                            AND julianday(s.declared_at) > julianday(?2)))
+               )
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_messages m
+                 WHERE m.thread_id = t.id AND m.author_id = t.assignee_id
+                   AND julianday(m.posted_at) > julianday(?2)
+               )",
+    )
+    .bind(now.to_rfc3339())
+    .bind(progress_before.to_rfc3339())
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get::<i64, _>("c"))
+}

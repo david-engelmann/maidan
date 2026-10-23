@@ -2582,6 +2582,17 @@ pub trait AssignmentStore: Send + Sync {
         slot: &str,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
+    /// How many threads, across every workspace, are stalled at `now`: open,
+    /// held on a live lease the holder acknowledged, not declared anything
+    /// but working, and with no progress by the holder (its latest message on
+    /// the thread or its declaration, else the acknowledgement) after
+    /// `progress_before`. The same test as a board's `stalled` flag, counted
+    /// for the alert on a claim that only renews.
+    async fn count_stalled_threads(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        progress_before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same
