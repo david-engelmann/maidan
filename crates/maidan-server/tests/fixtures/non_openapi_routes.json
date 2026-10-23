@@ -84,6 +84,7 @@
     "/ui/api/workspaces/{wid}/slash-commands",
     "/ui/api/workspaces/{wid}/slash-commands/{cid}",
     "/ui/api/workspaces/{wid}/task-schedules",
+    "/ui/api/workspaces/{wid}/usage-meters",
     "/ui/oauth/consent",
     "/ui/oauth/grants",
     "/ui/static/{name}",
