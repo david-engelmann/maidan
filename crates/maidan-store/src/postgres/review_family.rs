@@ -14,8 +14,8 @@ use crate::error::StoreError;
 /// When change `thread_id` enters review, spawn its review child, routed to a
 /// provider family other than its author's, unless it is not a change or a
 /// live review child already exists. The author's family is read from the
-/// latest usage record the change's claimant reported on it; when none is named there is nothing to
-/// route away from, and no child is spawned.
+/// latest usage record the change's claimant reported on it; when none is
+/// named there is nothing to route away from, and no child is spawned.
 pub(crate) async fn spawn_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
