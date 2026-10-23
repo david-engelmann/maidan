@@ -128,6 +128,13 @@ pub async fn sweep_due(state: &AppState, now: DateTime<Utc>) -> WebPushSweepStat
                     tracing::warn!(error = %err, id = %entry.id, "web push worker: mark-delivered failed");
                 }
                 crate::metrics::record_web_push_delivered("sent");
+                crate::usage_meters::record_for_member(
+                    state,
+                    entry.member_id,
+                    maidan_types::UsageMeter::Deliveries,
+                    1,
+                )
+                .await;
                 stats.sent += 1;
             }
             Err(err) if err.is_gone() => {

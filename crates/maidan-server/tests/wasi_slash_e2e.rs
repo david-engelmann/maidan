@@ -93,6 +93,7 @@ struct Ctx {
     ws: maidan_types::WorkspaceId,
     thread: maidan_types::ThreadId,
     author: maidan_types::MemberId,
+    meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
 }
 
 async fn spawn() -> Ctx {
@@ -124,6 +125,7 @@ async fn spawn() -> Ctx {
     state.slash = SlashRuntime::new(test_key());
     state.test_identity_header = true;
     std::mem::forget(dir);
+    let meters = state.usage_meters.clone();
     let app = router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -168,6 +170,7 @@ async fn spawn() -> Ctx {
         ws: ws.id,
         thread: thread.id,
         author: author.id,
+        meters,
     }
 }
 
@@ -243,6 +246,15 @@ async fn a_wasi_slash_command_runs_its_module() {
         response["response"]["content"][0]["text"], "handled by wasm",
         "the guest's stdout is the slash response"
     );
+    // The run's time is metered for the workspace.
+    let wasi: Vec<_> = ctx
+        .meters
+        .take()
+        .into_iter()
+        .filter(|row| row.meter == maidan_types::UsageMeter::WasiMs)
+        .map(|row| row.workspace_id)
+        .collect();
+    assert_eq!(wasi, vec![ctx.ws]);
 }
 
 /// A sha with no bytes behind it fails cleanly rather than running anything.
