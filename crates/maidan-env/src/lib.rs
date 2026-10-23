@@ -190,6 +190,7 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_WEBHOOK_POLL_INTERVAL_MS",
     "MAIDAN_WEBPUSH_LIVE_WINDOW_SECS",
     "MAIDAN_WEBPUSH_WORKER_TICK_SECS",
+    "MAIDAN_WORKSPACE_KEY_CUSTODY",
     "MAIDAN_WORKSPACE_RATE_LIMIT_MAX",
     "MAIDAN_WORKSPACE_RATE_LIMIT_WINDOW_SECS",
 ];
@@ -444,6 +445,10 @@ mod tests {
         ),
         ("MAIDAN_SECRET_EGRESS_ALLOWLIST", "a list of hosts"),
         ("MAIDAN_VAPID_PUBLIC_KEY", "a public key"),
+        (
+            "MAIDAN_WORKSPACE_KEY_CUSTODY",
+            "names a custody, holds no key",
+        ),
     ];
 
     /// Secrets the server reads outside the `MAIDAN_` namespace, which
