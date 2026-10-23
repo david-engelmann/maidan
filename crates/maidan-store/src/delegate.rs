@@ -94,7 +94,14 @@ macro_rules! store_delegations {
                 replace_existing: bool,
                 audit: NewAuditEvent,
             ) -> Result<(), StoreError> {
-                data_audited::import_workspace(self.pool(), import, replace_existing, audit).await
+                data_audited::import_workspace(
+                    self.pool(),
+                    self.content_keys(),
+                    import,
+                    replace_existing,
+                    audit,
+                )
+                .await
             }
 
             async fn place_legal_hold_audited(
@@ -3514,14 +3521,14 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
             ) -> Result<WorkspacePurgeResult, StoreError> {
-                purge_workspace::purge(self.pool(), workspace_id).await
+                purge_workspace::purge(self.pool(), self.content_keys(), workspace_id).await
             }
 
             async fn erase_workspace(
                 &self,
                 workspace_id: WorkspaceId,
             ) -> Result<WorkspaceEraseResult, StoreError> {
-                erase_workspace::erase(self.pool(), workspace_id).await
+                erase_workspace::erase(self.pool(), self.content_keys(), workspace_id).await
             }
 
             async fn purge_message_audited(
@@ -3537,7 +3544,8 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 audit: crate::AuditFor<WorkspacePurgeResult>,
             ) -> Result<WorkspacePurgeResult, StoreError> {
-                data_audited::purge_workspace(self.pool(), workspace_id, audit).await
+                data_audited::purge_workspace(self.pool(), self.content_keys(), workspace_id, audit)
+                    .await
             }
 
             async fn erase_workspace_audited(
@@ -3545,7 +3553,8 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 audit: crate::AuditFor<WorkspaceEraseResult>,
             ) -> Result<WorkspaceEraseResult, StoreError> {
-                data_audited::erase_workspace(self.pool(), workspace_id, audit).await
+                data_audited::erase_workspace(self.pool(), self.content_keys(), workspace_id, audit)
+                    .await
             }
         }
     };

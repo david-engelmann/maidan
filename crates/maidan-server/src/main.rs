@@ -194,7 +194,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     tracing::info!(
         kek_id = content_keys.primary_id(),
         custody = content_keys.custody_name(),
-        wrapping_key_id = content_keys.workspace_wrapping_id(),
+        wrapping_key_id = %content_keys.workspace_wrapping_like(),
         "content keyring loaded"
     );
 

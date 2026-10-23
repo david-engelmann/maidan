@@ -226,11 +226,11 @@ pub async fn rewrap(
 
     let rows = sqlx::query(
         "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
-         WHERE destroyed_at IS NULL AND wrapping_key_id <> ?
+         WHERE destroyed_at IS NULL AND wrapping_key_id NOT LIKE ?
          ORDER BY id
          LIMIT ?",
     )
-    .bind(keys.workspace_wrapping_id())
+    .bind(keys.workspace_wrapping_like())
     .bind(limit)
     .fetch_all(&mut *tx)
     .await?;
@@ -302,29 +302,44 @@ pub async fn rewrap(
     }
     changed += rows.len() as u64;
 
-    let destroyed: Vec<Uuid> = sqlx::query_scalar(
-        "UPDATE maidan_workspace_keys
-         SET wrapping_key_id = NULL, wrapped_key = NULL, destroyed_at = ?
-         WHERE id IN (
-             SELECT r.id FROM maidan_workspace_keys r
-             WHERE r.retired_at IS NOT NULL AND r.destroyed_at IS NULL
-               AND NOT EXISTS (
-                   SELECT 1 FROM maidan_content_keys k
-                   WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
-               )
-             ORDER BY r.id
-             LIMIT ?
-         )
-         RETURNING id",
+    // The custody destroys its key first, inside the transaction: a refusal
+    // leaves the row (and the pass) to try again, and no row claims a
+    // destroyed key it still holds.
+    let doomed = sqlx::query(
+        "SELECT r.id, r.wrapping_key_id, r.wrapped_key FROM maidan_workspace_keys r
+         WHERE r.retired_at IS NOT NULL AND r.destroyed_at IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_content_keys k
+               WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
+           )
+         ORDER BY r.id
+         LIMIT ?",
     )
-    .bind(Utc::now())
     .bind(limit)
     .fetch_all(&mut *tx)
     .await?;
-    tx.commit().await?;
-    for id in &destroyed {
-        keys.forget_workspace_key(*id);
+    let mut destroyed = Vec::with_capacity(doomed.len());
+    for row in &doomed {
+        let id: Uuid = row.get("id");
+        if let (Some(kek_id), Some(blob)) = (
+            row.get::<Option<String>, _>("wrapping_key_id"),
+            row.get::<Option<Vec<u8>>, _>("wrapped_key"),
+        ) {
+            keys.destroy_workspace_key(id, &WrappedKey { kek_id, blob })
+                .await?;
+        }
+        sqlx::query(
+            "UPDATE maidan_workspace_keys
+             SET wrapping_key_id = NULL, wrapped_key = NULL, destroyed_at = ?
+             WHERE id = ?",
+        )
+        .bind(Utc::now())
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        destroyed.push(id);
     }
+    tx.commit().await?;
     changed += destroyed.len() as u64;
     Ok(changed)
 }
@@ -337,7 +352,7 @@ pub async fn count_needing_rewrap(
     let count: i64 = sqlx::query_scalar(
         "SELECT
             (SELECT COUNT(*) FROM maidan_workspace_keys
-             WHERE destroyed_at IS NULL AND wrapping_key_id <> ?)
+             WHERE destroyed_at IS NULL AND wrapping_key_id NOT LIKE ?)
           + (SELECT COUNT(*) FROM maidan_content_keys k
              LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id
              WHERE k.shredded_at IS NULL
@@ -349,7 +364,7 @@ pub async fn count_needing_rewrap(
                    WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
                ))",
     )
-    .bind(keys.workspace_wrapping_id())
+    .bind(keys.workspace_wrapping_like())
     .fetch_one(pool)
     .await?;
     Ok(count as u64)

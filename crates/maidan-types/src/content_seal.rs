@@ -395,9 +395,10 @@ pub type CustodyFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SealError>
 pub trait WorkspaceKeyCustody: Send + Sync {
     /// Stored in `maidan_workspace_keys.custody`.
     fn name(&self) -> &'static str;
-    /// The wrapping key id a new wrap records. A row under any other id is
-    /// moved here by the rewrap pass.
-    fn wrapping_id(&self) -> &str;
+    /// A SQL `LIKE` pattern matching every wrapping key id a new wrap by
+    /// this custody records. A row under any other id is moved here by the
+    /// rewrap pass.
+    fn current_wrapping_like(&self) -> String;
     /// Whether a row wrapped under `wrapping_key_id` opens through this
     /// custody.
     fn owns(&self, wrapping_key_id: &str) -> bool;
@@ -411,6 +412,15 @@ pub trait WorkspaceKeyCustody: Send + Sync {
         workspace_key_id: uuid::Uuid,
         wrapped: &'a WrappedKey,
     ) -> CustodyFuture<'a, ContentKey>;
+    /// Destroy what this custody holds for the workspace key, so its stored
+    /// form, or any copy of it, never opens again. Called before the row is
+    /// destroyed, in the same transaction: a refusal fails the erasure or
+    /// rotation, which then changes nothing.
+    fn destroy<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &'a WrappedKey,
+    ) -> CustodyFuture<'a, ()>;
 }
 
 /// Workspace keys wrapped by the instance KEKs: the primary wraps, the
@@ -470,8 +480,8 @@ impl WorkspaceKeyCustody for LocalCustody {
         LOCAL_CUSTODY
     }
 
-    fn wrapping_id(&self) -> &str {
-        &self.primary.id
+    fn current_wrapping_like(&self) -> String {
+        self.primary.id.clone()
     }
 
     fn owns(&self, wrapping_key_id: &str) -> bool {
@@ -494,6 +504,23 @@ impl WorkspaceKeyCustody for LocalCustody {
     ) -> CustodyFuture<'a, ContentKey> {
         let result = self.open(workspace_key_id, wrapped);
         Box::pin(async move { result })
+    }
+
+    /// The instance KEK wraps every workspace key, so there is nothing of
+    /// this one to destroy beyond its row.
+    fn destroy<'a>(
+        &'a self,
+        _workspace_key_id: uuid::Uuid,
+        _wrapped: &'a WrappedKey,
+    ) -> CustodyFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+impl LocalCustody {
+    /// The id of the KEK new wraps go under.
+    pub fn wrapping_id(&self) -> &str {
+        &self.primary.id
     }
 }
 
@@ -601,10 +628,10 @@ impl ContentKeyring {
         self.custody.name()
     }
 
-    /// The wrapping key id every workspace key row should carry; the rewrap
-    /// pass moves the others.
-    pub fn workspace_wrapping_id(&self) -> &str {
-        self.custody.wrapping_id()
+    /// A SQL `LIKE` pattern every workspace key row's wrapping key id should
+    /// match; the rewrap pass moves the others.
+    pub fn workspace_wrapping_like(&self) -> String {
+        self.custody.current_wrapping_like()
     }
 
     fn wrap_aad(subject: uuid::Uuid) -> Vec<u8> {
@@ -745,6 +772,21 @@ impl ContentKeyring {
             .unwrap(workspace_key_id, wrapped)
             .await?;
         self.custody.wrap(workspace_key_id, &key).await
+    }
+
+    /// Destroy a stored workspace key in the custody that wrapped it, and
+    /// drop it from memory. The caller destroys the row in the same
+    /// transaction, after this succeeds.
+    pub async fn destroy_workspace_key(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &WrappedKey,
+    ) -> Result<(), SealError> {
+        self.owner(&wrapped.kek_id)?
+            .destroy(workspace_key_id, wrapped)
+            .await?;
+        self.forget_workspace_key(workspace_key_id);
+        Ok(())
     }
 
     /// Drop an open workspace key from memory: its row was destroyed.
