@@ -25,7 +25,7 @@ pub async fn provision(
     let scim =
         scim_users::create_on(&mut tx, member.id, member.workspace_id, external_id, active).await?;
     let provisioned = (member, scim);
-    audit::append_counted(&mut tx, audit_for(&provisioned)).await?;
+    audit::append_scoped(&mut tx, provisioned.0.workspace_id, audit_for(&provisioned)).await?;
     tx.commit().await?;
     Ok(provisioned)
 }
@@ -60,7 +60,7 @@ pub async fn update_user(
         // worked, then release it, in this same transaction.
         super::threads::release_member_claims_in_tx(&mut tx, member_id).await?;
     }
-    audit::append_counted(&mut tx, event).await?;
+    audit::append_scoped(&mut tx, workspace_id, event).await?;
     tx.commit().await?;
     Ok(Some(scim))
 }
@@ -77,7 +77,7 @@ pub async fn deprovision(
     end_member_authority(&mut tx, workspace_id, member_id, "scim_deprovision").await?;
     let deleted = scim_users::delete_on(&mut tx, member_id).await?;
     if deleted {
-        audit::append_counted(&mut tx, event).await?;
+        audit::append_scoped(&mut tx, workspace_id, event).await?;
     }
     tx.commit().await?;
     Ok(deleted)
@@ -104,8 +104,9 @@ async fn end_member_authority(
     .fetch_all(&mut *conn)
     .await?;
     for token_id in revoked {
-        audit::append_counted(
+        audit::append_scoped(
             &mut *conn,
+            workspace_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: None,
@@ -136,8 +137,9 @@ async fn end_member_authority(
     .fetch_all(&mut *conn)
     .await?;
     for (grant_id, subject_id) in grants {
-        audit::append_counted(
+        audit::append_scoped(
             &mut *conn,
+            workspace_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: None,
@@ -163,8 +165,9 @@ async fn end_member_authority(
     .fetch_all(&mut *conn)
     .await?;
     if !sessions.is_empty() {
-        audit::append_counted(
+        audit::append_scoped(
             &mut *conn,
+            workspace_id,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: None,

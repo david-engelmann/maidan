@@ -16,9 +16,9 @@ use maidan_types::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-fn event(action: &str, actor: Option<MemberId>) -> NewAuditEvent {
+fn event(ws: maidan_types::WorkspaceId, action: &str, actor: Option<MemberId>) -> NewAuditEvent {
     NewAuditEvent {
-        scope: maidan_types::AuditScope::Instance,
+        scope: maidan_types::AuditScope::Workspace(ws),
         actor_id: actor,
         action: action.into(),
         target_kind: None,
@@ -27,8 +27,12 @@ fn event(action: &str, actor: Option<MemberId>) -> NewAuditEvent {
     }
 }
 
-fn audit_for<T>(action: &'static str, actor: Option<MemberId>) -> maidan_store::AuditFor<T> {
-    Box::new(move |_| event(action, actor))
+fn audit_for<T>(
+    ws: maidan_types::WorkspaceId,
+    action: &'static str,
+    actor: Option<MemberId>,
+) -> maidan_store::AuditFor<T> {
+    Box::new(move |_| event(ws, action, actor))
 }
 
 struct Seeded {
@@ -120,7 +124,7 @@ where
             held.workspace,
             "litigation",
             Some(held.member.id),
-            audit_for("hold.place", Some(held.member.id)),
+            audit_for(held.workspace, "hold.place", Some(held.member.id)),
         )
         .await
         .unwrap();
@@ -138,7 +142,7 @@ where
     };
     assert!(is_hold_refusal(
         store
-            .import_workspace_audited(&bundle, true, event("import", None))
+            .import_workspace_audited(&bundle, true, event(held.workspace, "import", None))
             .await
     ));
     assert!(store.get_message(held.tombstoned).await.is_ok());
@@ -151,7 +155,7 @@ where
         &target.member,
     );
     assert!(store
-        .import_workspace_audited(&bundle, true, event("import", None))
+        .import_workspace_audited(&bundle, true, event(target.workspace, "import", None))
         .await
         .is_err());
     assert!(
@@ -164,11 +168,14 @@ where
     let erased = seed(store, "erased").await;
     let actor = erased.member.id;
     store
-        .append_audit(event("before.erase", Some(actor)))
+        .append_audit(event(erased.workspace, "before.erase", Some(actor)))
         .await
         .unwrap();
     store
-        .erase_workspace_audited(erased.workspace, audit_for("erase", Some(actor)))
+        .erase_workspace_audited(
+            erased.workspace,
+            audit_for(erased.workspace, "erase", Some(actor)),
+        )
         .await
         .unwrap();
     let audit = store.list_audit(100).await.unwrap();
@@ -183,7 +190,7 @@ where
         .lift_legal_hold_audited(
             unheld.workspace,
             maidan_types::LegalHoldId::new(),
-            event("lift.none", None),
+            event(unheld.workspace, "lift.none", None),
         )
         .await
         .unwrap());
@@ -199,22 +206,30 @@ where
     break_audit().await;
 
     assert!(store
-        .purge_workspace_messages_audited(victim.workspace, audit_for("purge", None))
+        .purge_workspace_messages_audited(
+            victim.workspace,
+            audit_for(victim.workspace, "purge", None)
+        )
         .await
         .is_err());
     assert!(store.get_message(victim.tombstoned).await.is_ok());
     assert!(store
-        .erase_workspace_audited(victim.workspace, audit_for("erase", None))
+        .erase_workspace_audited(victim.workspace, audit_for(victim.workspace, "erase", None))
         .await
         .is_err());
     assert!(store.get_workspace(victim.workspace).await.is_ok());
     assert!(store
-        .purge_message_audited(victim.tombstoned, event("purge", None))
+        .purge_message_audited(victim.tombstoned, event(victim.workspace, "purge", None))
         .await
         .is_err());
     assert!(store.get_message(victim.tombstoned).await.is_ok());
     assert!(store
-        .place_legal_hold_audited(victim.workspace, "r", None, audit_for("place", None))
+        .place_legal_hold_audited(
+            victim.workspace,
+            "r",
+            None,
+            audit_for(victim.workspace, "place", None)
+        )
         .await
         .is_err());
     assert!(store
@@ -223,7 +238,7 @@ where
         .unwrap()
         .is_empty());
     assert!(store
-        .lift_legal_hold_audited(held.workspace, hold.id, event("lift", None))
+        .lift_legal_hold_audited(held.workspace, hold.id, event(held.workspace, "lift", None))
         .await
         .is_err());
     assert_eq!(
@@ -247,7 +262,7 @@ where
     };
     let workspaces = store.count_workspaces().await.unwrap();
     assert!(store
-        .import_workspace_audited(&fresh, false, event("import", None))
+        .import_workspace_audited(&fresh, false, event(fresh.workspace.id, "import", None))
         .await
         .is_err());
     assert_eq!(store.count_workspaces().await.unwrap(), workspaces);

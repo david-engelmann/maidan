@@ -32,7 +32,7 @@ pub async fn suspend(
     .await?
     .ok_or(StoreError::NotFound)?;
     let suspension = row_to_suspension(&row)?;
-    super::audit::append_counted(&mut tx, audit).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
     Ok(suspension)
 }
@@ -53,7 +53,7 @@ pub async fn lift(
     if deleted == 0 {
         return Ok(false);
     }
-    super::audit::append_counted(&mut tx, audit).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
     Ok(true)
 }
