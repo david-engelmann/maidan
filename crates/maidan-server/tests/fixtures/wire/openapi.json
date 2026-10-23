@@ -7375,6 +7375,13 @@
                 },
                 "type": "array"
               },
+              "by_tier": {
+                "description": "By review tier, `A` then `B`, with untiered tasks counted as `B`.",
+                "items": {
+                  "$ref": "#/components/schemas/TierRollup"
+                },
+                "type": "array"
+              },
               "closed_unmerged": {
                 "format": "int64",
                 "type": "integer"
@@ -7401,6 +7408,7 @@
               "by_engine",
               "by_size",
               "by_risk",
+              "by_tier",
               "by_provider",
               "by_harness"
             ],
@@ -10744,6 +10752,26 @@
           "created_at"
         ],
         "type": "object"
+      },
+      "TierRollup": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "tier": {
+                "$ref": "#/components/schemas/TaskTier",
+                "description": "The review tier; a task with no tier stored counts as `B`."
+              }
+            },
+            "required": [
+              "tier"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "The tasks of one review tier."
       },
       "TokenPolicy": {
         "description": "What happens to credentials when a workspace is exported.\n\nThe only policy is [`TokenPolicy::TokensDieOnExport`]: API tokens,\nwebhook/slash/OIDC secrets, and at-rest keys are omitted from the\nbundle. After import the operator mints new tokens on the destination.\nContinuity is unsafe (hashed secrets plus AEAD keys do not travel).",
