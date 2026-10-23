@@ -53,6 +53,12 @@ pub enum StoreError {
 }
 
 impl StoreError {
+    /// Whether the key custody refused this call for good (as opposed to a
+    /// transient custody failure worth asking again in the same pass).
+    pub fn is_custody_refusal(&self) -> bool {
+        matches!(self, Self::ContentKey(maidan_types::SealError::Refused))
+    }
+
     /// Build a [`SpawnRejected`]. The denial is boxed so the variant doesn't
     /// inflate every `StoreError` on the hot path.
     ///

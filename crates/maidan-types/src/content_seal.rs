@@ -73,6 +73,14 @@ pub enum SealError {
     UnknownKek(String),
     #[error("key must be 32 bytes, as base64 or 64 hex characters")]
     InvalidKey,
+    /// The key custody refused the call for good until an operator acts:
+    /// access denied, a disabled or missing key, or a ciphertext it rejects.
+    #[error("key custody refused the call")]
+    Refused,
+    /// The key custody could not be reached or answered with a transient
+    /// error (throttling, a timeout, a network failure): worth retrying.
+    #[error("key custody is unavailable")]
+    Unavailable,
 }
 
 /// A message's data key. Zeroed on drop; never printed.
