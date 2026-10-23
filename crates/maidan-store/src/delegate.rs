@@ -94,14 +94,7 @@ macro_rules! store_delegations {
                 replace_existing: bool,
                 audit: NewAuditEvent,
             ) -> Result<(), StoreError> {
-                data_audited::import_workspace(
-                    self.pool(),
-                    self.content_keys(),
-                    import,
-                    replace_existing,
-                    audit,
-                )
-                .await
+                data_audited::import_workspace(self.pool(), import, replace_existing, audit).await
             }
 
             async fn place_legal_hold_audited(
@@ -274,6 +267,14 @@ macro_rules! store_delegations {
 
             async fn get_member(&self, id: MemberId) -> Result<Member, StoreError> {
                 members::get(self.read_pool(), id).await
+            }
+
+            async fn set_member_display_name(
+                &self,
+                id: MemberId,
+                display_name: Option<String>,
+            ) -> Result<Member, StoreError> {
+                members::set_display_name(self.pool(), id, display_name.as_deref()).await
             }
 
             async fn get_member_in(
@@ -652,30 +653,6 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
             ) -> Result<i64, StoreError> {
                 usage_meters::stored_bytes(self.read_pool(), workspace_id).await
-            }
-
-            async fn list_usage_meters_between(
-                &self,
-                since: chrono::NaiveDate,
-                until: chrono::NaiveDate,
-            ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError> {
-                usage_meters::list_between(self.read_pool(), since, until).await
-            }
-
-            async fn mark_over_allowance(
-                &self,
-                mark: &maidan_types::OverAllowance,
-                admins: &[MemberId],
-            ) -> Result<Option<StoredEvent>, StoreError> {
-                usage_allowance::mark(self.pool(), mark, admins).await
-            }
-
-            async fn list_over_allowance(
-                &self,
-                workspace_id: WorkspaceId,
-                month: &str,
-            ) -> Result<Vec<maidan_types::OverAllowance>, StoreError> {
-                usage_allowance::list(self.read_pool(), workspace_id, month).await
             }
 
             async fn list_usage_meters(
@@ -3119,14 +3096,6 @@ macro_rules! store_delegations {
                 footprints::clear_slot_capacity(self.pool(), workspace_id, slot, audit).await
             }
 
-            async fn count_stalled_threads(
-                &self,
-                now: chrono::DateTime<chrono::Utc>,
-                progress_before: chrono::DateTime<chrono::Utc>,
-            ) -> Result<i64, StoreError> {
-                threads::count_stalled_threads(self.read_pool(), now, progress_before).await
-            }
-
             async fn reap_expired_claims(
                 &self,
                 now: chrono::DateTime<chrono::Utc>,
@@ -3591,14 +3560,14 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
             ) -> Result<WorkspacePurgeResult, StoreError> {
-                purge_workspace::purge(self.pool(), self.content_keys(), workspace_id).await
+                purge_workspace::purge(self.pool(), workspace_id).await
             }
 
             async fn erase_workspace(
                 &self,
                 workspace_id: WorkspaceId,
             ) -> Result<WorkspaceEraseResult, StoreError> {
-                erase_workspace::erase(self.pool(), self.content_keys(), workspace_id).await
+                erase_workspace::erase(self.pool(), workspace_id).await
             }
 
             async fn purge_message_audited(
@@ -3614,8 +3583,7 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 audit: crate::AuditFor<WorkspacePurgeResult>,
             ) -> Result<WorkspacePurgeResult, StoreError> {
-                data_audited::purge_workspace(self.pool(), self.content_keys(), workspace_id, audit)
-                    .await
+                data_audited::purge_workspace(self.pool(), workspace_id, audit).await
             }
 
             async fn erase_workspace_audited(
@@ -3623,8 +3591,7 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 audit: crate::AuditFor<WorkspaceEraseResult>,
             ) -> Result<WorkspaceEraseResult, StoreError> {
-                data_audited::erase_workspace(self.pool(), self.content_keys(), workspace_id, audit)
-                    .await
+                data_audited::erase_workspace(self.pool(), workspace_id, audit).await
             }
         }
     };
@@ -3966,10 +3933,7 @@ macro_rules! store_delegations {
                 events::append(self.pool(), &self.keys, event, Some(origin)).await
             }
 
-            async fn rewrap_content_keys(
-                &self,
-                limit: i64,
-            ) -> Result<crate::store::RewrapPass, StoreError> {
+            async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError> {
                 content_keys::rewrap(self.pool(), &self.keys, limit).await
             }
 

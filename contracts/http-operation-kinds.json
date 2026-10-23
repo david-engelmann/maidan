@@ -75,6 +75,7 @@
   {"method":"POST","path":"/mcp/worker","kind":"changes"},
   {"method":"GET","path":"/me","kind":"reads"},
   {"method":"GET","path":"/members/{id}","kind":"reads"},
+  {"method":"PATCH","path":"/members/{id}","kind":"changes"},
   {"method":"GET","path":"/members/{id}/assigned-threads","kind":"reads"},
   {"method":"GET","path":"/members/{id}/channel-follows","kind":"reads"},
   {"method":"POST","path":"/members/{id}/channel-follows","kind":"changes"},

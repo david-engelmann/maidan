@@ -3,7 +3,7 @@
 use axum::http::StatusCode;
 use axum::{extract::State, Extension, Json};
 use maidan_auth::{
-    capability::{TOKEN_ADMIN, WORKSPACE_READ},
+    capability::{TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE},
     capability_set::AGENT_WORKER,
     hash_secret, AuthContext, TokenSecret,
 };
@@ -176,6 +176,38 @@ pub async fn get_member(
     let member = requested_member(&state, &auth, MemberId(id)).await?;
     cap(&auth, WORKSPACE_READ)?;
     Ok(Json(member))
+}
+
+/// `PATCH /members/:id` — set or clear your own display name.
+/// `workspace:write`.
+///
+/// Creation was the only way to get a display name, so a member created
+/// without one (an R2 fixture agent, a SCIM shell) stayed nameless in every
+/// surface that shows one. The name is personal state, so the personal-state
+/// rule applies with no override: acting for someone else means holding a
+/// delegated token for them, whose member is them.
+pub async fn set_member_display_name(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<SetMemberDisplayName>,
+) -> ApiResult<Json<Member>> {
+    let member_id = MemberId(id);
+    let member = requested_member(&state, &auth, member_id).await?;
+    cap(&auth, WORKSPACE_WRITE)?;
+    ensure_own_personal_state(&auth, member_id)?;
+    let name = body.display_name.trim();
+    let display_name = if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
+    };
+    Ok(Json(
+        state
+            .store
+            .set_member_display_name(member.id, display_name)
+            .await?,
+    ))
 }
 
 pub async fn list_mentions_for_member(
