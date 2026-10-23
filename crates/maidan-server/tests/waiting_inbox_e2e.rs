@@ -4,6 +4,7 @@
 //! covered by the pure `assemble_waiting_inbox` unit test). Auth-enabled +
 //! self-only, with a minted token that IS the acting member.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -771,7 +772,7 @@ async fn start_review_on_a_gated_thread_needs_a_posted_result() {
         "{problem}"
     );
     store
-        .set_thread_result(gated, worker, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(gated, worker, &serde_json::json!({"status": "done"}))
         .await
         .unwrap();
     assert_eq!(start(gated).await.unwrap().status(), 200);

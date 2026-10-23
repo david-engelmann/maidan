@@ -313,7 +313,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn lookup(pairs: &[(&'static str, &str)]) -> impl Fn(&'static str) -> Option<String> {
+    fn lookup(pairs: &[(&'static str, &str)]) -> impl Fn(&'static str) -> Option<String> + use<> {
         let map: HashMap<&'static str, String> =
             pairs.iter().map(|(k, v)| (*k, v.to_string())).collect();
         move |name| map.get(name).cloned()

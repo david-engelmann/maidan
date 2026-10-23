@@ -77,7 +77,9 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -159,12 +161,11 @@ async fn bootstrap_member(h: &Harness, wid: &str, handle: &str) -> String {
 async fn wait_for_event_kind(state: &ReceiverState, kind: &str, timeout: Duration) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
     while tokio::time::Instant::now() < deadline {
-        if let Some(body) = state.last_body.lock().await.clone() {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body) {
-                if parsed["kind"] == kind {
-                    return true;
-                }
-            }
+        if let Some(body) = state.last_body.lock().await.clone()
+            && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&body)
+            && parsed["kind"] == kind
+        {
+            return true;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }

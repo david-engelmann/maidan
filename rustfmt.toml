@@ -1,2 +1,5 @@
 max_width = 100
-edition = "2021"
+edition = "2024"
+# The 2024 style edition reformats most of the tree; it is a change of its
+# own, kept out of the edition move so open branches do not all conflict.
+style_edition = "2021"

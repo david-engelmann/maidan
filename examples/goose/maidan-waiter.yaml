@@ -48,8 +48,8 @@ instructions: |
      spending money), call request_approval with a clear prompt and the
      thread_id, then poll get_approval_gate until its state is not "pending".
      Go ahead only if it is "accepted". Never approve your own request.
-  6. When you are done, call set_thread_result with thread_id and a result
-     object: {"status": "done" or "failed", "summary": "<what you did>"}.
+  6. When you are done, call set_thread_result with thread_id, the
+     claim_lease_id from your claim, and a result object: {"status": "done" or "failed", "summary": "<what you did>"}.
   7. Call transition_thread with the thread_id and action "start_review". This
      is what keeps the task from being handed out again. Never "close" it:
      someone else reviews and closes.

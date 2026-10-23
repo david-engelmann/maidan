@@ -89,6 +89,37 @@ Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KE
 keyring; rotate with `FEDERATION_DECRYPT_KEYS`. See
 [Production.md](Production.md) for the full config surface.
 
+## Suspending a workspace
+
+The hosted service's abuse control. An operator (a token with
+`operator:global`, which provisioned tenants never hold) suspends a workspace
+with a reason:
+
+```sh
+curl -X PUT "$MAIDAN/operator/workspaces/$WS/suspension" \
+  -H "authorization: Bearer $OPERATOR_TOKEN" -H 'content-type: application/json' \
+  -d '{"reason": "abuse report 17"}'
+curl "$MAIDAN/operator/workspaces/$WS/suspension" -H "authorization: Bearer $OPERATOR_TOKEN"
+curl -X DELETE "$MAIDAN/operator/workspaces/$WS/suspension" -H "authorization: Bearer $OPERATOR_TOKEN"
+```
+
+While it stands:
+- every token and browser session of the workspace gets a 403 `workspace
+  suspended`, on REST, MCP, WebSocket, SSE and A2A, and an open stream ends at
+  its next credential re-check;
+- the change sweep, Linear notices and the scheduler skip it, and the egress,
+  mail and web push workers defer its deliveries, so nothing leaves on its
+  behalf;
+- its data, tokens and sessions are kept. The instance's own signed
+  ingresses (GitHub webhooks, deploy events) still write into its threads,
+  since that keeps its record whole; nothing it sends goes out.
+
+Lifting restores access at once. Deferred deliveries go out at their next
+attempt, within five minutes. A scheduled run missed while suspended is not
+replayed. Both acts are in the workspace's audit log (`workspace.suspend`,
+`workspace.suspension_lift`), attributed to the operator. An operator cannot
+suspend its own workspace, since that would lock out the credential that lifts it.
+
 ## Usage meters
 
 Each workspace's usage is counted in memory and written to
@@ -235,7 +266,9 @@ Tagging is the maintainer's call, not part of closing a cluster. To cut
 
 1. Land a release-record PR: a `## [vX.0.0]` section in `docs/Capabilities.md`
    (linking the GitHub release) naming what it contains, a `## [X.0.0]` section in
-   `CHANGELOG.md` (the `[Unreleased]` entries move under it), the
+   `CHANGELOG.md` (`bash scripts/changelog-fragments.sh release X.0.0` moves the
+   `[Unreleased]` entries and every `changelog.d/` fragment under it; then write
+   its summary paragraph), the
    `latest **\`vX.0.0\`**` line in `CLAUDE.md`, and the image pins in `README.md`.
    `bash scripts/check-release-records.sh --tag vX.0.0` must pass.
 2. Tag `main` and push the tag:

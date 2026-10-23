@@ -98,10 +98,10 @@ pub async fn ensure_dm_participant(
         if dm.member_low_id == me || dm.member_high_id == me {
             return Ok(());
         }
-    } else if let Some(gdm) = store.group_dm_conversation_for_thread(thread_id).await? {
-        if gdm.member_ids.contains(&me) {
-            return Ok(());
-        }
+    } else if let Some(gdm) = store.group_dm_conversation_for_thread(thread_id).await?
+        && gdm.member_ids.contains(&me)
+    {
+        return Ok(());
     }
     Err(AuthError::Forbidden(
         "caller is not a participant of this DM conversation".into(),

@@ -34,7 +34,9 @@ impl maidan_server::mail::MailTransport for RecordingMailer {
 async fn presence_window_skips_email_for_recently_seen_member() {
     // Enable the guard for this test binary. A member seen within 300 s is
     // treated as active; unset/0 would send unconditionally.
-    std::env::set_var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS", "300");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_EMAIL_PRESENCE_WINDOW_SECS", "300") };
 
     let pool = SqlitePoolOptions::new()
         .max_connections(4)

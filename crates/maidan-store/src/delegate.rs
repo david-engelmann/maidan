@@ -222,6 +222,33 @@ macro_rules! store_delegations {
             ) -> Result<Option<WorkspaceHandle>, StoreError> {
                 workspace_handles::get(self.read_pool(), workspace_id).await
             }
+
+            async fn suspend_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                reason: &str,
+                suspended_by: Option<MemberId>,
+                audit: NewAuditEvent,
+            ) -> Result<maidan_types::WorkspaceSuspension, StoreError> {
+                suspensions::suspend(self.pool(), workspace_id, reason, suspended_by, audit).await
+            }
+
+            async fn lift_workspace_suspension(
+                &self,
+                workspace_id: WorkspaceId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                suspensions::lift(self.pool(), workspace_id, audit).await
+            }
+
+            // Read from the primary: a suspension must take effect on the next
+            // request, not when a replica catches up.
+            async fn get_workspace_suspension(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::WorkspaceSuspension>, StoreError> {
+                suspensions::get(self.pool(), workspace_id).await
+            }
         }
     };
     ($store:ty, MemberStore) => {
@@ -406,9 +433,10 @@ macro_rules! store_delegations {
                 &self,
                 thread_id: ThreadId,
                 produced_by: MemberId,
+                lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                thread_results::set(self.pool(), thread_id, produced_by, result).await
+                thread_results::set(self.pool(), thread_id, produced_by, lease_id, result).await
             }
 
             async fn get_thread_result(
@@ -1326,7 +1354,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 error: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_failed(self.pool(), id, error).await
             }
 
@@ -1334,7 +1362,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 reason: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_skipped(self.pool(), id, reason).await
             }
 
@@ -2939,6 +2967,22 @@ macro_rules! store_delegations {
                 change_metrics::add_stale_base_notice(self.pool(), notice).await
             }
 
+            async fn record_deploy(
+                &self,
+                deploy: maidan_types::NewDeploy,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::record_deploy(self.pool(), deploy).await
+            }
+
+            async fn deploy_candidates(
+                &self,
+                repo: &str,
+                environment: &str,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError> {
+                change_metrics::deploy_candidates(self.read_pool(), repo, environment, limit).await
+            }
+
             async fn list_thread_notices(
                 &self,
                 thread_id: ThreadId,
@@ -3344,6 +3388,15 @@ macro_rules! store_delegations {
                 plan: maidan_types::SubmitPlan,
             ) -> Result<maidan_types::PlanOutcome, StoreError> {
                 plans::submit(self.pool(), parent_id, member_id, plan).await
+            }
+
+            async fn amend_plan(
+                &self,
+                parent_id: ThreadId,
+                member_id: MemberId,
+                amend: maidan_types::AmendPlan,
+            ) -> Result<maidan_types::AmendOutcome, StoreError> {
+                plans::amend(self.pool(), &self.keys, parent_id, member_id, amend).await
             }
 
             async fn get_plan_state(

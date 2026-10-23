@@ -6,7 +6,8 @@
 //! the other refuses. The workspace scope is the channel scope without its
 //! channel predicate, and nothing else.
 //!
-//! A thread is claimable when it is open and live, unheld or its lease lapsed,
+//! The thread's own rules are [`crate::claimability`]'s, shared with the
+//! queue counts. A thread is claimable when it is open and live, unheld or its lease lapsed,
 //! every dependency is finished, the claimer holds every skill it requires, it
 //! has no pending approval gate, it is neither parked unclaimable nor blocked,
 //! the claimer is not frozen, the thread is not already over any budget
@@ -34,6 +35,7 @@
 
 use maidan_types::{ChannelId, WorkspaceId};
 
+use crate::claimability::{self, ThreadSql};
 use crate::thread_access::readable_thread;
 
 /// Where `claim_next` looks for work.
@@ -102,19 +104,16 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
-    let footprint_conflict = crate::footprints::deferred("cand.id", now);
+    let claimable = claimability::claimable(&ThreadSql {
+        now,
+        lapsed_worked_secs,
+        requeued_after_result,
+    });
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
          LEFT JOIN maidan_thread_priorities p ON p.thread_id = cand.id
-         WHERE {in_scope} AND cand.tombstoned_at IS NULL AND cand.state = 'open'
-           AND (cand.assignee_id IS NULL
-                OR (cand.assignment_expires_at IS NOT NULL AND cand.assignment_expires_at < {now}))
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_dependencies d
-               JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-               WHERE d.thread_id = cand.id AND dep.state NOT IN ('closed', 'archived')
-           )
+         WHERE {in_scope} AND {claimable}
            AND NOT EXISTS (
                SELECT 1 FROM maidan_thread_required_skills trs
                WHERE trs.thread_id = cand.id
@@ -124,39 +123,8 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
                  )
            )
            AND NOT EXISTS (
-               SELECT 1 FROM maidan_approval_gates g
-               WHERE g.thread_id = cand.id AND g.state = 'pending'
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = cand.id
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = cand.id
-           )
-           AND NOT EXISTS (
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = {member}
            )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_budgets b
-               WHERE b.thread_id = cand.id
-                 AND (
-                   (b.max_tokens > 0 AND b.used_tokens >= b.max_tokens)
-                   OR (b.max_usd_micros > 0 AND b.used_usd_micros >= b.max_usd_micros)
-                   OR (b.max_turns > 0 AND b.used_turns >= b.max_turns)
-                   OR (b.max_wall_secs > 0
-                       AND b.used_wall_secs + ({lapsed_worked_secs}) >= b.max_wall_secs)
-                 )
-           )
-           AND NOT EXISTS (
-               SELECT 1 FROM maidan_thread_results r
-               WHERE r.thread_id = cand.id
-                 AND NOT EXISTS (
-                     SELECT 1 FROM maidan_thread_transitions tr
-                     WHERE tr.thread_id = cand.id AND tr.to_state = 'open'
-                       AND {requeued_after_result}
-                 )
-           )
-           AND NOT {footprint_conflict}
            AND ({repo} IS NULL OR EXISTS (
                SELECT 1 FROM maidan_thread_footprints rf
                WHERE rf.thread_id = cand.id AND rf.repo = {repo}

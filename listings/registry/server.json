@@ -11,8 +11,8 @@
         "type": "streamable-http",
         "url": "http://localhost:8080/mcp/streamable"
       },
-      "version": "v413.0.0"
+      "version": "v415.0.0"
     }
   ],
-  "version": "413.0.0"
+  "version": "415.0.0"
 }

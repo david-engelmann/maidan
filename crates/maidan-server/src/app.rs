@@ -543,6 +543,7 @@ pub fn router(state: AppState) -> Router {
         .route("/threads/{id}/pull", put(routes::register_thread_pull))
         .route("/threads/{id}/plan", post(routes::submit_plan))
         .route("/threads/{id}/plan/release", post(routes::release_plan))
+        .route("/threads/{id}/plan/amend", post(routes::amend_plan))
         .route(
             "/threads/{id}/deliveries",
             get(routes::list_thread_deliveries),
@@ -1042,6 +1043,12 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/operator/workspaces",
             no_store(post(routes::provision_workspace)),
+        )
+        .route(
+            "/operator/workspaces/{id}/suspension",
+            get(routes::get_workspace_suspension)
+                .merge(put(routes::suspend_workspace))
+                .merge(delete(routes::lift_workspace_suspension)),
         )
         .route("/operator/status", get(crate::status::operator_status))
         .route("/operator/mail/dead", get(routes::list_dead_mail))
@@ -1627,6 +1634,10 @@ pub fn router(state: AppState) -> Router {
         // GitHub projector ingress: unauthed — GitHub authenticates via its
         // X-Hub-Signature-256, verified in-handler. 404 unless configured.
         .route("/integrations/github/events", post(github::github_events))
+        .route(
+            "/integrations/deploys/events",
+            post(crate::deploy_ingest::deploy_events),
+        )
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))

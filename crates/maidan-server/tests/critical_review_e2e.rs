@@ -3,6 +3,7 @@
 //! producer PUTs the result; close 409s until a human who is neither owner nor
 //! assignee approves.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -106,7 +107,6 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
         }
     };
     let owner = member("owner", MemberKind::Human).await;
-    let assignee = member("assignee", MemberKind::Agent).await;
     let reviewer = member("verifier", MemberKind::Agent).await;
     let human = member("human", MemberKind::Human).await;
     let channel = store
@@ -132,7 +132,9 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
         .set_thread_owner(thread.id, Some(owner.id))
         .await
         .unwrap();
-    store.assign_thread(thread.id, assignee.id).await.unwrap();
+    // The review-skilled producer holds the thread: a result lands only under
+    // the writer's live claim.
+    store.assign_thread(thread.id, reviewer.id).await.unwrap();
     store
         .add_member_skill(reviewer.id, REVIEW_SKILL)
         .await
@@ -156,10 +158,11 @@ async fn critical_review_result_blocks_close_until_a_human_approves() {
     );
     let tid = thread.id.0;
 
+    let lease = store.claim_lease_for(thread.id, reviewer.id).await.unwrap();
     let set = client
         .put(format!("{base}/threads/{tid}/result"))
         .header("Authorization", &rev_h)
-        .json(&json!({ "result": critical_envelope() }))
+        .json(&json!({ "result": critical_envelope(), "claim_lease_id": lease.0 }))
         .send()
         .await
         .unwrap();
@@ -308,10 +311,12 @@ async fn a_warning_only_review_does_not_arm_the_close_gate() {
     );
     let tid = thread.id.0;
 
+    let lease = store.claim_lease_for(thread.id, reviewer.id).await.unwrap();
     let set = client
         .put(format!("{base}/threads/{tid}/result"))
         .header("Authorization", &rev_h)
         .json(&json!({
+            "claim_lease_id": lease.0,
             "result": {
                 "schema": WAITER_RESULT_SCHEMA,
                 "result_kind": EXAMPLE_REVIEW_RESULT_KIND,

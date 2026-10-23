@@ -7,8 +7,7 @@ use sqlx::{PgPool, Row};
 /// Every column a [`StoredEvent`] is built from, with its content key joined
 /// in. Pair with [`EVENTS_FROM`]; filter and order on `e.` columns.
 pub(crate) const EVENT_COLUMNS: &str = "e.id, e.kind, e.workspace_id, e.channel_id, e.thread_id, e.payload, e.occurred_at, e.prev_hash, e.content_hash, e.content_key_id, e.traceparent, e.tracestate, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped";
-pub(crate) const EVENTS_FROM: &str =
-    "maidan_events e LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id";
+pub(crate) const EVENTS_FROM: &str = "maidan_events e LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id";
 
 /// Rows per batch when filling pre-chain fields.
 const CHAIN_BACKFILL_BATCH: i64 = 256;

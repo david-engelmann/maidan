@@ -46,6 +46,31 @@ pub async fn submit_plan(
     }
 }
 
+/// `POST /threads/:id/plan/amend` — change a submitted plan under the
+/// planner's live claim: cancel unclaimed children, add children, rewire
+/// unclaimed children's dependencies, all in one transaction. `200` with what
+/// changed; a malformed amendment is a `400`; a claimed or finished child,
+/// or a fourth amendment, is a `409`. `workspace:write` + thread access.
+pub async fn amend_plan(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<maidan_types::AmendPlan>,
+) -> ApiResult<Json<maidan_types::PlanAmendment>> {
+    cap(&auth, WORKSPACE_WRITE)?;
+    let parent = ThreadId(id);
+    maidan_auth::authorize_thread(state.store.as_ref(), &auth, parent).await?;
+    let amend = body.checked().map_err(ApiError::BadRequest)?;
+    let outcome = state
+        .store
+        .amend_plan(parent, auth.member_id, amend)
+        .await?;
+    for stored in outcome.events {
+        super::publish_stored(&state, stored).await;
+    }
+    Ok(Json(outcome.amendment))
+}
+
 /// `POST /threads/:id/plan/release` — release a held plan: its children
 /// become claimable. A plan with five or more children, or any child that
 /// needs a threat model, is created held. `token:admin` (the Maintainer),

@@ -7,8 +7,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str =
-    "id, workspace_id, label, from_state, to_state, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
+const COLS: &str = "id, workspace_id, label, from_state, to_state, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
 
 pub async fn create(pool: &PgPool, new: NewFsmHook) -> Result<FsmHook, StoreError> {
     let id = Uuid::now_v7();

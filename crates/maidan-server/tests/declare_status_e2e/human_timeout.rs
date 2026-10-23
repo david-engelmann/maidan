@@ -141,7 +141,9 @@ async fn ask(store: &Arc<dyn Store>, thread: ThreadId, agent: MemberId) {
 async fn an_unanswered_wait_on_a_person_returns_the_thread_and_stays_in_its_workspace() {
     // Read per request and per tick; each test runs in its own process under
     // nextest, so nothing else sees it.
-    std::env::set_var("MAIDAN_HUMAN_TIMEOUT_SECS", TIMEOUT_SECS.to_string());
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_HUMAN_TIMEOUT_SECS", TIMEOUT_SECS.to_string()) };
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")

@@ -66,26 +66,26 @@ impl RetentionDays {
                     "{kind} must be between 1 and {MAX_RETENTION_DAYS}, got {days}"
                 ));
             }
-            if let Some(ceiling) = ceiling {
-                if days > ceiling {
-                    return Err(format!(
-                        "{kind} is {days}, longer than this instance keeps them ({ceiling}); \
+            if let Some(ceiling) = ceiling
+                && days > ceiling
+            {
+                return Err(format!(
+                    "{kind} is {days}, longer than this instance keeps them ({ceiling}); \
                          a workspace may keep rows for less time than the instance, not more"
-                    ));
-                }
+                ));
             }
         }
         if let Some(bytes) = self.media_quota_bytes {
             if bytes < 1 {
                 return Err(format!("media_quota_bytes must be at least 1, got {bytes}"));
             }
-            if let Some(ceiling) = instance.media_quota_bytes {
-                if bytes > ceiling {
-                    return Err(format!(
-                        "media_quota_bytes is {bytes}, more than this instance allows ({ceiling}); \
+            if let Some(ceiling) = instance.media_quota_bytes
+                && bytes > ceiling
+            {
+                return Err(format!(
+                    "media_quota_bytes is {bytes}, more than this instance allows ({ceiling}); \
                          a workspace may hold less media than the instance allows, not more"
-                    ));
-                }
+                ));
             }
         }
         Ok(())

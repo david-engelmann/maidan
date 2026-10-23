@@ -25,6 +25,10 @@ pub const SECRET_FILE_ENV: &[(&str, &str)] = &[
         "MAIDAN_CONTENT_KEK_PREVIOUS_FILE",
     ),
     ("MAIDAN_DB_REPLICA_URL", "MAIDAN_DB_REPLICA_URL_FILE"),
+    (
+        "MAIDAN_DEPLOY_HOOK_SECRET",
+        "MAIDAN_DEPLOY_HOOK_SECRET_FILE",
+    ),
     ("MAIDAN_EMBEDDING_API_KEY", "MAIDAN_EMBEDDING_API_KEY_FILE"),
     (
         "MAIDAN_EXPORT_SIGNING_KEY",
@@ -140,7 +144,9 @@ pub unsafe fn load_secret_files() -> Result<Vec<&'static str>, SecretFileError> 
     Ok(resolved
         .into_iter()
         .map(|(name, value)| {
-            std::env::set_var(name, value);
+            // SAFETY: the caller upholds this function's contract: no other
+            // thread touches the environment while it runs.
+            unsafe { std::env::set_var(name, value) };
             name
         })
         .collect())
@@ -153,7 +159,7 @@ mod tests {
 
     use super::*;
 
-    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> {
+    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<OsString> + use<> {
         let map: HashMap<String, OsString> = pairs
             .iter()
             .map(|(k, v)| (k.to_string(), OsString::from(v)))

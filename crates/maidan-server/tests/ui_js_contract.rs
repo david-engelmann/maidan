@@ -101,10 +101,8 @@ fn collect_defined(s: &str, out: &mut std::collections::HashSet<String>) {
             let after = from + rel + kw.len();
             // whole-word keyword (preceded by non-ident)
             let pre_ok = from + rel == 0 || !is_ident(s.as_bytes()[from + rel - 1] as char);
-            if pre_ok {
-                if let Some(name) = ident_starting_at(s, after) {
-                    out.insert(name.to_string());
-                }
+            if pre_ok && let Some(name) = ident_starting_at(s, after) {
+                out.insert(name.to_string());
             }
             from = after;
         }
@@ -1947,16 +1945,37 @@ fn team_scenes() -> Vec<TeamScene> {
                 mate("erin", "Erin", "human", false),
             ],
             threads: vec![
-                task("t-ben", Some("ben"), "working", "Hold the line", "2026-10-01T00:00:00Z"),
-                task("t-cara", Some("cara"), "working", "File the note", "2026-10-01T00:00:00Z"),
-                task("t-erin", Some("erin"), "closed", "Already done", "2026-10-03T00:00:00Z"),
+                task(
+                    "t-ben",
+                    Some("ben"),
+                    "working",
+                    "Hold the line",
+                    "2026-10-01T00:00:00Z",
+                ),
+                task(
+                    "t-cara",
+                    Some("cara"),
+                    "working",
+                    "File the note",
+                    "2026-10-01T00:00:00Z",
+                ),
+                task(
+                    "t-erin",
+                    Some("erin"),
+                    "closed",
+                    "Already done",
+                    "2026-10-03T00:00:00Z",
+                ),
             ],
         },
         TeamScene {
             name: "two claimed tasks title the latest updated_at, not the first",
             viewer: "you",
             needs_you: 0,
-            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", false),
+            ],
             threads: vec![
                 task("a", Some("ben"), "working", "Alpha", "2026-10-01T00:00:00Z"),
                 task("b", Some("ben"), "working", "Beta", "2026-10-03T00:00:00Z"),
@@ -1966,7 +1985,10 @@ fn team_scenes() -> Vec<TeamScene> {
             name: "two running tasks title the latest updated_at, not the later running one",
             viewer: "you",
             needs_you: 0,
-            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", false),
+            ],
             threads: vec![
                 running("g", "ben", "Gamma", "2026-10-04T00:00:00Z"),
                 running("d", "ben", "Delta", "2026-10-02T00:00:00Z"),
@@ -1976,9 +1998,18 @@ fn team_scenes() -> Vec<TeamScene> {
             name: "the running task wins over a newer claimed one",
             viewer: "you",
             needs_you: 0,
-            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", false),
+            ],
             threads: vec![
-                task("e", Some("ben"), "working", "Epsilon", "2026-10-05T00:00:00Z"),
+                task(
+                    "e",
+                    Some("ben"),
+                    "working",
+                    "Epsilon",
+                    "2026-10-05T00:00:00Z",
+                ),
                 running("z", "ben", "Zeta", "2026-10-01T00:00:00Z"),
             ],
         },
@@ -1986,22 +2017,40 @@ fn team_scenes() -> Vec<TeamScene> {
             name: "the running task wins over a newer in-review one",
             viewer: "you",
             needs_you: 0,
-            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", false),
+            ],
             threads: vec![
                 running("eta", "ben", "Eta", "2026-10-01T00:00:00Z"),
-                task("theta", Some("ben"), "in_review", "Theta", "2026-10-06T00:00:00Z"),
+                task(
+                    "theta",
+                    Some("ben"),
+                    "in_review",
+                    "Theta",
+                    "2026-10-06T00:00:00Z",
+                ),
             ],
         },
         TeamScene {
             name: "the running task wins over a newer gated one",
             viewer: "you",
             needs_you: 0,
-            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", false),
+            ],
             threads: vec![
                 running("iota", "ben", "Iota", "2026-10-01T00:00:00Z"),
                 OpenTask {
                     gate_schema: Some(false),
-                    ..task("kappa", Some("ben"), "working", "Kappa", "2026-10-07T00:00:00Z")
+                    ..task(
+                        "kappa",
+                        Some("ben"),
+                        "working",
+                        "Kappa",
+                        "2026-10-07T00:00:00Z",
+                    )
                 },
             ],
         },
@@ -2017,20 +2066,41 @@ fn team_scenes() -> Vec<TeamScene> {
             threads: vec![
                 OpenTask {
                     work_started_at: Some("2026-10-08T00:00:00Z"),
-                    ..task("gone", Some("ben"), "archived", "Gone", "2026-10-08T00:00:00Z")
+                    ..task(
+                        "gone",
+                        Some("ben"),
+                        "archived",
+                        "Gone",
+                        "2026-10-08T00:00:00Z",
+                    )
                 },
                 task("old", Some("cara"), "closed", "Old", "2026-10-01T00:00:00Z"),
-                task("open", Some("cara"), "working", "Still open", "2026-10-02T00:00:00Z"),
+                task(
+                    "open",
+                    Some("cara"),
+                    "working",
+                    "Still open",
+                    "2026-10-02T00:00:00Z",
+                ),
             ],
         },
         TeamScene {
             name: "the viewer shows while work is waiting, and says how many",
             viewer: "you",
             needs_you: 3,
-            people: vec![mate("you", "You", "human", false), mate("ben", "Ben", "agent", false)],
+            people: vec![
+                mate("you", "You", "human", false),
+                mate("ben", "Ben", "agent", false),
+            ],
             threads: vec![
                 task("old", Some("you"), "closed", "Old", "2026-10-01T00:00:00Z"),
-                task("b", Some("ben"), "working", "Hold the line", "2026-10-02T00:00:00Z"),
+                task(
+                    "b",
+                    Some("ben"),
+                    "working",
+                    "Hold the line",
+                    "2026-10-02T00:00:00Z",
+                ),
             ],
         },
         TeamScene {
@@ -2038,13 +2108,22 @@ fn team_scenes() -> Vec<TeamScene> {
             viewer: "you",
             needs_you: 3,
             people: vec![mate("you", "You", "human", false)],
-            threads: vec![task("yours", Some("you"), "working", "Your task", "2026-10-02T00:00:00Z")],
+            threads: vec![task(
+                "yours",
+                Some("you"),
+                "working",
+                "Your task",
+                "2026-10-02T00:00:00Z",
+            )],
         },
         TeamScene {
             name: "an unassigned task puts nobody on the strip",
             viewer: "you",
             needs_you: 0,
-            people: vec![mate("you", "You", "human", true), mate("ada", "Ada", "agent", true)],
+            people: vec![
+                mate("you", "You", "human", true),
+                mate("ada", "Ada", "agent", true),
+            ],
             threads: vec![task("free", None, "open", "Free", "2026-10-01T00:00:00Z")],
         },
     ]
@@ -2060,10 +2139,11 @@ fn team_the_rule_requires(scene: &TeamScene) -> std::collections::BTreeMap<&'sta
     let mut held: std::collections::BTreeMap<&str, Vec<&OpenTask>> =
         std::collections::BTreeMap::new();
     for th in &scene.threads {
-        if let Some(assignee) = th.assignee_id {
-            if th.state != "closed" && th.state != "archived" {
-                held.entry(assignee).or_default().push(th);
-            }
+        if let Some(assignee) = th.assignee_id
+            && th.state != "closed"
+            && th.state != "archived"
+        {
+            held.entry(assignee).or_default().push(th);
         }
     }
     let mut out = std::collections::BTreeMap::new();

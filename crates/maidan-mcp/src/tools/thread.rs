@@ -53,10 +53,10 @@ pub(super) async fn lookback_event(
             if thread_id.is_some_and(|tid| stored.thread_id != Some(tid)) {
                 continue;
             }
-            if let Some(visible) = visible.as_deref_mut() {
-                if !visible.allows(stored).await? {
-                    continue;
-                }
+            if let Some(visible) = visible.as_deref_mut()
+                && !visible.allows(stored).await?
+            {
+                continue;
             }
             let event: Event = stored
                 .opened_event()
@@ -938,10 +938,10 @@ pub(super) async fn set_wip_limit(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: SetWipLimitArgs = crate::tools::parse_args(args)?;
-    if let Some(limit) = a.limit {
-        if limit < 0 {
-            return Err(McpError::InvalidParams("limit must be >= 0".into()));
-        }
+    if let Some(limit) = a.limit
+        && limit < 0
+    {
+        return Err(McpError::InvalidParams("limit must be >= 0".into()));
     }
     store.set_wip_limit(auth.workspace_id, a.limit).await?;
     Ok(content_json(&json!({ "limit": a.limit })))
@@ -1412,6 +1412,50 @@ pub(super) async fn submit_plan(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct AmendPlanArgs {
+    thread_id: uuid::Uuid,
+    lease_id: ClaimLeaseId,
+    #[serde(default)]
+    cancel: Vec<String>,
+    #[serde(default)]
+    add: Vec<PlanChild>,
+    #[serde(default)]
+    rewire: Vec<maidan_types::PlanRewire>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+/// Change a submitted plan in one transaction: cancel unclaimed children,
+/// add children, rewire unclaimed children's dependencies. Thread access is
+/// enforced pre-dispatch; the store checks the parent's live claim. The MCP
+/// twin of `POST /threads/:id/plan/amend`.
+pub(super) async fn amend_plan(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AmendPlanArgs = crate::tools::parse_args(args)?;
+    let amend = maidan_types::AmendPlan {
+        lease_id: a.lease_id,
+        cancel: a.cancel,
+        add: a.add,
+        rewire: a.rewire,
+        reason: a.reason,
+    }
+    .checked()
+    .map_err(McpError::InvalidParams)?;
+    let outcome = server
+        .store
+        .amend_plan(ThreadId(a.thread_id), auth.member_id, amend)
+        .await?;
+    for stored in &outcome.events {
+        server.publish_stored(stored).await;
+    }
+    Ok(content_json(&outcome.amendment))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct WatchPullArgs {
     workspace_id: uuid::Uuid,
     repo: String,
@@ -1740,6 +1784,8 @@ pub(super) async fn get_run_occupancy(
 struct SetThreadResultArgs {
     thread_id: uuid::Uuid,
     result: Value,
+    /// The caller's live claim: the claim response's `thread.claim_lease_id`.
+    claim_lease_id: uuid::Uuid,
 }
 
 /// Attach a task's structured result. Upserts one result per thread
@@ -1755,7 +1801,12 @@ pub(super) async fn set_thread_result(
     let thread_id = ThreadId(a.thread_id);
     let result = server
         .store
-        .set_thread_result(thread_id, auth.member_id, &a.result)
+        .set_thread_result(
+            thread_id,
+            auth.member_id,
+            ClaimLeaseId(a.claim_lease_id),
+            &a.result,
+        )
         .await?;
     // Same write-path arm as REST. The bus consumer (383.2) is every-replica /
     // replay; the tool itself must not race a close.
@@ -1778,14 +1829,14 @@ pub(super) async fn set_thread_result(
     }
     // Same write-path arm as REST 387.2. Best-effort — a lineage hiccup must
     // not undo a stored result.
-    if let Some(run_id) = run_id_from_payload(&a.result) {
-        if let Err(err) = server.store.set_thread_lineage(thread_id, run_id).await {
-            tracing::warn!(
-                error = %err,
-                %thread_id,
-                "lineage home from result failed; result is stored"
-            );
-        }
+    if let Some(run_id) = run_id_from_payload(&a.result)
+        && let Err(err) = server.store.set_thread_lineage(thread_id, run_id).await
+    {
+        tracing::warn!(
+            error = %err,
+            %thread_id,
+            "lineage home from result failed; result is stored"
+        );
     }
     if server.event_bus.is_some() {
         let ctx = resolve_thread_context(server.store.as_ref(), thread_id)
@@ -2165,8 +2216,8 @@ pub(super) async fn next_visible_event(
         None => store.max_event_id().await?,
     };
 
-    if let Some(since) = wait.since_log_id {
-        if let Some(found) = lookback_event(
+    if let Some(since) = wait.since_log_id
+        && let Some(found) = lookback_event(
             store,
             wait.workspace_id,
             &wait.kinds,
@@ -2176,9 +2227,8 @@ pub(super) async fn next_visible_event(
             Some(&mut visible),
         )
         .await?
-        {
-            return Ok(Some(found));
-        }
+    {
+        return Ok(Some(found));
     }
 
     loop {

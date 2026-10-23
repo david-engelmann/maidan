@@ -100,15 +100,15 @@ impl ProjectorShape {
         if event.workspace_id != Some(self.workspace_id) {
             return false;
         }
-        if let Some(ch) = self.channel_id {
-            if event.channel_id != Some(ch) {
-                return false;
-            }
+        if let Some(ch) = self.channel_id
+            && event.channel_id != Some(ch)
+        {
+            return false;
         }
-        if let Some(th) = self.thread_id {
-            if event.thread_id != Some(th) {
-                return false;
-            }
+        if let Some(th) = self.thread_id
+            && event.thread_id != Some(th)
+        {
+            return false;
         }
         if !self.types.is_empty() && !self.types.contains(&event.kind) {
             return false;

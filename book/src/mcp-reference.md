@@ -2608,6 +2608,118 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `amend_plan`
+
+**Amend plan.** Change a plan you already submitted, holding the plan thread's live claim (pass its lease_id). cancel names children to cancel; add gives new children (the shape submit_plan takes, depends_on may name any child of the plan); rewire sets a child's depends_on afresh. Cancel and add the same key to replace a child: its dependents wait for the new one. A cancelled child's dependents stop waiting for it. Only children that are open and unclaimed can be cancelled or rewired: a claimed or finished one is refused, as is a fourth amendment of the same plan (error code -32010). reason is kept on each cancelled child. Everything happens in one transaction, or nothing does. Added children are held for review when the plan is held or one of them needs a threat model.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: true`, `idempotentHint: false`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "add": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "attributes": {
+            "type": "object"
+          },
+          "depends_on": {
+            "description": "keys of any children in the plan",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "footprint": {
+            "type": "object"
+          },
+          "key": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "test": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "test",
+          "attributes",
+          "footprint"
+        ],
+        "type": "object"
+      },
+      "maxItems": 50,
+      "type": "array"
+    },
+    "cancel": {
+      "description": "keys of unclaimed children to cancel",
+      "items": {
+        "maxLength": 64,
+        "type": "string"
+      },
+      "maxItems": 50,
+      "type": "array"
+    },
+    "lease_id": {
+      "description": "the fencing token from your claim on the plan thread",
+      "format": "uuid",
+      "type": "string"
+    },
+    "reason": {
+      "description": "why the plan changed; kept on each cancelled child",
+      "maxLength": 500,
+      "type": "string"
+    },
+    "rewire": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "depends_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "key": {
+            "maxLength": 64,
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "depends_on"
+        ],
+        "type": "object"
+      },
+      "maxItems": 50,
+      "type": "array"
+    },
+    "thread_id": {
+      "description": "the plan thread you hold the claim on",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "lease_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_thread_footprint`
 
 **Set thread footprint.** Declare what part of a repository this thread's work touches, so a swarm claiming from one queue never holds overlapping work. items lists {kind: path|glob|crate|lane|branch, value}; lane, crate and branch match exactly, path and glob by prefix (a glob counts up to its first wildcard). mode exclusive conflicts with any overlap, shared only with an exclusive one, and a branch is always exclusive. Footprints count only while the thread holds a live claim and free themselves when it ends. claim_next skips a thread whose footprint overlaps a live claim. On a claimed thread, a footprint that overlaps another live claim is refused with error code -32009 and data.conflicts (each with thread_id, assignee_id, lease_expires_at, kind, value), and nothing is stored: release the claim and requeue, or narrow the footprint. No items clears the footprint. repo is owner/name, or a GitHub clone URL.
@@ -2948,6 +3060,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "until": {
+      "description": "only pull requests opened before this time; with since, one window",
+      "format": "date-time",
+      "type": "string"
+    },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
       "format": "uuid",
@@ -3144,7 +3261,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_thread_result`
 
-**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.
+**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output. Fenced by your claim: pass claim_lease_id from the claim response; if the lease lapsed and someone else took the thread (or it was released), the call is refused (claim_lost) and nothing is stored, so stop the work.
 
 **Capability:** `thread:transition`
 
@@ -3153,6 +3270,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "claim_lease_id": {
+      "description": "the fencing token from the claim response's thread.claim_lease_id",
+      "format": "uuid",
+      "type": "string"
+    },
     "result": {
       "description": "structured JSON result payload (an object)",
       "type": "object"
@@ -3164,7 +3286,8 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   },
   "required": [
     "thread_id",
-    "result"
+    "result",
+    "claim_lease_id"
   ],
   "type": "object"
 }

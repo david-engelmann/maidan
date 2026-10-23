@@ -18,7 +18,7 @@ production: true
 # running version without a deploy.
 image:
   repository: ghcr.io/david-engelmann/maidan-server
-  tag: v413.0.0
+  tag: v415.0.0
   pullPolicy: IfNotPresent
 
 ingress:

@@ -141,13 +141,13 @@ pub async fn enqueue_pull_guarded(
         None => {
             return Err(MarkReadyGuard::Refused(format!(
                 "the change flow delivered nothing to #{pull_number} in this workspace"
-            )))
+            )));
         }
         Some(sha) if !sha.eq_ignore_ascii_case(&brief.head_sha) => {
             return Err(MarkReadyGuard::Refused(format!(
                 "the head of #{pull_number} is {}, not {sha}, the commit the change flow delivered",
                 brief.head_sha
-            )))
+            )));
         }
         Some(_) => {}
     }

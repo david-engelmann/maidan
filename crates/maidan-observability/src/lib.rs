@@ -100,10 +100,10 @@ impl Guard {
             if let Some(provider) = self.meter_provider {
                 provider.shutdown();
             }
-            if let Some(provider) = self.tracer_provider {
-                if let Err(err) = provider.shutdown() {
-                    eprintln!("opentelemetry trace shutdown error: {err}");
-                }
+            if let Some(provider) = self.tracer_provider
+                && let Err(err) = provider.shutdown()
+            {
+                eprintln!("opentelemetry trace shutdown error: {err}");
             }
         }
     }

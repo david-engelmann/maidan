@@ -88,7 +88,9 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")

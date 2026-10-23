@@ -16,10 +16,10 @@ commonAnnotations:
 images:
   - name: maidan-server
     newName: ghcr.io/david-engelmann/maidan-server
-    newTag: v413.0.0
+    newTag: v415.0.0
   - name: maidan-postgres
     newName: ghcr.io/david-engelmann/maidan-postgres
-    newTag: v413.0.0
+    newTag: v415.0.0
 
 # Production deployments scale wider, expose via a real host, and
 # tighten resource limits.

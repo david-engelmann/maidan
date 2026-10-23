@@ -382,7 +382,7 @@ impl NotificationListener {
         loop {
             match self.rx.recv().await {
                 Ok(addressed) if *addressed.subscriber == self.subscriber => {
-                    return Some(addressed.notification)
+                    return Some(addressed.notification);
                 }
                 Ok(_) => {}
                 Err(broadcast::error::RecvError::Lagged(skipped)) => {

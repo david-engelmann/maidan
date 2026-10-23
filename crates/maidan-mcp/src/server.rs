@@ -143,17 +143,17 @@ fn server_capabilities(protocol_version: &str) -> Value {
 /// only to a client that declared it, so every other client's handshake is
 /// unchanged.
 fn with_ui_extension(mut capabilities: Value, ui: crate::call_context::UiSupport) -> Value {
-    if ui == crate::call_context::UiSupport::Declared {
-        if let Some(object) = capabilities.as_object_mut() {
-            object.insert(
-                "extensions".into(),
-                json!({
-                    crate::call_context::UI_EXTENSION: {
-                        "mimeTypes": [crate::call_context::UI_MIME_TYPE]
-                    }
-                }),
-            );
-        }
+    if ui == crate::call_context::UiSupport::Declared
+        && let Some(object) = capabilities.as_object_mut()
+    {
+        object.insert(
+            "extensions".into(),
+            json!({
+                crate::call_context::UI_EXTENSION: {
+                    "mimeTypes": [crate::call_context::UI_MIME_TYPE]
+                }
+            }),
+        );
     }
     capabilities
 }
@@ -586,10 +586,10 @@ impl McpServer {
     /// `Event` from the stored payload; a missing bus (embedded use) is a no-op.
     /// Unlike [`Self::publish_event`], this does NOT append (no double-log).
     pub(crate) async fn publish_stored(&self, stored: &StoredEvent) {
-        if let Some(bus) = self.event_bus.as_ref() {
-            if let Ok(envelope) = BusEnvelope::from_stored(stored) {
-                let _ = bus.publish(envelope).await;
-            }
+        if let Some(bus) = self.event_bus.as_ref()
+            && let Ok(envelope) = BusEnvelope::from_stored(stored)
+        {
+            let _ = bus.publish(envelope).await;
         }
     }
 
@@ -605,11 +605,11 @@ impl McpServer {
         auth: &AuthContext,
     ) -> String {
         let registry = self.streamable_sessions();
-        if let Some(id) = existing.filter(|s| !s.is_empty()) {
-            if registry.is_open_for(id, &Principal::of(auth)).await {
-                registry.touch(id).await;
-                return id.to_string();
-            }
+        if let Some(id) = existing.filter(|s| !s.is_empty())
+            && registry.is_open_for(id, &Principal::of(auth)).await
+        {
+            registry.touch(id).await;
+            return id.to_string();
         }
         uuid::Uuid::new_v4().to_string()
     }
@@ -1002,13 +1002,13 @@ impl McpServer {
         profile: Option<crate::profiles::Profile>,
     ) -> Result<Value, McpError> {
         let (name, args) = tools::tool_call(params)?;
-        if let Some(profile) = profile {
-            if !profile.contains(name) {
-                return Err(McpError::Forbidden(format!(
-                    "{name} is not on the {} profile",
-                    profile.name()
-                )));
-            }
+        if let Some(profile) = profile
+            && !profile.contains(name)
+        {
+            return Err(McpError::Forbidden(format!(
+                "{name} is not on the {} profile",
+                profile.name()
+            )));
         }
         if !auth.bypass {
             let cap = tools::required_capability(name)?;
@@ -1336,18 +1336,17 @@ impl McpServer {
                 if !auth.bypass && auth.workspace_id != workspace_id {
                     continue;
                 }
-                if !self.address(subscriber.clone(), auth, &watch.uri).await {
-                    if let Err(err) = self
+                if !self.address(subscriber.clone(), auth, &watch.uri).await
+                    && let Err(err) = self
                         .store
                         .unsubscribe_mcp_resource(&watch.subscriber, &watch.uri)
                         .await
-                    {
-                        tracing::warn!(
-                            error = %err,
-                            uri = %watch.uri,
-                            "mcp subscription outlived its access: removing it failed"
-                        );
-                    }
+                {
+                    tracing::warn!(
+                        error = %err,
+                        uri = %watch.uri,
+                        "mcp subscription outlived its access: removing it failed"
+                    );
                 }
             }
         }
@@ -1427,6 +1426,7 @@ impl McpServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maidan_store::test_support::SetResultClaiming;
 
     use maidan_artifacts::LocalFsStore;
     use maidan_auth::AuthContext;
@@ -3632,11 +3632,16 @@ mod tests {
 
         // Set dep1's result, then read it back.
         let payload = json!({ "answer": 42, "ok": true });
+        let lease = server
+            .store
+            .claim_lease_for(dep1.id, agent.id)
+            .await
+            .unwrap();
         let set = server
             .call_tool(
                 &auth,
                 "set_thread_result",
-                &json!({ "thread_id": dep1.id.0, "result": payload }),
+                &json!({ "thread_id": dep1.id.0, "result": payload, "claim_lease_id": lease.0 }),
             )
             .await
             .unwrap();
@@ -3677,7 +3682,16 @@ mod tests {
         // wait_for_result on dep2 wakes when its result is produced after subscribe.
         let dep2_payload = json!({ "answer": 7 });
         let wait_args = json!({ "thread_id": dep2.id.0, "timeout_ms": 5000 });
-        let set_args = json!({ "thread_id": dep2.id.0, "result": dep2_payload });
+        let dep2_lease = server
+            .store
+            .claim_lease_for(dep2.id, agent.id)
+            .await
+            .unwrap();
+        let set_args = json!({
+            "thread_id": dep2.id.0,
+            "claim_lease_id": dep2_lease.0,
+            "result": dep2_payload,
+        });
         let (out, _) = tokio::join!(
             server.call_tool(&auth, "wait_for_result", &wait_args),
             async {
@@ -3810,14 +3824,21 @@ mod tests {
 
         let fixture: Value = serde_json::from_str(FIXTURE).expect("fixture");
         assert_eq!(fixture["run_id"], json!(PRODUCER_RUN_ID));
+        let lease = server
+            .store
+            .claim_lease_for(parent.id, agent.id)
+            .await
+            .unwrap();
         server
             .call_tool(
                 &auth,
                 "set_thread_result",
-                &json!({ "thread_id": parent.id.0, "result": fixture }),
+                &json!({ "thread_id": parent.id.0, "result": fixture, "claim_lease_id": lease.0 }),
             )
             .await
             .unwrap();
+        // The write needed the claim; occupancy below counts the parent as queued.
+        server.store.unassign_thread(parent.id).await.unwrap();
 
         let lined = unwrap_content(
             server
@@ -3878,7 +3899,9 @@ mod tests {
         );
         assert_eq!(occ["parent_run_id"], json!(PRODUCER_RUN_ID));
         assert_eq!(occ["open"], json!(2));
-        assert_eq!(occ["queued"], json!(2));
+        // The parent holds its result, so claim_next will not hand it out.
+        assert_eq!(occ["queued"], json!(1));
+        assert_eq!(occ["blocked"], json!(1));
 
         store.mute_thread(agent.id, child.id).await.unwrap();
         let occ_muted = unwrap_content(
@@ -3970,7 +3993,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(review.id, agent.id, &json!({ "result_kind": REVIEW }))
+            .set_thread_result_claiming(review.id, agent.id, &json!({ "result_kind": REVIEW }))
             .await
             .unwrap();
         let plan = store
@@ -3984,7 +4007,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(plan.id, agent.id, &json!({ "result_kind": PLAN }))
+            .set_thread_result_claiming(plan.id, agent.id, &json!({ "result_kind": PLAN }))
             .await
             .unwrap();
         let hidden = store
@@ -3998,7 +4021,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(hidden.id, agent.id, &json!({ "result_kind": REVIEW }))
+            .set_thread_result_claiming(hidden.id, agent.id, &json!({ "result_kind": REVIEW }))
             .await
             .unwrap();
 
@@ -7823,7 +7846,7 @@ mod tests {
         // Handed to review with a result, the reviewer approves what it was
         // shown (as themselves) → status flips to met.
         store
-            .set_thread_result(thread.id, owner.id, &json!({ "status": "done" }))
+            .set_thread_result_claiming(thread.id, owner.id, &json!({ "status": "done" }))
             .await
             .unwrap();
         store
@@ -8286,15 +8309,6 @@ mod tests {
             })
             .await
             .unwrap();
-        let assignee = store
-            .create_member(NewMember {
-                workspace_id: ws.id,
-                handle: "assignee".into(),
-                display_name: None,
-                kind: MemberKind::Agent,
-            })
-            .await
-            .unwrap();
         let reviewer = store
             .create_member(NewMember {
                 workspace_id: ws.id,
@@ -8336,7 +8350,9 @@ mod tests {
             .set_thread_owner(thread.id, Some(owner.id))
             .await
             .unwrap();
-        store.assign_thread(thread.id, assignee.id).await.unwrap();
+        // The review-skilled producer holds the thread: a result lands only under
+        // the writer's live claim.
+        store.assign_thread(thread.id, reviewer.id).await.unwrap();
         store
             .add_member_skill(reviewer.id, REVIEW_SKILL)
             .await
@@ -8356,6 +8372,11 @@ mod tests {
             serde_json::from_str(v["content"][0]["text"].as_str().unwrap()).unwrap()
         };
         let tid = json!(thread.id.0);
+        let lease = server
+            .store
+            .claim_lease_for(thread.id, reviewer.id)
+            .await
+            .unwrap();
 
         server
             .call_tool(
@@ -8363,6 +8384,7 @@ mod tests {
                 "set_thread_result",
                 &json!({
                     "thread_id": tid,
+                    "claim_lease_id": lease.0,
                     "result": {
                         "schema": WAITER_RESULT_SCHEMA,
                         "result_kind": EXAMPLE_REVIEW_RESULT_KIND,

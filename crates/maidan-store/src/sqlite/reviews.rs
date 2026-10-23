@@ -41,8 +41,7 @@ fn row_to_review(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadReview, StoreErr
     })
 }
 
-const REVIEW_COLS: &str =
-    "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at, evidence_root";
+const REVIEW_COLS: &str = "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at, evidence_root";
 
 pub async fn set_requirement(
     pool: &SqlitePool,

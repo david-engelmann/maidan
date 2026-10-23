@@ -121,10 +121,10 @@ pub fn strip_tool_links(tools: &mut [Value]) {
 /// text content is untouched, so a client that reads only text sees the
 /// result it always did.
 pub fn with_structured(mut result: Value, ui: UiSupport, structured: Value) -> Value {
-    if ui.offers_card() {
-        if let Some(object) = result.as_object_mut() {
-            object.insert("structuredContent".into(), structured);
-        }
+    if ui.offers_card()
+        && let Some(object) = result.as_object_mut()
+    {
+        object.insert("structuredContent".into(), structured);
     }
     result
 }
@@ -150,12 +150,11 @@ mod tests {
     }
 
     fn meta_csp() -> &'static str {
-        let tag = between(
+        (between(
             APPROVAL_CARD_HTML,
             "<meta http-equiv=\"Content-Security-Policy\" content=\"",
             "\">",
-        );
-        tag
+        )) as _
     }
 
     /// The meta CSP admits exactly the card's own script and style, by hash,

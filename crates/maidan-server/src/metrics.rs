@@ -364,7 +364,8 @@ pub fn record_email_delivered(outcome: &str) {
 }
 
 /// Web Push delivery outcomes: `sent` / `failed` / `pruned` (subscription gone)
-/// / `skipped_present` (member has a live WS).
+/// / `skipped_present` (member has a live WS) / `skipped_suspended` (the
+/// member's workspace is suspended).
 pub fn record_web_push_delivered(outcome: &str) {
     counter!("maidan_web_push_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }

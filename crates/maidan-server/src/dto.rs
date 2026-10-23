@@ -393,10 +393,15 @@ pub struct SetGlossaryTerm {
 }
 
 /// Set a task's structured result. `result` is arbitrary JSON.
+/// `claim_lease_id` is the caller's live claim on the thread (the claim
+/// response's `thread.claim_lease_id`); a lease that lapsed and was taken
+/// over, or was released, is refused 409 `claim-lost` and nothing is stored.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetThreadResult {
     #[schema(value_type = Object)]
     pub result: serde_json::Value,
+    #[schema(value_type = String, format = Uuid)]
+    pub claim_lease_id: uuid::Uuid,
 }
 
 /// Set a thread's persisted steer — durable steering guidance.
@@ -436,6 +441,9 @@ pub struct SwarmMetricsQuery {
     pub repo: Option<String>,
     /// Only pull requests opened at or after this time (RFC 3339).
     pub since: Option<chrono::DateTime<chrono::Utc>>,
+    /// Only pull requests opened before this time (RFC 3339): with `since`,
+    /// one time window.
+    pub until: Option<chrono::DateTime<chrono::Utc>>,
     /// Rounds after which an unmerged task is flagged non-converging (default 3).
     pub rounds_limit: Option<i64>,
     /// Commits behind at which a round's base is flagged stale (default 50).

@@ -71,7 +71,7 @@ pub async fn list_references(
         _ => {
             return Err(ApiError::BadRequest(
                 "provide exactly one of the src_kind+src_id or dst_kind+dst_id pair".into(),
-            ))
+            ));
         }
     };
     if let Some(relation) = q.relation {

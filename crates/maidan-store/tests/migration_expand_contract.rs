@@ -17,7 +17,7 @@ fn read(rel: &str) -> String {
 fn policy_names_the_runner_facts() {
     let policy = read("docs/Migrations.md");
     let runner = read("crates/maidan-store/src/migrate.rs");
-    let register = read("crates/maidan-store/tests/migration_register.rs");
+    let register = read("crates/maidan-store/build.rs");
 
     assert!(
         runner.contains("const MIGRATION_LOCK_KEY: i64 = 0x6D69_6772"),
@@ -31,7 +31,7 @@ fn policy_names_the_runner_facts() {
         "the unused version numbers changed"
     );
     assert!(
-        register.contains("!n.ends_with(\"_down.sql\")"),
+        register.contains("file.ends_with(\"_down.sql\")"),
         "down scripts are filtered somewhere else now"
     );
 

@@ -750,6 +750,13 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         tracing::info!("linear result delivery configured");
     }
 
+    // Deploy push-ingest: `/integrations/deploys/events` stays a 404 until
+    // `MAIDAN_DEPLOY_HOOK_SECRET` is set.
+    if let Some(hook) = maidan_server::deploy_ingest::DeployHookConfig::from_env() {
+        state.attach_deploy_hook(std::sync::Arc::new(hook));
+        tracing::info!("deploy hook configured");
+    }
+
     // Git/GitHub projector: wire the ingress config when
     // `MAIDAN_GITHUB_WEBHOOK_SECRET` is set — otherwise
     // `/integrations/github/events` stays disabled (404). A projector, not a
@@ -845,14 +852,14 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Not a boot refusal: no pins is a valid setup. But a deploy that names the
     // mark-ready app and drops the bases (they were built in until #1315) lets
     // every flip follow the workspace allowlist alone, and nothing says so.
-    if let Some(app_id) = &state.mark_ready_app_id {
-        if state.mark_ready_bases.is_empty() {
-            tracing::warn!(
-                app_id = %app_id.0,
-                "MAIDAN_MARK_READY_APP_ID is set but MAIDAN_MARK_READY_BASES pins no base: \
-                 mark-ready flips follow the workspace egress allowlist alone"
-            );
-        }
+    if let Some(app_id) = &state.mark_ready_app_id
+        && state.mark_ready_bases.is_empty()
+    {
+        tracing::warn!(
+            app_id = %app_id.0,
+            "MAIDAN_MARK_READY_APP_ID is set but MAIDAN_MARK_READY_BASES pins no base: \
+             mark-ready flips follow the workspace egress allowlist alone"
+        );
     }
 
     // Background projector-egress worker: drains the durable egress queue with

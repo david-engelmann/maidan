@@ -8,8 +8,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
-const COLS: &str =
-    "id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
+const COLS: &str = "id, workspace_id, name, description, handler_kind, handler_target, secret_ciphertext, enabled, created_at, revoked_at";
 
 pub async fn create(pool: &PgPool, new: NewSlashCommand) -> Result<SlashCommand, StoreError> {
     let id = Uuid::now_v7();

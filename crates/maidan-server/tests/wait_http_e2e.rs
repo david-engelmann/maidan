@@ -93,6 +93,31 @@ fn client() -> reqwest::Client {
 }
 
 /// Call an MCP tool over `POST /mcp` as the given member.
+/// Claim `thread_id` for `member_id` over MCP and return the lease a result
+/// write must name.
+async fn claim_lease(
+    client: &reqwest::Client,
+    base: &str,
+    member_id: &str,
+    thread_id: &str,
+) -> Value {
+    let resp = mcp_call(
+        client,
+        base,
+        member_id,
+        "claim_thread",
+        json!({"thread_id": thread_id}),
+    )
+    .await;
+    let text = resp["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    let claimed: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+    let lease = claimed["thread"]["claim_lease_id"].clone();
+    assert!(lease.is_string(), "claim_thread: {resp}");
+    lease
+}
+
 async fn mcp_call(
     client: &reqwest::Client,
     base: &str,
@@ -199,12 +224,13 @@ async fn http_wait_for_result_wakes_when_the_result_is_set() {
     // Let the wait subscribe before the result lands.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
+    let lease = claim_lease(&client, &base, &member_id, &thread_id).await;
     let set_resp = mcp_call(
         &client,
         &base,
         &member_id,
         "set_thread_result",
-        json!({"thread_id": thread_id, "result": {"answer": 42}}),
+        json!({"thread_id": thread_id, "result": {"answer": 42}, "claim_lease_id": lease}),
     )
     .await;
     assert!(set_resp.get("error").is_none(), "{set_resp}");
@@ -246,12 +272,13 @@ async fn http_wait_for_result_wakes_across_two_replicas() {
     });
     tokio::time::sleep(Duration::from_millis(500)).await;
 
+    let lease = claim_lease(&client, &base_b, &member_id, &thread_id).await;
     let set_resp = mcp_call(
         &client,
         &base_b,
         &member_id,
         "set_thread_result",
-        json!({"thread_id": thread_id, "result": {"from": "replica-b"}}),
+        json!({"thread_id": thread_id, "result": {"from": "replica-b"}, "claim_lease_id": lease}),
     )
     .await;
     assert!(set_resp.get("error").is_none(), "{set_resp}");
@@ -291,12 +318,13 @@ async fn http_wait_never_wakes_on_another_workspace_event() {
     });
     tokio::time::sleep(Duration::from_millis(500)).await;
 
+    let lease = claim_lease(&client, &base, &member_b, &thread_b).await;
     let set_resp = mcp_call(
         &client,
         &base,
         &member_b,
         "set_thread_result",
-        json!({"thread_id": thread_b, "result": {"other": "workspace"}}),
+        json!({"thread_id": thread_b, "result": {"other": "workspace"}, "claim_lease_id": lease}),
     )
     .await;
     assert!(set_resp.get("error").is_none(), "{set_resp}");

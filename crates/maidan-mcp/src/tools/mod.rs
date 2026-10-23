@@ -428,6 +428,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "create_channel"
         | "create_thread"
         | "submit_plan"
+        | "amend_plan"
         | "watch_pull"
         | "cancel_thread"
         | "create_task_schedule"
@@ -815,6 +816,7 @@ async fn enforce_channel_access(
         | "set_thread_footprint"
         | "set_thread_attributes"
         | "submit_plan"
+        | "amend_plan"
         | "add_thread_dependency"
         | "list_thread_dependencies"
         | "remove_thread_dependency"
@@ -1024,6 +1026,7 @@ pub async fn dispatch(
         "set_thread_footprint" => thread::set_thread_footprint(store, args).await,
         "set_thread_attributes" => thread::set_thread_attributes(store, args).await,
         "submit_plan" => thread::submit_plan(server, auth, args).await,
+        "amend_plan" => thread::amend_plan(server, auth, args).await,
         "watch_pull" => thread::watch_pull(server, auth, args).await,
         "list_active_claims" => thread::list_active_claims(store, auth, args).await,
         "add_thread_dependency" => thread::add_thread_dependency(store, auth, args).await,
@@ -1084,7 +1087,7 @@ pub async fn dispatch(
         "get_thread_result" => thread::get_thread_result(store, args).await,
         "list_thread_results" => thread::list_thread_results(store, auth, args).await,
         "list_result_deliveries" => delivery::list_result_deliveries(store, args).await,
-        "replay_result_delivery" => delivery::replay_result_delivery_tool(store, auth, args).await,
+        "replay_result_delivery" => delivery::replay_result_delivery_tool(server, auth, args).await,
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
         "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
@@ -1484,18 +1487,10 @@ mod self_scope_tests {
     /// sail through the gate — listed, and ungated. Nothing else would notice.
     #[test]
     fn every_scoped_tool_declares_the_argument_the_gate_reads() {
-        let catalog = include_str!("catalog.rs");
         let wrong: Vec<&str> = MEMBER_SCOPED_TOOLS
             .iter()
             .copied()
-            .filter(|name| {
-                let Some(start) = catalog.find(&format!("\"name\": \"{name}\"")) else {
-                    return true;
-                };
-                let rest = &catalog[start + 8..];
-                let end = rest.find("\"name\": \"").unwrap_or(rest.len());
-                !rest[..end].contains("\"member_id\"")
-            })
+            .filter(|name| declared_arguments(name).is_none_or(|args| !args.contains("member_id")))
             .collect();
         assert!(
             wrong.is_empty(),

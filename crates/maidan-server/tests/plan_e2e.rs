@@ -3,6 +3,7 @@
 //! as the amendments say, dispatched in dependency order, and closed when its
 //! last child lands. Another workspace can neither plan it nor read it.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -212,7 +213,7 @@ fn key_id(children: &Value, key: &str) -> String {
 async fn land(store: &dyn Store, room: &Room, id: &str, pr: i64) {
     let thread = ThreadId(id.parse().unwrap());
     store
-        .set_thread_result(thread, room.worker, &json!({"summary": "done"}))
+        .set_thread_result_claiming(thread, room.worker, &json!({"summary": "done"}))
         .await
         .unwrap();
     store
@@ -391,4 +392,127 @@ async fn a_malformed_plan_is_a_400_naming_the_child() {
         read.get("plan_state").is_none(),
         "nothing was created: {read}"
     );
+}
+
+async fn amend(base: &str, token: &str, parent: &str, body: &Value) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .post(format!("{base}/threads/{parent}/plan/amend"))
+        .bearer_auth(token)
+        .json(body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+async fn mcp_call(base: &str, token: &str, tool: &str, args: Value) -> Value {
+    reqwest::Client::new()
+        .post(format!("{base}/mcp"))
+        .bearer_auth(token)
+        .json(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": { "name": tool, "arguments": args }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()
+}
+
+/// The planner replaces a child over REST and cancels one over MCP; another
+/// workspace reaches neither, and a malformed amendment is a 400 that
+/// changes nothing.
+#[tokio::test]
+async fn a_planner_amends_its_plan_over_rest_and_mcp_and_another_workspace_cannot() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "amend-e2e").await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/channels/{}/threads", room.channel.0))
+        .bearer_auth(&room.planner_token)
+        .json(&json!({ "title": "ship bookings", "attributes": { "kind": "plan" } }))
+        .send()
+        .await
+        .unwrap();
+    let parent = response.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let held = claim_next(&base, &room, &room.planner_token).await.unwrap();
+    let lease = held["claim_lease_id"].as_str().unwrap().to_string();
+    let (status, made) = plan(
+        &base,
+        &room.planner_token,
+        &parent,
+        &json!({
+            "lease_id": lease,
+            "children": [child("a", "schema", &[]), child("b", "api", &["a"]), child("c", "docs", &["b"])],
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    let old_b = key_id(&made, "b");
+
+    let replace = json!({
+        "lease_id": lease,
+        "cancel": ["b"],
+        "add": [child("b", "api-v2", &["a"])],
+        "reason": "b needs the new api shape",
+    });
+    let other = room_token(store.as_ref()).await;
+    let (status, _) = amend(&base, &other, &parent, &replace).await;
+    assert!(
+        matches!(status, StatusCode::FORBIDDEN | StatusCode::NOT_FOUND),
+        "another tenant got {status}"
+    );
+    let (status, problem) = amend(
+        &base,
+        &room.planner_token,
+        &parent,
+        &json!({ "lease_id": lease, "cancel": ["ghost"] }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{problem}");
+
+    let (status, amended) = amend(&base, &room.planner_token, &parent, &replace).await;
+    assert_eq!(status, StatusCode::OK, "{amended}");
+    assert_eq!(amended["amendments"], 1);
+    let new_b = amended["added"][0]["thread_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(new_b, old_b);
+    let (_, old) = get_thread(&base, &room.planner_token, &old_b).await;
+    assert_eq!(old["state"], "closed");
+
+    let answer = mcp_call(
+        &base,
+        &room.planner_token,
+        "amend_plan",
+        json!({ "thread_id": parent, "lease_id": lease, "cancel": ["c"] }),
+    )
+    .await;
+    let text = answer["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no tool result: {answer}"));
+    let cancelled: Value = serde_json::from_str(text).unwrap();
+    assert_eq!(cancelled["amendments"], 2);
+    assert_eq!(cancelled["cancelled"][0]["key"], "c");
+    let other_answer = mcp_call(
+        &base,
+        &other,
+        "amend_plan",
+        json!({ "thread_id": parent, "lease_id": lease, "cancel": ["a"] }),
+    )
+    .await;
+    assert!(
+        other_answer["error"].is_object() || other_answer["result"]["isError"] == true,
+        "{other_answer}"
+    );
+    let (_, a) = get_thread(&base, &room.planner_token, &key_id(&made, "a")).await;
+    assert_eq!(a["state"], "open");
 }

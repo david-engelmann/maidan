@@ -129,6 +129,7 @@ impl From<maidan_store::StoreError> for McpError {
         match err {
             maidan_store::StoreError::NotFound => Self::NotFound,
             maidan_store::StoreError::InvalidInput(m) => Self::InvalidParams(m),
+            maidan_store::StoreError::ClaimLost(m) => Self::InvalidParams(format!("claim_lost: {m}")),
             // A uniqueness/state conflict is a client error, not an internal
             // one — surface it as invalid params, not -32603 Internal.
             maidan_store::StoreError::Conflict(m) => Self::InvalidParams(m),

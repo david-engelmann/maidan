@@ -834,6 +834,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/plan/amend",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/footprint",
     "capability": "thread:transition",
@@ -1322,6 +1328,24 @@
   {
     "method": "POST",
     "path": "/operator/workspaces",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/workspaces/{id}/suspension",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/operator/workspaces/{id}/suspension",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "DELETE",
+    "path": "/operator/workspaces/{id}/suspension",
     "capability": "operator:global",
     "surface": "http"
   },

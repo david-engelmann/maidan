@@ -246,10 +246,10 @@ fn redact(value: Value) -> Value {
 fn redact_text_content(mut response: Value) -> Value {
     if let Some(Value::Array(items)) = response.pointer_mut("/result/content") {
         for item in items {
-            if let Some(Value::String(text)) = item.get_mut("text") {
-                if let Ok(parsed) = serde_json::from_str::<Value>(text) {
-                    *text = redact(parsed).to_string();
-                }
+            if let Some(Value::String(text)) = item.get_mut("text")
+                && let Ok(parsed) = serde_json::from_str::<Value>(text)
+            {
+                *text = redact(parsed).to_string();
             }
         }
     }

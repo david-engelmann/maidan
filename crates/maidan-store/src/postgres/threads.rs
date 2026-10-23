@@ -70,7 +70,7 @@ pub async fn create_with_footprint(
         (Some(_), None) => {
             return Err(StoreError::InvalidInput(
                 "a priority at creation needs an attributed caller".into(),
-            ))
+            ));
         }
         (None, _) => None,
     };
@@ -784,10 +784,10 @@ async fn claim_next_in_tx(
             dm_channel: "$5",
             repo: "$6::text",
             engine: "$7::text",
-            requeued_after_result: "tr.occurred_at >= r.produced_at",
+            requeued_after_result: REQUEUED_AFTER_RESULT,
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
-            lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (cand.assignment_expires_at - cand.work_started_at)))::bigint) ELSE 0 END",
+            lapsed_worked_secs: LAPSED_WORKED_SECS,
         },
     );
     // The CTE captures the candidate's PRE-update claim (`prev_*`) so a
@@ -857,7 +857,14 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     reader: "$2::uuid",
     dm_channel: "$3",
     now: "NOW()",
+    lapsed_worked_secs: LAPSED_WORKED_SECS,
+    requeued_after_result: REQUEUED_AFTER_RESULT,
 };
+
+/// Seconds a lapsed claim on `cand` worked, for [`crate::claimability`].
+pub(crate) const LAPSED_WORKED_SECS: &str = "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (cand.assignment_expires_at - cand.work_started_at)))::bigint) ELSE 0 END";
+/// [`crate::claimability::ThreadSql::requeued_after_result`].
+pub(crate) const REQUEUED_AFTER_RESULT: &str = "tr.occurred_at >= r.produced_at";
 
 /// Task-queue depth for a channel or a workspace — see
 /// [`queue_counts`](crate::queue_counts).

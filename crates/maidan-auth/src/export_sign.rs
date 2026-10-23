@@ -122,10 +122,11 @@ pub fn verify_export(
     }
 
     let pk_bytes = decode_public_key(&envelope.public_key)?;
-    if let Some(allowed) = expected {
-        if !allowed.is_empty() && !allowed.iter().any(|k| bool::from(k.ct_eq(&pk_bytes))) {
-            return Err(ExportVerifyError::KeyNotAllowed);
-        }
+    if let Some(allowed) = expected
+        && !allowed.is_empty()
+        && !allowed.iter().any(|k| bool::from(k.ct_eq(&pk_bytes)))
+    {
+        return Err(ExportVerifyError::KeyNotAllowed);
     }
 
     let sig_bytes = hex_decode(&envelope.signature)?;

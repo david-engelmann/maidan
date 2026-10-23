@@ -6,6 +6,7 @@
 //! under review, the review is only recorded. Both backends.
 
 use maidan_fsm::ThreadAction;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ChannelId, Event, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
@@ -69,7 +70,7 @@ async fn in_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) -> (Thr
         .expect("the new thread is claimable");
     assert_eq!(claimed.id, thread.id);
     store
-        .set_thread_result(thread.id, worker, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(thread.id, worker, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store
@@ -172,7 +173,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("the reopened thread is claimable again");
     assert_eq!(again.id, t.id);
     store
-        .set_thread_result(t.id, worker, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(t.id, worker, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store

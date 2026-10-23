@@ -16,6 +16,7 @@
 // the member-picker and feedback fixtures both landed.
 #![recursion_limit = "256"]
 
+use maidan_store::test_support::SetResultClaiming;
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
@@ -167,7 +168,7 @@ async fn main() {
         .await
         .expect("message");
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             review_thread.id,
             requester.id,
             &serde_json::json!({ "status": "fixed" }),
@@ -244,7 +245,7 @@ async fn main() {
             .expect("desk thread");
         store.claim_thread(t.id, requester.id).await.expect("claim");
         store
-            .set_thread_result(t.id, requester.id, &result)
+            .set_thread_result_claiming(t.id, requester.id, &result)
             .await
             .expect("desk result");
         store
@@ -336,7 +337,7 @@ async fn main() {
         }
         if let Some(result) = result {
             store
-                .set_thread_result(t.id, requester.id, &result)
+                .set_thread_result_claiming(t.id, requester.id, &result)
                 .await
                 .expect("triage result");
         }
@@ -529,7 +530,7 @@ async fn main() {
         .await
         .expect("lab message");
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             lab_thread.id,
             mallory.id,
             &serde_json::json!({
@@ -646,7 +647,7 @@ async fn main() {
         store.claim_thread(t.id, requester.id).await.expect("claim");
         if let Some(result) = result {
             store
-                .set_thread_result(t.id, requester.id, &result)
+                .set_thread_result_claiming(t.id, requester.id, &result)
                 .await
                 .expect("proof result");
         }
@@ -693,7 +694,7 @@ async fn main() {
             .expect("proof thread");
         store.claim_thread(t.id, requester.id).await.expect("claim");
         store
-            .set_thread_result(
+            .set_thread_result_claiming(
                 t.id,
                 requester.id,
                 &serde_json::json!({ "status": "fixed" }),
@@ -854,7 +855,7 @@ async fn main() {
             .expect("tier thread");
         store.claim_thread(t.id, requester.id).await.expect("claim");
         store
-            .set_thread_result(
+            .set_thread_result_claiming(
                 t.id,
                 requester.id,
                 &serde_json::json!({ "status": "fixed" }),
@@ -941,7 +942,7 @@ async fn main() {
         .await
         .expect("outsider claims");
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             yard_thread.id,
             outsider.id,
             &serde_json::json!({ "status": "done" }),

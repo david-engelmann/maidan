@@ -14,6 +14,7 @@
 use maidan_types::{ChannelId, WorkspaceId};
 
 use crate::claim_next;
+use crate::claimability::{self, ThreadSql};
 
 /// Which threads a count covers.
 #[derive(Debug, Clone, Copy)]
@@ -42,28 +43,44 @@ pub(crate) struct QueueSql<'a> {
     pub dm_channel: &'a str,
     /// The current time, compared with a lease deadline.
     pub now: &'a str,
+    /// [`ThreadSql::lapsed_worked_secs`].
+    pub lapsed_worked_secs: &'a str,
+    /// [`ThreadSql::requeued_after_result`].
+    pub requeued_after_result: &'a str,
+}
+
+impl<'a> QueueSql<'a> {
+    fn thread(&self) -> ThreadSql<'a> {
+        ThreadSql {
+            now: self.now,
+            lapsed_worked_secs: self.lapsed_worked_secs,
+            requeued_after_result: self.requeued_after_result,
+        }
+    }
 }
 
 /// `SELECT` of one row with `open_count`, `ready_count`, `assigned_count`,
 /// `blocked_count` and `unclaimable_count`: the [`QueueDepth`](maidan_types::QueueDepth)
-/// partition of the open threads in `scope`.
+/// partition of the open threads in `scope`, by [`claimability`]. `ready` is
+/// exactly what `claim_next` would hand out to a claimer with no restriction.
+/// `unclaimable` is withheld work (parked, out of budget, finished), and
+/// `blocked` is stalled work (a block, a dependency, a gate, a footprint
+/// conflict).
 pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
-    let held = held(sql.now);
-    let available = available(sql.now);
-    // Footprint-deferred work (an overlap or a paused repository) is blocked,
-    // not ready: claim_next skips it.
-    let deferred = crate::footprints::deferred("cand.id", sql.now);
+    let t = sql.thread();
+    let held = claimability::held(sql.now);
+    let available = claimability::available(sql.now);
+    let withheld = claimability::withheld(&t);
+    let stalled = claimability::stalled(sql.now);
     format!(
         "SELECT
              COUNT(*) AS open_count,
              COALESCE(SUM(CASE WHEN {held} THEN 1 ELSE 0 END), 0) AS assigned_count,
-             COALESCE(SUM(CASE WHEN {available} AND NOT {PARKED}
-                       AND NOT {BLOCKED} AND NOT {WAITING} AND NOT {deferred}
+             COALESCE(SUM(CASE WHEN {available} AND NOT {withheld} AND NOT {stalled}
                      THEN 1 ELSE 0 END), 0) AS ready_count,
-             COALESCE(SUM(CASE WHEN {available} AND NOT {PARKED}
-                       AND ({BLOCKED} OR {WAITING} OR {deferred})
+             COALESCE(SUM(CASE WHEN {available} AND NOT {withheld} AND {stalled}
                      THEN 1 ELSE 0 END), 0) AS blocked_count,
-             COALESCE(SUM(CASE WHEN {available} AND {PARKED}
+             COALESCE(SUM(CASE WHEN {available} AND {withheld}
                      THEN 1 ELSE 0 END), 0) AS unclaimable_count
          {}",
         open_threads(scope, sql)
@@ -73,25 +90,67 @@ pub(crate) fn queue_depth_select(scope: QueueScope, sql: &QueueSql<'_>) -> Strin
 /// `SELECT` of one row with `open_count`, `queued_count`, `claimed_count`,
 /// `working_count` and `blocked_count`: the
 /// [`ChannelOccupancy`](maidan_types::ChannelOccupancy) partition of the open
-/// threads in `scope`.
+/// threads in `scope`. `queued` is queue depth's `ready`, and every other
+/// unheld thread is `blocked`.
 pub(crate) fn occupancy_select(scope: QueueScope, sql: &QueueSql<'_>) -> String {
-    let held = held(sql.now);
-    let available = available(sql.now);
-    let deferred = crate::footprints::deferred("cand.id", sql.now);
     format!(
-        "SELECT
-             COUNT(*) AS open_count,
-             COALESCE(SUM(CASE WHEN {held} AND cand.work_started_at IS NULL
-                     THEN 1 ELSE 0 END), 0) AS claimed_count,
-             COALESCE(SUM(CASE WHEN {held} AND cand.work_started_at IS NOT NULL
-                     THEN 1 ELSE 0 END), 0) AS working_count,
-             COALESCE(SUM(CASE WHEN {available} AND NOT {BLOCKED} AND NOT {WAITING}
-                       AND NOT {deferred}
-                     THEN 1 ELSE 0 END), 0) AS queued_count,
-             COALESCE(SUM(CASE WHEN {available} AND ({BLOCKED} OR {WAITING} OR {deferred})
-                     THEN 1 ELSE 0 END), 0) AS blocked_count
-         {}",
+        "SELECT {} {}",
+        occupancy_columns(&sql.thread()),
         open_threads(scope, sql)
+    )
+}
+
+/// The placeholders [`run_occupancy_select`] binds.
+pub(crate) struct RunSql<'a> {
+    /// Placeholder bound to the workspace id.
+    pub workspace: &'a str,
+    /// Placeholder bound to the normalized parent run id.
+    pub parent_run_id: &'a str,
+    /// The rest, as [`ThreadSql`].
+    pub thread: ThreadSql<'a>,
+}
+
+/// `SELECT` of the [`RunOccupancy`](maidan_types::RunOccupancy) counts of the
+/// non-terminal threads homed under one parent run: the same partition as
+/// [`occupancy_select`], so the two views of one thread cannot disagree. A
+/// thread that is not `open` (in review, say) is never handed out, so unheld
+/// it counts `blocked`.
+pub(crate) fn run_occupancy_select(sql: &RunSql<'_>) -> String {
+    let RunSql {
+        workspace,
+        parent_run_id,
+        thread,
+    } = sql;
+    format!(
+        "SELECT {}
+         FROM maidan_threads cand
+         JOIN maidan_thread_lineage l ON l.thread_id = cand.id
+         JOIN maidan_channels ch ON ch.id = cand.channel_id
+         WHERE ch.workspace_id = {workspace}
+           AND l.parent_run_id = {parent_run_id}
+           AND cand.state NOT IN ('closed', 'archived')
+           AND cand.tombstoned_at IS NULL",
+        occupancy_columns(thread)
+    )
+}
+
+/// The occupancy columns over threads aliased `cand`.
+fn occupancy_columns(t: &ThreadSql<'_>) -> String {
+    let held = claimability::held(t.now);
+    let available = claimability::available(t.now);
+    let withheld = claimability::withheld(t);
+    let stalled = claimability::stalled(t.now);
+    let queued =
+        format!("({available} AND cand.state = 'open' AND NOT {withheld} AND NOT {stalled})");
+    format!(
+        "COUNT(*) AS open_count,
+         COALESCE(SUM(CASE WHEN {held} AND cand.work_started_at IS NULL
+                 THEN 1 ELSE 0 END), 0) AS claimed_count,
+         COALESCE(SUM(CASE WHEN {held} AND cand.work_started_at IS NOT NULL
+                 THEN 1 ELSE 0 END), 0) AS working_count,
+         COALESCE(SUM(CASE WHEN {queued} THEN 1 ELSE 0 END), 0) AS queued_count,
+         COALESCE(SUM(CASE WHEN {available} AND NOT {queued}
+                 THEN 1 ELSE 0 END), 0) AS blocked_count"
     )
 }
 
@@ -117,26 +176,3 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
            AND ({reader} IS NULL OR ({readable}))"
     )
 }
-
-/// Held on a live lease, or held with no lease at all.
-fn held(now: &str) -> String {
-    format!(
-        "(cand.assignee_id IS NOT NULL
-          AND (cand.assignment_expires_at IS NULL OR cand.assignment_expires_at >= {now}))"
-    )
-}
-
-/// Unheld, or held on a lease that lapsed: what `claim_next` may take over.
-fn available(now: &str) -> String {
-    format!(
-        "(cand.assignee_id IS NULL
-          OR (cand.assignment_expires_at IS NOT NULL AND cand.assignment_expires_at < {now}))"
-    )
-}
-
-const PARKED: &str =
-    "EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = cand.id)";
-const BLOCKED: &str = "EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = cand.id)";
-const WAITING: &str = "EXISTS (SELECT 1 FROM maidan_thread_dependencies d
-                        JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                        WHERE d.thread_id = cand.id AND dep.state NOT IN ('closed', 'archived'))";

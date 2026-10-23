@@ -15,7 +15,8 @@
 
 use chrono::Utc;
 use maidan_types::{
-    EgressKind, NewEgressOutbox, ResultDelivery, ResultDeliveryId, ThreadId, WorkspaceId,
+    EgressKind, NewEgressOutbox, ResultDelivery, ResultDeliveryId, StoredEvent, ThreadId,
+    WorkspaceId,
 };
 
 use crate::error::StoreError;
@@ -26,8 +27,11 @@ use crate::store::Store;
 pub enum ResultDeliveryReplay {
     /// Allowlist passed; a new outbox row is pending.
     Enqueued(ResultDelivery),
-    /// Still unblessed — status stays `skipped`, nothing enqueued.
-    Skipped(ResultDelivery),
+    /// Still unblessed — status stays `skipped`, nothing enqueued. The event
+    /// is `ResultDeliveryFailed` when the row moved into `skipped` here (a
+    /// failed row replayed after its blessing was revoked), for the caller
+    /// to publish.
+    Skipped(ResultDelivery, Option<Box<StoredEvent>>),
     /// The stored pair does not decode to an [`maidan_types::EgressTarget`].
     Unroutable(ResultDelivery),
 }
@@ -59,12 +63,15 @@ pub async fn replay_result_delivery(
             .then(|| "target not in the workspace egress allowlist".to_string()),
     };
     if let Some(reason) = refusal {
-        store.mark_result_delivery_skipped(row.id, &reason).await?;
+        let event = store.mark_result_delivery_skipped(row.id, &reason).await?;
         let skipped = store
             .get_result_delivery_by_id(thread_id, id)
             .await?
             .unwrap_or(row);
-        return Ok(Some(ResultDeliveryReplay::Skipped(skipped)));
+        return Ok(Some(ResultDeliveryReplay::Skipped(
+            skipped,
+            event.map(Box::new),
+        )));
     }
     let Some(pending) = store.prepare_result_delivery_replay(thread_id, id).await? else {
         return Ok(None);

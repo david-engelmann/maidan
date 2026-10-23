@@ -43,12 +43,12 @@ pub async fn link(pool: &PgPool, new: NewGithubIssueLink) -> Result<GithubIssueL
 /// — `(repo, issue_number)` is absorbed by the `ON CONFLICT` upsert. Report it
 /// as a `Conflict` (SpawnRejected), not an opaque 500.
 fn map_link_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict(
-                "spawn budget: the thread already has a GitHub link (at most one per claim)".into(),
-            );
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict(
+            "spawn budget: the thread already has a GitHub link (at most one per claim)".into(),
+        );
     }
     StoreError::Database(err)
 }

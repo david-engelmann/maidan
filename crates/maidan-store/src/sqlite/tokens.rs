@@ -315,10 +315,10 @@ pub(crate) async fn revoke_on(
 }
 
 pub(crate) fn map_token_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict("token hash already exists".into());
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict("token hash already exists".into());
     }
     StoreError::Database(err)
 }
@@ -446,7 +446,7 @@ pub async fn rotate_audited(
         Some((Some(_),)) => {
             return Err(StoreError::Conflict(
                 "a delegated token is not rotated; exchange its grant for a new one".into(),
-            ))
+            ));
         }
         Some((None,)) => {}
     }

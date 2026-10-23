@@ -165,7 +165,7 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
                 Method::PUT,
                 format!("{base}/threads/{tid}/result"),
                 &worker_h,
-                Some(json!({"result": {"status": "done"}})),
+                Some(json!({"result": {"status": "done"}, "claim_lease_id": lease})),
             )
             .await;
             let (s, _) = call(
@@ -317,21 +317,22 @@ async fn a_change_request_sends_work_back_over_rest_and_mcp() {
         })
         .await
         .unwrap();
-    // Let go of the first one so the second is next.
+    // The reworked result goes in under the claim, then the worker lets go
+    // of the first one so the second is next.
+    call(
+        &client,
+        Method::PUT,
+        format!("{base}/threads/{tid}/result"),
+        &worker_h,
+        Some(json!({"result": {"status": "done"}, "claim_lease_id": again["claim_lease_id"]})),
+    )
+    .await;
     let (_, _) = call(
         &client,
         Method::POST,
         format!("{base}/threads/{tid}/claim/release"),
         &worker_h,
         Some(json!({"claim_lease_id": again["claim_lease_id"]})),
-    )
-    .await;
-    call(
-        &client,
-        Method::PUT,
-        format!("{base}/threads/{tid}/result"),
-        &worker_h,
-        Some(json!({"result": {"status": "done"}})),
     )
     .await;
     let (_, _) = call(

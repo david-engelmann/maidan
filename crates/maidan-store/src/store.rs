@@ -257,6 +257,27 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Option<WorkspaceHandle>, StoreError>;
+    /// Suspend a workspace (or replace a standing suspension's reason),
+    /// audited in the same transaction. `NotFound` for no such workspace.
+    async fn suspend_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        suspended_by: Option<MemberId>,
+        audit: NewAuditEvent,
+    ) -> Result<maidan_types::WorkspaceSuspension, StoreError>;
+    /// Lift a suspension, audited in the same transaction; `false` (and no
+    /// audit row) when the workspace was not suspended.
+    async fn lift_workspace_suspension(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// The suspension in force on a workspace, if any.
+    async fn get_workspace_suspension(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::WorkspaceSuspension>, StoreError>;
 }
 
 #[async_trait]
@@ -390,10 +411,17 @@ pub trait SkillStore: Send + Sync {
 pub trait ThreadResultStore: Send + Sync {
     /// A task's structured result: `set` upserts (a re-set overwrites), `get`
     /// returns `None` until one is produced.
+    ///
+    /// Fenced by the claim: `produced_by` must hold the thread under
+    /// `lease_id`, its live lease, checked in the write itself. A lease that
+    /// lapsed and was taken over, or released, is
+    /// [`StoreError::ClaimLost`] and nothing is stored, so a slow seat
+    /// cannot land a result over the seat that holds the work now.
     async fn set_thread_result(
         &self,
         thread_id: ThreadId,
         produced_by: MemberId,
+        lease_id: ClaimLeaseId,
         result: &serde_json::Value,
     ) -> Result<ThreadResult, StoreError>;
     async fn get_thread_result(
@@ -1152,16 +1180,20 @@ pub trait EgressStore: Send + Sync {
         external_ref: Option<&str>,
         revision: DateTime<Utc>,
     ) -> Result<(), StoreError>;
+    /// Both record the target's outcome and, when the row moves into
+    /// `failed` or `skipped`, append `ResultDeliveryFailed` in the same
+    /// transaction and return it for the caller to publish. `None` when the
+    /// row was already in that status (or is gone): the outcome was said.
     async fn mark_result_delivery_failed(
         &self,
         id: ResultDeliveryId,
         error: &str,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn mark_result_delivery_skipped(
         &self,
         id: ResultDeliveryId,
         reason: &str,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn get_result_delivery(
         &self,
         thread_id: ThreadId,
@@ -2419,6 +2451,25 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         notice: maidan_types::NewStaleBaseNotice,
     ) -> Result<Option<maidan_types::PostedNotice>, StoreError>;
+    /// Record a deploy a deploy hook reported: each merged pull request, in
+    /// any workspace, whose merge or merged head commit is `deploy.sha` in
+    /// `deploy.repo` gets one `deployed` notice on its thread, with its
+    /// event. So does each pull request in `deploy.contains`, in its own
+    /// workspace only. A repeat of the same deploy and outcome says nothing
+    /// again.
+    async fn record_deploy(
+        &self,
+        deploy: maidan_types::NewDeploy,
+    ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// The newest merged pull requests in `repo`, at most `limit`, that no
+    /// deploy to `environment` has yet succeeded for, with the commit each
+    /// merged as: what a deploy of a later commit may have shipped.
+    async fn deploy_candidates(
+        &self,
+        repo: &str,
+        environment: &str,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError>;
     /// A thread's change notices, newest first, at most `limit`.
     async fn list_thread_notices(
         &self,
@@ -2828,6 +2879,19 @@ pub trait ThreadDepStore: Send + Sync {
         member_id: MemberId,
         plan: maidan_types::SubmitPlan,
     ) -> Result<maidan_types::PlanOutcome, StoreError>;
+    /// Amend a submitted plan in one transaction, under the planner's live
+    /// claim as for [`Self::submit_plan`]: cancel unclaimed children (out of
+    /// the plan first, so their dependents are rewired rather than blocked),
+    /// add children, and rewire unclaimed children's dependencies. At most
+    /// [`maidan_types::PLAN_MAX_AMENDMENTS`] per plan; past that, or for a
+    /// claimed or finished child, `Conflict`. A malformed amendment against
+    /// the plan as it stands is `InvalidInput`, and nothing is written.
+    async fn amend_plan(
+        &self,
+        parent_id: ThreadId,
+        member_id: MemberId,
+        amend: maidan_types::AmendPlan,
+    ) -> Result<maidan_types::AmendOutcome, StoreError>;
     /// How far a plan parent's children have got; `None` when it has none.
     async fn get_plan_state(
         &self,

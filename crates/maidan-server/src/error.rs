@@ -67,6 +67,10 @@ pub enum ApiError {
     /// A plan parent already has children from another claim or with other
     /// keys. 409 with the children it has, so the planner can work with them.
     PlanConflict(Vec<maidan_types::PlannedChild>),
+    /// A claim-fenced write (a thread result) named a lease the thread no
+    /// longer holds: it lapsed and was taken over, or was released. 409 with
+    /// its own type, so a seat stops the work rather than retrying.
+    ClaimLost(String),
 }
 
 impl ApiError {
@@ -91,6 +95,7 @@ impl ApiError {
             Self::MediaQuotaExceeded { .. } => StatusCode::CONFLICT,
             Self::FootprintConflict(_) => StatusCode::CONFLICT,
             Self::PlanConflict(_) => StatusCode::CONFLICT,
+            Self::ClaimLost(_) => StatusCode::CONFLICT,
         }
     }
 
@@ -116,6 +121,7 @@ impl ApiError {
             Self::MediaQuotaExceeded { .. } => "Media Quota Exceeded",
             Self::FootprintConflict(_) => "Footprint Conflict",
             Self::PlanConflict(_) => "Plan Conflict",
+            Self::ClaimLost(_) => "Claim Lost",
         }
     }
 
@@ -143,6 +149,7 @@ impl ApiError {
             | Self::BadGateway(msg)
             | Self::Internal(msg)
             | Self::UnprocessableEntity(msg)
+            | Self::ClaimLost(msg)
             | Self::Overloaded(msg) => msg.clone(),
             Self::CursorTooOld {
                 after_id,
@@ -212,6 +219,7 @@ impl ApiError {
             Self::MediaQuotaExceeded { .. } => "https://maidan.dev/problems/media-quota-exceeded",
             Self::FootprintConflict(_) => "https://maidan.dev/problems/footprint-conflict",
             Self::PlanConflict(_) => "https://maidan.dev/problems/plan-conflict",
+            Self::ClaimLost(_) => "https://maidan.dev/problems/claim-lost",
         }
     }
 
@@ -385,6 +393,7 @@ impl From<StoreError> for ApiError {
                 snapshot: None,
             },
             StoreError::InvalidInput(msg) => Self::BadRequest(msg),
+            StoreError::ClaimLost(msg) => Self::ClaimLost(msg),
             StoreError::Database(e) => {
                 tracing::error!(error = %e, "database error");
                 Self::Internal("database error".into())

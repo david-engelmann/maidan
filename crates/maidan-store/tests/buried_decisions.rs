@@ -1,6 +1,7 @@
 //! Buried decisions: task results produced by *someone else* in a
 //! channel/thread the member follows, since a watermark. Both backends.
 
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -69,7 +70,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("t1");
     store
-        .set_thread_result(t1.id, producer.id, &serde_json::json!("approved v2"))
+        .set_thread_result_claiming(t1.id, producer.id, &serde_json::json!("approved v2"))
         .await
         .expect("result 1");
 
@@ -85,7 +86,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("t2");
     store
-        .set_thread_result(t2.id, follower.id, &serde_json::json!("done"))
+        .set_thread_result_claiming(t2.id, follower.id, &serde_json::json!("done"))
         .await
         .expect("result 2");
 
@@ -101,7 +102,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("t3");
     store
-        .set_thread_result(t3.id, producer.id, &serde_json::json!("nope"))
+        .set_thread_result_claiming(t3.id, producer.id, &serde_json::json!("nope"))
         .await
         .expect("result 3");
 

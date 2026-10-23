@@ -65,6 +65,17 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    - **Retries.** The same claim sending the same keys again gets a 200 with
      the children already made. Any other plan on a parent that has children
      is a 409 (`plan-conflict`, MCP `-32010`) listing them.
+   - **Amending.** Under the same claim, the planner changes a submitted plan
+     with `POST /threads/{id}/plan/amend` or the MCP `amend_plan`: `cancel`
+     names children to cancel, `add` gives new ones (linted as above, and
+     their `depends_on` may name any child of the plan), and `rewire` sets a
+     child's `depends_on` afresh. Cancelling and adding the same key
+     replaces the child, and its dependents wait for the new thread. A
+     cancelled child leaves the plan, so its dependents stop waiting for it
+     instead of being blocked. Only open, unclaimed children can be
+     cancelled or rewired; a claimed or finished one is a 409 and nothing
+     changes. A plan takes at most three amendments. Added children are held
+     for review when the plan is held or one needs a threat model.
    - **Dispatch.** `claim_next` never hands out a thread whose dependencies
      are unfinished, so a child becomes claimable when what it depends on
      lands. A plan's children move through review and close while the plan
@@ -91,7 +102,9 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    overlaps no live claim (below).
 5. **Work.** Each agent works in its own worktree or container. Maidan does
    not run the agents.
-6. **Result.** The agent sets a structured result (`set_thread_result`). A
+6. **Result.** The agent sets a structured result (`set_thread_result`),
+   naming its claim's lease. A seat whose lease lapsed and was taken over is
+   refused (`claim_lost`), so only the current holder's result lands. A
    change result names the branch, the base commit and the diff. Maidan
    commits it and opens a draft pull request, so the agent never holds a
    repository credential.
@@ -106,7 +119,10 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    adds the repository's merge-queue label, and only when the pull request's
    head is still the commit Maidan delivered, so nothing pushed after review
    reaches the queue. While a pull request is queued, Maidan refuses to push
-   another change to it; dequeue first (`DELETE`). The queue itself (a label
+   another change to it; dequeue first (`DELETE`). A pull request GitHub's queue dropped
+   (`merge_dequeued`) but whose label stayed is not queued: the next round's
+   delivery takes the stale label off and goes ahead, and the next enqueue
+   labels the new head. The queue itself (a label
    driven one, such as Graphite's) does the merging. A repository a person
    merges is left out of `MAIDAN_MERGE_QUEUE_LABELS` and is never enqueued.
 
@@ -494,6 +510,31 @@ as when a stack tool lands the commits itself and closes the pull request.
 The sweep asks GitHub once, when it first sees the close. A branch reset to
 its base and closed was never ahead, so it lands nothing. Any other close is
 a close without a merge, said once and leaving the task open.
+
+### Deploys
+
+A deploy pipeline can tell Maidan where a merged change went. It is opt-in,
+and the route is a 404 until `MAIDAN_DEPLOY_HOOK_SECRET` is set. The
+pipeline posts to `POST /integrations/deploys/events`, signing the body as
+GitHub signs its webhooks (`X-Maidan-Signature-256: sha256=<hex
+HMAC-SHA256(secret, body)>`):
+
+```json
+{"repo": "owner/name", "sha": "<full 40-character commit>",
+ "environment": "production", "status": "success",
+ "url": "https://deploys.example/42"}
+```
+
+`status` is `success` or `failure` (`error` counts as a failure); any other
+status, such as `in_progress`, is acknowledged and says nothing, because only
+an outcome is news. `url` is optional and must be `https://`. Each tracked
+pull request in `repo` that merged at `sha` (its merge commit or its merged
+head) gets one **`deployed`** notice on its thread. The notice carries
+`environment`, `status` and `deploy_url`, in every workspace that tracks the
+pull request and in no other. The same deploy and outcome said again (a
+retried or replayed call) says nothing, so the signature needs no replay
+window. The answer is `{"noticed": n}`. A deploy that arrives before the
+change sweep has read the merge is not matched; send it again later.
 
 ## Measuring the ramp
 

@@ -229,10 +229,10 @@ pub async fn decide_consent(
             .await;
         // A concurrent consent for the same tuple won the race; the grant
         // exists, so proceed. Any other error is real.
-        if let Err(e) = result {
-            if !matches!(e, maidan_store::StoreError::Conflict(_)) {
-                return Err(e.into());
-            }
+        if let Err(e) = result
+            && !matches!(e, maidan_store::StoreError::Conflict(_))
+        {
+            return Err(e.into());
         }
     }
 

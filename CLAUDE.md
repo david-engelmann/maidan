@@ -61,7 +61,7 @@ change.
   Slack-shaped surface (workspaces, channels, threads, messages) with a task
   queue, reviews, approval gates and a hash-chained event log, backed by
   Postgres or SQLite and content-addressed artifacts. The name is load-bearing.
-- **Rust 2021**, toolchain pinned in `rust-toolchain.toml` (1.99).
+- **Rust 2024**, toolchain pinned in `rust-toolchain.toml` (1.99).
   Workspace with 15 member crates.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
@@ -77,8 +77,8 @@ change.
 
 ## Current state (2026-10-12)
 
-- **Releases:** latest **`v414.0.0`** (2026-10-21), the swarm
-  release. Release tags are cut when the maintainer chooses, not per
+- **Releases:** latest **`v415.0.0`** (2026-10-22), the swarm at
+  scale. Release tags are cut when the maintainer chooses, not per
   cluster, so some clusters were never tagged (v23–26, v78–100, v311, v350–401,
   v403, v411); their work ships in the next tag. Tagging is the maintainer's
   call.
@@ -117,19 +117,26 @@ change.
 
 Working beside other agents (several PRs are usually open at once):
 
-- **CHANGELOG:** put your entry at the end of `[Unreleased]`, immediately
-  before the first `## [N.0.0]` line, or before a heading you have checked is
-  above that line. An entry placed before a heading under a released version is
-  filed in that release. `scripts/check-changelog-released.sh` fails when the
-  newest tagged section gains an entry after its tag, and when `[Unreleased]`
-  lists an entry twice. It does not check older sections.
+- **CHANGELOG:** don't edit `CHANGELOG.md`. Add one file,
+  `changelog.d/<branch-slug>.md`, holding your `### ` section and its
+  `- **Added:**`-style bullets ([`changelog.d/README.md`](changelog.d/README.md)).
+  Every PR editing the end of `[Unreleased]` made every merge conflict every
+  other open PR, and an entry from a PR branched before a release record
+  merged into the released section. The release record folds the fragments in
+  (`scripts/changelog-fragments.sh release X.0.0`).
+  `scripts/changelog-fragments.sh check` and `scripts/check-changelog-released.sh`
+  (the `changelog (released sections)` job) check the shape, duplicates, and
+  that the newest tagged section gains nothing after its tag.
 - **Counters that two PRs can bump by the same line:** the `.route(` count
   pinned in `tenant_isolation_e2e`, the MCP tool count in `docs/Protocols.md`,
   `README.md` and `book/src/introduction.md`, and migration numbers. Git merges
   two identical edits into one, so after a rebase recount (`grep -o '\.route('
   crates/maidan-server/src/app.rs | wc -l`, which counts what the test counts)
   rather than trusting the number, and take
-  the next free migration number on `main` plus the open PRs.
+  the next free migration number on `main` plus the open PRs. A conflict in a
+  golden or a catalog copy (the tool count, `contracts/mcp-tool-names.json`, the
+  listings, `tools_list_*.json`, the profile golden, the MCP reference) is
+  resolved by taking either side and running `make regen`.
 - **Contracts new code must satisfy:** a route in
   `contracts/http-operation-kinds.json`; a `MAIDAN_*` name in
   `crates/maidan-env/src/lib.rs`; `NewAuditEvent` needs a
@@ -272,10 +279,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Repo gotchas
 
-- **A new migration is not picked up on its own.** Register it as an
-  `include_str!` constant plus an `apply_postgres`/`apply_sqlite` call in
-  `crates/maidan-store/src/migrate.rs`, for both backends
-  (`tests/migration_register.rs` checks). `schema_parity` then checks both
+- **A new migration is a new file.** `crates/maidan-store/build.rs` registers
+  every `migrations/{postgres,sqlite}/NNNN_<slug>.sql` by its version; add the
+  file on both backends and nothing else. `schema_parity` then checks both
   backends build the same tables, columns, keys and foreign keys.
 - **A module for one backend only** goes in `POSTGRES_ONLY_MODULES` or
   `SQLITE_ONLY_MODULES` in `crates/maidan-store/tests/backend_parity.rs`.

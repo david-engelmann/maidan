@@ -3,6 +3,7 @@
 //! rollup from `digest::sweep_once`, whose watermark advance makes a second
 //! sweep a no-op.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::sync::Arc;
 
 use maidan_artifacts::LocalFsStore;
@@ -219,7 +220,7 @@ async fn digest_leads_with_buried_decisions() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             thread.id,
             producer.id,
             &serde_json::json!("shipped the fix"),

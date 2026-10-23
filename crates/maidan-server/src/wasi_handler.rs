@@ -56,7 +56,7 @@ async fn load_module(
             return Err(WasiResult::fail(
                 WasiFailureKind::InvalidModule,
                 "handler module is not an artifact of this workspace",
-            ))
+            ));
         }
         Err(err) => {
             tracing::warn!(error = %err, "wasi handler: artifact ref lookup failed");

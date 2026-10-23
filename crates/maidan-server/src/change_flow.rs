@@ -238,11 +238,11 @@ pub fn with_current_state(body: &str, state: &str) -> String {
     let state = crate::egress_body::neutralize_github_mentions(state.trim());
     let state = clip(&state, CURRENT_STATE_MAX_CHARS);
     let section = format!("{CURRENT_STATE_START}\n{state}\n{CURRENT_STATE_END}");
-    if let Some(start) = body.find(CURRENT_STATE_START) {
-        if let Some(end) = body[start..].find(CURRENT_STATE_END) {
-            let end = start + end + CURRENT_STATE_END.len();
-            return format!("{}{section}{}", &body[..start], &body[end..]);
-        }
+    if let Some(start) = body.find(CURRENT_STATE_START)
+        && let Some(end) = body[start..].find(CURRENT_STATE_END)
+    {
+        let end = start + end + CURRENT_STATE_END.len();
+        return format!("{}{section}{}", &body[..start], &body[end..]);
     }
     if body.trim().is_empty() {
         section
@@ -344,13 +344,13 @@ pub async fn deliver_change(
     // A queued pull request lands the head it was queued with as soon as its
     // checks pass, so a commit pushed now would land separately, or not at
     // all. The caller dequeues it first (`DELETE /operator/github/enqueue`).
-    if let (Some(label), Some(pull)) = (req.merge_queue_label, existing.as_ref()) {
-        if pull.labels.iter().any(|name| name == label) {
-            return refused(format!(
+    if let (Some(label), Some(pull)) = (req.merge_queue_label, existing.as_ref())
+        && pull.labels.iter().any(|name| name == label)
+    {
+        return refused(format!(
                 "pull request #{} carries `{label}` and is in the merge queue; dequeue it before pushing another commit",
                 pull.number
             ));
-        }
     }
     let built = if change.rebase {
         rebase_commit(git, req, base_sha, &patches, &trailer, existing.as_ref()).await?
@@ -388,12 +388,12 @@ pub async fn deliver_change(
                 Err(err) if err.is_unprocessable() => {
                     match git.open_pull(req.repo, req.branch).await? {
                         Some(pull) => pull,
-                        None => {
-                            return refused(format!(
-                            "committed {commit_sha}, but GitHub refused a pull request into `{}`",
-                            req.base
-                        ))
-                        }
+                        // GitHub answers 422 for a branch it created a moment
+                        // ago and has not indexed yet. The commit is on the
+                        // branch and a retry reuses it, so this is a failure
+                        // to retry, not a refusal: refused, the change would
+                        // sit on its branch with no pull request.
+                        None => return Err(err),
                     }
                 }
                 Err(err) => return Err(err),
@@ -512,10 +512,17 @@ async fn fast_forward_commit(
     let commit = commit_on(git, req, base_sha, &changes, trailer).await?;
     match git.update_branch(req.repo, req.branch, &commit).await {
         Ok(()) => Ok(Ok(commit)),
-        Err(err) if err.is_unprocessable() => Ok(Err(format!(
-            "branch `{}` moved while the commit was being made",
-            req.branch
-        ))),
+        // Only a branch that really moved is a refusal. GitHub also answers
+        // 422 for a ref it created a moment ago; with the branch still at
+        // `base_sha` the retry finds nothing in its way, and refusing would
+        // drop the change.
+        Err(err) if err.is_unprocessable() => match git.branch_head(req.repo, req.branch).await? {
+            Some(now) if now == base_sha => Err(err),
+            _ => Ok(Err(format!(
+                "branch `{}` moved while the commit was being made",
+                req.branch
+            ))),
+        },
         Err(err) => Err(err),
     }
 }

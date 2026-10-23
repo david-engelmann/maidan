@@ -177,6 +177,7 @@ pub enum EventKind {
     ThreadLanded,
     ThreadNotice,
     ThreadHandoff,
+    ResultDeliveryFailed,
     ReviewSubmitted,
     WaitTimedOut,
     ScheduleSkipped,
@@ -222,6 +223,7 @@ impl EventKind {
             Self::ThreadLanded => "thread_landed",
             Self::ThreadNotice => "thread_notice",
             Self::ThreadHandoff => "thread_handoff",
+            Self::ResultDeliveryFailed => "result_delivery_failed",
             Self::ReviewSubmitted => "review_submitted",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
@@ -267,6 +269,7 @@ impl EventKind {
             "thread_landed" => Some(Self::ThreadLanded),
             "thread_notice" => Some(Self::ThreadNotice),
             "thread_handoff" => Some(Self::ThreadHandoff),
+            "result_delivery_failed" => Some(Self::ResultDeliveryFailed),
             "review_submitted" => Some(Self::ReviewSubmitted),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
@@ -337,6 +340,7 @@ impl EventKind {
         Self::ThreadLanded,
         Self::ThreadNotice,
         Self::ThreadHandoff,
+        Self::ResultDeliveryFailed,
         Self::ReviewSubmitted,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
@@ -430,6 +434,9 @@ impl EventKind {
             // rebase.
             Self::ThreadNotice => false,
             Self::ThreadHandoff => false,
+            // A delivery outcome is this deployment's outbox talking to its
+            // own connectors; a peer must not report one for our threads.
+            Self::ResultDeliveryFailed => false,
             // A verdict is this deployment's governance record: the reviews
             // table is what the close-gate reads, and a peer must not announce
             // a verdict nobody gave here.
@@ -688,6 +695,12 @@ pub enum Event {
         /// What holds the pull request back (`gate_blocked`).
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         reasons: Vec<String>,
+        /// Where a `deployed` notice's commit went.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        environment: Option<String>,
+        /// The deploy's own page, as the hook sent it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deploy_url: Option<String>,
     },
     /// A Pi task that stopped converging was handed to a session: its claim
     /// ended and its engine became `session`, so a Pi claim never takes it
@@ -704,6 +717,27 @@ pub enum Event {
         pr_number: i64,
         /// The engine the task now waits for.
         to_engine: crate::TaskEngine,
+    },
+    /// A thread's result did not reach one of its `deliver_to` targets: the
+    /// delivery was skipped (an unblessed or unusable target, a refused
+    /// change) or failed (retries spent, or a target that will never
+    /// accept it). Said once per transition into `skipped` or `failed`, so
+    /// a relay can say it where the task started. Locally derived: not
+    /// federatable.
+    ResultDeliveryFailed {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// `github`, `slack`, `github_branch`, `linear`, or a surface this
+        /// deployment does not know.
+        surface: String,
+        /// The target within the surface: `owner/name#123`, a channel id, …
+        selector: String,
+        /// `failed` or `skipped`.
+        status: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_error: Option<String>,
     },
     /// The GitHub PR linked to a thread was **merged** — the work landed. A
     /// derived fact projected from an inbound `pull_request` (`action=closed`,
@@ -993,6 +1027,7 @@ impl Event {
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
             Self::ThreadNotice { .. } => EventKind::ThreadNotice,
             Self::ThreadHandoff { .. } => EventKind::ThreadHandoff,
+            Self::ResultDeliveryFailed { .. } => EventKind::ResultDeliveryFailed,
             Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
@@ -1038,6 +1073,7 @@ impl Event {
             | Self::ThreadLanded { occurred_at, .. }
             | Self::ThreadNotice { occurred_at, .. }
             | Self::ThreadHandoff { occurred_at, .. }
+            | Self::ResultDeliveryFailed { occurred_at, .. }
             | Self::ReviewSubmitted { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
@@ -1083,6 +1119,7 @@ impl Event {
             | Self::ThreadLanded { workspace_id, .. }
             | Self::ThreadNotice { workspace_id, .. }
             | Self::ThreadHandoff { workspace_id, .. }
+            | Self::ResultDeliveryFailed { workspace_id, .. }
             | Self::ReviewSubmitted { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
@@ -1122,6 +1159,7 @@ impl Event {
             | Self::ThreadLanded { channel_id, .. }
             | Self::ThreadNotice { channel_id, .. }
             | Self::ThreadHandoff { channel_id, .. }
+            | Self::ResultDeliveryFailed { channel_id, .. }
             | Self::ReviewSubmitted { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
@@ -1156,6 +1194,7 @@ impl Event {
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
             Self::ThreadNotice { thread_id, .. } => Some(*thread_id),
             Self::ThreadHandoff { thread_id, .. } => Some(*thread_id),
+            Self::ResultDeliveryFailed { thread_id, .. } => Some(*thread_id),
             Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
@@ -1371,53 +1410,52 @@ impl EventFilter {
     }
 
     pub fn matches(&self, event: &Event) -> bool {
-        if let Some(ws) = self.workspace_id {
-            if event.workspace_id() != Some(ws) {
-                return false;
-            }
+        if let Some(ws) = self.workspace_id
+            && event.workspace_id() != Some(ws)
+        {
+            return false;
         }
-        if let Event::ChannelCreated { channel, .. } = event {
-            if channel.private
-                && self.workspace_id.is_some()
-                && !self.channel_is_granted(channel.id)
-            {
-                return false;
-            }
+        if let Event::ChannelCreated { channel, .. } = event
+            && channel.private
+            && self.workspace_id.is_some()
+            && !self.channel_is_granted(channel.id)
+        {
+            return false;
         }
-        if let Some(ch) = self.channel_id {
-            if event.channel_id() != Some(ch) {
-                return false;
-            }
+        if let Some(ch) = self.channel_id
+            && event.channel_id() != Some(ch)
+        {
+            return false;
         }
         if let Some(ch) = event.channel_id() {
             if self.private_channel_deny.contains(&ch) {
                 return false;
             }
-            if let Some(ref allow) = self.channel_event_allow {
-                if !allow.contains(&ch) {
-                    return false;
-                }
-            }
-        }
-        if let Some(th) = self.thread_id {
-            if event.thread_id() != Some(th) {
+            if let Some(ref allow) = self.channel_event_allow
+                && !allow.contains(&ch)
+            {
                 return false;
             }
         }
-        if let Some(dm) = self.dm_conversation_id {
-            if event.dm_conversation_id() != Some(dm) {
-                return false;
-            }
+        if let Some(th) = self.thread_id
+            && event.thread_id() != Some(th)
+        {
+            return false;
         }
-        if let Some(m) = self.member_id {
-            if event.member_id() != Some(m) {
-                return false;
-            }
+        if let Some(dm) = self.dm_conversation_id
+            && event.dm_conversation_id() != Some(dm)
+        {
+            return false;
         }
-        if let Some(ref kinds) = self.kinds {
-            if !kinds.contains(&event.kind()) {
-                return false;
-            }
+        if let Some(m) = self.member_id
+            && event.member_id() != Some(m)
+        {
+            return false;
+        }
+        if let Some(ref kinds) = self.kinds
+            && !kinds.contains(&event.kind())
+        {
+            return false;
         }
         true
     }
@@ -1581,6 +1619,7 @@ mod kind_tests {
                 | EventKind::ThreadLanded
                 | EventKind::ThreadNotice
                 | EventKind::ThreadHandoff
+                | EventKind::ResultDeliveryFailed
                 | EventKind::ReviewSubmitted
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
@@ -1668,6 +1707,7 @@ mod kind_tests {
             EventKind::ThreadLanded,
             EventKind::ThreadNotice,
             EventKind::ThreadHandoff,
+            EventKind::ResultDeliveryFailed,
             EventKind::ReviewSubmitted,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,
