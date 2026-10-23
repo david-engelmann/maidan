@@ -665,7 +665,7 @@ macro_rules! store_delegations {
 
             async fn list_over_allowance(
                 &self,
-                workspace_id: Option<WorkspaceId>,
+                workspace_id: WorkspaceId,
                 month: &str,
             ) -> Result<Vec<maidan_types::OverAllowance>, StoreError> {
                 usage_allowance::list(self.read_pool(), workspace_id, month).await

@@ -620,10 +620,10 @@ pub trait UsageLedgerStore: Send + Sync {
         mark: &maidan_types::OverAllowance,
         admins: &[MemberId],
     ) -> Result<Option<StoredEvent>, StoreError>;
-    /// The crossings in `month` (`YYYY-MM`), for one workspace or all.
+    /// One workspace's crossings in `month` (`YYYY-MM`).
     async fn list_over_allowance(
         &self,
-        workspace_id: Option<WorkspaceId>,
+        workspace_id: WorkspaceId,
         month: &str,
     ) -> Result<Vec<maidan_types::OverAllowance>, StoreError>;
     /// A workspace's metered usage from `since` (a UTC day) on, oldest first.

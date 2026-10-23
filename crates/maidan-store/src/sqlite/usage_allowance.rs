@@ -70,17 +70,17 @@ pub async fn mark(
 /// The crossings in `month`, for one workspace or (operator) every one.
 pub async fn list(
     pool: &SqlitePool,
-    workspace_id: Option<WorkspaceId>,
+    workspace_id: WorkspaceId,
     month: &str,
 ) -> Result<Vec<OverAllowance>, StoreError> {
     let rows = sqlx::query(
         "SELECT workspace_id, meter, month, quantity, allowance, marked_at
          FROM maidan_usage_over_allowance
-         WHERE month = ?1 AND (?2 IS NULL OR workspace_id = ?2)
-         ORDER BY workspace_id, meter",
+         WHERE month = ?1 AND workspace_id = ?2
+         ORDER BY meter",
     )
     .bind(month)
-    .bind(workspace_id.map(|w| w.0))
+    .bind(workspace_id.0)
     .fetch_all(pool)
     .await?;
     rows.iter()

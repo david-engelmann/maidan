@@ -167,21 +167,13 @@ async fn run_suite(store: &dyn Store) {
             .is_none(),
         "marked once a month"
     );
-    let marks = store.list_over_allowance(Some(a), "2026-10").await.unwrap();
+    let marks = store.list_over_allowance(a, "2026-10").await.unwrap();
     assert_eq!((marks.len(), marks[0].quantity), (1, 11));
     assert!(store
-        .list_over_allowance(Some(b), "2026-10")
+        .list_over_allowance(b, "2026-10")
         .await
         .unwrap()
         .is_empty());
-    assert_eq!(
-        store
-            .list_over_allowance(None, "2026-10")
-            .await
-            .unwrap()
-            .len(),
-        1
-    );
     let told = store.list_notifications(admin, false, 10).await.unwrap();
     assert_eq!(told.len(), 1);
     assert_eq!(

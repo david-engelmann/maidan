@@ -85,19 +85,26 @@ async fn workspace_admins(
     Ok(admins)
 }
 
-/// Mark each of `workspaces` past the allowance on a meter this month, once,
-/// telling its admins. Returns how many were marked.
+/// Mark each of `touched` past the allowance on a meter in the month its
+/// rows were written for, once, telling its admins. The month is the rows'
+/// day, not the check's clock, so a count from the last minutes of a month
+/// flushed after midnight UTC is judged against the month it belongs to.
+/// Returns how many were marked.
 pub async fn check_allowance(
     state: &AppState,
-    workspaces: impl IntoIterator<Item = maidan_types::WorkspaceId>,
+    touched: impl IntoIterator<Item = (maidan_types::WorkspaceId, maidan_types::UsageMonth)>,
 ) -> usize {
     if state.usage_allowance.limits.is_empty() {
         return 0;
     }
-    let month = maidan_types::UsageMonth::of(chrono::Utc::now().date_naive());
-    let label = month.label();
+    let touched: std::collections::HashSet<_> = touched
+        .into_iter()
+        .map(|(workspace_id, month)| (workspace_id, month.first))
+        .collect();
     let mut marked = 0;
-    for workspace_id in workspaces {
+    for (workspace_id, first) in touched {
+        let month = maidan_types::UsageMonth::of(first);
+        let label = month.label();
         if let Err(err) = check_workspace(state, workspace_id, month, &label, &mut marked).await {
             tracing::warn!(error = %err, workspace_id = %workspace_id.0, "usage meters: allowance not checked");
         }
@@ -121,10 +128,7 @@ async fn check_workspace(
     if over.is_empty() {
         return Ok(());
     }
-    let already = state
-        .store
-        .list_over_allowance(Some(workspace_id), label)
-        .await?;
+    let already = state.store.list_over_allowance(workspace_id, label).await?;
     let mut admins = None;
     for meter in over {
         if already.iter().any(|m| m.meter == meter.meter) {
@@ -159,23 +163,33 @@ async fn check_workspace(
 /// for a workspace erased since is dropped by the store. Returns how many
 /// workspaces it wrote for.
 pub async fn flush_once(state: &AppState) -> usize {
-    flush(state).await.len()
+    distinct(&flush(state).await)
 }
 
 /// [`flush_once`], answering the workspaces it wrote for.
-async fn flush(state: &AppState) -> std::collections::HashSet<maidan_types::WorkspaceId> {
+async fn flush(state: &AppState) -> Touched {
     let batch = state.usage_meters.take();
     if batch.is_empty() {
         return Default::default();
     }
     match state.store.add_usage_meters(&batch).await {
-        Ok(()) => batch.iter().map(|row| row.workspace_id).collect(),
+        Ok(()) => touched(&batch),
         Err(err) => {
             tracing::warn!(error = %err, rows = batch.len(), "usage meters: flush failed; kept for the next one");
             state.usage_meters.restore(batch);
             Default::default()
         }
     }
+}
+
+/// The workspaces a write touched, each with the month of the rows written.
+type Touched = Vec<(maidan_types::WorkspaceId, maidan_types::UsageMonth)>;
+
+fn touched(batch: &[maidan_types::UsageMeterDay]) -> Touched {
+    batch
+        .iter()
+        .map(|row| (row.workspace_id, maidan_types::UsageMonth::of(row.day)))
+        .collect()
 }
 
 /// Workspaces measured for stored bytes per tick, so a large instance's
@@ -186,11 +200,11 @@ pub const MEASURE_PER_TICK: i64 = 25;
 /// `stored_bytes` row today, up to [`MEASURE_PER_TICK`]. Returns how many were
 /// measured. A failed measurement is retried next tick.
 pub async fn measure_stored_bytes(state: &AppState) -> usize {
-    measure(state).await.len()
+    distinct(&measure(state).await)
 }
 
 /// [`measure_stored_bytes`], answering the workspaces it measured.
-async fn measure(state: &AppState) -> Vec<maidan_types::WorkspaceId> {
+async fn measure(state: &AppState) -> Touched {
     let today = chrono::Utc::now().date_naive();
     let meter = maidan_types::UsageMeter::StoredBytes;
     let due = match state
@@ -219,7 +233,7 @@ async fn measure(state: &AppState) -> Vec<maidan_types::WorkspaceId> {
         }
     }
     match state.store.set_usage_meters(&batch).await {
-        Ok(()) => batch.iter().map(|row| row.workspace_id).collect(),
+        Ok(()) => touched(&batch),
         Err(err) => {
             tracing::warn!(error = %err, "usage meters: stored bytes not written");
             Vec::new()
@@ -232,12 +246,20 @@ async fn measure(state: &AppState) -> Vec<maidan_types::WorkspaceId> {
 /// workspaces flushed, measured and marked.
 pub async fn tick(state: &AppState) -> (usize, usize, usize) {
     let mut touched = flush(state).await;
-    let flushed = touched.len();
+    let flushed = distinct(&touched);
     let measured = measure(state).await;
-    let measured_count = measured.len();
+    let measured_count = distinct(&measured);
     touched.extend(measured);
     let marked = check_allowance(state, touched).await;
     (flushed, measured_count, marked)
+}
+
+fn distinct(touched: &Touched) -> usize {
+    touched
+        .iter()
+        .map(|(workspace_id, _)| *workspace_id)
+        .collect::<std::collections::HashSet<_>>()
+        .len()
 }
 
 /// The flush loop, spawned by `main.rs`.

@@ -163,9 +163,19 @@ impl UsageMonth {
         Self { first, next }
     }
 
-    /// Parse `YYYY-MM`.
+    /// Parse `YYYY-MM` exactly: four digits, a dash, two digits.
     pub fn parse(raw: &str) -> Option<Self> {
-        NaiveDate::parse_from_str(&format!("{}-01", raw.trim()), "%Y-%m-%d")
+        let bytes = raw.as_bytes();
+        let strict = bytes.len() == 7
+            && bytes[4] == b'-'
+            && bytes
+                .iter()
+                .enumerate()
+                .all(|(i, b)| i == 4 || b.is_ascii_digit());
+        if !strict {
+            return None;
+        }
+        NaiveDate::parse_from_str(&format!("{raw}-01"), "%Y-%m-%d")
             .ok()
             .map(Self::of)
     }
@@ -259,6 +269,11 @@ mod tests {
             meter,
             quantity,
         };
+        for loose in [
+            "2026-1", " 2026-10", "2026-10 ", "+2026-10", "2026-13", "2026/10",
+        ] {
+            assert_eq!(UsageMonth::parse(loose), None, "{loose}");
+        }
         let month = UsageMonth::parse("2026-10").unwrap();
         assert_eq!(month.label(), "2026-10");
         let rows = [
