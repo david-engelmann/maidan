@@ -197,6 +197,19 @@ impl Env {
         email: &str,
         ip: &str,
     ) -> reqwest::Response {
+        let callback = self.signup_start(start_url, subject, email, ip).await;
+        self.signup_callback(&callback, ip).await
+    }
+
+    /// Start a sign-up and return the callback path the mock provider
+    /// would send the browser to, without following it.
+    async fn signup_start(
+        &self,
+        start_url: String,
+        subject: &str,
+        email: &str,
+        ip: &str,
+    ) -> String {
         let start = self
             .client
             .get(&start_url)
@@ -209,14 +222,17 @@ impl Env {
             StatusCode::TEMPORARY_REDIRECT,
             "signup start"
         );
-        let location = start.headers()[reqwest::header::LOCATION]
+        start.headers()[reqwest::header::LOCATION]
             .to_str()
             .unwrap()
             .replace("mock_sub=mock-user", &format!("mock_sub={subject}"))
             .replace(
                 "mock_email=human@example.com",
                 &format!("mock_email={email}"),
-            );
+            )
+    }
+
+    async fn signup_callback(&self, location: &str, ip: &str) -> reqwest::Response {
         self.client
             .get(format!("{}{location}", self.base))
             .header("x-forwarded-for", ip)
@@ -382,4 +398,55 @@ async fn a_refused_signup_repeated_does_not_spend_the_domain_budget() {
         .signup_roundtrip(start.clone(), "sub-2", "b@su-four.example", "10.5.0.1")
         .await;
     assert_eq!(second.status(), StatusCode::TEMPORARY_REDIRECT);
+}
+
+#[tokio::test]
+async fn an_invite_that_expired_mid_login_does_not_spend_the_domain_budget() {
+    let env = spawn(true, vec!["su-five.example".to_string()]).await;
+    let op = env.token(&["operator:global"]).await;
+    let ids = entries(&env, &op, &["a@su-five.example"]).await;
+    let (status, minted) = env.invite(&op, &ids[0], "10.6.0.1").await;
+    assert_eq!(status, StatusCode::OK, "{minted}");
+    let start = format!("{}{}", env.base, minted["signup_path"].as_str().unwrap());
+    // Three logins start while the invite is live...
+    let mut callbacks = Vec::new();
+    for sub in ["sub-1", "sub-2", "sub-3"] {
+        callbacks.push(
+            env.signup_start(start.clone(), sub, "a@su-five.example", "10.6.0.1")
+                .await,
+        );
+    }
+    // ...and it expires before any comes back.
+    let entry_id = maidan_types::WaitlistEntryId(ids[0].parse().unwrap());
+    let hash = env
+        .store
+        .get_waitlist_entry(entry_id)
+        .await
+        .unwrap()
+        .invite_token_hash
+        .unwrap();
+    env.store
+        .set_waitlist_invite(
+            entry_id,
+            hash,
+            chrono::Utc::now() - chrono::Duration::minutes(1),
+        )
+        .await
+        .unwrap();
+    for callback in &callbacks {
+        let res = env.signup_callback(callback, "10.6.0.1").await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+    // The three refusals spent nothing: the domain's whole budget (2) is
+    // still there.
+    let open = format!("{}/auth/oidc/signup", env.base);
+    for (sub, email) in [
+        ("sub-4", "b@su-five.example"),
+        ("sub-5", "c@su-five.example"),
+    ] {
+        let res = env
+            .signup_roundtrip(open.clone(), sub, email, "10.6.0.1")
+            .await;
+        assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
+    }
 }
