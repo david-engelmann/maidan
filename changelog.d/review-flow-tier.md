@@ -1,4 +1,0 @@
-### A review thread rides under its change, and a change carries its review tier
-
-- **Changed:** a thread whose task kind is `review` is no longer held behind its parent's state. A review of a change finishes before the change merges, so a review thread created with `parent_thread_id` set to the change thread it reviews can start review and close while the change stays open. Any other child still may not move ahead of its parent, and an archived parent still holds every child back.
-- **Added:** a `tier` task attribute (`"A"` or `"B"`, migration 0199) on `POST /channels/{id}/threads`, `PUT /threads/{id}/attributes` and the MCP `create_thread` and `set_thread_attributes`. It is read back with the attributes, on a live claim and on each pull in the swarm metrics. Unset is stored as unset; a reader that needs a tier counts it as B. Setting attributes replaces the whole set, so restating the tier means sending the other attributes too.

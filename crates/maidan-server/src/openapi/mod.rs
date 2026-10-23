@@ -932,6 +932,7 @@ fn requires_credential(op: &Operation) -> bool {
         ProviderRollup,
         HarnessRollup,
         SizeRollup,
+        TierRollup,
         RiskRollup,
         ChangeRound,
         TaskFlag,

@@ -237,7 +237,6 @@ async fn complete_signup(
     let Some(email) = email.filter(|_| email_verified) else {
         return Err(ApiError::Forbidden("sign-up needs a verified email".into()));
     };
-
     let gate = match pending.invite_entry_id {
         Some(entry_id) => {
             let entry =
@@ -255,6 +254,13 @@ async fn complete_signup(
                 return Err(ApiError::Forbidden(
                     "the invite was issued to a different email".into(),
                 ));
+            }
+            // The sign-up transaction re-checks both under its lock; this
+            // turns a used or expired invite away before the domain charge.
+            if entry.status != maidan_types::WaitlistStatus::Invited
+                || entry.invite_expires_at.is_none_or(|at| at <= Utc::now())
+            {
+                return Err(ApiError::Forbidden("the invite is no longer valid".into()));
             }
             SignupGate::Invite
         }
@@ -286,6 +292,12 @@ async fn complete_signup(
             "this identity already has a workspace here; sign in instead".into(),
         ));
     }
+
+    // Charged only once every refusal above has passed: a sign-up the
+    // invite, domain or existing-workspace checks turn away creates
+    // nothing, so it must not spend the domain's budget either.
+    crate::rate_limit::charge_email_domain(state, crate::rate_limit::DomainCharge::Signup, &email)
+        .await?;
 
     let handle = crate::oidc::member::handle_from_claims(&subject, Some(&email));
     let workspace_name = format!("{handle}'s workspace");
