@@ -32,6 +32,7 @@ fn item_row(row: &sqlx::postgres::PgRow) -> ItemRow {
         threat_model: row.try_get("threat_model").ok().flatten(),
         task_size: row.try_get("task_size").ok().flatten(),
         task_acceptance: row.try_get("task_acceptance").ok().flatten(),
+        task_tier: row.try_get("task_tier").ok().flatten(),
     }
 }
 
@@ -159,7 +160,8 @@ pub async fn list_active(
         "SELECT f.thread_id, held.assignee_id, held.assignment_expires_at,
                 f.repo, f.mode, f.kind, f.value,
                 a.kind AS task_kind, a.engine AS task_engine,
-                a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance
+                a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance,
+                a.tier AS task_tier
          FROM maidan_thread_footprints f
          JOIN maidan_threads held ON held.id = f.thread_id
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = f.thread_id

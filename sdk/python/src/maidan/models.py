@@ -168,6 +168,8 @@ class TaskAttributes(Model):
     acceptance: Optional[str] = None
     #: The Linear issue it is for, such as ``ENG-123``.
     linear_issue: Optional[str] = None
+    #: The change's review tier, ``A`` or ``B``; unset counts as B.
+    tier: Optional[str] = None
 
 
 @dataclass(kw_only=True)

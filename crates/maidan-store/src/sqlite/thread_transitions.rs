@@ -201,8 +201,11 @@ pub(crate) async fn transition_in_tx(
         let parent = row_to_thread(&parent_row)?;
         // A plan's children land while the plan stays open under its
         // planner's claim, and the plan closes after them (#1421), so only
-        // an archived plan holds a child back.
-        let child_to = if super::plans::is_child_in_tx(tx, thread_id).await? {
+        // an archived plan holds a child back. A review child finishes
+        // before the change it reviews merges, so it is not held back either.
+        let child_to = if super::plans::is_child_in_tx(tx, thread_id).await?
+            || super::thread_attributes::is_review_in_tx(tx, thread_id).await?
+        {
             ThreadState::Open
         } else {
             to_state

@@ -341,6 +341,33 @@ pub async fn oldest_event_after_of_kinds(
     Ok(row.map(|r| (r.get("id"), r.get("inserted_at"))))
 }
 
+/// Events after `after_id` of one of `kinds`, counted up to `cap`; see the
+/// Postgres twin.
+pub async fn count_events_after_of_kinds(
+    pool: &SqlitePool,
+    after_id: i64,
+    kinds: &[maidan_types::EventKind],
+    cap: i64,
+) -> Result<i64, StoreError> {
+    if kinds.is_empty() || cap <= 0 {
+        return Ok(0);
+    }
+    let marks = vec!["?"; kinds.len()].join(", ");
+    let sql = format!(
+        "SELECT COUNT(*) AS n FROM (
+             SELECT 1 FROM maidan_events
+             WHERE id > ? AND kind IN ({marks})
+             LIMIT ?
+         )"
+    );
+    let mut query = sqlx::query(&sql).bind(after_id);
+    for kind in kinds {
+        query = query.bind(kind.as_str());
+    }
+    let row = query.bind(cap).fetch_one(pool).await?;
+    Ok(row.get::<i64, _>("n"))
+}
+
 /// A thread's events with `id <= through_id`, in `id` order — the immutable
 /// substrate for as-of context replay. See the Postgres twin.
 pub async fn list_through(

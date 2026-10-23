@@ -179,6 +179,8 @@ type TaskAttributes struct {
 	Acceptance *string `json:"acceptance,omitempty"`
 	// LinearIssue is the Linear issue it is for, such as ENG-123.
 	LinearIssue *string `json:"linear_issue,omitempty"`
+	// Tier is the change's review tier, A or B; unset counts as B.
+	Tier *string `json:"tier,omitempty"`
 }
 
 // StrongRef is a content-addressed pin (maidan:event/{id} plus its hash).
