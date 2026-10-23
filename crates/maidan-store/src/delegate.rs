@@ -623,6 +623,21 @@ macro_rules! store_delegations {
             ) -> Result<UsageRollup, StoreError> {
                 usage_ledger::rollup(self.read_pool(), query).await
             }
+
+            async fn add_usage_meters(
+                &self,
+                batch: &[maidan_types::UsageMeterDay],
+            ) -> Result<(), StoreError> {
+                usage_meters::add(self.pool(), batch).await
+            }
+
+            async fn list_usage_meters(
+                &self,
+                workspace_id: WorkspaceId,
+                since: chrono::NaiveDate,
+            ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError> {
+                usage_meters::list(self.read_pool(), workspace_id, since).await
+            }
         }
     };
     ($store:ty, ApprovalGateStore) => {
