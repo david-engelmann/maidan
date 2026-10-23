@@ -1537,7 +1537,7 @@
               },
               {
                 "$ref": "#/components/schemas/TaskLane",
-                "description": "The service lane this worker runs in (`batch` or `flex`). Lane orders,\nnever filters: threads in this lane come first, then unlaned ones,\nthen other lanes. Omitted, unlaned threads come first and laned ones\nafter."
+                "description": "The service lane this worker runs in (`batch` or `flex`). Lane breaks\nties, never filters: among threads of equal priority and wait, threads\nin this lane come first, then unlaned ones, then other lanes. Omitted,\nunlaned threads win the tie."
               }
             ]
           },

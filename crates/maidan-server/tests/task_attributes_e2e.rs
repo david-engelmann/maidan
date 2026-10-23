@@ -864,8 +864,9 @@ async fn an_unknown_lane_is_refused_on_rest_and_mcp() {
     );
 }
 
-/// A claim naming a lane takes that lane's thread before older unlaned work,
-/// and a claim with no lane then still takes what is left.
+/// A claim naming a lane takes that lane's thread before older unlaned work
+/// of equal priority (lane breaks the tie), and a claim with no lane then
+/// still takes what is left.
 #[tokio::test]
 async fn a_lane_claim_takes_its_lane_first_over_rest() {
     let (base, store) = spawn().await;

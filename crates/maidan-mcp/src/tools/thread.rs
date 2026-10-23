@@ -1028,8 +1028,9 @@ struct ClaimNextThreadArgs {
     /// engine, or not routed at all, is never handed over.
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
-    /// The service lane the claimer runs in: threads in it come first, then
-    /// unlaned ones, then other lanes. Omitted, unlaned threads come first.
+    /// The service lane the claimer runs in: among threads of equal priority
+    /// and wait, threads in it come first, then unlaned ones, then other
+    /// lanes. Omitted, unlaned threads win the tie.
     #[serde(default)]
     lane: Option<maidan_types::TaskLane>,
 }

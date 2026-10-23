@@ -2282,7 +2282,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "lane": {
-      "description": "the service lane this worker runs in; lane orders, never filters: threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads come first and laned ones after",
+      "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
       "enum": [
         "batch",
         "flex"
@@ -2328,7 +2328,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "type": "string"
     },
     "lane": {
-      "description": "the service lane this worker runs in; lane orders, never filters: threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads come first and laned ones after",
+      "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
       "enum": [
         "batch",
         "flex"
