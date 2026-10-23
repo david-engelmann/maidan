@@ -1413,6 +1413,30 @@ async fn erasing_a_workspace_destroys_its_custody_key(db: Db) {
     );
 }
 
+/// One tenant's refused destroy must not stop another
+/// tenant's retired key being destroyed.
+async fn rt_one_refused_destroy_blocks_every_tenant(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("rt"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "rt-a").await;
+    let b = room(store.as_ref(), "rt-b").await;
+    post(store.as_ref(), &a, "words of a").await;
+    post(store.as_ref(), &b, "words of b").await;
+    let (a_old, _, _, _) = db.active_workspace_key(a.ws.id).await;
+    let (b_old, _, _, _) = db.active_workspace_key(b.ws.id).await;
+    store.rotate_workspace_key(a.ws.id).await.unwrap();
+    store.rotate_workspace_key(b.ws.id).await.unwrap();
+    kms.refuse(a_old);
+    for _ in 0..5 {
+        let _ = store.rewrap_content_keys(100).await;
+    }
+    assert!(kms.holds(a_old));
+    assert!(
+        !kms.holds(b_old),
+        "tenant B's retired KMS key was never destroyed"
+    );
+}
+
 /// A blob delete that fails, as a blob store that is down does.
 fn failing_delete() -> BlobDelete<'static> {
     Box::new(|| Box::pin(async { Err("blob store unavailable".to_string()) }))
@@ -1595,6 +1619,7 @@ on_both_backends!(
     erasing_a_workspace_destroys_its_key,
     rotation_under_a_custody_destroys_the_old_custody_key,
     erasing_a_workspace_destroys_its_custody_key,
+    rt_one_refused_destroy_blocks_every_tenant,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,
     a_plain_tombstone_shreds_too,

@@ -302,9 +302,12 @@ pub async fn rewrap(
     }
     changed += rows.len() as u64;
 
-    // The custody destroys its key first, inside the transaction: a refusal
-    // leaves the row (and the pass) to try again, and no row claims a
-    // destroyed key it still holds.
+    tx.commit().await?;
+
+    // Each retired key is destroyed on its own, with no transaction or lock
+    // held across the custody call: destroying is idempotent, so the row is
+    // marked after its key is gone, and a key the custody refuses is logged
+    // and skipped, so one workspace's refusal never stops another's.
     let doomed = sqlx::query(
         "SELECT r.id, r.wrapping_key_id, r.wrapped_key FROM maidan_workspace_keys r
          WHERE r.retired_at IS NOT NULL AND r.destroyed_at IS NULL
@@ -316,31 +319,31 @@ pub async fn rewrap(
          LIMIT ?",
     )
     .bind(limit)
-    .fetch_all(&mut *tx)
+    .fetch_all(pool)
     .await?;
-    let mut destroyed = Vec::with_capacity(doomed.len());
     for row in &doomed {
         let id: Uuid = row.get("id");
         if let (Some(kek_id), Some(blob)) = (
             row.get::<Option<String>, _>("wrapping_key_id"),
             row.get::<Option<Vec<u8>>, _>("wrapped_key"),
-        ) {
-            keys.destroy_workspace_key(id, &WrappedKey { kek_id, blob })
-                .await?;
+        ) && let Err(err) = keys
+            .destroy_workspace_key(id, &WrappedKey { kek_id, blob })
+            .await
+        {
+            tracing::warn!(workspace_key = %id, error = %err, "custody refused to destroy a retired workspace key; skipped");
+            continue;
         }
-        sqlx::query(
+        let marked = sqlx::query(
             "UPDATE maidan_workspace_keys
              SET wrapping_key_id = NULL, wrapped_key = NULL, destroyed_at = ?
-             WHERE id = ?",
+             WHERE id = ? AND destroyed_at IS NULL",
         )
         .bind(Utc::now())
         .bind(id)
-        .execute(&mut *tx)
+        .execute(pool)
         .await?;
-        destroyed.push(id);
+        changed += marked.rows_affected();
     }
-    tx.commit().await?;
-    changed += destroyed.len() as u64;
     Ok(changed)
 }
 
