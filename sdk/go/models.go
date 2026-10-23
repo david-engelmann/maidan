@@ -181,6 +181,8 @@ type TaskAttributes struct {
 	LinearIssue *string `json:"linear_issue,omitempty"`
 	// Tier is the change's review tier, A or B; unset counts as B.
 	Tier *string `json:"tier,omitempty"`
+	// ReviewFamily is the provider family a review child is routed to; server-set.
+	ReviewFamily *string `json:"review_family,omitempty"`
 }
 
 // StrongRef is a content-addressed pin (maidan:event/{id} plus its hash).

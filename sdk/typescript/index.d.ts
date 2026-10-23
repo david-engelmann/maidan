@@ -255,6 +255,8 @@ export interface TaskAttributes {
   linear_issue?: string;
   /** The change's review tier; unset counts as B. */
   tier?: "A" | "B";
+  /** The provider family a review child is routed to; server-set. */
+  review_family?: string;
 }
 
 /** A content-addressed pin (`maidan:event/{id}` + its hash). */

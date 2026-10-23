@@ -1360,6 +1360,7 @@ pub(super) async fn set_thread_attributes(
                 acceptance: a.acceptance,
                 linear_issue: a.linear_issue,
                 tier: a.tier,
+                review_family: None,
             }
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,

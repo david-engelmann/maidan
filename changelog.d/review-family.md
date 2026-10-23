@@ -1,0 +1,3 @@
+### Reviews are routed to a second provider family
+
+- **Added:** when a change enters review and its claimant's own usage records on it name a provider family (Anthropic, OpenAI including `o1`/`o3`/`o4` models, Google or xAI, read from the latest such record's provider or model), the server spawns its review child with `attributes.review_family` set to a different family. `claim_next` refuses that child to any seat whose usage records in the same workspace name the author's family. Any such record counts, however old, so a seat that ever reported under the author's family is refused that review permanently. `review_family` is server-set, and setting attributes leaves it as it was (migration 0202).

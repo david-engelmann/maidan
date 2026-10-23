@@ -104,6 +104,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
+    let refused = crate::review_family::refused_to(member);
     let claimable = claimability::claimable(&ThreadSql {
         now,
         lapsed_worked_secs,
@@ -133,6 +134,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
                SELECT 1 FROM maidan_thread_attributes a
                WHERE a.thread_id = cand.id AND a.engine = {engine}
            ))
+           AND NOT {refused}
            AND {readable}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC
          LIMIT 1"

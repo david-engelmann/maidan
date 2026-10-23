@@ -1354,6 +1354,7 @@ fn pull_from(
                 .ok()
                 .flatten()
                 .and_then(|tier| maidan_types::TaskTier::parse(&tier)),
+            review_family: None,
         },
     }
 }
