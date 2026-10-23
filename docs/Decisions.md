@@ -1514,7 +1514,10 @@ deadline first, in batches of 100 up to 1000 a tick, and appends
 batch with `FOR UPDATE SKIP LOCKED`, so replicas split the work and never
 report a lease twice; SQLite guards the update on the same holder and a
 still-lapsed deadline. `claim_next_thread` still takes a lease that lapsed
-between ticks. A thread in review is not reaped. `claim_next_thread` claims
+between ticks. A thread in review is reaped too
+(only `closed` and `archived` are skipped), so an implementer must keep
+renewing through review, or its claim is reaped and a changes-requested
+thread reopens unheld. `claim_next_thread` claims
 always carry a lease: with no `lease_secs`, the server default
 (`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s); a named lease, and every
 renewal, must be 1 s to 7 days. REST and MCP resolve it through one

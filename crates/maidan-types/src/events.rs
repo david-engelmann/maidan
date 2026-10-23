@@ -606,7 +606,8 @@ pub enum Event {
     /// `member_id` is the *previous* holder whose claim expired, so a
     /// supervisor can react to a dead/stalled agent without polling. A
     /// locally-derived signal (this deployment's clock): not federatable. A
-    /// lease on a thread in review is not reaped and emits nothing.
+    /// lease on a thread in review is reaped too; the thread stays in review,
+    /// unheld.
     ClaimExpired {
         occurred_at: DateTime<Utc>,
         workspace_id: WorkspaceId,

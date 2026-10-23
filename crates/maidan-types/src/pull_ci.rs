@@ -165,6 +165,21 @@ pub struct PreviousRead {
     pub gate: Option<Vec<String>>,
     /// Its merge-queue state; `None` when it had none.
     pub merge_queue: Option<MergeQueue>,
+    /// The reasons last said as `gate_blocked`, or none after a
+    /// `gate_clear`; `None` before any gate was said.
+    pub gate_said: Option<Vec<String>>,
+}
+
+/// The gate a read owes a notice for, if any: what holds the pull request
+/// back is said once two reads in a row agree on it and it differs from what
+/// was last said. GitHub's merge state flickers between `BLOCKED` and
+/// `CLEAN` while checks and the merge queue settle, and a gate said on every
+/// read flapped with it (WAX-D-080). A real change is said one read later.
+pub fn gate_to_say(reasons: Option<&[String]>, previous: &PreviousRead) -> Option<Vec<String>> {
+    let reasons = reasons?;
+    let held = previous.gate.as_deref() == Some(reasons);
+    let said = previous.gate_said.as_deref().unwrap_or_default();
+    (held && reasons != said).then(|| reasons.to_vec())
 }
 
 fn is_zero(n: &i64) -> bool {
@@ -218,8 +233,8 @@ pub struct NewPullCi {
 /// one it names), `ci_failed` and `checks_done` once per head commit.
 ///
 /// `gate_blocked` and `gate_clear` are said when what holds the pull request
-/// back changed since `previous_gate` (the last read's reasons; `None` before
-/// the first read): blocked with the new reasons, clear when there are none
+/// back has held for two reads and differs from what was last said
+/// ([`gate_to_say`]): blocked with the new reasons, clear when there are none
 /// left. Their keys carry `change`, unique to this change, because the same
 /// reasons can come back after a clear; the caller compares under the lock
 /// that serializes reads, so a change is said once.
@@ -233,7 +248,6 @@ pub fn ci_notices(
     change: &str,
     now: DateTime<Utc>,
 ) -> Vec<(ThreadNotice, String)> {
-    let previous_gate = previous.gate.as_deref();
     let repo = new.repo.to_ascii_lowercase();
     let head = new.head_sha.to_ascii_lowercase();
     let at = format!("{repo}#{}", new.pull_number);
@@ -278,26 +292,16 @@ pub fn ci_notices(
             format!("checks_done:{at}@{head}"),
         ));
     }
-    if let Some(reasons) = &new.gate_reasons {
-        let before = previous_gate.unwrap_or_default();
-        if reasons.as_slice() != before {
-            if !reasons.is_empty() {
-                owed.push((
-                    notice(
-                        ThreadNoticeKind::GateBlocked,
-                        None,
-                        Vec::new(),
-                        reasons.clone(),
-                    ),
-                    format!("gate:{at}:{change}"),
-                ));
-            } else {
-                owed.push((
-                    notice(ThreadNoticeKind::GateClear, None, Vec::new(), Vec::new()),
-                    format!("gate:{at}:{change}"),
-                ));
-            }
-        }
+    if let Some(reasons) = gate_to_say(new.gate_reasons.as_deref(), previous) {
+        let kind = if reasons.is_empty() {
+            ThreadNoticeKind::GateClear
+        } else {
+            ThreadNoticeKind::GateBlocked
+        };
+        owed.push((
+            notice(kind, None, Vec::new(), reasons),
+            format!("gate:{at}:{change}"),
+        ));
     }
     if new.gate_reasons.is_some() && new.merge_queue != previous.merge_queue {
         let entered = new.merge_queue.as_ref().map(|queue| queue.state);
@@ -380,10 +384,11 @@ mod tests {
         ci_notices(new, &PreviousRead::default(), "c1", now)
     }
 
-    fn prev(gate: Option<&[String]>) -> PreviousRead {
+    fn prev(gate: Option<&[String]>, said: Option<&[String]>) -> PreviousRead {
         PreviousRead {
             gate: gate.map(<[String]>::to_vec),
             merge_queue: None,
+            gate_said: said.map(<[String]>::to_vec),
         }
     }
 
@@ -404,7 +409,7 @@ mod tests {
         new.merge_queue = Some(queued.clone());
         let before = PreviousRead {
             gate: Some(Vec::new()),
-            merge_queue: None,
+            ..PreviousRead::default()
         };
         assert_eq!(
             queue_kinds(ci_notices(&new, &before, "q1", Utc::now())),
@@ -430,45 +435,136 @@ mod tests {
         );
     }
 
+    fn gate_kinds(owed: &[(ThreadNotice, String)]) -> Vec<(&'static str, Vec<String>, String)> {
+        owed.iter()
+            .filter(|(n, _)| {
+                matches!(
+                    n.kind,
+                    ThreadNoticeKind::GateBlocked | ThreadNoticeKind::GateClear
+                )
+            })
+            .map(|(n, key)| (n.kind.as_str(), n.reasons.clone(), key.clone()))
+            .collect()
+    }
+
     #[test]
-    fn a_gate_is_said_only_when_what_holds_it_changes() {
+    fn a_gate_is_said_once_it_holds_for_two_reads() {
         let mut new = read(CiStatus::Pending, &[], false);
-        let gate = |owed: &[(ThreadNotice, String)]| {
-            owed.iter()
-                .filter(|(n, _)| {
-                    matches!(
-                        n.kind,
-                        ThreadNoticeKind::GateBlocked | ThreadNoticeKind::GateClear
-                    )
-                })
-                .map(|(n, key)| (n.kind.as_str(), n.reasons.clone(), key.clone()))
-                .collect::<Vec<_>>()
-        };
+        let behind = ["merge state BEHIND".to_string()];
         new.gate_reasons = Some(Vec::new());
         assert!(
-            gate(&ci_notices(&new, &prev(None), "c1", Utc::now())).is_empty(),
+            gate_kinds(&ci_notices(&new, &prev(None, None), "c1", Utc::now())).is_empty(),
             "clear from the start is no news"
         );
-        new.gate_reasons = Some(vec!["merge state BEHIND".into()]);
+        assert!(
+            gate_kinds(&ci_notices(&new, &prev(Some(&[]), None), "c1", Utc::now())).is_empty(),
+            "clear held from the start is no news either"
+        );
+        new.gate_reasons = Some(behind.to_vec());
+        assert!(
+            gate_kinds(&ci_notices(&new, &prev(Some(&[]), None), "c2", Utc::now())).is_empty(),
+            "one read of a block is not yet a change"
+        );
         assert_eq!(
-            gate(&ci_notices(&new, &prev(Some(&[])), "c2", Utc::now())),
+            gate_kinds(&ci_notices(
+                &new,
+                &prev(Some(&behind), None),
+                "c3",
+                Utc::now()
+            )),
             vec![(
                 "gate_blocked",
-                vec!["merge state BEHIND".to_string()],
-                "gate:example/app#7:c2".to_string()
+                behind.to_vec(),
+                "gate:example/app#7:c3".to_string()
             )]
         );
-        let same = ["merge state BEHIND".to_string()];
-        assert!(gate(&ci_notices(&new, &prev(Some(&same)), "c3", Utc::now())).is_empty());
-        new.gate_reasons = Some(Vec::new());
-        assert_eq!(
-            gate(&ci_notices(&new, &prev(Some(&same)), "c4", Utc::now()))[0].0,
-            "gate_clear"
+        assert!(
+            gate_kinds(&ci_notices(
+                &new,
+                &prev(Some(&behind), Some(&behind)),
+                "c4",
+                Utc::now()
+            ))
+            .is_empty(),
+            "a block already said is said once"
         );
         new.gate_reasons = None;
         assert!(
-            gate(&ci_notices(&new, &prev(Some(&same)), "c5", Utc::now())).is_empty(),
+            gate_kinds(&ci_notices(
+                &new,
+                &prev(Some(&behind), None),
+                "c5",
+                Utc::now()
+            ))
+            .is_empty(),
             "an unread gate says nothing"
+        );
+    }
+
+    #[test]
+    fn a_gate_that_flickers_for_one_read_says_nothing() {
+        let blocked = ["merge state BLOCKED".to_string()];
+        let mut new = read(CiStatus::Success, &[], true);
+        // Said clear; one read says BLOCKED, the next CLEAN again.
+        new.gate_reasons = Some(blocked.to_vec());
+        assert!(gate_kinds(&ci_notices(
+            &new,
+            &prev(Some(&[]), Some(&[])),
+            "f1",
+            Utc::now()
+        ))
+        .is_empty());
+        new.gate_reasons = Some(Vec::new());
+        assert!(gate_kinds(&ci_notices(
+            &new,
+            &prev(Some(&blocked), Some(&[])),
+            "f2",
+            Utc::now()
+        ))
+        .is_empty());
+        // Said blocked; one read says CLEAN, the next BLOCKED again.
+        new.gate_reasons = Some(Vec::new());
+        assert!(gate_kinds(&ci_notices(
+            &new,
+            &prev(Some(&blocked), Some(&blocked)),
+            "f3",
+            Utc::now()
+        ))
+        .is_empty());
+        new.gate_reasons = Some(blocked.to_vec());
+        assert!(gate_kinds(&ci_notices(
+            &new,
+            &prev(Some(&[]), Some(&blocked)),
+            "f4",
+            Utc::now()
+        ))
+        .is_empty());
+    }
+
+    #[test]
+    fn a_clear_that_holds_after_a_said_block_is_said() {
+        let blocked = ["merge state BLOCKED".to_string()];
+        let mut new = read(CiStatus::Success, &[], true);
+        new.gate_reasons = Some(Vec::new());
+        assert!(gate_kinds(&ci_notices(
+            &new,
+            &prev(Some(&blocked), Some(&blocked)),
+            "k1",
+            Utc::now()
+        ))
+        .is_empty());
+        assert_eq!(
+            gate_kinds(&ci_notices(
+                &new,
+                &prev(Some(&[]), Some(&blocked)),
+                "k2",
+                Utc::now()
+            )),
+            vec![(
+                "gate_clear",
+                Vec::new(),
+                "gate:example/app#7:k2".to_string()
+            )]
         );
     }
 

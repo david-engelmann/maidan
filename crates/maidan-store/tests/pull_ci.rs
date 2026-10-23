@@ -99,9 +99,10 @@ fn read(
     }
 }
 
-/// What holds a pull request back is said when it changes, and only then:
-/// blocked with the reasons, clear when none are left, nothing for a read
-/// that could not say (which keeps the last answer).
+/// What holds a pull request back is said once two reads agree on a
+/// change, and only then: blocked with the reasons, clear when none are
+/// left, nothing for a read that could not say (which keeps the last
+/// answer).
 async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "gate").await;
     let thread = task(store.as_ref(), &room).await;
@@ -128,6 +129,10 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
             .collect()
     };
     let held = ["1 unresolved review thread", "merge state BLOCKED"];
+    assert!(
+        gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).is_empty(),
+        "one read of a block is not yet said"
+    );
     assert_eq!(
         gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()),
         vec![(
@@ -152,10 +157,12 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
         Some("review-bot[bot]")
     );
     assert_eq!(ci.missing_checks, vec!["e2e".to_string()]);
+    assert!(gate_kinds(s.record_pull_ci(gated(Some(&[]))).await.unwrap()).is_empty());
     assert_eq!(
         gate_kinds(s.record_pull_ci(gated(Some(&[]))).await.unwrap()),
         vec![(ThreadNoticeKind::GateClear, Vec::new())]
     );
+    assert!(gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).is_empty());
     assert_eq!(
         gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).len(),
         1,
@@ -232,6 +239,79 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
         .find(|n| n.kind == ThreadNoticeKind::GateBlocked)
         .unwrap();
     assert_eq!(blocked.reasons.len(), 2);
+}
+
+/// A merge state that flickers for one read says nothing, and a block that
+/// holds across a restart (a new store over the same database) is said
+/// once: what was last said lives with the record, not the process.
+async fn a_held_block_is_said_once_across_a_restart(before: Arc<dyn Store>, after: Arc<dyn Store>) {
+    let room = room(before.as_ref(), "restart").await;
+    let thread = task(before.as_ref(), &room).await;
+    before
+        .register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let gated = |reasons: &[&str]| NewPullCi {
+        gate_reasons: Some(reasons.iter().map(|x| x.to_string()).collect()),
+        ..read(room.ws, "aaa1", CiStatus::Success, &[], true)
+    };
+    let blocked = ["merge state BLOCKED"];
+    let gate_said = |posted: Vec<PostedNotice>| {
+        posted
+            .into_iter()
+            .filter(|p| {
+                matches!(
+                    p.notice.kind,
+                    ThreadNoticeKind::GateBlocked | ThreadNoticeKind::GateClear
+                )
+            })
+            .count()
+    };
+    let mut said = 0;
+    for reasons in [&[][..], &blocked, &[], &blocked, &blocked] {
+        said += gate_said(before.record_pull_ci(gated(reasons)).await.unwrap());
+    }
+    assert_eq!(said, 1, "the flicker said nothing; the held block once");
+    for _ in 0..3 {
+        said += gate_said(after.record_pull_ci(gated(&blocked)).await.unwrap());
+    }
+    assert_eq!(said, 1, "a restart does not say the held block again");
+    let notices = after.list_thread_notices(thread, 20).await.unwrap();
+    assert_eq!(
+        notices
+            .iter()
+            .filter(|n| n.kind == ThreadNoticeKind::GateBlocked)
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_held_block_is_said_once_across_a_restart_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    maidan_store::configure_sqlite_pool(&pool).await.unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    a_held_block_is_said_once_across_a_restart(
+        Arc::new(SqliteStore::for_tests(pool.clone())),
+        Arc::new(SqliteStore::for_tests(pool)),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_held_block_is_said_once_across_a_restart_postgres() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+    a_held_block_is_said_once_across_a_restart(
+        Arc::new(PostgresStore::for_tests(pool.clone())),
+        Arc::new(PostgresStore::for_tests(pool)),
+    )
+    .await;
 }
 
 fn kinds(posted: &[PostedNotice]) -> Vec<ThreadNoticeKind> {
@@ -692,6 +772,11 @@ async fn sqlite() -> Arc<dyn Store> {
 }
 
 async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn Store>)> {
+    let (container, pool) = postgres_pool().await?;
+    Some((container, Arc::new(PostgresStore::for_tests(pool))))
+}
+
+async fn postgres_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, sqlx::PgPool)> {
     let container = match Postgres::default()
         .with_name("pgvector/pgvector")
         .with_tag("pg17")
@@ -715,7 +800,7 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    Some((container, Arc::new(PostgresStore::for_tests(pool))))
+    Some((container, pool))
 }
 
 on_both_backends!(

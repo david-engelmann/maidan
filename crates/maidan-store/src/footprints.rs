@@ -334,6 +334,7 @@ pub(crate) fn group_active(rows: Vec<ItemRow>) -> Result<Vec<ActiveClaim>, Store
                         .task_tier
                         .as_deref()
                         .and_then(maidan_types::TaskTier::parse),
+                    review_family: None,
                 },
             },
         );

@@ -276,6 +276,14 @@ macro_rules! store_delegations {
                 members::get(self.read_pool(), id).await
             }
 
+            async fn set_member_display_name(
+                &self,
+                id: MemberId,
+                display_name: Option<String>,
+            ) -> Result<Member, StoreError> {
+                members::set_display_name(self.pool(), id, display_name.as_deref()).await
+            }
+
             async fn get_member_in(
                 &self,
                 workspace_id: WorkspaceId,
