@@ -11,6 +11,15 @@ use crate::error::StoreError;
 /// minimal CRUD plus the few list/query operations the server needs in
 /// Cluster A. Richer queries (search, threading rollups) arrive in later
 /// clusters via dedicated traits and crates.
+/// What one [`Store::rewrap_content_keys`] pass did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RewrapPass {
+    /// Rows moved, rewrapped or destroyed.
+    pub changed: u64,
+    /// Rows the custody refused; they stay for a later pass.
+    pub skipped: u64,
+}
+
 #[async_trait]
 pub trait MetaStore: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
@@ -613,6 +622,26 @@ pub trait UsageLedgerStore: Send + Sync {
     ) -> Result<Vec<WorkspaceId>, StoreError>;
     /// The bytes a workspace stores now: its artifacts and message bodies.
     async fn workspace_stored_bytes(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError>;
+    /// Every workspace's meters on days in `[since, until)`.
+    async fn list_usage_meters_between(
+        &self,
+        since: chrono::NaiveDate,
+        until: chrono::NaiveDate,
+    ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError>;
+    /// Mark a crossing of the allowance, once per workspace, meter and month,
+    /// appending its event and notifying `admins` in the same transaction.
+    /// `None` when it was marked already.
+    async fn mark_over_allowance(
+        &self,
+        mark: &maidan_types::OverAllowance,
+        admins: &[MemberId],
+    ) -> Result<Option<StoredEvent>, StoreError>;
+    /// One workspace's crossings in `month` (`YYYY-MM`).
+    async fn list_over_allowance(
+        &self,
+        workspace_id: WorkspaceId,
+        month: &str,
+    ) -> Result<Vec<maidan_types::OverAllowance>, StoreError>;
     /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
     async fn list_usage_meters(
         &self,
@@ -2560,6 +2589,17 @@ pub trait AssignmentStore: Send + Sync {
         slot: &str,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
+    /// How many threads, across every workspace, are stalled at `now`: open,
+    /// held on a live lease the holder acknowledged, not declared anything
+    /// but working, and with no progress by the holder (its latest message on
+    /// the thread or its declaration, else the acknowledgement) after
+    /// `progress_before`. The same test as a board's `stalled` flag, counted
+    /// for the alert on a claim that only renews.
+    async fn count_stalled_threads(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        progress_before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same
@@ -3354,11 +3394,13 @@ pub trait EventStore: Send + Sync {
         event: &Event,
         origin: PeerId,
     ) -> Result<StoredEvent, StoreError>;
-    /// One batch of moving keys to where they belong: workspace keys under the
+    /// One pass of moving keys to where they belong: workspace keys under the
     /// primary instance KEK, data keys under their workspace's active key, and
-    /// retired workspace keys destroyed once nothing needs them. Returns how
-    /// many rows changed; `0` means done.
-    async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError>;
+    /// retired workspace keys destroyed once nothing needs them. The pass pages
+    /// through every row, `limit` per transaction, so rows the custody refuses
+    /// never crowd out another tenant's. Done when nothing changed and nothing
+    /// was skipped.
+    async fn rewrap_content_keys(&self, limit: i64) -> Result<RewrapPass, StoreError>;
     /// Rows [`Self::rewrap_content_keys`] has still to change.
     async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
     /// Retire the workspace's key and make a new one. The workspace's data keys
