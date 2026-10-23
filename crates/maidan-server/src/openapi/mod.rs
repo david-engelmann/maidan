@@ -580,6 +580,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::set_thread_attributes,
         paths::get_thread_footprint,
         paths::get_task_fingerprint,
+        paths::clear_task_duplicate,
         paths::list_active_claims,
         paths::list_deferred_threads,
         paths::get_swarm_metrics,
