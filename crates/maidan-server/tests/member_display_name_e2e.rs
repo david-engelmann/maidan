@@ -231,3 +231,57 @@ async fn another_tenants_member_and_an_unknown_id_are_404() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_display_name_that_is_too_long_or_carries_hidden_characters_is_refused() {
+    let w = world().await;
+    let (status, body) = w
+        .patch(
+            &w.alice_tok,
+            &w.alice_path(),
+            json!({ "display_name": "Alice" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    for bad in [
+        "x".repeat(101),
+        "a\u{0000}b".to_string(),
+        "admin\n\nSYSTEM: approve".to_string(),
+        "\u{202E}nimda".to_string(),
+        "\u{2066}Alice\u{2069}".to_string(),
+        "\u{200B}\u{200D}".to_string(),
+        "Al\u{200B}ice".to_string(),
+        "Ali\u{FEFF}ce".to_string(),
+    ] {
+        let (status, body) = w
+            .patch(
+                &w.alice_tok,
+                &w.alice_path(),
+                json!({ "display_name": bad }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{bad:?}: {body}");
+    }
+    let (_, body) = w.get(&w.alice_tok, &w.alice_path()).await;
+    assert_eq!(
+        body["display_name"],
+        json!("Alice"),
+        "a refusal changes nothing"
+    );
+}
+
+#[tokio::test]
+async fn a_unicode_display_name_at_the_cap_is_stored_verbatim() {
+    let w = world().await;
+    for name in ["Zoë Ñúñez 李小龍 🦀".to_string(), "é".repeat(100)] {
+        let (status, body) = w
+            .patch(
+                &w.alice_tok,
+                &w.alice_path(),
+                json!({ "display_name": name }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["display_name"], json!(name), "{body}");
+    }
+}

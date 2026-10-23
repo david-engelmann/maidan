@@ -45,7 +45,7 @@ pub async fn create_member(
         .create_member_with_event(NewMember {
             workspace_id: WorkspaceId(workspace_id),
             handle: body.handle,
-            display_name: body.display_name,
+            display_name: normalize_display_name(body.display_name.as_deref())?,
             kind: body.kind,
         })
         .await?;
@@ -54,6 +54,52 @@ pub async fn create_member(
 }
 
 const AGENT_HANDLE_MAX_CHARS: usize = 64;
+
+/// The most characters a member's display name may hold.
+const DISPLAY_NAME_MAX_CHARS: usize = 100;
+
+/// Invisible format characters a display name may not carry: zero-width
+/// characters, bidi marks, embeddings, overrides and isolates, and other
+/// Unicode `Cf` code points that change how surrounding text renders.
+fn is_format_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00AD}'
+            | '\u{0600}'..='\u{0605}'
+            | '\u{061C}'
+            | '\u{06DD}'
+            | '\u{070F}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+    )
+}
+
+/// A caller-supplied display name, checked the same way on every path that
+/// sets one: trimmed; blank means no name; over
+/// [`DISPLAY_NAME_MAX_CHARS`] characters, or carrying a control character
+/// (NUL, newlines) or an invisible format character, is a 400 and never
+/// reaches the store.
+pub(crate) fn normalize_display_name(raw: Option<&str>) -> Result<Option<String>, ApiError> {
+    let Some(name) = raw.map(str::trim).filter(|name| !name.is_empty()) else {
+        return Ok(None);
+    };
+    if name.chars().count() > DISPLAY_NAME_MAX_CHARS {
+        return Err(ApiError::BadRequest(format!(
+            "display_name must be at most {DISPLAY_NAME_MAX_CHARS} characters"
+        )));
+    }
+    if name.chars().any(|c| c.is_control() || is_format_char(c)) {
+        return Err(ApiError::BadRequest(
+            "display_name may not contain control or invisible format characters".into(),
+        ));
+    }
+    Ok(Some(name.to_string()))
+}
 
 /// `POST /workspaces/{wid}/agents` — create an agent member and its worker
 /// token in one call. `token:admin` in that workspace.
@@ -80,10 +126,7 @@ pub async fn create_agent(
             "handle must be 1..={AGENT_HANDLE_MAX_CHARS} characters with no whitespace"
         )));
     }
-    let display_name = body
-        .display_name
-        .map(|d| d.trim().to_string())
-        .filter(|d| !d.is_empty());
+    let display_name = normalize_display_name(body.display_name.as_deref())?;
     // The worker set, granted the way a mint grants it: through the caller's
     // mint vocabulary, so this route can never hand out more than token:admin
     // could mint directly.
@@ -196,12 +239,7 @@ pub async fn set_member_display_name(
     let member = requested_member(&state, &auth, member_id).await?;
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_own_personal_state(&auth, member_id)?;
-    let name = body.display_name.trim();
-    let display_name = if name.is_empty() {
-        None
-    } else {
-        Some(name.to_string())
-    };
+    let display_name = normalize_display_name(Some(&body.display_name))?;
     Ok(Json(
         state
             .store
@@ -921,5 +959,36 @@ pub async fn delete_push_subscription(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_display_name;
+
+    #[test]
+    fn a_display_name_is_trimmed_and_blank_means_none() {
+        assert_eq!(normalize_display_name(None).unwrap(), None);
+        assert_eq!(normalize_display_name(Some("   ")).unwrap(), None);
+        assert_eq!(
+            normalize_display_name(Some("  Zoë  ")).unwrap().as_deref(),
+            Some("Zoë")
+        );
+    }
+
+    #[test]
+    fn hidden_characters_and_overlong_names_are_refused_on_every_path() {
+        for bad in [
+            "a\u{0}b",
+            "a\tb",
+            "\u{202E}x",
+            "\u{2068}x",
+            "\u{200B}",
+            "x\u{00AD}y",
+        ] {
+            assert!(normalize_display_name(Some(bad)).is_err(), "{bad:?}");
+        }
+        assert!(normalize_display_name(Some(&"x".repeat(101))).is_err());
+        assert!(normalize_display_name(Some(&"x".repeat(100))).is_ok());
     }
 }
