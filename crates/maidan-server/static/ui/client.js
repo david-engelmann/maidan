@@ -74,6 +74,7 @@ export const OPERATIONS = [
   { methods: ["GET"], path: "/workspaces/${id}/deferred" },
   { methods: ["GET", "PUT", "DELETE"], path: "/workspaces/${id}/repo-pauses" },
   { methods: ["GET", "PUT", "DELETE"], path: "/workspaces/${id}/slots" },
+  { methods: ["GET"], path: "/workspaces/${id}/usage-meters" },
   { methods: ["GET", "PATCH", "DELETE"], path: "/workspaces/${wid()}" },
   { methods: ["POST"], path: "/workspaces/${wid()}/agents" },
   { methods: ["GET"], path: "/workspaces/${wid()}/app-installations" },

@@ -99,7 +99,9 @@ pub use thread_lookup::{ExternalThreadRef, ThreadLookup};
 pub use trace::*;
 pub use usage::*;
 pub use usage_ledger::*;
-pub use usage_meter::{UsageMeter, UsageMeterDay};
+pub use usage_meter::{
+    MeterUsage, MonthlyUsage, OverAllowance, UsageAllowance, UsageMeter, UsageMeterDay, UsageMonth,
+};
 pub use waiter::*;
 pub use wasi::*;
 pub use workspace_import::*;

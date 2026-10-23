@@ -79,6 +79,12 @@ test("the swarm panel shows claims, waiting threads, slots and pauses for the wo
   await openMoreTools(page);
   await page.click('.tabs button[data-tab="swarm"]');
 
+  // This month's usage, every meter listed whether or not it has counted yet.
+  const usage = page.locator("#swarm-usage");
+  await expect(usage).toContainText("Requests");
+  await expect(usage).toContainText("Stored bytes");
+  await expect(usage).toContainText("Nothing is cut off or billed");
+
   const claims = page.locator("#swarm-claims");
   await expect(claims).toContainText(repo);
   await expect(claims).toContainText("src/**");
