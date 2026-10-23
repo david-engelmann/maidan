@@ -14,7 +14,7 @@ use crate::error::StoreError;
 /// When change `thread_id` enters review, spawn its review child, routed to a
 /// provider family other than its author's, unless it is not a change or a
 /// live review child already exists. The author's family is read from the
-/// latest usage record on the change; when none is named there is nothing to
+/// latest usage record the change's claimant reported on it; when none is named there is nothing to
 /// route away from, and no child is spawned.
 pub(crate) async fn spawn_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
@@ -41,9 +41,16 @@ pub(crate) async fn spawn_in_tx(
     if live_child > 0 {
         return Ok(());
     }
+    // The author is the change's claimant (else its creator); only that
+    // seat's own usage records name its family, latest first, ties broken by
+    // record id so the pick is deterministic.
     let usage = sqlx::query(
-        "SELECT provider, model FROM maidan_usage_ledger
-         WHERE thread_id = ? ORDER BY accepted_at DESC LIMIT 1",
+        "SELECT ul.provider, ul.model FROM maidan_usage_ledger ul
+         JOIN maidan_threads t ON t.id = ul.thread_id
+         JOIN maidan_channels ch ON ch.id = t.channel_id
+         WHERE ul.thread_id = ? AND ul.workspace_id = ch.workspace_id
+           AND ul.reporter_id = COALESCE(t.assignee_id, t.created_by)
+         ORDER BY ul.accepted_at DESC, ul.usage_report_id DESC LIMIT 1",
     )
     .bind(thread_id.0)
     .fetch_optional(&mut **tx)

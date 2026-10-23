@@ -37,7 +37,7 @@ where
         .expect("workspace")
         .id;
     let mut ids = Vec::new();
-    for handle in ["author", "same", "other"] {
+    for handle in ["author", "same", "other", "roamer"] {
         ids.push(
             store
                 .create_member(NewMember {
@@ -51,7 +51,7 @@ where
                 .id,
         );
     }
-    let (author, same, other) = (ids[0], ids[1], ids[2]);
+    let (author, same, other, roamer) = (ids[0], ids[1], ids[2], ids[3]);
     let channel = store
         .create_channel(NewChannel {
             workspace_id: ws,
@@ -94,13 +94,54 @@ where
         "no family named, nothing routed"
     );
 
-    // A change written by an Anthropic seat.
+    // A second tenant, where `roamer` once reported under the author's
+    // family: evidence filed in another workspace refuses nothing here.
+    let elsewhere = store
+        .create_workspace(NewWorkspace {
+            name: "elsewhere".into(),
+        })
+        .await
+        .expect("workspace")
+        .id;
+    let elsewhere_channel = store
+        .create_channel(NewChannel {
+            workspace_id: elsewhere,
+            name: "work".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel")
+        .id;
+    let elsewhere_thread = store
+        .create_thread(NewThread {
+            channel_id: elsewhere_channel,
+            parent_thread_id: None,
+            title: Some("elsewhere".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread")
+        .id;
+    record(Usage {
+        ws: elsewhere.0,
+        thread: elsewhere_thread.0,
+        reporter: roamer.0,
+        model: "claude-opus-4",
+    })
+    .await;
+
+    // A change written by an Anthropic seat. Other seats report on it too,
+    // a different family last: only the claimant's own records name the
+    // author's family.
     let change = store.create_thread(new("change")).await.expect("thread").id;
     store.claim_thread(change, author).await.expect("claim");
     for (reporter, model) in [
         (author, "claude-sonnet-4"),
         (same, "claude-opus-4"),
         (other, "gpt-5-codex"),
+        (other, "o4-mini"),
     ] {
         record(Usage {
             ws: ws.0,
@@ -130,10 +171,10 @@ where
         );
     }
     let review = store
-        .claim_next_thread(channel, other, None, None)
+        .claim_next_thread(channel, roamer, None, None)
         .await
         .expect("claim next")
-        .expect("the other family gets the review");
+        .expect("another tenant's evidence does not refuse the review");
     assert_eq!(review.parent_thread_id, Some(change));
     let attributes = store.get_thread_attributes(review.id).await.expect("attrs");
     assert_eq!(attributes.kind, TaskKind::Review);
