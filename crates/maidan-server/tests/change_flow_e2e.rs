@@ -4468,7 +4468,8 @@ async fn a_branch_reset_to_its_base_and_closed_does_not_land() {
 /// The same read says what else holds a watched pull request back: an
 /// unresolved review thread (a review bot's counts), a merge state such as
 /// `BLOCKED` or `BEHIND`, a required check that never reported. Each change
-/// is said once, as `gate_blocked` with the reasons or `gate_clear`.
+/// is said once it holds for two reads, as `gate_blocked` with the reasons
+/// or `gate_clear`.
 #[tokio::test]
 async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
     let h = harness().await;
@@ -4504,7 +4505,12 @@ async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
             .collect()
     };
 
-    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 3);
+    assert_eq!(
+        change_sweep::sweep_once(&h.state).await.ci_notices,
+        2,
+        "pr_opened and checks_done; one read of the gate is not yet said"
+    );
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
     let view = thread_view(&h, &token, thread).await;
     let ci = &view["ci"][0];
     assert_eq!(ci["merge_state"], "BLOCKED", "{view}");
@@ -4533,6 +4539,7 @@ async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
         f.merge_states.insert(93, "CLEAN".into());
         f.required_checks = Some(vec!["lint".into()]);
     }
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
     assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
     let view = thread_view(&h, &token, thread).await;
     assert_eq!(gate_notices(&view)[0]["kind"], "gate_clear", "{view}");
@@ -4544,6 +4551,7 @@ async fn a_watched_pull_says_what_holds_it_back_when_that_changes() {
         .unwrap()
         .merge_states
         .insert(93, "BEHIND".into());
+    assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 0);
     assert_eq!(change_sweep::sweep_once(&h.state).await.ci_notices, 1);
     let view = thread_view(&h, &token, thread).await;
     assert_eq!(

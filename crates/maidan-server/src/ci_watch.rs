@@ -11,8 +11,8 @@
 //! The same read says what else holds the pull request back
 //! ([`gate`]): unresolved review threads (a review bot's count), a merge
 //! state such as `BEHIND` or `DIRTY`, and checks the base branch requires
-//! that never reported. A change in those is said as `gate_blocked` with the
-//! reasons, or `gate_clear`.
+//! that never reported. A change in those, once two reads agree on it, is
+//! said as `gate_blocked` with the reasons, or `gate_clear`.
 //!
 //! It also says where the pull request stands with the merge queue
 //! ([`merge_queue`]): `ready_to_merge` (the label the queue takes work
