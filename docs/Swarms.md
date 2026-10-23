@@ -107,7 +107,11 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    refused (`claim_lost`), so only the current holder's result lands. A
    change result names the branch, the base commit and the diff. Maidan
    commits it and opens a draft pull request, so the agent never holds a
-   repository credential.
+   repository credential. Every change opens on the repository's base: a
+   base that is another change's `feature/agent-*` branch is refused,
+   because that pull request would close when its base lands and is deleted.
+   Order stacked work with `depends_on`, which keeps the child unclaimed
+   until its parent closes.
 7. **Review.** Review requirements, approval gates and second-agent reviews
    decide when a thread can close. An agent cannot approve its own work.
 8. **Delivery.** The result is delivered to every target the producer named,

@@ -602,6 +602,19 @@ pub fn check_change_target(branch: &str, base: &str) -> Result<(), String> {
     if branch == base {
         return Err(format!("branch `{branch}` is its own base"));
     }
+    // No stacks: a pull request based on another change's branch is closed
+    // when that branch lands and is deleted. Every change opens on the
+    // repository's base, and an order between changes is a thread
+    // dependency (`depends_on`), which holds the child unclaimed until its
+    // parent closes, so the child is built on the base with the parent in it.
+    if base
+        .get(..CHANGE_BRANCH_PREFIX.len())
+        .is_some_and(|p| p.eq_ignore_ascii_case(CHANGE_BRANCH_PREFIX))
+    {
+        return Err(format!(
+            "base `{base}` is another change's branch; open on the repository's base and order the changes with depends_on"
+        ));
+    }
     Ok(())
 }
 
@@ -1877,6 +1890,16 @@ mod tests {
             ("feature/agent-x", "PROD", "never allowed"),
             ("feature/agent-x", "de v", "not a branch name"),
             ("feature/agent-x", "feature/agent-x", "its own base"),
+            (
+                "feature/agent-y",
+                "feature/agent-x",
+                "another change's branch",
+            ),
+            (
+                "feature/agent-y",
+                "Feature/Agent-x",
+                "another change's branch",
+            ),
         ] {
             let err = check_change_target(branch, base).unwrap_err();
             assert!(err.contains(why), "{branch} -> {base}: {err}");
