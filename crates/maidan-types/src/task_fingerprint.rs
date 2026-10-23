@@ -17,6 +17,11 @@ use crate::TaskAttributes;
 /// The fingerprint's version. It is part of the hashed bytes, so a change to
 /// what is covered gives every task a new fingerprint rather than a false
 /// match with an old one.
+///
+/// Bump it whenever a covered field's hashed form changes, including a
+/// rename of any `as_str()` value of [`crate::TaskKind`] or
+/// [`crate::TaskEngine`]: those strings are hashed, so a silent rename would
+/// stop identical tasks from matching across the change.
 pub const TASK_FINGERPRINT_VERSION: &str = "maidan-task-fingerprint-v1";
 
 /// The fingerprint of a task's brief and inputs: 64 lowercase hex characters
@@ -43,7 +48,10 @@ pub fn task_fingerprint(
         Some(if attributes.threat_model { "1" } else { "0" }),
     );
     field(&mut hasher, attributes.acceptance.as_deref().map(str::trim));
-    field(&mut hasher, attributes.linear_issue.as_deref());
+    field(
+        &mut hasher,
+        attributes.linear_issue.as_deref().map(str::trim),
+    );
     Some(
         hasher
             .finalize()
@@ -155,5 +163,23 @@ mod tests {
         let a = TaskAttributes::default();
         assert_eq!(task_fingerprint(None, None, &a), None);
         assert_eq!(task_fingerprint(Some("  "), Some(""), &a), None);
+    }
+
+    #[test]
+    fn free_text_inputs_are_trimmed_alike() {
+        let padded = TaskAttributes {
+            acceptance: Some("  tests pass ".into()),
+            linear_issue: Some(" ENG-1\n".into()),
+            ..TaskAttributes::default()
+        };
+        let bare = TaskAttributes {
+            acceptance: Some("tests pass".into()),
+            linear_issue: Some("ENG-1".into()),
+            ..TaskAttributes::default()
+        };
+        assert_eq!(
+            task_fingerprint(Some("t"), None, &padded),
+            task_fingerprint(Some("t"), None, &bare)
+        );
     }
 }

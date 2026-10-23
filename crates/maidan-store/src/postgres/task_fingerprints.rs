@@ -2,18 +2,45 @@
 //! thread, linked to the oldest open task in the workspace with the same
 //! fingerprint.
 
-use maidan_types::{TaskFingerprint, ThreadId};
+use maidan_types::{TaskAttributes, TaskFingerprint, Thread, ThreadId};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+
+/// Fingerprint a just-inserted `thread` from its brief and the task
+/// `attributes` it was created with, and store it in the same transaction.
+/// Every thread-creating path calls this (plain create, create with
+/// footprint, plan children including review children, recipe threads), so
+/// a fingerprint never depends on which door a task came in by. Imported
+/// history is the one exception: it restores past threads, not new work.
+/// A thread with no brief stores nothing.
+pub(crate) async fn record_on(
+    conn: &mut sqlx::PgConnection,
+    thread: &Thread,
+    attributes: &TaskAttributes,
+) -> Result<Option<ThreadId>, StoreError> {
+    let Some(fingerprint) = maidan_types::task_fingerprint(
+        thread.title.as_deref(),
+        thread.description.as_deref(),
+        attributes,
+    ) else {
+        return Ok(None);
+    };
+    let workspace_id: Uuid =
+        sqlx::query_scalar("SELECT workspace_id FROM maidan_channels WHERE id = $1")
+            .bind(thread.channel_id.0)
+            .fetch_one(&mut *conn)
+            .await?;
+    insert_on(conn, thread.id, workspace_id, &fingerprint).await
+}
 
 /// Store `fingerprint` for the new `thread_id` inside the create
 /// transaction, linked to the oldest live task in `workspace_id` that is
 /// open or in review and has the same fingerprint. Two identical tasks
 /// created at the same moment may both find nothing: the link is a hint for
 /// the creator and the claimant, not a uniqueness rule.
-pub(crate) async fn insert_on(
+async fn insert_on(
     conn: &mut sqlx::PgConnection,
     thread_id: ThreadId,
     workspace_id: Uuid,

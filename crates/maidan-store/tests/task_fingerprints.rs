@@ -228,6 +228,21 @@ async fn a_thread_with_no_brief_has_no_fingerprint(store: Arc<dyn Store>) {
     assert_eq!(store.get_task_fingerprint(thread.id).await.unwrap(), None);
 }
 
+/// The plain create path stores a fingerprint too, linked like any other:
+/// which door a task came in by does not change whether it is a duplicate.
+/// A claimed task is still `open` (claims are leases, not a thread state),
+/// so in-flight work is a duplicate target.
+async fn the_plain_create_path_stores_and_links_a_fingerprint(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "plain", 1).await;
+    let first = create(store.as_ref(), room.channel, "Trim the logs", None).await;
+    let plain = store
+        .create_thread(new_thread(room.channel, "Trim the logs"))
+        .await
+        .unwrap();
+    let stored = store.get_task_fingerprint(plain.id).await.unwrap().unwrap();
+    assert_eq!(stored.duplicate_of, Some(first));
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -296,4 +311,5 @@ on_both_backends!(
     another_workspaces_identical_task_is_not_linked,
     a_closed_task_is_not_linked,
     a_thread_with_no_brief_has_no_fingerprint,
+    the_plain_create_path_stores_and_links_a_fingerprint,
 );

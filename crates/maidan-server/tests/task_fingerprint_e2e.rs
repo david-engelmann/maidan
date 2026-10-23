@@ -12,7 +12,8 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    ChannelId, MemberId, MemberKind, NewApiToken, NewChannel, NewMember, NewWorkspace, WorkspaceId,
+    ChannelId, ChannelMemberRole, MemberId, MemberKind, NewApiToken, NewChannel, NewMember,
+    NewWorkspace, WorkspaceId,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -168,4 +169,76 @@ async fn an_identical_task_reads_back_linked_and_is_invisible_to_another_tenant(
         );
         assert!(body.get("fingerprint").is_none(), "{body}");
     }
+}
+
+/// Within one workspace, a duplicate can point at a task in a private
+/// channel: a caller outside that channel reads the duplicate's fingerprint
+/// without learning the original exists, and a member of it sees the link.
+#[tokio::test]
+async fn duplicate_of_is_hidden_unless_the_caller_can_see_the_original() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "private-original".into(),
+        })
+        .await
+        .unwrap();
+    let (alice, alice_token) = member_with(store.as_ref(), ws.id, "alice", CAPS).await;
+    let (_bob, bob_token) = member_with(store.as_ref(), ws.id, "bob", CAPS).await;
+    let mut channels = Vec::new();
+    for (name, private) in [("secret", true), ("open", false)] {
+        channels.push(
+            store
+                .create_channel(NewChannel {
+                    workspace_id: ws.id,
+                    name: name.into(),
+                    topic: None,
+                    private,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let (secret, open) = (channels[0], channels[1]);
+    store
+        .add_channel_member(secret, alice, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let mut ids = Vec::new();
+    for channel in [secret, open] {
+        let (thread, _event) = store
+            .create_thread_with_footprint(
+                maidan_types::NewThread {
+                    channel_id: channel,
+                    parent_thread_id: None,
+                    title: Some("Rotate the keys".into()),
+                    description: None,
+                    created_by: Some(alice),
+                },
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        ids.push(thread.id.0.to_string());
+    }
+    let (original, duplicate) = (&ids[0], &ids[1]);
+
+    // Bob cannot read the original at all.
+    let (status, _) = get_fingerprint(&base, &bob_token, original).await;
+    assert!(
+        status == StatusCode::NOT_FOUND || status == StatusCode::FORBIDDEN,
+        "{status}"
+    );
+    // Bob reads the duplicate, but not where it points.
+    let (status, body) = get_fingerprint(&base, &bob_token, duplicate).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["fingerprint"].as_str().unwrap().len(), 64);
+    assert!(body["duplicate_of"].is_null(), "{body}");
+    // Alice can see the original, so she sees the link.
+    let (status, body) = get_fingerprint(&base, &alice_token, duplicate).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["duplicate_of"], json!(original));
 }
