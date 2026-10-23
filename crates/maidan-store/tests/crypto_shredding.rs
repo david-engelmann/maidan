@@ -1437,6 +1437,59 @@ async fn rt_one_refused_destroy_blocks_every_tenant(db: Db) {
     );
 }
 
+/// The red-team's second repro: a replica with no key in memory must open
+/// each retired key through the KMS to move its data keys, and a KMS that
+/// refuses tenant A's retired key must not stop the pass for tenant B, whose
+/// data keys still move and whose retired key is still destroyed.
+async fn rt2_refused_open_in_rewrap_blocks_every_tenant(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("rt2"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "rt2-a").await;
+    let b = room(store.as_ref(), "rt2-b").await;
+    post(store.as_ref(), &a, "words of a").await;
+    post(store.as_ref(), &b, "words of b").await;
+    let (a_old, _, _, _) = db.active_workspace_key(a.ws.id).await;
+    let (b_old, _, _, _) = db.active_workspace_key(b.ws.id).await;
+    store.rotate_workspace_key(a.ws.id).await.unwrap();
+    store.rotate_workspace_key(b.ws.id).await.unwrap();
+    kms.refuse(a_old);
+    let replica = db.store(kms_keys(1, &kms));
+    for _ in 0..5 {
+        replica.rewrap_content_keys(100).await.unwrap();
+    }
+    assert!(kms.holds(a_old), "tenant A's refused key is left alone");
+    assert!(
+        !kms.holds(b_old),
+        "tenant B's retired KMS key was never destroyed"
+    );
+}
+
+/// Moving to a KMS: a workspace key the KMS refuses to wrap stays where it
+/// was, and every other tenant's key still moves in the same pass.
+async fn rt2_refused_custody_move_blocks_every_tenant(db: Db) {
+    let local = db.store(kek(1));
+    let a = room(local.as_ref(), "rt2-move-a").await;
+    let b = room(local.as_ref(), "rt2-move-b").await;
+    post(local.as_ref(), &a, "words of a").await;
+    let (_, in_b) = post(local.as_ref(), &b, "words of b").await;
+    let (a_key, _, _, _) = db.active_workspace_key(a.ws.id).await;
+
+    let kms = Arc::new(FakeKmsCustody::new("rt2-move"));
+    kms.refuse(a_key);
+    let moved = db.store(kms_keys(1, &kms));
+    for _ in 0..3 {
+        moved.rewrap_content_keys(100).await.unwrap();
+    }
+    let (_, a_custody, _, _) = db.active_workspace_key(a.ws.id).await;
+    let (_, b_custody, _, _) = db.active_workspace_key(b.ws.id).await;
+    assert_eq!(
+        (a_custody.as_str(), b_custody.as_str()),
+        ("local", "fake-kms")
+    );
+    assert_eq!(body_of(moved.as_ref(), in_b.id).await, "words of b");
+    assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 1);
+}
+
 /// A blob delete that fails, as a blob store that is down does.
 fn failing_delete() -> BlobDelete<'static> {
     Box::new(|| Box::pin(async { Err("blob store unavailable".to_string()) }))
@@ -1620,6 +1673,8 @@ on_both_backends!(
     rotation_under_a_custody_destroys_the_old_custody_key,
     erasing_a_workspace_destroys_its_custody_key,
     rt_one_refused_destroy_blocks_every_tenant,
+    rt2_refused_open_in_rewrap_blocks_every_tenant,
+    rt2_refused_custody_move_blocks_every_tenant,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,
     a_plain_tombstone_shreds_too,
