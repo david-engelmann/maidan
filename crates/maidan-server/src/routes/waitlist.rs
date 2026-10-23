@@ -11,7 +11,7 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use maidan_auth::{capability::OPERATOR_GLOBAL, AuthContext};
-use maidan_types::{NewWaitlistEntry, WaitlistEntry, WaitlistEntryId};
+use maidan_types::{NewWaitlistEntry, WaitlistEntry, WaitlistEntryId, WaitlistStatus};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 
@@ -211,6 +211,13 @@ pub async fn invite_waitlist_entry(
         .store
         .get_waitlist_entry(WaitlistEntryId(entry_id))
         .await?;
+    // The store refuses a mint over a completed sign-up; refuse it here
+    // too, before the charge, so the refusal spends nothing.
+    if current.status == WaitlistStatus::SignedUp {
+        return Err(ApiError::Conflict(
+            "the waitlist entry has already signed up".into(),
+        ));
+    }
     crate::rate_limit::charge_email_domain(
         &state,
         crate::rate_limit::DomainCharge::Invite,

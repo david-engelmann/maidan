@@ -1,4 +1,0 @@
-### A thread result is written only under the writer's live claim
-
-- **Changed:** `PUT /threads/{id}/result` and MCP `set_thread_result` require `claim_lease_id`, the lease from the claim response. The store writes the result only while the caller holds the thread under that lease, checked in the same statement on SQLite and Postgres. A lease that lapsed and was taken over, or was released, is refused with `409` type `claim-lost` (MCP invalid params `claim_lost`), and nothing is stored. A body without `claim_lease_id` is refused. `change_result.py` takes `--claim-lease-id`, and the claimant runbook, the OpenRouter claimant and the other examples send it.
-- **Fixed:** A seat whose claim lapsed while it was still working could store its result after another seat took the thread, and whichever delivered second was skipped. Only the current holder's result lands now.

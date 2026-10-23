@@ -1,3 +1,0 @@
-### Each workspace's requests and MCP calls are metered
-
-- **Added:** per-workspace usage meters for the hosted free allowance (Next 27, part 1), with no cut-off and no billing. Each authenticated request and each MCP tool call is counted in memory for the caller's workspace; probes and the metrics scrape are not counted. The `usage_meters` background loop writes the counts to a daily rollup, `maidan_usage_meters` (migration 0197, both backends), every `MAIDAN_USAGE_METER_FLUSH_SECS` (default 60) and once more on shutdown. Each flush adds to the day's total. A crash between flushes loses at most one interval's counts.
