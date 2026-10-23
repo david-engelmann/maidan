@@ -4433,6 +4433,92 @@ async fn a_pull_closed_after_its_head_landed_on_the_base_lands_its_task() {
     assert_eq!(landed, 1);
 }
 
+/// A merge queue that squashes a pull request into a commit of its own on
+/// the base and then closes it (Graphite's does: GitHub reports the pull
+/// request unmerged) lands its task, recording the queue's commit.
+#[tokio::test]
+async fn a_pull_a_merge_queue_squashed_onto_the_base_and_closed_lands_its_task() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(903))]);
+    change_sweep::sweep_once(&h.state).await;
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.base_commits = vec![
+            (
+                "feedface".into(),
+                format!("Revert \"[ENG-1] Greets (#{number})\""),
+            ),
+            (
+                "c0ffee42".into(),
+                format!("[ENG-1] Greets the world (#{number})\n\nSquashed by the queue."),
+            ),
+            (
+                "deadbeef".into(),
+                format!("[ENG-2] Something else (#{})", number + 10),
+            ),
+        ];
+        f.pulls[0].closed_at = Some("2026-10-21T12:00:00Z".into());
+    }
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (1, 0), "{stats:?}");
+    assert_eq!(
+        h.store.get_thread(h.a.thread_id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let landed = h
+        .store
+        .list_events_after(h.a.workspace_id, 0, 500)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == EventKind::ThreadLanded && e.thread_id == Some(h.a.thread_id))
+        .count();
+    assert_eq!(landed, 1);
+}
+
+/// Without a commit naming the pull request on the base, a queue-style close
+/// is still a close without a merge.
+#[tokio::test]
+async fn a_closed_pull_with_no_landing_commit_on_the_base_does_not_land() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.route(&h.a, &change("changed", &h.base_sha, BRANCH, DIFF), 1)
+        .await;
+    h.drain().await;
+    let number = h.fake.lock().unwrap().pulls[0].number;
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(number, vec![check_run("lint", Some("SUCCESS"), Some(904))]);
+    change_sweep::sweep_once(&h.state).await;
+    {
+        let mut f = h.fake.lock().unwrap();
+        f.base_commits = vec![
+            (
+                "feedface".into(),
+                format!("Revert \"[ENG-1] Greets (#{number})\""),
+            ),
+            (
+                "deadbeef".into(),
+                format!("[ENG-2] Mentions (#{number}) mid-subject"),
+            ),
+        ];
+        f.pulls[0].closed_at = Some("2026-10-21T12:00:00Z".into());
+    }
+    let stats = change_sweep::sweep_once(&h.state).await;
+    assert_eq!((stats.landed, stats.noticed), (0, 1), "{stats:?}");
+}
+
 /// A branch reset to its base and then closed has its head on the base too,
 /// but it was never ahead of it: that close lands nothing and is said as a
 /// close without a merge.
