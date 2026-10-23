@@ -9380,6 +9380,13 @@
               "null"
             ]
           },
+          "review_family": {
+            "description": "The provider family a review child is routed to: one other than the\nfamily of the change's author, picked when the change entered review.\nSet by the server only; setting attributes leaves it as it was.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "size": {
             "oneOf": [
               {
