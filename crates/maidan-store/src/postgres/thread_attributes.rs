@@ -94,7 +94,7 @@ pub async fn set_default_engine(
     if updated.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
-    super::audit::append_counted(&mut tx, audit).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
     Ok(())
 }

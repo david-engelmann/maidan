@@ -14,9 +14,9 @@ use maidan_types::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-fn event(action: &str) -> NewAuditEvent {
+fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
-        scope: maidan_types::AuditScope::Instance,
+        scope: maidan_types::AuditScope::Workspace(ws),
         actor_id: None,
         action: action.into(),
         target_kind: None,
@@ -52,7 +52,7 @@ where
             user(handle),
             Some("ext"),
             true,
-            Box::new(|_| event("scim.user.create")),
+            Box::new(move |_| event(ws.id, "scim.user.create")),
         )
     };
     let mint = |member_id, secret: &'static str| NewApiToken {
@@ -80,7 +80,7 @@ where
             None,
             Some("ext"),
             false,
-            event("deactivate"),
+            event(ws.id, "deactivate"),
         )
         .await
         .unwrap()
@@ -108,7 +108,7 @@ where
                 external_id: None,
                 members: vec![bob.id],
             },
-            Box::new(|_| event("scim.group.create")),
+            Box::new(move |_| event(ws.id, "scim.group.create")),
         )
         .await
         .unwrap();
@@ -124,7 +124,7 @@ where
                 external_id: None,
                 members: vec![carol.id],
             },
-            Box::new(|_| event("scim.group.create")),
+            Box::new(move |_| event(ws.id, "scim.group.create")),
         )
         .await
         .is_err());
@@ -138,7 +138,7 @@ where
                 external_id: None,
                 members: vec![ScimMembersOp::Replace(vec![carol.id])],
             },
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws.id, "scim.group.update")),
         )
         .await
         .is_err());
@@ -151,7 +151,7 @@ where
     assert_eq!(kept.members.len(), 1);
     assert_eq!(kept.members[0].member_id, bob.id);
     assert!(store
-        .scim_delete_group_audited(ws.id, group.id, event("scim.group.delete"))
+        .scim_delete_group_audited(ws.id, group.id, event(ws.id, "scim.group.delete"))
         .await
         .is_err());
     assert!(store
@@ -160,7 +160,14 @@ where
         .unwrap()
         .is_some());
     assert!(store
-        .scim_update_user_audited(ws.id, bob.id, Some("robert"), Some("ext"), true, event("u"))
+        .scim_update_user_audited(
+            ws.id,
+            bob.id,
+            Some("robert"),
+            Some("ext"),
+            true,
+            event(ws.id, "u")
+        )
         .await
         .is_err());
     assert_eq!(store.get_member(bob.id).await.unwrap().handle, "bob");
@@ -171,7 +178,14 @@ where
         "no member without its link and record"
     );
     assert!(store
-        .scim_update_user_audited(ws.id, bob.id, None, Some("ext"), false, event("deactivate"))
+        .scim_update_user_audited(
+            ws.id,
+            bob.id,
+            None,
+            Some("ext"),
+            false,
+            event(ws.id, "deactivate")
+        )
         .await
         .is_err());
     assert!(
@@ -180,7 +194,7 @@ where
     );
     assert!(store.get_scim_user(bob.id).await.unwrap().unwrap().active);
     assert!(store
-        .scim_deprovision_audited(ws.id, carol.id, event("delete"))
+        .scim_deprovision_audited(ws.id, carol.id, event(ws.id, "delete"))
         .await
         .is_err());
     assert!(
@@ -290,7 +304,7 @@ async fn delegate_suite(store: &dyn Store) {
                 human(handle),
                 None,
                 true,
-                Box::new(|_| event("scim.user.create")),
+                Box::new(move |_| event(ws.id, "scim.user.create")),
             )
             .await
             .unwrap();
@@ -321,7 +335,14 @@ async fn delegate_suite(store: &dyn Store) {
         .unwrap();
 
     store
-        .scim_update_user_audited(ws.id, delegates[0], None, None, false, event("deactivate"))
+        .scim_update_user_audited(
+            ws.id,
+            delegates[0],
+            None,
+            None,
+            false,
+            event(ws.id, "deactivate"),
+        )
         .await
         .unwrap();
     assert!(store
@@ -341,7 +362,7 @@ async fn delegate_suite(store: &dyn Store) {
     );
 
     assert!(store
-        .scim_deprovision_audited(ws.id, delegates[1], event("delete"))
+        .scim_deprovision_audited(ws.id, delegates[1], event(ws.id, "delete"))
         .await
         .unwrap());
     assert!(store

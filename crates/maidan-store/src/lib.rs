@@ -6,6 +6,7 @@
 pub mod a2a;
 pub mod approval_policy;
 pub mod attribution;
+mod audit_scope;
 mod cancel;
 mod plan_notices;
 
