@@ -450,3 +450,23 @@ async fn an_invite_that_expired_mid_login_does_not_spend_the_domain_budget() {
         assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
     }
 }
+
+#[tokio::test]
+async fn rt_reinvite_of_signed_up_entry_is_409_and_free() {
+    let env = spawn(true, vec!["rt-409.example".to_string()]).await;
+    let op = env.token(&["operator:global"]).await;
+    let ids = entries(&env, &op, &["a@rt-409.example", "b@rt-409.example"]).await;
+    let (s, minted) = env.invite(&op, &ids[0], "10.7.0.1").await;
+    assert_eq!(s, StatusCode::OK, "{minted}");
+    let start = format!("{}{}", env.base, minted["signup_path"].as_str().unwrap());
+    let res = env
+        .signup_roundtrip(start, "sub-a", "a@rt-409.example", "10.7.0.1")
+        .await;
+    assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
+    for _ in 0..3 {
+        let (s, _) = env.invite(&op, &ids[0], "10.7.0.1").await;
+        assert_eq!(s, StatusCode::CONFLICT);
+    }
+    let (s, _) = env.invite(&op, &ids[1], "10.7.0.1").await;
+    assert_eq!(s, StatusCode::OK, "refused re-invites spent the budget");
+}
