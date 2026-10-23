@@ -147,6 +147,10 @@ pub fn init() {
             "Internal bus consumers that resumed from the event log after BusItem::Lagged"
         );
         describe_gauge!(
+            "maidan_content_keys_refused",
+            "Content key rows the last rewrap pass left because the key custody refused them (0 when none)"
+        );
+        describe_gauge!(
             "maidan_indexer_last_event_age_seconds",
             "Seconds since the background indexer last made progress (0 if never); an idle instance ages here, so alert on maidan_indexer_pending_age_seconds"
         );

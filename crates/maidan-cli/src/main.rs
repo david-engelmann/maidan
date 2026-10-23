@@ -261,9 +261,16 @@ async fn run_rotate_workspace_key(
     // destroyed, which is what the rewrap pass does.
     let mut moved = 0u64;
     loop {
-        match store.rewrap_content_keys(500).await.context("rewrap")? {
-            0 => break,
-            n => moved += n,
+        let pass = store.rewrap_content_keys(500).await.context("rewrap")?;
+        moved += pass.changed;
+        if pass.changed == 0 {
+            if pass.skipped > 0 {
+                anyhow::bail!(
+                    "{} key rows the custody refused were left on their old keys; rerun once it allows them",
+                    pass.skipped
+                );
+            }
+            break;
         }
     }
     match retired {

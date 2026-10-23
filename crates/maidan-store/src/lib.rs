@@ -223,8 +223,8 @@ pub use store::{
     DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
     GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, McpSubscriptionStore, MemberStore,
     MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore,
-    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore,
-    ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore,
+    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
+    SessionStore, ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore,
     ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore, TokenStore,
     UsageLedgerStore, WebhookStore, WorkspaceStore,
 };

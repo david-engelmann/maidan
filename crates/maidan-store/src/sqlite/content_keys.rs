@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
+use crate::store::RewrapPass;
 
 /// The key row for `subject`, with the workspace key that wraps it. SQLite
 /// serializes writers, so the append's transaction already excludes a
@@ -220,38 +221,45 @@ pub async fn rewrap(
     pool: &SqlitePool,
     keys: &ContentKeyring,
     limit: i64,
-) -> Result<u64, StoreError> {
-    let mut changed = 0u64;
-    let mut tx = pool.begin().await?;
-
-    let rows = sqlx::query(
-        "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
+) -> Result<RewrapPass, StoreError> {
+    let mut pass = RewrapPass::default();
+    let mut after = Uuid::nil();
+    loop {
+        let mut tx = pool.begin().await?;
+        let rows = sqlx::query(
+            "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
          WHERE destroyed_at IS NULL AND wrapping_key_id NOT LIKE ?
+           AND id > ?
          ORDER BY id
          LIMIT ?",
-    )
-    .bind(keys.workspace_wrapping_like())
-    .bind(limit)
-    .fetch_all(&mut *tx)
-    .await?;
-    for row in &rows {
-        // A savepoint per row: a row the custody refuses is rolled
-        // back, logged and skipped, so one workspace never holds up
-        // another's rewrap or the destroy step below.
-        let mut sp = tx.begin().await?;
-        let id: Uuid = row.get("id");
-        let done: Result<(), StoreError> = async {
+        )
+        .bind(keys.workspace_wrapping_like())
+        .bind(after)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?;
+        let Some(last) = rows.last() else {
+            break;
+        };
+        after = last.get("id");
+        for row in &rows {
+            // A savepoint per row: a row the custody refuses is rolled
+            // back, logged and skipped, so one workspace never holds up
+            // another's rewrap or the destroy step below.
+            let mut sp = tx.begin().await?;
             let id: Uuid = row.get("id");
-            let rewrapped = keys
-                .rewrap_workspace_key(
-                    id,
-                    &WrappedKey {
-                        kek_id: row.get("wrapping_key_id"),
-                        blob: row.get("wrapped_key"),
-                    },
-                )
-                .await?;
-            sqlx::query(
+            let done: Result<(), StoreError> = async {
+                let id: Uuid = row.get("id");
+                let rewrapped = keys
+                    .rewrap_workspace_key(
+                        id,
+                        &WrappedKey {
+                            kek_id: row.get("wrapping_key_id"),
+                            blob: row.get("wrapped_key"),
+                        },
+                    )
+                    .await?;
+                sqlx::query(
                 "UPDATE maidan_workspace_keys SET custody = ?, wrapping_key_id = ?, wrapped_key = ?
              WHERE id = ?",
             )
@@ -261,59 +269,74 @@ pub async fn rewrap(
             .bind(id)
             .execute(&mut *sp)
             .await?;
-            Ok(())
+                Ok(())
+            }
+            .await;
+            match done {
+                Ok(()) => {
+                    sp.commit().await?;
+                    pass.changed += 1;
+                }
+                Err(err) => {
+                    tracing::warn!(row = %id, error = %err, "custody refused to rewrap a workspace key under the primary custody; skipped");
+                    pass.skipped += 1;
+                    sp.rollback().await?;
+                }
+            }
         }
-        .await;
-        match done {
-            Ok(()) => {
-                sp.commit().await?;
-                changed += 1;
-            }
-            Err(err) => {
-                tracing::warn!(row = %id, error = %err, "custody refused to rewrap a workspace key under the primary custody; skipped");
-                sp.rollback().await?;
-            }
+        tx.commit().await?;
+        if (rows.len() as i64) < limit {
+            break;
         }
     }
 
-    let rows = sqlx::query(
-        "SELECT k.id, k.workspace_id, k.kek_id, k.wrapped_key,
+    let mut after = Uuid::nil();
+    loop {
+        let mut tx = pool.begin().await?;
+        let rows = sqlx::query(
+            "SELECT k.id, k.workspace_id, k.kek_id, k.wrapped_key,
                 wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped
          FROM maidan_content_keys k
          LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id
          WHERE k.shredded_at IS NULL
            AND (k.workspace_key_id IS NULL OR wk.retired_at IS NOT NULL)
+           AND k.id > ?
          ORDER BY k.id
          LIMIT ?",
-    )
-    .bind(limit)
-    .fetch_all(&mut *tx)
-    .await?;
-    for row in &rows {
-        // A savepoint per row: a row the custody refuses is rolled
-        // back, logged and skipped, so one workspace never holds up
-        // another's rewrap or the destroy step below.
-        let mut sp = tx.begin().await?;
-        let id: Uuid = row.get("id");
-        let done: Result<(), StoreError> = async {
-            let subject: Uuid = row.get("id");
-            let wrapped = WrappedKey {
-                kek_id: row.get("kek_id"),
-                blob: row.get("wrapped_key"),
-            };
-            open_joined(
-                keys,
-                &wrapped.kek_id,
-                JoinedWorkspaceKey {
-                    kek_id: row.get("wk_kek_id"),
-                    blob: row.get("wk_wrapped"),
-                },
-            )
-            .await?;
-            let data_key = keys.unwrap(subject, &wrapped)?;
-            let active = active_workspace_key(&mut sp, keys, row.get("workspace_id")).await?;
-            let rewrapped = keys.wrap_for_workspace(active, subject, &data_key)?;
-            sqlx::query(
+        )
+        .bind(after)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?;
+        let Some(last) = rows.last() else {
+            break;
+        };
+        after = last.get("id");
+        for row in &rows {
+            // A savepoint per row: a row the custody refuses is rolled
+            // back, logged and skipped, so one workspace never holds up
+            // another's rewrap or the destroy step below.
+            let mut sp = tx.begin().await?;
+            let id: Uuid = row.get("id");
+            let done: Result<(), StoreError> = async {
+                let subject: Uuid = row.get("id");
+                let wrapped = WrappedKey {
+                    kek_id: row.get("kek_id"),
+                    blob: row.get("wrapped_key"),
+                };
+                open_joined(
+                    keys,
+                    &wrapped.kek_id,
+                    JoinedWorkspaceKey {
+                        kek_id: row.get("wk_kek_id"),
+                        blob: row.get("wk_wrapped"),
+                    },
+                )
+                .await?;
+                let data_key = keys.unwrap(subject, &wrapped)?;
+                let active = active_workspace_key(&mut sp, keys, row.get("workspace_id")).await?;
+                let rewrapped = keys.wrap_for_workspace(active, subject, &data_key)?;
+                sqlx::query(
                 "UPDATE maidan_content_keys SET kek_id = ?, wrapped_key = ?, workspace_key_id = ?
              WHERE id = ?",
             )
@@ -323,64 +346,82 @@ pub async fn rewrap(
             .bind(subject)
             .execute(&mut *sp)
             .await?;
-            Ok(())
+                Ok(())
+            }
+            .await;
+            match done {
+                Ok(()) => {
+                    sp.commit().await?;
+                    pass.changed += 1;
+                }
+                Err(err) => {
+                    tracing::warn!(row = %id, error = %err, "custody refused to rewrap a data key under its workspace's active key; skipped");
+                    pass.skipped += 1;
+                    sp.rollback().await?;
+                }
+            }
         }
-        .await;
-        match done {
-            Ok(()) => {
-                sp.commit().await?;
-                changed += 1;
-            }
-            Err(err) => {
-                tracing::warn!(row = %id, error = %err, "custody refused to rewrap a data key under its workspace's active key; skipped");
-                sp.rollback().await?;
-            }
+        tx.commit().await?;
+        if (rows.len() as i64) < limit {
+            break;
         }
     }
-
-    tx.commit().await?;
 
     // Each retired key is destroyed on its own, with no transaction or lock
     // held across the custody call: destroying is idempotent, so the row is
     // marked after its key is gone, and a key the custody refuses is logged
     // and skipped, so one workspace's refusal never stops another's.
-    let doomed = sqlx::query(
-        "SELECT r.id, r.wrapping_key_id, r.wrapped_key FROM maidan_workspace_keys r
+
+    let mut after = Uuid::nil();
+    loop {
+        let doomed = sqlx::query(
+            "SELECT r.id, r.wrapping_key_id, r.wrapped_key FROM maidan_workspace_keys r
          WHERE r.retired_at IS NOT NULL AND r.destroyed_at IS NULL
            AND NOT EXISTS (
                SELECT 1 FROM maidan_content_keys k
                WHERE k.workspace_key_id = r.id AND k.shredded_at IS NULL
            )
+           AND r.id > ?
          ORDER BY r.id
          LIMIT ?",
-    )
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
-    for row in &doomed {
-        let id: Uuid = row.get("id");
-        if let (Some(kek_id), Some(blob)) = (
-            row.get::<Option<String>, _>("wrapping_key_id"),
-            row.get::<Option<Vec<u8>>, _>("wrapped_key"),
-        ) && let Err(err) = keys
-            .destroy_workspace_key(id, &WrappedKey { kek_id, blob })
-            .await
-        {
-            tracing::warn!(workspace_key = %id, error = %err, "custody refused to destroy a retired workspace key; skipped");
-            continue;
-        }
-        let marked = sqlx::query(
-            "UPDATE maidan_workspace_keys
+        )
+        .bind(after)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        let Some(last) = doomed.last() else {
+            break;
+        };
+        after = last.get("id");
+        for row in &doomed {
+            let id: Uuid = row.get("id");
+            if let (Some(kek_id), Some(blob)) = (
+                row.get::<Option<String>, _>("wrapping_key_id"),
+                row.get::<Option<Vec<u8>>, _>("wrapped_key"),
+            ) && let Err(err) = keys
+                .destroy_workspace_key(id, &WrappedKey { kek_id, blob })
+                .await
+            {
+                tracing::warn!(workspace_key = %id, error = %err, "custody refused to destroy a retired workspace key; skipped");
+                pass.skipped += 1;
+                continue;
+            }
+            let marked = sqlx::query(
+                "UPDATE maidan_workspace_keys
              SET wrapping_key_id = NULL, wrapped_key = NULL, destroyed_at = ?
              WHERE id = ? AND destroyed_at IS NULL",
-        )
-        .bind(Utc::now())
-        .bind(id)
-        .execute(pool)
-        .await?;
-        changed += marked.rows_affected();
+            )
+            .bind(Utc::now())
+            .bind(id)
+            .execute(pool)
+            .await?;
+            pass.changed += marked.rows_affected();
+        }
+        if (doomed.len() as i64) < limit {
+            break;
+        }
     }
-    Ok(changed)
+    Ok(pass)
 }
 
 /// Rows the rewrap pass has still to change.

@@ -3934,7 +3934,10 @@ macro_rules! store_delegations {
                 events::append(self.pool(), &self.keys, event, Some(origin)).await
             }
 
-            async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError> {
+            async fn rewrap_content_keys(
+                &self,
+                limit: i64,
+            ) -> Result<crate::store::RewrapPass, StoreError> {
                 content_keys::rewrap(self.pool(), &self.keys, limit).await
             }
 

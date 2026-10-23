@@ -572,8 +572,8 @@ async fn rotation_rewraps_under_the_new_kek(db: Db) {
     assert_eq!(rotated.content_keys_needing_rewrap().await.unwrap(), 1);
     let read = rotated.get_stored_event(posted.id).await.unwrap();
     assert_eq!(message_of(&read.opened_event().unwrap()).body, WORDS);
-    assert_eq!(rotated.rewrap_content_keys(100).await.unwrap(), 1);
-    assert_eq!(rotated.rewrap_content_keys(100).await.unwrap(), 0);
+    assert_eq!(rotated.rewrap_content_keys(100).await.unwrap().changed, 1);
+    assert_eq!(rotated.rewrap_content_keys(100).await.unwrap().changed, 0);
     assert_eq!(rotated.content_keys_needing_rewrap().await.unwrap(), 0);
 
     // The old KEK can be dropped from configuration now.
@@ -1243,7 +1243,7 @@ async fn moving_to_a_kms_rewraps_every_workspace_key(db: Db) {
     let moved = db.store(kms_keys(1, &kms));
     assert_eq!(body_of(moved.as_ref(), posted.id).await, WORDS);
     assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 1);
-    assert_eq!(moved.rewrap_content_keys(100).await.unwrap(), 1);
+    assert_eq!(moved.rewrap_content_keys(100).await.unwrap().changed, 1);
     assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 0);
     let (key, custody, wrapping, _) = db.active_workspace_key(room.ws.id).await;
     assert_eq!(custody, "fake-kms");
@@ -1276,8 +1276,8 @@ async fn a_key_from_before_workspace_keys_moves_under_its_workspace_key(db: Db) 
 
     assert_eq!(body_of(db.store(kek(1)).as_ref(), posted.id).await, WORDS);
     assert_eq!(store.content_keys_needing_rewrap().await.unwrap(), 1);
-    assert_eq!(store.rewrap_content_keys(100).await.unwrap(), 1);
-    assert_eq!(store.rewrap_content_keys(100).await.unwrap(), 0);
+    assert_eq!(store.rewrap_content_keys(100).await.unwrap().changed, 1);
+    assert_eq!(store.rewrap_content_keys(100).await.unwrap().changed, 0);
     let (kek_id, _, workspace_key) = db.key_row(subject).await;
     assert_eq!(kek_id, workspace_kek_id(workspace_key.unwrap()));
     assert_eq!(body_of(db.store(kek(1)).as_ref(), posted.id).await, WORDS);
@@ -1306,7 +1306,7 @@ async fn rotating_a_workspace_key_rewraps_its_keys_and_nothing_else(db: Db) {
 
     let mut moved = 0;
     loop {
-        match store.rewrap_content_keys(100).await.unwrap() {
+        match store.rewrap_content_keys(100).await.unwrap().changed {
             0 => break,
             n => moved += n,
         }
@@ -1367,7 +1367,7 @@ async fn rotation_under_a_custody_destroys_the_old_custody_key(db: Db) {
     let (retired, active) = store.rotate_workspace_key(a.ws.id).await.unwrap();
     assert_eq!(retired, Some(old));
     assert!(kms.holds(old), "kept until its data keys move");
-    while store.rewrap_content_keys(100).await.unwrap() > 0 {}
+    while store.rewrap_content_keys(100).await.unwrap().changed > 0 {}
     assert!(!kms.holds(old), "the retired key's KMS key is destroyed");
     assert!(kms.holds(active) && kms.holds(b_key));
     let fresh = db.store(kms_keys(1, &kms));
@@ -1488,6 +1488,60 @@ async fn rt2_refused_custody_move_blocks_every_tenant(db: Db) {
     );
     assert_eq!(body_of(moved.as_ref(), in_b.id).await, "words of b");
     assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 1);
+}
+
+/// The red-team's third repro: tenant A's refused rows fill a whole batch,
+/// and a pass must still page on to tenant B's rows, move them, and destroy
+/// B's retired key. The pass reports A's rows as skipped, not as done.
+async fn rt3_refused_rows_filling_a_batch_starve_another_tenant(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("rt3"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "rt3-a").await;
+    let b = room(store.as_ref(), "rt3-b").await;
+    post(store.as_ref(), &a, "a one").await;
+    post(store.as_ref(), &a, "a two").await;
+    post(store.as_ref(), &b, "words of b").await;
+    let (a_old, _, _, _) = db.active_workspace_key(a.ws.id).await;
+    let (b_old, _, _, _) = db.active_workspace_key(b.ws.id).await;
+    store.rotate_workspace_key(a.ws.id).await.unwrap();
+    store.rotate_workspace_key(b.ws.id).await.unwrap();
+    kms.refuse(a_old);
+    let replica = db.store(kms_keys(1, &kms));
+    let pass = replica.rewrap_content_keys(1).await.unwrap();
+    assert!(kms.holds(a_old));
+    assert!(
+        !kms.holds(b_old),
+        "tenant B starved by tenant A's refused rows"
+    );
+    assert!(pass.skipped >= 2, "A's refused rows are reported: {pass:?}");
+    let again = replica.rewrap_content_keys(1).await.unwrap();
+    assert_eq!(again.changed, 0);
+    assert_eq!(again.skipped, pass.skipped);
+}
+
+/// Moving to a KMS: refused workspace keys that sort ahead of another
+/// tenant's and fill a batch must not stop that tenant's key moving.
+async fn rt3_refused_custody_moves_filling_a_batch_starve_another_tenant(db: Db) {
+    let local = db.store(kek(1));
+    let mut rooms = Vec::new();
+    for name in ["rt3-move-a", "rt3-move-b", "rt3-move-c"] {
+        let r = room(local.as_ref(), name).await;
+        post(local.as_ref(), &r, "words").await;
+        let (key, _, _, _) = db.active_workspace_key(r.ws.id).await;
+        rooms.push((key, r));
+    }
+    // The tenant whose key sorts last is the one a batch of refusals hides.
+    rooms.sort_by_key(|(key, _)| *key);
+    let kms = Arc::new(FakeKmsCustody::new("rt3-move"));
+    for (key, _) in &rooms[..2] {
+        kms.refuse(*key);
+    }
+    let moved = db.store(kms_keys(1, &kms));
+    let pass = moved.rewrap_content_keys(1).await.unwrap();
+    let (_, last_custody, _, _) = db.active_workspace_key(rooms[2].1.ws.id).await;
+    assert_eq!(last_custody, "fake-kms", "the last tenant was starved");
+    assert_eq!(pass.skipped, 2);
+    assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 2);
 }
 
 /// A blob delete that fails, as a blob store that is down does.
@@ -1675,6 +1729,8 @@ on_both_backends!(
     rt_one_refused_destroy_blocks_every_tenant,
     rt2_refused_open_in_rewrap_blocks_every_tenant,
     rt2_refused_custody_move_blocks_every_tenant,
+    rt3_refused_rows_filling_a_batch_starve_another_tenant,
+    rt3_refused_custody_moves_filling_a_batch_starve_another_tenant,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,
     a_plain_tombstone_shreds_too,
