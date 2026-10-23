@@ -231,7 +231,9 @@ spec:
         - alert: MaidanIndexerBacklogDeep
           # Depth, beside MaidanIndexerStale's age: a burst can be young and
           # still far too deep to drain. Counted up to 100000.
-          expr: maidan_indexer_events_behind > 10000
+          # Every replica reports the same shared backlog, so take the max
+          # across them rather than one alert per pod.
+          expr: max without (instance, pod) (maidan_indexer_events_behind) > 10000
           for: 10m
           labels:
             severity: warning

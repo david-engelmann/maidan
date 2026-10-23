@@ -229,6 +229,38 @@ tests:
                 20000 message events wait to be indexed.
                 Check the embedding provider and maidan_indexer_queue_depth.
 
+  # Two replicas report the same backlog: one alert, not one per pod; and a
+  # replica that has not caught up its view yet does not hide the other's.
+  - interval: 1m
+    input_series:
+      - series: 'maidan_indexer_events_behind{instance="a:8080",pod="maidan-0"}'
+        values: "20000+0x15"
+      - series: 'maidan_indexer_events_behind{instance="b:8080",pod="maidan-1"}'
+        values: "0+0x15"
+    alert_rule_test:
+      - alertname: MaidanIndexerBacklogDeep
+        eval_time: 12m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              slo: search_index
+            exp_annotations:
+              summary: Embedding indexer backlog deep
+              description: |
+                20000 message events wait to be indexed.
+                Check the embedding provider and maidan_indexer_queue_depth.
+  # Two replicas each just under the line are not summed past it.
+  - interval: 1m
+    input_series:
+      - series: 'maidan_indexer_events_behind{instance="a:8080",pod="maidan-0"}'
+        values: "9000+0x15"
+      - series: 'maidan_indexer_events_behind{instance="b:8080",pod="maidan-1"}'
+        values: "9000+0x15"
+    alert_rule_test:
+      - alertname: MaidanIndexerBacklogDeep
+        eval_time: 15m
+        exp_alerts: []
+
   # MaidanIndexerStale keys on pending age: an idle instance whose last event is
   # a day old (86400s) but has nothing waiting must NOT fire.
   - interval: 1m

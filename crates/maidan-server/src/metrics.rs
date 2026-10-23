@@ -553,11 +553,18 @@ async fn refresh_runtime_gauges(state: &AppState) {
     gauge!("maidan_indexer_pending_age_seconds").set(pending_age_secs);
     // Same guard as the age: before the indexer's first pass its watermark is
     // 0 and the whole log would read as behind.
-    let events_behind = match crate::health::indexer_events_behind(state).await {
-        Ok(n) if ms != 0 => n as f64,
-        _ => 0.0,
-    };
-    gauge!("maidan_indexer_events_behind").set(events_behind);
+    if ms == 0 {
+        gauge!("maidan_indexer_events_behind").set(0.0);
+    } else {
+        match crate::health::indexer_events_behind(state).await {
+            Ok(n) => gauge!("maidan_indexer_events_behind").set(n as f64),
+            // A failed or slow count must not read as "caught up".
+            Err(err) => tracing::warn!(
+                error = %err,
+                "metrics: indexer events-behind count failed; gauge left as it was"
+            ),
+        }
+    }
 
     // Live embedding pipeline: queue depth is hard-capped by capacity, so the
     // lag this gauge reports is bounded.

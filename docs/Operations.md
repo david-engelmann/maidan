@@ -517,7 +517,7 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
    an idle instance. Watch `maidan_indexer_pending_age_seconds` (0 when caught up)
    and `/health` `indexer_last_event_at`; `maidan_indexer_last_event_age_seconds`
    grows on any quiet instance. `maidan_indexer_events_behind` is the backlog's
-   depth (counted up to 100000); `MaidanIndexerBacklogDeep` fires past 10000.
+   depth (counted up to 100000, within 2 s; a failed or slow count logs a warning and leaves the gauge at its last value); `MaidanIndexerBacklogDeep` fires when the highest replica's reading stays past 10000.
 
 ### Bus hydrate troubleshooting (`v8.0.0`)
 

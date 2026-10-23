@@ -417,6 +417,12 @@ pub async fn count_events_after_of_kinds(
         return Ok(0);
     }
     let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
+    // This runs on every metrics scrape: bound it server-side so a long
+    // tail of non-message events cannot turn into a slow scan.
+    let mut tx = pool.begin().await?;
+    sqlx::query("SET LOCAL statement_timeout = '2s'")
+        .execute(&mut *tx)
+        .await?;
     let row = sqlx::query(
         "SELECT COUNT(*) AS n FROM (
              SELECT 1 FROM maidan_events
@@ -427,8 +433,9 @@ pub async fn count_events_after_of_kinds(
     .bind(after_id)
     .bind(names)
     .bind(cap)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+    tx.commit().await?;
     Ok(row.get::<i64, _>("n"))
 }
 
