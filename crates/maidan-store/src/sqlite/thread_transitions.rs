@@ -183,6 +183,8 @@ pub(crate) async fn transition_in_tx(
         result_gate_in_tx(tx, thread_id).await?;
         // What the reviewers are handed, pinned before the state moves.
         super::review_packets::record_in_tx(tx, thread_id, actor_id).await?;
+        // A change entering review gets its second-family review child.
+        super::review_family::spawn_in_tx(tx, thread_id, actor_id).await?;
     }
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;

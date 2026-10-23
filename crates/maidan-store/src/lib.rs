@@ -154,6 +154,7 @@ pub mod outbox;
 pub mod postgres;
 pub mod pull_watch;
 mod queue_counts;
+mod review_family;
 pub mod result_delivery;
 pub mod retention_policy;
 mod share_tickets;
