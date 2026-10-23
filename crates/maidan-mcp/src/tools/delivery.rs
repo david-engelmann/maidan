@@ -333,4 +333,130 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, McpError::InvalidParams(_)));
     }
+
+    #[tokio::test]
+    async fn list_result_deliveries_decodes_a_branch_handle() {
+        const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+        let pool = SqlitePoolOptions::new()
+            .max_connections(4)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace {
+                name: "mcp-pr-fields".into(),
+            })
+            .await
+            .unwrap();
+        let agent = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "agent".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "general".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some("change".into()),
+                description: None,
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            agent.id,
+            ws.id,
+            vec![WORKSPACE_READ.to_string(), WORKSPACE_WRITE.to_string()],
+        );
+
+        let rev = chrono::Utc::now();
+        let branch = store
+            .arm_result_delivery(
+                thread.id,
+                &EgressTarget::GithubBranch {
+                    repo: "acme/widgets".into(),
+                    branch: "feature".into(),
+                },
+                rev,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        store
+            .mark_result_delivered(branch.id, Some(&format!("{SHA}#9")), rev)
+            .await
+            .unwrap();
+        let slack = store
+            .arm_result_delivery(
+                thread.id,
+                &EgressTarget::Slack {
+                    channel_id: "C0123ABCDEF".into(),
+                    thread_ts: None,
+                },
+                rev,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        store
+            .mark_result_delivered(slack.id, Some("1699999999.001200"), rev)
+            .await
+            .unwrap();
+
+        let listed = unwrap_content(
+            server
+                .call_tool(
+                    &auth,
+                    "list_result_deliveries",
+                    &json!({ "thread_id": thread.id.0 }),
+                )
+                .await
+                .unwrap(),
+        );
+        let rows = listed.as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        let branch_row = rows
+            .iter()
+            .find(|r| r["surface"] == json!("github_branch"))
+            .unwrap();
+        assert_eq!(branch_row["external_ref"], json!(format!("{SHA}#9")));
+        assert_eq!(branch_row["pr_number"], json!(9));
+        assert_eq!(branch_row["head_sha"], json!(SHA));
+        assert_eq!(
+            branch_row["pr_url"],
+            json!("https://github.com/acme/widgets/pull/9")
+        );
+        let slack_row = rows
+            .iter()
+            .find(|r| r["surface"] == json!("slack"))
+            .unwrap();
+        assert_eq!(slack_row["pr_number"], Value::Null);
+        assert_eq!(slack_row["head_sha"], Value::Null);
+        assert_eq!(slack_row["pr_url"], Value::Null);
+    }
 }
