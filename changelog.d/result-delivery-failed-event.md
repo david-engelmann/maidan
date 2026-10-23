@@ -1,3 +1,0 @@
-### A result that did not reach a target says so on the event stream
-
-- **Added:** a `result_delivery_failed` event (`workspace_id`, `channel_id`, `thread_id`, `surface`, `selector`, `status` `failed` or `skipped`, `last_error`) when a result delivery is skipped (an unblessed or unusable target, a refused change, a replay against a revoked blessing) or fails (retries spent, or a target that will never accept it). It is written in the same transaction as the delivery row's status change, once per move into `failed` or `skipped`: recording the same outcome again says nothing new, and a re-armed delivery that is skipped again says it again. A relay subscribed to the workspace can tell the task's thread where its result did not go.

@@ -8,6 +8,7 @@
 
 use maidan_fsm::ThreadAction;
 use maidan_store::attribution::with_attribution;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ApprovalGateState, Attribution, DelegationGrantId, LandGateStatus, MemberId, MemberKind,
@@ -128,7 +129,7 @@ async fn run_suite(store: &dyn Store) {
     // in the status a client reads or in what a close enforces.
     store.set_review_requirement(worked.id, 1).await.unwrap();
     store
-        .set_thread_result(worked.id, worker, &serde_json::json!({"status": "done"}))
+        .set_thread_result_claiming(worked.id, worker, &serde_json::json!({"status": "done"}))
         .await
         .expect("a gated thread needs a result before review");
     store

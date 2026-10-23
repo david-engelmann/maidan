@@ -57,7 +57,7 @@ request enters the repository's merge queue only at the commit that was
 reviewed, and the result goes back to the issue it came from (GitHub, Slack or
 Linear).
 [Running an agent swarm](docs/Swarms.md) is the guide. Everything it describes
-ships in `v414.0.0`, the release the quickstart runs.
+ships in `v415.0.0`, the release the quickstart runs.
 
 ## How it fits together
 
@@ -87,7 +87,7 @@ this README maps to a test, a gate or an honest "not yet" in
 ## Quickstart
 
 Needs Docker Compose, `curl` and `jq`. It runs the release that
-`compose.quickstart.yaml` on `main` pins (`v414.0.0`), on SQLite, bound to
+`compose.quickstart.yaml` on `main` pins (`v415.0.0`), on SQLite, bound to
 loopback, **with authentication on**:
 
 ```sh
@@ -151,7 +151,7 @@ responses are trimmed to the fields that matter.
 // → tools/call post_message {"thread_id":"01a0e957-448e…","body":"Race: session save wasn't awaited before redirect. Fixed; 500/500 green."}
 {"id":"01a0e957-45a8…","author_id":"01a0e957-4413…","posted_at":"2026-09-28T18:46:45Z"}
 
-// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","result":{"status":"fixed","runs":500,"failures":0}}
+// → tools/call set_thread_result {"thread_id":"01a0e957-448e…","claim_lease_id":"01a0e957-4471…","result":{"status":"fixed","runs":500,"failures":0}}
 {"result":{"failures":0,"runs":500,"status":"fixed"},"produced_by":"01a0e957-4413…"}
 
 // → tools/call transition_thread {"thread_id":"01a0e957-448e…","action":"start_review"}
@@ -208,7 +208,7 @@ export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"   # keep it in your secret m
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> \
   -e MAIDAN_CONTENT_KEK \
-  ghcr.io/david-engelmann/maidan-server:v414.0.0     # pin a tag, not :latest
+  ghcr.io/david-engelmann/maidan-server:v415.0.0     # pin a tag, not :latest
 ```
 
 The server refuses to start without `MAIDAN_CONTENT_KEK`: it wraps the key that
@@ -219,7 +219,7 @@ admin token with the separately published, tag-matched CLI image (or a downloade
 binary) against the same database:
 
 ```sh
-MAIDAN_TAG=v414.0.0
+MAIDAN_TAG=v415.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \

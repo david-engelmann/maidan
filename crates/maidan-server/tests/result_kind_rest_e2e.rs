@@ -1,6 +1,7 @@
 //! `GET /workspaces/:id/results?result_kind=` — exact-match facet on the
 //! namespaced string. Auth ENABLED with a minted bearer.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -99,7 +100,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             review.id,
             member.id,
             &json!({ "result_kind": REVIEW, "status": "reviewed" }),
@@ -117,7 +118,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             plan.id,
             member.id,
             &json!({ "result_kind": PLAN, "status": "reviewed" }),
@@ -135,7 +136,7 @@ async fn list_workspace_results_filters_by_namespaced_kind() {
         .await
         .unwrap();
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             hidden.id,
             member.id,
             &json!({ "result_kind": REVIEW, "status": "reviewed" }),

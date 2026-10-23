@@ -112,52 +112,24 @@ pub async fn occupancy(
             });
         }
     };
-    // Same predicates as `threads::channel_occupancy`, and they have to stay
-    // the same: the two views answer the same question about the same threads,
-    // so a divergence is a contradiction rather than a nuance. `blocked` counts
-    // an explicit `maidan_thread_blocks` row as well as an unsatisfied
-    // dependency, because `claim_next` skips both — reporting a block row as
-    // `queued` advertises work that can never be claimed. The JOIN is the
-    // nested-attribution axis. Mute is not in this query.
-    let row = sqlx::query(
-        "SELECT
-             COUNT(*) AS open_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= NOW())
-                       AND t.work_started_at IS NULL
-                     THEN 1 ELSE 0 END), 0) AS claimed_count,
-             COALESCE(SUM(CASE WHEN t.assignee_id IS NOT NULL
-                       AND (t.assignment_expires_at IS NULL OR t.assignment_expires_at >= NOW())
-                       AND t.work_started_at IS NOT NULL
-                     THEN 1 ELSE 0 END), 0) AS working_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
-                       AND NOT EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                       AND NOT EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                     THEN 1 ELSE 0 END), 0) AS queued_count,
-             COALESCE(SUM(CASE WHEN (t.assignee_id IS NULL OR (t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at < NOW()))
-                       AND (
-                           EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = t.id)
-                           OR EXISTS (
-                           SELECT 1 FROM maidan_thread_dependencies d
-                           JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                           WHERE d.thread_id = t.id AND dep.state NOT IN ('closed', 'archived'))
-                       )
-                     THEN 1 ELSE 0 END), 0) AS blocked_count
-         FROM maidan_threads t
-         JOIN maidan_thread_lineage l ON l.thread_id = t.id
-         JOIN maidan_channels c ON c.id = t.channel_id
-         WHERE c.workspace_id = $1
-           AND l.parent_run_id = $2
-           AND t.state NOT IN ('closed', 'archived')
-           AND t.tombstoned_at IS NULL",
-    )
-    .bind(workspace_id.0)
-    .bind(&parent_run_id)
-    .fetch_one(pool)
-    .await?;
+    // The partition is `channel_occupancy`'s, built from the same
+    // [`crate::claimability`] rules `claim_next` uses, so the two views of one
+    // thread cannot disagree. The JOIN is the nested-attribution axis. Mute is
+    // not in this query.
+    let sql = crate::queue_counts::run_occupancy_select(&crate::queue_counts::RunSql {
+        workspace: "$1",
+        parent_run_id: "$2",
+        thread: crate::claimability::ThreadSql {
+            now: "NOW()",
+            lapsed_worked_secs: crate::postgres::threads::LAPSED_WORKED_SECS,
+            requeued_after_result: crate::postgres::threads::REQUEUED_AFTER_RESULT,
+        },
+    });
+    let row = sqlx::query(&sql)
+        .bind(workspace_id.0)
+        .bind(&parent_run_id)
+        .fetch_one(pool)
+        .await?;
     Ok(RunOccupancy {
         parent_run_id,
         open: row.get::<i64, _>("open_count"),

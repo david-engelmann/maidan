@@ -196,7 +196,11 @@ class Claim:
         that follows from putting finished work back in the queue. Closing it
         is someone else's call.
         """
-        self.maidan.call("PUT", f"/threads/{self.thread_id}/result", {"result": result})
+        self.maidan.call(
+            "PUT",
+            f"/threads/{self.thread_id}/result",
+            {"claim_lease_id": self.lease_id, "result": result},
+        )
         self.maidan.call("POST", f"/threads/{self.thread_id}", {"action": "start_review"})
 
 

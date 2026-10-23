@@ -411,10 +411,17 @@ pub trait SkillStore: Send + Sync {
 pub trait ThreadResultStore: Send + Sync {
     /// A task's structured result: `set` upserts (a re-set overwrites), `get`
     /// returns `None` until one is produced.
+    ///
+    /// Fenced by the claim: `produced_by` must hold the thread under
+    /// `lease_id`, its live lease, checked in the write itself. A lease that
+    /// lapsed and was taken over, or released, is
+    /// [`StoreError::ClaimLost`] and nothing is stored, so a slow seat
+    /// cannot land a result over the seat that holds the work now.
     async fn set_thread_result(
         &self,
         thread_id: ThreadId,
         produced_by: MemberId,
+        lease_id: ClaimLeaseId,
         result: &serde_json::Value,
     ) -> Result<ThreadResult, StoreError>;
     async fn get_thread_result(

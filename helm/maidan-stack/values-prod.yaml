@@ -11,7 +11,7 @@ postgresql:
   # `--set postgresql.image.digest=sha256:…`.
   image:
     repository: ghcr.io/david-engelmann/maidan-postgres
-    tag: v414.0.0
+    tag: v415.0.0
     pullPolicy: IfNotPresent
   auth:
     username: maidan
@@ -51,7 +51,7 @@ maidan:
   production: true
   image:
     repository: ghcr.io/david-engelmann/maidan-server
-    tag: v414.0.0
+    tag: v415.0.0
     pullPolicy: IfNotPresent
   # Artifacts live in MinIO, and a ReadWriteOnce volume cannot follow replicas
   # onto other nodes.

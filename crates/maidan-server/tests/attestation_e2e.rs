@@ -11,6 +11,7 @@
 //! The outsider's borrowed approval counts — delegation stays useful — and the
 //! orchestrator's does not.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -291,10 +292,15 @@ impl World {
         {
             // The same hand-off `close` makes, so the evidence it later re-posts
             // is the evidence approved here.
+            let lease = self
+                .store
+                .claim_lease_for(thread, self.worker)
+                .await
+                .unwrap();
             self.client
                 .put(format!("{}/threads/{}/result", self.base, thread.0))
                 .bearer_auth(&self.worker_tok)
-                .json(&json!({ "result": { "status": "done" } }))
+                .json(&json!({ "result": { "status": "done" }, "claim_lease_id": lease.0 }))
                 .send()
                 .await
                 .unwrap();
@@ -344,10 +350,15 @@ impl World {
                 .send()
         };
         // A gated thread needs a posted result before it can go to review.
+        let lease = self
+            .store
+            .claim_lease_for(thread, self.worker)
+            .await
+            .unwrap();
         self.client
             .put(format!("{}/threads/{}/result", self.base, thread.0))
             .bearer_auth(&self.worker_tok)
-            .json(&json!({ "result": { "status": "done" } }))
+            .json(&json!({ "result": { "status": "done" }, "claim_lease_id": lease.0 }))
             .send()
             .await
             .unwrap();

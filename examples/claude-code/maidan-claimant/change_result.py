@@ -5,9 +5,10 @@ The session claimant hands Maidan the commit it started from and a text diff;
 Maidan commits it and opens the draft pull request. A diff a model copies by
 hand rarely applies, so this takes it straight from git, checks it against
 what Maidan's change flow accepts, and writes the request body for
-`PUT /threads/{id}/result` (`{"result": <envelope>}`).
+`PUT /threads/{id}/result` (`{"result": <envelope>, "claim_lease_id": <lease>}`).
 
     python3 change_result.py --base-sha <sha> --branch feature/agent-<slug> \
+        --claim-lease-id <lease> \
         --title "[ENG-123] ..." --summary-file body.md --linear-issue ENG-123 \
         --deliver-to-file deliver_to.json --out change-result.json
 
@@ -178,7 +179,10 @@ def build(args):
             envelope["summary"] = fh.read()
     if args.linear_issue:
         envelope["linear_issue"] = args.linear_issue
-    body = json.dumps({"result": envelope}, ensure_ascii=False)
+    # The claim fence: Maidan stores the result only while this lease is the
+    # thread's live claim, so a seat whose claim lapsed and was taken over
+    # cannot land its work over the new holder's.
+    body = json.dumps({"result": envelope, "claim_lease_id": args.claim_lease_id}, ensure_ascii=False)
     size = len(body.encode("utf-8"))
     if size > args.max_bytes:
         raise Stop(FALLBACK, f"the result is {size} bytes, over the {args.max_bytes}-byte limit")
@@ -189,6 +193,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--base-sha", required=True, help="the commit the work started from, read before any edit")
     parser.add_argument("--branch", required=True, help="feature/agent-<slug>")
+    parser.add_argument("--claim-lease-id", required=True,
+                        help="the claim's lease, the claim response's claim_lease_id")
     parser.add_argument("--head", default="HEAD", help="the last commit of the work (default HEAD)")
     parser.add_argument("--title", help="the pull request title")
     parser.add_argument("--summary-file", help="a file holding the pull request body")

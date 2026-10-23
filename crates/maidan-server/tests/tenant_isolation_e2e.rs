@@ -306,49 +306,68 @@ async fn no_mcp_tool_serves_or_changes_another_workspace() {
     assert_victim_intact(&h, &victim).await;
 }
 
-/// The live-stream routes, read from the router in `app.rs` (the streams are
-/// not OpenAPI operations, so the spec cannot drive this). A route registered
-/// with `.route(...)` whose path contains `stream` or `subscribe` is one, and
-/// the test asserts the exact set, so a new stream fails it until it is probed.
-/// The live streams the suite probes, read from the router in `app.rs`.
-/// The streams are not OpenAPI operations, so the spec cannot drive this, and
-/// a keyword scan of the paths cannot either: `/mcp/notifications` is a
-/// stream whose path says neither. So the probed set is asserted exactly, and
-/// the total `.route(` count is pinned: adding or removing a route anywhere
-/// fails the test, which is the prompt to check whether the new route is a
-/// stream that needs a probe here.
+/// The live-stream routes. The streams are not OpenAPI operations, and a
+/// keyword scan of the paths cannot find them (`/mcp/notifications` says
+/// neither `stream` nor `subscribe`), so the router's paths are classified:
+/// every path `app.rs` routes is either in the OpenAPI spec or listed in
+/// `fixtures/non_openapi_routes.json` as a stream or not. A new route outside
+/// the spec fails here until it is classified, and a new stream until it is
+/// probed in `stream_probes`. Nothing is pinned to a count.
 fn stream_routes() -> Vec<String> {
-    let source = include_str!("../src/app.rs");
-    let route_count = source.matches(".route(").count();
-    assert_eq!(
-        route_count, 386,
-        "{route_count} routes in app.rs; if one you added is a live stream, probe it in stream_probes and update both numbers"
+    use std::collections::BTreeSet;
+    let routed = routed_paths(include_str!("../src/app.rs"));
+    let spec: Value =
+        serde_json::from_str(include_str!("fixtures/wire/openapi.json")).expect("openapi fixture");
+    let in_spec: BTreeSet<&str> = spec["paths"]
+        .as_object()
+        .expect("openapi paths")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let classes: Value = serde_json::from_str(include_str!("fixtures/non_openapi_routes.json"))
+        .expect("non_openapi_routes fixture");
+    let listed = |key: &str| -> BTreeSet<String> {
+        classes[key]
+            .as_array()
+            .expect("a list of paths")
+            .iter()
+            .map(|p| p.as_str().expect("a path").to_string())
+            .collect()
+    };
+    let streams = listed("streams");
+    let not_streams = listed("not_streams");
+    let outside_spec: BTreeSet<String> = routed
+        .iter()
+        .filter(|p| !in_spec.contains(p.as_str()))
+        .cloned()
+        .collect();
+    let classified: BTreeSet<String> = streams.union(&not_streams).cloned().collect();
+    let unclassified: Vec<&String> = outside_spec.difference(&classified).collect();
+    let stale: Vec<&String> = classified.difference(&outside_spec).collect();
+    assert!(
+        unclassified.is_empty() && stale.is_empty(),
+        "routes outside the OpenAPI spec must be classified in fixtures/non_openapi_routes.json \
+         (a stream also needs a probe in stream_probes); unclassified: {unclassified:?}, \
+         listed but not routed outside the spec: {stale:?}"
     );
+    streams.into_iter().collect()
+}
+
+/// Every literal path passed to `.route(` in the router source.
+fn routed_paths(source: &str) -> std::collections::BTreeSet<String> {
     let mut routes = std::collections::BTreeSet::new();
     let mut rest = source;
     while let Some(start) = rest.find(".route(") {
         rest = &rest[start + ".route(".len()..];
         let trimmed = rest.trim_start();
-        if !trimmed.starts_with('"') {
-            continue;
-        }
-        let after = &trimmed[1..];
-        let Some(end) = after.find('"') else {
+        let Some(after) = trimmed.strip_prefix('"') else {
             continue;
         };
-        let path = &after[..end];
-        if matches!(
-            path,
-            "/ws/subscribe"
-                | "/mcp/stream"
-                | "/mcp/streamable"
-                | "/agui/stream"
-                | "/mcp/notifications"
-        ) {
-            routes.insert(path.to_string());
+        if let Some(end) = after.find('"') {
+            routes.insert(after[..end].to_string());
         }
     }
-    routes.into_iter().collect()
+    routes
 }
 
 /// One probe per way a caller can name the victim on each stream route.

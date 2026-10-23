@@ -519,7 +519,12 @@ pub async fn set_thread_result(
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
     let result = state
         .store
-        .set_thread_result(thread_id, auth.member_id, &body.result)
+        .set_thread_result(
+            thread_id,
+            auth.member_id,
+            maidan_types::ClaimLeaseId(body.claim_lease_id),
+            &body.result,
+        )
         .await?;
     // Arm the close-gate on the write path so a PUT is immediately visible on
     // review-status (the bus consumer in 383.2 is every-replica / replay; tests

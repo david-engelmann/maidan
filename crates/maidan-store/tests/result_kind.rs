@@ -3,6 +3,7 @@
 //! `example.review.result/1` is just a string, and a different producer kind is
 //! equally first-class. Does not touch the in-channel closed list.
 
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     result_kind_from_payload, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
@@ -95,7 +96,7 @@ async fn run_suite(store: &dyn Store) {
     });
     assert_eq!(result_kind_from_payload(&review_payload), Some(REVIEW));
     store
-        .set_thread_result(review.id, member.id, &review_payload)
+        .set_thread_result_claiming(review.id, member.id, &review_payload)
         .await
         .expect("set review");
 
@@ -110,7 +111,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("plan thread");
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             plan.id,
             member.id,
             &json!({ "result_kind": PLAN, "status": "reviewed" }),
@@ -130,7 +131,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("bare thread");
     store
-        .set_thread_result(bare.id, member.id, &json!({ "decision": "approved" }))
+        .set_thread_result_claiming(bare.id, member.id, &json!({ "decision": "approved" }))
         .await
         .expect("set bare");
 
@@ -146,7 +147,7 @@ async fn run_suite(store: &dyn Store) {
         .await
         .expect("foreign thread");
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             foreign.id,
             other_member.id,
             &json!({ "result_kind": REVIEW }),
@@ -221,7 +222,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Re-set updates the facet: the old kind disappears, the new one appears.
     store
-        .set_thread_result(
+        .set_thread_result_claiming(
             review.id,
             member.id,
             &json!({ "result_kind": PLAN, "status": "revised" }),
@@ -244,7 +245,7 @@ async fn run_suite(store: &dyn Store) {
 
     // Re-set without a kind clears the facet.
     store
-        .set_thread_result(review.id, member.id, &json!({ "status": "cleared" }))
+        .set_thread_result_claiming(review.id, member.id, &json!({ "status": "cleared" }))
         .await
         .expect("clear kind");
     assert!(store

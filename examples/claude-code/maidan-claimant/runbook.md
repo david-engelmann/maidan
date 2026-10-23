@@ -234,6 +234,7 @@ REPO=owner/name BASE=dev                 # the github_branch target's repo and b
 git diff --quiet && git diff --cached --quiet || echo "commit first"
 python3 "$CLAIMANT_DIR/change_result.py" \
   --base-sha "$BASE_SHA" --branch "$BRANCH" --repo "$REPO" --base "$BASE" \
+  --claim-lease-id "$CLAIM_LEASE_ID" \
   --title "[ENG-123] Short imperative summary" \
   --summary-file /tmp/pr-body.md --linear-issue ENG-123 \
   --deliver-to-file /tmp/deliver-to.json \
@@ -271,7 +272,15 @@ The envelope's fields:
 | `deliver_to` | copied from the opening message, plus the `github_branch` target |
 
 For a non-`changed` status the envelope is small: call `set_thread_result`
-with it directly.
+with it directly, with `thread_id` and `claim_lease_id`.
+
+Every result write names your claim: `claim_lease_id` in the `PUT` body (the
+helper writes it from `--claim-lease-id`) and in `set_thread_result`. Maidan
+stores the result only while that lease is the thread's live claim. If your
+lease lapsed and another seat took the thread, or the claim was released, the
+write is refused (`409` `claim-lost` over REST, `claim_lost` over MCP) and
+nothing is stored: stop, deliver nothing, and release nothing. The thread is
+someone else's now.
 
 Then read `list_result_deliveries` for the thread. The `github_branch` row is
 `delivered` with the commit and pull request, `pending` while Maidan is still
@@ -320,8 +329,8 @@ The fallback, when you hold your own push access to the repository:
    on the thread and leave it to an operator.
 4. `post_message` on the thread naming the branch, the pull request and why
    it did not go through the change flow.
-5. `set_thread_result` with a plain result (not a waiter envelope, so Maidan
-   attempts no commit): `{"status": "done", "summary": "…", "branch": "…",
+5. `set_thread_result` with `thread_id`, `claim_lease_id` and a plain result
+   (not a waiter envelope, so Maidan attempts no commit): `{"status": "done", "summary": "…", "branch": "…",
    "pr": "<pull request URL>"}`. Maidan delivers a plain result nowhere, so
    the producer's chat or tracker targets are not told: the thread message is
    the record.

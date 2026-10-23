@@ -10,6 +10,7 @@
 // The fake GitHub is a plain axum server, not the API (see clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
@@ -892,7 +893,7 @@ impl Harness {
 
     async fn route(&self, t: &Tenant, result: &Value, log_id: i64) {
         self.store
-            .set_thread_result(t.thread_id, t.member_id, result)
+            .set_thread_result_claiming(t.thread_id, t.member_id, result)
             .await
             .unwrap();
         notification_router::route_event(
@@ -3136,7 +3137,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
         .await
         .unwrap();
     h.store
-        .set_thread_result(h.b.thread_id, h.b.member_id, &json!({"summary": "theirs"}))
+        .set_thread_result_claiming(h.b.thread_id, h.b.member_id, &json!({"summary": "theirs"}))
         .await
         .unwrap();
     h.store

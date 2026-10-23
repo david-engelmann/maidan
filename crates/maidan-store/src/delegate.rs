@@ -433,9 +433,10 @@ macro_rules! store_delegations {
                 &self,
                 thread_id: ThreadId,
                 produced_by: MemberId,
+                lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                thread_results::set(self.pool(), thread_id, produced_by, result).await
+                thread_results::set(self.pool(), thread_id, produced_by, lease_id, result).await
             }
 
             async fn get_thread_result(

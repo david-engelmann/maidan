@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    result_kind_from_payload, ChannelClosedResult, ChannelId, MemberId, ThreadId, ThreadResult,
-    ThreadState, WorkspaceId,
+    result_kind_from_payload, ChannelClosedResult, ChannelId, ClaimLeaseId, MemberId, ThreadId,
+    ThreadResult, ThreadState, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -15,13 +15,19 @@ pub async fn set(
     pool: &PgPool,
     thread_id: ThreadId,
     produced_by: MemberId,
+    lease_id: ClaimLeaseId,
     result: &serde_json::Value,
 ) -> Result<ThreadResult, StoreError> {
     let result_kind = result_kind_from_payload(result);
+    // The claim fence is the SELECT: no row unless `produced_by` holds the
+    // thread under `lease_id` right now, in the same statement as the write.
     let row = sqlx::query(
         "INSERT INTO maidan_thread_results
              (thread_id, result, produced_by, result_kind, produced_actor_id)
-         VALUES ($1, $2, $3, $4, $5)
+         SELECT t.id, $2, $3, $4, $5
+         FROM maidan_threads t
+         WHERE t.id = $1 AND t.assignee_id = $3 AND t.claim_lease_id = $6
+           AND t.tombstoned_at IS NULL
          ON CONFLICT (thread_id) DO UPDATE SET
              result = excluded.result,
              produced_by = excluded.produced_by,
@@ -41,9 +47,13 @@ pub async fn set(
             .unwrap_or(produced_by)
             .0,
     )
-    .fetch_one(pool)
+    .bind(lease_id.0)
+    .fetch_optional(pool)
     .await?;
-    Ok(row_to_result(&row))
+    match row {
+        Some(row) => Ok(row_to_result(&row)),
+        None => Err(crate::thread_results::claim_lost(lease_id)),
+    }
 }
 
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<Option<ThreadResult>, StoreError> {
