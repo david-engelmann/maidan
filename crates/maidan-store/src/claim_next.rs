@@ -84,7 +84,8 @@ pub(crate) struct ClaimSql<'a> {
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
-/// `scope`: the highest priority aged by its wait, then the oldest. The
+/// `scope`: the highest priority aged by its wait, then one [`warm_for`] the
+/// claimer, then the oldest. The
 /// candidate thread is aliased `cand` and its channel `ch`; the caller appends
 /// any row lock.
 pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<'_>) -> String {
@@ -104,6 +105,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
+    let warm = warm_for(member);
     let claimable = claimability::claimable(&ThreadSql {
         now,
         lapsed_worked_secs,
@@ -134,8 +136,27 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
                WHERE a.thread_id = cand.id AND a.engine = {engine}
            ))
            AND {readable}
-         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC
+         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,
+                  {warm} DESC, cand.created_at ASC, cand.id ASC
          LIMIT 1"
+    )
+}
+
+/// 1 when `member` was the last to hold `cand`, else 0 (Context Economics
+/// C6). The agent that last held a thread most likely still has its prompt
+/// prefix cached, so a re-queued thread (changes requested, or a lapsed
+/// claim) goes back to it ahead of older work of the same aged priority.
+/// Only a tiebreak: it never outranks priority or waiting, and never
+/// withholds a thread from anyone else.
+pub(crate) fn warm_for(member: &str) -> String {
+    format!(
+        "(CASE WHEN EXISTS (
+             SELECT 1 FROM maidan_thread_workers w
+             WHERE w.thread_id = cand.id AND w.member_id = {member}
+               AND w.last_held_seq = (
+                   SELECT MAX(w2.last_held_seq) FROM maidan_thread_workers w2
+                   WHERE w2.thread_id = cand.id)
+         ) THEN 1 ELSE 0 END)"
     )
 }
 
