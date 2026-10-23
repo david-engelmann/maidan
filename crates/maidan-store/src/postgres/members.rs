@@ -151,6 +151,26 @@ pub async fn get(pool: &PgPool, id: MemberId) -> Result<Member, StoreError> {
     row_to_member(&row)
 }
 
+/// Set a member's display name, or clear it when `None` — see the SQLite
+/// twin. `NotFound` when the id names no member.
+pub async fn set_display_name(
+    pool: &PgPool,
+    id: MemberId,
+    display_name: Option<&str>,
+) -> Result<Member, StoreError> {
+    let done = sqlx::query(
+        "UPDATE maidan_members SET display_name = $1, updated_at = NOW() WHERE id = $2",
+    )
+    .bind(display_name)
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    if done.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    get(pool, id).await
+}
+
 /// The workspace's member with this handle, ignoring case. `Alice` and
 /// `alice` are the same handle. A tombstoned member is `NotFound`.
 pub async fn get_by_handle(

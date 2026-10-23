@@ -308,6 +308,13 @@ pub trait MemberStore: Send + Sync {
         token_audit: crate::AuditFor<ApiToken>,
     ) -> Result<CreatedAgent, StoreError>;
     async fn get_member(&self, id: MemberId) -> Result<Member, StoreError>;
+    /// Set a member's display name, or clear it with `None`. `NotFound` when
+    /// the id names no member.
+    async fn set_member_display_name(
+        &self,
+        id: MemberId,
+        display_name: Option<String>,
+    ) -> Result<Member, StoreError>;
     /// The member `id` names, if it is one of `workspace_id`'s. A member of
     /// another workspace is `NotFound`, as an id that names no member is, so
     /// a caller cannot learn that the id is a member somewhere else.
