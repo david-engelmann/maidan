@@ -255,6 +255,8 @@ export interface TaskAttributes {
   linear_issue?: string;
   /** The change's review tier; unset counts as B. */
   tier?: "A" | "B";
+  /** The provider family a review child is routed to; server-set. */
+  review_family?: string;
 }
 
 /** A content-addressed pin (`maidan:event/{id}` + its hash). */
@@ -363,6 +365,8 @@ export interface ThreadReview {
   decision: ReviewDecision;
   note?: string | null;
   dismissed_at?: string | null;
+  /** Full head SHA of the change the verdict was given against. */
+  head_sha?: string | null;
   created_at: string;
   updated_at: string;
 }

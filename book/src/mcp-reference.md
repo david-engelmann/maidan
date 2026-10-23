@@ -602,6 +602,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 {
   "properties": {
     "attributes": {
+      "additionalProperties": false,
       "description": "the task's attributes, stored with the thread (the shape set_thread_attributes takes, without thread_id)",
       "properties": {
         "acceptance": {

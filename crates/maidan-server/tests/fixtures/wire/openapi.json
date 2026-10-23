@@ -7708,6 +7708,13 @@
           "decision": {
             "$ref": "#/components/schemas/ReviewDecision"
           },
+          "head_sha": {
+            "description": "The full head SHA of the change this verdict was given against.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "Position in the history; increases with every verdict.",
             "format": "int64",
@@ -9360,6 +9367,7 @@
         "type": "object"
       },
       "TaskAttributes": {
+        "additionalProperties": false,
         "description": "A thread's task attributes, whole: setting them replaces every field.",
         "properties": {
           "acceptance": {
@@ -9384,6 +9392,13 @@
           },
           "linear_issue": {
             "description": "The Linear issue the task is for (`ENG-1234`). Where the workspace\nhas turned claim comments on, the task's claim and release are said\non it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review_family": {
+            "description": "The provider family a review child is routed to: one other than the\nfamily of the change's author, picked when the change entered review.\nSet by the server only; setting attributes leaves it as it was.",
             "type": [
               "string",
               "null"
@@ -9424,6 +9439,29 @@
           "human"
         ],
         "type": "string"
+      },
+      "TaskFingerprint": {
+        "description": "A task's stored fingerprint, and the earlier open task with the same\nfingerprint in the same workspace that it was linked to when created.",
+        "properties": {
+          "duplicate_of": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The oldest live task in the workspace that was open or in review\nwith the same fingerprint when this one was created. `None` when\nthere was none."
+              }
+            ]
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "type": "object"
       },
       "TaskFlag": {
         "description": "Why a task needs a look.",
@@ -10523,6 +10561,13 @@
           },
           "evidence_root": {
             "description": "The evidence root of the review packet this verdict was given against.\nOnly an approval bound to the thread's latest packet counts toward its\nclose.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "head_sha": {
+            "description": "The full head SHA of the change this verdict was given against: the\ntracked pull's head when it was submitted. A push that moves the head\ndismisses an approval given to an earlier one.",
             "type": [
               "string",
               "null"
@@ -24731,6 +24776,66 @@
           }
         ],
         "summary": "A thread's evidence timeline",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/fingerprint": {
+      "get": {
+        "description": "The SHA-256 of the task's brief and inputs (title, description, kind,\nengine, threat-model flag, acceptance, Linear issue), and the oldest open\ntask in the workspace with the same fingerprint when this one was\ncreated. `404` when the thread has no title or description.",
+        "operationId": "get_task_fingerprint",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskFingerprint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a thread's task fingerprint",
         "tags": [
           "threads"
         ]

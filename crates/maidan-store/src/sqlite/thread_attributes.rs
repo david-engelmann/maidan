@@ -113,7 +113,7 @@ pub(crate) async fn is_review_in_tx(
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier FROM maidan_thread_attributes WHERE thread_id = ?",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, review_family FROM maidan_thread_attributes WHERE thread_id = ?",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -136,6 +136,7 @@ pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttribute
         tier: row
             .try_get::<Option<String>, _>("tier")?
             .and_then(|tier| TaskTier::parse(&tier)),
+        review_family: row.try_get("review_family")?,
     })
 }
 
@@ -177,5 +178,6 @@ pub async fn set(
     .bind(Utc::now().to_rfc3339())
     .execute(pool)
     .await?;
-    Ok(attributes)
+    // The server-set review routing is left as stored and read back.
+    get(pool, thread_id).await
 }

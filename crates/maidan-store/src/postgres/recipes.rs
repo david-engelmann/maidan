@@ -115,6 +115,8 @@ async fn insert_thread(
     .await?;
     let thread = threads::row_to_thread(&row)?;
     super::thread_attributes::apply_default_engine_on(tx, thread.id).await?;
+    super::task_fingerprints::record_on(tx, &thread, &maidan_types::TaskAttributes::default())
+        .await?;
     let event = Event::ThreadCreated {
         occurred_at: Utc::now(),
         workspace_id,
