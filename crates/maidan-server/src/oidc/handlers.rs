@@ -255,6 +255,13 @@ async fn complete_signup(
                     "the invite was issued to a different email".into(),
                 ));
             }
+            // The sign-up transaction re-checks both under its lock; this
+            // turns a used or expired invite away before the domain charge.
+            if entry.status != maidan_types::WaitlistStatus::Invited
+                || entry.invite_expires_at.is_none_or(|at| at <= Utc::now())
+            {
+                return Err(ApiError::Forbidden("the invite is no longer valid".into()));
+            }
             SignupGate::Invite
         }
         None => {

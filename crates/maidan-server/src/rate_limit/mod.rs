@@ -185,16 +185,14 @@ pub(crate) enum DomainCharge {
     Signup,
 }
 
-/// The domain of `email`, normalized the way the waitlist charge
-/// normalizes it; `None` when there is no domain part.
-/// The bucket key for `email`'s domain: lowercased, one trailing dot
-/// dropped, and an internationalized name in its ASCII (punycode) form, so
+/// The bucket key for `email`'s domain (`None` when it has none):
+/// lowercased, trailing dots dropped, and an internationalized name in its ASCII (punycode) form, so
 /// `Example.COM.`, `example.com` and a Unicode spelling share one budget.
 /// A domain the IDNA rules refuse keeps its lowercased spelling and is
 /// still charged.
 fn email_domain(email: &str) -> Option<String> {
     let raw = email.trim().rsplit_once('@')?.1.trim();
-    let raw = raw.strip_suffix('.').unwrap_or(raw).to_lowercase();
+    let raw = raw.trim_end_matches('.').to_lowercase();
     if raw.is_empty() {
         return None;
     }
@@ -815,6 +813,7 @@ mod tests {
             " b@Example.COM ",
             "c@example.com.",
             "d@EXAMPLE.com.",
+            "e@example.com...",
         ] {
             assert_eq!(
                 email_domain(email).as_deref(),
@@ -830,7 +829,7 @@ mod tests {
             email_domain("f@xn--bcher-kva.example.").as_deref(),
             Some("xn--bcher-kva.example")
         );
-        for email in ["nodomain", "g@", "h@."] {
+        for email in ["nodomain", "g@", "h@.", "i@..."] {
             assert_eq!(email_domain(email), None, "{email}");
         }
     }
