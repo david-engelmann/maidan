@@ -1184,13 +1184,14 @@ async fn a_kms_refusing_one_tenant_blocks_only_that_tenant(db: Db) {
     let (_, in_a) = post(store.as_ref(), &a, "words of a").await;
     let (_, in_b) = post(store.as_ref(), &b, "words of b").await;
 
-    let (_, a_custody, a_wrapping, a_blob) = db.active_workspace_key(a.ws.id).await;
+    let (a_key, a_custody, a_wrapping, a_blob) = db.active_workspace_key(a.ws.id).await;
     let (b_key, b_custody, _, _) = db.active_workspace_key(b.ws.id).await;
     assert_eq!(
         (a_custody.as_str(), b_custody.as_str()),
         ("fake-kms", "fake-kms")
     );
-    assert_eq!(a_wrapping, "fake-kms:two-tenant");
+    assert_eq!(a_wrapping, format!("fake-kms:two-tenant:{a_key}"));
+    assert!(kms.holds(a_key) && kms.holds(b_key), "a custody key each");
 
     // A replica with nothing in memory opens each key through the KMS, once.
     let replica = db.store(kms_keys(1, &kms));
@@ -1244,11 +1245,9 @@ async fn moving_to_a_kms_rewraps_every_workspace_key(db: Db) {
     assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 1);
     assert_eq!(moved.rewrap_content_keys(100).await.unwrap(), 1);
     assert_eq!(moved.content_keys_needing_rewrap().await.unwrap(), 0);
-    let (_, custody, wrapping, _) = db.active_workspace_key(room.ws.id).await;
-    assert_eq!(
-        (custody.as_str(), wrapping.as_str()),
-        ("fake-kms", "fake-kms:move")
-    );
+    let (key, custody, wrapping, _) = db.active_workspace_key(room.ws.id).await;
+    assert_eq!(custody, "fake-kms");
+    assert_eq!(wrapping, format!("fake-kms:move:{key}"));
 
     // A different instance KEK with the same KMS still reads the words.
     let fresh = db.store(kms_keys(7, &kms));
@@ -1349,6 +1348,67 @@ async fn erasing_a_workspace_destroys_its_key(db: Db) {
     assert_eq!(db.count(keys_sql, kept.ws.id.0).await, 1);
     assert_eq!(
         body_of(db.store(kek(1)).as_ref(), survivor.id).await,
+        "kept words"
+    );
+}
+
+/// Rotating one tenant's key under a KMS destroys the retired key's own KMS
+/// key once nothing needs it; the other tenant's KMS key is untouched.
+async fn rotation_under_a_custody_destroys_the_old_custody_key(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("rotate"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "kms-rotate-a").await;
+    let b = room(store.as_ref(), "kms-rotate-b").await;
+    let (_, in_a) = post(store.as_ref(), &a, "words of a").await;
+    let (_, in_b) = post(store.as_ref(), &b, "words of b").await;
+    let (old, _, _, _) = db.active_workspace_key(a.ws.id).await;
+    let (b_key, _, _, _) = db.active_workspace_key(b.ws.id).await;
+
+    let (retired, active) = store.rotate_workspace_key(a.ws.id).await.unwrap();
+    assert_eq!(retired, Some(old));
+    assert!(kms.holds(old), "kept until its data keys move");
+    while store.rewrap_content_keys(100).await.unwrap() > 0 {}
+    assert!(!kms.holds(old), "the retired key's KMS key is destroyed");
+    assert!(kms.holds(active) && kms.holds(b_key));
+    let fresh = db.store(kms_keys(1, &kms));
+    assert_eq!(body_of(fresh.as_ref(), in_a.id).await, "words of a");
+    assert_eq!(body_of(fresh.as_ref(), in_b.id).await, "words of b");
+}
+
+/// Erasing a tenant under a KMS destroys its KMS key. A KMS that refuses the
+/// destroy fails the erasure and changes nothing; the other tenant is
+/// untouched either way.
+async fn erasing_a_workspace_destroys_its_custody_key(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("erase"));
+    let store = db.store(kms_keys(1, &kms));
+    let gone = room(store.as_ref(), "kms-erase-me").await;
+    let kept = room(store.as_ref(), "kms-keep-me").await;
+    let (_, doomed) = post(store.as_ref(), &gone, WORDS).await;
+    let (_, survivor) = post(store.as_ref(), &kept, "kept words").await;
+    let (gone_key, _, _, _) = db.active_workspace_key(gone.ws.id).await;
+    let (kept_key, _, _, _) = db.active_workspace_key(kept.ws.id).await;
+    let keys_sql = "SELECT COUNT(*) FROM maidan_workspace_keys WHERE workspace_id = ?";
+
+    kms.refuse(gone_key);
+    assert!(store.erase_workspace(gone.ws.id).await.is_err());
+    assert_eq!(db.count(keys_sql, gone.ws.id.0).await, 1);
+    assert!(kms.holds(gone_key));
+    kms.allow(gone_key);
+    assert_eq!(
+        body_of(db.store(kms_keys(1, &kms)).as_ref(), doomed.id).await,
+        WORDS
+    );
+
+    store.erase_workspace(gone.ws.id).await.unwrap();
+    assert!(
+        !kms.holds(gone_key),
+        "the erased tenant's KMS key is destroyed"
+    );
+    assert_eq!(db.count(keys_sql, gone.ws.id.0).await, 0);
+    assert!(kms.holds(kept_key));
+    assert_eq!(db.count(keys_sql, kept.ws.id.0).await, 1);
+    assert_eq!(
+        body_of(db.store(kms_keys(1, &kms)).as_ref(), survivor.id).await,
         "kept words"
     );
 }
@@ -1533,6 +1593,8 @@ on_both_backends!(
     a_key_from_before_workspace_keys_moves_under_its_workspace_key,
     rotating_a_workspace_key_rewraps_its_keys_and_nothing_else,
     erasing_a_workspace_destroys_its_key,
+    rotation_under_a_custody_destroys_the_old_custody_key,
+    erasing_a_workspace_destroys_its_custody_key,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,
     a_plain_tombstone_shreds_too,

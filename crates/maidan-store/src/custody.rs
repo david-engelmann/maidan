@@ -213,6 +213,13 @@ impl FakeKmsCustody {
         }
     }
 
+    /// Serve this workspace key again after [`Self::refuse`].
+    pub fn allow(&self, workspace_key_id: Uuid) {
+        if let Ok(mut refused) = self.refused.write() {
+            refused.remove(&workspace_key_id);
+        }
+    }
+
     /// How many unwraps reached this custody.
     pub fn unwraps(&self) -> usize {
         self.unwraps.load(std::sync::atomic::Ordering::SeqCst)
