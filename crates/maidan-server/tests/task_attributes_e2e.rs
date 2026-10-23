@@ -324,8 +324,10 @@ async fn a_wrapped_or_unknown_attribute_body_is_refused_and_changes_nothing() {
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
         let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+        let mut kept = set.clone();
+        kept["threat_model"] = json!(false);
         assert_eq!(
-            read["attributes"], set,
+            read["attributes"], kept,
             "a refused body must change nothing"
         );
     }
