@@ -293,6 +293,55 @@ async fn a_bad_attribute_value_creates_no_thread() {
 }
 
 #[tokio::test]
+async fn a_wrapped_or_unknown_attribute_body_is_refused_and_changes_nothing() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "strict-attrs").await;
+    let set = json!({
+        "kind": "change",
+        "engine": "pi",
+        "acceptance": "the gate passes",
+        "linear_issue": "ENG-6023"
+    });
+    let (status, created) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "keep me", "attributes": set }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let thread_id = created["id"].as_str().unwrap().to_string();
+
+    for body in [
+        json!({ "attributes": { "kind": "change", "engine": "session" } }),
+        json!({ "kind": "change", "twin_of": "ENG-6001" }),
+    ] {
+        let response = reqwest::Client::new()
+            .put(format!("{base}/threads/{thread_id}/attributes"))
+            .bearer_auth(&room.token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+        let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+        assert_eq!(
+            read["attributes"], set,
+            "a refused body must change nothing"
+        );
+    }
+
+    // Intake refuses an unknown key too, and makes no thread.
+    let (status, _) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "typo", "attributes": { "kind": "change", "engnie": "pi" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(store.list_threads(room.channel).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn an_engine_filtered_claim_skips_other_engines() {
     let (base, store) = spawn().await;
     let room = room(store.as_ref(), "claim-engines").await;

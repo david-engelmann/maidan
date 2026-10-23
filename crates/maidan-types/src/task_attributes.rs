@@ -149,6 +149,10 @@ pub const ACCEPTANCE_MAX_CHARS: usize = 4000;
 /// A thread's task attributes, whole: setting them replaces every field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+// A set replaces every field, so an unknown key is refused, not dropped: a
+// body wrapped as `{"attributes": {…}}` would otherwise parse as all defaults
+// and wipe the thread's engine, acceptance and Linear issue.
+#[serde(deny_unknown_fields)]
 pub struct TaskAttributes {
     #[serde(default)]
     pub kind: TaskKind,
