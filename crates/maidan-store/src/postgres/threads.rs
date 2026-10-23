@@ -942,7 +942,8 @@ pub(crate) async fn claim_next_with_event(
     Ok((Some(thread), events))
 }
 
-/// Reap up to `limit` lapsed leases on open, live threads, charging each
+/// Reap up to `limit` lapsed leases on live threads that are not closed or
+/// archived (a claim held into review lapses too), charging each
 /// claim's worked time to its thread's wall budget and appending a
 /// `ClaimExpired` (or, over budget, a `ClaimFailed`) for each dead holder, all
 /// in one transaction. `SKIP LOCKED` lets concurrent reapers (one per replica)
@@ -961,7 +962,7 @@ pub async fn reap_expired_claims(
              FROM maidan_threads
              WHERE assignee_id IS NOT NULL
                AND assignment_expires_at IS NOT NULL AND assignment_expires_at < $1
-               AND tombstoned_at IS NULL AND state = 'open'
+               AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')
              ORDER BY assignment_expires_at ASC, id ASC
              LIMIT $2
              FOR UPDATE SKIP LOCKED
