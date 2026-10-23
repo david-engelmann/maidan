@@ -7,3 +7,12 @@ bearer_token_env_var = "MAIDAN_TOKEN"
 # A claim waits for work for up to wait_ms (300 s); give the call room to
 # answer before Codex gives up on it.
 tool_timeout_sec = 330
+# An unattended run has no one to answer an approval prompt, and Codex asks
+# before any tool annotated destructive (report_usage, which can stop an
+# over-budget run, is one), so the ask becomes a refusal. The seat token's
+# capabilities and Maidan's server-side gates are what bind the session.
+default_tools_approval_mode = "approve"
+
+[sandbox_workspace_write]
+# The runbook's REST calls (task attributes, the result) go out with curl.
+network_access = true

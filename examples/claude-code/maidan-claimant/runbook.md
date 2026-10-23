@@ -87,6 +87,26 @@ for anything but a server on this machine.
 Its capabilities must include `thread:transition` and `workspace:write`; if
 they do not, stop and say so: this is not a seat token.
 
+**Check the model.** Run on a model the workspace allows. For Codex that is
+`gpt-5.6-sol`, named with `-m`; never `gpt-6-astra`. You report the model
+in step 6, so a run on any other model shows up in the ledger.
+
+## 0b. Before every claim: the toolchain
+
+A seat that cannot build the repository still claims work, and each claim it
+makes costs a lease and a sent-back round. Before each claim, run, in this
+checkout:
+
+1. the toolchain's version (`cargo --version` for a Rust repository,
+   `node --version` for a Node one, and so on);
+2. the repository's narrowest fast check, as its `CLAUDE.md`, `AGENTS.md` or
+   `CONTRIBUTING.md` names it. Failing that, the smallest crate or package's
+   unit tests (for example, `cargo test -p <smallest crate> --lib -q`).
+
+If either fails, do not claim. Say what failed and stop: the person or
+operator running the seat fixes the machine, not the task. A pass here says
+nothing about the task, only that the seat can do it.
+
 ## 1. Claim
 
 Call `claim_next_workspace_thread` with:
