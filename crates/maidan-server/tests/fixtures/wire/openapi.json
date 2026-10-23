@@ -9390,6 +9390,17 @@
           "kind": {
             "$ref": "#/components/schemas/TaskKind"
           },
+          "lane": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskLane",
+                "description": "The service lane the task may run in: batch or flex for work whose\ndeadline has slack, unset for realtime."
+              }
+            ]
+          },
           "linear_issue": {
             "description": "The Linear issue the task is for (`ENG-1234`). Where the workspace\nhas turned claim comments on, the task's claim and release are said\non it.",
             "type": [
@@ -9477,6 +9488,14 @@
           "change",
           "plan",
           "review"
+        ],
+        "type": "string"
+      },
+      "TaskLane": {
+        "description": "The service lane a thread's model calls may run in (Context Economics\nC7). A thread whose deadline has slack can be marked for a provider's\nbatch API (about half price, results within hours) or its flex tier\n(discounted, slower, may be refused under load). Unset is the realtime\nlane, the default.",
+        "enum": [
+          "batch",
+          "flex"
         ],
         "type": "string"
       },

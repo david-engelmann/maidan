@@ -716,6 +716,92 @@ async fn a_tier_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
     );
 }
 
+/// A task's service lane (Context Economics C7) is stored at intake, carried
+/// on its live claim and its pull's metrics row, restated later, and read back
+/// unset when a restatement leaves it out: unset is never stored as a lane.
+async fn a_lane_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "lanes", 1).await;
+    let batch = TaskAttributes {
+        lane: Some(TaskLane::Batch),
+        ..attrs(TaskKind::Change, Some(TaskEngine::Pi), false)
+    };
+    let (thread, _event) = store
+        .create_thread_with_footprint(
+            new_thread(room.channel, "laned"),
+            Some(Footprint {
+                repo: "example/app".into(),
+                mode: FootprintMode::Exclusive,
+                items: vec![FootprintItem {
+                    kind: FootprintKind::Lane,
+                    value: "db".into(),
+                }],
+            }),
+            Some(batch.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(store.get_thread_attributes(thread.id).await.unwrap(), batch);
+    store
+        .claim_next_thread(room.channel, room.agents[0], Some(600), None)
+        .await
+        .unwrap()
+        .expect("the task claims");
+    let claims = store.list_active_claims(room.ws, None, None).await.unwrap();
+    let entry = claims
+        .iter()
+        .find(|claim| claim.thread_id == thread.id)
+        .expect("the claim is listed");
+    assert_eq!(entry.attributes.lane, Some(TaskLane::Batch));
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: thread.id,
+            repo: "example/app".into(),
+            pull_number: 8,
+            commit_sha: "c".repeat(40),
+            base_sha: "a".repeat(40),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: None,
+            rebase: false,
+            previous_head: None,
+            linear_issue: None,
+        })
+        .await
+        .unwrap();
+    let pulls = store
+        .list_change_pulls(room.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(pulls[0].attributes.lane, Some(TaskLane::Batch));
+
+    let flex = TaskAttributes {
+        lane: Some(TaskLane::Flex),
+        ..batch.clone()
+    };
+    assert_eq!(
+        store
+            .set_thread_attributes(thread.id, flex.clone())
+            .await
+            .unwrap(),
+        flex
+    );
+    let unsaid = TaskAttributes {
+        lane: None,
+        ..batch
+    };
+    store
+        .set_thread_attributes(thread.id, unsaid)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_thread_attributes(thread.id).await.unwrap().lane,
+        None
+    );
+}
+
 /// A review of a change finishes before the change merges, so a review
 /// child moves ahead of its open parent; any other child still may not.
 async fn a_review_child_closes_ahead_of_its_open_change(store: Arc<dyn Store>) {
@@ -785,5 +871,6 @@ on_both_backends!(
     a_change_pull_keeps_the_first_linear_issue_a_round_names,
     a_tasks_model_spend_reads_back_as_its_cost,
     a_tier_is_stored_restated_and_left_unset,
+    a_lane_is_stored_restated_and_left_unset,
     a_review_child_closes_ahead_of_its_open_change,
 );

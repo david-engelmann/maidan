@@ -139,6 +139,7 @@ async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn
         acceptance: Some("It passes.".into()),
         linear_issue: Some("ENG-1".into()),
         tier: Some(TaskTier::B),
+        lane: Some(TaskLane::Flex),
         review_family: None,
     };
     let (thread, _) = store
