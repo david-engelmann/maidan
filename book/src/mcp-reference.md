@@ -639,6 +639,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         },
         "threat_model": {
           "type": "boolean"
+        },
+        "tier": {
+          "description": "the change's review tier; omitted reads as B in the metrics",
+          "enum": [
+            "A",
+            "B"
+          ],
+          "type": "string"
         }
       },
       "required": [
@@ -2476,6 +2484,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "threat_model": {
       "type": "boolean"
+    },
+    "tier": {
+      "description": "the change's review tier; omitted reads as B in the metrics",
+      "enum": [
+        "A",
+        "B"
+      ],
+      "type": "string"
     }
   },
   "required": [

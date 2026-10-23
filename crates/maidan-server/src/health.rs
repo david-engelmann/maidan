@@ -191,6 +191,42 @@ pub(crate) async fn indexer_backlog(
         .map(|(_, at)| at))
 }
 
+/// The most indexable events [`indexer_events_behind`] counts; a deeper
+/// backlog reads as this, so the gauge never costs a full log scan.
+pub(crate) const INDEXER_EVENTS_BEHIND_CAP: i64 = 100_000;
+
+/// How long the events-behind count may run on a scrape. Postgres enforces
+/// the same bound server-side with a local `statement_timeout`.
+pub(crate) const INDEXER_EVENTS_BEHIND_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(2);
+
+/// How many indexable events the indexer has not handled, up to
+/// [`INDEXER_EVENTS_BEHIND_CAP`]. The same `MAX(id)` fast path as
+/// [`indexer_backlog`] answers the caught-up case with one read. A count
+/// that takes longer than [`INDEXER_EVENTS_BEHIND_TIMEOUT`] is abandoned
+/// with an error, so a slow scan cannot stall the scrape.
+pub(crate) async fn indexer_events_behind(state: &AppState) -> Result<i64, String> {
+    let processed = state.indexer_processed_log_id.load(Ordering::Relaxed);
+    if state
+        .store
+        .max_event_id()
+        .await
+        .map_err(|e| e.to_string())?
+        <= processed
+    {
+        return Ok(0);
+    }
+    let count = state.store.count_events_after_of_kinds(
+        processed,
+        maidan_types::SEARCH_PROJECTOR_KINDS,
+        INDEXER_EVENTS_BEHIND_CAP,
+    );
+    tokio::time::timeout(INDEXER_EVENTS_BEHIND_TIMEOUT, count)
+        .await
+        .map_err(|_| "the count timed out".to_string())?
+        .map_err(|e| e.to_string())
+}
+
 async fn check_artifact_store(state: &AppState) -> SubsystemStatus {
     // Use a deterministic probe sha that we never write; existence check
     // is sufficient to verify the backend is reachable and not panicking.

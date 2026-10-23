@@ -126,6 +126,29 @@ async fn run_suite(store: &dyn Store) {
             .expect("caught up"),
         None
     );
+    for (after, cap, want) in [
+        (0, 100, 2),
+        (0, 1, 1),
+        (0, 0, 0),
+        (first.id, 100, 1),
+        (second.id, 100, 0),
+    ] {
+        assert_eq!(
+            store
+                .count_events_after_of_kinds(after, SEARCH_PROJECTOR_KINDS, cap)
+                .await
+                .expect("count"),
+            want,
+            "after {after}, cap {cap}"
+        );
+    }
+    assert_eq!(
+        store
+            .count_events_after_of_kinds(0, &[], 100)
+            .await
+            .expect("no kinds"),
+        0
+    );
     assert_eq!(
         store
             .oldest_event_after_of_kinds(0, &[])

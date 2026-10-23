@@ -667,6 +667,16 @@ pub struct SizeRollup {
     pub numbers: SliceNumbers,
 }
 
+/// The tasks of one review tier.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TierRollup {
+    /// The review tier; a task with no tier stored counts as `B`.
+    pub tier: crate::TaskTier,
+    #[serde(flatten)]
+    pub numbers: SliceNumbers,
+}
+
 /// The tasks of one risk tier.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -697,6 +707,8 @@ pub struct RepoRollup {
     /// By risk tier, standard first. Slices with no tasks are omitted from
     /// every split.
     pub by_risk: Vec<RiskRollup>,
+    /// By review tier, `A` then `B`, with untiered tasks counted as `B`.
+    pub by_tier: Vec<TierRollup>,
     /// By the provider that spent the most on each task, most tasks first,
     /// unnamed last: so providers are compared as well as engines.
     pub by_provider: Vec<ProviderRollup>,
@@ -972,6 +984,13 @@ fn rollup(
             })
         })
         .collect();
+    let by_tier = [crate::TaskTier::A, crate::TaskTier::B]
+        .into_iter()
+        .filter_map(|tier| {
+            slice(&|t| t.attributes.tier.unwrap_or(crate::TaskTier::B) == tier)
+                .map(|numbers| TierRollup { tier, numbers })
+        })
+        .collect();
     let by_provider = by_count(tasks, |t| t.provider.as_ref())
         .into_iter()
         .filter_map(|provider| {
@@ -999,6 +1018,7 @@ fn rollup(
         by_engine,
         by_size,
         by_risk,
+        by_tier,
         by_provider,
         by_harness,
     }
@@ -1437,6 +1457,40 @@ mod tests {
             ]
         );
         assert_eq!(m.tasks[0].provider.as_deref(), Some("xai"));
+    }
+
+    #[test]
+    fn by_tier_counts_an_untiered_task_as_b() {
+        use crate::TaskTier;
+        let tiered = |tier: Option<TaskTier>, merged: bool| {
+            let mut p = routed(None, None, false, 1);
+            p.attributes.tier = tier;
+            if merged {
+                p.merged_at = Some(at(100));
+            }
+            p
+        };
+        let m = swarm_metrics(
+            vec![
+                tiered(Some(TaskTier::A), true),
+                tiered(Some(TaskTier::B), false),
+                tiered(None, true),
+            ],
+            FlagLimits::default(),
+            at(0),
+        );
+        let tiers: Vec<_> = m.repos[0]
+            .by_tier
+            .iter()
+            .map(|r| (r.tier, r.numbers.tasks, r.numbers.merged))
+            .collect();
+        assert_eq!(tiers, vec![(TaskTier::A, 1, 1), (TaskTier::B, 2, 1)]);
+
+        let only_b = swarm_metrics(vec![tiered(None, false)], FlagLimits::default(), at(0));
+        let tiers: Vec<_> = only_b.repos[0].by_tier.iter().map(|r| r.tier).collect();
+        assert_eq!(tiers, vec![TaskTier::B], "a tier with no tasks is left out");
+        let json = serde_json::to_value(&only_b.repos[0]).unwrap();
+        assert_eq!(json["by_tier"][0]["tier"], "B");
     }
 
     #[test]

@@ -258,6 +258,7 @@
   {"method":"PUT","path":"/threads/{id}/steer","kind":"changes"},
   {"method":"PUT","path":"/threads/{id}/title","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/tool-transcript","kind":"reads"},
+  {"method":"GET","path":"/threads/{id}/transitions","kind":"reads"},
   {"method":"DELETE","path":"/threads/{id}/unclaimable","kind":"changes"},
   {"method":"PUT","path":"/threads/{id}/unclaimable","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/usage","kind":"changes"},

@@ -978,6 +978,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/threads/{id}/transitions",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/deliveries/{did}/replay",
     "capability": "workspace:write",

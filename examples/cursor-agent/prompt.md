@@ -7,7 +7,7 @@ The `maidan` MCP server is your connection to Maidan.
 For this run:
 
 - Claim with `claim_next_workspace_thread`, `engine: "session"`, this
-  checkout's `repo`, `lease_secs: 900` and `wait_ms: 300000`. If the answer
+  checkout's `repo`, `lease_secs: 3600` and `wait_ms: 300000`. If the answer
   is `null`, say "no work" and stop: whoever started this run starts the next.
 - Work exactly one task, then stop after `release_claim`.
 - In `report_usage`, send `evidence` with `"harness": "cursor"` and

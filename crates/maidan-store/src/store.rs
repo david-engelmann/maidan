@@ -3484,6 +3484,17 @@ pub trait EventStore: Send + Sync {
         kinds: &[EventKind],
     ) -> Result<Option<(i64, DateTime<Utc>)>, StoreError>;
 
+    /// How many events with `id > after_id` have a kind in `kinds`, counting
+    /// no further than `cap` (so a huge backlog reads as `cap`, not a full
+    /// scan). `0` when `kinds` is empty. Feeds the indexer's events-behind
+    /// gauge.
+    async fn count_events_after_of_kinds(
+        &self,
+        after_id: i64,
+        kinds: &[EventKind],
+        cap: i64,
+    ) -> Result<i64, StoreError>;
+
     /// Where a tap projector last finished. `0` = never run.
     ///
     /// The search tap re-walked the whole log from genesis on every start,

@@ -4092,6 +4092,15 @@ macro_rules! store_delegations {
                 events::oldest_event_after_of_kinds(self.pool(), after_id, kinds).await
             }
 
+            async fn count_events_after_of_kinds(
+                &self,
+                after_id: i64,
+                kinds: &[EventKind],
+                cap: i64,
+            ) -> Result<i64, StoreError> {
+                events::count_events_after_of_kinds(self.pool(), after_id, kinds, cap).await
+            }
+
             async fn workspace_ids_with_events(&self) -> Result<Vec<WorkspaceId>, StoreError> {
                 events::workspace_ids_with_events(self.read_pool()).await
             }

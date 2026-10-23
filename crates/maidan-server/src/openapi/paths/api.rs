@@ -2936,6 +2936,17 @@ pub fn get_thread_result() {}
     ))]
 pub fn list_thread_deliveries() {}
 
+/// List a thread's state transitions
+#[utoipa::path(get, path = "/threads/{id}/transitions", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id"), ThreadTransitionsQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [ThreadTransition]),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_thread_transitions() {}
+
 /// Replay a thread's result delivery
 #[utoipa::path(post, path = "/threads/{id}/deliveries/{did}/replay", tag = "threads",
     params(

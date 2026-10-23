@@ -106,6 +106,34 @@ impl TaskSize {
     }
 }
 
+/// How much review a change needs before it merges: Tier A takes the fast
+/// path, Tier B a full review. A thread with no tier stored counts as B in
+/// the metrics, while the stored value stays unset, so a later restatement
+/// can tell "never said" from "B".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum TaskTier {
+    A,
+    B,
+}
+
+impl TaskTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::A => "A",
+            Self::B => "B",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "A" => Some(Self::A),
+            "B" => Some(Self::B),
+            _ => None,
+        }
+    }
+}
+
 /// A workspace's default engine: where a thread created there with no
 /// engine named is routed. `None` leaves such threads unrouted, and an
 /// engine-filtered claim never takes them.
@@ -139,6 +167,10 @@ pub struct TaskAttributes {
     /// on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_issue: Option<String>,
+    /// The change's review tier, set at intake and restated when a new head
+    /// changes it. Read by the metrics only; nothing routes or gates on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<TaskTier>,
 }
 
 impl TaskAttributes {
