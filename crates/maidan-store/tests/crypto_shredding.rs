@@ -1829,6 +1829,47 @@ mod blob_reap {
         super::a_blob_reap_holds_back_only_its_own_sha(db).await;
     }
 
+    /// An erase reads (the legal-hold check) before it writes. Begun deferred,
+    /// that read pins a WAL snapshot, and once another connection commits the
+    /// erase's write fails with "database is locked" without waiting out
+    /// busy_timeout. Erases running alongside other writes must all go through.
+    #[tokio::test]
+    async fn erases_alongside_other_writes_sqlite() {
+        let (_dir, db) = sqlite_file().await;
+        let store = db.store(super::kek(1));
+        let room = super::room(store.as_ref(), "erase-contention").await;
+        let shas: Vec<String> = (0..40).map(|i| format!("{i:064x}")).collect();
+        for sha in &shas {
+            store
+                .upsert_artifact_with_event(super::upload(sha, room.alice.id), Some(room.ws.id))
+                .await
+                .unwrap();
+        }
+        let writer = {
+            let (store, ws) = (store.clone(), room.ws.id);
+            tokio::spawn(async move {
+                for i in 0..200 {
+                    super::room_channel(store.as_ref(), ws, &format!("busy-{i}")).await;
+                }
+            })
+        };
+        let erasers: Vec<_> = shas
+            .into_iter()
+            .map(|sha| {
+                let (store, ws) = (store.clone(), room.ws.id);
+                tokio::spawn(async move {
+                    store
+                        .erase_artifact_audited(ws, &sha, Box::new(super::erase_audit))
+                        .await
+                })
+            })
+            .collect();
+        for eraser in erasers {
+            eraser.await.unwrap().unwrap();
+        }
+        writer.await.unwrap();
+    }
+
     #[tokio::test]
     async fn only_its_own_sha_postgres() {
         let Some((_container, db)) = super::postgres().await else {
