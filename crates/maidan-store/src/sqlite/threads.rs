@@ -604,6 +604,9 @@ async fn claim_next_candidate(
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
+            warm_hold_since: "?7",
+            warm_ttl_since: "?8",
+            later_than: "julianday({col}) > julianday({t})",
         },
     );
     Ok(sqlx::query(&sql)
@@ -613,6 +616,8 @@ async fn claim_next_candidate(
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
+        .bind((now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS)).to_rfc3339())
+        .bind((now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS)).to_rfc3339())
         .fetch_optional(&mut **tx)
         .await?)
 }

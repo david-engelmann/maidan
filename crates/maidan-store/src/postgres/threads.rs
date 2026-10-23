@@ -779,7 +779,8 @@ async fn claim_next_in_tx(
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
-    let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
+    let now = chrono::Utc::now();
+    let expires = lease_secs.map(|s| now + chrono::Duration::seconds(s));
     let candidate = claim_next::candidate_select(
         scope,
         "cand.id, cand.assignee_id AS prev_assignee,
@@ -794,13 +795,16 @@ async fn claim_next_in_tx(
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
+            warm_hold_since: "$8::timestamptz",
+            warm_ttl_since: "$9::timestamptz",
+            later_than: "{col} > {t}",
         },
     );
     // The CTE captures the candidate's PRE-update claim (`prev_*`) so a
     // takeover of a lapsed lease can end the dead holder's claim, charged.
     let row = sqlx::query(&format!(
         "WITH next AS ({candidate} FOR UPDATE OF cand SKIP LOCKED)
-         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = $10, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
          RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by, next.prev_assignee, next.prev_deadline, next.prev_started"
     ))
@@ -811,6 +815,9 @@ async fn claim_next_in_tx(
     .bind(DM_CHANNEL_NAME)
     .bind(repo)
     .bind(engine.map(|engine| engine.as_str()))
+    .bind(now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS))
+    .bind(now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS))
+    .bind(now)
     .fetch_optional(&mut **tx)
     .await?;
     row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
