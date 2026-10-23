@@ -1,0 +1,2 @@
+### Added
+- Task fingerprints (Context Economics C8a): every thread created with a brief stores a versioned SHA-256 fingerprint of its title, description and task inputs, linked to the oldest open or in-review identical task in the same workspace (never across workspaces, never a closed task). Read it with `GET /threads/{id}/fingerprint`; `duplicate_of` is hidden when the caller cannot see the original. Migration 0204. The link is advisory: reuse offers and claim refusal follow in C8b.

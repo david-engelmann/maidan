@@ -114,6 +114,16 @@ pub async fn create_with_footprint(
         super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
     }
     super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    // The fingerprint covers the attributes as given: a workspace default
+    // engine applies to identical briefs alike.
+    let fingerprint = maidan_types::task_fingerprint(
+        new.title.as_deref(),
+        new.description.as_deref(),
+        &attributes.clone().unwrap_or_default(),
+    );
+    if let Some(fingerprint) = &fingerprint {
+        super::task_fingerprints::insert_on(&mut tx, thread.id, workspace_id, fingerprint).await?;
+    }
     if let Some((priority, by)) = priority_by {
         sqlx::query(
             "INSERT INTO maidan_thread_priorities (thread_id, priority, set_by, set_at) VALUES ($1, $2, $3, NOW())",

@@ -1608,6 +1608,14 @@ pub trait ThreadStore: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<maidan_types::TaskAttributes, StoreError>;
 
+    /// A thread's task fingerprint and the open task it was linked to when
+    /// created (Context Economics C8). `None` for a thread created without
+    /// a title or description, or before fingerprints existed.
+    async fn get_task_fingerprint(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Option<maidan_types::TaskFingerprint>, StoreError>;
+
     /// Replace a thread's task attributes whole. `NotFound` when the
     /// thread does not exist.
     async fn set_thread_attributes(

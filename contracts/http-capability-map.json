@@ -828,6 +828,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/threads/{id}/fingerprint",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/plan",
     "capability": "workspace:write",

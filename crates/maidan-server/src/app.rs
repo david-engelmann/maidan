@@ -541,6 +541,10 @@ pub fn router(state: AppState) -> Router {
             put(routes::set_thread_footprint).merge(get(routes::get_thread_footprint)),
         )
         .route(
+            "/threads/{id}/fingerprint",
+            get(routes::get_task_fingerprint),
+        )
+        .route(
             "/threads/{id}/attributes",
             put(routes::set_thread_attributes),
         )
