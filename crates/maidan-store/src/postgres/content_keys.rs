@@ -370,7 +370,7 @@ pub async fn rewrap(
                     },
                 )
                 .await
-                .inspect_err(|_| open_refused = true)?;
+                .inspect_err(|err| open_refused = err.is_custody_refusal())?;
                 let data_key = keys.unwrap(subject, &wrapped)?;
                 let active = active_workspace_key(&mut sp, keys, row.get("workspace_id")).await?;
                 let rewrapped = keys.wrap_for_workspace(active, subject, &data_key)?;

@@ -1549,6 +1549,33 @@ async fn a_refused_workspace_key_is_asked_once_per_pass(db: Db) {
     );
 }
 
+/// A transient custody failure (throttling, a timeout) is not a refusal: it
+/// skips only the row it hit, and the workspace key's other data keys still
+/// move in the same pass.
+async fn a_transient_custody_failure_skips_only_its_row(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("blip"));
+    let store = db.store(kms_keys(1, &kms));
+    let a = room(store.as_ref(), "blip-a").await;
+    for words in ["one", "two", "three"] {
+        post(store.as_ref(), &a, words).await;
+    }
+    let (old, _, _, _) = db.active_workspace_key(a.ws.id).await;
+    store.rotate_workspace_key(a.ws.id).await.unwrap();
+    kms.fail_transiently(old, 1);
+    let replica = db.store(kms_keys(1, &kms));
+    let pass = replica.rewrap_content_keys(1).await.unwrap();
+    assert_eq!(pass.skipped, 1, "only the row the blip hit: {pass:?}");
+    assert!(pass.changed >= 2, "the other rows moved: {pass:?}");
+    for _ in 0..3 {
+        replica.rewrap_content_keys(100).await.unwrap();
+    }
+    assert_eq!(replica.content_keys_needing_rewrap().await.unwrap(), 0);
+    assert!(
+        !kms.holds(old),
+        "the retired key is destroyed once all moved"
+    );
+}
+
 /// Moving to a KMS: refused workspace keys that sort ahead of another
 /// tenant's and fill a batch must not stop that tenant's key moving.
 async fn rt3_refused_custody_moves_filling_a_batch_starve_another_tenant(db: Db) {
@@ -1761,6 +1788,7 @@ on_both_backends!(
     rt2_refused_custody_move_blocks_every_tenant,
     rt3d_refused_first_row_never_starves_the_other_tenant,
     a_refused_workspace_key_is_asked_once_per_pass,
+    a_transient_custody_failure_skips_only_its_row,
     rt3_refused_custody_moves_filling_a_batch_starve_another_tenant,
     words_are_sealed_before_hashing_and_open_with_the_live_key,
     withdrawal_shreds_the_key_and_the_chain_still_verifies,

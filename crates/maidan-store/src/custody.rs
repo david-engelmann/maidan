@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::RwLock;
 
+use aws_sdk_kms::error::ProvideErrorMetadata;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::Tag;
 use maidan_types::{
@@ -61,11 +62,11 @@ impl AwsKmsCustody {
         Self::new(aws_sdk_kms::Client::new(&shared))
     }
 
-    fn kms_error(op: &str, err: impl fmt::Display) -> SealError {
+    fn kms_error(op: &str, err: impl fmt::Display + ProvideErrorMetadata) -> SealError {
         // The SDK error names the operation and the AWS code; it never carries
         // key material.
         tracing::warn!(operation = op, error = %err, "AWS KMS call failed");
-        SealError::Authentication
+        kms_error_kind(err.code())
     }
 
     fn key_arn(wrapped: &WrappedKey) -> Result<&str, SealError> {
@@ -73,6 +74,27 @@ impl AwsKmsCustody {
             .kek_id
             .strip_prefix(AWS_KMS_PREFIX)
             .ok_or_else(|| SealError::UnknownKek(wrapped.kek_id.clone()))
+    }
+}
+
+/// KMS error codes that mean the custody refuses this key until an operator
+/// acts. Anything else, including a call that never got an answer, is
+/// transient.
+const KMS_REFUSALS: &[&str] = &[
+    "AccessDeniedException",
+    "DisabledException",
+    "IncorrectKeyException",
+    "InvalidCiphertextException",
+    "InvalidKeyUsageException",
+    "KMSInvalidStateException",
+    "NotFoundException",
+];
+
+/// Sort a KMS error by its AWS code: a refusal, or worth retrying.
+fn kms_error_kind(code: Option<&str>) -> SealError {
+    match code {
+        Some(code) if KMS_REFUSALS.contains(&code) => SealError::Refused,
+        _ => SealError::Unavailable,
     }
 }
 
@@ -99,7 +121,7 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
                 .tag_key(CONTEXT_KEY)
                 .tag_value(workspace_key_id.to_string())
                 .build()
-                .map_err(|err| Self::kms_error("CreateKey", err))?;
+                .map_err(|_| SealError::Malformed)?;
             let created = self
                 .client
                 .create_key()
@@ -232,6 +254,7 @@ pub struct FakeKmsCustody {
     name: String,
     keys: RwLock<HashMap<Uuid, LocalCustody>>,
     refused: RwLock<HashSet<Uuid>>,
+    unavailable: RwLock<HashMap<Uuid, usize>>,
     unwraps: std::sync::atomic::AtomicUsize,
 }
 
@@ -241,6 +264,7 @@ impl FakeKmsCustody {
             name: name.to_string(),
             keys: RwLock::default(),
             refused: RwLock::default(),
+            unavailable: RwLock::default(),
             unwraps: std::sync::atomic::AtomicUsize::new(0),
         }
     }
@@ -256,6 +280,14 @@ impl FakeKmsCustody {
     pub fn allow(&self, workspace_key_id: Uuid) {
         if let Ok(mut refused) = self.refused.write() {
             refused.remove(&workspace_key_id);
+        }
+    }
+
+    /// Fail the next `times` calls about this workspace key as a KMS does
+    /// when throttled or unreachable.
+    pub fn fail_transiently(&self, workspace_key_id: Uuid, times: usize) {
+        if let Ok(mut down) = self.unavailable.write() {
+            down.insert(workspace_key_id, times);
         }
     }
 
@@ -276,9 +308,18 @@ impl FakeKmsCustody {
     }
 
     fn check(&self, workspace_key_id: Uuid) -> Result<(), SealError> {
+        let mut down = self
+            .unavailable
+            .write()
+            .map_err(|_| SealError::Unavailable)?;
+        if let Some(left) = down.get_mut(&workspace_key_id).filter(|left| **left > 0) {
+            *left -= 1;
+            return Err(SealError::Unavailable);
+        }
+        drop(down);
         match self.refused.read() {
             Ok(refused) if !refused.contains(&workspace_key_id) => Ok(()),
-            _ => Err(SealError::Authentication),
+            _ => Err(SealError::Refused),
         }
     }
 
@@ -418,14 +459,37 @@ mod tests {
         let mine = Uuid::now_v7();
         let wrapped = kms.wrap(mine, &ContentKey::generate()).await.unwrap();
         kms.refuse(mine);
+        assert_eq!(kms.unwrap(mine, &wrapped).await, Err(SealError::Refused));
+        assert_eq!(kms.destroy(mine, &wrapped).await, Err(SealError::Refused));
+        assert!(kms.holds(mine));
+    }
+
+    #[tokio::test]
+    async fn a_transient_fake_failure_is_unavailable_not_refused() {
+        let kms = FakeKmsCustody::new("t");
+        let mine = Uuid::now_v7();
+        let wrapped = kms.wrap(mine, &ContentKey::generate()).await.unwrap();
+        kms.fail_transiently(mine, 1);
         assert_eq!(
             kms.unwrap(mine, &wrapped).await,
-            Err(SealError::Authentication)
+            Err(SealError::Unavailable)
         );
-        assert_eq!(
-            kms.destroy(mine, &wrapped).await,
-            Err(SealError::Authentication)
-        );
-        assert!(kms.holds(mine));
+        assert!(kms.unwrap(mine, &wrapped).await.is_ok());
+    }
+
+    #[test]
+    fn kms_codes_sort_into_refusals_and_retries() {
+        for code in KMS_REFUSALS {
+            assert_eq!(kms_error_kind(Some(code)), SealError::Refused, "{code}");
+        }
+        for code in [
+            Some("ThrottlingException"),
+            Some("KMSInternalException"),
+            Some("DependencyTimeoutException"),
+            Some("KeyUnavailableException"),
+            None,
+        ] {
+            assert_eq!(kms_error_kind(code), SealError::Unavailable, "{code:?}");
+        }
     }
 }
