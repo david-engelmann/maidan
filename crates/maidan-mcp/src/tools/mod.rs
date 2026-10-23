@@ -1479,18 +1479,10 @@ mod self_scope_tests {
     /// sail through the gate — listed, and ungated. Nothing else would notice.
     #[test]
     fn every_scoped_tool_declares_the_argument_the_gate_reads() {
-        let catalog = include_str!("catalog.rs");
         let wrong: Vec<&str> = MEMBER_SCOPED_TOOLS
             .iter()
             .copied()
-            .filter(|name| {
-                let Some(start) = catalog.find(&format!("\"name\": \"{name}\"")) else {
-                    return true;
-                };
-                let rest = &catalog[start + 8..];
-                let end = rest.find("\"name\": \"").unwrap_or(rest.len());
-                !rest[..end].contains("\"member_id\"")
-            })
+            .filter(|name| declared_arguments(name).is_none_or(|args| !args.contains("member_id")))
             .collect();
         assert!(
             wrong.is_empty(),
