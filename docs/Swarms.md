@@ -37,12 +37,12 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
                    and footprint     + fence    worktree               + humans   comment, chat
 ```
 
-1. **Intake.** A producer turns an issue into a thread: the task text, a
+1. **Intake.** A producer turns an issue into a thread with the task text, a
    `deliver_to` list saying where the result goes, and, when it knows, a
    footprint saying what part of the repository the work touches.
 2. **Planning.** A task with `kind: plan` goes to a planner, which claims it
-   and submits its children in one call: `POST /threads/{id}/plan` or the MCP
-   `submit_plan`, with the claim's `lease_id` and 1–50 children. Each child has
+   and submits its children in one call (`POST /threads/{id}/plan` or the MCP
+   `submit_plan`), with the claim's `lease_id` and 1–50 children. Each child has
    a key, a title, attributes, a footprint, a `test` command, and optionally a
    description and `depends_on` (keys of other children in the plan).
    - **Lint.** So each child can be worked and checked without asking the
@@ -52,7 +52,7 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
      goes to a session (`engine: session`). A child that misses any of these
      is a 400 naming it, and nothing is created.
    - **Held for review.** A plan with five or more children, or any child
-     with `threat_model: true`, is created held: the answer says
+     with `threat_model: true`, is created held. The answer says
      `"held": true`, and each child carries a `human` block, so `claim_next`
      skips it and the board shows the hold. A Maintainer releases it with
      `POST /threads/{id}/plan/release` (`token:admin`, audited), which clears
@@ -66,25 +66,25 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
      the children already made. Any other plan on a parent that has children
      is a 409 (`plan-conflict`, MCP `-32010`) listing them.
    - **Amending.** Under the same claim, the planner changes a submitted plan
-     with `POST /threads/{id}/plan/amend` or the MCP `amend_plan`: `cancel`
-     names children to cancel, `add` gives new ones (linted as above, and
+     with `POST /threads/{id}/plan/amend` or the MCP `amend_plan`. In it,
+     `cancel` names children to cancel, `add` gives new ones (linted as above, and
      their `depends_on` may name any child of the plan), and `rewire` sets a
      child's `depends_on` afresh. Cancelling and adding the same key
      replaces the child, and its dependents wait for the new thread. A
      cancelled child leaves the plan, so its dependents stop waiting for it
      instead of being blocked. Only open, unclaimed children can be
-     cancelled or rewired; a claimed or finished one is a 409 and nothing
+     cancelled or rewired. A claimed or finished one is a 409 and nothing
      changes. A plan takes at most three amendments. Added children are held
      for review when the plan is held or one needs a threat model.
    - **Dispatch.** `claim_next` never hands out a thread whose dependencies
      are unfinished, so a child becomes claimable when what it depends on
      lands. A plan's children move through review and close while the plan
      stays open under its planner's claim.
-   - **A child that closes without landing** (no `ThreadLanded`: closed by
-     hand, or cancelled) blocks each open dependent with a `dag` block naming
-     it, plus a message on the dependent, so no work starts on a base that
-     never merged. The plan gets one message. A person or the planner clears
-     the blocks once the work is redone.
+   - **A child that closes without landing** (no `ThreadLanded`, because it
+     was closed by hand, or cancelled) blocks each open dependent with a
+     `dag` block naming it, plus a message on the dependent, so no work
+     starts on a base that never merged. The plan gets one message. A person
+     or the planner clears the blocks once the work is redone.
    - **The plan closes itself** when its last child lands, in that child's
      transaction, through the plan's own review and close gates, with a
      `ThreadLanded` and a message listing every child's pull request. When a

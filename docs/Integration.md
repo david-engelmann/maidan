@@ -1317,11 +1317,11 @@ arguments.
 ### 4. Report usage while you work
 
 Set the envelope before the worker starts. `set_thread_budget` (REST
-`PUT /threads/:id/budget`) is a **total replacement**: state all four dimensions
+`PUT /threads/:id/budget`) is a **total replacement**. State all four dimensions
 (`max_tokens`, `max_usd_micros`, `max_turns`, `max_wall_secs`) and use `null`
 for an uncapped dimension. An omitted dimension is an error, not an implicit
 clear. To change only selected dimensions, use `update_thread_budget` (REST
-`PATCH`): absent leaves a value unchanged and explicit `null` clears it. The
+`PATCH`), where an absent dimension leaves its value unchanged and explicit `null` clears it. The
 partial merge is atomic, so two callers changing different dimensions do not
 need a read-modify-write sequence.
 
@@ -1333,27 +1333,27 @@ resulting `usd_micros`, optional `turns`, and optional evidence (provider,
 service tier, batch, harness and version, cache key, cache-miss reason, and
 the sha256 of each pack). Maidan verifies
 `usd_micros = ceil(sum(tokens × rate) / 1_000_000)`. A token budget counts
-fresh tokens only: uncached input, output, and both write tiers. Cache reads
+fresh tokens only (uncached input, output, and both write tiers). Cache reads
 are priced into the dollar budget and do not count toward `max_tokens`. It
-derives the reporter from authentication and the payer from the thread;
-neither identity is a caller field.
+derives the reporter from authentication and the payer from the thread.
+Neither identity is a caller field.
 
 `usage_rollup` (and `GET /threads/{id}/usage-rollup`,
 `GET /workspaces/{id}/usage-rollup`, `GET /members/{id}/usage-rollup`) reports
 spend, hit rate, write share, dollars saved against the uncached price, and
 cost per completed task. `POST /threads/{id}/usage/otel` accepts the same
-heartbeat with token counts taken from GenAI usage attributes; the price
+heartbeat with token counts taken from GenAI usage attributes. The price
 snapshot is still the caller's, and Maidan computes `usd_micros`.
 
 #### Normalizing provider usage
 
 Providers disagree on what "input tokens" means, so each SDK has a pure
 function that turns a provider's response into the `model`, `tokens` and
-`evidence` of a `report_usage` body: `normalizeUsage` (TypeScript),
+`evidence` of a `report_usage` body. They are `normalizeUsage` (TypeScript),
 `normalize_usage` (Python and Rust) and `NormalizeUsage` (Go). A second
 function, `usdMicros` / `usd_micros` / `USDMicros`, computes the charge the
 server checks, in integers. The provider id names the API shape you called,
-not the host:
+not the host.
 
 | Provider id | Uncached `input` | `cache_read` | Cache writes | `output` | Evidence `provider` |
 |---|---|---|---|---|---|
@@ -1367,16 +1367,16 @@ not the host:
 | `xai` (Chat or Responses) | `prompt_tokens` or `input_tokens` − read | `prompt_tokens_details.cached_tokens` or `input_tokens_details.cached_tokens` | none | `completion_tokens` + `completion_tokens_details.reasoning_tokens` (or the Responses names) | `x_ai` |
 | `vllm` | `prompt_tokens` − read | `prompt_tokens_details.cached_tokens` | none | `completion_tokens` | `vllm` |
 
-An unsplit write lands on the 5-minute tier, as the ledger records it; price
+An unsplit write lands on the 5-minute tier, as the ledger records it. Price
 that tier at the provider's write rate (OpenAI's GPT-5.6 writes have a 30-minute
 TTL). A total smaller than the cache tiers it includes is refused, not stored as
 a negative count. The evidence also carries the response's service tier
 (Anthropic `usage.service_tier`, OpenAI `service_tier`, Gemini
 `usageMetadata.serviceTier`) and Anthropic's
-`diagnostics.cache_miss_reason.type`; the harness, cache key and pack hashes are
+`diagnostics.cache_miss_reason.type`. The harness, cache key and pack hashes are
 yours to add. A response that names no model (Bedrock Converse, or a bare usage
 object) needs the model passed in. A shape served by another host keeps its
-reader and takes an evidence-provider override: Azure's Chat Completions is
+reader and takes an evidence-provider override. Azure's Chat Completions is
 `openai-chat` with `azure.ai.openai`.
 
 ```ts
@@ -1396,7 +1396,7 @@ const body = {
 await fetch(`${base}/threads/${threadId}/usage`, { method: "POST", headers, body: JSON.stringify(body) });
 ```
 
-What the official docs do not settle, and how the normalizers read it:
+What the official docs do not settle, and how the normalizers read it.
 
 - **xAI reasoning.** The Chat Completions reference example totals
   `prompt + completion + reasoning` (32 + 9 + 94 = 135), so `completion_tokens`
@@ -1404,7 +1404,7 @@ What the official docs do not settle, and how the normalizers read it:
   rate. No sentence states it. The Responses example has 0 reasoning tokens, so
   the Responses reading follows the Chat one unconfirmed.
 - **Gemini tool-use prompts.** `toolUsePromptTokenCount` is documented, but not
-  whether `promptTokenCount` includes it; `totalTokenCount` is prompt + thoughts
+  whether `promptTokenCount` includes it. `totalTokenCount` is prompt + thoughts
   + candidates. It is not added to `input`.
 - **vLLM writes.** `prompt_tokens_details.created_cache_tokens` (in vLLM's code,
   not its docs) counts newly cached tokens inside `prompt_tokens`. A self-hosted
@@ -1420,7 +1420,7 @@ the provider's usage object flattened with dotted keys
 (`"cache_creation.ephemeral_5m_input_tokens": 148`) plus
 `gen_ai.provider.name` and `gen_ai.response.model`. The fixtures in
 `sdk/usage-fixtures/providers/` are recorded responses, copied from a
-provider's reference or a public report, with the source URL in each file;
+provider's reference or a public report, with the source URL in each file.
 `constructed/` holds the few cases no published response shows (a Bedrock
 `cacheDetails` split, a Gemini cache read, a vLLM cache hit), with chosen
 numbers and marked as such. The four SDK suites and
@@ -1428,21 +1428,21 @@ numbers and marked as such. The four SDK suites and
 that drifts from the ledger fails a test.
 
 Keep `usage_report_id` stable across a transport retry. The exact same request
-returns its original ledger outcome without charging or emitting again; reuse
+returns its original ledger outcome without charging or emitting again. Reuse
 with different economic content fails. A stale `claim_lease_id` also fails
 before totals change. The response is the durable ledger entry, including its
-PayerStamp, accumulated `budget`, `stopped`, and `reason`. Report as you go:
-this call is where a runaway run gets caught. If a report crosses a bound, the
+PayerStamp, accumulated `budget`, `stopped`, and `reason`. Report as you go.
+This call is where a runaway run gets caught. If a report crosses a bound, the
 same transaction releases the claim, emits `UsageReported` then `ClaimFailed`,
 and dead-letters the run. A supervisor learns of the stop with
-`wait_for_claim_failed`. A hard stop is not a success; don't follow one with a
+`wait_for_claim_failed`. A hard stop is not a success. Don't follow one with a
 result.
 
 **There is no wall-clock argument, and you should not invent one.** You report
 three dimensions — tiered `tokens`, `usd_micros`, and `turns`. Wall time is the
 fourth, and the server measures it. Against `max_wall_secs` it counts the live
 claim's working time (from `work_started_at` to the moment you report) plus the
-budget's `used_wall_secs`: the time earlier claims on the thread worked before
+budget's `used_wall_secs`, the time earlier claims on the thread worked before
 they ended.
 
 That charge is how `max_wall_secs` catches a silent agent. When the claim
@@ -1450,27 +1450,28 @@ reaper frees a lapsed claim, or `claim_next_thread` takes over one that is
 still under budget, the
 same transaction adds the time the claim worked, from its acknowledgement to its
 lease deadline, to `used_wall_secs`. If the thread is then over budget, the claim
-ends the way an over-budget report ends it: `ClaimFailed` naming the hung holder,
+ends the way an over-budget report ends it, with `ClaimFailed` naming the hung holder,
 with the binding dimension as `reason`, and a DLQ entry, in place of
 `ClaimExpired`. Under budget, it is charged and requeued with `ClaimExpired` as
 before, and the next claim starts with that time already spent. Each lapsed
 claim that is still under budget is charged once, whichever of the reaper and
 `claim_next_thread` frees it and however many replicas sweep. A lapsed claim that is already over budget
-is not handed out: `claim_next` leaves it, and the reaper is what charges and
+is not handed out. `claim_next` leaves it, and the reaper is what charges and
 stops it.
 
 Every other ending charges too, from the acknowledgement to the moment the
-claim ends, in the same transaction that ends it: a release, an unassign, a
-reassignment, a freeze, a SCIM deactivation, a budget stop and a close. A
-budget stop used to forget the wall time it had just measured; that time is
+claim ends, in the same transaction that ends it, whether the ending is a
+release, an unassign, a reassignment, a freeze, a SCIM deactivation, a budget
+stop or a close. A
+budget stop used to forget the wall time it had just measured. That time is
 now kept in `used_wall_secs`. An unacknowledged claim still has no working
 clock and is charged nothing. `claim_next` does not hand out a thread that is
 already over any budget (tokens, usd, turns or wall) until that budget is
 raised.
 
-A claim you never acknowledged has no working clock: it is charged nothing and
+A claim you never acknowledged has no working clock. It is charged nothing and
 its wall time never binds at a report, however long you held it. Acknowledge
-when you start; `ClaimUnacknowledged` is the signal for a claim that never
+when you start. `ClaimUnacknowledged` is the signal for a claim that never
 does. A thread over any budget stays out of `claim_next` until someone raises
 that budget with `update_thread_budget` (or clears the cap). Raising
 `max_wall_secs` is how a thread a hung claim spent comes back.

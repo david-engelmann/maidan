@@ -338,7 +338,13 @@ async fn a_second_plan_replays_or_conflicts(store: Arc<dyn Store>) {
     )
     .await
     .unwrap();
-    assert_eq!(again, PlanOutcome::Replayed(first.clone()));
+    assert_eq!(
+        again,
+        PlanOutcome::Replayed {
+            children: first.clone(),
+            held: false
+        }
+    );
     let other_keys = submit(
         store.as_ref(),
         parent,
@@ -354,25 +360,119 @@ async fn a_second_plan_replays_or_conflicts(store: Arc<dyn Store>) {
         .release_claim(parent, room.planner, lease)
         .await
         .unwrap();
-    let reclaimed = store
-        .claim_next_thread(room.channel, room.planner, Some(600), None)
+    // Reclaim the plan. The queue may hand the planner a child first, so
+    // claim until the parent comes back or the queue runs dry — and fail
+    // loudly if it never does. Silently skipping this half is how the
+    // different-claim conflict could go unasserted.
+    let mut new_lease = None;
+    for _ in 0..4 {
+        let Some(claimed) = store
+            .claim_next_thread(room.channel, room.planner, Some(600), None)
+            .await
+            .unwrap()
+        else {
+            break;
+        };
+        if claimed.id == parent {
+            new_lease = claimed.claim_lease_id;
+            break;
+        }
+    }
+    let new_lease = new_lease.expect("the released plan is claimable again");
+    let other_claim = submit(
+        store.as_ref(),
+        parent,
+        room.planner,
+        new_lease,
+        vec![child("a", &[]), child("b", &["a"])],
+    )
+    .await
+    .unwrap();
+    assert_eq!(other_claim, PlanOutcome::Conflict(first));
+    assert_eq!(children_of(store.as_ref(), &room, parent).await, 2);
+}
+
+/// A retry is settled before the spawn budget: once a plan fills the
+/// budget, the same claim replaying it still gets its children back, and
+/// a different plan gets the conflict, not a budget refusal.
+async fn a_replay_at_the_spawn_budget_still_replays(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "budget-replay").await;
+    store
+        .set_spawn_budget(room.ws, Some(2), None, None)
         .await
-        .unwrap()
-        .filter(|t| t.id == parent)
-        .and_then(|t| t.claim_lease_id);
-    if let Some(new_lease) = reclaimed {
-        let other_claim = submit(
+        .unwrap();
+    let (parent, lease) = claimed_plan(store.as_ref(), &room).await;
+    let first = created(
+        submit(
             store.as_ref(),
             parent,
             room.planner,
-            new_lease,
+            lease,
             vec![child("a", &[]), child("b", &["a"])],
         )
         .await
+        .unwrap(),
+    );
+    let again = submit(
+        store.as_ref(),
+        parent,
+        room.planner,
+        lease,
+        vec![child("a", &[]), child("b", &["a"])],
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        again,
+        PlanOutcome::Replayed {
+            children: first.clone(),
+            held: false
+        }
+    );
+    let other = submit(
+        store.as_ref(),
+        parent,
+        room.planner,
+        lease,
+        vec![child("a", &[]), child("z", &[])],
+    )
+    .await
+    .unwrap();
+    assert_eq!(other, PlanOutcome::Conflict(first));
+}
+
+/// Once the planner's claim is released, the same lease submits
+/// nothing: the holder check reads the claim as it stands when the
+/// submit runs, on both backends.
+async fn a_submit_after_the_claim_is_released_is_refused(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "released").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &room).await;
+    created(
+        submit(
+            store.as_ref(),
+            parent,
+            room.planner,
+            lease,
+            vec![child("a", &[])],
+        )
+        .await
+        .unwrap(),
+    );
+    store
+        .release_claim(parent, room.planner, lease)
+        .await
         .unwrap();
-        assert_eq!(other_claim, PlanOutcome::Conflict(first));
-    }
-    assert_eq!(children_of(store.as_ref(), &room, parent).await, 2);
+    let err = submit(
+        store.as_ref(),
+        parent,
+        room.planner,
+        lease,
+        vec![child("a", &[])],
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("live claim"), "{err}");
+    assert_eq!(children_of(store.as_ref(), &room, parent).await, 1);
 }
 
 /// Only the planner holding the live claim, under that claim's lease, on a
@@ -489,7 +589,14 @@ async fn the_spawn_budget_counts_the_whole_plan(store: Arc<dyn Store>) {
     )
     .await
     .unwrap_err();
-    assert!(!err.is_empty());
+    assert!(
+        err.contains("spawn budget"),
+        "the refusal names the budget: {err}"
+    );
+    assert!(
+        err.contains("maximum 2 child threads"),
+        "the refusal names the limit it hit: {err}"
+    );
     assert_eq!(children_of(store.as_ref(), &room, parent).await, 0);
     created(
         submit(
@@ -528,9 +635,10 @@ macro_rules! on_both_backends {
     };
 }
 
-/// Land `thread` as the PR sweep does: a result, a delivered round, the pull
-/// request merged, then the settle that closes it with `ThreadLanded`.
-async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<StoredEvent> {
+/// The work a child delivers before its pull request resolves, as `land`
+/// does first: the result that makes the work reviewable and one round
+/// on the pull, which registers it.
+async fn deliver_round(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) {
     store
         .set_thread_result_claiming(thread, room.worker, &serde_json::json!({"summary": "done"}))
         .await
@@ -553,6 +661,12 @@ async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<
         })
         .await
         .unwrap();
+}
+
+/// Land `thread` as the PR sweep does: a result, a delivered round, the pull
+/// request merged, then the settle that closes it with `ThreadLanded`.
+async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<StoredEvent> {
+    deliver_round(store, room, thread, pr).await;
     let at = chrono::Utc::now();
     store
         .close_change_pull(room.ws, REPO, pr, Some(at), Some("c0ffee"), at)
@@ -564,8 +678,8 @@ async fn land(store: &dyn Store, room: &Room, thread: ThreadId, pr: i64) -> Vec<
     }
 }
 
-/// Close `thread` by hand: through review, with no pull request merged.
-async fn close_unlanded(store: &dyn Store, thread: ThreadId, by: MemberId) -> Vec<StoredEvent> {
+/// Close `thread` by hand: through review, recording no landing.
+async fn close_by_hand(store: &dyn Store, thread: ThreadId, by: MemberId) -> Vec<StoredEvent> {
     store
         .transition_thread_with_event(thread, by, ThreadAction::StartReview)
         .await
@@ -575,6 +689,44 @@ async fn close_unlanded(store: &dyn Store, thread: ThreadId, by: MemberId) -> Ve
         .await
         .unwrap()
         .1
+}
+
+/// Close `thread` by hand after its pull request closed unmerged: the
+/// pull row says closed with no merge and no `ThreadLanded` ever records
+/// the close, so the child is unlanded and blocks what depends on it.
+async fn close_with_unmerged_pull(
+    store: &dyn Store,
+    room: &Room,
+    thread: ThreadId,
+    pr: i64,
+    by: MemberId,
+) -> Vec<StoredEvent> {
+    deliver_round(store, room, thread, pr).await;
+    let at = chrono::Utc::now();
+    store
+        .close_change_pull(room.ws, REPO, pr, None, None, at)
+        .await
+        .unwrap();
+    close_by_hand(store, thread, by).await
+}
+
+/// Close `thread` by hand after its pull request merged, without the
+/// settle that would record `ThreadLanded`: the merged pull row is the
+/// only landing signal the close can read.
+async fn close_with_merged_pull(
+    store: &dyn Store,
+    room: &Room,
+    thread: ThreadId,
+    pr: i64,
+    by: MemberId,
+) -> Vec<StoredEvent> {
+    deliver_round(store, room, thread, pr).await;
+    let at = chrono::Utc::now();
+    store
+        .close_change_pull(room.ws, REPO, pr, Some(at), Some("c0ffee"), at)
+        .await
+        .unwrap();
+    close_by_hand(store, thread, by).await
 }
 
 /// The `notice` names of the system messages on `thread`.
@@ -588,9 +740,9 @@ async fn notices(store: &dyn Store, thread: ThreadId) -> Vec<String> {
         .collect()
 }
 
-/// A child closed without landing blocks what depends on it, so the queue
-/// never builds `b` on an `a` that never merged; the plan stays open with
-/// one message, and `plan_state` counts the block.
+/// A child whose pull request closed unmerged blocks what depends on
+/// it, so the queue never builds `b` on an `a` that never merged; the
+/// plan stays open with one message, and `plan_state` counts the block.
 async fn a_dependent_of_an_unlanded_child_is_never_claimed(store: Arc<dyn Store>) {
     let r = room(store.as_ref(), "plan-unlanded").await;
     let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
@@ -609,7 +761,7 @@ async fn a_dependent_of_an_unlanded_child_is_never_claimed(store: Arc<dyn Store>
 
     // The plan is still open under its planner's claim; its child moves on
     // regardless.
-    let stored = close_unlanded(store.as_ref(), a, r.worker).await;
+    let stored = close_with_unmerged_pull(store.as_ref(), &r, a, 41, r.worker).await;
     assert!(
         stored.iter().any(|e| e.kind == EventKind::ThreadBlocked
             && e.payload["thread_id"] == serde_json::json!(b.0)),
@@ -733,8 +885,8 @@ async fn the_last_landed_child_closes_the_plan(store: Arc<dyn Store>) {
     );
 }
 
-/// An unlanded child keeps the plan open even after every other child
-/// lands: nothing merged stands in for it.
+/// A child whose pull request closed unmerged keeps the plan open even
+/// after every other child lands: nothing merged stands in for it.
 async fn an_unlanded_child_keeps_the_plan_open(store: Arc<dyn Store>) {
     let r = room(store.as_ref(), "plan-partial").await;
     let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
@@ -749,7 +901,7 @@ async fn an_unlanded_child_keeps_the_plan_open(store: Arc<dyn Store>) {
         .await
         .unwrap(),
     );
-    close_unlanded(store.as_ref(), id(&kids, "a"), r.worker).await;
+    close_with_unmerged_pull(store.as_ref(), &r, id(&kids, "a"), 42, r.worker).await;
     let stored = land(store.as_ref(), &r, id(&kids, "c"), 21).await;
     assert!(stored.iter().all(|e| e.thread_id != Some(parent)));
     assert_eq!(
@@ -759,6 +911,124 @@ async fn an_unlanded_child_keeps_the_plan_open(store: Arc<dyn Store>) {
     assert_eq!(
         notices(store.as_ref(), parent).await,
         ["plan_child_unlanded"]
+    );
+}
+
+/// A child with no pull request at all lands by its plain close: nothing
+/// blocks its dependent, and when the last child closes the same way the
+/// plan completes with no pull request to name.
+async fn a_plain_close_lands_its_child(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "plan-plain-close").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
+    let kids = created(
+        submit(
+            store.as_ref(),
+            parent,
+            r.planner,
+            lease,
+            vec![child("a", &[]), child("b", &["a"])],
+        )
+        .await
+        .unwrap(),
+    );
+    let (a, b) = (id(&kids, "a"), id(&kids, "b"));
+
+    close_by_hand(store.as_ref(), a, r.worker).await;
+    assert!(
+        store.get_thread_block(b).await.unwrap().is_none(),
+        "a plain close blocks nothing"
+    );
+    assert_eq!(notices(store.as_ref(), parent).await, Vec::<String>::new());
+    let claimed = store
+        .claim_next_thread(r.channel, r.worker, Some(600), None)
+        .await
+        .unwrap()
+        .expect("b is claimable once a has landed");
+    assert_eq!(claimed.id, b);
+
+    let stored = close_by_hand(store.as_ref(), b, r.worker).await;
+    assert!(
+        stored
+            .iter()
+            .all(|e| !(e.kind == EventKind::ThreadLanded && e.thread_id == Some(parent))),
+        "a plan no pull request finished has no landing event of its own"
+    );
+    assert_eq!(
+        store.get_thread(parent).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert_eq!(notices(store.as_ref(), parent).await, ["plan_landed"]);
+    let messages = store.list_messages(parent, 50).await.unwrap();
+    let [summary] = messages.as_slice() else {
+        panic!("one message on the plan, got {}", messages.len());
+    };
+    assert!(summary.body.contains("do a"), "{}", summary.body);
+    assert!(
+        !summary.body.contains("example/app"),
+        "no pull request is named: {}",
+        summary.body
+    );
+    assert_eq!(
+        store.get_plan_state(parent).await.unwrap(),
+        Some(PlanState {
+            total: 2,
+            closed: 2,
+            open: 0,
+            blocked: 0,
+        })
+    );
+}
+
+/// A child whose pull request merged counts as landed even when a person
+/// closes the thread before the sweep's settle records the landing: the
+/// merged pull row is read at close time, its dependent is never
+/// blocked, and the parent's summary still names the pull.
+async fn a_merged_pull_lands_a_hand_closed_child(store: Arc<dyn Store>) {
+    let r = room(store.as_ref(), "plan-merged-by-hand").await;
+    let (parent, lease) = claimed_plan(store.as_ref(), &r).await;
+    let kids = created(
+        submit(
+            store.as_ref(),
+            parent,
+            r.planner,
+            lease,
+            vec![child("a", &[]), child("b", &["a"])],
+        )
+        .await
+        .unwrap(),
+    );
+    let (a, b) = (id(&kids, "a"), id(&kids, "b"));
+
+    let stored = close_with_merged_pull(store.as_ref(), &r, a, 51, r.worker).await;
+    assert!(
+        stored.iter().all(|e| e.kind != EventKind::ThreadLanded),
+        "no landing event was recorded for the hand close"
+    );
+    assert!(
+        store.get_thread_block(b).await.unwrap().is_none(),
+        "a merged pull blocks nothing"
+    );
+    assert_eq!(notices(store.as_ref(), parent).await, Vec::<String>::new());
+
+    land(store.as_ref(), &r, b, 52).await;
+    assert_eq!(
+        store.get_thread(parent).await.unwrap().state,
+        ThreadState::Closed
+    );
+    let messages = store.list_messages(parent, 50).await.unwrap();
+    let [summary] = messages.as_slice() else {
+        panic!("one message on the plan, got {}", messages.len());
+    };
+    assert_eq!(summary.metadata["notice"], "plan_landed");
+    assert!(
+        summary.body.contains("do a: example/app#51"),
+        "{}",
+        summary.body
+    );
+    assert!(
+        summary.body.contains("do b: example/app#52"),
+        "{}",
+        summary.body
     );
 }
 
@@ -906,9 +1176,13 @@ on_both_backends!(
     only_the_claim_holder_plans,
     another_workspace_allowlist_does_not_count,
     the_spawn_budget_counts_the_whole_plan,
+    a_replay_at_the_spawn_budget_still_replays,
+    a_submit_after_the_claim_is_released_is_refused,
     a_dependent_of_an_unlanded_child_is_never_claimed,
     the_last_landed_child_closes_the_plan,
     an_unlanded_child_keeps_the_plan_open,
+    a_plain_close_lands_its_child,
+    a_merged_pull_lands_a_hand_closed_child,
     a_gate_refusal_leaves_the_plan_open,
     a_large_plan_is_held_until_released,
 );

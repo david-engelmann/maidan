@@ -51,35 +51,44 @@ pub async fn set_budget(
     Ok(Some(row_to_budget(&row)))
 }
 
-pub async fn get_budget(
-    pool: &SqlitePool,
+pub async fn get_budget<'e, E>(
+    executor: E,
     workspace_id: WorkspaceId,
-) -> Result<Option<SpawnBudget>, StoreError> {
+) -> Result<Option<SpawnBudget>, StoreError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let row = sqlx::query(
         "SELECT workspace_id, max_children, max_depth, max_tools, updated_at
          FROM maidan_spawn_budgets WHERE workspace_id = ?",
     )
     .bind(workspace_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await?;
     Ok(row.as_ref().map(row_to_budget))
 }
 
-pub async fn count_active_children(
-    pool: &SqlitePool,
+pub async fn count_active_children<'e, E>(
+    executor: E,
     parent_thread_id: ThreadId,
-) -> Result<i64, StoreError> {
+) -> Result<i64, StoreError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let row = sqlx::query(
         "SELECT COUNT(*) AS n FROM maidan_threads
          WHERE parent_thread_id = ? AND tombstoned_at IS NULL",
     )
     .bind(parent_thread_id.0)
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await?;
     Ok(row.get::<i64, _>("n"))
 }
 
-pub async fn thread_depth(pool: &SqlitePool, thread_id: ThreadId) -> Result<i64, StoreError> {
+pub async fn thread_depth<'e, E>(executor: E, thread_id: ThreadId) -> Result<i64, StoreError>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let row = sqlx::query(
         "WITH RECURSIVE anc(id, parent, d) AS (
              SELECT id, parent_thread_id, 1 FROM maidan_threads WHERE id = ?
@@ -90,7 +99,7 @@ pub async fn thread_depth(pool: &SqlitePool, thread_id: ThreadId) -> Result<i64,
          SELECT COALESCE(MAX(d), 0) AS depth FROM anc",
     )
     .bind(thread_id.0)
-    .fetch_one(pool)
+    .fetch_one(executor)
     .await?;
     Ok(row.get::<i64, _>("depth"))
 }

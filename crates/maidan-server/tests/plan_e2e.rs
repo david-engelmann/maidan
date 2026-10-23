@@ -337,6 +337,57 @@ async fn the_issue_plan_fans_out_dispatches_in_order_and_lands() {
     );
 }
 
+/// A replay answers with the stored plan's hold: the first submission
+/// needs a threat model and is held; the retry drops the flag, and the
+/// answer still says held, because the stored children still wait.
+#[tokio::test]
+async fn a_replay_reports_the_stored_plans_hold() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "plan-e2e-held-replay").await;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/channels/{}/threads", room.channel.0))
+        .bearer_auth(&room.planner_token)
+        .json(&json!({ "title": "plan", "attributes": { "kind": "plan" } }))
+        .send()
+        .await
+        .unwrap();
+    let parent = response.json::<Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let claim = claim_next(&base, &room, &room.planner_token).await.unwrap();
+    let lease = claim["claim_lease_id"].as_str().unwrap().to_string();
+
+    let mut sensitive = child("a", "schema", &[]);
+    sensitive["attributes"]["engine"] = json!("session");
+    sensitive["attributes"]["threat_model"] = json!(true);
+    let body = json!({
+        "lease_id": lease,
+        "children": [sensitive.clone(), child("b", "api", &["a"])],
+    });
+    let (status, made) = plan(&base, &room.planner_token, &parent, &body).await;
+    assert_eq!(status, StatusCode::CREATED, "{made}");
+    assert_eq!(made["held"], true, "{made}");
+
+    // The retry drops the threat model — the child goes to a session
+    // either way, so the lint still passes — and still replays.
+    sensitive["attributes"]
+        .as_object_mut()
+        .unwrap()
+        .remove("threat_model");
+    let retry = json!({
+        "lease_id": lease,
+        "children": [sensitive, child("b", "api", &["a"])],
+    });
+    let (status, again) = plan(&base, &room.planner_token, &parent, &retry).await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["children"], made["children"]);
+    assert_eq!(
+        again["held"], true,
+        "the stored plan is still held: {again}"
+    );
+}
+
 /// A token in a workspace of its own.
 async fn room_token(store: &dyn Store) -> String {
     let ws = store

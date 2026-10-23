@@ -1406,7 +1406,9 @@ pub(super) async fn submit_plan(
                 &json!({ "children": children, "replayed": false, "held": held }),
             ))
         }
-        PlanOutcome::Replayed(children) => Ok(content_json(
+        // A replay answers with the stored plan's hold, not this body's:
+        // the retry may have dropped the flag that held the first call.
+        PlanOutcome::Replayed { children, held } => Ok(content_json(
             &json!({ "children": children, "replayed": true, "held": held }),
         )),
         PlanOutcome::Conflict(children) => Err(McpError::PlanConflict(children)),

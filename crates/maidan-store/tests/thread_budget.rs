@@ -4,9 +4,9 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    BudgetLimits, BudgetReason, ChannelId, ClaimLeaseId, EventKind, MemberKind, NewChannel,
-    NewDlqEntry, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace, PriceSnapshot, ThreadId,
-    TokenUsage, UsageDelta, UsageEvidence, UsageRollupQuery,
+    BudgetLimits, BudgetReason, ChannelId, ClaimLeaseId, EventKind, MemberId, MemberKind,
+    NewChannel, NewDlqEntry, NewMember, NewThread, NewUsageLedgerEntry, NewWorkspace,
+    PriceSnapshot, ThreadId, TokenUsage, UsageDelta, UsageEvidence, UsageRollupQuery, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -518,6 +518,215 @@ async fn run_accounted_suite(store: &dyn Store) {
         .any(|entry| entry.usage_report_id == second.usage_report_id));
 }
 
+/// A workspace, member and claimed thread under a budget whose only cap
+/// is far above anything these suites report, for the rollup suites.
+async fn metered_thread(
+    store: &dyn Store,
+    name: &str,
+) -> (WorkspaceId, MemberId, ThreadId, ClaimLeaseId) {
+    let ws = store
+        .create_workspace(NewWorkspace { name: name.into() })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "m".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "c".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_budget(
+            thread.id,
+            BudgetLimits {
+                max_tokens: Some(i64::MAX),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("budget");
+    let claimed = store
+        .claim_thread(thread.id, member.id)
+        .await
+        .expect("claim");
+    assert!(claimed.claimed);
+    let lease = claimed.thread.claim_lease_id.expect("claim lease");
+    (ws.id, member.id, thread.id, lease)
+}
+
+/// Two reports in one scope sum. With one report per scope, a rollup
+/// that took the maximum, or any single row, would answer the same
+/// numbers these assertions expect from a sum.
+async fn run_two_report_rollup_suite(store: &dyn Store) {
+    let (ws, member, thread, lease) = metered_thread(store, "rollup-sums").await;
+    let price = PriceSnapshot {
+        input_usd_micros_per_million: 1_000_000,
+        output_usd_micros_per_million: 2_000_000,
+        cache_read_usd_micros_per_million: 100_000,
+        cache_write_5m_usd_micros_per_million: 1_250_000,
+        cache_write_1h_usd_micros_per_million: 2_000_000,
+    };
+    let report = |tokens: TokenUsage| NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread,
+        reporter: member,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens,
+        usd_micros: price.charge_usd_micros(tokens).expect("charge"),
+        price_snapshot: price,
+        turns: 1,
+        evidence: Default::default(),
+    };
+    let a = report(TokenUsage {
+        input: 100,
+        output: 40,
+        cache_read: 10,
+        cache_write_5m: 3,
+        cache_write_1h: 2,
+    });
+    assert_eq!(a.usd_micros, 189);
+    let b = report(TokenUsage {
+        input: 200,
+        output: 10,
+        cache_read: 30,
+        cache_write_5m: 1,
+        cache_write_1h: 0,
+    });
+    assert_eq!(b.usd_micros, 225);
+    store.report_accounted_usage(&a).await.expect("report a");
+    store.report_accounted_usage(&b).await.expect("report b");
+
+    for query in [
+        UsageRollupQuery {
+            workspace_id: ws,
+            thread_id: None,
+            member_id: None,
+        },
+        UsageRollupQuery {
+            workspace_id: ws,
+            thread_id: Some(thread),
+            member_id: None,
+        },
+    ] {
+        let rollup = store.usage_rollup(query).await.expect("rollup");
+        assert_eq!(rollup.reports, 2);
+        assert_eq!(rollup.input_tokens, 300);
+        assert_eq!(rollup.output_tokens, 50);
+        assert_eq!(rollup.cache_read_tokens, 40);
+        assert_eq!(rollup.cache_write_5m_tokens, 4);
+        assert_eq!(rollup.cache_write_1h_tokens, 2);
+        assert_eq!(rollup.usd_micros, 414);
+        // Uncached, per row: 195 and 251.
+        assert_eq!(rollup.uncached_usd_micros, 446);
+        assert_eq!(rollup.saved_usd_micros, 32);
+    }
+}
+
+/// The rollups recompute each row's uncached charge in SQL bigint
+/// arithmetic, while the write path computes the charge in i128. The
+/// largest report whose SQL intermediates fit is accepted and rolls up
+/// exactly; one past it is refused at the write, because from then on
+/// every rollup covering it would error instead of answering.
+async fn run_rollup_boundary_suite(store: &dyn Store) {
+    let (ws, member, thread, lease) = metered_thread(store, "rollup-boundary").await;
+    let price = PriceSnapshot {
+        input_usd_micros_per_million: 2,
+        ..Default::default()
+    };
+    // (i64::MAX - 999_999) / 2 at a rate of 2: the product plus the
+    // rollup's 999_999 rounding term is exactly i64::MAX.
+    let input = (i64::MAX - 999_999) / 2;
+    let tokens = TokenUsage {
+        input,
+        ..Default::default()
+    };
+    let usd = price.charge_usd_micros(tokens).expect("charge");
+    assert_eq!(usd, 9_223_372_036_854);
+    let report = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        thread_id: thread,
+        reporter: member,
+        claim_lease_id: lease,
+        model: "provider/model".into(),
+        tokens,
+        usd_micros: usd,
+        price_snapshot: price,
+        turns: 1,
+        evidence: Default::default(),
+    };
+    let (accepted, _) = store
+        .report_accounted_usage(&report)
+        .await
+        .expect("largest fitting report");
+    assert!(!accepted.stopped);
+    let rollup = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("rollup");
+    assert_eq!(rollup.reports, 1);
+    assert_eq!(rollup.input_tokens, input);
+    assert_eq!(rollup.usd_micros, 9_223_372_036_854);
+    assert_eq!(rollup.uncached_usd_micros, 9_223_372_036_854);
+    assert_eq!(rollup.saved_usd_micros, 0);
+
+    // 2^62 tokens at the same rate: the product is 2^63, one past
+    // i64::MAX, while the i128 charge still fits. Refused at the write.
+    let over_tokens = TokenUsage {
+        input: 1_i64 << 62,
+        ..Default::default()
+    };
+    let over = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        tokens: over_tokens,
+        usd_micros: price.charge_usd_micros(over_tokens).expect("charge"),
+        ..report.clone()
+    };
+    let err = store
+        .report_accounted_usage(&over)
+        .await
+        .expect_err("the overflowing report is refused");
+    assert!(
+        matches!(&err, StoreError::InvalidInput(msg) if msg.contains("too large to roll up")),
+        "{err}"
+    );
+    // Nothing was stored: the rollup still answers with the one report.
+    let rollup = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("rollup after refusal");
+    assert_eq!(rollup.reports, 1);
+}
+
 #[tokio::test]
 async fn accounted_usage_is_idempotent_and_claim_fenced() {
     run_accounted_suite(&sqlite().await).await;
@@ -531,6 +740,8 @@ async fn thread_budget_set_get_accumulate_and_exceed_sqlite() {
     run_enforce_suite(&store).await;
     run_accounted_suite(&store).await;
     run_cache_pricing_suite(&store).await;
+    run_two_report_rollup_suite(&store).await;
+    run_rollup_boundary_suite(&store).await;
 }
 
 #[tokio::test]
@@ -569,6 +780,8 @@ async fn thread_budget_set_get_accumulate_and_exceed_postgres() {
     run_enforce_suite(&store).await;
     run_accounted_suite(&store).await;
     run_cache_pricing_suite(&store).await;
+    run_two_report_rollup_suite(&store).await;
+    run_rollup_boundary_suite(&store).await;
 }
 
 /// A patch changes only the dimensions it names.
@@ -821,8 +1034,11 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
         price.uncached_charge_usd_micros(tokens).expect("uncached")
     );
     assert_eq!(rollup.cost_per_completed_task_usd_micros, Some(usd));
-    assert!(rollup.hit_rate_ppm.is_some());
-    assert!(rollup.saved_usd_micros > 0);
+    // The prompt is 10 + 1_000 + 3 + 2 = 1_015 tokens, of which 1_000
+    // were cache reads: 1_000 * 1_000_000 / 1_015 = 985_221 ppm.
+    assert_eq!(rollup.hit_rate_ppm, Some(985_221));
+    // Uncached, the same tokens cost 1_025; the cached charge was 128.
+    assert_eq!(rollup.saved_usd_micros, 897);
 
     let workspace = store
         .usage_rollup(UsageRollupQuery {

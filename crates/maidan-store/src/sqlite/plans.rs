@@ -27,14 +27,19 @@ pub async fn submit(
     member_id: MemberId,
     plan: SubmitPlan,
 ) -> Result<PlanOutcome, StoreError> {
-    let parent = parent_row(pool, parent_id).await?;
+    // Every read that decides the outcome runs inside the transaction, as
+    // on Postgres: a claim released or a plan submitted between a pool
+    // read and the commit could otherwise slip a second plan past the
+    // holder check, or surface a raw constraint error in place of the
+    // replay or conflict answer.
+    let mut tx = pool.begin().await?;
+    let parent = parent_row(&mut tx, parent_id).await?;
     hold_check(&parent, member_id, plan.lease_id)?;
-    if let Some(outcome) = existing(pool, parent_id, &plan).await? {
+    if let Some(outcome) = existing(&mut tx, parent_id, &plan).await? {
         return Ok(outcome);
     }
-    spawn_budget(pool, parent_id, &parent, plan.children.len() as i64).await?;
+    spawn_budget(&mut tx, parent_id, &parent, plan.children.len() as i64).await?;
 
-    let mut tx = pool.begin().await?;
     check_repos_in_tx(&mut tx, parent.workspace_id, &plan.children).await?;
     let now = Utc::now();
     sqlx::query(
@@ -259,7 +264,10 @@ struct Parent {
     kind: Option<String>,
 }
 
-async fn parent_row(pool: &SqlitePool, parent_id: ThreadId) -> Result<Parent, StoreError> {
+async fn parent_row(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    parent_id: ThreadId,
+) -> Result<Parent, StoreError> {
     let row = sqlx::query(
         "SELECT t.channel_id, c.workspace_id, t.assignee_id, t.claim_lease_id,
                 t.assignment_expires_at, a.kind
@@ -269,7 +277,7 @@ async fn parent_row(pool: &SqlitePool, parent_id: ThreadId) -> Result<Parent, St
          WHERE t.id = ? AND t.tombstoned_at IS NULL",
     )
     .bind(parent_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
     Ok(Parent {
@@ -311,7 +319,7 @@ fn hold_check(
 /// What an earlier plan on this parent means for this one: the same lease
 /// with the same keys replays it, anything else conflicts with it.
 async fn existing(
-    pool: &SqlitePool,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     parent_id: ThreadId,
     plan: &SubmitPlan,
 ) -> Result<Option<PlanOutcome>, StoreError> {
@@ -319,7 +327,7 @@ async fn existing(
         "SELECT lease_id FROM maidan_thread_plans WHERE parent_thread_id = ?",
     )
     .bind(parent_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut **tx)
     .await?
     else {
         return Ok(None);
@@ -329,7 +337,7 @@ async fn existing(
          WHERE parent_thread_id = ? ORDER BY position",
     )
     .bind(parent_id.0)
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await?
     .iter()
     .map(|row| PlannedChild {
@@ -341,24 +349,35 @@ async fn existing(
         && children
             .iter()
             .all(|c| plan.key_set().contains(c.key.as_str()));
-    Ok(Some(if lease == plan.lease_id.0 && same_keys {
-        PlanOutcome::Replayed(children)
-    } else {
-        PlanOutcome::Conflict(children)
-    }))
+    if lease != plan.lease_id.0 || !same_keys {
+        return Ok(Some(PlanOutcome::Conflict(children)));
+    }
+    // The stored plan's hold, from the blocks standing on its children:
+    // the retry's own shape says nothing about the plan as it stands.
+    let held = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM maidan_thread_blocks b
+         JOIN maidan_thread_plan_children c ON c.child_thread_id = b.thread_id
+         WHERE c.parent_thread_id = ? AND b.note = ?",
+    )
+    .bind(parent_id.0)
+    .bind(maidan_types::PLAN_HOLD_NOTE)
+    .fetch_one(&mut **tx)
+    .await?
+        > 0;
+    Ok(Some(PlanOutcome::Replayed { children, held }))
 }
 
 /// The workspace's spawn budget, counted for the whole plan: a plan that
 /// would take the parent past `max_children`, or nest past `max_depth`,
 /// creates nothing.
 async fn spawn_budget(
-    pool: &SqlitePool,
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     parent_id: ThreadId,
     parent: &Parent,
     adding: i64,
 ) -> Result<(), StoreError> {
     let workspace_id = WorkspaceId(parent.workspace_id);
-    let Some(budget) = spawn::get_budget(pool, workspace_id).await? else {
+    let Some(budget) = spawn::get_budget(&mut **tx, workspace_id).await? else {
         return Ok(());
     };
     let refuse = |axis, limit, observed| {
@@ -372,13 +391,13 @@ async fn spawn_budget(
         }))
     };
     if let Some(max_children) = budget.max_children {
-        let children = spawn::count_active_children(pool, parent_id).await?;
+        let children = spawn::count_active_children(&mut **tx, parent_id).await?;
         if children + adding > max_children {
             return refuse(SpawnAxis::Children, max_children, children + adding);
         }
     }
     if let Some(max_depth) = budget.max_depth {
-        let depth = spawn::thread_depth(pool, parent_id).await?;
+        let depth = spawn::thread_depth(&mut **tx, parent_id).await?;
         if depth >= max_depth {
             return refuse(SpawnAxis::Depth, max_depth, depth);
         }
@@ -447,13 +466,17 @@ async fn plan_parent_in_tx(
     .map(ThreadId))
 }
 
-/// The pull request a thread landed with, from its latest `ThreadLanded`.
-/// Landing is what that event records, so a thread closed by hand or
-/// cancelled has none.
+/// Whether a closed thread landed, and with what pull request. No single
+/// record is always written, so the signal is hybrid: the sweep's settle
+/// writes `ThreadLanded` for the merges it closes, but a thread whose
+/// pull merged can be closed by hand before the sweep runs, and a thread
+/// with no pull request at all (research, docs, manual work) lands by
+/// its plain close. A change pull that closed unmerged is the one close
+/// that is not a landing.
 async fn landing_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
-) -> Result<Option<(String, i64)>, StoreError> {
+) -> Result<Option<plan_notices::Landing>, StoreError> {
     let payload = sqlx::query_scalar::<_, sqlx::types::Json<serde_json::Value>>(
         "SELECT payload FROM maidan_events WHERE thread_id = ? AND kind = 'thread_landed'
          ORDER BY id DESC LIMIT 1",
@@ -461,7 +484,33 @@ async fn landing_in_tx(
     .bind(thread_id.0)
     .fetch_optional(&mut **tx)
     .await?;
-    Ok(payload.and_then(|p| plan_notices::landing_from_payload(&p.0)))
+    if let Some((repo, pr)) = payload.and_then(|p| plan_notices::landing_from_payload(&p.0)) {
+        return Ok(Some(plan_notices::Landing::Pull(repo, pr)));
+    }
+    let merged = sqlx::query(
+        "SELECT repo, pull_number FROM maidan_change_pulls
+         WHERE thread_id = ? AND merged_at IS NOT NULL
+         ORDER BY merged_at DESC LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if let Some(row) = merged {
+        return Ok(Some(plan_notices::Landing::Pull(
+            row.get("repo"),
+            row.get("pull_number"),
+        )));
+    }
+    let pulls: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM maidan_change_pulls WHERE thread_id = ?")
+            .bind(thread_id.0)
+            .fetch_one(&mut **tx)
+            .await?;
+    Ok(if pulls == 0 {
+        Some(plan_notices::Landing::Plain)
+    } else {
+        None
+    })
 }
 
 /// Close `parent` when every child has landed, through the transition path
@@ -496,17 +545,17 @@ async fn close_parent_in_tx(
             return Ok((Vec::new(), false));
         }
         let thread_id = ThreadId(row.get("id"));
-        let Some(landed) = landing_in_tx(tx, thread_id).await? else {
+        let Some(landing) = landing_in_tx(tx, thread_id).await? else {
             // That child's close already told the parent.
             return Ok((Vec::new(), false));
         };
         children.push(plan_notices::ChildLine {
             thread_id,
             title: row.get("title"),
-            landed: Some(landed),
+            landed: landing.pull(),
         });
     }
-    let Some((repo, pr_number)) = landing_in_tx(tx, completing).await? else {
+    let Some(completing_landing) = landing_in_tx(tx, completing).await? else {
         return Ok((Vec::new(), false));
     };
 
@@ -520,20 +569,25 @@ async fn close_parent_in_tx(
     .await
     {
         Ok(mut stored) => {
-            let (workspace_id, channel_id) =
-                events::thread_scope_in_tx(&mut savepoint, parent).await?;
-            let landed = Event::ThreadLanded {
-                occurred_at: Utc::now(),
-                workspace_id,
-                channel_id,
-                thread_id: parent,
-                repo,
-                pr_number,
-                merged_by: None,
-                merge_commit_sha: None,
-                title: None,
-            };
-            stored.push(events::append_in_tx(&mut savepoint, &landed).await?);
+            // The plan itself lands with the completing child's pull
+            // request; a plan finished by plain closes has none to name,
+            // and its own parent reads the plain close instead.
+            if let Some((repo, pr_number)) = completing_landing.pull() {
+                let (workspace_id, channel_id) =
+                    events::thread_scope_in_tx(&mut savepoint, parent).await?;
+                let landed = Event::ThreadLanded {
+                    occurred_at: Utc::now(),
+                    workspace_id,
+                    channel_id,
+                    thread_id: parent,
+                    repo,
+                    pr_number,
+                    merged_by: None,
+                    merge_commit_sha: None,
+                    title: None,
+                };
+                stored.push(events::append_in_tx(&mut savepoint, &landed).await?);
+            }
             stored.push(
                 post_notice_in_tx(
                     &mut savepoint,
@@ -610,48 +664,8 @@ async fn unlanded_in_tx(
     .fetch_all(&mut **tx)
     .await?;
     let mut stored = Vec::new();
-    let note = plan_notices::blocked_note(&title, child);
     for dependent in dependents.into_iter().map(ThreadId) {
-        // A block a person set stays as it is: it already keeps the thread
-        // off the queue, and its reason is theirs.
-        let inserted = sqlx::query_scalar::<_, Uuid>(
-            "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, set_at, note)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT (thread_id) DO NOTHING
-             RETURNING thread_id",
-        )
-        .bind(dependent.0)
-        .bind(BlockedReason::Dag.as_str())
-        .bind(actor.0)
-        .bind(Utc::now().to_rfc3339())
-        .bind(&note)
-        .fetch_optional(&mut **tx)
-        .await?;
-        if inserted.is_none() {
-            continue;
-        }
-        let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, dependent).await?;
-        let blocked = Event::ThreadBlocked {
-            occurred_at: Utc::now(),
-            workspace_id,
-            channel_id,
-            thread_id: dependent,
-            reason: BlockedReason::Dag,
-            set_by: actor,
-            note: Some(note.clone()),
-        };
-        stored.push(events::append_in_tx(tx, &blocked).await?);
-        stored.push(
-            post_notice_in_tx(
-                tx,
-                keys,
-                dependent,
-                actor,
-                plan_notices::blocked_body(&title, child),
-                plan_notices::blocked_metadata(child),
-            )
-            .await?,
-        );
+        stored.extend(dag_block_in_tx(tx, keys, dependent, child, &title, actor).await?);
     }
     let line = plan_notices::ChildLine {
         thread_id: child,
@@ -670,6 +684,95 @@ async fn unlanded_in_tx(
         .await?,
     );
     Ok(stored)
+}
+
+/// Write the `dag` block on `dependent` for `dependency`, which closed
+/// without landing, with its event and its notice. A block already
+/// standing stays as it is: it already keeps the thread off the queue,
+/// and its reason is its setter's. Returns the events, empty when a
+/// block already stood.
+async fn dag_block_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    dependent: ThreadId,
+    dependency: ThreadId,
+    dependency_title: &str,
+    actor: MemberId,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let note = plan_notices::blocked_note(dependency_title, dependency);
+    let inserted = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO maidan_thread_blocks (thread_id, reason, set_by, set_at, note)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (thread_id) DO NOTHING
+         RETURNING thread_id",
+    )
+    .bind(dependent.0)
+    .bind(BlockedReason::Dag.as_str())
+    .bind(actor.0)
+    .bind(Utc::now().to_rfc3339())
+    .bind(&note)
+    .fetch_optional(&mut **tx)
+    .await?;
+    let Some(_) = inserted else {
+        return Ok(Vec::new());
+    };
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(tx, dependent).await?;
+    let blocked = Event::ThreadBlocked {
+        occurred_at: Utc::now(),
+        workspace_id,
+        channel_id,
+        thread_id: dependent,
+        reason: BlockedReason::Dag,
+        set_by: actor,
+        note: Some(note),
+    };
+    Ok(vec![
+        events::append_in_tx(tx, &blocked).await?,
+        post_notice_in_tx(
+            tx,
+            keys,
+            dependent,
+            actor,
+            plan_notices::blocked_body(dependency_title, dependency),
+            plan_notices::blocked_metadata(dependency),
+        )
+        .await?,
+    ])
+}
+
+/// Block each `(dependent, dependency)` pair whose dependency has already
+/// closed without landing, with the block the close path writes. An
+/// amendment uses this for the children it adds or rewires onto such a
+/// dependency: the close ran before they depended on it, so nothing
+/// blocked them, and `claim_next` would hand them out over work that
+/// never merged. Returns the events and the children blocked.
+async fn block_unlanded_dependents_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    pairs: &[(ThreadId, ThreadId)],
+    actor: MemberId,
+) -> Result<(Vec<StoredEvent>, Vec<ThreadId>), StoreError> {
+    let mut stored = Vec::new();
+    let mut blocked = Vec::new();
+    for &(dependent, dependency) in pairs {
+        let row = sqlx::query("SELECT state, title FROM maidan_threads WHERE id = ?")
+            .bind(dependency.0)
+            .fetch_one(&mut **tx)
+            .await?;
+        let state: String = row.get("state");
+        let settled =
+            state == ThreadState::Closed.as_str() || state == ThreadState::Archived.as_str();
+        if !settled || landing_in_tx(tx, dependency).await?.is_some() {
+            continue;
+        }
+        let title: String = row.get("title");
+        let events = dag_block_in_tx(tx, keys, dependent, dependency, &title, actor).await?;
+        if !events.is_empty() {
+            blocked.push(dependent);
+            stored.extend(events);
+        }
+    }
+    Ok((stored, blocked))
 }
 
 /// Post a system message on `thread_id`, sealed like any other message.
@@ -749,14 +852,16 @@ pub async fn amend(
     member_id: MemberId,
     amend: AmendPlan,
 ) -> Result<AmendOutcome, StoreError> {
-    let parent = parent_row(pool, parent_id).await?;
+    // The holder and budget reads run inside the transaction, as in
+    // `submit`: what they read is what the amendment commits against.
+    let mut tx = pool.begin().await?;
+    let parent = parent_row(&mut tx, parent_id).await?;
     hold_check(&parent, member_id, amend.lease_id)?;
     let net_adding = amend.add.len() as i64 - amend.cancel.len() as i64;
     if net_adding > 0 {
-        spawn_budget(pool, parent_id, &parent, net_adding).await?;
+        spawn_budget(&mut tx, parent_id, &parent, net_adding).await?;
     }
 
-    let mut tx = pool.begin().await?;
     let amendments: i64 =
         sqlx::query_scalar("SELECT amendments FROM maidan_thread_plans WHERE parent_thread_id = ?")
             .bind(parent_id.0)
@@ -907,8 +1012,34 @@ pub async fn amend(
             insert_dependency_in_tx(&mut tx, this, wire(dep)?, now).await?;
         }
     }
+    // A child this amendment points at a dependency that already closed
+    // without landing takes the block the close path writes: the close
+    // ran before the child depended on it, so nothing blocked it then.
+    let mut pairs: Vec<(ThreadId, ThreadId)> = Vec::new();
+    for child in &steps.add {
+        let this = wire(&child.key)?;
+        for dep in &child.depends_on {
+            pairs.push((this, wire(dep)?));
+        }
+    }
+    for (key, deps) in &steps.rewrite {
+        let this = wire(key)?;
+        for dep in deps {
+            pairs.push((this, wire(dep)?));
+        }
+    }
+    let (block_events, dag_blocked) =
+        block_unlanded_dependents_in_tx(&mut tx, keys, &pairs, member_id).await?;
+    stored.extend(block_events);
     if held {
-        hold_in_tx(&mut tx, &added, member_id).await?;
+        // A child the dag block already holds keeps that block: a thread
+        // carries one block, and a release must not free it.
+        let unblocked: Vec<PlannedChild> = added
+            .iter()
+            .filter(|c| !dag_blocked.contains(&c.thread_id))
+            .cloned()
+            .collect();
+        hold_in_tx(&mut tx, &unblocked, member_id).await?;
     }
     sqlx::query(
         "UPDATE maidan_thread_plans SET amendments = amendments + 1 WHERE parent_thread_id = ?",

@@ -383,6 +383,30 @@ impl NewUsageLedgerEntry {
                 actual = self.usd_micros
             ));
         }
+        // The rollups recompute each row's uncached charge in SQL bigint
+        // arithmetic: prompt tokens times the input rate, plus output times
+        // the output rate, plus 999_999. The charge above is computed in
+        // i128, so a report can pass here whose SQL intermediate overflows;
+        // from then on every rollup covering it errors. Refuse it here,
+        // where both backends and every caller inherit the refusal.
+        let prompt = self.tokens.prompt()?;
+        let uncached_intermediate = i128::from(prompt)
+            .checked_mul(i128::from(self.price_snapshot.input_usd_micros_per_million))
+            .and_then(|input_line| {
+                i128::from(self.tokens.output)
+                    .checked_mul(i128::from(
+                        self.price_snapshot.output_usd_micros_per_million,
+                    ))
+                    .and_then(|output_line| input_line.checked_add(output_line))
+            })
+            .and_then(|total| total.checked_add(999_999))
+            .ok_or_else(|| "price calculation overflow".to_string())?;
+        if uncached_intermediate > i128::from(i64::MAX) {
+            return Err(
+                "usage report is too large to roll up: its uncached charge overflows the rollup arithmetic"
+                    .into(),
+            );
+        }
         Ok(())
     }
 }
@@ -916,6 +940,41 @@ mod tests {
             cache_write_1h_usd_micros_per_million: 1,
         };
         assert_eq!(price.charge_usd_micros(tokens), Ok(22));
+    }
+
+    #[test]
+    fn a_report_whose_rollup_intermediate_overflows_is_refused() {
+        // The write path charges in i128, but the rollups recompute the
+        // uncached charge per row in SQL bigint arithmetic. At a rate of
+        // 2, (i64::MAX - 999_999) / 2 tokens is the largest input whose
+        // product plus the 999_999 rounding term still fits.
+        let price = PriceSnapshot {
+            input_usd_micros_per_million: 2,
+            ..Default::default()
+        };
+        let entry = |input: i64| {
+            let tokens = TokenUsage {
+                input,
+                ..Default::default()
+            };
+            NewUsageLedgerEntry {
+                usage_report_id: uuid::Uuid::new_v4(),
+                thread_id: ThreadId::new(),
+                reporter: MemberId::new(),
+                claim_lease_id: ClaimLeaseId::new(),
+                model: "provider/model".into(),
+                tokens,
+                usd_micros: price.charge_usd_micros(tokens).expect("charge"),
+                price_snapshot: price,
+                turns: 1,
+                evidence: UsageEvidence::default(),
+            }
+        };
+        assert_eq!(entry((i64::MAX - 999_999) / 2).validate(), Ok(()));
+        // 2^62 tokens: the product is 2^63, one past i64::MAX, while the
+        // charge itself still fits.
+        let err = entry(1_i64 << 62).validate().expect_err("refused");
+        assert!(err.contains("too large to roll up"), "{err}");
     }
 
     #[test]

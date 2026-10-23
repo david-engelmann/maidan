@@ -75,6 +75,26 @@ pub(crate) fn refused_metadata(reason: &str) -> Value {
     json!({ "notice": "plan_close_refused", "reason": reason })
 }
 
+/// How a closed child landed, under the hybrid signal the planner
+/// amendment specified: a `ThreadLanded` event or a merged change pull
+/// names the pull request, and a plain close with no change pull at all
+/// lands without one. A change pull that closed unmerged is the one
+/// close that is not a landing.
+pub(crate) enum Landing {
+    Pull(String, i64),
+    Plain,
+}
+
+impl Landing {
+    /// The pull request the child landed with, when there is one.
+    pub(crate) fn pull(&self) -> Option<(String, i64)> {
+        match self {
+            Landing::Pull(repo, pr) => Some((repo.clone(), *pr)),
+            Landing::Plain => None,
+        }
+    }
+}
+
 /// The landing a `ThreadLanded` payload records, when it is one.
 pub(crate) fn landing_from_payload(payload: &Value) -> Option<(String, i64)> {
     let repo = payload.get("repo")?.as_str()?.to_string();

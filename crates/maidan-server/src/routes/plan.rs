@@ -39,7 +39,9 @@ pub async fn submit_plan(
             }
             Ok((StatusCode::CREATED, Json(PlanChildren { children, held })))
         }
-        PlanOutcome::Replayed(children) => {
+        // A replay answers with the stored plan's hold, not this body's:
+        // the retry may have dropped the flag that held the first call.
+        PlanOutcome::Replayed { children, held } => {
             Ok((StatusCode::OK, Json(PlanChildren { children, held })))
         }
         PlanOutcome::Conflict(children) => Err(ApiError::PlanConflict(children)),

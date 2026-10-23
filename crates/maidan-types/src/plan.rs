@@ -102,8 +102,14 @@ pub enum PlanOutcome {
         events: Vec<StoredEvent>,
     },
     /// The same claim already submitted the same keys: these are the children
-    /// that call made, and nothing new was created.
-    Replayed(Vec<PlannedChild>),
+    /// that call made, and nothing new was created. `held` is read from the
+    /// stored children (a plan hold block standing on any of them), never
+    /// from the retry's body: a retry that drops the flag that held the
+    /// first submission still answers for the plan as it stands.
+    Replayed {
+        children: Vec<PlannedChild>,
+        held: bool,
+    },
     /// The parent already has children from another claim or with other keys.
     Conflict(Vec<PlannedChild>),
 }

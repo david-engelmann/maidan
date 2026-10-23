@@ -6,6 +6,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_fsm::ThreadAction;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
@@ -193,6 +195,58 @@ async fn deps(store: &dyn Store, thread: ThreadId) -> Vec<ThreadId> {
 
 async fn state(store: &dyn Store, thread: ThreadId) -> ThreadState {
     store.get_thread(thread).await.unwrap().state
+}
+
+/// Close `thread` by hand after its pull request closed unmerged: the
+/// pull row says closed with no merge and no `ThreadLanded` ever records
+/// the close, so the child is unlanded and blocks what depends on it.
+async fn close_unlanded(store: &dyn Store, room: &Room, thread: ThreadId, by: MemberId) {
+    store
+        .set_thread_result_claiming(thread, room.worker, &serde_json::json!({"summary": "done"}))
+        .await
+        .unwrap();
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: thread,
+            repo: REPO.into(),
+            pull_number: 61,
+            commit_sha: format!("{:040x}", 61),
+            base_sha: "a".repeat(40),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: None,
+            rebase: false,
+            previous_head: None,
+            linear_issue: None,
+        })
+        .await
+        .unwrap();
+    let at = chrono::Utc::now();
+    store
+        .close_change_pull(room.ws, REPO, 61, None, None, at)
+        .await
+        .unwrap();
+    store
+        .transition_thread_with_event(thread, by, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    store
+        .transition_thread_with_event(thread, by, ThreadAction::Close)
+        .await
+        .unwrap();
+}
+
+/// The `notice` names of the system messages on `thread`.
+async fn notices(store: &dyn Store, thread: ThreadId) -> Vec<String> {
+    store
+        .list_messages(thread, 50)
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|m| m.metadata.get("notice")?.as_str().map(str::to_string))
+        .collect()
 }
 
 /// The plan `a`, `b` after `a`, `c` after `b`, claimed and submitted.
@@ -420,7 +474,64 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
     Some((container, Arc::new(PostgresStore::for_tests(pool))))
 }
 
+/// A child added onto a dependency that already closed without landing
+/// takes the block the close path writes, and so does a child rewired
+/// onto it: the close ran before they depended on it, so nothing blocked
+/// them then, and the queue must not hand them out over work that never
+/// merged.
+async fn an_amendment_onto_an_unlanded_child_blocks_the_dependent(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let (room, parent, lease, made) = three_step_plan(s, "amend-unlanded").await;
+    let a = id(&made, "a");
+    let c = id(&made, "c");
+
+    // `a` closes by hand with its pull unmerged. `b`, which already
+    // waited for it, is blocked by the close itself; `c` still waits for
+    // `b` and is untouched.
+    close_unlanded(s, &room, a, room.worker).await;
+    assert!(s.get_thread_block(id(&made, "b")).await.unwrap().is_some());
+    assert!(s.get_thread_block(c).await.unwrap().is_none());
+
+    // Add `d` behind `a`, and rewire `c` from `b` onto `a`.
+    let mut change = amendment(lease);
+    change.add = vec![child("d", &["a"])];
+    change.rewire = vec![PlanRewire {
+        key: "c".into(),
+        depends_on: vec!["a".into()],
+    }];
+    let outcome = amend(s, parent, room.planner, change).await.unwrap();
+    let d = id(&outcome.amendment.added, "d");
+
+    for dependent in [d, c] {
+        let block = s
+            .get_thread_block(dependent)
+            .await
+            .unwrap()
+            .expect("the dependent is blocked");
+        assert_eq!(block.reason, BlockedReason::Dag);
+        assert!(
+            block
+                .note
+                .as_deref()
+                .is_some_and(|n| n.contains("closed without landing")),
+            "the block names why: {:?}",
+            block.note
+        );
+        assert_eq!(notices(s, dependent).await, ["dependency_unlanded"]);
+    }
+    // Neither dependent is handed out. Nothing else is claimable either:
+    // `b` is dag-blocked by the close, and the parent is the planner's.
+    assert_eq!(
+        s.claim_next_thread(room.channel, room.worker, Some(600), None)
+            .await
+            .unwrap()
+            .map(|t| t.id),
+        None
+    );
+}
+
 on_both_backends!(
+    an_amendment_onto_an_unlanded_child_blocks_the_dependent,
     an_amendment_cancels_adds_and_rewires_at_once,
     a_replaced_child_keeps_its_dependents_waiting_for_the_new_one,
     a_claimed_child_is_refused_and_nothing_changes,
