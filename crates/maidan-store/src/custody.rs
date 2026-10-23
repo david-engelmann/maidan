@@ -112,15 +112,32 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
                 .key_metadata
                 .map(|meta| meta.arn.unwrap_or(meta.key_id))
                 .ok_or(SealError::Malformed)?;
-            let out = self
+            let encrypted = self
                 .client
                 .encrypt()
                 .key_id(&arn)
                 .plaintext(Blob::new(key.as_bytes().to_vec()))
                 .encryption_context(CONTEXT_KEY, workspace_key_id.to_string())
                 .send()
-                .await
-                .map_err(|err| Self::kms_error("Encrypt", err))?;
+                .await;
+            let out = match encrypted {
+                Ok(out) => out,
+                Err(err) => {
+                    // Nothing will ever point at the key just created: schedule
+                    // its deletion rather than leave it billing.
+                    if let Err(cleanup) = self
+                        .client
+                        .schedule_key_deletion()
+                        .key_id(&arn)
+                        .pending_window_in_days(DELETION_WINDOW_DAYS)
+                        .send()
+                        .await
+                    {
+                        tracing::warn!(error = %cleanup, "could not schedule deletion of an unused KMS key");
+                    }
+                    return Err(Self::kms_error("Encrypt", err));
+                }
+            };
             let blob = out.ciphertext_blob.ok_or(SealError::Malformed)?;
             Ok(WrappedKey {
                 kek_id: format!("{AWS_KMS_PREFIX}{arn}"),
@@ -161,19 +178,41 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
     ) -> CustodyFuture<'a, ()> {
         Box::pin(async move {
             let arn = Self::key_arn(wrapped)?;
-            self.client
-                .disable_key()
-                .key_id(arn)
-                .send()
-                .await
-                .map_err(|err| Self::kms_error("DisableKey", err))?;
-            self.client
+            // A key pending deletion decrypts nothing, so scheduling the
+            // deletion is the whole destroy. Destroying is idempotent: a key
+            // already pending deletion, or already gone, counts as destroyed.
+            let scheduled = self
+                .client
                 .schedule_key_deletion()
                 .key_id(arn)
                 .pending_window_in_days(DELETION_WINDOW_DAYS)
                 .send()
-                .await
-                .map_err(|err| Self::kms_error("ScheduleKeyDeletion", err))?;
+                .await;
+            let err = match scheduled {
+                Ok(_) => return Ok(()),
+                Err(err) => err,
+            };
+            match err.as_service_error() {
+                Some(e) if e.is_not_found_exception() => return Ok(()),
+                Some(e) if e.is_kms_invalid_state_exception() => {
+                    let described = self
+                        .client
+                        .describe_key()
+                        .key_id(arn)
+                        .send()
+                        .await
+                        .map_err(|err| Self::kms_error("DescribeKey", err))?;
+                    let pending = described
+                        .key_metadata()
+                        .and_then(|m| m.key_state())
+                        .is_some_and(|s| *s == aws_sdk_kms::types::KeyState::PendingDeletion);
+                    if pending {
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
+            Err(Self::kms_error("ScheduleKeyDeletion", err))?;
             Ok(())
         })
     }

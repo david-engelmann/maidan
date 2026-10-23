@@ -107,7 +107,8 @@ pub(crate) async fn purge_on(
     // custody that refuses fails the purge, which then changes nothing.
     let workspace_keys = sqlx::query(
         "SELECT id, wrapping_key_id, wrapped_key FROM maidan_workspace_keys
-         WHERE workspace_id = $1 AND destroyed_at IS NULL",
+         WHERE workspace_id = $1 AND destroyed_at IS NULL
+         ORDER BY id",
     )
     .bind(workspace_id.0)
     .fetch_all(&mut *tx)
