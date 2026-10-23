@@ -1114,6 +1114,7 @@ Scrape `GET /metrics` for agent-substrate health (see [Integration](Integration.
 | Metric / signal | Symptom | Suggested action |
 |-----------------|---------|------------------|
 | `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
+| `maidan_indexer_events_behind` | Message events not yet indexed, up to 100000 | Fix embedding provider; check `maidan_indexer_queue_depth` |
 | `maidan_indexer_pending_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
 | `maidan_outbox_pending` / quarantined | Relay stuck | [Outbox relay](#outbox-relay-v1000-postgres-v1200-quarantine-v1400-sqlite) |
 | `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [Automation HTTP delivery](#automation-http-delivery-v6800) |

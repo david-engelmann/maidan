@@ -516,7 +516,8 @@ the upload step. The upload does not fail CI when Codecov is unreachable.
    readiness degrades only while message events wait unhandled past it, never for
    an idle instance. Watch `maidan_indexer_pending_age_seconds` (0 when caught up)
    and `/health` `indexer_last_event_at`; `maidan_indexer_last_event_age_seconds`
-   grows on any quiet instance.
+   grows on any quiet instance. `maidan_indexer_events_behind` is the backlog's
+   depth (counted up to 100000); `MaidanIndexerBacklogDeep` fires past 10000.
 
 ### Bus hydrate troubleshooting (`v8.0.0`)
 

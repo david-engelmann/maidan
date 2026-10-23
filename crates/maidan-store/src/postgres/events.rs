@@ -405,6 +405,33 @@ pub async fn oldest_event_after_of_kinds(
     Ok(row.map(|r| (r.get("id"), r.get("inserted_at"))))
 }
 
+/// Events after `after_id` of one of `kinds`, counted up to `cap`; see
+/// [`crate::Store::count_events_after_of_kinds`].
+pub async fn count_events_after_of_kinds(
+    pool: &PgPool,
+    after_id: i64,
+    kinds: &[maidan_types::EventKind],
+    cap: i64,
+) -> Result<i64, StoreError> {
+    if kinds.is_empty() || cap <= 0 {
+        return Ok(0);
+    }
+    let names: Vec<String> = kinds.iter().map(|k| k.as_str().to_string()).collect();
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS n FROM (
+             SELECT 1 FROM maidan_events
+             WHERE id > $1 AND kind = ANY($2)
+             LIMIT $3
+         ) behind",
+    )
+    .bind(after_id)
+    .bind(names)
+    .bind(cap)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get::<i64, _>("n"))
+}
+
 /// Open the workspace keys `rows` need before they are mapped. Rows carry
 /// `key_kek_id`, `wk_kek_id` and `wk_wrapped`.
 pub(crate) async fn open_rows(

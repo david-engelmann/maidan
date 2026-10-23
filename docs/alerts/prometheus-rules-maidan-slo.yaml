@@ -228,6 +228,20 @@ spec:
               The oldest unindexed message event is {{ $value | humanizeDuration }} old.
               Set INDEXER_STALE_SECS in readiness; check embedding provider.
 
+        - alert: MaidanIndexerBacklogDeep
+          # Depth, beside MaidanIndexerStale's age: a burst can be young and
+          # still far too deep to drain. Counted up to 100000.
+          expr: maidan_indexer_events_behind > 10000
+          for: 10m
+          labels:
+            severity: warning
+            slo: search_index
+          annotations:
+            summary: Embedding indexer backlog deep
+            description: |
+              {{ $value }} message events wait to be indexed.
+              Check the embedding provider and maidan_indexer_queue_depth.
+
         - alert: MaidanIndexerQueueSaturated
           # Saturation ratio first so `$value` is the fill fraction (humanizes to a
           # sane %); the `capacity > 0` conjunct still guards the logging-only indexer.

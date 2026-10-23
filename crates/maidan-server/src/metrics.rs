@@ -159,6 +159,10 @@ pub fn init() {
             "Seconds since the oldest indexable event the indexer has not handled was stored (0 when caught up)"
         );
         describe_gauge!(
+            "maidan_indexer_events_behind",
+            "Indexable events the indexer has not handled, counted up to 100000 (0 when caught up)"
+        );
+        describe_gauge!(
             "maidan_bus_listener_ok",
             "Postgres LISTEN listener health (1=ok, 0=degraded)"
         );
@@ -547,6 +551,13 @@ async fn refresh_runtime_gauges(state: &AppState) {
         _ => 0.0,
     };
     gauge!("maidan_indexer_pending_age_seconds").set(pending_age_secs);
+    // Same guard as the age: before the indexer's first pass its watermark is
+    // 0 and the whole log would read as behind.
+    let events_behind = match crate::health::indexer_events_behind(state).await {
+        Ok(n) if ms != 0 => n as f64,
+        _ => 0.0,
+    };
+    gauge!("maidan_indexer_events_behind").set(events_behind);
 
     // Live embedding pipeline: queue depth is hard-capped by capacity, so the
     // lag this gauge reports is bounded.
