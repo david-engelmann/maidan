@@ -600,6 +600,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::clear_slot_capacity,
         paths::get_thread_result,
         paths::list_thread_deliveries,
+        paths::list_thread_transitions,
         paths::replay_thread_delivery,
         paths::set_thread_lineage,
         paths::get_thread_lineage,

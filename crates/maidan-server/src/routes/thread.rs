@@ -604,6 +604,29 @@ pub async fn list_thread_deliveries(
     Ok(Json(state.store.list_result_deliveries(thread_id).await?))
 }
 
+/// List a thread's state transitions, oldest first.
+///
+/// The transition rows are the canonical record of who moved a thread and
+/// when; until this route they were write-only, so no surface could show
+/// that record (an approval card could not name who requested the review).
+pub async fn list_thread_transitions(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<ThreadTransitionsQuery>,
+) -> ApiResult<Json<Vec<ThreadTransition>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    Ok(Json(
+        state
+            .store
+            .list_thread_transitions(thread_id, limit)
+            .await?,
+    ))
+}
+
 /// Re-enqueue a delivery onto the outbox. `workspace:write` + thread access.
 /// Re-checks the allowlist: an unblessed target stays skipped (status is not
 /// policy). An unroutable row is 400 — nothing to send to.
