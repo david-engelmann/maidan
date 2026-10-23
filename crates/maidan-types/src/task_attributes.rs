@@ -143,12 +143,58 @@ pub struct WorkspaceDefaultEngine {
     pub engine: Option<TaskEngine>,
 }
 
+/// The model provider families a review can be routed between, in the
+/// order a review family is picked, each with the words that name it in a
+/// usage record's provider or model. The SQL twin is built from this table.
+pub const PROVIDER_FAMILIES: &[(&str, &[&str], &[&str])] = &[
+    // Order matters: the first family that matches wins, so Claude hosted on
+    // Vertex or Bedrock resolves to anthropic before google.
+    ("anthropic", &["anthropic", "claude"], &[]),
+    // OpenAI's reasoning models are named by a bare prefix (`o3`, `o4-mini`).
+    ("openai", &["openai", "gpt", "codex"], &["o1", "o3", "o4"]),
+    ("google", &["google", "gemini", "vertex"], &[]),
+    ("xai", &["xai", "grok"], &[]),
+];
+
+/// The provider family a usage record names, from its provider and model
+/// (lowercased, first family in [`PROVIDER_FAMILIES`] whose word appears in
+/// either, or whose model prefix is the model or starts it before a `-`),
+/// or `None` when neither names one.
+pub fn provider_family(provider: Option<&str>, model: &str) -> Option<&'static str> {
+    let named = format!("{} {}", provider.unwrap_or(""), model).to_lowercase();
+    let model = model.to_lowercase();
+    PROVIDER_FAMILIES
+        .iter()
+        .find(|(_, words, prefixes)| {
+            words.iter().any(|word| named.contains(word))
+                || prefixes
+                    .iter()
+                    .any(|prefix| model == *prefix || model.starts_with(&format!("{prefix}-")))
+        })
+        .map(|(family, _, _)| *family)
+}
+
+/// The family a change by `author` is reviewed by: the first family that is
+/// not the author's. `None` when the author's family is unknown, since a
+/// review cannot be routed away from a family nobody named.
+pub fn review_family_for(author: Option<&str>) -> Option<&'static str> {
+    let author = author?;
+    PROVIDER_FAMILIES
+        .iter()
+        .map(|(family, _, _)| *family)
+        .find(|family| *family != author)
+}
+
 /// The most characters an acceptance criterion may hold.
 pub const ACCEPTANCE_MAX_CHARS: usize = 4000;
 
 /// A thread's task attributes, whole: setting them replaces every field.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+// A set replaces every field, so an unknown key is refused, not dropped: a
+// body wrapped as `{"attributes": {…}}` would otherwise parse as all defaults
+// and wipe the thread's engine, acceptance and Linear issue.
+#[serde(deny_unknown_fields)]
 pub struct TaskAttributes {
     #[serde(default)]
     pub kind: TaskKind,
@@ -171,6 +217,11 @@ pub struct TaskAttributes {
     /// changes it. Read by the metrics only; nothing routes or gates on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<TaskTier>,
+    /// The provider family a review child is routed to: one other than the
+    /// family of the change's author, picked when the change entered review.
+    /// Set by the server only; setting attributes leaves it as it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_family: Option<String>,
 }
 
 impl TaskAttributes {
@@ -205,5 +256,42 @@ impl TaskAttributes {
             }
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod review_family_tests {
+    use super::*;
+
+    #[test]
+    fn a_usage_record_names_its_family_by_provider_or_model() {
+        assert_eq!(provider_family(Some("Anthropic"), "x"), Some("anthropic"));
+        assert_eq!(provider_family(None, "claude-sonnet-4"), Some("anthropic"));
+        assert_eq!(provider_family(Some("openai"), "o3"), Some("openai"));
+        assert_eq!(provider_family(None, "gpt-5-codex"), Some("openai"));
+        assert_eq!(provider_family(None, "gemini-2.5-pro"), Some("google"));
+        assert_eq!(provider_family(Some("xai"), "m"), Some("xai"));
+        assert_eq!(provider_family(None, "grok-4"), Some("xai"));
+        assert_eq!(provider_family(None, "llama-3"), None);
+    }
+
+    #[test]
+    fn the_review_family_is_never_the_authors() {
+        for (family, _, _) in PROVIDER_FAMILIES {
+            let picked = review_family_for(Some(family)).unwrap();
+            assert_ne!(picked, *family);
+        }
+        assert_eq!(review_family_for(Some("anthropic")), Some("openai"));
+        assert_eq!(review_family_for(Some("openai")), Some("anthropic"));
+        assert_eq!(review_family_for(None), None);
+    }
+
+    #[test]
+    fn openai_reasoning_models_are_named_by_their_prefix() {
+        assert_eq!(provider_family(None, "o3"), Some("openai"));
+        assert_eq!(provider_family(None, "o4-mini"), Some("openai"));
+        assert_eq!(provider_family(None, "O1-preview"), Some("openai"));
+        assert_eq!(provider_family(None, "o5"), None);
+        assert_eq!(provider_family(None, "o30x"), None);
     }
 }

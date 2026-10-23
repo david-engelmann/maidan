@@ -986,7 +986,8 @@ pub(crate) async fn claim_next_with_event(
     Ok((Some(thread), events))
 }
 
-/// Reap up to `limit` lapsed leases on open, live threads, charging each
+/// Reap up to `limit` lapsed leases on live threads that are not closed or
+/// archived (a claim held into review lapses too), charging each
 /// claim's worked time to its wall budget and appending a `ClaimExpired` (or,
 /// over budget, a `ClaimFailed`) for each dead holder, all in one transaction.
 /// SQLite serializes writers, so the select-then-update cannot race
@@ -1001,7 +1002,7 @@ pub async fn reap_expired_claims(
         "SELECT id, assignee_id, assignment_expires_at, work_started_at FROM maidan_threads
          WHERE assignee_id IS NOT NULL
            AND assignment_expires_at IS NOT NULL AND assignment_expires_at < ?
-           AND tombstoned_at IS NULL AND state = 'open'
+           AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')
          ORDER BY assignment_expires_at ASC, id ASC
          LIMIT ?",
     )
@@ -1020,7 +1021,7 @@ pub async fn reap_expired_claims(
         let Some(row) = sqlx::query(
             "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
              WHERE id = ? AND assignee_id = ? AND assignment_expires_at < ?
-               AND tombstoned_at IS NULL AND state = 'open'
+               AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')
              RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
         )
         .bind(Utc::now().to_rfc3339())

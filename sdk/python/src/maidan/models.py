@@ -170,6 +170,8 @@ class TaskAttributes(Model):
     linear_issue: Optional[str] = None
     #: The change's review tier, ``A`` or ``B``; unset counts as B.
     tier: Optional[str] = None
+    #: The provider family a review child is routed to; server-set.
+    review_family: Optional[str] = None
 
 
 @dataclass(kw_only=True)

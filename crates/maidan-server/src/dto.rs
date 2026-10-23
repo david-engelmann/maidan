@@ -51,6 +51,15 @@ pub struct RenameWorkspace {
     pub name: String,
 }
 
+/// Body for `PATCH /members/:id`. Sets the member's display name; a blank
+/// name clears it.
+/// Defaulted so a body of `{}` still reaches the capability check.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetMemberDisplayName {
+    #[serde(default)]
+    pub display_name: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EraseWorkspace {
     pub confirm_workspace_id: uuid::Uuid,

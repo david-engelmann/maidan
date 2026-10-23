@@ -413,6 +413,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::start_reindex_embeddings,
         paths::get_reindex_embeddings_job,
         paths::get_member,
+        paths::set_member_display_name,
         paths::get_member_usage_rollup,
         paths::list_mentions_for_member,
         paths::get_member_inbox,

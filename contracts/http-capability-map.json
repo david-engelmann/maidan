@@ -234,6 +234,12 @@
     "surface": "http"
   },
   {
+    "method": "PATCH",
+    "path": "/members/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/inbox",
     "capability": "workspace:read",

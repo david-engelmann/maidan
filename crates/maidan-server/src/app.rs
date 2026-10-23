@@ -412,7 +412,10 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{wid}/app-installations/{iid}/tokens",
             no_store(post(apps::mint_app_token)),
         )
-        .route("/members/{id}", get(routes::get_member))
+        .route(
+            "/members/{id}",
+            get(routes::get_member).merge(patch(routes::set_member_display_name)),
+        )
         .route(
             "/members/{id}/assigned-threads",
             get(routes::list_assigned_threads),

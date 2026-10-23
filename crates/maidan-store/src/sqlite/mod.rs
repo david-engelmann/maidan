@@ -74,6 +74,7 @@ mod reindex_jobs;
 mod result_deliveries;
 mod retention;
 mod retention_policy;
+mod review_family;
 mod review_packets;
 mod reviews;
 mod scim_audited;

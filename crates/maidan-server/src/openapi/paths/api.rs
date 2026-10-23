@@ -613,6 +613,19 @@ pub fn revoke_fsm_hook() {}
     ))]
 pub fn get_member() {}
 
+/// Set a member's display name
+#[utoipa::path(patch, path = "/members/{id}", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = SetMemberDisplayName,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Member),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_member_display_name() {}
+
 /// Usage rollup for one member
 #[utoipa::path(get, path = "/members/{id}/usage-rollup", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
