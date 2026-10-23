@@ -3,7 +3,8 @@
 //! The transition rows were recorded from the start but had no read route,
 //! so no surface could show who moved a thread and when. The route lists
 //! them oldest first for a member of the workspace, honours `limit`, and
-//! answers 404 to another tenant, for whom the thread does not exist.
+//! refuses another tenant with 403, as every thread route does
+//! (`ensure_thread_access`). An unknown thread is 404.
 
 use std::{
     net::SocketAddr,
@@ -255,14 +256,14 @@ async fn transition_history_honours_the_limit() {
 }
 
 #[tokio::test]
-async fn transition_history_is_hidden_from_another_tenant() {
+async fn transition_history_is_refused_to_another_tenant() {
     let w = world().await;
     let thread = w.worked_thread().await;
 
     let (status, _) = w
         .get(&w.bob_tok, &format!("/threads/{}/transitions", thread.0))
         .await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(status, StatusCode::FORBIDDEN);
 
     let (status, _) = w
         .get(
