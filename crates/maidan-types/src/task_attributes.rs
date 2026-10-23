@@ -143,6 +143,38 @@ pub struct WorkspaceDefaultEngine {
     pub engine: Option<TaskEngine>,
 }
 
+/// The model provider families a review can be routed between, in the
+/// order a review family is picked, each with the words that name it in a
+/// usage record's provider or model. The SQL twin is built from this table.
+pub const PROVIDER_FAMILIES: &[(&str, &[&str])] = &[
+    ("anthropic", &["anthropic", "claude"]),
+    ("openai", &["openai", "gpt", "codex"]),
+    ("google", &["google", "gemini", "vertex"]),
+    ("xai", &["xai", "grok"]),
+];
+
+/// The provider family a usage record names, from its provider and model
+/// (lowercased, first family in [`PROVIDER_FAMILIES`] whose word appears),
+/// or `None` when neither names one.
+pub fn provider_family(provider: Option<&str>, model: &str) -> Option<&'static str> {
+    let named = format!("{} {}", provider.unwrap_or(""), model).to_lowercase();
+    PROVIDER_FAMILIES
+        .iter()
+        .find(|(_, words)| words.iter().any(|word| named.contains(word)))
+        .map(|(family, _)| *family)
+}
+
+/// The family a change by `author` is reviewed by: the first family that is
+/// not the author's. `None` when the author's family is unknown, since a
+/// review cannot be routed away from a family nobody named.
+pub fn review_family_for(author: Option<&str>) -> Option<&'static str> {
+    let author = author?;
+    PROVIDER_FAMILIES
+        .iter()
+        .map(|(family, _)| *family)
+        .find(|family| *family != author)
+}
+
 /// The most characters an acceptance criterion may hold.
 pub const ACCEPTANCE_MAX_CHARS: usize = 4000;
 
@@ -171,6 +203,11 @@ pub struct TaskAttributes {
     /// changes it. Read by the metrics only; nothing routes or gates on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<TaskTier>,
+    /// The provider family a review child is routed to: one other than the
+    /// family of the change's author, picked when the change entered review.
+    /// Set by the server only; setting attributes leaves it as it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_family: Option<String>,
 }
 
 impl TaskAttributes {
@@ -205,5 +242,33 @@ impl TaskAttributes {
             }
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod review_family_tests {
+    use super::*;
+
+    #[test]
+    fn a_usage_record_names_its_family_by_provider_or_model() {
+        assert_eq!(provider_family(Some("Anthropic"), "x"), Some("anthropic"));
+        assert_eq!(provider_family(None, "claude-sonnet-4"), Some("anthropic"));
+        assert_eq!(provider_family(Some("openai"), "o3"), Some("openai"));
+        assert_eq!(provider_family(None, "gpt-5-codex"), Some("openai"));
+        assert_eq!(provider_family(None, "gemini-2.5-pro"), Some("google"));
+        assert_eq!(provider_family(Some("xai"), "m"), Some("xai"));
+        assert_eq!(provider_family(None, "grok-4"), Some("xai"));
+        assert_eq!(provider_family(None, "llama-3"), None);
+    }
+
+    #[test]
+    fn the_review_family_is_never_the_authors() {
+        for (family, _) in PROVIDER_FAMILIES {
+            let picked = review_family_for(Some(family)).unwrap();
+            assert_ne!(picked, *family);
+        }
+        assert_eq!(review_family_for(Some("anthropic")), Some("openai"));
+        assert_eq!(review_family_for(Some("openai")), Some("anthropic"));
+        assert_eq!(review_family_for(None), None);
     }
 }
