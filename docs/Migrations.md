@@ -48,11 +48,14 @@ is `migration_expand_contract`.
   again. Editing an applied file changes nothing on a database that already
   has that version, and it changes what a fresh database builds. Do not edit
   an applied file. The next change is the next version.
-- A `*_down.sql` file is not applied. The register test skips `_down.sql`.
+- A `*_down.sql` file is not applied. The build script skips `_down.sql`.
   Only `0001_core_down.sql` exists, and it is manual. A rollout does not run
   down migrations.
-- The register is the `include_str!` list in `migrate.rs`, not the directory.
-  A file that is not registered does not run. Both dialects get the same
+- The register is the directory. `crates/maidan-store/build.rs` turns every
+  `NNNN_<slug>.sql` into an `include_str!` entry with version `NNNN`, in
+  version order, and fails the build on a name without a four-digit version
+  or on two files with one version. There is no list to edit; a new file
+  runs. Both dialects get the same
   version number in the same change. `migrations_stay_in_lockstep` fails a
   slug that exists on only one side, apart from the two exceptions named in
   that test. Version numbers 125 and 133 are unused. Leave them unused.
