@@ -46,7 +46,9 @@ impl AwsKmsCustody {
     pub async fn from_default_config(key_id: impl Into<String>) -> Self {
         use aws_smithy_http_client::tls;
         let https = aws_smithy_http_client::Builder::new()
-            .tls_provider(tls::Provider::Rustls(tls::rustls_provider::CryptoMode::Ring))
+            .tls_provider(tls::Provider::Rustls(
+                tls::rustls_provider::CryptoMode::Ring,
+            ))
             .build_https();
         let shared = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .http_client(https)
