@@ -1,4 +1,0 @@
-### Queue counts agree with claim_next
-
-- **Fixed:** queue depth `ready`, channel and workspace occupancy `queued`, and run occupancy `queued` now count exactly the threads `claim_next` would hand out. Previously, threads with a pending approval gate, threads already at their budget, and threads holding a result they were not re-queued after all counted as ready, but `claim_next` refused them. Channel occupancy also counted a parked thread as `queued`. Now gated threads count as `blocked`. Over-budget, finished and parked threads count as `unclaimable` in queue depth and as `blocked` in occupancy.
-- **Changed:** the thread-side claim rules are defined once in `maidan-store`'s `claimability` module. `claim_next`, the queue counts and run occupancy all use that module on both backends, so no rule can be added to one and missed in another.

@@ -42,6 +42,20 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v416.0.0](https://github.com/david-engelmann/maidan/releases/tag/v416.0.0) — key custody, metering and the review tier
+
+The first release since `v415.0.0`. It ships every PR merged after that tag, through #1553. `CHANGELOG.md` under `[416.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Claiming** | A thread result is written only under the writer's live claim (`claim_lease_id` required; a lapsed or taken-over seat gets `claim_lost`). Queue counts and `claim_next` share one claimability predicate. A claim that only renews raises `MaidanClaimsRenewingWithoutProgress` | `crates/maidan-store/src/claim_next.rs`, `crates/maidan-server/src/metrics.rs` |
+| **Review** | A review thread rides under its change, and a change carries an A/B review tier (migration 0199). A thread's transition history is readable over REST. Swarm metrics slice by tier | `crates/maidan-server/src/routes/`, `crates/maidan-types/src/change_metrics.rs` |
+| **Key custody** | Each workspace's content key can be held by AWS KMS, created per workspace and destroyed on rotation, erase and purge; a fake KMS backs the tests. The AWS SDK links rustls with ring, so the binaries run on glibc 2.36 (`credential_process` profiles are not supported) | `crates/maidan-store/src/custody.rs` |
+| **Hosted controls** | Embeddings, deliveries, WASI time and stored bytes are metered beside requests and MCP calls. A workspace past its free allowance is marked and its admins told once a month. Sign-up and invites are charged per email domain. An audited write refuses a record scoped to another workspace | `crates/maidan-store/`, `crates/maidan-server/src/rate_limit/` |
+| **Operations** | `maidan_indexer_events_behind` and `MaidanIndexerBacklogDeep`. A migration file is its own registration (`build.rs` derives the list). The MCP tool catalog is one checked-in JSON file | `crates/maidan-store/build.rs`, `crates/maidan-mcp/src/tools/catalog.json` |
+
+The deploy pins move to `v416.0.0` in the PR that follows the tag.
+
 ## [v415.0.0](https://github.com/david-engelmann/maidan/releases/tag/v415.0.0) — the swarm at scale: waiting claims, CI and deploy tracking, metering, suspension, Rust 1.99
 
 The first release since `v414.0.0`. It ships every PR merged after that tag, through #1538. `CHANGELOG.md` under `[415.0.0]` has every entry, folded from `changelog.d/` fragments.

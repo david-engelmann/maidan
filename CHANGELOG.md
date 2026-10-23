@@ -7,6 +7,116 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [416.0.0] — 2026-10-23
+
+The first release since 415.0.0. It ships every PR merged after the 415.0.0
+tag, through #1553: a result written only under the writer's live claim,
+queue counts that agree with `claim_next`, migrations registered from their
+files, workspace keys held by AWS KMS, usage metered per workspace with a
+free allowance, review threads that ride under their change with an A/B
+tier, alerts on claims that only renew and on a deep indexer backlog,
+sign-up and invite limits per email domain, and swarm metrics split by
+tier.
+
+### A thread result is written only under the writer's live claim
+
+- **Changed:** `PUT /threads/{id}/result` and MCP `set_thread_result` require `claim_lease_id`, the lease from the claim response. The store writes the result only while the caller holds the thread under that lease, checked in the same statement on SQLite and Postgres. A lease that lapsed and was taken over, or was released, is refused with `409` type `claim-lost` (MCP invalid params `claim_lost`), and nothing is stored. A body without `claim_lease_id` is refused. `change_result.py` takes `--claim-lease-id`, and the claimant runbook, the OpenRouter claimant and the other examples send it.
+- **Fixed:** A seat whose claim lapsed while it was still working could store its result after another seat took the thread, and whichever delivered second was skipped. Only the current holder's result lands now.
+
+### The live-stream route check classifies routes instead of counting them
+
+- **Changed:** `tenant_isolation_e2e` no longer pins the number of `.route(` calls in `app.rs` (386). It reads every routed path and requires each one to be either an OpenAPI operation or listed in `tests/fixtures/non_openapi_routes.json` as a stream or not a stream. A route outside the spec fails until it is classified, and a new stream fails until `stream_probes` covers it. Adding an ordinary OpenAPI route no longer touches the test.
+
+### Two flaky CI tests no longer race their setup
+
+- **Fixed:** the S3 tests wait for MinIO's readiness probe before their first request, instead of trusting its `API:` log line, which can come before it serves PUTs. The board's `tsc --checkJs` test runs TypeScript from the npm cache, which CI fills (with retries) before the test jobs, so a slow registry no longer runs it into nextest's 3-minute kill.
+
+### Queue counts agree with claim_next
+
+- **Fixed:** queue depth `ready`, channel and workspace occupancy `queued`, and run occupancy `queued` now count exactly the threads `claim_next` would hand out. Previously, threads with a pending approval gate, threads already at their budget, and threads holding a result they were not re-queued after all counted as ready, but `claim_next` refused them. Channel occupancy also counted a parked thread as `queued`. Now gated threads count as `blocked`. Over-budget, finished and parked threads count as `unclaimable` in queue depth and as `blocked` in occupancy.
+- **Changed:** the thread-side claim rules are defined once in `maidan-store`'s `claimability` module. `claim_next`, the queue counts and run occupancy all use that module on both backends, so no rule can be added to one and missed in another.
+
+### Every deploy path pins v415.0.0
+
+- **Changed:** the 18 deploy pins move to `v415.0.0`, the quickstart Dockerfile's tarball SHA-256s are the published release's, the stack's vendored chart is repackaged, and the registry listing's version follows.
+
+### A migration file is its own registration
+
+- **Changed:** `maidan-store` builds its migration register from `migrations/{postgres,sqlite}` at compile time. Every `NNNN_<slug>.sql` (except `*_down.sql`) is applied as version `NNNN`, in order, replacing the 371-line hand list in `migrate.rs`. A name without a four-digit version, or two files with one version, fails the build. The registered set and order are unchanged, and so is the chain backfill after pg 91 / sqlite 90.
+
+### Queue-counts test writes its result under a claim
+
+- **Fixed:** the shared-claimability test wrote a thread result without a claim lease, so main stopped compiling after the strict result fence landed. It now writes through the claiming test helper.
+
+### The MCP tool catalog is one checked-in JSON file
+
+- **Changed:** the 258-tool `tools/list` catalog moves from 5,000 lines of `json!` literals in `crates/maidan-mcp/src/tools/catalog.rs` to `crates/maidan-mcp/src/tools/catalog.json`, embedded with `include_str!` and parsed once (`OnceLock`). `scripts/regen_derived.py` (run by `make regen`) now reads that file instead of the `tools_list_full.json` wire snapshot. The wire output and every snapshot are byte-identical; the member-scope gate test reads parsed schemas instead of grepping Rust source.
+
+### Each workspace's requests and MCP calls are metered
+
+- **Added:** per-workspace usage meters for the hosted free allowance (Next 27, part 1), with no cut-off and no billing. Each authenticated request and each MCP tool call is counted in memory for the caller's workspace; probes and the metrics scrape are not counted. The `usage_meters` background loop writes the counts to a daily rollup, `maidan_usage_meters` (migration 0197, both backends), every `MAIDAN_USAGE_METER_FLUSH_SECS` (default 60) and once more on shutdown. Each flush adds to the day's total. A crash between flushes loses at most one interval's counts.
+
+### Security
+
+- **Changed:** every `*_audited` store write, on SQLite and Postgres, now refuses an audit row whose scope is not the workspace the write changed (or `instance` for a workspace's change), and rolls the change back with it. One guard, `audit::append_scoped`, resolves what was changed (a workspace, member, channel, thread or message) and is the only way to the audit table; a contract test fails when an audited method writes its record any other way. Follow-up to #1134.
+
+### Embeddings, deliveries, WASI time and stored bytes are metered
+
+- **Added:** four more per-workspace usage meters for the free allowance (Next 27, part 2), counted into the same buffer and daily rollup as requests:
+  - `embedding_calls`: each message queued for embedding by the indexer and each semantic or hybrid search query, on REST and MCP;
+  - `deliveries`: each Slack, GitHub or Linear egress, each email and each web push actually sent, from the worker or inline;
+  - `wasi_ms`: the milliseconds each WASI slash handler runs, for the workspace that installed it;
+  - `stored_bytes`: a gauge measured once a UTC day per workspace by the `usage_meters` loop (at most 25 workspaces a tick), the bytes of the artifacts the workspace refers to plus its live message bodies. Its day's row is the latest measurement, not a sum.
+
+### A workspace past the free allowance is marked and its admins told
+
+- **Added:** `MAIDAN_FREE_ALLOWANCE` (for example `requests=100000,stored_bytes=1073741824`) sets the instance's free allowance per meter (Next 27, part 3). A counter's allowance is per UTC month, and `stored_bytes`' is a ceiling. The value is parsed at boot, and a malformed one refuses to start.
+- **Added:** past an allowance, the `usage_meters` loop marks the workspace once per meter and month (migration 0200, both backends). In the same transaction it appends a `usage_over_allowance` event and notifies each workspace admin. Nothing is cut off or billed.
+- **Added:** `GET /workspaces/{id}/usage-meters?month=` (`workspace:read`, also served to the board's session) and `GET /operator/usage-meters?month=` (`operator:global`), each meter's month against the allowance. The board's Swarm tab now opens with this month's usage.
+
+### Workspace keys can be held by AWS KMS
+
+- **Added:** `MAIDAN_WORKSPACE_KEY_CUSTODY=aws-kms` gives each workspace key its own AWS KMS key (bound by encryption context), destroyed through `ScheduleKeyDeletion` when the key is rotated out or the workspace is erased or purged, so erasure is crypto-shredding even against backups. It wraps workspace keys in place of the instance KEK. Custody sits behind one async interface (local, AWS KMS, and a fake KMS for tests); every read opens the workspace keys its rows need through the custody that wrapped them before it maps them, and the rewrap pass moves keys from the old custody to the configured one. Unknown custody values refuse boot; a custody that refuses to destroy a key fails the erasure and changes nothing, while the rewrap pass logs and skips any row the custody refuses, pages on through every row so refused rows never starve another workspace, and retries them later; `maidan_content_keys_refused` counts what is left. Destroying is idempotent (`ScheduleKeyDeletion` alone).
+- **Changed:** the AWS SDK (KMS and S3) is built without default features and uses a ring-based HTTPS client, so the server and CLI images run on Debian 12's glibc. AWS profiles that use `credential_process` are no longer supported; pass credentials through the environment, a static profile, SSO, web identity or the instance role.
+
+### A claim that only renews pages
+
+- **Added:** the `maidan_threads_stalled` gauge counts the threads the board marks stalled: threads held on a live lease whose holder has posted and declared nothing for `MAIDAN_STALL_SECS`. The `MaidanClaimsRenewingWithoutProgress` alert in `docs/alerts/prometheus-rules-maidan-slo.yaml` fires when that count has stayed above 0 for 15 minutes.
+
+### Stalled-claim alert pages once per instance
+
+- **Changed:** `MaidanClaimsRenewingWithoutProgress` takes `max without (instance, pod)`, so replicas exporting the same instance-wide count page once. A failed stalled-thread count logs a warning instead of silently leaving the gauge stale, and the count runs on the read pool.
+
+### Fixed
+
+- **Fixed:** on SQLite, erasing an artifact (`erase_artifact_audited`) or expiring a media ref now begins its transaction with `BEGIN IMMEDIATE`. Both read the legal-hold state before they write; begun deferred, a commit by another connection between that read and the write failed the erase with "database is locked" at once instead of waiting out `busy_timeout`. This was the intermittent `blob_reap` failure in `crypto_shredding`; a new test runs 40 erases alongside 200 other writes.
+
+### ctutils 0.4.4 for RUSTSEC-2026-0385
+
+- **Fixed:** `ctutils` is bumped from 0.4.2 to 0.4.4 for RUSTSEC-2026-0385, where some constant-time mask and `u128` comparisons could compile to branches. It comes in through `crypto-bigint`, and `cargo deny` fails every PR until it is bumped.
+
+### A thread's transition history is readable over the API
+
+- **Added:** `GET /threads/{id}/transitions` lists a thread's state transitions oldest first, each with its actor and time, so a surface can show who moved what when and an approval card can name who requested the review. The rows were recorded from the start but had no read route. Takes an optional `limit` (default 100, at most 500) and requires `workspace:read` plus access to the thread.
+
+### A review thread rides under its change, and a change carries its review tier
+
+- **Changed:** a thread whose task kind is `review` is no longer held behind its parent's state. A review of a change finishes before the change merges, so a review thread created with `parent_thread_id` set to the change thread it reviews can start review and close while the change stays open. Any other child still may not move ahead of its parent, and an archived parent still holds every child back.
+- **Added:** a `tier` task attribute (`"A"` or `"B"`, migration 0199) on `POST /channels/{id}/threads`, `PUT /threads/{id}/attributes` and the MCP `create_thread` and `set_thread_attributes`. It is read back with the attributes, on a live claim and on each pull in the swarm metrics. Unset is stored as unset; a reader that needs a tier counts it as B. Setting attributes replaces the whole set, so restating the tier means sending the other attributes too.
+
+### Indexer events-behind gauge
+
+- **Added:** `maidan_indexer_events_behind`, the number of message events the indexer has not handled yet (counted up to 100000, 0 when caught up), and the `MaidanIndexerBacklogDeep` alert when the highest replica's reading stays past 10000 for 10 minutes. The count is bounded to 2 seconds per scrape; a failed count keeps the last value.
+
+### Sign-up and invite charged per email domain
+
+- **Added:** an invite mint and a finished sign-up are each charged to the email's domain (`MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_MAX` and `MAIDAN_SIGNUP_DOMAIN_RATE_LIMIT_WINDOW_SECS`, default 100 per hour, in separate buckets for invites and sign-ups), on top of the per-address budget the launch surface already has. Until now only a waitlist join was charged per domain. A refused mint or sign-up changes nothing, and two addresses share one domain's budget.
+- **Added:** a sign-up is charged only after the invite, allowed-domain and existing-workspace checks pass, so refused attempts never spend a domain's budget. Domains are keyed lowercased, without a trailing dot, and in their IDNA ASCII form.
+
+### Swarm metrics split by review tier
+
+- **Added:** each repository rollup in the swarm metrics carries `by_tier`, the tasks of review tier `A` and of tier `B`, with a task that has no tier stored counted as `B`. A tier with no tasks is left out, as in the other splits.
+
 ## [415.0.0] — 2026-10-22
 
 The first release since 414.0.0. It ships every PR merged after the 414.0.0
