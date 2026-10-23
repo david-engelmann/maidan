@@ -7385,10 +7385,32 @@
               "null"
             ]
           },
+          "head_sha": {
+            "description": "The commit a `github_branch` delivery landed, decoded from the same\nhandle as [`Self::pr_number`].",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "$ref": "#/components/schemas/ResultDeliveryId"
           },
           "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pr_number": {
+            "description": "The pull request a `github_branch` delivery landed as, decoded from the\n`<commit_sha>#<pull_number>` handle in [`Self::external_ref`]. `None`\nfor every other surface, and for a branch row whose handle does not\ndecode. Derived when a row is materialized from storage (see\n[`Self::derive_pull_fields`]); never persisted.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "pr_url": {
+            "description": "The pull request's web URL, built from the target's repository and\n[`Self::pr_number`]. Derived alongside it; `None` whenever it is.",
             "type": [
               "string",
               "null"
