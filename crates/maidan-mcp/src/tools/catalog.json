@@ -607,6 +607,14 @@
                 "B"
               ],
               "description": "the change's review tier; omitted reads as B in the metrics"
+            },
+            "lane": {
+              "type": "string",
+              "enum": [
+                "batch",
+                "flex"
+              ],
+              "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates"
             }
           },
           "required": [
@@ -2452,6 +2460,14 @@
             "B"
           ],
           "description": "the change's review tier; omitted reads as B in the metrics"
+        },
+        "lane": {
+          "type": "string",
+          "enum": [
+            "batch",
+            "flex"
+          ],
+          "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates"
         }
       },
       "required": [

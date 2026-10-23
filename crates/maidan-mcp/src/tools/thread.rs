@@ -1338,6 +1338,8 @@ struct SetThreadAttributesArgs {
     linear_issue: Option<String>,
     #[serde(default)]
     tier: Option<maidan_types::TaskTier>,
+    #[serde(default)]
+    lane: Option<maidan_types::TaskLane>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1360,6 +1362,7 @@ pub(super) async fn set_thread_attributes(
                 acceptance: a.acceptance,
                 linear_issue: a.linear_issue,
                 tier: a.tier,
+                lane: a.lane,
                 review_family: None,
             }
             .validated()

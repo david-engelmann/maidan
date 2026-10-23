@@ -865,7 +865,7 @@ pub async fn list(
                 (SELECT h.handed_off_at FROM maidan_thread_handoffs h WHERE h.thread_id = p.thread_id) AS handed_off_at,
                 p.merge_commit_sha, p.reverted_at, p.revert_ref, p.followup_fixes, p.human_commits,
                 p.human_reviews, p.first_human_review_at,
-                a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance, a.linear_issue AS task_linear_issue, a.tier AS task_tier
+                a.kind AS task_kind, a.engine AS task_engine, a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance, a.linear_issue AS task_linear_issue, a.tier AS task_tier, a.lane AS task_lane
          FROM maidan_change_pulls p
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = p.thread_id
          WHERE p.workspace_id = $1 AND NOT p.watch_only
@@ -1354,6 +1354,11 @@ fn pull_from(
                 .ok()
                 .flatten()
                 .and_then(|tier| maidan_types::TaskTier::parse(&tier)),
+            lane: row
+                .try_get::<Option<String>, _>("task_lane")
+                .ok()
+                .flatten()
+                .and_then(|lane| maidan_types::TaskLane::parse(&lane)),
             review_family: None,
         },
     }
