@@ -237,9 +237,6 @@ async fn complete_signup(
     let Some(email) = email.filter(|_| email_verified) else {
         return Err(ApiError::Forbidden("sign-up needs a verified email".into()));
     };
-    crate::rate_limit::charge_email_domain(state, crate::rate_limit::DomainCharge::Signup, &email)
-        .await?;
-
     let gate = match pending.invite_entry_id {
         Some(entry_id) => {
             let entry =
@@ -288,6 +285,12 @@ async fn complete_signup(
             "this identity already has a workspace here; sign in instead".into(),
         ));
     }
+
+    // Charged only once every refusal above has passed: a sign-up the
+    // invite, domain or existing-workspace checks turn away creates
+    // nothing, so it must not spend the domain's budget either.
+    crate::rate_limit::charge_email_domain(state, crate::rate_limit::DomainCharge::Signup, &email)
+        .await?;
 
     let handle = crate::oidc::member::handle_from_claims(&subject, Some(&email));
     let workspace_name = format!("{handle}'s workspace");

@@ -352,3 +352,34 @@ async fn signups_for_a_second_domain_keep_their_own_budget() {
         .await;
     assert_eq!(res.status(), StatusCode::TEMPORARY_REDIRECT);
 }
+
+#[tokio::test]
+async fn a_refused_signup_repeated_does_not_spend_the_domain_budget() {
+    let env = spawn(true, vec!["su-four.example".to_string()]).await;
+    let start = format!("{}/auth/oidc/signup", env.base);
+    let first = env
+        .signup_roundtrip(start.clone(), "sub-1", "a@su-four.example", "10.5.0.1")
+        .await;
+    assert_eq!(first.status(), StatusCode::TEMPORARY_REDIRECT);
+    // The same identity again: refused for already having a workspace, more
+    // times than the budget (2) holds.
+    for _ in 0..3 {
+        let again = env
+            .signup_roundtrip(start.clone(), "sub-1", "a@su-four.example", "10.5.0.1")
+            .await;
+        assert_eq!(again.status(), StatusCode::FORBIDDEN);
+    }
+    // A domain that may not sign up is refused before any charge too.
+    for _ in 0..3 {
+        let barred = env
+            .signup_roundtrip(start.clone(), "sub-x", "x@not-listed.example", "10.5.0.1")
+            .await;
+        assert_eq!(barred.status(), StatusCode::FORBIDDEN);
+    }
+    // The refusals spent nothing: a second address still has the budget's
+    // last sign-up.
+    let second = env
+        .signup_roundtrip(start.clone(), "sub-2", "b@su-four.example", "10.5.0.1")
+        .await;
+    assert_eq!(second.status(), StatusCode::TEMPORARY_REDIRECT);
+}

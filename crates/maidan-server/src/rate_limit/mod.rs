@@ -187,12 +187,21 @@ pub(crate) enum DomainCharge {
 
 /// The domain of `email`, normalized the way the waitlist charge
 /// normalizes it; `None` when there is no domain part.
+/// The bucket key for `email`'s domain: lowercased, one trailing dot
+/// dropped, and an internationalized name in its ASCII (punycode) form, so
+/// `Example.COM.`, `example.com` and a Unicode spelling share one budget.
+/// A domain the IDNA rules refuse keeps its lowercased spelling and is
+/// still charged.
 fn email_domain(email: &str) -> Option<String> {
-    email
-        .trim()
-        .rsplit_once('@')
-        .map(|(_, d)| d.trim().to_lowercase())
-        .filter(|d| !d.is_empty())
+    let raw = email.trim().rsplit_once('@')?.1.trim();
+    let raw = raw.strip_suffix('.').unwrap_or(raw).to_lowercase();
+    if raw.is_empty() {
+        return None;
+    }
+    match url::Host::parse(&raw) {
+        Ok(url::Host::Domain(ascii)) => Some(ascii),
+        _ => Some(raw),
+    }
 }
 
 /// Charge `email`'s domain for one invite mint or one finished sign-up.
@@ -798,6 +807,33 @@ pub async fn connect_redis_from_env() -> Option<redis::aio::ConnectionManager> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn email_domain_is_one_key_per_domain() {
+        for email in [
+            "a@example.com",
+            " b@Example.COM ",
+            "c@example.com.",
+            "d@EXAMPLE.com.",
+        ] {
+            assert_eq!(
+                email_domain(email).as_deref(),
+                Some("example.com"),
+                "{email}"
+            );
+        }
+        assert_eq!(
+            email_domain("e@B\u{fc}cher.example").as_deref(),
+            Some("xn--bcher-kva.example")
+        );
+        assert_eq!(
+            email_domain("f@xn--bcher-kva.example.").as_deref(),
+            Some("xn--bcher-kva.example")
+        );
+        for email in ["nodomain", "g@", "h@."] {
+            assert_eq!(email_domain(email), None, "{email}");
+        }
+    }
 
     #[test]
     fn workspace_id_extracted_only_from_scoped_paths() {
