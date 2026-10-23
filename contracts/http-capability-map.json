@@ -834,6 +834,12 @@
     "surface": "http"
   },
   {
+    "method": "DELETE",
+    "path": "/threads/{id}/fingerprint/duplicate-of",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/plan",
     "capability": "workspace:write",

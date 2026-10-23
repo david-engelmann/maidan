@@ -1906,6 +1906,10 @@ macro_rules! store_delegations {
                 task_fingerprints::get(self.read_pool(), thread_id).await
             }
 
+            async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError> {
+                task_fingerprints::clear_duplicate(self.pool(), thread_id).await
+            }
+
             async fn get_thread_attributes(
                 &self,
                 thread_id: ThreadId,

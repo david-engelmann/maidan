@@ -1616,6 +1616,11 @@ pub trait ThreadStore: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<maidan_types::TaskFingerprint>, StoreError>;
 
+    /// Clear a thread's duplicate link (Context Economics C8b), so a task
+    /// wrongly linked as a duplicate can be claimed. `NotFound` when the
+    /// thread has no fingerprint. Idempotent.
+    async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError>;
+
     /// Replace a thread's task attributes whole. `NotFound` when the
     /// thread does not exist.
     async fn set_thread_attributes(

@@ -580,6 +580,7 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
+    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
@@ -618,6 +619,7 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
+    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
