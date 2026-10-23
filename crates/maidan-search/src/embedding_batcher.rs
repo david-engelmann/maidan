@@ -151,6 +151,7 @@ pub struct BatchingEmbeddingHandler {
     tx: mpsc::Sender<EmbedJob>,
     metrics: Arc<IndexerMetrics>,
     health_error: HealthSlot,
+    usage_meters: Option<Arc<maidan_store::usage_meters::UsageMeterBuffer>>,
 }
 
 impl BatchingEmbeddingHandler {
@@ -180,7 +181,18 @@ impl BatchingEmbeddingHandler {
             tx,
             metrics,
             health_error,
+            usage_meters: None,
         }
+    }
+
+    /// Count each message queued for embedding into its workspace's
+    /// `embedding_calls` meter.
+    pub fn with_usage_meters(
+        mut self,
+        meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
+    ) -> Self {
+        self.usage_meters = Some(meters);
+        self
     }
 
     async fn set_health_error(&self, msg: String) {
@@ -230,6 +242,11 @@ impl EventHandler for BatchingEmbeddingHandler {
         // consumption rather than growing memory. queue_depth is incremented
         // before the send and decremented by the worker as it drains a batch.
         self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
+        // Counted when the work is taken on: the provider call it costs is
+        // made whether or not the upsert after it lands.
+        if let (Some(meters), Some(workspace_id)) = (&self.usage_meters, event.workspace_id()) {
+            meters.record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
+        }
         let job = EmbedJob {
             message_id: message.id,
             body: message.body.clone(),

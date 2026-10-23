@@ -17,9 +17,9 @@ use maidan_types::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-fn event(action: &str) -> NewAuditEvent {
+fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
-        scope: maidan_types::AuditScope::Instance,
+        scope: maidan_types::AuditScope::Workspace(ws),
         actor_id: None,
         action: action.into(),
         target_kind: None,
@@ -28,8 +28,8 @@ fn event(action: &str) -> NewAuditEvent {
     }
 }
 
-fn audit_for<T>(action: &'static str) -> maidan_store::AuditFor<T> {
-    Box::new(move |_| event(action))
+fn audit_for<T>(ws: maidan_types::WorkspaceId, action: &'static str) -> maidan_store::AuditFor<T> {
+    Box::new(move |_| event(ws, action))
 }
 
 async fn recorded(store: &dyn Store, action: &str) -> bool {
@@ -101,16 +101,16 @@ where
 
     // Misses record nothing.
     assert!(store
-        .unfreeze_member_audited(worker.id, admin.id, event("miss.unfreeze"))
+        .unfreeze_member_audited(worker.id, admin.id, event(ws.id, "miss.unfreeze"))
         .await
         .unwrap()
         .is_none());
     assert!(!store
-        .clear_land_gate_audited(t, event("miss.land"))
+        .clear_land_gate_audited(t, event(ws.id, "miss.land"))
         .await
         .unwrap());
     assert!(!store
-        .remove_reviewer_audited(t, worker.id, event("miss.reviewer"))
+        .remove_reviewer_audited(t, worker.id, event(ws.id, "miss.reviewer"))
         .await
         .unwrap());
     for action in ["miss.unfreeze", "miss.land", "miss.reviewer"] {
@@ -119,11 +119,11 @@ where
 
     // The requirement is not lowered by a caller that may not lower it.
     store
-        .set_review_requirement_audited(t, 2, false, audit_for("req.raise"))
+        .set_review_requirement_audited(t, 2, false, audit_for(ws.id, "req.raise"))
         .await
         .unwrap();
     let refused = store
-        .set_review_requirement_audited(t, 1, false, audit_for("req.lower"))
+        .set_review_requirement_audited(t, 1, false, audit_for(ws.id, "req.lower"))
         .await;
     assert!(
         matches!(refused, Err(StoreError::Conflict(_))),
@@ -139,7 +139,7 @@ where
         2
     );
     let (from, lowered) = store
-        .set_review_requirement_audited(t, 1, true, audit_for("req.lower"))
+        .set_review_requirement_audited(t, 1, true, audit_for(ws.id, "req.lower"))
         .await
         .unwrap();
     assert_eq!((from, lowered.required_count), (2, 1));
@@ -159,7 +159,7 @@ where
         .await
         .unwrap();
     let revoked: AppInstallation = store
-        .revoke_app_installation_audited(installed.id, audit_for("app.revoke"))
+        .revoke_app_installation_audited(installed.id, audit_for(ws.id, "app.revoke"))
         .await
         .unwrap();
     assert!(revoked.revoked_at.is_some());
@@ -170,7 +170,7 @@ where
 
     // Arm everything the broken-audit phase will try to undo.
     store
-        .freeze_member_audited(worker.id, admin.id, None, audit_for("freeze"))
+        .freeze_member_audited(worker.id, admin.id, None, audit_for(ws.id, "freeze"))
         .await
         .unwrap();
     store.add_reviewer(t, worker.id).await.unwrap();
@@ -182,13 +182,13 @@ where
                 surface: EgressSurface::Slack,
                 selector: "C0123ABCDEF".into(),
             },
-            audit_for("egress.allow"),
+            audit_for(ws.id, "egress.allow"),
         )
         .await
         .unwrap();
     let live_install = store.create_app_installation(install()).await.unwrap();
     store
-        .create_secret_audited(secret("kept"), audit_for("secret.create"))
+        .create_secret_audited(secret("kept"), audit_for(ws.id, "secret.create"))
         .await
         .unwrap();
     let egress_host = |host: &str| NewSecretEgressHost {
@@ -198,7 +198,7 @@ where
     store
         .allow_secret_egress_host_audited(
             egress_host("kept.example.com"),
-            audit_for("secret_egress_host.allow"),
+            audit_for(ws.id, "secret_egress_host.allow"),
         )
         .await
         .unwrap();
@@ -230,7 +230,7 @@ where
     let before = member_events().await;
     fails(
         store
-            .freeze_member_audited(admin.id, admin.id, None, audit_for("x"))
+            .freeze_member_audited(admin.id, admin.id, None, audit_for(ws.id, "x"))
             .await
             .map(drop),
         "freeze",
@@ -238,7 +238,7 @@ where
     assert!(!store.is_member_frozen(admin.id).await.unwrap());
     fails(
         store
-            .unfreeze_member_audited(worker.id, admin.id, event("x"))
+            .unfreeze_member_audited(worker.id, admin.id, event(ws.id, "x"))
             .await
             .map(drop),
         "unfreeze",
@@ -255,7 +255,7 @@ where
                 channel.id,
                 worker.id,
                 ChannelMemberRole::Member,
-                audit_for("x"),
+                audit_for(ws.id, "x"),
             )
             .await
             .map(drop),
@@ -269,7 +269,7 @@ where
         .any(|m| m.member_id == worker.id));
     fails(
         store
-            .set_review_requirement_audited(other, 3, true, audit_for("x"))
+            .set_review_requirement_audited(other, 3, true, audit_for(ws.id, "x"))
             .await
             .map(drop),
         "requirement set",
@@ -277,7 +277,7 @@ where
     assert!(store.get_review_requirement(other).await.unwrap().is_none());
     fails(
         store
-            .clear_review_requirement_audited(t, event("x"))
+            .clear_review_requirement_audited(t, event(ws.id, "x"))
             .await
             .map(drop),
         "requirement clear",
@@ -285,20 +285,23 @@ where
     assert!(store.get_review_requirement(t).await.unwrap().is_some());
     fails(
         store
-            .remove_reviewer_audited(t, worker.id, event("x"))
+            .remove_reviewer_audited(t, worker.id, event(ws.id, "x"))
             .await
             .map(drop),
         "reviewer removal",
     );
     assert_eq!(store.list_reviewers(t).await.unwrap(), vec![worker.id]);
     fails(
-        store.clear_land_gate_audited(t, event("x")).await.map(drop),
+        store
+            .clear_land_gate_audited(t, event(ws.id, "x"))
+            .await
+            .map(drop),
         "land-gate clear",
     );
     assert!(store.get_land_gate_standing(t).await.unwrap().required);
     fails(
         store
-            .grant_governance_skill_audited(worker.id, REVIEW_SKILL, event("x"))
+            .grant_governance_skill_audited(worker.id, REVIEW_SKILL, event(ws.id, "x"))
             .await,
         "governance grant",
     );
@@ -309,7 +312,7 @@ where
         .is_empty());
     fails(
         store
-            .revoke_egress_target_audited(ws.id, target.id, event("x"))
+            .revoke_egress_target_audited(ws.id, target.id, event(ws.id, "x"))
             .await
             .map(drop),
         "egress revoke",
@@ -317,7 +320,7 @@ where
     assert_eq!(store.list_egress_targets(ws.id).await.unwrap().len(), 1);
     fails(
         store
-            .revoke_app_installation_audited(live_install.id, audit_for("x"))
+            .revoke_app_installation_audited(live_install.id, audit_for(ws.id, "x"))
             .await
             .map(drop),
         "app revoke",
@@ -330,14 +333,14 @@ where
         .is_none());
     fails(
         store
-            .create_secret_audited(secret("unrecorded"), audit_for("x"))
+            .create_secret_audited(secret("unrecorded"), audit_for(ws.id, "x"))
             .await
             .map(drop),
         "secret create",
     );
     fails(
         store
-            .delete_secret_audited(ws.id, "kept", event("x"))
+            .delete_secret_audited(ws.id, "kept", event(ws.id, "x"))
             .await
             .map(drop),
         "secret delete",
@@ -352,14 +355,17 @@ where
     assert_eq!(names, vec!["kept".to_string()]);
     fails(
         store
-            .allow_secret_egress_host_audited(egress_host("unrecorded.example.com"), audit_for("x"))
+            .allow_secret_egress_host_audited(
+                egress_host("unrecorded.example.com"),
+                audit_for(ws.id, "x"),
+            )
             .await
             .map(drop),
         "secret-egress host allow",
     );
     fails(
         store
-            .revoke_secret_egress_host_audited(ws.id, "kept.example.com", event("x"))
+            .revoke_secret_egress_host_audited(ws.id, "kept.example.com", event(ws.id, "x"))
             .await
             .map(drop),
         "secret-egress host revoke",

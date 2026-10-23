@@ -3,6 +3,7 @@
 //! its members', a DM's are its participants', and nothing crosses a
 //! workspace. Both backends.
 
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     BudgetLimits, ChannelId, ChannelMemberRole, ChannelOccupancy, MemberId, MemberKind,
@@ -349,21 +350,10 @@ async fn ready_is_what_claim_next_hands_out(store: &dyn Store) {
                     .expect("usage");
             }
             Withheld::Finished => {
-                // A result is written only under the writer's live claim
-                // (#1530), so claim the thread first and write under its
-                // lease, then hand the claim back: what withholds the
-                // thread afterwards is the stored result, not a holder.
-                let claim = store
-                    .claim_next_thread(ch, agent, Some(LEASE_SECS), None)
-                    .await
-                    .expect("claim")
-                    .expect("the thread is claimable before it is finished");
-                let lease = claim.claim_lease_id.expect("token");
                 store
-                    .set_thread_result(t, agent, lease, &serde_json::json!({"done": true}))
+                    .set_thread_result_claiming(t, agent, &serde_json::json!({"done": true}))
                     .await
                     .expect("result");
-                store.release_claim(t, agent, lease).await.expect("release");
             }
             Withheld::Parked => {
                 store

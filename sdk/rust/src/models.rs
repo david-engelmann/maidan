@@ -288,6 +288,10 @@ model! {
         acceptance: Option<String>,
         /// The Linear issue it is for, such as `ENG-123`.
         linear_issue: Option<String>,
+        /// The change's review tier, `A` or `B`; unset counts as B.
+        tier: Option<String>,
+        /// The provider family a review child is routed to; server-set.
+        review_family: Option<String>,
     }
 }
 
@@ -469,6 +473,7 @@ model! {
         decision: ReviewDecision,
         note: Option<String>,
         dismissed_at: Option<String>,
+        head_sha: Option<String>,
         created_at: String,
         updated_at: String,
     }

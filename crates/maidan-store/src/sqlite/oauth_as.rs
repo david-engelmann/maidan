@@ -256,7 +256,7 @@ pub async fn insert_grant_audited(
 ) -> Result<OAuthGrant, StoreError> {
     let mut tx = pool.begin().await?;
     let grant = insert_grant_on(&mut tx, new).await?;
-    super::audit::append_on(&mut tx, audit(&grant))
+    super::audit::append_scoped(&mut tx, grant.workspace_id, audit(&grant))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -393,7 +393,7 @@ pub async fn mint_token_audited(
 ) -> Result<ApiToken, StoreError> {
     let mut tx = pool.begin().await?;
     let token = mint_token_on(&mut tx, new, grant_id).await?;
-    super::audit::append_on(&mut tx, audit(&token))
+    super::audit::append_scoped(&mut tx, token.workspace_id, audit(&token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -563,7 +563,7 @@ pub async fn mint_token_pair_audited(
     let mut tx = pool.begin().await?;
     let token = mint_token_on(&mut tx, access, grant_id).await?;
     insert_refresh_on(&mut tx, &refresh).await?;
-    super::audit::append_on(&mut tx, audit(&token))
+    super::audit::append_scoped(&mut tx, token.workspace_id, audit(&token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -642,7 +642,7 @@ pub async fn revoke_lineage_audited(
 ) -> Result<OAuthLineageRevocation, StoreError> {
     let mut tx = pool.begin().await?;
     let revoked = revoke_lineage_on(&mut tx, lineage_id).await?;
-    super::audit::append_on(&mut tx, audit(&revoked))
+    super::audit::append_scoped(&mut tx, revoked.workspace_id, audit(&revoked))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -689,7 +689,7 @@ pub async fn rotate_refresh_token(
             return Ok(OAuthRefreshOutcome::Invalid);
         }
         let revoked = revoke_lineage_on(&mut tx, presented.lineage_id).await?;
-        super::audit::append_on(&mut tx, reuse_audit(&revoked))
+        super::audit::append_scoped(&mut tx, revoked.workspace_id, reuse_audit(&revoked))
             .await
             .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
         tx.commit().await?;
@@ -738,7 +738,7 @@ pub async fn rotate_refresh_token(
         },
     )
     .await?;
-    super::audit::append_on(&mut tx, mint_audit(&access))
+    super::audit::append_scoped(&mut tx, access.workspace_id, mint_audit(&access))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -770,7 +770,7 @@ pub async fn revoke_lineage_for_used_code(
         return Ok(None);
     };
     let revoked = revoke_lineage_on(&mut tx, lineage).await?;
-    super::audit::append_on(&mut tx, audit(&revoked))
+    super::audit::append_scoped(&mut tx, revoked.workspace_id, audit(&revoked))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -801,7 +801,7 @@ pub async fn revoke_access_token_audited(
         return Ok(None);
     };
     let token = crate::sqlite::tokens::row_to_token(&row)?;
-    super::audit::append_on(&mut tx, audit(&token))
+    super::audit::append_scoped(&mut tx, token.workspace_id, audit(&token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;

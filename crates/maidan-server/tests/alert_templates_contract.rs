@@ -16,6 +16,7 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         "maidan_outbox_quarantined",
         "maidan_bus_listener_ok",
         "maidan_indexer_pending_age_seconds",
+        "maidan_indexer_events_behind",
         "maidan_subscribe_replay_total",
         // Batched-embed indexer gauges.
         "maidan_indexer_queue_depth",
@@ -37,6 +38,8 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         // A handler panic and a shed request.
         "maidan_http_panics_total",
         "maidan_http_shed_total",
+        // A claim that only renews.
+        "maidan_threads_stalled",
     ];
     for metric in expected {
         assert!(

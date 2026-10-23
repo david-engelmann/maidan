@@ -16,7 +16,7 @@ pub async fn append(pool: &SqlitePool, new: NewAuditEvent) -> Result<AuditEvent,
 
 /// [`append`] on the caller's connection — inside a transaction, the audit row
 /// commits or rolls back with the change it records (D-A).
-pub(crate) async fn append_on(
+async fn append_on(
     conn: &mut sqlx::SqliteConnection,
     new: NewAuditEvent,
 ) -> Result<AuditEvent, StoreError> {
@@ -97,11 +97,52 @@ fn row_to_audit(row: &sqlx::sqlite::SqliteRow) -> Result<AuditEvent, StoreError>
 
 /// [`append_on`], counting a failure before it aborts the caller's
 /// transaction — the write an authority change makes with its record (D-A).
-pub(crate) async fn append_counted(
+async fn append_counted(
     conn: &mut sqlx::SqliteConnection,
     new: NewAuditEvent,
 ) -> Result<AuditEvent, StoreError> {
     append_on(conn, new)
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())
+}
+
+/// Write `new` for a change to `owner`, on the change's own transaction,
+/// after [`crate::audit_scope::check`] confirms its scope is `owner`'s
+/// workspace. The only way an audited write reaches the audit table.
+pub(crate) async fn append_scoped(
+    conn: &mut sqlx::SqliteConnection,
+    owner: impl Into<crate::audit_scope::AuditOwner>,
+    new: NewAuditEvent,
+) -> Result<AuditEvent, StoreError> {
+    use crate::audit_scope::{self, AuditOwner};
+    let expected = match owner.into() {
+        AuditOwner::Workspace(ws) => Some(ws),
+        AuditOwner::Instance => None,
+        AuditOwner::Member(id) => {
+            owner_workspace(conn, audit_scope::MEMBER_WORKSPACE, id.0).await?
+        }
+        AuditOwner::Channel(id) => {
+            owner_workspace(conn, audit_scope::CHANNEL_WORKSPACE, id.0).await?
+        }
+        AuditOwner::Thread(id) => {
+            owner_workspace(conn, audit_scope::THREAD_WORKSPACE, id.0).await?
+        }
+        AuditOwner::Message(id) => {
+            owner_workspace(conn, audit_scope::MESSAGE_WORKSPACE, id.0).await?
+        }
+    };
+    audit_scope::check(expected, &new)?;
+    append_counted(conn, new).await
+}
+
+async fn owner_workspace(
+    conn: &mut sqlx::SqliteConnection,
+    sql: &'static str,
+    id: Uuid,
+) -> Result<Option<WorkspaceId>, StoreError> {
+    let ws: Option<Uuid> = sqlx::query_scalar(sql)
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+    Ok(ws.map(WorkspaceId))
 }

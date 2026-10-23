@@ -234,6 +234,12 @@
     "surface": "http"
   },
   {
+    "method": "PATCH",
+    "path": "/members/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
     "method": "GET",
     "path": "/members/{id}/inbox",
     "capability": "workspace:read",
@@ -828,6 +834,12 @@
     "surface": "http"
   },
   {
+    "method": "GET",
+    "path": "/threads/{id}/fingerprint",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/plan",
     "capability": "workspace:write",
@@ -866,6 +878,12 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/swarm-metrics",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/usage-meters",
     "capability": "workspace:read",
     "surface": "http"
   },
@@ -962,6 +980,12 @@
   {
     "method": "GET",
     "path": "/threads/{id}/deliveries",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/threads/{id}/transitions",
     "capability": "workspace:read",
     "surface": "http"
   },
@@ -1304,6 +1328,12 @@
   {
     "method": "GET",
     "path": "/operator/status",
+    "capability": "operator:global",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/operator/usage-meters",
     "capability": "operator:global",
     "surface": "http"
   },

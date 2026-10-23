@@ -15,9 +15,9 @@ use uuid::Uuid;
 
 // These tests are about where a group and its members may live, not about
 // which workspace an audit row names (`audit_workspace` covers that).
-fn event(action: &str) -> NewAuditEvent {
+fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
-        scope: AuditScope::Instance,
+        scope: AuditScope::Workspace(ws),
         actor_id: None,
         action: action.into(),
         target_kind: None,
@@ -37,7 +37,7 @@ async fn provision(store: &dyn Store, ws: WorkspaceId, handle: &str) -> Member {
             },
             None,
             true,
-            Box::new(|_| event("scim.user.create")),
+            Box::new(move |_| event(ws, "scim.user.create")),
         )
         .await
         .expect("provision")
@@ -101,7 +101,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
                 external_id: Some("okta-g1".into()),
                 members: vec![alice.id, alice.id],
             },
-            Box::new(|_| event("scim.group.create")),
+            Box::new(move |_| event(ws_a, "scim.group.create")),
         )
         .await
         .unwrap();
@@ -122,7 +122,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
                     external_id: None,
                     members: vec![amir.id, outsider],
                 },
-                Box::new(|_| event("scim.group.create")),
+                Box::new(move |_| event(ws_a, "scim.group.create")),
             )
             .await;
         assert!(
@@ -139,7 +139,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
             ws_a,
             eng.id,
             change(vec![ScimMembersOp::Add(vec![amir.id, alice.id])]),
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_a, "scim.group.update")),
         )
         .await
         .unwrap()
@@ -162,7 +162,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
                     ScimMembersOp::Add(vec![bea.id]),
                 ],
             },
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_a, "scim.group.update")),
         )
         .await;
     assert!(matches!(refused, Err(StoreError::InvalidInput(_))));
@@ -176,7 +176,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
             ws_a,
             eng.id,
             change(vec![ScimMembersOp::Remove(vec![alice.id, bea.id])]),
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_a, "scim.group.update")),
         )
         .await
         .unwrap()
@@ -188,7 +188,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
             ws_a,
             eng.id,
             change(vec![ScimMembersOp::Replace(vec![alice.id])]),
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_a, "scim.group.update")),
         )
         .await
         .unwrap()
@@ -204,7 +204,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
                 ScimMembersOp::Add(vec![amir.id]),
                 ScimMembersOp::Remove(vec![amir.id]),
             ]),
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_a, "scim.group.update")),
         )
         .await
         .unwrap()
@@ -221,7 +221,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
                 external_id: Some(None),
                 members: vec![],
             },
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_a, "scim.group.update")),
         )
         .await
         .unwrap()
@@ -238,13 +238,13 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
             ws_b,
             eng.id,
             change(vec![ScimMembersOp::Replace(vec![])]),
-            Box::new(|_| event("scim.group.update")),
+            Box::new(move |_| event(ws_b, "scim.group.update")),
         )
         .await
         .unwrap()
         .is_none());
     assert!(!store
-        .scim_delete_group_audited(ws_b, eng.id, event("scim.group.delete"))
+        .scim_delete_group_audited(ws_b, eng.id, event(ws_b, "scim.group.delete"))
         .await
         .unwrap());
     assert_eq!(member_ids(store, ws_a, eng.id).await, vec![alice.id]);
@@ -273,7 +273,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
             Some("alice.new"),
             None,
             true,
-            event("scim.user.update"),
+            event(ws_a, "scim.user.update"),
         )
         .await
         .unwrap()
@@ -304,7 +304,7 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
             Some("amir"),
             Some("changed"),
             true,
-            event("scim.user.update"),
+            event(ws_a, "scim.user.update"),
         )
         .await;
     assert!(matches!(taken, Err(StoreError::Conflict(_))), "{taken:?}");
@@ -321,14 +321,21 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
         .is_none());
     // The same handle in another workspace is not taken.
     store
-        .scim_update_user_audited(ws_b, bea.id, Some("amir"), None, true, event("u"))
+        .scim_update_user_audited(ws_b, bea.id, Some("amir"), None, true, event(ws_b, "u"))
         .await
         .unwrap()
         .unwrap();
 
     // Workspace B cannot rename workspace A's user.
     assert!(store
-        .scim_update_user_audited(ws_b, alice.id, Some("stolen"), None, false, event("u"))
+        .scim_update_user_audited(
+            ws_b,
+            alice.id,
+            Some("stolen"),
+            None,
+            false,
+            event(ws_b, "u")
+        )
         .await
         .unwrap()
         .is_none());
@@ -340,19 +347,19 @@ async fn run_suite(store: &dyn Store, raw_insert: RawInsert<'_>) {
 
     // Deprovisioning a user takes it out of every group.
     store
-        .scim_deprovision_audited(ws_a, amir.id, event("scim.user.delete"))
+        .scim_deprovision_audited(ws_a, amir.id, event(ws_a, "scim.user.delete"))
         .await
         .unwrap();
     assert_eq!(member_ids(store, ws_a, eng.id).await, vec![alice.id]);
 
     // Delete.
     assert!(store
-        .scim_delete_group_audited(ws_a, eng.id, event("scim.group.delete"))
+        .scim_delete_group_audited(ws_a, eng.id, event(ws_a, "scim.group.delete"))
         .await
         .unwrap());
     assert!(store.get_scim_group(ws_a, eng.id).await.unwrap().is_none());
     assert!(!store
-        .scim_delete_group_audited(ws_a, eng.id, event("scim.group.delete"))
+        .scim_delete_group_audited(ws_a, eng.id, event(ws_a, "scim.group.delete"))
         .await
         .unwrap());
 

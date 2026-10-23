@@ -2952,6 +2952,7 @@
           "projector_misconfigured",
           "member_frozen",
           "member_unfrozen",
+          "usage_over_allowance",
           "message_posted",
           "message_edited",
           "message_tombstoned",
@@ -5117,6 +5118,36 @@
         "format": "uuid",
         "type": "string"
       },
+      "MeterUsage": {
+        "description": "A workspace's month on one meter, against the allowance.",
+        "properties": {
+          "allowance": {
+            "description": "The instance allowance, when it sets one for this meter.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "meter": {
+            "$ref": "#/components/schemas/UsageMeter"
+          },
+          "over": {
+            "type": "boolean"
+          },
+          "quantity": {
+            "description": "The month's sum for a counter, the latest measurement for a gauge.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "meter",
+          "quantity",
+          "over"
+        ],
+        "type": "object"
+      },
       "MintApiToken": {
         "properties": {
           "capabilities": {
@@ -5354,6 +5385,30 @@
           "member_id",
           "client_source",
           "expires_at"
+        ],
+        "type": "object"
+      },
+      "MonthlyUsage": {
+        "description": "A workspace's usage for one UTC month.",
+        "properties": {
+          "meters": {
+            "items": {
+              "$ref": "#/components/schemas/MeterUsage"
+            },
+            "type": "array"
+          },
+          "month": {
+            "description": "`YYYY-MM`.",
+            "type": "string"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "month",
+          "meters"
         ],
         "type": "object"
       },
@@ -7320,6 +7375,13 @@
                 },
                 "type": "array"
               },
+              "by_tier": {
+                "description": "By review tier, `A` then `B`, with untiered tasks counted as `B`.",
+                "items": {
+                  "$ref": "#/components/schemas/TierRollup"
+                },
+                "type": "array"
+              },
               "closed_unmerged": {
                 "format": "int64",
                 "type": "integer"
@@ -7346,6 +7408,7 @@
               "by_engine",
               "by_size",
               "by_risk",
+              "by_tier",
               "by_provider",
               "by_harness"
             ],
@@ -7666,6 +7729,13 @@
           },
           "decision": {
             "$ref": "#/components/schemas/ReviewDecision"
+          },
+          "head_sha": {
+            "description": "The full head SHA of the change this verdict was given against.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "description": "Position in the history; increases with every verdict.",
@@ -8231,6 +8301,15 @@
         "required": [
           "status"
         ],
+        "type": "object"
+      },
+      "SetMemberDisplayName": {
+        "description": "Body for `PATCH /members/:id`. Sets the member's display name; a blank\nname clears it.\nDefaulted so a body of `{}` still reaches the capability check.",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "SetMemoryBlockValue": {
@@ -9310,6 +9389,7 @@
         "type": "object"
       },
       "TaskAttributes": {
+        "additionalProperties": false,
         "description": "A thread's task attributes, whole: setting them replaces every field.",
         "properties": {
           "acceptance": {
@@ -9339,6 +9419,13 @@
               "null"
             ]
           },
+          "review_family": {
+            "description": "The provider family a review child is routed to: one other than the\nfamily of the change's author, picked when the change entered review.\nSet by the server only; setting attributes leaves it as it was.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "size": {
             "oneOf": [
               {
@@ -9351,6 +9438,17 @@
           },
           "threat_model": {
             "type": "boolean"
+          },
+          "tier": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskTier",
+                "description": "The change's review tier, set at intake and restated when a new head\nchanges it. Read by the metrics only; nothing routes or gates on it."
+              }
+            ]
           }
         },
         "type": "object"
@@ -9363,6 +9461,29 @@
           "human"
         ],
         "type": "string"
+      },
+      "TaskFingerprint": {
+        "description": "A task's stored fingerprint, and the earlier open task with the same\nfingerprint in the same workspace that it was linked to when created.",
+        "properties": {
+          "duplicate_of": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The oldest live task in the workspace that was open or in review\nwith the same fingerprint when this one was created. `None` when\nthere was none."
+              }
+            ]
+          },
+          "fingerprint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "type": "object"
       },
       "TaskFlag": {
         "description": "Why a task needs a look.",
@@ -9688,6 +9809,14 @@
           "S",
           "M",
           "L"
+        ],
+        "type": "string"
+      },
+      "TaskTier": {
+        "description": "How much review a change needs before it merges: Tier A takes the fast\npath, Tier B a full review. A thread with no tier stored counts as B in\nthe metrics, while the stored value stays unset, so a later restatement\ncan tell \"never said\" from \"B\".",
+        "enum": [
+          "A",
+          "B"
         ],
         "type": "string"
       },
@@ -10459,6 +10588,13 @@
               "null"
             ]
           },
+          "head_sha": {
+            "description": "The full head SHA of the change this verdict was given against: the\ntracked pull's head when it was submitted. A push that moves the head\ndismisses an approval given to an earlier one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "note": {
             "type": [
               "string",
@@ -10692,6 +10828,26 @@
           "created_at"
         ],
         "type": "object"
+      },
+      "TierRollup": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SliceNumbers"
+          },
+          {
+            "properties": {
+              "tier": {
+                "$ref": "#/components/schemas/TaskTier",
+                "description": "The review tier; a task with no tier stored counts as `B`."
+              }
+            },
+            "required": [
+              "tier"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "The tasks of one review tier."
       },
       "TokenPolicy": {
         "description": "What happens to credentials when a workspace is exported.\n\nThe only policy is [`TokenPolicy::TokensDieOnExport`]: API tokens,\nwebhook/slash/OIDC secrets, and at-rest keys are omitted from the\nbundle. After import the operator mints new tokens on the destination.\nContinuity is unsafe (hashed secrets plus AEAD keys do not travel).",
@@ -11071,6 +11227,18 @@
           "accepted_at"
         ],
         "type": "object"
+      },
+      "UsageMeter": {
+        "description": "What is metered.",
+        "enum": [
+          "requests",
+          "mcp_calls",
+          "embedding_calls",
+          "deliveries",
+          "wasi_ms",
+          "stored_bytes"
+        ],
+        "type": "string"
       },
       "UsageRollup": {
         "description": "Spend, cache shape, and cost per completed task for one scope.\n\nRates are integer parts per million (1_000_000 = the whole prompt). A\ncompleted task is a thread in `closed` or `archived` that has not been\ntombstoned. `cost_per_completed_task_usd_micros` divides the spend on those\ntasks by how many there are, truncating. It is absent when the scope has\nno completed task.",
@@ -15434,6 +15602,96 @@
           }
         ],
         "summary": "Get a member",
+        "tags": [
+          "members"
+        ]
+      },
+      "patch": {
+        "operationId": "set_member_display_name",
+        "parameters": [
+          {
+            "description": "Member id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMemberDisplayName"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set a member's display name",
         "tags": [
           "members"
         ]
@@ -20854,6 +21112,64 @@
         ]
       }
     },
+    "/operator/usage-meters": {
+      "get": {
+        "operationId": "list_operator_usage_meters",
+        "parameters": [
+          {
+            "description": "`YYYY-MM` (UTC); omitted, the current month.",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MonthlyUsage"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Every workspace's usage for a UTC month, each meter against the instance's free allowance",
+        "tags": [
+          "operator"
+        ]
+      }
+    },
     "/operator/waitlist": {
       "get": {
         "operationId": "list_waitlist",
@@ -24487,6 +24803,66 @@
         ]
       }
     },
+    "/threads/{id}/fingerprint": {
+      "get": {
+        "description": "The SHA-256 of the task's brief and inputs (title, description, kind,\nengine, threat-model flag, acceptance, Linear issue), and the oldest open\ntask in the workspace with the same fingerprint when this one was\ncreated. `404` when the thread has no title or description.",
+        "operationId": "get_task_fingerprint",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskFingerprint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a thread's task fingerprint",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/threads/{id}/footprint": {
       "get": {
         "operationId": "get_thread_footprint",
@@ -28062,6 +28438,78 @@
           }
         ],
         "summary": "Get a thread's tool-call transcript",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/transitions": {
+      "get": {
+        "operationId": "list_thread_transitions",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return, oldest first (default 100, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ThreadTransition"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a thread's state transitions",
         "tags": [
           "threads"
         ]
@@ -34025,6 +34473,71 @@
           }
         ],
         "summary": "Get a workspace's usage counts",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/usage-meters": {
+      "get": {
+        "operationId": "get_workspace_usage_meters",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`YYYY-MM` (UTC); omitted, the current month.",
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthlyUsage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "The workspace's usage for a UTC month, each meter against the instance's free allowance",
         "tags": [
           "workspaces"
         ]

@@ -273,5 +273,11 @@
     "disposition": "rest_only",
     "rest_evidence": "crates/maidan-server/tests/event_emission_e2e.rs#http_mutations_publish_matching_events",
     "note": "Workspace bootstrap is HTTP-only; MCP starts inside an existing workspace."
+  },
+  {
+    "kind": "usage_over_allowance",
+    "disposition": "internal_only",
+    "internal_evidence": "crates/maidan-server/tests/usage_allowance_e2e.rs#a_workspace_over_its_allowance_is_marked_once_and_its_admins_told",
+    "note": "The usage_meters loop derives it from this deployment's meters against its own MAIDAN_FREE_ALLOWANCE; nobody requests it."
   }
 ]

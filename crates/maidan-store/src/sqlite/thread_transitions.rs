@@ -183,6 +183,8 @@ pub(crate) async fn transition_in_tx(
         result_gate_in_tx(tx, thread_id).await?;
         // What the reviewers are handed, pinned before the state moves.
         super::review_packets::record_in_tx(tx, thread_id, actor_id).await?;
+        // A change entering review gets its second-family review child.
+        super::review_family::spawn_in_tx(tx, thread_id, actor_id).await?;
     }
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;
@@ -201,8 +203,11 @@ pub(crate) async fn transition_in_tx(
         let parent = row_to_thread(&parent_row)?;
         // A plan's children land while the plan stays open under its
         // planner's claim, and the plan closes after them (#1421), so only
-        // an archived plan holds a child back.
-        let child_to = if super::plans::is_child_in_tx(tx, thread_id).await? {
+        // an archived plan holds a child back. A review child finishes
+        // before the change it reviews merges, so it is not held back either.
+        let child_to = if super::plans::is_child_in_tx(tx, thread_id).await?
+            || super::thread_attributes::is_review_in_tx(tx, thread_id).await?
+        {
             ThreadState::Open
         } else {
             to_state

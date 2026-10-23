@@ -94,7 +94,7 @@ pub async fn create_agent_with_token(
         },
     )
     .await?;
-    super::audit::append_on(&mut tx, member_audit(&member))
+    super::audit::append_scoped(&mut tx, member.workspace_id, member_audit(&member))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     let token = super::tokens::create_on(
@@ -110,7 +110,7 @@ pub async fn create_agent_with_token(
         },
     )
     .await?;
-    super::audit::append_on(&mut tx, token_audit(&token))
+    super::audit::append_scoped(&mut tx, token.workspace_id, token_audit(&token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -149,6 +149,26 @@ pub async fn get(pool: &PgPool, id: MemberId) -> Result<Member, StoreError> {
     .await?
     .ok_or(StoreError::NotFound)?;
     row_to_member(&row)
+}
+
+/// Set a member's display name, or clear it when `None` — see the SQLite
+/// twin. `NotFound` when the id names no member.
+pub async fn set_display_name(
+    pool: &PgPool,
+    id: MemberId,
+    display_name: Option<&str>,
+) -> Result<Member, StoreError> {
+    let done = sqlx::query(
+        "UPDATE maidan_members SET display_name = $1, updated_at = NOW() WHERE id = $2",
+    )
+    .bind(display_name)
+    .bind(id.0)
+    .execute(pool)
+    .await?;
+    if done.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    get(pool, id).await
 }
 
 /// The workspace's member with this handle, ignoring case. `Alice` and

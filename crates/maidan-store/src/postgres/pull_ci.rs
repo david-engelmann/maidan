@@ -128,7 +128,7 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
         return Ok(Vec::new());
     };
     let previous = sqlx::query(
-        "SELECT gate_reasons, merge_queue, merge_queue_reason FROM maidan_pull_ci
+        "SELECT gate_reasons, gate_said, merge_queue, merge_queue_reason FROM maidan_pull_ci
          WHERE workspace_id = $1 AND repo = $2 AND pull_number = $3",
     )
     .bind(new.workspace_id.0)
@@ -141,15 +141,19 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
             .get::<Option<Json<Vec<String>>>, _>("gate_reasons")
             .map(|reasons| reasons.0),
         merge_queue: queue_from(&row, false),
+        gate_said: row
+            .get::<Option<Json<Vec<String>>>, _>("gate_said")
+            .map(|reasons| reasons.0),
     })
     .unwrap_or_default();
+    let said = maidan_types::gate_to_say(new.gate_reasons.as_deref(), &previous);
     let now = Utc::now();
     sqlx::query(
         "INSERT INTO maidan_pull_ci
              (repo, pull_number, workspace_id, head_sha, status, failing_jobs, log_tail, updated_at,
               merge_state, unresolved_threads, unresolved_thread_links, missing_checks, gate_reasons,
-              merge_queue, merge_queue_reason, head_ahead)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+              merge_queue, merge_queue_reason, head_ahead, gate_said)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          ON CONFLICT (workspace_id, repo, pull_number) DO UPDATE SET
              head_sha = excluded.head_sha, status = excluded.status,
              failing_jobs = excluded.failing_jobs, log_tail = excluded.log_tail,
@@ -164,7 +168,8 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
                  THEN maidan_pull_ci.merge_queue_reason ELSE excluded.merge_queue_reason END,
              head_ahead = CASE WHEN maidan_pull_ci.head_sha = excluded.head_sha
                  THEN (maidan_pull_ci.head_ahead OR excluded.head_ahead)
-                 ELSE excluded.head_ahead END",
+                 ELSE excluded.head_ahead END,
+             gate_said = COALESCE(excluded.gate_said, maidan_pull_ci.gate_said)",
     )
     .bind(&repo)
     .bind(new.pull_number)
@@ -182,8 +187,16 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
     .bind(new.merge_queue.as_ref().map(|queue| queue.state.as_str()))
     .bind(new.merge_queue.as_ref().and_then(|queue| queue.reason.clone()))
     .bind(new.head_ahead)
+    .bind(said.as_ref().map(Json))
     .execute(&mut *tx)
     .await?;
+    // A push that moved the head dismisses approvals given to an earlier one.
+    sqlx::query(&crate::review_head::dismiss_stale("$1", "$2", "$3"))
+        .bind(thread)
+        .bind(new.head_sha.to_ascii_lowercase())
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
     let mut posted = Vec::new();
     let change = Uuid::now_v7().to_string();
     for (notice, key) in maidan_types::ci_notices(&new, &previous, &change, now) {

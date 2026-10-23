@@ -1336,6 +1336,8 @@ struct SetThreadAttributesArgs {
     acceptance: Option<String>,
     #[serde(default)]
     linear_issue: Option<String>,
+    #[serde(default)]
+    tier: Option<maidan_types::TaskTier>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1357,6 +1359,8 @@ pub(super) async fn set_thread_attributes(
                 size: a.size,
                 acceptance: a.acceptance,
                 linear_issue: a.linear_issue,
+                tier: a.tier,
+                review_family: None,
             }
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,
@@ -2404,7 +2408,7 @@ pub(super) async fn wait_for_ready(
 /// (its `member_id` is the dead holder) or `null` on timeout. **Live**
 /// primitive (only sees expiries reclaimed *after* it subscribes); the `GET
 /// /mcp/stream` SSE transport, `kinds=claim_expired`, is the resumable
-/// alternative. A lease on a thread in review is not reaped and emits nothing.
+/// alternative. A thread in review is reaped like an open one: its implementer must keep renewing through review, or the claim is reaped (emitting claim_expired) and a changes-requested thread reopens unheld.
 pub(super) async fn wait_for_claim_expired(
     server: &crate::server::McpServer,
     auth: &AuthContext,

@@ -222,27 +222,26 @@ async fn refresh(
                     tracing::warn!(repo, pull_number, error = %err, "change sweep: head not looked up");
                     false
                 });
-        let merged_at = match brief.merged_at {
-            Some(merged_at) => Some(merged_at),
+        let landed_head = match brief.merged_at {
+            Some(_) => Some(brief.head_sha.clone()),
             None if !was_ahead => None,
-            None => match git
-                .commit_on_branch(&repo, &brief.base, &brief.head_sha)
-                .await
-            {
-                Ok(true) => Some(closed_at),
-                Ok(false) => None,
+            None => match closed_landing(git, &repo, brief, pull_number, closed_at).await {
+                Ok(landed) => landed,
                 // A head GitHub no longer has, or a ref it refuses, cannot be
                 // on the base.
                 Err(err) if err.is_not_found() || matches!(err, GithubError::Refused(_)) => None,
                 // Anything else may pass: the close waits for the next tick
                 // rather than be recorded unmerged on a failed read.
                 Err(err) => {
-                    tracing::debug!(repo, pull_number, error = %err, "change sweep: closed head not compared with its base");
+                    tracing::debug!(repo, pull_number, error = %err, "change sweep: closed pull request not compared with its base");
                     continue;
                 }
             },
         };
-        let merged_head = merged_at.map(|_| brief.head_sha.as_str());
+        let merged_at = brief
+            .merged_at
+            .or_else(|| landed_head.as_ref().map(|_| closed_at));
+        let merged_head = landed_head.as_deref();
         if let Err(err) = store
             .close_change_pull(
                 workspace_id,
@@ -257,6 +256,40 @@ async fn refresh(
             tracing::warn!(repo, pull_number, error = %err, "change sweep: close not recorded");
         }
     }
+}
+
+/// The commit a closed, unmerged pull request landed as on its base, if it
+/// did. A stack tool lands the head itself, so the head is on the base. A
+/// merge queue that squashes into a commit of its own and then closes the
+/// pull request (Graphite's does) leaves the head off the base; that landing
+/// is the base commit, from the day before the close, whose subject ends
+/// `(#N)`. A revert's subject ends in a quote, so it is not one.
+async fn closed_landing(
+    git: &dyn crate::github::GithubGit,
+    repo: &str,
+    brief: &crate::github::GithubPullBrief,
+    pull_number: i64,
+    closed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<Option<String>, GithubError> {
+    if git
+        .commit_on_branch(repo, &brief.base, &brief.head_sha)
+        .await?
+    {
+        return Ok(Some(brief.head_sha.clone()));
+    }
+    let suffix = format!("(#{pull_number})");
+    Ok(git
+        .branch_commits_since(repo, &brief.base, closed_at - chrono::Duration::days(1))
+        .await?
+        .into_iter()
+        .find(|commit| {
+            commit
+                .message
+                .lines()
+                .next()
+                .is_some_and(|subject| subject.trim_end().ends_with(&suffix))
+        })
+        .map(|commit| commit.sha))
 }
 
 /// The swarm-metrics refresh, handed to the MCP server so its

@@ -2,8 +2,9 @@
 //!
 //! A lapsed lease on an open thread is returned to the queue with one
 //! `ClaimExpired` naming the dead holder, whose token is fenced from then on.
-//! A live lease, a claim with no lease and a lease on a thread that left
-//! `open` are left alone. A batch is bounded and takes the oldest deadline
+//! A lapsed lease held into review is freed too, so a published result never
+//! pins a claimant's slot. A live lease and a claim with no lease are left
+//! alone. A batch is bounded and takes the oldest deadline
 //! first, and concurrent reapers report each lapse once.
 
 use std::collections::HashSet;
@@ -147,32 +148,79 @@ async fn a_lapsed_lease_is_reaped_once_and_the_holder_fenced(store: &dyn Store) 
     assert!(fenced(store.release_claim(held.id, dead, stale).await));
 }
 
-async fn live_leases_unleased_claims_and_threads_out_of_open_are_left_alone(store: &dyn Store) {
-    let (channel, holder, _) = setup(store, 3).await;
+async fn live_leases_and_unleased_claims_are_left_alone(store: &dyn Store) {
+    let (channel, holder, _) = setup(store, 2).await;
     let live = claim(store, channel, holder, Some(3600)).await;
     let unleased = claim(store, channel, holder, None).await;
-    let in_review = lapsed(store, channel, holder, 5).await;
-    store
-        .transition_thread(in_review.id, holder, maidan_fsm::ThreadAction::StartReview)
-        .await
-        .unwrap();
 
     assert!(store
         .reap_expired_claims(Utc::now(), 100)
         .await
         .unwrap()
         .is_empty());
-    for (thread, what) in [
-        (live, "a live lease"),
-        (unleased, "a claim with no lease"),
-        (in_review, "a thread in review"),
-    ] {
+    for (thread, what) in [(live, "a live lease"), (unleased, "a claim with no lease")] {
         assert_eq!(
             store.get_thread(thread.id).await.unwrap().assignee_id,
             Some(holder),
             "{what} keeps its holder"
         );
     }
+}
+
+/// S2: a claimant that published its result and moved the thread to review
+/// can still release its claim, and one that dies there instead is reaped
+/// once its lease lapses: neither pins the slot for good. Only the current
+/// lease may release.
+async fn a_claim_held_into_review_is_released_or_reaped(store: &dyn Store) {
+    let (channel, holder, other) = setup(store, 2).await;
+    let result = serde_json::json!({ "kind": "test.done" });
+    let mut held = Vec::new();
+    for _ in 0..2 {
+        let t = claim(store, channel, holder, Some(3600)).await;
+        let lease = t.claim_lease_id.unwrap();
+        store
+            .set_thread_result(t.id, holder, lease, &result)
+            .await
+            .unwrap();
+        store
+            .transition_thread(t.id, holder, maidan_fsm::ThreadAction::StartReview)
+            .await
+            .unwrap();
+        held.push(t);
+    }
+
+    let released = &held[0];
+    let lease = released.claim_lease_id.unwrap();
+    assert!(
+        store
+            .release_claim(released.id, other, lease)
+            .await
+            .is_err(),
+        "only the holder may release"
+    );
+    let freed = store
+        .release_claim(released.id, holder, lease)
+        .await
+        .unwrap();
+    assert_eq!(
+        freed.assignee_id, None,
+        "released after the result is published"
+    );
+    assert!(
+        store
+            .release_claim(released.id, holder, lease)
+            .await
+            .is_err(),
+        "a spent lease is fenced"
+    );
+
+    let dead = lapse(store, &held[1], 5).await;
+    let events = store.reap_expired_claims(Utc::now(), 100).await.unwrap();
+    assert_eq!(events.len(), 1, "the lapsed claim in review is reaped");
+    assert_eq!(events[0].thread_id, Some(dead.id));
+    let reaped = store.get_thread(dead.id).await.unwrap();
+    assert_eq!(reaped.assignee_id, None);
+    assert_eq!(reaped.claim_lease_id, None);
 }
 
 async fn a_batch_is_bounded_and_takes_the_oldest_deadline_first(store: &dyn Store) {
@@ -255,7 +303,8 @@ async fn concurrent_reapers_report_each_lapse_once(store: Arc<dyn Store>) {
 
 async fn run_suite(store: Arc<dyn Store>) {
     a_lapsed_lease_is_reaped_once_and_the_holder_fenced(store.as_ref()).await;
-    live_leases_unleased_claims_and_threads_out_of_open_are_left_alone(store.as_ref()).await;
+    live_leases_and_unleased_claims_are_left_alone(store.as_ref()).await;
+    a_claim_held_into_review_is_released_or_reaped(store.as_ref()).await;
     a_batch_is_bounded_and_takes_the_oldest_deadline_first(store.as_ref()).await;
     a_lease_lapsing_after_now_waits_for_the_next_sweep(store.as_ref()).await;
     concurrent_reapers_report_each_lapse_once(store).await;

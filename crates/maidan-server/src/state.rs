@@ -90,6 +90,12 @@ pub struct AppState {
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
     /// Shared MCP dispatcher (subscriptions + notification fan-out).
     pub mcp: Arc<McpServer>,
+    /// Requests and MCP calls counted for the usage meters, flushed by
+    /// [`crate::usage_meters`]. Shared with `mcp`.
+    pub usage_meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
+    /// The instance's free allowance (`MAIDAN_FREE_ALLOWANCE`), set at boot.
+    /// Empty (the default, and in tests) marks nobody.
+    pub usage_allowance: Arc<maidan_types::UsageAllowance>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     /// The caller an MCP `POST` with no credential reads as, on a dev instance
@@ -281,6 +287,7 @@ fn mcp_server(
     search: &Arc<dyn Search>,
     embedding_provider: &Arc<dyn EmbeddingProvider>,
     bus: &Arc<dyn EventBus>,
+    usage_meters: &Arc<maidan_store::usage_meters::UsageMeterBuffer>,
 ) -> McpServer {
     McpServer::new(
         store.clone(),
@@ -289,6 +296,7 @@ fn mcp_server(
         embedding_provider.clone(),
     )
     .with_event_bus(bus.clone())
+    .with_usage_meters(usage_meters.clone())
     .with_server_version(crate::version())
 }
 
@@ -307,12 +315,14 @@ impl AppState {
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         let presence = Arc::new(PresenceHub::default());
+        let usage_meters = Arc::new(maidan_store::usage_meters::UsageMeterBuffer::new());
         let mcp = Arc::new(mcp_server(
             &store,
             &artifacts,
             &search,
             &embedding_provider,
             &bus,
+            &usage_meters,
         ));
         mcp.attach_presence_reader(presence.clone());
         let slash = SlashRuntime::new(None);
@@ -395,6 +405,8 @@ impl AppState {
             export_verify_keys: Vec::new(),
             land_gate_advisor: None,
             retry_budget: Arc::new(crate::retry_budget::RetryBudget::new()),
+            usage_meters,
+            usage_allowance: Arc::default(),
         }
     }
 
@@ -506,6 +518,7 @@ impl AppState {
                 &self.search,
                 &self.embedding_provider,
                 &self.bus,
+                &self.usage_meters,
             )
             .with_resource_notifier(notifier),
         );

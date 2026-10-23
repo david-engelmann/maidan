@@ -494,8 +494,8 @@ pub async fn complete_signup(
         member: member.clone(),
         identity: identity.clone(),
     };
-    super::audit::append_counted(&mut tx, signup_audit(&core)).await?;
-    super::audit::append_counted(&mut tx, session_audit(&session)).await?;
+    super::audit::append_scoped(&mut tx, core.workspace.id, signup_audit(&core)).await?;
+    super::audit::append_scoped(&mut tx, session.workspace_id, session_audit(&session)).await?;
     tx.commit().await?;
     Ok(OidcSignupOutcome {
         workspace,

@@ -51,6 +51,15 @@ pub struct RenameWorkspace {
     pub name: String,
 }
 
+/// Body for `PATCH /members/:id`. Sets the member's display name; a blank
+/// name clears it.
+/// Defaulted so a body of `{}` still reaches the capability check.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetMemberDisplayName {
+    #[serde(default)]
+    pub display_name: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EraseWorkspace {
     pub confirm_workspace_id: uuid::Uuid,
@@ -425,6 +434,14 @@ pub struct ActiveClaimsQuery {
     pub repo: Option<String>,
 }
 
+/// Query params for a thread's transition history.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ThreadTransitionsQuery {
+    /// Maximum rows to return, oldest first (default 100, at most 500).
+    pub limit: Option<i64>,
+}
+
 /// Query params for removing a slot's capacity.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -482,6 +499,14 @@ pub struct ThreadLookupQuery {
     pub repo: Option<String>,
     /// The pull request (or issue) number in `repo`.
     pub pr_number: Option<i64>,
+}
+
+/// Query params for a month of usage.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct UsageMonthQuery {
+    /// `YYYY-MM` (UTC); omitted, the current month.
+    pub month: Option<String>,
 }
 
 /// Query params for lifting a repository pause.

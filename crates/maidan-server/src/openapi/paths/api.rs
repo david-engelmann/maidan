@@ -613,6 +613,19 @@ pub fn revoke_fsm_hook() {}
     ))]
 pub fn get_member() {}
 
+/// Set a member's display name
+#[utoipa::path(patch, path = "/members/{id}", tag = "members",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = SetMemberDisplayName,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Member),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_member_display_name() {}
+
 /// Usage rollup for one member
 #[utoipa::path(get, path = "/members/{id}/usage-rollup", tag = "members",
     params(("id" = Uuid, Path, description = "Member id")),
@@ -2671,6 +2684,22 @@ pub fn submit_plan() {}
     ))]
 pub fn get_thread_footprint() {}
 
+/// Get a thread's task fingerprint
+///
+/// The SHA-256 of the task's brief and inputs (title, description, kind,
+/// engine, threat-model flag, acceptance, Linear issue), and the oldest open
+/// task in the workspace with the same fingerprint when this one was
+/// created. `404` when the thread has no title or description.
+#[utoipa::path(get, path = "/threads/{id}/fingerprint", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = TaskFingerprint),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_task_fingerprint() {}
+
 /// List a workspace's live claims and their footprints
 #[utoipa::path(get, path = "/workspaces/{id}/claims", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), ActiveClaimsQuery),
@@ -2702,6 +2731,17 @@ pub fn list_deferred_threads() {}
         (status = 404, response = NotFound),
     ))]
 pub fn find_thread() {}
+
+/// The workspace's usage for a UTC month, each meter against the instance's free allowance
+#[utoipa::path(get, path = "/workspaces/{id}/usage-meters", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id"), UsageMonthQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = MonthlyUsage),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn get_workspace_usage_meters() {}
 
 /// Swarm ramp metrics: per agent pull request and per repository
 #[utoipa::path(get, path = "/workspaces/{id}/swarm-metrics", tag = "threads",
@@ -2911,6 +2951,17 @@ pub fn get_thread_result() {}
         (status = 404, response = NotFound),
     ))]
 pub fn list_thread_deliveries() {}
+
+/// List a thread's state transitions
+#[utoipa::path(get, path = "/threads/{id}/transitions", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id"), ThreadTransitionsQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [ThreadTransition]),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_thread_transitions() {}
 
 /// Replay a thread's result delivery
 #[utoipa::path(post, path = "/threads/{id}/deliveries/{did}/replay", tag = "threads",

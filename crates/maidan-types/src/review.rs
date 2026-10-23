@@ -80,6 +80,11 @@ pub struct ThreadReview {
     /// close.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_root: Option<String>,
+    /// The full head SHA of the change this verdict was given against: the
+    /// tracked pull's head when it was submitted. A push that moves the head
+    /// dismisses an approval given to an earlier one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// Set on an approval when a change request sent the thread back for
@@ -106,6 +111,9 @@ pub struct ReviewVerdict {
     /// The delegate that submitted this verdict for `reviewer_id`, when one did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<MemberId>,
+    /// The full head SHA of the change this verdict was given against.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_sha: Option<String>,
     pub recorded_at: DateTime<Utc>,
 }
 

@@ -147,12 +147,20 @@ pub fn init() {
             "Internal bus consumers that resumed from the event log after BusItem::Lagged"
         );
         describe_gauge!(
+            "maidan_content_keys_refused",
+            "Content key rows the last rewrap pass left because the key custody refused them (0 when none)"
+        );
+        describe_gauge!(
             "maidan_indexer_last_event_age_seconds",
             "Seconds since the background indexer last made progress (0 if never); an idle instance ages here, so alert on maidan_indexer_pending_age_seconds"
         );
         describe_gauge!(
             "maidan_indexer_pending_age_seconds",
             "Seconds since the oldest indexable event the indexer has not handled was stored (0 when caught up)"
+        );
+        describe_gauge!(
+            "maidan_indexer_events_behind",
+            "Indexable events the indexer has not handled, counted up to 100000 (0 when caught up)"
         );
         describe_gauge!(
             "maidan_bus_listener_ok",
@@ -165,6 +173,10 @@ pub fn init() {
         describe_counter!(
             "maidan_bus_notify_hydrate_total",
             "Postgres NOTIFY pointer hydrations by outcome"
+        );
+        describe_gauge!(
+            "maidan_threads_stalled",
+            "Threads held on a live lease whose holder has shown no progress for MAIDAN_STALL_SECS: a claim that only renews"
         );
         describe_gauge!(
             "maidan_outbox_pending",
@@ -539,6 +551,20 @@ async fn refresh_runtime_gauges(state: &AppState) {
         _ => 0.0,
     };
     gauge!("maidan_indexer_pending_age_seconds").set(pending_age_secs);
+    // Same guard as the age: before the indexer's first pass its watermark is
+    // 0 and the whole log would read as behind.
+    if ms == 0 {
+        gauge!("maidan_indexer_events_behind").set(0.0);
+    } else {
+        match crate::health::indexer_events_behind(state).await {
+            Ok(n) => gauge!("maidan_indexer_events_behind").set(n as f64),
+            // A failed or slow count must not read as "caught up".
+            Err(err) => tracing::warn!(
+                error = %err,
+                "metrics: indexer events-behind count failed; gauge left as it was"
+            ),
+        }
+    }
 
     // Live embedding pipeline: queue depth is hard-capped by capacity, so the
     // lag this gauge reports is bounded.
@@ -602,6 +628,29 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
     if let Ok(dead) = state.store.count_dead_mail().await {
         gauge!("maidan_mail_dead").set(dead as f64);
+    }
+
+    // A claim that only renews: the board marks such a thread stalled at
+    // read time, and this is the same test counted, so it can page. With
+    // detection off the gauge reads 0.
+    let now = chrono::Utc::now();
+    let stalled = match state
+        .stall_threshold
+        .and_then(|threshold| chrono::Duration::from_std(threshold).ok())
+        .and_then(|threshold| now.checked_sub_signed(threshold))
+    {
+        Some(progress_before) => state
+            .store
+            .count_stalled_threads(now, progress_before)
+            .await
+            .inspect_err(|err| {
+                tracing::warn!(error = %err, "metrics: stalled-thread count failed; gauge left as it was");
+            })
+            .ok(),
+        None => Some(0),
+    };
+    if let Some(stalled) = stalled {
+        gauge!("maidan_threads_stalled").set(stalled as f64);
     }
 }
 

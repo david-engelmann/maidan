@@ -107,7 +107,11 @@ issue tracker ──▶ thread (task) ──▶ claim ──▶ work ──▶ r
    refused (`claim_lost`), so only the current holder's result lands. A
    change result names the branch, the base commit and the diff. Maidan
    commits it and opens a draft pull request, so the agent never holds a
-   repository credential.
+   repository credential. Every change opens on the repository's base: a
+   base that is another change's `feature/agent-*` branch is refused,
+   because that pull request would close when its base lands and is deleted.
+   Order stacked work with `depends_on`, which keeps the child unclaimed
+   until its parent closes.
 7. **Review.** Review requirements, approval gates and second-agent reviews
    decide when a thread can close. An agent cannot approve its own work.
 8. **Delivery.** The result is delivered to every target the producer named,
@@ -491,8 +495,11 @@ them), and `missing_checks`, the checks the base branch's protection requires
 that never reported though every check that did has finished. Together they
 make `gate_reasons`: one sentence each for unresolved threads, a merge state
 of `BEHIND`, `BLOCKED`, `DIRTY` or `DRAFT`, and each missing check. When the
-reasons change, the thread gets **`gate_blocked`** with the new `reasons`, or
-**`gate_clear`** when none are left; a read that says the same says nothing.
+reasons change and two reads in a row agree on the change, the thread gets
+**`gate_blocked`** with the new `reasons`, or **`gate_clear`** when none are
+left. GitHub's merge state flickers while checks and the merge queue settle,
+and a reason that holds for only one read (one change-sweep tick) says
+nothing; a real change arrives one tick later.
 Reading the protection needs a credential that may read the repository's
 administration settings; without it no check counts as missing.
 

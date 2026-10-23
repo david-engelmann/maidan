@@ -70,6 +70,8 @@ period is cut, and clients retry.
 | `MAIDAN_ALLOW_UNKNOWN_ENV` | no | `1` starts the server despite `MAIDAN_*` variables it does not know, logging them. Without it, boot refuses an unknown name and suggests the one it probably meant, so a misspelt variable cannot silently leave its default in place. In a Kubernetes pod the service-link variables Kubernetes injects for a Service named `maidan-…` (`MAIDAN_…_SERVICE_HOST`, `MAIDAN_…_PORT_8080_TCP`, …) are tolerated; the Helm chart and `k8s/` turn them off with `enableServiceLinks: false`. |
 | `MAIDAN_ALLOW_INSECURE_DEV_KEK` | no | `1` lets a server with no `MAIDAN_CONTENT_KEK` use the built-in development key, which is public, with a warning. For local development and CI only; refused with `MAIDAN_ENV=production`. |
 | `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. Requires `MAIDAN_CONTENT_KEK`. |
+| `MAIDAN_WORKSPACE_KEY_CUSTODY` | no | Who wraps each workspace's key: `local` (the instance KEK, the default) or `aws-kms`. Switching rows over is the rewrap pass's job: keys the old custody wrapped keep opening until it has moved them. An unknown value refuses boot. |
+| `MAIDAN_WORKSPACE_KEY_CUSTODY=aws-kms` IAM | with `aws-kms` | Each workspace key gets its own KMS key: `CreateKey` (tagged `maidan_workspace_key=<id>`), `TagResource`, `Encrypt`/`Decrypt` with the workspace key id as encryption context, and on rotation or erasure `DisableKey` then `ScheduleKeyDeletion` (7-day window), so an erased workspace cannot be opened from any backup. Credentials and region come from the AWS chain: environment variables, web identity, SSO, profile static keys, ECS/EC2 instance roles. `credential_process` profiles are not supported (the SDK is built without that provider so the binaries run on Debian 12's glibc). |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). Each tick polls every enabled peer; a peer whose target is refused, has no outbound secret, or fails to answer is logged and skipped, and the rest are still polled. Counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`). |
 | `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
@@ -237,7 +239,7 @@ distroless server image. Put it on a network that can reach the database and
 pin it to the server's exact tag:
 
 ```sh
-MAIDAN_TAG=v415.0.0
+MAIDAN_TAG=v416.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
@@ -1112,6 +1114,7 @@ Scrape `GET /metrics` for agent-substrate health (see [Integration](Integration.
 | Metric / signal | Symptom | Suggested action |
 |-----------------|---------|------------------|
 | `maidan_bus_lag_total` | Subscribers behind | Scope WS filters; scale consumers |
+| `maidan_indexer_events_behind` | Message events not yet indexed, up to 100000 | Fix embedding provider; check `maidan_indexer_queue_depth` |
 | `maidan_indexer_pending_age_seconds` | Stale embeddings | Fix embedding provider; run `maidan reindex-embeddings` |
 | `maidan_outbox_pending` / quarantined | Relay stuck | [Outbox relay](#outbox-relay-v1000-postgres-v1200-quarantine-v1400-sqlite) |
 | `maidan_automation_delivery_total{outcome="failure"}` | Slash/FSM HTTP failing | [Automation HTTP delivery](#automation-http-delivery-v6800) |

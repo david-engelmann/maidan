@@ -168,6 +168,10 @@ class TaskAttributes(Model):
     acceptance: Optional[str] = None
     #: The Linear issue it is for, such as ``ENG-123``.
     linear_issue: Optional[str] = None
+    #: The change's review tier, ``A`` or ``B``; unset counts as B.
+    tier: Optional[str] = None
+    #: The provider family a review child is routed to; server-set.
+    review_family: Optional[str] = None
 
 
 @dataclass(kw_only=True)
@@ -329,6 +333,8 @@ class ThreadReview(Model):
     actor_id: Optional[str] = None
     note: Optional[str] = None
     dismissed_at: Optional[str] = None
+    #: Full head SHA of the change the verdict was given against.
+    head_sha: Optional[str] = None
 
 
 @dataclass(kw_only=True)

@@ -65,6 +65,7 @@ pub async fn claim_pending(
     }
     let rows = q.fetch_all(&mut *tx).await?;
     tx.commit().await?;
+    crate::sqlite::events::open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| {
             let payload: String = row.get("payload");
@@ -110,6 +111,7 @@ pub async fn list_pending(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    crate::sqlite::events::open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| {
             let payload: String = row.get("payload");

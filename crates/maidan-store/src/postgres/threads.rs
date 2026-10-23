@@ -38,6 +38,8 @@ pub async fn create(pool: &PgPool, new: NewThread) -> Result<Thread, StoreError>
     .await?;
     let thread = row_to_thread(&row)?;
     super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    super::task_fingerprints::record_on(&mut tx, &thread, &maidan_types::TaskAttributes::default())
+        .await?;
     tx.commit().await?;
     Ok(thread)
 }
@@ -114,6 +116,10 @@ pub async fn create_with_footprint(
         super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
     }
     super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    // The fingerprint covers the attributes as given: a workspace default
+    // engine applies to identical briefs alike.
+    super::task_fingerprints::record_on(&mut tx, &thread, &attributes.clone().unwrap_or_default())
+        .await?;
     if let Some((priority, by)) = priority_by {
         sqlx::query(
             "INSERT INTO maidan_thread_priorities (thread_id, priority, set_by, set_at) VALUES ($1, $2, $3, NOW())",
@@ -773,7 +779,8 @@ async fn claim_next_in_tx(
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
-    let expires = lease_secs.map(|s| chrono::Utc::now() + chrono::Duration::seconds(s));
+    let now = chrono::Utc::now();
+    let expires = lease_secs.map(|s| now + chrono::Duration::seconds(s));
     let candidate = claim_next::candidate_select(
         scope,
         "cand.id, cand.assignee_id AS prev_assignee,
@@ -788,13 +795,16 @@ async fn claim_next_in_tx(
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
+            warm_hold_since: "$8::timestamptz",
+            warm_ttl_since: "$9::timestamptz",
+            later_than: "{col} > {t}",
         },
     );
     // The CTE captures the candidate's PRE-update claim (`prev_*`) so a
     // takeover of a lapsed lease can end the dead holder's claim, charged.
     let row = sqlx::query(&format!(
         "WITH next AS ({candidate} FOR UPDATE OF cand SKIP LOCKED)
-         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = $10, work_started_at = NULL, updated_at = NOW()
          FROM next WHERE t.id = next.id
          RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by, next.prev_assignee, next.prev_deadline, next.prev_started"
     ))
@@ -805,6 +815,9 @@ async fn claim_next_in_tx(
     .bind(DM_CHANNEL_NAME)
     .bind(repo)
     .bind(engine.map(|engine| engine.as_str()))
+    .bind(now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS))
+    .bind(now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS))
+    .bind(now)
     .fetch_optional(&mut **tx)
     .await?;
     row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
@@ -942,7 +955,8 @@ pub(crate) async fn claim_next_with_event(
     Ok((Some(thread), events))
 }
 
-/// Reap up to `limit` lapsed leases on open, live threads, charging each
+/// Reap up to `limit` lapsed leases on live threads that are not closed or
+/// archived (a claim held into review lapses too), charging each
 /// claim's worked time to its thread's wall budget and appending a
 /// `ClaimExpired` (or, over budget, a `ClaimFailed`) for each dead holder, all
 /// in one transaction. `SKIP LOCKED` lets concurrent reapers (one per replica)
@@ -961,7 +975,7 @@ pub async fn reap_expired_claims(
              FROM maidan_threads
              WHERE assignee_id IS NOT NULL
                AND assignment_expires_at IS NOT NULL AND assignment_expires_at < $1
-               AND tombstoned_at IS NULL AND state = 'open'
+               AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')
              ORDER BY assignment_expires_at ASC, id ASC
              LIMIT $2
              FOR UPDATE SKIP LOCKED
@@ -1456,4 +1470,35 @@ fn parse_state(state_str: &str) -> Result<ThreadState, StoreError> {
             "unknown thread state: {other}"
         ))),
     }
+}
+
+/// See [`crate::Store::count_stalled_threads`].
+pub async fn count_stalled_threads(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    progress_before: DateTime<Utc>,
+) -> Result<i64, StoreError> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS c FROM maidan_threads t
+         WHERE t.state = 'open' AND t.tombstoned_at IS NULL
+           AND t.assignee_id IS NOT NULL
+           AND t.work_started_at IS NOT NULL AND t.work_started_at <= $2
+           AND t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at >= $1
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id
+                   AND (s.status <> 'working'
+                        OR (s.declared_by = t.assignee_id AND s.declared_at > $2))
+               )
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_messages m
+                 WHERE m.thread_id = t.id AND m.author_id = t.assignee_id
+                   AND m.posted_at > $2
+               )",
+    )
+    .bind(now)
+    .bind(progress_before)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.try_get::<i64, _>("c")?)
 }

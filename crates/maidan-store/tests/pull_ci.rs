@@ -99,9 +99,10 @@ fn read(
     }
 }
 
-/// What holds a pull request back is said when it changes, and only then:
-/// blocked with the reasons, clear when none are left, nothing for a read
-/// that could not say (which keeps the last answer).
+/// What holds a pull request back is said once two reads agree on a
+/// change, and only then: blocked with the reasons, clear when none are
+/// left, nothing for a read that could not say (which keeps the last
+/// answer).
 async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
     let room = room(store.as_ref(), "gate").await;
     let thread = task(store.as_ref(), &room).await;
@@ -128,6 +129,10 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
             .collect()
     };
     let held = ["1 unresolved review thread", "merge state BLOCKED"];
+    assert!(
+        gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).is_empty(),
+        "one read of a block is not yet said"
+    );
     assert_eq!(
         gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()),
         vec![(
@@ -152,10 +157,12 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
         Some("review-bot[bot]")
     );
     assert_eq!(ci.missing_checks, vec!["e2e".to_string()]);
+    assert!(gate_kinds(s.record_pull_ci(gated(Some(&[]))).await.unwrap()).is_empty());
     assert_eq!(
         gate_kinds(s.record_pull_ci(gated(Some(&[]))).await.unwrap()),
         vec![(ThreadNoticeKind::GateClear, Vec::new())]
     );
+    assert!(gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).is_empty());
     assert_eq!(
         gate_kinds(s.record_pull_ci(gated(Some(&held))).await.unwrap()).len(),
         1,
@@ -232,6 +239,79 @@ async fn a_gate_change_is_said_once(store: Arc<dyn Store>) {
         .find(|n| n.kind == ThreadNoticeKind::GateBlocked)
         .unwrap();
     assert_eq!(blocked.reasons.len(), 2);
+}
+
+/// A merge state that flickers for one read says nothing, and a block that
+/// holds across a restart (a new store over the same database) is said
+/// once: what was last said lives with the record, not the process.
+async fn a_held_block_is_said_once_across_a_restart(before: Arc<dyn Store>, after: Arc<dyn Store>) {
+    let room = room(before.as_ref(), "restart").await;
+    let thread = task(before.as_ref(), &room).await;
+    before
+        .register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let gated = |reasons: &[&str]| NewPullCi {
+        gate_reasons: Some(reasons.iter().map(|x| x.to_string()).collect()),
+        ..read(room.ws, "aaa1", CiStatus::Success, &[], true)
+    };
+    let blocked = ["merge state BLOCKED"];
+    let gate_said = |posted: Vec<PostedNotice>| {
+        posted
+            .into_iter()
+            .filter(|p| {
+                matches!(
+                    p.notice.kind,
+                    ThreadNoticeKind::GateBlocked | ThreadNoticeKind::GateClear
+                )
+            })
+            .count()
+    };
+    let mut said = 0;
+    for reasons in [&[][..], &blocked, &[], &blocked, &blocked] {
+        said += gate_said(before.record_pull_ci(gated(reasons)).await.unwrap());
+    }
+    assert_eq!(said, 1, "the flicker said nothing; the held block once");
+    for _ in 0..3 {
+        said += gate_said(after.record_pull_ci(gated(&blocked)).await.unwrap());
+    }
+    assert_eq!(said, 1, "a restart does not say the held block again");
+    let notices = after.list_thread_notices(thread, 20).await.unwrap();
+    assert_eq!(
+        notices
+            .iter()
+            .filter(|n| n.kind == ThreadNoticeKind::GateBlocked)
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_held_block_is_said_once_across_a_restart_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    maidan_store::configure_sqlite_pool(&pool).await.unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    a_held_block_is_said_once_across_a_restart(
+        Arc::new(SqliteStore::for_tests(pool.clone())),
+        Arc::new(SqliteStore::for_tests(pool)),
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn a_held_block_is_said_once_across_a_restart_postgres() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+    a_held_block_is_said_once_across_a_restart(
+        Arc::new(PostgresStore::for_tests(pool.clone())),
+        Arc::new(PostgresStore::for_tests(pool)),
+    )
+    .await;
 }
 
 fn kinds(posted: &[PostedNotice]) -> Vec<ThreadNoticeKind> {
@@ -498,6 +578,164 @@ async fn two_workspaces_track_the_same_pull_request_apart(store: Arc<dyn Store>)
     ));
 }
 
+async fn agent(store: &dyn Store, ws: WorkspaceId, handle: &str) -> MemberId {
+    store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+async fn review(store: &dyn Store, thread: ThreadId, member: MemberId) -> ThreadReview {
+    store
+        .list_reviews(thread)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|review| review.reviewer_id == member)
+        .unwrap()
+}
+
+async fn approve(store: &dyn Store, thread: ThreadId, member: MemberId) {
+    store
+        .submit_review(thread, member, ReviewDecision::Approve, None, None)
+        .await
+        .unwrap();
+}
+
+/// A verdict names the head it was given against (a review child's, its
+/// parent change's pull), and a push that moves the head dismisses the
+/// approvals given to an earlier one, which then stop counting toward close.
+/// An approval of the current head stands, and re-approving names the new
+/// head.
+async fn a_push_dismisses_approvals_given_to_an_earlier_head(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "heads").await;
+    let thread = task(s, &room).await;
+    let (r1, r2, r3) = (
+        agent(s, room.ws, "r1").await,
+        agent(s, room.ws, "r2").await,
+        agent(s, room.ws, "r3").await,
+    );
+    let child = s
+        .create_thread(NewThread {
+            channel_id: room.channel,
+            parent_thread_id: Some(thread),
+            title: Some("review".into()),
+            description: None,
+            created_by: Some(room.member),
+        })
+        .await
+        .unwrap()
+        .id;
+    s.set_thread_attributes(
+        child,
+        TaskAttributes {
+            kind: TaskKind::Review,
+            ..TaskAttributes::default()
+        },
+    )
+    .await
+    .unwrap();
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    s.set_review_requirement(thread, 1).await.unwrap();
+    let head = "a".repeat(40);
+    s.record_pull_ci(read(room.ws, &head, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+
+    // Stamping: the change's verdict and the review child's both name the
+    // change's tracked head, in the current row and in the history.
+    approve(s, thread, r1).await;
+    approve(s, child, r3).await;
+    assert_eq!(
+        review(s, thread, r1).await.head_sha.as_deref(),
+        Some(head.as_str())
+    );
+    assert_eq!(
+        review(s, child, r3).await.head_sha.as_deref(),
+        Some(head.as_str())
+    );
+    let history = s.list_review_history(thread).await.unwrap();
+    assert_eq!(history[0].head_sha.as_deref(), Some(head.as_str()));
+    assert!(s.review_status(thread).await.unwrap().approvals_met);
+
+    // Re-reading the same head leaves every approval standing.
+    s.record_pull_ci(read(room.ws, &head, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+    assert!(review(s, thread, r1).await.dismissed_at.is_none());
+    assert!(review(s, child, r3).await.dismissed_at.is_none());
+
+    // A push moves the head: the earlier approvals, on the change and on its
+    // review child, no longer stand and no longer count toward close.
+    let pushed = "b".repeat(40);
+    s.record_pull_ci(read(room.ws, &pushed, CiStatus::Pending, &[], false))
+        .await
+        .unwrap();
+    assert!(review(s, thread, r1).await.dismissed_at.is_some());
+    assert!(review(s, child, r3).await.dismissed_at.is_some());
+    let status = s.review_status(thread).await.unwrap();
+    assert_eq!(status.approvals, 0);
+    assert!(!status.approvals_met, "a dismissed approval does not count");
+
+    // An approval of the current head survives the next read of it.
+    approve(s, thread, r2).await;
+    s.record_pull_ci(read(room.ws, &pushed, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+    let current = review(s, thread, r2).await;
+    assert_eq!(current.head_sha.as_deref(), Some(pushed.as_str()));
+    assert!(current.dismissed_at.is_none());
+    assert!(s.review_status(thread).await.unwrap().approvals_met);
+
+    // Re-approving names the new head and clears the dismissal.
+    approve(s, thread, r1).await;
+    let renewed = review(s, thread, r1).await;
+    assert_eq!(renewed.head_sha.as_deref(), Some(pushed.as_str()));
+    assert!(renewed.dismissed_at.is_none());
+}
+
+/// Two workspaces tracking the same pull request keep their reviews apart: a
+/// CI read in one never dismisses the other's approvals.
+async fn a_push_read_in_one_workspace_leaves_anothers_approvals(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let a = room(s, "heads-a").await;
+    let b = room(s, "heads-b").await;
+    let thread_a = task(s, &a).await;
+    let thread_b = task(s, &b).await;
+    let reviewer_b = agent(s, b.ws, "reviewer").await;
+    for (room, thread) in [(&a, thread_a), (&b, thread_b)] {
+        s.register_change_pull(room.ws, thread, REPO, 7, None)
+            .await
+            .unwrap();
+    }
+    let head = "c".repeat(40);
+    for ws in [a.ws, b.ws] {
+        s.record_pull_ci(read(ws, &head, CiStatus::Success, &[], true))
+            .await
+            .unwrap();
+    }
+    approve(s, thread_b, reviewer_b).await;
+
+    s.record_pull_ci(read(a.ws, &"d".repeat(40), CiStatus::Pending, &[], false))
+        .await
+        .unwrap();
+    let standing = review(s, thread_b, reviewer_b).await;
+    assert_eq!(standing.head_sha.as_deref(), Some(head.as_str()));
+    assert!(
+        standing.dismissed_at.is_none(),
+        "workspace A's read left B alone"
+    );
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -534,6 +772,11 @@ async fn sqlite() -> Arc<dyn Store> {
 }
 
 async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn Store>)> {
+    let (container, pool) = postgres_pool().await?;
+    Some((container, Arc::new(PostgresStore::for_tests(pool))))
+}
+
+async fn postgres_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, sqlx::PgPool)> {
     let container = match Postgres::default()
         .with_name("pgvector/pgvector")
         .with_tag("pg17")
@@ -557,7 +800,7 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    Some((container, Arc::new(PostgresStore::for_tests(pool))))
+    Some((container, pool))
 }
 
 on_both_backends!(
@@ -565,4 +808,6 @@ on_both_backends!(
     watching_makes_one_thread_and_stays_out_of_the_metrics,
     two_workspaces_track_the_same_pull_request_apart,
     a_gate_change_is_said_once,
+    a_push_dismisses_approvals_given_to_an_earlier_head,
+    a_push_read_in_one_workspace_leaves_anothers_approvals,
 );

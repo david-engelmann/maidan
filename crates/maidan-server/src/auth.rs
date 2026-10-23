@@ -304,6 +304,13 @@ async fn run_authorized(
     let workspace_id = ctx.workspace_id;
     let method = req.method().clone();
     let path = req.uri().path().to_owned();
+    // Counted here, once per authenticated request, into the buffer the
+    // usage_meters loop flushes; never a database write of its own.
+    if !ctx.bypass && !crate::usage_meters::unmetered(&path) {
+        state
+            .usage_meters
+            .record(workspace_id, maidan_types::UsageMeter::Requests, 1);
+    }
     req.extensions_mut().insert(ctx.clone());
     let response = run_as(state, req, next).await;
     if !path.starts_with("/mcp") {

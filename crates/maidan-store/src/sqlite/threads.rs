@@ -42,6 +42,8 @@ pub async fn create(pool: &SqlitePool, new: NewThread) -> Result<Thread, StoreEr
     .await?;
     let thread = row_to_thread(&row)?;
     super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    super::task_fingerprints::record_on(&mut tx, &thread, &maidan_types::TaskAttributes::default())
+        .await?;
     tx.commit().await?;
     Ok(thread)
 }
@@ -121,6 +123,10 @@ pub async fn create_with_footprint(
         super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
     }
     super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    // The fingerprint covers the attributes as given: a workspace default
+    // engine applies to identical briefs alike.
+    super::task_fingerprints::record_on(&mut tx, &thread, &attributes.clone().unwrap_or_default())
+        .await?;
     if let Some((priority, by)) = priority_by {
         sqlx::query(
             "INSERT INTO maidan_thread_priorities (thread_id, priority, set_by, set_at) VALUES (?, ?, ?, ?)",
@@ -598,6 +604,9 @@ async fn claim_next_candidate(
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
+            warm_hold_since: "?7",
+            warm_ttl_since: "?8",
+            later_than: "julianday({col}) > julianday({t})",
         },
     );
     Ok(sqlx::query(&sql)
@@ -607,6 +616,8 @@ async fn claim_next_candidate(
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
+        .bind((now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS)).to_rfc3339())
+        .bind((now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS)).to_rfc3339())
         .fetch_optional(&mut **tx)
         .await?)
 }
@@ -978,7 +989,8 @@ pub(crate) async fn claim_next_with_event(
     Ok((Some(thread), events))
 }
 
-/// Reap up to `limit` lapsed leases on open, live threads, charging each
+/// Reap up to `limit` lapsed leases on live threads that are not closed or
+/// archived (a claim held into review lapses too), charging each
 /// claim's worked time to its wall budget and appending a `ClaimExpired` (or,
 /// over budget, a `ClaimFailed`) for each dead holder, all in one transaction.
 /// SQLite serializes writers, so the select-then-update cannot race
@@ -993,7 +1005,7 @@ pub async fn reap_expired_claims(
         "SELECT id, assignee_id, assignment_expires_at, work_started_at FROM maidan_threads
          WHERE assignee_id IS NOT NULL
            AND assignment_expires_at IS NOT NULL AND assignment_expires_at < ?
-           AND tombstoned_at IS NULL AND state = 'open'
+           AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')
          ORDER BY assignment_expires_at ASC, id ASC
          LIMIT ?",
     )
@@ -1012,7 +1024,7 @@ pub async fn reap_expired_claims(
         let Some(row) = sqlx::query(
             "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = ?
              WHERE id = ? AND assignee_id = ? AND assignment_expires_at < ?
-               AND tombstoned_at IS NULL AND state = 'open'
+               AND tombstoned_at IS NULL AND state NOT IN ('closed', 'archived')
              RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
         )
         .bind(Utc::now().to_rfc3339())
@@ -1502,4 +1514,40 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         ci: Vec::new(),
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })
+}
+
+/// See [`crate::Store::count_stalled_threads`]. Timestamps go through
+/// `julianday` because a declaration's `declared_at` defaults to SQLite's
+/// space-separated form while the thread columns hold RFC 3339.
+pub async fn count_stalled_threads(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+    progress_before: DateTime<Utc>,
+) -> Result<i64, StoreError> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS c FROM maidan_threads t
+         WHERE t.state = 'open' AND t.tombstoned_at IS NULL
+           AND t.assignee_id IS NOT NULL
+           AND t.work_started_at IS NOT NULL
+           AND julianday(t.work_started_at) <= julianday(?2)
+           AND t.assignment_expires_at IS NOT NULL
+           AND julianday(t.assignment_expires_at) >= julianday(?1)
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id
+                   AND (s.status <> 'working'
+                        OR (s.declared_by = t.assignee_id
+                            AND julianday(s.declared_at) > julianday(?2)))
+               )
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_messages m
+                 WHERE m.thread_id = t.id AND m.author_id = t.assignee_id
+                   AND julianday(m.posted_at) > julianday(?2)
+               )",
+    )
+    .bind(now.to_rfc3339())
+    .bind(progress_before.to_rfc3339())
+    .fetch_one(pool)
+    .await?;
+    Ok(row.try_get::<i64, _>("c")?)
 }

@@ -211,7 +211,7 @@ pub async fn provision(
         },
     )
     .await?;
-    super::audit::append_on(&mut tx, audit(&token))
+    super::audit::append_scoped(&mut tx, token.workspace_id, audit(&token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;

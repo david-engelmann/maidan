@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
@@ -626,6 +627,153 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
     Some((container, Arc::new(PostgresStore::for_tests(pool))))
 }
 
+/// A change's tier is stored at intake, carried on its live claim and its
+/// pull's metrics row, restated later, and read back unset when a
+/// restatement leaves it out: unset is never stored as B.
+async fn a_tier_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "tiers", 1).await;
+    let tier_a = TaskAttributes {
+        tier: Some(TaskTier::A),
+        ..attrs(TaskKind::Change, Some(TaskEngine::Pi), false)
+    };
+    let (thread, _event) = store
+        .create_thread_with_footprint(
+            new_thread(room.channel, "tiered"),
+            Some(Footprint {
+                repo: "example/app".into(),
+                mode: FootprintMode::Exclusive,
+                items: vec![FootprintItem {
+                    kind: FootprintKind::Lane,
+                    value: "db".into(),
+                }],
+            }),
+            Some(tier_a.clone()),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_thread_attributes(thread.id).await.unwrap(),
+        tier_a
+    );
+    store
+        .claim_next_thread(room.channel, room.agents[0], Some(600), None)
+        .await
+        .unwrap()
+        .expect("the task claims");
+    let claims = store.list_active_claims(room.ws, None, None).await.unwrap();
+    let entry = claims
+        .iter()
+        .find(|claim| claim.thread_id == thread.id)
+        .expect("the claim is listed");
+    assert_eq!(entry.attributes.tier, Some(TaskTier::A));
+    store
+        .record_change_round(NewChangeRound {
+            workspace_id: room.ws,
+            thread_id: thread.id,
+            repo: "example/app".into(),
+            pull_number: 7,
+            commit_sha: "c".repeat(40),
+            base_sha: "a".repeat(40),
+            base_behind: None,
+            diff_lines: 1,
+            paths: Vec::new(),
+            base_branch: None,
+            rebase: false,
+            previous_head: None,
+            linear_issue: None,
+        })
+        .await
+        .unwrap();
+    let pulls = store
+        .list_change_pulls(room.ws, None, None, None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(pulls[0].attributes.tier, Some(TaskTier::A));
+
+    let tier_b = TaskAttributes {
+        tier: Some(TaskTier::B),
+        ..tier_a.clone()
+    };
+    assert_eq!(
+        store
+            .set_thread_attributes(thread.id, tier_b.clone())
+            .await
+            .unwrap(),
+        tier_b
+    );
+    let unsaid = TaskAttributes {
+        tier: None,
+        ..tier_a
+    };
+    store
+        .set_thread_attributes(thread.id, unsaid)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.get_thread_attributes(thread.id).await.unwrap().tier,
+        None
+    );
+}
+
+/// A review of a change finishes before the change merges, so a review
+/// child moves ahead of its open parent; any other child still may not.
+async fn a_review_child_closes_ahead_of_its_open_change(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "review-child", 1).await;
+    let actor = room.agents[0];
+    let (change, _event) = store
+        .create_thread_with_footprint(
+            new_thread(room.channel, "change"),
+            None,
+            Some(attrs(TaskKind::Change, Some(TaskEngine::Pi), false)),
+            None,
+        )
+        .await
+        .unwrap();
+    let child = |title: &str| NewThread {
+        parent_thread_id: Some(change.id),
+        ..new_thread(room.channel, title)
+    };
+    let (review, _event) = store
+        .create_thread_with_footprint(
+            child("review"),
+            None,
+            Some(attrs(TaskKind::Review, Some(TaskEngine::Pi), false)),
+            None,
+        )
+        .await
+        .unwrap();
+    let (other, _event) = store
+        .create_thread_with_footprint(child("other"), None, None, None)
+        .await
+        .unwrap();
+
+    store
+        .transition_thread(review.id, actor, ThreadAction::StartReview)
+        .await
+        .expect("a review child moves ahead of its open change");
+    store
+        .transition_thread(review.id, actor, ThreadAction::Close)
+        .await
+        .expect("a review child closes while its change is open");
+    assert_eq!(
+        store.get_thread(review.id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert_eq!(
+        store.get_thread(change.id).await.unwrap().state,
+        ThreadState::Open
+    );
+
+    let held = store
+        .transition_thread(other.id, actor, ThreadAction::StartReview)
+        .await;
+    assert!(
+        matches!(held, Err(maidan_store::StoreError::Conflict(_))),
+        "a child that is not a review stays behind its parent, got {held:?}"
+    );
+}
+
 on_both_backends!(
     attributes_set_at_creation_are_read_back,
     attributes_set_later_replace_the_whole_set,
@@ -636,4 +784,6 @@ on_both_backends!(
     a_priority_set_at_creation_is_claimed_first,
     a_change_pull_keeps_the_first_linear_issue_a_round_names,
     a_tasks_model_spend_reads_back_as_its_cost,
+    a_tier_is_stored_restated_and_left_unset,
+    a_review_child_closes_ahead_of_its_open_change,
 );

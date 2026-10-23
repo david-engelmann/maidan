@@ -61,6 +61,7 @@ pub(super) async fn search_messages(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
     args: &Value,
+    meters: Option<&Arc<maidan_store::usage_meters::UsageMeterBuffer>>,
 ) -> Result<Value, McpError> {
     let a: SearchMessagesArgs = crate::tools::parse_args(args)?;
     let workspace_id = WorkspaceId(a.workspace_id);
@@ -94,6 +95,9 @@ pub(super) async fn search_messages(
             let embedding = maidan_search::embed_off_worker(embedding_provider, &a.query)
                 .await
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
+            if let (Some(meters), false) = (meters, auth.bypass) {
+                meters.record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
+            }
             let model = a
                 .embedding_model
                 .as_deref()
@@ -106,6 +110,9 @@ pub(super) async fn search_messages(
             let embedding = maidan_search::embed_off_worker(embedding_provider, &a.query)
                 .await
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
+            if let (Some(meters), false) = (meters, auth.bypass) {
+                meters.record(workspace_id, maidan_types::UsageMeter::EmbeddingCalls, 1);
+            }
             let model = a
                 .embedding_model
                 .as_deref()

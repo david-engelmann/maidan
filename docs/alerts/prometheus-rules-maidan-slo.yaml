@@ -228,6 +228,22 @@ spec:
               The oldest unindexed message event is {{ $value | humanizeDuration }} old.
               Set INDEXER_STALE_SECS in readiness; check embedding provider.
 
+        - alert: MaidanIndexerBacklogDeep
+          # Depth, beside MaidanIndexerStale's age: a burst can be young and
+          # still far too deep to drain. Counted up to 100000.
+          # Every replica reports the same shared backlog, so take the max
+          # across them rather than one alert per pod.
+          expr: max without (instance, pod) (maidan_indexer_events_behind) > 10000
+          for: 10m
+          labels:
+            severity: warning
+            slo: search_index
+          annotations:
+            summary: Embedding indexer backlog deep
+            description: |
+              {{ $value }} message events wait to be indexed.
+              Check the embedding provider and maidan_indexer_queue_depth.
+
         - alert: MaidanIndexerQueueSaturated
           # Saturation ratio first so `$value` is the fill fraction (humanizes to a
           # sane %); the `capacity > 0` conjunct still guards the logging-only indexer.
@@ -271,6 +287,22 @@ spec:
             description: |
               No change sweep tick has finished for over 6 minutes. Check the
               maidan-server log for the sweep's last lines and restart if it is gone.
+
+        - alert: MaidanClaimsRenewingWithoutProgress
+          # A claim whose lease keeps renewing while its holder posts and
+          # declares nothing: a hung agent with a live heartbeat. The board
+          # marks the thread stalled; this pages once it has stayed so.
+          expr: max without (instance, pod) (maidan_threads_stalled) > 0
+          for: 15m
+          labels:
+            severity: warning
+            slo: stuck_work
+          annotations:
+            summary: Claims renewing without progress
+            description: |
+              {{ $value }} thread(s) held on a live lease with no progress by
+              the holder for MAIDAN_STALL_SECS. Filter the board for stalled
+              cards; release the claim or check the agent.
 
         - alert: MaidanBackgroundLoopPanicking
           expr: increase(maidan_background_loop_panics_total[15m]) > 0

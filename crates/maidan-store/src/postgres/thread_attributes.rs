@@ -4,7 +4,7 @@
 
 use chrono::Utc;
 use maidan_types::{
-    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskSize, ThreadId, WorkspaceId,
+    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskSize, TaskTier, ThreadId, WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 
@@ -19,8 +19,8 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $8, $7)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $7)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -30,6 +30,7 @@ pub(crate) async fn insert_on(
     .bind(attributes.acceptance.as_deref())
     .bind(Utc::now())
     .bind(attributes.linear_issue.as_deref())
+    .bind(attributes.tier.map(TaskTier::as_str))
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -94,15 +95,29 @@ pub async fn set_default_engine(
     if updated.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
-    super::audit::append_counted(&mut tx, audit).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// Whether `thread_id` is a review task, read in the caller's transaction.
+pub(crate) async fn is_review_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = $1 AND kind = 'review'",
+    )
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?
+        > 0)
 }
 
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue FROM maidan_thread_attributes WHERE thread_id = $1",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, review_family FROM maidan_thread_attributes WHERE thread_id = $1",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -122,6 +137,10 @@ pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, S
             .and_then(|size| TaskSize::parse(&size)),
         acceptance: row.try_get("acceptance")?,
         linear_issue: row.try_get("linear_issue")?,
+        tier: row
+            .try_get::<Option<String>, _>("tier")?
+            .and_then(|tier| TaskTier::parse(&tier)),
+        review_family: row.try_get("review_family")?,
     })
 }
 
@@ -140,8 +159,8 @@ pub async fn set(
         return Err(StoreError::NotFound);
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $8, $7)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $7)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
@@ -149,6 +168,7 @@ pub async fn set(
              size = excluded.size,
              acceptance = excluded.acceptance,
              linear_issue = excluded.linear_issue,
+             tier = excluded.tier,
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -159,7 +179,9 @@ pub async fn set(
     .bind(attributes.acceptance.as_deref())
     .bind(Utc::now())
     .bind(attributes.linear_issue.as_deref())
+    .bind(attributes.tier.map(TaskTier::as_str))
     .execute(pool)
     .await?;
-    Ok(attributes)
+    // The server-set review routing is left as stored and read back.
+    get(pool, thread_id).await
 }

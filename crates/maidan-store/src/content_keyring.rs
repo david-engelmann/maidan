@@ -2,7 +2,11 @@
 //! The design is in `docs/Decisions.md` ("Crypto-shredding of message content"
 //! and "The content KEK fails closed").
 
+use std::sync::Arc;
+
 use maidan_types::{parse_key_32, ContentKeyring};
+
+use crate::custody::AwsKmsCustody;
 
 /// Primary key-encryption key: 32 bytes, base64 or 64 hex characters.
 pub const KEK_ENV: &str = "MAIDAN_CONTENT_KEK";
@@ -11,6 +15,29 @@ pub const PREVIOUS_KEKS_ENV: &str = "MAIDAN_CONTENT_KEK_PREVIOUS";
 /// Explicit development opt-in: with no KEK set, wrap keys with the public
 /// development KEK instead of refusing to start. Rejected in production.
 pub const ALLOW_DEV_KEK_ENV: &str = "MAIDAN_ALLOW_INSECURE_DEV_KEK";
+
+/// Who wraps workspace keys: `local` (the instance KEK, the default) or
+/// `aws-kms` (a KMS key per workspace key).
+pub const CUSTODY_ENV: &str = "MAIDAN_WORKSPACE_KEY_CUSTODY";
+
+/// The workspace key custody the configuration selects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustodyChoice {
+    Local,
+    AwsKms,
+}
+
+/// Read the custody setting. An unknown custody is an error: falling back to
+/// local would silently keep keys out of the KMS the operator asked for.
+pub fn custody_from_config(custody: Option<&str>) -> Result<CustodyChoice, String> {
+    match custody.map(str::trim).filter(|c| !c.is_empty()) {
+        None | Some("local") => Ok(CustodyChoice::Local),
+        Some("aws-kms") => Ok(CustodyChoice::AwsKms),
+        Some(other) => Err(format!(
+            "{CUSTODY_ENV}: unknown custody `{other}` (expected `local` or `aws-kms`)"
+        )),
+    }
+}
 
 /// The KEK settings as read from the environment.
 #[derive(Debug, Clone, Copy, Default)]
@@ -24,8 +51,20 @@ pub struct KekConfig<'a> {
 }
 
 /// Build the keyring from `MAIDAN_CONTENT_KEK`, `MAIDAN_CONTENT_KEK_PREVIOUS`
-/// and `MAIDAN_ALLOW_INSECURE_DEV_KEK`.
-pub fn from_env(production: bool) -> Result<ContentKeyring, String> {
+/// and `MAIDAN_ALLOW_INSECURE_DEV_KEK`, with the workspace key custody from
+/// `MAIDAN_WORKSPACE_KEY_CUSTODY`.
+pub async fn from_env(production: bool) -> Result<ContentKeyring, String> {
+    let keyring = keks_from_env(production)?;
+    let custody = std::env::var(CUSTODY_ENV).ok();
+    match custody_from_config(custody.as_deref())? {
+        CustodyChoice::Local => Ok(keyring),
+        CustodyChoice::AwsKms => {
+            Ok(keyring.with_custody(Arc::new(AwsKmsCustody::from_default_config().await)))
+        }
+    }
+}
+
+fn keks_from_env(production: bool) -> Result<ContentKeyring, String> {
     let primary = std::env::var(KEK_ENV).ok();
     let previous = std::env::var(PREVIOUS_KEKS_ENV).ok();
     from_config(KekConfig {
@@ -167,6 +206,19 @@ mod tests {
         })
         .unwrap_err();
         assert!(err.contains(PREVIOUS_KEKS_ENV), "{err}");
+    }
+
+    #[test]
+    fn custody_is_local_unless_aws_kms_is_asked_for() {
+        assert_eq!(custody_from_config(None), Ok(CustodyChoice::Local));
+        assert_eq!(custody_from_config(Some(" ")), Ok(CustodyChoice::Local));
+        assert_eq!(custody_from_config(Some("local")), Ok(CustodyChoice::Local));
+        assert_eq!(
+            custody_from_config(Some("aws-kms")),
+            Ok(CustodyChoice::AwsKms)
+        );
+        let err = custody_from_config(Some("vault")).unwrap_err();
+        assert!(err.contains("vault") && err.contains(CUSTODY_ENV), "{err}");
     }
 
     #[test]

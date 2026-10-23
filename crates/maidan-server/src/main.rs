@@ -188,9 +188,15 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Wraps the per-message keys that crypto-shredding destroys on withdrawal.
     let content_keys = Arc::new(
         maidan_store::content_keyring::from_env(maidan_server::config::is_production())
+            .await
             .map_err(anyhow::Error::msg)?,
     );
-    tracing::info!(kek_id = content_keys.primary_id(), "content keyring loaded");
+    tracing::info!(
+        kek_id = content_keys.primary_id(),
+        custody = content_keys.custody_name(),
+        wrapping_key_id = %content_keys.workspace_wrapping_like(),
+        "content keyring loaded"
+    );
 
     let outbox_relay;
     let outbox_backend: Option<OutboxBackend>;
@@ -423,43 +429,6 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         ),
     }
 
-    let indexer_last_error = Arc::new(RwLock::new(None));
-
-    let (indexer_handler, indexer_metrics): (
-        Arc<dyn maidan_search::EventHandler>,
-        Arc<IndexerMetrics>,
-    ) = if use_embedding_indexer {
-        let config = BatchConfig::from_env();
-        let metrics = Arc::new(IndexerMetrics::new(config.queue_capacity));
-        tracing::info!(
-            queue_capacity = config.queue_capacity,
-            batch_size = config.batch_size,
-            "indexer: batched embedding generation (postgres)"
-        );
-        let handler = BatchingEmbeddingHandler::spawn(
-            store.clone(),
-            search.clone(),
-            embedding_provider.clone(),
-            config,
-            metrics.clone(),
-            Some(indexer_last_error.clone()),
-        );
-        if let Some(repair) = maidan_server::embed_repair::config_from_env() {
-            let (search, provider, metrics) =
-                (search.clone(), embedding_provider.clone(), metrics.clone());
-            tokio::spawn(async move {
-                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
-            });
-        }
-        (Arc::new(handler), metrics)
-    } else {
-        tracing::info!("indexer: logging only (sqlite)");
-        (
-            Arc::new(LoggingHandler::default()),
-            Arc::new(IndexerMetrics::default()),
-        )
-    };
-
     let auth_disabled = maidan_server::auth::auth_disabled_from_env();
     if auth_disabled {
         tracing::warn!("AUTH_DISABLED is set; bearer tokens are not required");
@@ -559,6 +528,52 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         state.attach_presence_notifier(presence_notifier);
     }
     state.presence.spawn_tasks();
+    // The free allowance is read once; a malformed one refuses boot.
+    state.usage_allowance = std::sync::Arc::new(
+        maidan_server::usage_meters::allowance_from_env().map_err(anyhow::Error::msg)?,
+    );
+    // Built once the state is: it counts embeddings into the state's usage
+    // meters.
+    let indexer_last_error = Arc::new(RwLock::new(None));
+
+    let (indexer_handler, indexer_metrics): (
+        Arc<dyn maidan_search::EventHandler>,
+        Arc<IndexerMetrics>,
+    ) = if use_embedding_indexer {
+        let config = BatchConfig::from_env();
+        let metrics = Arc::new(IndexerMetrics::new(config.queue_capacity));
+        tracing::info!(
+            queue_capacity = config.queue_capacity,
+            batch_size = config.batch_size,
+            "indexer: batched embedding generation (postgres)"
+        );
+        let handler = BatchingEmbeddingHandler::spawn(
+            state.store.clone(),
+            state.search.clone(),
+            state.embedding_provider.clone(),
+            config,
+            metrics.clone(),
+            Some(indexer_last_error.clone()),
+        )
+        .with_usage_meters(state.usage_meters.clone());
+        if let Some(repair) = maidan_server::embed_repair::config_from_env() {
+            let (search, provider, metrics) = (
+                state.search.clone(),
+                state.embedding_provider.clone(),
+                metrics.clone(),
+            );
+            tokio::spawn(async move {
+                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
+            });
+        }
+        (Arc::new(handler), metrics)
+    } else {
+        tracing::info!("indexer: logging only (sqlite)");
+        (
+            Arc::new(LoggingHandler::default()),
+            Arc::new(IndexerMetrics::default()),
+        )
+    };
     state.indexer_last_error = indexer_last_error;
     let indexer_processed = state.indexer_processed_log_id.clone();
     state.indexer_metrics = indexer_metrics;
@@ -943,6 +958,17 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         });
     }
 
+    // Usage meters: requests and MCP calls are counted in memory and flushed
+    // to the daily rollup every `MAIDAN_USAGE_METER_FLUSH_SECS` (60 s), and
+    // once more below after the listener closes.
+    {
+        let meter_state = state.clone();
+        let interval = maidan_server::usage_meters::interval_from_env();
+        tokio::spawn(async move {
+            maidan_server::usage_meters::run(meter_state, interval).await;
+        });
+    }
+
     // Change sweep: on by default (`MAIDAN_CHANGE_SWEEP_SECS`, 120 s; `0`
     // off). A local stack gets no GitHub webhooks, so without it a merged
     // agent pull request never closes its task and its dependents wait.
@@ -1102,6 +1128,7 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     // Readiness fails first and the listener stays open for the drain delay;
     // the runtime image has no shell, so this cannot be an exec `preStop`.
     let draining = state.draining.clone();
+    let shutdown_state = state.clone();
     let drain = maidan_server::shutdown_drain_from_env();
     let shutdown = async move {
         #[cfg(unix)]
@@ -1149,6 +1176,8 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     .await
     .context("axum serve");
 
+    // The last counts since the final flush.
+    maidan_server::usage_meters::flush_once(&shutdown_state).await;
     indexer.shutdown().await;
     webhook_worker.shutdown().await;
     automation_worker.shutdown().await;

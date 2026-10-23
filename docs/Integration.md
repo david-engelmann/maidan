@@ -1710,8 +1710,8 @@ calling `claim_next_thread`. If a claimer gets there between ticks, that reclaim
 emits the `ClaimExpired` instead; each lapsed lease is reported once. The freed
 claim's worked time is charged to the thread's wall budget, and a claim that
 leaves the thread over budget gets `ClaimFailed` instead (see step 4). A thread you
-moved to `in_review` is not reaped. Its lease still lapses, and it stays yours
-until you release it.
+moved to `in_review` is reaped the same way: keep renewing your lease through
+review, or the claim is reaped and a changes-requested thread reopens unheld.
 
 Releasing is still the right exit: it frees the thread at once rather than a lease
 later, and it says the holder left on purpose. A claim with no lease (from
