@@ -196,14 +196,14 @@ where
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger
     (usage_report_id, workspace_id, thread_id, reporter_id, claim_lease_id, model,
-     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-     input_price, output_price, cache_read_price, cache_write_price, usd_micros, turns)
+     input_tokens, output_tokens, cache_read_tokens, cache_write_5m_tokens,
+     input_price, output_price, cache_read_price, cache_write_5m_price, usd_micros, turns)
     VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)";
 
 const INSERT_POSTGRES: &str = "INSERT INTO maidan_usage_ledger
     (usage_report_id, workspace_id, thread_id, reporter_id, claim_lease_id, model,
-     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-     input_price, output_price, cache_read_price, cache_write_price, usd_micros, turns)
+     input_tokens, output_tokens, cache_read_tokens, cache_write_5m_tokens,
+     input_price, output_price, cache_read_price, cache_write_5m_price, usd_micros, turns)
     VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)";
 
 #[tokio::test]
