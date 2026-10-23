@@ -11,6 +11,9 @@ use maidan_types::{
 use sqlx::sqlite::SqlitePoolOptions;
 
 const SQLITE_0121: &str = include_str!("../../../migrations/sqlite/0121_decision_history.sql");
+/// Columns later migrations add to the history table that re-running 0121
+/// recreates (0203 adds head_sha).
+const LATER_COLUMNS: &str = "ALTER TABLE maidan_thread_review_verdicts ADD COLUMN head_sha TEXT;";
 const POSTGRES_0121: &str = include_str!("../../../migrations/postgres/0121_decision_history.sql");
 const DROP_HISTORY: &str = "DROP TABLE maidan_thread_review_verdicts;
      DROP TABLE maidan_thread_land_gate_verdicts;";
@@ -259,6 +262,10 @@ async fn decision_history_keeps_every_verdict_sqlite() {
         .execute(&pool)
         .await
         .expect("re-run 0121");
+    sqlx::raw_sql(LATER_COLUMNS)
+        .execute(&pool)
+        .await
+        .expect("re-add later columns");
     assert_backfilled(&store, thread_id).await;
 }
 
@@ -303,5 +310,9 @@ async fn decision_history_keeps_every_verdict_postgres() {
         .execute(&pool)
         .await
         .expect("re-run 0121");
+    sqlx::raw_sql(LATER_COLUMNS)
+        .execute(&pool)
+        .await
+        .expect("re-add later columns");
     assert_backfilled(&store, thread_id).await;
 }
