@@ -303,6 +303,7 @@ type ThreadReview struct {
 	Decision    ReviewDecision `json:"decision"`
 	Note        *string        `json:"note,omitempty"`
 	DismissedAt *time.Time     `json:"dismissed_at,omitempty"`
+	HeadSHA     *string        `json:"head_sha,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 }

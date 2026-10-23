@@ -190,6 +190,13 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
     .bind(said.as_ref().map(Json))
     .execute(&mut *tx)
     .await?;
+    // A push that moved the head dismisses approvals given to an earlier one.
+    sqlx::query(&crate::review_head::dismiss_stale("$1", "$2", "$3"))
+        .bind(thread)
+        .bind(new.head_sha.to_ascii_lowercase())
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
     let mut posted = Vec::new();
     let change = Uuid::now_v7().to_string();
     for (notice, key) in maidan_types::ci_notices(&new, &previous, &change, now) {

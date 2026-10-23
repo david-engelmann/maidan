@@ -7708,6 +7708,13 @@
           "decision": {
             "$ref": "#/components/schemas/ReviewDecision"
           },
+          "head_sha": {
+            "description": "The full head SHA of the change this verdict was given against.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "description": "Position in the history; increases with every verdict.",
             "format": "int64",
@@ -10554,6 +10561,13 @@
           },
           "evidence_root": {
             "description": "The evidence root of the review packet this verdict was given against.\nOnly an approval bound to the thread's latest packet counts toward its\nclose.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "head_sha": {
+            "description": "The full head SHA of the change this verdict was given against: the\ntracked pull's head when it was submitted. A push that moves the head\ndismisses an approval given to an earlier one.",
             "type": [
               "string",
               "null"

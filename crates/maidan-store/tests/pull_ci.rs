@@ -578,6 +578,164 @@ async fn two_workspaces_track_the_same_pull_request_apart(store: Arc<dyn Store>)
     ));
 }
 
+async fn agent(store: &dyn Store, ws: WorkspaceId, handle: &str) -> MemberId {
+    store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: handle.into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+async fn review(store: &dyn Store, thread: ThreadId, member: MemberId) -> ThreadReview {
+    store
+        .list_reviews(thread)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|review| review.reviewer_id == member)
+        .unwrap()
+}
+
+async fn approve(store: &dyn Store, thread: ThreadId, member: MemberId) {
+    store
+        .submit_review(thread, member, ReviewDecision::Approve, None, None)
+        .await
+        .unwrap();
+}
+
+/// A verdict names the head it was given against (a review child's, its
+/// parent change's pull), and a push that moves the head dismisses the
+/// approvals given to an earlier one, which then stop counting toward close.
+/// An approval of the current head stands, and re-approving names the new
+/// head.
+async fn a_push_dismisses_approvals_given_to_an_earlier_head(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "heads").await;
+    let thread = task(s, &room).await;
+    let (r1, r2, r3) = (
+        agent(s, room.ws, "r1").await,
+        agent(s, room.ws, "r2").await,
+        agent(s, room.ws, "r3").await,
+    );
+    let child = s
+        .create_thread(NewThread {
+            channel_id: room.channel,
+            parent_thread_id: Some(thread),
+            title: Some("review".into()),
+            description: None,
+            created_by: Some(room.member),
+        })
+        .await
+        .unwrap()
+        .id;
+    s.set_thread_attributes(
+        child,
+        TaskAttributes {
+            kind: TaskKind::Review,
+            ..TaskAttributes::default()
+        },
+    )
+    .await
+    .unwrap();
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    s.set_review_requirement(thread, 1).await.unwrap();
+    let head = "a".repeat(40);
+    s.record_pull_ci(read(room.ws, &head, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+
+    // Stamping: the change's verdict and the review child's both name the
+    // change's tracked head, in the current row and in the history.
+    approve(s, thread, r1).await;
+    approve(s, child, r3).await;
+    assert_eq!(
+        review(s, thread, r1).await.head_sha.as_deref(),
+        Some(head.as_str())
+    );
+    assert_eq!(
+        review(s, child, r3).await.head_sha.as_deref(),
+        Some(head.as_str())
+    );
+    let history = s.list_review_history(thread).await.unwrap();
+    assert_eq!(history[0].head_sha.as_deref(), Some(head.as_str()));
+    assert!(s.review_status(thread).await.unwrap().approvals_met);
+
+    // Re-reading the same head leaves every approval standing.
+    s.record_pull_ci(read(room.ws, &head, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+    assert!(review(s, thread, r1).await.dismissed_at.is_none());
+    assert!(review(s, child, r3).await.dismissed_at.is_none());
+
+    // A push moves the head: the earlier approvals, on the change and on its
+    // review child, no longer stand and no longer count toward close.
+    let pushed = "b".repeat(40);
+    s.record_pull_ci(read(room.ws, &pushed, CiStatus::Pending, &[], false))
+        .await
+        .unwrap();
+    assert!(review(s, thread, r1).await.dismissed_at.is_some());
+    assert!(review(s, child, r3).await.dismissed_at.is_some());
+    let status = s.review_status(thread).await.unwrap();
+    assert_eq!(status.approvals, 0);
+    assert!(!status.approvals_met, "a dismissed approval does not count");
+
+    // An approval of the current head survives the next read of it.
+    approve(s, thread, r2).await;
+    s.record_pull_ci(read(room.ws, &pushed, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+    let current = review(s, thread, r2).await;
+    assert_eq!(current.head_sha.as_deref(), Some(pushed.as_str()));
+    assert!(current.dismissed_at.is_none());
+    assert!(s.review_status(thread).await.unwrap().approvals_met);
+
+    // Re-approving names the new head and clears the dismissal.
+    approve(s, thread, r1).await;
+    let renewed = review(s, thread, r1).await;
+    assert_eq!(renewed.head_sha.as_deref(), Some(pushed.as_str()));
+    assert!(renewed.dismissed_at.is_none());
+}
+
+/// Two workspaces tracking the same pull request keep their reviews apart: a
+/// CI read in one never dismisses the other's approvals.
+async fn a_push_read_in_one_workspace_leaves_anothers_approvals(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let a = room(s, "heads-a").await;
+    let b = room(s, "heads-b").await;
+    let thread_a = task(s, &a).await;
+    let thread_b = task(s, &b).await;
+    let reviewer_b = agent(s, b.ws, "reviewer").await;
+    for (room, thread) in [(&a, thread_a), (&b, thread_b)] {
+        s.register_change_pull(room.ws, thread, REPO, 7, None)
+            .await
+            .unwrap();
+    }
+    let head = "c".repeat(40);
+    for ws in [a.ws, b.ws] {
+        s.record_pull_ci(read(ws, &head, CiStatus::Success, &[], true))
+            .await
+            .unwrap();
+    }
+    approve(s, thread_b, reviewer_b).await;
+
+    s.record_pull_ci(read(a.ws, &"d".repeat(40), CiStatus::Pending, &[], false))
+        .await
+        .unwrap();
+    let standing = review(s, thread_b, reviewer_b).await;
+    assert_eq!(standing.head_sha.as_deref(), Some(head.as_str()));
+    assert!(
+        standing.dismissed_at.is_none(),
+        "workspace A's read left B alone"
+    );
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -650,4 +808,6 @@ on_both_backends!(
     watching_makes_one_thread_and_stays_out_of_the_metrics,
     two_workspaces_track_the_same_pull_request_apart,
     a_gate_change_is_said_once,
+    a_push_dismisses_approvals_given_to_an_earlier_head,
+    a_push_read_in_one_workspace_leaves_anothers_approvals,
 );

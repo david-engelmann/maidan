@@ -333,6 +333,8 @@ class ThreadReview(Model):
     actor_id: Optional[str] = None
     note: Optional[str] = None
     dismissed_at: Optional[str] = None
+    #: Full head SHA of the change the verdict was given against.
+    head_sha: Optional[str] = None
 
 
 @dataclass(kw_only=True)

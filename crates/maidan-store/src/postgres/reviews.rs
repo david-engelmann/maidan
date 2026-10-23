@@ -37,13 +37,14 @@ fn row_to_review(row: &sqlx::postgres::PgRow) -> Result<ThreadReview, StoreError
         note: row.get::<Option<String>, _>("note"),
         actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
         evidence_root: row.get::<Option<String>, _>("evidence_root"),
+        head_sha: row.get::<Option<String>, _>("head_sha"),
         created_at: row.get::<DateTime<Utc>, _>("created_at"),
         updated_at: row.get::<DateTime<Utc>, _>("updated_at"),
         dismissed_at: row.get::<Option<DateTime<Utc>>, _>("dismissed_at"),
     })
 }
 
-const REVIEW_COLS: &str = "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at, evidence_root";
+const REVIEW_COLS: &str = "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at, evidence_root, head_sha";
 
 pub async fn set_requirement(
     pool: &PgPool,
@@ -205,14 +206,22 @@ async fn submit_review_on(
         super::review_packets::verify_root_in_tx(tx, thread_id, root).await?;
     }
     let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
+    // The verdict names the head of the change it was given against.
+    let head_sha: Option<String> = sqlx::query_scalar(&format!(
+        "SELECT {}",
+        crate::review_head::current_head("$1")
+    ))
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?;
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_thread_reviews
-             (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, evidence_root)
-         VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6)
+             (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, evidence_root, head_sha)
+         VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7)
          ON CONFLICT (thread_id, reviewer_id) DO UPDATE SET
              decision = excluded.decision, note = excluded.note, updated_at = NOW(),
              actor_id = excluded.actor_id, dismissed_at = NULL,
-             evidence_root = excluded.evidence_root
+             evidence_root = excluded.evidence_root, head_sha = excluded.head_sha
          RETURNING {REVIEW_COLS}"
     ))
     .bind(thread_id.0)
@@ -221,14 +230,15 @@ async fn submit_review_on(
     .bind(note)
     .bind(actor_id.map(|m| m.0))
     .bind(evidence_root)
+    .bind(head_sha.as_deref())
     .fetch_one(&mut **tx)
     .await?;
     let review = row_to_review(&row)?;
     // The history keeps every verdict; the row above keeps only the latest.
     sqlx::query(
         "INSERT INTO maidan_thread_review_verdicts
-             (thread_id, reviewer_id, decision, note, actor_id, recorded_at, evidence_root)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+             (thread_id, reviewer_id, decision, note, actor_id, recorded_at, evidence_root, head_sha)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(thread_id.0)
     .bind(reviewer_id.0)
@@ -237,6 +247,7 @@ async fn submit_review_on(
     .bind(actor_id.map(|m| m.0))
     .bind(review.updated_at)
     .bind(evidence_root)
+    .bind(head_sha.as_deref())
     .execute(&mut **tx)
     .await?;
     let mut reopened = None;
@@ -510,7 +521,7 @@ pub async fn list_review_history(
     thread_id: ThreadId,
 ) -> Result<Vec<ReviewVerdict>, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, thread_id, reviewer_id, decision, note, actor_id, recorded_at
+        "SELECT id, thread_id, reviewer_id, decision, note, actor_id, recorded_at, head_sha
          FROM maidan_thread_review_verdicts WHERE thread_id = $1 ORDER BY id",
     )
     .bind(thread_id.0)
@@ -528,6 +539,7 @@ pub async fn list_review_history(
                 })?,
                 note: row.get("note"),
                 actor_id: row.get::<Option<Uuid>, _>("actor_id").map(MemberId),
+                head_sha: row.get("head_sha"),
                 recorded_at: row.get::<DateTime<Utc>, _>("recorded_at"),
             })
         })

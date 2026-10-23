@@ -157,6 +157,7 @@ mod queue_counts;
 pub mod result_delivery;
 pub mod retention_policy;
 mod review_family;
+mod review_head;
 mod share_tickets;
 pub mod shred_residue;
 pub mod sqlite;
