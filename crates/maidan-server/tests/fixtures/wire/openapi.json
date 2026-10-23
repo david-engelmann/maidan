@@ -9360,6 +9360,7 @@
         "type": "object"
       },
       "TaskAttributes": {
+        "additionalProperties": false,
         "description": "A thread's task attributes, whole: setting them replaces every field.",
         "properties": {
           "acceptance": {
