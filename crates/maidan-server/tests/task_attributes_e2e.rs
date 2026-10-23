@@ -774,3 +774,133 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
     );
     assert_eq!(pack["thread"]["attributes"], attributes, "{pack}");
 }
+
+/// A lane other than batch or flex is refused on every REST and MCP way in,
+/// at intake, on replace and on a claim, and changes nothing.
+#[tokio::test]
+async fn an_unknown_lane_is_refused_on_rest_and_mcp() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "bad-lane").await;
+    let bad = json!({ "kind": "change", "lane": "standard" });
+
+    let (status, _) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "bad lane", "attributes": bad }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let refused = tool(
+        &base,
+        &room.token,
+        "create_thread",
+        json!({ "channel_id": room.channel.0, "title": "bad lane", "attributes": bad }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    assert!(
+        store.list_threads(room.channel).await.unwrap().is_empty(),
+        "a refused lane makes no thread"
+    );
+
+    let (status, ok) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "batch work", "attributes": { "kind": "change", "lane": "batch" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{ok}");
+    let thread_id = ok["id"].as_str().unwrap().to_string();
+    let http = reqwest::Client::new();
+    let response = http
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&room.token)
+        .json(&bad)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let refused = tool(
+        &base,
+        &room.token,
+        "set_thread_attributes",
+        json!({ "thread_id": thread_id, "kind": "change", "lane": "standard" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert_eq!(
+        read["attributes"]["lane"], "batch",
+        "a refused lane changes nothing"
+    );
+
+    let response = http
+        .post(format!(
+            "{base}/channels/{}/threads/claim-next",
+            room.channel.0
+        ))
+        .bearer_auth(&room.token)
+        .json(&json!({ "lease_secs": 600, "lane": "standard" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        response.status().is_client_error(),
+        "a claim naming an unknown lane is refused: {}",
+        response.status()
+    );
+    let refused = tool(
+        &base,
+        &room.token,
+        "claim_next_thread",
+        json!({ "channel_id": room.channel.0, "lane": "standard" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert!(
+        read["assignee_id"].is_null(),
+        "a refused claim takes nothing: {read}"
+    );
+}
+
+/// A claim naming a lane takes that lane's thread before older unlaned work,
+/// and a claim with no lane then still takes what is left.
+#[tokio::test]
+async fn a_lane_claim_takes_its_lane_first_over_rest() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "claim-lanes").await;
+    for (title, lane) in [("plain work", None), ("flex work", Some("flex"))] {
+        let mut attributes = json!({ "kind": "change" });
+        if let Some(lane) = lane {
+            attributes["lane"] = json!(lane);
+        }
+        let (status, _) = create_thread(
+            &base,
+            &room,
+            json!({ "title": title, "attributes": attributes }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let http = reqwest::Client::new();
+    let url = format!("{base}/channels/{}/threads/claim-next", room.channel.0);
+    let claim = |body: Value| {
+        let (http, url, token) = (http.clone(), url.clone(), room.token.clone());
+        async move {
+            http.post(url)
+                .bearer_auth(token)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let flex = claim(json!({ "lease_secs": 600, "lane": "flex" })).await;
+    assert_eq!(flex["title"], "flex work", "{flex}");
+    let rest = claim(json!({ "lease_secs": 600 })).await;
+    assert_eq!(rest["title"], "plain work", "{rest}");
+}

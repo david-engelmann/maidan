@@ -2281,6 +2281,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "lane": {
+      "description": "the service lane this worker runs in; lane orders, never filters: threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads come first and laned ones after",
+      "enum": [
+        "batch",
+        "flex"
+      ],
+      "type": "string"
+    },
     "lease_secs": {
       "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
       "maximum": 604800,
@@ -2316,6 +2324,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "pi",
         "session",
         "human"
+      ],
+      "type": "string"
+    },
+    "lane": {
+      "description": "the service lane this worker runs in; lane orders, never filters: threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads come first and laned ones after",
+      "enum": [
+        "batch",
+        "flex"
       ],
       "type": "string"
     },

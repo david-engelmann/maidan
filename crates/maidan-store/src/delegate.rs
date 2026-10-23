@@ -2671,6 +2671,7 @@ macro_rules! store_delegations {
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
+                lane: Option<maidan_types::TaskLane>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2679,6 +2680,7 @@ macro_rules! store_delegations {
                     lease_secs,
                     repo,
                     engine,
+                    lane,
                 )
                 .await
             }
@@ -2690,6 +2692,7 @@ macro_rules! store_delegations {
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
+                lane: Option<maidan_types::TaskLane>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2698,6 +2701,7 @@ macro_rules! store_delegations {
                     lease_secs,
                     repo,
                     engine,
+                    lane,
                 )
                 .await
             }

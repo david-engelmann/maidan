@@ -1530,6 +1530,17 @@
               }
             ]
           },
+          "lane": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskLane",
+                "description": "The service lane this worker runs in (`batch` or `flex`). Lane orders,\nnever filters: threads in this lane come first, then unlaned ones,\nthen other lanes. Omitted, unlaned threads come first and laned ones\nafter."
+              }
+            ]
+          },
           "lease_secs": {
             "description": "Lease in seconds (1 s to 7 days). The holder renews before it lapses;\na lapsed claim is reaped and the thread returns to the queue with a\n`ClaimExpired`. Omitted, the server's default lease applies\n(`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s).",
             "format": "int64",

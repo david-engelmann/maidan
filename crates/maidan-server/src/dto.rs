@@ -207,6 +207,12 @@ pub struct ClaimNextThread {
     /// to another engine, or not routed at all, is then never claimed.
     #[serde(default)]
     pub engine: Option<TaskEngine>,
+    /// The service lane this worker runs in (`batch` or `flex`). Lane orders,
+    /// never filters: threads in this lane come first, then unlaned ones,
+    /// then other lanes. Omitted, unlaned threads come first and laned ones
+    /// after.
+    #[serde(default)]
+    pub lane: Option<maidan_types::TaskLane>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the

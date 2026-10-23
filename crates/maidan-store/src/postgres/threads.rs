@@ -776,6 +776,7 @@ async fn claim_next_in_tx(
     lease_secs: Option<i64>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
@@ -790,6 +791,7 @@ async fn claim_next_in_tx(
             dm_channel: "$5",
             repo: "$6::text",
             engine: "$7::text",
+            lane: "$8::text",
             requeued_after_result: REQUEUED_AFTER_RESULT,
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
@@ -811,6 +813,7 @@ async fn claim_next_in_tx(
     .bind(DM_CHANNEL_NAME)
     .bind(repo)
     .bind(engine.map(|engine| engine.as_str()))
+    .bind(lane.map(|lane| lane.as_str()))
     .fetch_optional(&mut **tx)
     .await?;
     row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
@@ -838,6 +841,7 @@ pub async fn claim_next(
         lease_secs,
         None,
         engine,
+        None,
     )
     .await?
     else {
@@ -930,10 +934,11 @@ pub(crate) async fn claim_next_with_event(
     lease_secs: Option<i64>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let Some((thread, lapsed)) =
-        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo, engine).await?
+        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo, engine, lane).await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));

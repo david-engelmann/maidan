@@ -1028,6 +1028,10 @@ struct ClaimNextThreadArgs {
     /// engine, or not routed at all, is never handed over.
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
+    /// The service lane the claimer runs in: threads in it come first, then
+    /// unlaned ones, then other lanes. Omitted, unlaned threads come first.
+    #[serde(default)]
+    lane: Option<maidan_types::TaskLane>,
 }
 
 /// The repository a claimer serves, normalized as footprints store it.
@@ -1069,6 +1073,7 @@ pub(super) async fn claim_next_thread(
             Some(lease_secs),
             repo.as_deref(),
             a.engine,
+            a.lane,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -1084,6 +1089,8 @@ struct ClaimNextWorkspaceThreadArgs {
     repo: Option<String>,
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
+    #[serde(default)]
+    lane: Option<maidan_types::TaskLane>,
     /// With nothing claimable now, wait up to this long for work to become
     /// claimable and claim it, instead of answering null at once.
     #[serde(default)]
@@ -1143,6 +1150,7 @@ pub(super) async fn claim_next_workspace_thread(
                 Some(lease_secs),
                 repo.as_deref(),
                 a.engine,
+                a.lane,
             )
             .await?;
         let Some(stream) = signals.as_mut().filter(|_| claimed.0.is_none()) else {

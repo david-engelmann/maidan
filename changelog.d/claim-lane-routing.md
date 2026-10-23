@@ -1,0 +1,3 @@
+
+### Added
+- Claim routing by service lane (Context Economics C7b). `POST /channels/{id}/threads/claim-next`, the workspace claim-next, and the MCP `claim_next_thread` and `claim_next_workspace_thread` take an optional `lane` (`batch` or `flex`) naming the lane the claimer runs in. Lane orders the queue and never filters it. A claimer in a lane gets threads in that lane first, then unlaned threads, then threads in the other lane. A claimer with no lane gets unlaned threads first and laned ones after, so laned work never starves and deadlines need no special case. Lane outranks priority and wait in the claim order. An unknown lane is refused on REST and MCP.
