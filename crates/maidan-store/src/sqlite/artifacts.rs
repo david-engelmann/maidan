@@ -300,7 +300,11 @@ pub async fn erase_for_workspace(
     sha256: &str,
     audit_for: crate::AuditFor<ArtifactErasure>,
 ) -> Result<ArtifactErasure, StoreError> {
-    let mut tx = pool.begin().await?;
+    // IMMEDIATE: the hold check reads before the erase writes. A deferred
+    // transaction would pin its read snapshot, and a commit by another
+    // connection in between fails the write with "database is locked" at
+    // once instead of waiting out busy_timeout.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     super::legal_hold::refuse_if_held(&mut tx, workspace_id).await?;
     let erasure = erase_ref_in_tx(&mut tx, workspace_id, sha256, audit_for).await?;
     tx.commit().await?;
@@ -465,7 +469,8 @@ pub async fn expire_media_ref(
     cutoff: DateTime<Utc>,
     audit_for: crate::AuditFor<ArtifactErasure>,
 ) -> Result<Option<ArtifactErasure>, StoreError> {
-    let mut tx = pool.begin().await?;
+    // IMMEDIATE for the same reason as `erase_for_workspace`.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     match super::legal_hold::refuse_if_held(&mut tx, workspace_id).await {
         Ok(()) => {}
         Err(StoreError::Conflict(_) | StoreError::NotFound) => return Ok(None),
