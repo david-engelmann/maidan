@@ -164,6 +164,7 @@ pub mod test_support;
 pub mod thread_access;
 mod thread_results;
 pub mod trace;
+pub mod usage_meters;
 mod usage_metrics;
 pub mod workspace_export;
 

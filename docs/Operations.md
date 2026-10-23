@@ -120,6 +120,18 @@ replayed. Both acts are in the workspace's audit log (`workspace.suspend`,
 `workspace.suspension_lift`), attributed to the operator. An operator cannot
 suspend its own workspace, since that would lock out the credential that lifts it.
 
+## Usage meters
+
+Each workspace's authenticated requests and MCP tool calls are counted in
+memory and written to `maidan_usage_meters`, one row per workspace, UTC day
+and meter. The `usage_meters` loop flushes them every
+`MAIDAN_USAGE_METER_FLUSH_SECS` (default 60) and once more when the server
+shuts down. A failed flush keeps its counts for the next one, but a crash
+between flushes loses at most one interval's counts: the meters inform the
+free allowance, they do not bill. Health probes and `/metrics` are not
+metered. The loop is watched like the others (`usage_meters` in the loop
+liveness metrics).
+
 ## Load & soak testing
 
 `scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread
