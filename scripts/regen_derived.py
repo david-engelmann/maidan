@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Rewrite every file that copies the MCP catalog, from the tools/list snapshot.
+"""Rewrite every file that copies the MCP catalog, from the checked-in catalog
+(crates/maidan-mcp/src/tools/catalog.json, which the server parses as tools/list).
 
 The tool names contract, the Docker and ToolHive listings, and the tool counts
 in docs/Protocols.md, README.md and book/src/introduction.md are copies of the
 catalog. Two PRs that each add a tool conflict in all of them; resolving takes
-either side and re-running this (scripts/regen.sh runs it after the snapshot).
+either side of catalog.json and re-running this (scripts/regen.sh runs it).
 """
 import json
 import re
@@ -12,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-tools = json.loads((ROOT / "crates/maidan-mcp/tests/fixtures/wire/tools_list_full.json").read_text())["tools"]
+tools = json.loads((ROOT / "crates/maidan-mcp/src/tools/catalog.json").read_text())
 names = [t["name"] for t in tools]
 
 

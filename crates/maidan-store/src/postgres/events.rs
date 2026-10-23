@@ -7,8 +7,7 @@ use sqlx::{PgPool, Row};
 /// Every column a [`StoredEvent`] is built from, with its content key joined
 /// in. Pair with [`EVENTS_FROM`]; filter and order on `e.` columns.
 pub(crate) const EVENT_COLUMNS: &str = "e.id, e.kind, e.workspace_id, e.channel_id, e.thread_id, e.payload, e.occurred_at, e.prev_hash, e.content_hash, e.content_key_id, e.traceparent, e.tracestate, k.kek_id AS key_kek_id, k.wrapped_key AS key_wrapped, wk.wrapping_key_id AS wk_kek_id, wk.wrapped_key AS wk_wrapped";
-pub(crate) const EVENTS_FROM: &str =
-    "maidan_events e LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id";
+pub(crate) const EVENTS_FROM: &str = "maidan_events e LEFT JOIN maidan_content_keys k ON k.id = e.content_key_id LEFT JOIN maidan_workspace_keys wk ON wk.id = k.workspace_key_id";
 
 /// Rows per batch when filling pre-chain fields.
 const CHAIN_BACKFILL_BATCH: i64 = 256;
@@ -162,6 +161,7 @@ pub async fn get_by_id(
     let Some(row) = row else {
         return Err(StoreError::NotFound);
     };
+    open_rows(Some(keys), std::slice::from_ref(&row)).await?;
     row_to_stored(&row, Some(keys))
 }
 
@@ -186,6 +186,7 @@ pub async fn list_after(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(keys, &rows).await?;
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
@@ -238,6 +239,7 @@ pub async fn list_matching(
         query = query.bind(names);
     }
     let rows = query.bind(limit).fetch_all(pool).await?;
+    open_rows(keys, &rows).await?;
     rows.iter().map(|row| row_to_stored(row, keys)).collect()
 }
 
@@ -266,6 +268,7 @@ pub async fn list_after_stable(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -293,6 +296,7 @@ pub async fn list_after_global(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -319,6 +323,7 @@ pub async fn list_after_global_each(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     Ok(rows
         .iter()
         .map(|row| (row.get::<i64, _>("id"), row_to_stored(row, Some(keys))))
@@ -344,6 +349,7 @@ pub async fn list_through(
     .bind(through_id)
     .fetch_all(pool)
     .await?;
+    open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| row_to_stored(row, Some(keys)))
         .collect()
@@ -397,6 +403,30 @@ pub async fn oldest_event_after_of_kinds(
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|r| (r.get("id"), r.get("inserted_at"))))
+}
+
+/// Open the workspace keys `rows` need before they are mapped. Rows carry
+/// `key_kek_id`, `wk_kek_id` and `wk_wrapped`.
+pub(crate) async fn open_rows(
+    keys: Option<&ContentKeyring>,
+    rows: &[sqlx::postgres::PgRow],
+) -> Result<(), StoreError> {
+    let Some(keys) = keys else {
+        return Ok(());
+    };
+    crate::content_keys::open_workspace_keys(
+        keys,
+        rows.iter().map(|row| {
+            (
+                row.get::<Option<String>, _>("key_kek_id"),
+                crate::content_keys::JoinedWorkspaceKey {
+                    kek_id: row.get("wk_kek_id"),
+                    blob: row.get("wk_wrapped"),
+                },
+            )
+        }),
+    )
+    .await
 }
 
 /// Build a [`StoredEvent`], unwrapping its joined content key when `keys` is

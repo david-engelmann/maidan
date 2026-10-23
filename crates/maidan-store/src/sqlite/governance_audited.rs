@@ -21,11 +21,11 @@ use crate::{error::StoreError, AuditFor, InstalledApp};
 /// Run `change`'s result through `audit` only when `recorded(result)` holds,
 /// in the same transaction.
 macro_rules! audited {
-    ($pool:expr, |$tx:ident| $change:expr, $result:ident => $event:expr) => {{
+    ($pool:expr, $owner:expr, |$tx:ident| $change:expr, $result:ident => $event:expr) => {{
         let mut $tx = $pool.begin().await?;
         let $result = $change;
         if let Some(event) = $event {
-            audit::append_counted(&mut $tx, event).await?;
+            audit::append_scoped(&mut $tx, $owner, event).await?;
         }
         $tx.commit().await?;
         Ok($result)
@@ -44,7 +44,12 @@ pub async fn freeze_member(
     let (freeze, released, stored) =
         member_freezes::freeze_on(&mut tx, member_id, frozen_by, reason).await?;
     let change = (freeze, released);
-    audit::append_counted(&mut tx, audit_for(&change)).await?;
+    audit::append_scoped(
+        &mut tx,
+        crate::audit_scope::AuditOwner::Member(member_id),
+        audit_for(&change),
+    )
+    .await?;
     tx.commit().await?;
     let (freeze, released) = change;
     Ok((freeze, released, stored))
@@ -56,7 +61,7 @@ pub async fn unfreeze_member(
     unfrozen_by: MemberId,
     event: NewAuditEvent,
 ) -> Result<Option<StoredEvent>, StoreError> {
-    audited!(pool, |tx| member_freezes::unfreeze_on(&mut tx, member_id, unfrozen_by).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Member(member_id), |tx| member_freezes::unfreeze_on(&mut tx, member_id, unfrozen_by).await?,
         unfrozen => unfrozen.is_some().then_some(event))
 }
 
@@ -67,7 +72,7 @@ pub async fn add_channel_member(
     role: ChannelMemberRole,
     audit_for: AuditFor<ChannelMember>,
 ) -> Result<ChannelMember, StoreError> {
-    audited!(pool, |tx| channel_members::add_on(&mut tx, channel_id, member_id, role).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Channel(channel_id), |tx| channel_members::add_on(&mut tx, channel_id, member_id, role).await?,
         member => Some(audit_for(&member)))
 }
 
@@ -77,7 +82,7 @@ pub async fn remove_channel_member(
     member_id: MemberId,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    audited!(pool, |tx| channel_members::remove_on(&mut tx, channel_id, member_id).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Channel(channel_id), |tx| channel_members::remove_on(&mut tx, channel_id, member_id).await?,
         _removed => Some(event))
 }
 
@@ -102,7 +107,12 @@ pub async fn set_review_requirement(
     }
     let requirement = reviews::set_requirement_on(&mut tx, thread_id, required_count).await?;
     let change = (previous, requirement);
-    audit::append_counted(&mut tx, audit_for(&change)).await?;
+    audit::append_scoped(
+        &mut tx,
+        crate::audit_scope::AuditOwner::Thread(thread_id),
+        audit_for(&change),
+    )
+    .await?;
     tx.commit().await?;
     Ok(change)
 }
@@ -112,7 +122,7 @@ pub async fn clear_review_requirement(
     thread_id: ThreadId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, |tx| reviews::clear_requirement_on(&mut tx, thread_id).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Thread(thread_id), |tx| reviews::clear_requirement_on(&mut tx, thread_id).await?,
         cleared => cleared.then_some(event))
 }
 
@@ -122,7 +132,7 @@ pub async fn remove_reviewer(
     member_id: MemberId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, |tx| reviews::remove_reviewer_on(&mut tx, thread_id, member_id).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Thread(thread_id), |tx| reviews::remove_reviewer_on(&mut tx, thread_id, member_id).await?,
         removed => removed.then_some(event))
 }
 
@@ -131,7 +141,7 @@ pub async fn clear_land_gate(
     thread_id: ThreadId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, |tx| land_gate::clear_on(&mut tx, thread_id).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Thread(thread_id), |tx| land_gate::clear_on(&mut tx, thread_id).await?,
         cleared => cleared.then_some(event))
 }
 
@@ -142,7 +152,7 @@ pub async fn grant_governance_skill(
     skill: &str,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
-    audited!(pool, |tx| member_skills::add_on(&mut tx, member_id, skill).await?,
+    audited!(pool, crate::audit_scope::AuditOwner::Member(member_id), |tx| member_skills::add_on(&mut tx, member_id, skill).await?,
         _granted => Some(event))
 }
 
@@ -151,8 +161,7 @@ pub async fn allow_egress_target(
     new: NewEgressTarget,
     audit_for: AuditFor<AllowedEgressTarget>,
 ) -> Result<AllowedEgressTarget, StoreError> {
-    audited!(pool, |tx| egress_targets::allow_on(&mut tx, new).await?,
-        target => Some(audit_for(&target)))
+    audited!(pool, target.workspace_id, |tx| egress_targets::allow_on(&mut tx, new).await?, target => Some(audit_for(&target)))
 }
 
 pub async fn revoke_egress_target(
@@ -161,7 +170,7 @@ pub async fn revoke_egress_target(
     id: EgressTargetId,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, |tx| egress_targets::revoke_on(&mut tx, workspace_id, id).await?,
+    audited!(pool, workspace_id, |tx| egress_targets::revoke_on(&mut tx, workspace_id, id).await?,
         revoked => revoked.then_some(event))
 }
 
@@ -170,7 +179,7 @@ pub async fn revoke_app_installation(
     id: AppInstallationId,
     audit_for: AuditFor<AppInstallation>,
 ) -> Result<AppInstallation, StoreError> {
-    audited!(pool, |tx| apps::revoke_installation_on(&mut tx, id).await?,
+    audited!(pool, installation.workspace_id, |tx| apps::revoke_installation_on(&mut tx, id).await?,
         installation => Some(audit_for(&installation)))
 }
 
@@ -187,7 +196,7 @@ pub async fn install_app(
     // would let the second fail its lock upgrade with SQLITE_BUSY.
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let installed = apps::install_on(&mut tx, workspace_id, app_id, &granted_capabilities).await?;
-    audit::append_counted(&mut tx, audit_for(&installed)).await?;
+    audit::append_scoped(&mut tx, workspace_id, audit_for(&installed)).await?;
     tx.commit().await?;
     Ok(installed)
 }
@@ -199,8 +208,7 @@ pub async fn create_secret(
     new: NewSecret,
     audit_for: AuditFor<Secret>,
 ) -> Result<Secret, StoreError> {
-    audited!(pool, |tx| secrets::create_on(&mut tx, new).await?,
-        secret => Some(audit_for(&secret)))
+    audited!(pool, secret.workspace_id, |tx| secrets::create_on(&mut tx, new).await?, secret => Some(audit_for(&secret)))
 }
 
 pub async fn delete_secret(
@@ -209,7 +217,7 @@ pub async fn delete_secret(
     name: &str,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, |tx| secrets::delete_on(&mut tx, workspace_id, name).await?,
+    audited!(pool, workspace_id, |tx| secrets::delete_on(&mut tx, workspace_id, name).await?,
         deleted => deleted.then_some(event))
 }
 
@@ -219,8 +227,7 @@ pub async fn allow_secret_egress_host(
     new: NewSecretEgressHost,
     audit_for: AuditFor<SecretEgressHost>,
 ) -> Result<SecretEgressHost, StoreError> {
-    audited!(pool, |tx| secret_egress_hosts::allow_on(&mut tx, new).await?,
-        host => Some(audit_for(&host)))
+    audited!(pool, host.workspace_id, |tx| secret_egress_hosts::allow_on(&mut tx, new).await?, host => Some(audit_for(&host)))
 }
 
 pub async fn revoke_secret_egress_host(
@@ -229,6 +236,6 @@ pub async fn revoke_secret_egress_host(
     host: &str,
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
-    audited!(pool, |tx| secret_egress_hosts::revoke_on(&mut tx, workspace_id, host).await?,
+    audited!(pool, workspace_id, |tx| secret_egress_hosts::revoke_on(&mut tx, workspace_id, host).await?,
         revoked => revoked.then_some(event))
 }

@@ -25,12 +25,12 @@ pub(super) async fn cast_vote(
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: CastVoteArgs = crate::tools::parse_args(args)?;
-    if let Some(c) = a.confidence {
-        if !(0.0..=1.0).contains(&c) {
-            return Err(McpError::InvalidParams(
-                "confidence must be in 0..=1".into(),
-            ));
-        }
+    if let Some(c) = a.confidence
+        && !(0.0..=1.0).contains(&c)
+    {
+        return Err(McpError::InvalidParams(
+            "confidence must be in 0..=1".into(),
+        ));
     }
     // Emit the domain event (atomic) + bus-notify, like REST — so MCP
     // votes/reactions/pins reach WS/SSE, at-least-once, and federation.

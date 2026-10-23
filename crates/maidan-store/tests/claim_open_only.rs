@@ -4,6 +4,7 @@
 //! lets go picks the same task up again. Both backends, both claim paths.
 
 use maidan_fsm::ThreadAction;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, Thread};
 use sqlx::sqlite::SqlitePoolOptions;
@@ -109,7 +110,7 @@ async fn run_suite(store: &dyn Store) {
 
         // The waiter's own ending: result, hand to review, let go. Not reclaimed.
         store
-            .set_thread_result(got.id, worker.id, &serde_json::json!({"ok": true}))
+            .set_thread_result_claiming(got.id, worker.id, &serde_json::json!({"ok": true}))
             .await
             .expect("result");
         store

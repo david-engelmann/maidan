@@ -135,10 +135,11 @@ start_work() { # start_work <token> <claim json>
   rest "$1" POST "/threads/$(jq -r .id <<<"$2")/claim/acknowledge" \
     "$(jq -c '{claim_lease_id}' <<<"$2")" >/dev/null
 }
-report() { # report <token> <tid> <message> <result json>
-  mcp "$1" post_message "$(jq -nc --arg t "$2" --arg b "$3" '{thread_id:$t,body:$b}')" >/dev/null
-  mcp "$1" set_thread_result "$(jq -nc --arg t "$2" --argjson r "$4" '{thread_id:$t,result:$r}')" >/dev/null
-  mcp "$1" transition_thread "{\"thread_id\":\"$2\",\"action\":\"start_review\"}" | jq -r .state
+report() { # report <token> <claim json> <message> <result json>: the result is written under the claim's lease
+  local t; t=$(jq -r .id <<<"$2")
+  mcp "$1" post_message "$(jq -nc --arg t "$t" --arg b "$3" '{thread_id:$t,body:$b}')" >/dev/null
+  mcp "$1" set_thread_result "$(jq -nc --arg t "$t" --argjson r "$4" --argjson c "$2" '{thread_id:$t,claim_lease_id:$c.claim_lease_id,result:$r}')" >/dev/null
+  mcp "$1" transition_thread "{\"thread_id\":\"$t\",\"action\":\"start_review\"}" | jq -r .state
 }
 approve_close() { # approve_close <tid>: approve what the review was handed, then close
   local root; root=$(mcp "$HT" get_review_packet "{\"thread_id\":\"$1\"}" | jq -r .evidence_root)
@@ -168,15 +169,15 @@ for t in "$t_sqlx" "$t_reqid" "$t_rate" "$t_load" "$t_notes" "$t_cache"; do gate
 needs_you "$t_login"
 
 c=$(claim "$BT"); start_work "$BT" "$c"
-report "$BT" "$t_sqlx" "Bumped; two query macros needed explicit types. CI green." '{"status":"done","pr":"#412"}' >/dev/null
+report "$BT" "$c" "Bumped; two query macros needed explicit types. CI green." '{"status":"done","pr":"#412"}' >/dev/null
 approve_close "$t_sqlx" >/dev/null
 c=$(claim "$AT"); start_work "$AT" "$c"
-report "$AT" "$t_reqid" "Request id is now on every access-log line." '{"status":"done","pr":"#415"}' >/dev/null
+report "$AT" "$c" "Request id is now on every access-log line." '{"status":"done","pr":"#415"}' >/dev/null
 approve_close "$t_reqid" >/dev/null
-c=$(claim "$AT"); start_work "$AT" "$c"          # login test: Coder A is on it
+c_login=$(claim "$AT"); start_work "$AT" "$c_login"          # login test: Coder A is on it
 mcp "$AT" post_message "$(jq -nc --arg t "$t_login" '{thread_id:$t,body:"Reproduced: 1 in 20 locally with --repeat 200. Looking at the session save."}')" >/dev/null
 c=$(claim "$BT"); start_work "$BT" "$c"          # rate limit: Coder B, now waiting on review
-report "$BT" "$t_rate" "10/min per token, 429 with Retry-After. Tests cover the burst edge." '{"status":"done","limit_per_min":10}' >/dev/null
+report "$BT" "$c" "10/min per token, 429 with Retry-After. Tests cover the burst edge." '{"status":"done","limit_per_min":10}' >/dev/null
 c=$(claim "$TT"); start_work "$TT" "$c"          # load test: Tester is on it
 echo "seeded: 5 members, #build, 7 tasks" >&2
 [ "${1:-}" = "seed" ] && exit 0
@@ -190,7 +191,7 @@ t_retry=$(task "Retry webhook deliveries with backoff" "Retry 5xx deliveries wit
 needs_you "$t_retry"
 line planner "REST POST /channels/#build/threads → open: Retry webhook deliveries with backoff"
 sleep "$PAUSE"
-state=$(report "$AT" "$t_login" "Race: session save wasn't awaited before redirect. Fixed; 500/500 green." \
+state=$(report "$AT" "$c_login" "Race: session save wasn't awaited before redirect. Fixed; 500/500 green." \
   '{"status":"fixed","runs":500,"failures":0}')
 line coder-a "MCP set_thread_result {runs: 500, failures: 0} · transition_thread start_review → $state"
 sleep "$PAUSE"

@@ -15,9 +15,9 @@ use maidan_types::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-fn event(action: &str) -> NewAuditEvent {
+fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
-        scope: maidan_types::AuditScope::Instance,
+        scope: maidan_types::AuditScope::Workspace(ws),
         actor_id: None,
         action: action.into(),
         target_kind: None,
@@ -26,8 +26,8 @@ fn event(action: &str) -> NewAuditEvent {
     }
 }
 
-fn audit_for<T>(action: &'static str) -> maidan_store::AuditFor<T> {
-    Box::new(move |_| event(action))
+fn audit_for<T>(ws: maidan_types::WorkspaceId, action: &'static str) -> maidan_store::AuditFor<T> {
+    Box::new(move |_| event(ws, action))
 }
 
 /// `break_audit` makes every later audit insert fail.
@@ -98,19 +98,19 @@ where
 
     // While audit works, the audited forms record their change.
     let live = store
-        .create_api_token_audited(token("live"), audit_for("token.mint"))
+        .create_api_token_audited(token("live"), audit_for(ws.id, "token.mint"))
         .await
         .unwrap();
     let live_grant = store
-        .create_delegation_grant_audited(grant("live"), audit_for("grant.create"))
+        .create_delegation_grant_audited(grant("live"), audit_for(ws.id, "grant.create"))
         .await
         .unwrap();
     let live_ticket = store
-        .create_share_ticket_audited(ticket("live"), audit_for("ticket.create"))
+        .create_share_ticket_audited(ticket("live"), audit_for(ws.id, "ticket.create"))
         .await
         .unwrap();
     store
-        .set_delegation_policy_audited(ws.id, Some(30), audit_for("policy.set"))
+        .set_delegation_policy_audited(ws.id, Some(30), audit_for(ws.id, "policy.set"))
         .await
         .unwrap();
     let session = |_: &str| NewMaidanSession {
@@ -121,22 +121,22 @@ where
         expires_at: Utc::now() + Duration::hours(1),
     };
     let live_session = store
-        .create_session_audited(session("live"), audit_for("session.create"))
+        .create_session_audited(session("live"), audit_for(ws.id, "session.create"))
         .await
         .unwrap();
     let ended = store
-        .create_session_audited(session("ended"), audit_for("session.create"))
+        .create_session_audited(session("ended"), audit_for(ws.id, "session.create"))
         .await
         .unwrap();
     store
-        .delete_session_audited(ended.id, audit_for("session.delete"))
+        .delete_session_audited(ended.id, audit_for(ws.id, "session.delete"))
         .await
         .unwrap();
     assert!(store.get_session(ended.id).await.is_err());
     // Ending a session that is already gone records nothing.
     assert!(matches!(
         store
-            .delete_session_audited(ended.id, audit_for("session.delete.missing"))
+            .delete_session_audited(ended.id, audit_for(ws.id, "session.delete.missing"))
             .await,
         Err(StoreError::NotFound)
     ));
@@ -162,7 +162,7 @@ where
         .revoke_share_ticket_audited(
             ws.id,
             maidan_types::ShareTicketId::new(),
-            event("ticket.revoke.missing"),
+            event(ws.id, "ticket.revoke.missing"),
         )
         .await
         .unwrap());
@@ -179,7 +179,7 @@ where
     break_audit().await;
 
     let refused = store
-        .create_api_token_audited(token("unrecorded"), audit_for("token.mint"))
+        .create_api_token_audited(token("unrecorded"), audit_for(ws.id, "token.mint"))
         .await;
     assert!(refused.is_err(), "a mint that cannot be recorded must fail");
     assert!(
@@ -191,7 +191,7 @@ where
     );
 
     let refused = store
-        .revoke_api_token_audited(live.id, audit_for("token.revoke"))
+        .revoke_api_token_audited(live.id, audit_for(ws.id, "token.revoke"))
         .await;
     assert!(
         refused.is_err(),
@@ -206,7 +206,7 @@ where
     );
 
     assert!(store
-        .create_delegation_grant_audited(grant("unrecorded"), audit_for("grant.create"))
+        .create_delegation_grant_audited(grant("unrecorded"), audit_for(ws.id, "grant.create"))
         .await
         .is_err());
     assert_eq!(
@@ -215,7 +215,7 @@ where
         "an unrecorded grant must not exist"
     );
     assert!(store
-        .revoke_delegation_grant_audited(ws.id, live_grant.id, event("grant.revoke"))
+        .revoke_delegation_grant_audited(ws.id, live_grant.id, event(ws.id, "grant.revoke"))
         .await
         .is_err());
     assert!(
@@ -229,7 +229,7 @@ where
     );
 
     assert!(store
-        .create_share_ticket_audited(ticket("unrecorded"), audit_for("ticket.create"))
+        .create_share_ticket_audited(ticket("unrecorded"), audit_for(ws.id, "ticket.create"))
         .await
         .is_err());
     assert_eq!(
@@ -238,7 +238,7 @@ where
         "an unrecorded ticket must not exist"
     );
     assert!(store
-        .revoke_share_ticket_audited(ws.id, live_ticket.id, event("ticket.revoke"))
+        .revoke_share_ticket_audited(ws.id, live_ticket.id, event(ws.id, "ticket.revoke"))
         .await
         .is_err());
     assert!(
@@ -252,7 +252,7 @@ where
     );
 
     assert!(store
-        .set_delegation_policy_audited(ws.id, Some(7), audit_for("policy.set"))
+        .set_delegation_policy_audited(ws.id, Some(7), audit_for(ws.id, "policy.set"))
         .await
         .is_err());
     assert_eq!(
@@ -266,11 +266,11 @@ where
     );
 
     assert!(store
-        .create_session_audited(session("unrecorded"), audit_for("session.create"))
+        .create_session_audited(session("unrecorded"), audit_for(ws.id, "session.create"))
         .await
         .is_err());
     assert!(store
-        .delete_session_audited(live_session.id, audit_for("session.delete"))
+        .delete_session_audited(live_session.id, audit_for(ws.id, "session.delete"))
         .await
         .is_err());
     assert!(

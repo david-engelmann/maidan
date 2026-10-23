@@ -117,12 +117,12 @@ pub fn review_evidence(
         .map(str::trim)
         .filter(|r| !r.is_empty())
         .map(str::to_ascii_lowercase);
-    if let Some(r) = &root {
-        if r.len() != 64 || !r.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(
-                "evidence_root must be the 64-hex-character root from get_review_packet".into(),
-            );
-        }
+    if let Some(r) = &root
+        && (r.len() != 64 || !r.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err(
+            "evidence_root must be the 64-hex-character root from get_review_packet".into(),
+        );
     }
     if decision == crate::ReviewDecision::Approve && root.is_none() {
         return Err(
@@ -1484,6 +1484,9 @@ pub struct MemberEmail {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MailOutbox {
     pub id: MailOutboxId,
+    /// Owning workspace, `None` for mail with no tenant context; the worker
+    /// holds a suspended workspace's mail back.
+    pub workspace_id: Option<WorkspaceId>,
     pub to_address: String,
     pub subject: String,
     pub body: String,
@@ -2100,14 +2103,17 @@ pub struct ThreadClaimResult {
 
 /// A channel's task-queue depth — a point-in-time partition of its
 /// **open** (non-terminal, non-tombstoned) task threads, for an orchestrator
-/// deciding whether to scale workers. The three sub-counts partition `open`:
+/// deciding whether to scale workers. The four sub-counts partition `open`:
 /// - `assigned`: actively held (an assignee with a live, non-expired lease).
-/// - `ready`: claimable now — unassigned or lease-expired, and every dependency
-///   terminal (the `claim_next` predicate).
-/// - `blocked`: unassigned/lease-expired but waiting on a non-terminal dependency.
-/// - `unclaimable`: unassigned/lease-expired but parked from dispatch —
-///   `claim_next` skips it. Takes precedence over ready/blocked, so the four
-///   sub-counts partition `open` exactly.
+/// - `ready`: claimable now, exactly what `claim_next` would hand to a claimer
+///   with no skill, repository or engine restriction. Not held (or its lease
+///   lapsed) and not blocked or unclaimable.
+/// - `blocked`: not held but stalled on something that clears: an explicit
+///   block, a non-terminal dependency, a pending approval gate, or a footprint
+///   conflict.
+/// - `unclaimable`: not held but withheld until someone acts: parked from
+///   dispatch, at its budget, or already holding a result it was not
+///   re-queued after. Takes precedence over `blocked`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct QueueDepth {
@@ -2122,13 +2128,13 @@ pub struct QueueDepth {
 /// refinement of [`QueueDepth`]. It splits `assigned` by the *working* clock,
 /// so an orchestrator sees not just how much work is held but how much is
 /// actually underway. The four sub-counts partition `open`:
-/// - `queued`: claimable now — unassigned or lease-expired, with every dependency
-///   terminal (the `QueueDepth::ready` predicate).
+/// - `queued`: claimable now, the [`QueueDepth::ready`] count.
 /// - `claimed`: held on a live lease, but the holder has not yet acknowledged —
 ///   `work_started_at` is unset (grabbed the work, hasn't started).
 /// - `working`: held and the holder has acknowledged and begun work
 ///   (`work_started_at` is set).
-/// - `blocked`: not held and waiting on a non-terminal dependency.
+/// - `blocked`: not held and not claimable, [`QueueDepth::blocked`] plus
+///   [`QueueDepth::unclaimable`].
 ///
 /// Splitting `claimed` from `working` is the payoff of the two clocks: it
 /// surfaces a claimed-but-idle agent — one that took work but never started it.

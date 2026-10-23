@@ -130,8 +130,9 @@ pub struct EgressSweepStats {
     pub retried: u32,
     pub dead: u32,
     pub disabled: u32,
-    /// Retries the retry budget held back, and change replies still waiting
-    /// on their branch delivery: rescheduled, not attempted.
+    /// Retries the retry budget held back, change replies still waiting on
+    /// their branch delivery, and a suspended workspace's deliveries:
+    /// rescheduled, not attempted.
     pub deferred: u32,
     /// Changes the flow refused (recorded as skipped, never retried).
     pub refused: u32,
@@ -486,6 +487,95 @@ async fn requested_linear_state(
 /// and the PR's `base` all come from the result, never from the outbox
 /// snapshot or the thread. A result that is gone, or no longer a change for
 /// this branch, is refused rather than retried.
+/// GitHub's merge queue can drop a pull request (a merge conflict, failed
+/// checks) and leave the queue's label on it. The change flow refuses to push
+/// to a labelled pull request, so the round that fixes the conflict would be
+/// refused for good, and the label would also make a later enqueue a no-op.
+/// When GitHub's own read says the pull request left the queue and is not
+/// back in it, the label is stale: it comes off through the dequeue guard
+/// path. That way the new head is not queued unreviewed, and the mark-ready
+/// app's next enqueue labels it again. Anything else (still queued, no
+/// removal event, a guard refusal) leaves the label for the change flow to
+/// refuse on, as before.
+async fn clear_stale_queue_label(
+    state: &AppState,
+    git: &dyn crate::github::GithubGit,
+    entry: &EgressOutbox,
+    repo: &str,
+    branch: &str,
+) -> Result<(), DeliveryFailure> {
+    let Some(label) = state.merge_queue_labels.label_for(repo) else {
+        return Ok(());
+    };
+    let failure = |err: crate::github::GithubError| DeliveryFailure {
+        message: err.to_string(),
+        misconfiguration: err.is_misconfiguration(),
+    };
+    let Some(pull) = git.open_pull(repo, branch).await.map_err(failure)? else {
+        return Ok(());
+    };
+    if !pull.labels.iter().any(|name| name == label) {
+        return Ok(());
+    }
+    let snapshot = git
+        .pull_snapshot(repo, pull.number)
+        .await
+        .map_err(failure)?;
+    let Some(gate) = snapshot.gate else {
+        return Ok(());
+    };
+    let Some(reason) = gate.dequeued.filter(|_| !gate.queued) else {
+        return Ok(());
+    };
+    match crate::routes::dequeue_pull_guarded(
+        state.store.as_ref(),
+        entry.workspace_id,
+        git,
+        &state.mark_ready_bases,
+        &state.merge_queue_labels,
+        repo,
+        pull.number,
+    )
+    .await
+    {
+        Ok((number, label, removed)) => {
+            if removed {
+                crate::audit::record(
+                    state,
+                    maidan_types::NewAuditEvent {
+                        scope: maidan_types::AuditScope::Workspace(entry.workspace_id),
+                        actor_id: None,
+                        action: "github.enqueue".into(),
+                        target_kind: Some("github_pull".into()),
+                        target_id: None,
+                        metadata: serde_json::json!({
+                            "repo": repo,
+                            "pull_number": number,
+                            "outcome": "stale_label_cleared",
+                            "label": label,
+                            "reason": reason,
+                        }),
+                    },
+                )
+                .await;
+            }
+            Ok(())
+        }
+        Err(crate::routes::MarkReadyGuard::Github(err)) => Err(failure(err)),
+        // A guard refusal or a store error leaves the label on; the change
+        // flow then refuses this round as it did before.
+        Err(err) => {
+            tracing::warn!(
+                ?err,
+                repo,
+                number = pull.number,
+                "egress worker: stale merge-queue label left on"
+            );
+            Ok(())
+        }
+    }
+}
+
 async fn github_branch_result(
     state: &AppState,
     entry: &EgressOutbox,
@@ -509,13 +599,13 @@ async fn github_branch_result(
         Ok(None) => {
             return Ok(Sent::Refused(
                 "the result is no longer on the thread".into(),
-            ))
+            ));
         }
         Err(err) => {
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
-            })
+            });
         }
     };
     let Some(change) = maidan_types::parse_change_result(&stored.result) else {
@@ -569,13 +659,13 @@ async fn github_branch_result(
         Ok(false) => {
             return Ok(Sent::Refused(format!(
                 "`{selector}` is not in the workspace egress allowlist"
-            )))
+            )));
         }
         Err(err) => {
             return Err(DeliveryFailure {
                 message: err.to_string(),
                 misconfiguration: false,
-            })
+            });
         }
     }
     // Only read when the result has no title; a failed read falls back to
@@ -599,6 +689,7 @@ async fn github_branch_result(
     } else {
         None
     };
+    clear_stale_queue_label(state, git, entry, repo, branch).await?;
     let request = crate::change_flow::ChangeRequest {
         repo,
         branch,
@@ -1123,13 +1214,17 @@ async fn record_result_refused(
     else {
         return;
     };
-    if let Err(err) = state
+    match state
         .store
         .mark_result_delivery_skipped(row.id, reason)
         .await
     {
-        tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
-        return;
+        Ok(Some(event)) => crate::routes::publish_stored(state, event).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, id = %row.id, "egress worker: mark-result-refused failed");
+            return;
+        }
     }
     tracing::warn!(
         thread_id = %entry.thread_id,
@@ -1155,13 +1250,17 @@ async fn record_result_gave_up(
     else {
         return;
     };
-    if let Err(err) = state.store.mark_result_delivery_failed(row.id, error).await {
-        tracing::warn!(
-            error = %err,
-            id = %row.id,
-            "egress worker: mark-result-failed failed"
-        );
-        return;
+    match state.store.mark_result_delivery_failed(row.id, error).await {
+        Ok(Some(event)) => crate::routes::publish_stored(state, event).await,
+        Ok(None) => {}
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                id = %row.id,
+                "egress worker: mark-result-failed failed"
+            );
+            return;
+        }
     }
     crate::metrics::record_result_delivery("failed");
 }
@@ -1259,6 +1358,14 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
         };
         let surface = target.surface().as_str();
         // The claim counted this try, so a first post has `attempts == 1`.
+        if crate::suspension::held_back(state, entry.workspace_id).await {
+            let until = chrono::Utc::now() + crate::suspension::SUSPENDED_DEFER;
+            if let Err(err) = state.store.defer_egress(entry.id, until).await {
+                tracing::warn!(error = %err, id = %entry.id, "egress worker: deferral failed");
+            }
+            stats.deferred += 1;
+            continue;
+        }
         let attempt = Attempt::after(entry.attempts - 1);
         if let Some(until) = deferred_until(
             &state.retry_budget,
@@ -1315,6 +1422,11 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     "egress worker: delivered"
                 );
                 crate::metrics::record_egress_delivery(surface, "sent");
+                state.usage_meters.record(
+                    entry.workspace_id,
+                    maidan_types::UsageMeter::Deliveries,
+                    1,
+                );
                 stats.sent += 1;
             }
             Err(failure) if failure.misconfiguration && entry.kind != EgressKind::Projector => {

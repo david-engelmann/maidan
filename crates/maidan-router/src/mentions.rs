@@ -21,12 +21,11 @@ pub fn parse_at_handles(body: &str) -> Vec<String> {
             while end < bytes.len() && is_handle_char(bytes[end]) {
                 end += 1;
             }
-            if end > start {
-                if let Ok(s) = std::str::from_utf8(&bytes[start..end]) {
-                    if !s.is_empty() {
-                        handles.push(s.to_string());
-                    }
-                }
+            if end > start
+                && let Ok(s) = std::str::from_utf8(&bytes[start..end])
+                && !s.is_empty()
+            {
+                handles.push(s.to_string());
             }
             i = end.max(i + 1);
         } else {

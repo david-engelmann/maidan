@@ -69,7 +69,7 @@ impl FilePatch {
         let base: &[u8] = match (&self.old_path, old) {
             (Some(_), Some(bytes)) => bytes,
             (Some(path), None) => {
-                return refuse(format!("{path} does not exist at the base commit"))
+                return refuse(format!("{path} does not exist at the base commit"));
             }
             (None, Some(_)) => return refuse(format!("{shown} already exists at the base commit")),
             (None, None) => &[],
@@ -202,10 +202,10 @@ pub fn parse(diff: &str) -> Result<Vec<FilePatch>, PatchError> {
             check_path(path)?;
         }
         let key = patch.new_path.as_ref().or(patch.old_path.as_ref());
-        if let Some(key) = key {
-            if !seen.insert(key.clone()) {
-                return refuse(format!("{key} appears twice in the diff"));
-            }
+        if let Some(key) = key
+            && !seen.insert(key.clone())
+        {
+            return refuse(format!("{key} appears twice in the diff"));
         }
     }
     Ok(patches)
@@ -437,10 +437,10 @@ fn parse_hunk(lines: &[&str], start: usize) -> Result<(Hunk, usize), PatchError>
 }
 
 fn strip_newline(line: Option<&mut Vec<u8>>) {
-    if let Some(line) = line {
-        if line.last() == Some(&b'\n') {
-            line.pop();
-        }
+    if let Some(line) = line
+        && line.last() == Some(&b'\n')
+    {
+        line.pop();
     }
 }
 

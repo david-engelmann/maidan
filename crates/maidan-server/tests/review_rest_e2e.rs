@@ -3,6 +3,7 @@
 //! reviewer, and watch review-status flip to met. The close-gate itself is
 //! store-tested.
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc},
@@ -83,7 +84,7 @@ async fn hand_off(
     by: maidan_types::MemberId,
 ) -> String {
     store
-        .set_thread_result(thread, by, &json!({ "status": "done" }))
+        .set_thread_result_claiming(thread, by, &json!({ "status": "done" }))
         .await
         .unwrap();
     store

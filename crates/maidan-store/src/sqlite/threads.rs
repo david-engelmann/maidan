@@ -594,10 +594,10 @@ async fn claim_next_candidate(
             dm_channel: "?4",
             repo: "?5",
             engine: "?6",
-            requeued_after_result: "julianday(tr.occurred_at) >= julianday(r.produced_at)",
+            requeued_after_result: REQUEUED_AFTER_RESULT,
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
-            lapsed_worked_secs: "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN MAX(0, CAST(strftime('%s', cand.assignment_expires_at) AS INTEGER) - CAST(strftime('%s', cand.work_started_at) AS INTEGER)) ELSE 0 END",
+            lapsed_worked_secs: LAPSED_WORKED_SECS,
         },
     );
     Ok(sqlx::query(&sql)
@@ -885,15 +885,19 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     reader: "?2",
     dm_channel: "?3",
     now: "?4",
+    lapsed_worked_secs: LAPSED_WORKED_SECS,
+    requeued_after_result: REQUEUED_AFTER_RESULT,
 };
 
-/// Task-queue depth for a channel or a workspace — see
-/// [`queue_counts`](crate::queue_counts). Its `available` test and the
-/// dependency and explicit-block clauses mirror the `claim_next` claimability
-/// predicate. `blocked` folds an explicit [`BlockedReason`] in alongside
-/// unfinished DAG deps — they stay distinct *causes*.
-///
-/// [`BlockedReason`]: maidan_types::BlockedReason
+/// Seconds a lapsed claim on `cand` worked, for [`crate::claimability`].
+pub(crate) const LAPSED_WORKED_SECS: &str = "CASE WHEN cand.assignee_id IS NOT NULL AND cand.work_started_at IS NOT NULL AND cand.assignment_expires_at IS NOT NULL THEN MAX(0, CAST(strftime('%s', cand.assignment_expires_at) AS INTEGER) - CAST(strftime('%s', cand.work_started_at) AS INTEGER)) ELSE 0 END";
+/// [`crate::claimability::ThreadSql::requeued_after_result`].
+pub(crate) const REQUEUED_AFTER_RESULT: &str =
+    "julianday(tr.occurred_at) >= julianday(r.produced_at)";
+
+/// Task-queue depth for a channel or a workspace: see
+/// [`queue_counts`](crate::queue_counts), which partitions by the
+/// [`crate::claimability`] rules `claim_next` uses.
 pub async fn queue_depth(
     pool: &SqlitePool,
     scope: QueueScope,
@@ -1498,4 +1502,40 @@ pub(super) fn row_to_thread(row: &sqlx::sqlite::SqliteRow) -> Result<Thread, Sto
         ci: Vec::new(),
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })
+}
+
+/// See [`crate::Store::count_stalled_threads`]. Timestamps go through
+/// `julianday` because a declaration's `declared_at` defaults to SQLite's
+/// space-separated form while the thread columns hold RFC 3339.
+pub async fn count_stalled_threads(
+    pool: &SqlitePool,
+    now: DateTime<Utc>,
+    progress_before: DateTime<Utc>,
+) -> Result<i64, StoreError> {
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS c FROM maidan_threads t
+         WHERE t.state = 'open' AND t.tombstoned_at IS NULL
+           AND t.assignee_id IS NOT NULL
+           AND t.work_started_at IS NOT NULL
+           AND julianday(t.work_started_at) <= julianday(?2)
+           AND t.assignment_expires_at IS NOT NULL
+           AND julianday(t.assignment_expires_at) >= julianday(?1)
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id
+                   AND (s.status <> 'working'
+                        OR (s.declared_by = t.assignee_id
+                            AND julianday(s.declared_at) > julianday(?2)))
+               )
+           AND NOT EXISTS (
+                 SELECT 1 FROM maidan_messages m
+                 WHERE m.thread_id = t.id AND m.author_id = t.assignee_id
+                   AND julianday(m.posted_at) > julianday(?2)
+               )",
+    )
+    .bind(now.to_rfc3339())
+    .bind(progress_before.to_rfc3339())
+    .fetch_one(pool)
+    .await?;
+    Ok(row.try_get::<i64, _>("c")?)
 }

@@ -236,6 +236,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/thread-lookup", get(routes::find_thread))
         .route(
+            "/workspaces/{id}/usage-meters",
+            get(routes::get_workspace_usage_meters),
+        )
+        .route(
             "/workspaces/{id}/swarm-metrics",
             get(routes::get_swarm_metrics),
         )
@@ -1044,7 +1048,17 @@ pub fn router(state: AppState) -> Router {
             "/operator/workspaces",
             no_store(post(routes::provision_workspace)),
         )
+        .route(
+            "/operator/workspaces/{id}/suspension",
+            get(routes::get_workspace_suspension)
+                .merge(put(routes::suspend_workspace))
+                .merge(delete(routes::lift_workspace_suspension)),
+        )
         .route("/operator/status", get(crate::status::operator_status))
+        .route(
+            "/operator/usage-meters",
+            get(routes::list_operator_usage_meters),
+        )
         .route("/operator/mail/dead", get(routes::list_dead_mail))
         .route(
             "/operator/mail/dead/{id}/requeue",
@@ -1312,6 +1326,10 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/api/channels/{cid}/threads", get(routes::list_threads))
         .route("/ui/api/threads/{tid}/messages", get(routes::list_messages))
         .route("/ui/api/threads/{tid}", get(routes::get_thread))
+        .route(
+            "/ui/api/workspaces/{wid}/usage-meters",
+            get(routes::get_workspace_usage_meters),
+        )
         .route(
             "/ui/api/threads/{tid}/review-status",
             get(routes::get_review_status),
@@ -1628,6 +1646,10 @@ pub fn router(state: AppState) -> Router {
         // GitHub projector ingress: unauthed — GitHub authenticates via its
         // X-Hub-Signature-256, verified in-handler. 404 unless configured.
         .route("/integrations/github/events", post(github::github_events))
+        .route(
+            "/integrations/deploys/events",
+            post(crate::deploy_ingest::deploy_events),
+        )
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
         .route("/ui", get(ui_index))

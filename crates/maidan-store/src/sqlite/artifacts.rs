@@ -368,7 +368,7 @@ async fn erase_ref_in_tx(
         last_reference,
         occurred_at: Utc::now(),
     };
-    super::audit::append_counted(tx, audit_for(&erasure)).await?;
+    super::audit::append_scoped(tx, workspace_id, audit_for(&erasure)).await?;
     Ok(erasure)
 }
 

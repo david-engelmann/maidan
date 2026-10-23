@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use maidan_fsm::ThreadAction;
 use maidan_types::{
     ChangePull, ChangeRound, ChangeSettlement, ContentKeyring, Event, MemberId, MergedOutcome,
-    NewChangeRound, NewStaleBaseNotice, OutcomeDue, PostedNotice, StoredEvent, ThreadId,
+    NewChangeRound, NewDeploy, NewStaleBaseNotice, OutcomeDue, PostedNotice, StoredEvent, ThreadId,
     ThreadNotice, ThreadNoticeKind, ThreadState, WorkspaceId, NOTICE_PATH_LIMIT,
     OUTCOME_WINDOW_DAYS,
 };
@@ -544,6 +544,8 @@ async fn notify_merge(
             status: None,
             failing_jobs: Vec::new(),
             reasons: Vec::new(),
+            environment: None,
+            deploy_url: None,
             created_at: Utc::now(),
         };
         let key = format!("rebase_needed:{repo}#{pull_number}");
@@ -578,12 +580,150 @@ pub async fn add_stale_base_notice(
         status: None,
         failing_jobs: Vec::new(),
         reasons: Vec::new(),
+        environment: None,
+        deploy_url: None,
         created_at: Utc::now(),
     };
     let mut tx = pool.begin().await?;
     let posted = insert_notice_in_tx(&mut tx, new.thread_id, notice, &key).await?;
     tx.commit().await?;
     Ok(posted)
+}
+
+/// Record a deploy on every merged pull request whose merge (or merged head)
+/// commit it names. The deploy row and the notice commit together, so a
+/// retried hook call finds both and says nothing twice.
+pub async fn record_deploy(
+    pool: &PgPool,
+    deploy: NewDeploy,
+) -> Result<Vec<PostedNotice>, StoreError> {
+    let repo = deploy.repo.to_ascii_lowercase();
+    let sha = deploy.sha.to_ascii_lowercase();
+    let mut tx = pool.begin().await?;
+    // Every workspace that tracks the pull request hears of it: the hook
+    // names a commit, and each tracking workspace merged that commit.
+    let matched = sqlx::query(
+        "SELECT workspace_id, pull_number, thread_id FROM maidan_change_pulls
+         WHERE repo = $1 AND merged_at IS NOT NULL
+           AND (LOWER(merge_commit_sha) = $2 OR LOWER(merged_head_sha) = $2)
+         ORDER BY pull_number",
+    )
+    .bind(&repo)
+    .bind(&sha)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut targets: Vec<(Uuid, i64, Uuid)> = matched
+        .iter()
+        .map(|row| {
+            (
+                row.get("workspace_id"),
+                row.get("pull_number"),
+                row.get("thread_id"),
+            )
+        })
+        .collect();
+    // A pull the deployed commit carries as an ancestor, looked up in the
+    // workspace that tracks it and no other.
+    for pull in &deploy.contains {
+        let row = sqlx::query(
+            "SELECT thread_id FROM maidan_change_pulls
+             WHERE workspace_id = $1 AND repo = $2 AND pull_number = $3 AND merged_at IS NOT NULL",
+        )
+        .bind(pull.workspace_id.0)
+        .bind(&repo)
+        .bind(pull.pull_number)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(row) = row {
+            let target = (pull.workspace_id.0, pull.pull_number, row.get("thread_id"));
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+        }
+    }
+    let mut posted = Vec::new();
+    for (workspace_id, pull_number, thread_id) in targets {
+        let thread_id = ThreadId(thread_id);
+        sqlx::query(
+            "INSERT INTO maidan_deploys
+                 (id, workspace_id, thread_id, repo, pull_number, sha, environment, status, url, received_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (workspace_id, repo, pull_number, sha, environment, status) DO NOTHING",
+        )
+        .bind(Uuid::now_v7())
+        .bind(workspace_id)
+        .bind(thread_id.0)
+        .bind(&repo)
+        .bind(pull_number)
+        .bind(&sha)
+        .bind(&deploy.environment)
+        .bind(deploy.status.as_str())
+        .bind(&deploy.url)
+        .bind(Utc::now())
+        .execute(&mut *tx)
+        .await?;
+        let key = format!(
+            "deployed:{repo}#{pull_number}@{sha}:{}:{}",
+            deploy.environment,
+            deploy.status.as_str()
+        );
+        let notice = ThreadNotice {
+            kind: ThreadNoticeKind::Deployed,
+            repo: repo.clone(),
+            pull_number,
+            paths: Vec::new(),
+            base_branch: None,
+            base_behind: None,
+            head_sha: Some(sha.clone()),
+            status: Some(deploy.status),
+            failing_jobs: Vec::new(),
+            reasons: Vec::new(),
+            environment: Some(deploy.environment.clone()),
+            deploy_url: deploy.url.clone(),
+            created_at: Utc::now(),
+        };
+        if let Some(one) = insert_notice_in_tx(&mut tx, thread_id, notice, &key).await? {
+            posted.push(one);
+        }
+    }
+    tx.commit().await?;
+    Ok(posted)
+}
+
+/// See [`crate::Store::deploy_candidates`].
+pub async fn deploy_candidates(
+    pool: &PgPool,
+    repo: &str,
+    environment: &str,
+    limit: i64,
+) -> Result<Vec<maidan_types::DeployCandidate>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT p.workspace_id, p.pull_number,
+                LOWER(COALESCE(p.merge_commit_sha, p.merged_head_sha)) AS merge_sha
+         FROM maidan_change_pulls p
+         WHERE p.repo = $1 AND p.merged_at IS NOT NULL
+           AND COALESCE(p.merge_commit_sha, p.merged_head_sha) IS NOT NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM maidan_deploys d
+               WHERE d.workspace_id = p.workspace_id AND d.repo = p.repo
+                 AND d.pull_number = p.pull_number AND d.environment = $2
+                 AND d.status = 'success')
+         ORDER BY p.merged_at DESC, p.pull_number DESC
+         LIMIT $3",
+    )
+    .bind(repo.to_ascii_lowercase())
+    .bind(environment)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| maidan_types::DeployCandidate {
+            workspace_id: WorkspaceId(row.get("workspace_id")),
+            pull_number: row.get("pull_number"),
+            merge_sha: row.get("merge_sha"),
+        })
+        .collect())
 }
 
 pub(super) async fn insert_notice_in_tx(
@@ -596,8 +736,9 @@ pub(super) async fn insert_notice_in_tx(
     let inserted = sqlx::query(
         "INSERT INTO maidan_thread_notices
              (id, workspace_id, thread_id, kind, repo, pull_number, paths, base_branch,
-              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs, reasons)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+              base_behind, dedupe_key, created_at, head_sha, status, failing_jobs, reasons,
+              environment, deploy_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          ON CONFLICT (thread_id, dedupe_key) DO NOTHING",
     )
     .bind(Uuid::now_v7())
@@ -615,6 +756,8 @@ pub(super) async fn insert_notice_in_tx(
     .bind(notice.status.map(|status| status.as_str()))
     .bind(Json(&notice.failing_jobs))
     .bind(Json(&notice.reasons))
+    .bind(&notice.environment)
+    .bind(&notice.deploy_url)
     .execute(&mut **tx)
     .await?
     .rows_affected();
@@ -638,6 +781,8 @@ pub(super) async fn insert_notice_in_tx(
             status: notice.status,
             failing_jobs: notice.failing_jobs.clone(),
             reasons: notice.reasons.clone(),
+            environment: notice.environment.clone(),
+            deploy_url: notice.deploy_url.clone(),
         },
     )
     .await?;
@@ -668,7 +813,7 @@ pub async fn list_notices(
 ) -> Result<Vec<ThreadNotice>, StoreError> {
     let rows = sqlx::query(
         "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at,
-                head_sha, status, failing_jobs, reasons
+                head_sha, status, failing_jobs, reasons, environment, deploy_url
          FROM maidan_thread_notices WHERE thread_id = $1
          ORDER BY created_at DESC, id DESC LIMIT $2",
     )
@@ -694,6 +839,8 @@ pub async fn list_notices(
                     .and_then(|status| maidan_types::CiStatus::parse(&status)),
                 failing_jobs: row.get::<Json<Vec<String>>, _>("failing_jobs").0,
                 reasons: row.get::<Json<Vec<String>>, _>("reasons").0,
+                environment: row.get("environment"),
+                deploy_url: row.get("deploy_url"),
                 created_at: row.get::<DateTime<Utc>, _>("created_at"),
             })
         })
@@ -781,10 +928,114 @@ pub async fn list(
         usd_micros: row.get("cost"),
         reports: row.get("reports"),
     }));
-    Ok(pulls
+    let mut pulls: Vec<ChangePull> = pulls
         .iter()
         .map(|row| pull_from(row, &mut by_pull, &cost))
-        .collect())
+        .collect();
+    let flows = sqlx::query(
+        "SELECT e.thread_id,
+                MIN(CASE WHEN e.kind = 'thread_assignment_changed'
+                          AND e.payload->>'assignee_id' IS NOT NULL
+                         THEN e.occurred_at END) AS claimed_at,
+                MIN(CASE WHEN e.kind = 'thread_state_changed'
+                          AND e.payload->>'to_state' = 'in_review'
+                         THEN e.occurred_at END) AS review_requested_at,
+                MIN(CASE WHEN e.kind = 'review_submitted' THEN e.occurred_at END) AS first_review_at,
+                COALESCE(SUM(CASE WHEN e.kind = 'review_submitted'
+                          AND e.payload->>'decision' = 'request_changes'
+                         THEN 1 ELSE 0 END), 0)::BIGINT AS sent_back,
+                COALESCE(SUM(CASE WHEN e.kind = 'claim_expired' THEN 1 ELSE 0 END), 0)::BIGINT AS claim_lapses
+         FROM maidan_events e
+         WHERE e.workspace_id = $1
+           AND e.kind IN ('thread_assignment_changed', 'thread_state_changed', 'review_submitted', 'claim_expired')
+           AND e.thread_id IN (SELECT p.thread_id FROM maidan_change_pulls p WHERE p.workspace_id = $1)
+         GROUP BY e.thread_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    let mut flow: HashMap<Uuid, maidan_types::ThreadFlow> = flows
+        .iter()
+        .map(|row| {
+            (
+                row.get("thread_id"),
+                maidan_types::ThreadFlow {
+                    claimed_at: row.get::<Option<DateTime<Utc>>, _>("claimed_at"),
+                    review_requested_at: row.get::<Option<DateTime<Utc>>, _>("review_requested_at"),
+                    ci_green_at: None,
+                    first_review_at: row.get::<Option<DateTime<Utc>>, _>("first_review_at"),
+                    sent_back: row.get::<Option<i64>, _>("sent_back").unwrap_or(0),
+                    claim_lapses: row.get::<Option<i64>, _>("claim_lapses").unwrap_or(0),
+                    deliveries_skipped: 0,
+                },
+            )
+        })
+        .collect();
+    let skipped = sqlx::query(
+        "SELECT d.thread_id, COUNT(*)::BIGINT AS skipped
+         FROM maidan_result_deliveries d
+         WHERE d.status IN ('skipped', 'failed')
+           AND d.thread_id IN (SELECT p.thread_id FROM maidan_change_pulls p WHERE p.workspace_id = $1)
+         GROUP BY d.thread_id",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    for row in &skipped {
+        flow.entry(row.get("thread_id"))
+            .or_default()
+            .deliveries_skipped = row.get("skipped");
+    }
+    // A head's checks as its CI notices said: a failure notice wins over a
+    // finished one.
+    let ci_rows = sqlx::query(
+        "SELECT n.thread_id, n.head_sha, n.kind, n.status, n.created_at
+         FROM maidan_thread_notices n
+         WHERE n.workspace_id = $1 AND n.kind IN ('ci_failed', 'checks_done') AND n.head_sha IS NOT NULL",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    let mut head_ci: HashMap<(Uuid, String), maidan_types::CiStatus> = HashMap::new();
+    for row in &ci_rows {
+        let status = if row.get::<String, _>("kind") == "ci_failed" {
+            Some(maidan_types::CiStatus::Failure)
+        } else {
+            row.get::<Option<String>, _>("status")
+                .and_then(|s| match s.as_str() {
+                    "success" => Some(maidan_types::CiStatus::Success),
+                    "failure" => Some(maidan_types::CiStatus::Failure),
+                    "pending" => Some(maidan_types::CiStatus::Pending),
+                    _ => None,
+                })
+        };
+        if status == Some(maidan_types::CiStatus::Success) {
+            let at: DateTime<Utc> = row.get("created_at");
+            let green = &mut flow.entry(row.get("thread_id")).or_default().ci_green_at;
+            if green.is_none_or(|first| at < first) {
+                *green = Some(at);
+            }
+        }
+        if let Some(status) = status {
+            let key = (
+                row.get::<Uuid, _>("thread_id"),
+                row.get::<String, _>("head_sha").to_ascii_lowercase(),
+            );
+            let entry = head_ci.entry(key).or_insert(status);
+            if status == maidan_types::CiStatus::Failure {
+                *entry = status;
+            }
+        }
+    }
+    for pull in &mut pulls {
+        pull.flow = flow.get(&pull.thread_id.0).cloned().unwrap_or_default();
+        pull.first_delivery_ci = pull.rounds.first().and_then(|round| {
+            head_ci
+                .get(&(pull.thread_id.0, round.commit_sha.to_ascii_lowercase()))
+                .copied()
+        });
+    }
+    Ok(pulls)
 }
 
 /// The merged pull requests in `workspace_id` due an outcome check, at most
@@ -1066,6 +1317,8 @@ fn pull_from(
         linear_issue: row.get("linear_issue"),
         outcome: outcome_from(row),
         handed_off_at: row.get::<Option<DateTime<Utc>>, _>("handed_off_at"),
+        flow: maidan_types::ThreadFlow::default(),
+        first_delivery_ci: None,
         attributes: maidan_types::TaskAttributes {
             kind: row
                 .try_get::<Option<String>, _>("task_kind")

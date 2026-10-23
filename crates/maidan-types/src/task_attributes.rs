@@ -180,12 +180,12 @@ impl TaskAttributes {
             .linear_issue
             .map(|key| key.trim().to_string())
             .filter(|key| !key.is_empty());
-        if let Some(key) = &self.linear_issue {
-            if !crate::is_issue_key(key) {
-                return Err(format!(
-                    "linear_issue `{key}` is not an issue key such as ENG-123"
-                ));
-            }
+        if let Some(key) = &self.linear_issue
+            && !crate::is_issue_key(key)
+        {
+            return Err(format!(
+                "linear_issue `{key}` is not an issue key such as ENG-123"
+            ));
         }
         self.acceptance = self
             .acceptance

@@ -90,6 +90,12 @@ pub struct AppState {
     pub embedding_provider: Arc<dyn EmbeddingProvider>,
     /// Shared MCP dispatcher (subscriptions + notification fan-out).
     pub mcp: Arc<McpServer>,
+    /// Requests and MCP calls counted for the usage meters, flushed by
+    /// [`crate::usage_meters`]. Shared with `mcp`.
+    pub usage_meters: Arc<maidan_store::usage_meters::UsageMeterBuffer>,
+    /// The instance's free allowance (`MAIDAN_FREE_ALLOWANCE`), set at boot.
+    /// Empty (the default, and in tests) marks nobody.
+    pub usage_allowance: Arc<maidan_types::UsageAllowance>,
     /// When true, all routes accept requests without a bearer token.
     pub auth_disabled: bool,
     /// The caller an MCP `POST` with no credential reads as, on a dev instance
@@ -213,6 +219,10 @@ pub struct AppState {
     /// `None` when unset — the `/integrations/github/events` route then returns
     /// `404`. Set via [`AppState::attach_github`].
     pub github: Option<Arc<crate::github::GithubConfig>>,
+    /// The deploy hook, set when `MAIDAN_DEPLOY_HOOK_SECRET` is. `None`
+    /// leaves `/integrations/deploys/events` a 404. Set via
+    /// [`AppState::attach_deploy_hook`].
+    pub deploy_hook: Option<Arc<crate::deploy_ingest::DeployHookConfig>>,
     /// GitHub projector egress sender, an issue-comment client set when
     /// `MAIDAN_GITHUB_TOKEN` is configured. `None` disables egress (inbound
     /// still works). Set via [`AppState::attach_github_sender`]; tests inject a
@@ -277,6 +287,7 @@ fn mcp_server(
     search: &Arc<dyn Search>,
     embedding_provider: &Arc<dyn EmbeddingProvider>,
     bus: &Arc<dyn EventBus>,
+    usage_meters: &Arc<maidan_store::usage_meters::UsageMeterBuffer>,
 ) -> McpServer {
     McpServer::new(
         store.clone(),
@@ -285,6 +296,7 @@ fn mcp_server(
         embedding_provider.clone(),
     )
     .with_event_bus(bus.clone())
+    .with_usage_meters(usage_meters.clone())
     .with_server_version(crate::version())
 }
 
@@ -303,12 +315,14 @@ impl AppState {
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         let presence = Arc::new(PresenceHub::default());
+        let usage_meters = Arc::new(maidan_store::usage_meters::UsageMeterBuffer::new());
         let mcp = Arc::new(mcp_server(
             &store,
             &artifacts,
             &search,
             &embedding_provider,
             &bus,
+            &usage_meters,
         ));
         mcp.attach_presence_reader(presence.clone());
         let slash = SlashRuntime::new(None);
@@ -378,6 +392,7 @@ impl AppState {
             slack_sender: None,
             linear_sender: None,
             github: None,
+            deploy_hook: None,
             github_sender: None,
             mark_ready_app_id: None,
             mark_ready_bases: maidan_types::MarkReadyBases::default(),
@@ -390,6 +405,8 @@ impl AppState {
             export_verify_keys: Vec::new(),
             land_gate_advisor: None,
             retry_budget: Arc::new(crate::retry_budget::RetryBudget::new()),
+            usage_meters,
+            usage_allowance: Arc::default(),
         }
     }
 
@@ -469,6 +486,12 @@ impl AppState {
         self.github = Some(cfg);
     }
 
+    /// Wire the deploy hook. Called by the server binary when
+    /// `MAIDAN_DEPLOY_HOOK_SECRET` is set; tests attach one directly.
+    pub fn attach_deploy_hook(&mut self, cfg: Arc<crate::deploy_ingest::DeployHookConfig>) {
+        self.deploy_hook = Some(cfg);
+    }
+
     /// Wire the GitHub egress sender. Called by the server binary when
     /// `MAIDAN_GITHUB_TOKEN` is set; tests inject a mock. `None` disables
     /// egress.
@@ -495,6 +518,7 @@ impl AppState {
                 &self.search,
                 &self.embedding_provider,
                 &self.bus,
+                &self.usage_meters,
             )
             .with_resource_notifier(notifier),
         );

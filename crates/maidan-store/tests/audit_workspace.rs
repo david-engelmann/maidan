@@ -385,9 +385,101 @@ async fn the_backfill_derives_each_rows_workspace_from_what_it_references(db: &D
     }
 }
 
+/// An audited write whose audit row names another workspace, or none, is
+/// refused, and the change rolls back with it: the guard checks the scope
+/// against what the write changed, whether the method takes the workspace
+/// (a slot capacity) or the store resolves it (a member's freeze).
+async fn a_mismatched_scope_is_refused(db: &Db) {
+    let store = db.store();
+    let a = tenant(store.as_ref(), "scope-a").await;
+    let b = tenant(store.as_ref(), "scope-b").await;
+    let (a_ws, b_ws) = (a.workspace_id, b.workspace_id);
+    let before = (
+        ids_in_view(store.as_ref(), a_ws).await,
+        ids_in_view(store.as_ref(), b_ws).await,
+    );
+
+    for wrong in [AuditScope::Workspace(b_ws), AuditScope::Instance] {
+        let refused = store
+            .set_slot_capacity_audited(
+                a_ws,
+                "deploy",
+                2,
+                a.id,
+                actorless(wrong, "slot.capacity", "slot"),
+            )
+            .await;
+        assert!(
+            matches!(refused, Err(StoreError::InvalidInput(_))),
+            "{wrong:?}: {refused:?}"
+        );
+        let refused = store
+            .freeze_member_audited(
+                a.id,
+                a.id,
+                None,
+                Box::new(move |_| actorless(wrong, "member.freeze", "member")),
+            )
+            .await;
+        assert!(
+            matches!(refused, Err(StoreError::InvalidInput(_))),
+            "{wrong:?}: {refused:?}"
+        );
+    }
+    assert!(
+        store
+            .get_member_freeze(a.id)
+            .await
+            .expect("freeze")
+            .is_none(),
+        "rolled back"
+    );
+    assert!(
+        store
+            .list_slots(a_ws)
+            .await
+            .expect("slots")
+            .iter()
+            .all(|s| s.capacity.is_none()),
+        "rolled back"
+    );
+    let after = (
+        ids_in_view(store.as_ref(), a_ws).await,
+        ids_in_view(store.as_ref(), b_ws).await,
+    );
+    assert_eq!(after, before, "no row written to either workspace");
+
+    let right = AuditScope::Workspace(a_ws);
+    store
+        .set_slot_capacity_audited(
+            a_ws,
+            "deploy",
+            2,
+            a.id,
+            actorless(right, "slot.capacity", "slot"),
+        )
+        .await
+        .expect("matching scope");
+    store
+        .freeze_member_audited(
+            a.id,
+            a.id,
+            None,
+            Box::new(move |_| actorless(right, "member.freeze", "member")),
+        )
+        .await
+        .expect("matching scope");
+    assert_eq!(
+        ids_in_view(store.as_ref(), a_ws).await.len(),
+        before.0.len() + 2
+    );
+    assert_eq!(ids_in_view(store.as_ref(), b_ws).await, before.1);
+}
+
 async fn run_suite(db: Db) {
     a_hold_keeps_only_its_own_workspaces_audit(&db).await;
     the_backfill_derives_each_rows_workspace_from_what_it_references(&db).await;
+    a_mismatched_scope_is_refused(&db).await;
 }
 
 #[tokio::test]

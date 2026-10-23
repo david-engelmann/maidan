@@ -37,6 +37,12 @@ pub async fn load_session(
         let _ = state.store.delete_expired_session(session.id).await;
         return Err(ApiError::Unauthorized);
     }
+    // Kept, not ended: lifting the suspension restores the session.
+    match maidan_auth::ensure_workspace_active(state.store.as_ref(), session.workspace_id).await {
+        Ok(()) => {}
+        Err(AuthError::Forbidden(reason)) => return Err(ApiError::Forbidden(reason)),
+        Err(_) => return Err(ApiError::Unauthorized),
+    }
     match state.store.get_scim_user(session.member_id).await {
         Ok(Some(user)) if !user.active => {
             let _ = state

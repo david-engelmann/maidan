@@ -84,10 +84,10 @@ pub fn resolve_webhook_secret(
     subscription_id: WebhookSubscriptionId,
     secret_ciphertext: &str,
 ) -> Option<String> {
-    if let Ok(guard) = runtime.secrets.read() {
-        if let Some(secret) = guard.get(&subscription_id) {
-            return Some(secret.clone());
-        }
+    if let Ok(guard) = runtime.secrets.read()
+        && let Some(secret) = guard.get(&subscription_id)
+    {
+        return Some(secret.clone());
     }
     let key = runtime.encryption_key.as_deref()?;
     let secret = decrypt_peer_secret_rotating(secret_ciphertext, key).ok()?;
@@ -378,7 +378,9 @@ mod timeout_tests {
     /// restarted. The delivery now fails within the egress timeout.
     #[tokio::test]
     async fn a_receiver_that_never_answers_fails_the_delivery_within_the_timeout() {
-        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+        // SAFETY: test setup. Maidan reads this variable only through std,
+        // whose environment lock serializes the read with this write.
+        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let held = tokio::spawn(async move {

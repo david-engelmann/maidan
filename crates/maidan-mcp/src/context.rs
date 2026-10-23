@@ -188,6 +188,7 @@ pub async fn get_workspace_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use maidan_store::test_support::SetResultClaiming;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
@@ -714,7 +715,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(parent.id, member.id, &json!({"decision": "approved"}))
+            .set_thread_result_claiming(parent.id, member.id, &json!({"decision": "approved"}))
             .await
             .unwrap();
         let child = store
@@ -822,7 +823,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(opaque.id, member.id, &json!({"decision": "use postgres"}))
+            .set_thread_result_claiming(opaque.id, member.id, &json!({"decision": "use postgres"}))
             .await
             .unwrap();
         close(store.as_ref(), opaque.id, member.id).await;
@@ -838,7 +839,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(
+            .set_thread_result_claiming(
                 failed.id,
                 member.id,
                 &json!({
@@ -863,7 +864,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(
+            .set_thread_result_claiming(
                 reviewed.id,
                 member.id,
                 &json!({
@@ -950,7 +951,7 @@ mod tests {
             .await
             .unwrap();
         store
-            .set_thread_result(
+            .set_thread_result_claiming(
                 dm_closed.thread_id,
                 member.id,
                 &json!({"decision": "secret"}),

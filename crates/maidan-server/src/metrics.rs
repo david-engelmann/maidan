@@ -147,6 +147,10 @@ pub fn init() {
             "Internal bus consumers that resumed from the event log after BusItem::Lagged"
         );
         describe_gauge!(
+            "maidan_content_keys_refused",
+            "Content key rows the last rewrap pass left because the key custody refused them (0 when none)"
+        );
+        describe_gauge!(
             "maidan_indexer_last_event_age_seconds",
             "Seconds since the background indexer last made progress (0 if never); an idle instance ages here, so alert on maidan_indexer_pending_age_seconds"
         );
@@ -165,6 +169,10 @@ pub fn init() {
         describe_counter!(
             "maidan_bus_notify_hydrate_total",
             "Postgres NOTIFY pointer hydrations by outcome"
+        );
+        describe_gauge!(
+            "maidan_threads_stalled",
+            "Threads held on a live lease whose holder has shown no progress for MAIDAN_STALL_SECS: a claim that only renews"
         );
         describe_gauge!(
             "maidan_outbox_pending",
@@ -364,7 +372,8 @@ pub fn record_email_delivered(outcome: &str) {
 }
 
 /// Web Push delivery outcomes: `sent` / `failed` / `pruned` (subscription gone)
-/// / `skipped_present` (member has a live WS).
+/// / `skipped_present` (member has a live WS) / `skipped_suspended` (the
+/// member's workspace is suspended).
 pub fn record_web_push_delivered(outcome: &str) {
     counter!("maidan_web_push_delivered_total", "outcome" => outcome.to_string()).increment(1);
 }
@@ -601,6 +610,29 @@ async fn refresh_runtime_gauges(state: &AppState) {
     }
     if let Ok(dead) = state.store.count_dead_mail().await {
         gauge!("maidan_mail_dead").set(dead as f64);
+    }
+
+    // A claim that only renews: the board marks such a thread stalled at
+    // read time, and this is the same test counted, so it can page. With
+    // detection off the gauge reads 0.
+    let now = chrono::Utc::now();
+    let stalled = match state
+        .stall_threshold
+        .and_then(|threshold| chrono::Duration::from_std(threshold).ok())
+        .and_then(|threshold| now.checked_sub_signed(threshold))
+    {
+        Some(progress_before) => state
+            .store
+            .count_stalled_threads(now, progress_before)
+            .await
+            .inspect_err(|err| {
+                tracing::warn!(error = %err, "metrics: stalled-thread count failed; gauge left as it was");
+            })
+            .ok(),
+        None => Some(0),
+    };
+    if let Some(stalled) = stalled {
+        gauge!("maidan_threads_stalled").set(stalled as f64);
     }
 }
 

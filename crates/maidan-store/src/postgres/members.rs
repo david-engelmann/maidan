@@ -94,7 +94,7 @@ pub async fn create_agent_with_token(
         },
     )
     .await?;
-    super::audit::append_on(&mut tx, member_audit(&member))
+    super::audit::append_scoped(&mut tx, member.workspace_id, member_audit(&member))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     let token = super::tokens::create_on(
@@ -110,7 +110,7 @@ pub async fn create_agent_with_token(
         },
     )
     .await?;
-    super::audit::append_on(&mut tx, token_audit(&token))
+    super::audit::append_scoped(&mut tx, token.workspace_id, token_audit(&token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     tx.commit().await?;
@@ -202,10 +202,10 @@ pub(crate) async fn rename_on(
 }
 
 fn map_member_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict("handle already exists in workspace".into());
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict("handle already exists in workspace".into());
     }
     StoreError::Database(err)
 }
@@ -218,7 +218,7 @@ fn row_to_member(row: &sqlx::postgres::PgRow) -> Result<Member, StoreError> {
         other => {
             return Err(StoreError::InvalidInput(format!(
                 "unknown member kind: {other}"
-            )))
+            )));
         }
     };
     Ok(Member {

@@ -81,7 +81,7 @@ pub(super) fn prepare(
         Some(_) => {
             return Err(A2aError::invalid_params(
                 "authentication.scheme is required",
-            ))
+            ));
         }
         None => (None, None),
     };
@@ -452,7 +452,9 @@ mod tests {
 
     #[tokio::test]
     async fn a2a_push_retries_then_succeeds_with_credentials() {
-        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+        // SAFETY: test setup. Maidan reads this variable only through std,
+        // whose environment lock serializes the read with this write.
+        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
         let (url, hits, seen) = push_server(2).await;
         let headers = PushHeaders {
             authorization: Some("Bearer s3cret".into()),
@@ -471,7 +473,9 @@ mod tests {
 
     #[tokio::test]
     async fn a2a_push_gives_up_after_max_attempts() {
-        std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1");
+        // SAFETY: test setup. Maidan reads this variable only through std,
+        // whose environment lock serializes the read with this write.
+        unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
         let (url, hits, seen) = push_server(u32::MAX).await;
         deliver_a2a_push(
             &url,

@@ -30,12 +30,12 @@ pub async fn create_task_schedule(
     if body.title.trim().is_empty() {
         return Err(ApiError::BadRequest("title must not be empty".into()));
     }
-    if let Some(secs) = body.interval_secs {
-        if secs <= 0 {
-            return Err(ApiError::BadRequest(
-                "interval_secs must be positive (omit for a one-shot)".into(),
-            ));
-        }
+    if let Some(secs) = body.interval_secs
+        && secs <= 0
+    {
+        return Err(ApiError::BadRequest(
+            "interval_secs must be positive (omit for a one-shot)".into(),
+        ));
     }
 
     let channel_id = ChannelId(body.channel_id);

@@ -211,10 +211,10 @@ where
     let mut frames = Vec::new();
     let deadline = tokio::time::Instant::now() + window;
     while let Ok(Some(Ok(msg))) = tokio::time::timeout_at(deadline, ws.next()).await {
-        if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {
-            if let Ok(frame) = serde_json::from_str(&text) {
-                frames.push(frame);
-            }
+        if let tokio_tungstenite::tungstenite::Message::Text(text) = msg
+            && let Ok(frame) = serde_json::from_str(&text)
+        {
+            frames.push(frame);
         }
     }
     frames

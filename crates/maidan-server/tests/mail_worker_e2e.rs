@@ -122,3 +122,38 @@ async fn worker_reschedules_on_failure_instead_of_dropping() {
         "a single failure never dead-letters"
     );
 }
+
+/// A sent mail counts as a delivery for its workspace; a tenant-less one
+/// counts for nobody.
+#[tokio::test]
+async fn a_sent_mail_is_metered_for_its_workspace() {
+    let mailer = Arc::new(CountingMailer {
+        attempts: AtomicUsize::new(0),
+        fail: false,
+        sent: Mutex::new(Vec::new()),
+    });
+    let (state, store) = state_with(mailer.clone()).await;
+    let ws = store
+        .create_workspace(maidan_types::NewWorkspace { name: "w".into() })
+        .await
+        .unwrap()
+        .id;
+    store
+        .enqueue_mail(NewMailOutbox {
+            workspace_id: Some(ws),
+            ..queued("a@example.com")
+        })
+        .await
+        .unwrap();
+    store.enqueue_mail(queued("ops@example.com")).await.unwrap();
+
+    assert_eq!(mail_worker::sweep_once(&state).await.sent, 2);
+    let deliveries: Vec<_> = state
+        .usage_meters
+        .take()
+        .into_iter()
+        .filter(|row| row.meter == maidan_types::UsageMeter::Deliveries)
+        .map(|row| (row.workspace_id, row.quantity))
+        .collect();
+    assert_eq!(deliveries, vec![(ws, 1)]);
+}

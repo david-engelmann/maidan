@@ -127,12 +127,12 @@ pub async fn authorize(
         Some(_) => {
             return Err(ApiError::BadRequest(format!(
                 "invalid_target: this server issues tokens only for the resource {expected}"
-            )))
+            )));
         }
         None => {
             return Err(ApiError::BadRequest(format!(
                 "invalid_target: resource is required and must be {expected}"
-            )))
+            )));
         }
     }
 

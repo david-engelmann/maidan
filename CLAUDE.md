@@ -61,7 +61,7 @@ change.
   Slack-shaped surface (workspaces, channels, threads, messages) with a task
   queue, reviews, approval gates and a hash-chained event log, backed by
   Postgres or SQLite and content-addressed artifacts. The name is load-bearing.
-- **Rust 2021**, toolchain pinned in `rust-toolchain.toml` (1.99).
+- **Rust 2024**, toolchain pinned in `rust-toolchain.toml` (1.99).
   Workspace with 15 member crates.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
@@ -77,8 +77,8 @@ change.
 
 ## Current state (2026-10-12)
 
-- **Releases:** latest **`v414.0.0`** (2026-10-21), the swarm
-  release. Release tags are cut when the maintainer chooses, not per
+- **Releases:** latest **`v415.0.0`** (2026-10-22), the swarm at
+  scale. Release tags are cut when the maintainer chooses, not per
   cluster, so some clusters were never tagged (v23–26, v78–100, v311, v350–401,
   v403, v411); their work ships in the next tag. Tagging is the maintainer's
   call.
@@ -279,10 +279,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Repo gotchas
 
-- **A new migration is not picked up on its own.** Register it as an
-  `include_str!` constant plus an `apply_postgres`/`apply_sqlite` call in
-  `crates/maidan-store/src/migrate.rs`, for both backends
-  (`tests/migration_register.rs` checks). `schema_parity` then checks both
+- **A new migration is a new file.** `crates/maidan-store/build.rs` registers
+  every `migrations/{postgres,sqlite}/NNNN_<slug>.sql` by its version; add the
+  file on both backends and nothing else. `schema_parity` then checks both
   backends build the same tables, columns, keys and foreign keys.
 - **A module for one backend only** goes in `POSTGRES_ONLY_MODULES` or
   `SQLITE_ONLY_MODULES` in `crates/maidan-store/tests/backend_parity.rs`.

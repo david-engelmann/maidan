@@ -516,17 +516,33 @@ async fn boot_refuses_signup_beside_auto_provisioning() {
     .iter()
     .map(|k| (*k, std::env::var(k).ok()))
     .collect();
-    std::env::set_var("MAIDAN_OIDC_ENABLED", "1");
-    std::env::set_var("MAIDAN_SESSION_SECRET", "x");
-    std::env::set_var("MAIDAN_OIDC_ISSUER", "https://idp.example");
-    std::env::set_var("MAIDAN_OIDC_REDIRECT_URI", "http://127.0.0.1/callback");
-    std::env::set_var("MAIDAN_SIGNUP", "1");
-    std::env::set_var("MAIDAN_OIDC_AUTO_PROVISION", "1");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_OIDC_ENABLED", "1") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_SESSION_SECRET", "x") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_OIDC_ISSUER", "https://idp.example") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_OIDC_REDIRECT_URI", "http://127.0.0.1/callback") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_SIGNUP", "1") };
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_OIDC_AUTO_PROVISION", "1") };
     let refused = OidcSettings::from_env();
     for (k, v) in saved {
         match v {
-            Some(v) => std::env::set_var(k, v),
-            None => std::env::remove_var(k),
+            // SAFETY: test setup. Maidan reads this variable only through std,
+            // whose environment lock serializes the read with this write.
+            Some(v) => unsafe { std::env::set_var(k, v) },
+            // SAFETY: test setup. Maidan reads this variable only through std,
+            // whose environment lock serializes the read with this write.
+            None => unsafe { std::env::remove_var(k) },
         }
     }
     match refused {

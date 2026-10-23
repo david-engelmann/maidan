@@ -80,7 +80,7 @@ pub async fn claim_next_due(
              updated_at = now()
          FROM due
          WHERE m.id = due.id
-         RETURNING m.id, m.to_address, m.subject, m.body, m.attempts",
+         RETURNING m.id, m.workspace_id, m.to_address, m.subject, m.body, m.attempts",
     )
     .bind(now)
     .bind(lease_secs as f64)
@@ -232,6 +232,9 @@ fn row_to_dead(row: &sqlx::postgres::PgRow) -> DeadMail {
 fn row_to_mail(row: &sqlx::postgres::PgRow) -> MailOutbox {
     MailOutbox {
         id: MailOutboxId(row.get("id")),
+        workspace_id: row
+            .get::<Option<uuid::Uuid>, _>("workspace_id")
+            .map(WorkspaceId),
         to_address: row.get("to_address"),
         subject: row.get("subject"),
         body: row.get("body"),

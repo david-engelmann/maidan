@@ -89,6 +89,76 @@ Federation peer secrets and the secret store share the `FEDERATION_ENCRYPTION_KE
 keyring; rotate with `FEDERATION_DECRYPT_KEYS`. See
 [Production.md](Production.md) for the full config surface.
 
+## Suspending a workspace
+
+The hosted service's abuse control. An operator (a token with
+`operator:global`, which provisioned tenants never hold) suspends a workspace
+with a reason:
+
+```sh
+curl -X PUT "$MAIDAN/operator/workspaces/$WS/suspension" \
+  -H "authorization: Bearer $OPERATOR_TOKEN" -H 'content-type: application/json' \
+  -d '{"reason": "abuse report 17"}'
+curl "$MAIDAN/operator/workspaces/$WS/suspension" -H "authorization: Bearer $OPERATOR_TOKEN"
+curl -X DELETE "$MAIDAN/operator/workspaces/$WS/suspension" -H "authorization: Bearer $OPERATOR_TOKEN"
+```
+
+While it stands:
+- every token and browser session of the workspace gets a 403 `workspace
+  suspended`, on REST, MCP, WebSocket, SSE and A2A, and an open stream ends at
+  its next credential re-check;
+- the change sweep, Linear notices and the scheduler skip it, and the egress,
+  mail and web push workers defer its deliveries, so nothing leaves on its
+  behalf;
+- its data, tokens and sessions are kept. The instance's own signed
+  ingresses (GitHub webhooks, deploy events) still write into its threads,
+  since that keeps its record whole; nothing it sends goes out.
+
+Lifting restores access at once. Deferred deliveries go out at their next
+attempt, within five minutes. A scheduled run missed while suspended is not
+replayed. Both acts are in the workspace's audit log (`workspace.suspend`,
+`workspace.suspension_lift`), attributed to the operator. An operator cannot
+suspend its own workspace, since that would lock out the credential that lifts it.
+
+## Usage meters
+
+Each workspace's usage is counted in memory and written to
+`maidan_usage_meters`, one row per workspace, UTC day and meter: `requests`
+(authenticated HTTP requests), `mcp_calls` (MCP tool calls),
+`embedding_calls` (messages queued for embedding and semantic search
+queries), `deliveries` (egress, email and web push sent) and `wasi_ms` (WASI handler
+run time). `stored_bytes` is a gauge, not a count: once a UTC day the loop
+measures the bytes of each workspace's artifacts and live message bodies,
+up to 25 workspaces a tick, and that day's row is the measurement. The `usage_meters` loop flushes them every
+`MAIDAN_USAGE_METER_FLUSH_SECS` (default 60) and once more when the server
+shuts down. A failed flush keeps its counts for the next one, but a crash
+between flushes loses at most one interval's counts: the meters inform the
+free allowance, they do not bill. Health probes and `/metrics` are not
+metered. The loop is watched like the others (`usage_meters` in the loop
+liveness metrics).
+
+### The free allowance
+
+`MAIDAN_FREE_ALLOWANCE` sets the instance's free allowance per meter, for
+example `requests=100000,mcp_calls=50000,stored_bytes=1073741824`. A
+counter's allowance is per UTC month. `stored_bytes`' is a ceiling on its
+latest measurement. A meter not named has no allowance. The value is parsed
+at boot, and an unknown meter, a repeated one or a bad number refuses to
+start, naming it.
+
+After each flush, the `usage_meters` loop checks the workspaces it touched.
+A workspace past an allowance is marked once per meter and month
+(`maidan_usage_over_allowance`). In the same transaction it records a
+`usage_over_allowance` event and notifies each of its admins (members with a
+live `token:admin` token). Nothing is cut off or billed.
+
+- `GET /workspaces/{id}/usage-meters?month=YYYY-MM` (`workspace:read`, the
+  caller's own workspace) gives the month per meter: the quantity, the
+  allowance, and whether it is over. The board shows it at the top of the
+  Swarm tab.
+- `GET /operator/usage-meters?month=YYYY-MM` (`operator:global`) gives the
+  same for every workspace that used anything that month.
+
 ## Load & soak testing
 
 `scripts/loadgen.sh` drives concurrent REST traffic (post message / read thread

@@ -588,14 +588,14 @@ impl PresenceHub {
         }
         inner.remote.retain(|_, members| !members.is_empty());
         for (ws, mid, status) in changed {
-            if let Some(room) = inner.workspaces.get(&ws) {
-                if !room.members.contains_key(&mid) {
-                    let frame = match status {
-                        Some(status) => presence_payload(ws, mid, status),
-                        None => offline_payload(ws, mid),
-                    };
-                    let _ = room.tx.send(frame);
-                }
+            if let Some(room) = inner.workspaces.get(&ws)
+                && !room.members.contains_key(&mid)
+            {
+                let frame = match status {
+                    Some(status) => presence_payload(ws, mid, status),
+                    None => offline_payload(ws, mid),
+                };
+                let _ = room.tx.send(frame);
             }
         }
     }
@@ -868,7 +868,7 @@ mod tests {
             loop {
                 match rx_b.recv().await {
                     Ok(frame) if frame.contains(&needle) && frame.contains("presence") => {
-                        break true
+                        break true;
                     }
                     Ok(_) => continue,
                     Err(_) => break false,

@@ -420,11 +420,16 @@ jobs:
       # The workspace's test binaries reach about 83G here, which left 871M of
       # the runner's disk. MinIO refuses writes below its free-drive floor, so
       # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
-      # coverage job, which frees this space first, passed them.
+      # coverage job, which frees this space first, passed them. The AWS KMS
+      # client (#1534) grew them past the 8G floor again on 2026-10-23, so the
+      # unused toolchains below go too.
       - name: free disk space
         run: |
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
+            /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
           docker system prune -af --volumes >/dev/null
           df -h /
       - name: install rust
@@ -451,6 +456,16 @@ jobs:
             echo "::error::under ${floor_gib}G free after the test build; MinIO and Postgres need room to write"
             exit 1
           fi
+      - name: fetch the TypeScript the board checks pin
+        # ui_js_checks runs it with --prefer-offline, so the registry is hit
+        # here, with retries, and not inside a test's timeout.
+        timeout-minutes: 5
+        run: |
+          for i in 1 2 3; do
+            npm exec --yes --package typescript@5.9.3 -- tsc --version && exit 0
+            sleep 10
+          done
+          exit 1
       - name: integration tests
         if: needs.changes.outputs.code == 'true'
         run: cargo nextest run --workspace --tests --profile ci
@@ -575,7 +590,10 @@ jobs:
       - name: free disk space
         run: |
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
+            /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
           docker system prune -af --volumes >/dev/null
           df -h /
       - name: install rust
@@ -596,6 +614,16 @@ jobs:
         # all uncovered, which pulled maidan-store from 88.5% to 81.4% on a
         # stale cache.
         run: cargo llvm-cov clean --workspace
+      - name: fetch the TypeScript the board checks pin
+        # ui_js_checks runs it with --prefer-offline, so the registry is hit
+        # here, with retries, and not inside a test's timeout.
+        timeout-minutes: 5
+        run: |
+          for i in 1 2 3; do
+            npm exec --yes --package typescript@5.9.3 -- tsc --version && exit 0
+            sleep 10
+          done
+          exit 1
       - name: run instrumented test suite
         run: cargo llvm-cov nextest --workspace --profile ci --no-report
       - name: lcov + html
@@ -653,8 +681,8 @@ jobs:
           # (the full two-language lease demo is verified locally via scripts/lease-demo.sh).
           bash -n scripts/lease-demo.sh
           node --check examples/lease_demo/claim.mjs
-          python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py examples/claude-code/maidan-claimant/change_result.py scripts/eval-land-gate-advisor.py
-          python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; print('mcp configs valid')"
+          python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py examples/claude-code/maidan-claimant/change_result.py examples/openrouter/claimant.py scripts/eval-land-gate-advisor.py
+          python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; import tomllib; tomllib.load(open('examples/codex/config.toml','rb')); print('mcp configs valid')"
       - name: build images
         run: |
           docker build \

@@ -78,6 +78,7 @@ pub async fn claim_pending(
     .bind(lease_secs as f64)
     .fetch_all(pool)
     .await?;
+    crate::postgres::events::open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| {
             Ok(OutboxRow {
@@ -122,6 +123,7 @@ pub async fn list_pending(
     .bind(limit)
     .fetch_all(pool)
     .await?;
+    crate::postgres::events::open_rows(Some(keys), &rows).await?;
     rows.iter()
         .map(|row| {
             Ok(OutboxRow {

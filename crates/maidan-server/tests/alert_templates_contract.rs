@@ -37,6 +37,8 @@ fn prometheus_slo_rules_reference_exported_metrics() {
         // A handler panic and a shed request.
         "maidan_http_panics_total",
         "maidan_http_shed_total",
+        // A claim that only renews.
+        "maidan_threads_stalled",
     ];
     for metric in expected {
         assert!(

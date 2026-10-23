@@ -279,10 +279,10 @@ async fn run(ops: Vec<Op>) {
                 .execute(&w.pool)
                 .await
                 .unwrap();
-                if let Some(h) = model.holders.get_mut(&thread) {
-                    if h.leased {
-                        h.expired = true;
-                    }
+                if let Some(h) = model.holders.get_mut(&thread)
+                    && h.leased
+                {
+                    h.expired = true;
                 }
             }
         }

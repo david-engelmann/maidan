@@ -36,18 +36,17 @@ async fn flush_delivery_cursor(
     writer: Option<(&str, maidan_types::WorkspaceId)>,
     pending: &mut Option<i64>,
 ) {
-    if let (Some((consumer_id, workspace_id)), Some(log_id)) = (writer, pending.take()) {
-        if let Err(err) = store
+    if let (Some((consumer_id, workspace_id)), Some(log_id)) = (writer, pending.take())
+        && let Err(err) = store
             .advance_delivery_cursor(consumer_id, workspace_id, log_id)
             .await
-        {
-            tracing::warn!(
-                error = %err,
-                consumer_id,
-                log_id,
-                "delivery cursor advance failed"
-            );
-        }
+    {
+        tracing::warn!(
+            error = %err,
+            consumer_id,
+            log_id,
+            "delivery cursor advance failed"
+        );
     }
 }
 
@@ -202,23 +201,22 @@ pub async fn replay_matching_events(
     }
     // Coalesce the per-row cursor writes into one advance to the batch
     // high-water — monotonic, so this is equivalent to the per-row writes.
-    if high_water > after_id {
-        if let (Some(consumer_id), Some(workspace_id)) = (delivery_consumer_id, filter.workspace_id)
+    if high_water > after_id
+        && let (Some(consumer_id), Some(workspace_id)) = (delivery_consumer_id, filter.workspace_id)
+    {
+        // Best-effort: a failed advance is safe for correctness (a stuck
+        // cursor re-delivers, never skips — at-least-once holds) but must
+        // be observable rather than silently discarded. Not fatal — the
+        // reconcile path advances authoritatively.
+        if let Err(err) = store
+            .advance_delivery_cursor(consumer_id, workspace_id, high_water)
+            .await
         {
-            // Best-effort: a failed advance is safe for correctness (a stuck
-            // cursor re-delivers, never skips — at-least-once holds) but must
-            // be observable rather than silently discarded. Not fatal — the
-            // reconcile path advances authoritatively.
-            if let Err(err) = store
-                .advance_delivery_cursor(consumer_id, workspace_id, high_water)
-                .await
-            {
-                tracing::warn!(
-                    error = %err,
-                    %consumer_id,
-                    "replay: delivery-cursor advance failed (re-delivery on next replay)"
-                );
-            }
+            tracing::warn!(
+                error = %err,
+                %consumer_id,
+                "replay: delivery-cursor advance failed (re-delivery on next replay)"
+            );
         }
     }
     Ok(ReplayOutcome {

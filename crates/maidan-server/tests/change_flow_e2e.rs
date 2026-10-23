@@ -10,6 +10,7 @@
 // The fake GitHub is a plain axum server, not the API (see clippy.toml).
 #![allow(clippy::disallowed_methods)]
 
+use maidan_store::test_support::SetResultClaiming;
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
@@ -89,6 +90,12 @@ struct Fake {
     /// Fail `POST /pulls` with a body that echoes the token, as a careless
     /// proxy might.
     fail_pulls: bool,
+    /// Answer this many `POST /pulls` with a 422, as GitHub can for a branch
+    /// it created a moment ago and has not indexed yet.
+    pulls_unprocessable: u32,
+    /// Answer this many fast-forward `PATCH /git/refs` with a 422 and leave
+    /// the ref where it was, as GitHub can for a ref it just created.
+    refs_unprocessable: u32,
     /// What `compare` reports a delivered base behind by; 2 when unset.
     behind: Option<i64>,
     /// Every `force: true` ref move, as `(branch, from, to)`.
@@ -170,7 +177,8 @@ impl Fake {
     fn writes(&self) -> Vec<&String> {
         self.requests
             .iter()
-            .filter(|r| !r.starts_with("GET "))
+            // A GraphQL query is a read, though it is a POST.
+            .filter(|r| !r.starts_with("GET ") && r.as_str() != "POST /graphql")
             .collect()
     }
 }
@@ -230,6 +238,13 @@ async fn github(
             let Some(current) = fake.refs.get(name).cloned() else {
                 return not_found();
             };
+            if body["force"] != json!(true) && fake.refs_unprocessable > 0 {
+                fake.refs_unprocessable -= 1;
+                return reply(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    json!({"message": "Reference cannot be updated"}),
+                );
+            }
             if body["force"] == json!(true) {
                 assert!(
                     name.starts_with("feature/agent-"),
@@ -451,6 +466,20 @@ async fn github(
                 None => not_found(),
             }
         }
+        ("DELETE", r) if r.starts_with("issues/") && r.contains("/labels/") => {
+            let rest = &r["issues/".len()..];
+            let (number, label) = rest.split_once("/labels/").unwrap();
+            let number: i64 = number.parse().unwrap();
+            let Some(pull) = fake.pulls.iter_mut().find(|p| p.number == number) else {
+                return not_found();
+            };
+            let before = pull.labels.len();
+            pull.labels.retain(|l| l != label);
+            if pull.labels.len() == before {
+                return not_found();
+            }
+            reply(StatusCode::OK, json!([]))
+        }
         ("POST", r) if r.starts_with("issues/") && r.ends_with("/comments") => {
             if fake.fail_comments {
                 return reply(
@@ -464,6 +493,13 @@ async fn github(
             fake.pull_comments
                 .push((number, body["body"].as_str().unwrap().into()));
             reply(StatusCode::CREATED, json!({"id": 1}))
+        }
+        ("POST", "pulls") if fake.pulls_unprocessable > 0 => {
+            fake.pulls_unprocessable -= 1;
+            reply(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                json!({"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]}),
+            )
         }
         ("POST", "pulls") if fake.fail_pulls => reply(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -857,7 +893,7 @@ impl Harness {
 
     async fn route(&self, t: &Tenant, result: &Value, log_id: i64) {
         self.store
-            .set_thread_result(t.thread_id, t.member_id, result)
+            .set_thread_result_claiming(t.thread_id, t.member_id, result)
             .await
             .unwrap();
         notification_router::route_event(
@@ -1624,6 +1660,100 @@ async fn a_rename_sent_as_a_delete_plus_an_add_moves_the_file() {
     assert_eq!(fake.file(head, "src/greeting.txt"), None);
     assert_eq!(fake.file(head, "src/hello.txt").as_deref(), Some(GREETING));
     assert_eq!(fake.file(head, "README.md").as_deref(), Some("readme\n"));
+}
+
+#[tokio::test]
+async fn a_pull_request_github_refuses_once_after_the_commit_is_opened_on_the_retry() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake.lock().unwrap().pulls_unprocessable = 1;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["deliver_to"] = json!([
+        {"surface": "github_branch", "repo": REPO, "branch": BRANCH, "base": "dev"},
+    ]);
+    h.route(&h.a, &result, 1).await;
+    let first = egress_worker::sweep_once(&h.state).await;
+    assert_eq!(
+        first.retried, 1,
+        "a 422 with no open pull request is retried"
+    );
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::PENDING,
+        "not refused while the commit waits for its pull request: {row:?}"
+    );
+    // The retry, without waiting out the backoff.
+    maidan_store::replay_result_delivery(
+        h.store.as_ref(),
+        h.a.workspace_id,
+        h.a.thread_id,
+        row.id,
+        String::new(),
+    )
+    .await
+    .unwrap();
+    h.drain().await;
+
+    let head = {
+        let fake = h.fake.lock().unwrap();
+        assert_eq!(fake.pulls.len(), 1, "the retry opened the pull request");
+        let head = fake.refs[BRANCH].clone();
+        assert_eq!(
+            fake.commits
+                .values()
+                .filter(|c| c.message.contains("Maidan-Change: "))
+                .count(),
+            1,
+            "the retry reused its own commit"
+        );
+        head
+    };
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{row:?}");
+    assert!(row.external_ref.as_deref().unwrap_or("").starts_with(&head));
+}
+
+#[tokio::test]
+async fn a_branch_update_github_refuses_while_the_branch_has_not_moved_lands_on_the_retry() {
+    let h = harness().await;
+    h.allow_change().await;
+    h.fake.lock().unwrap().refs_unprocessable = 1;
+    let mut result = change("changed", &h.base_sha, BRANCH, DIFF);
+    result["deliver_to"] = json!([
+        {"surface": "github_branch", "repo": REPO, "branch": BRANCH, "base": "dev"},
+    ]);
+    h.route(&h.a, &result, 1).await;
+    let first = egress_worker::sweep_once(&h.state).await;
+    assert_eq!(first.retried, 1, "a 422 on an unmoved branch is retried");
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::PENDING,
+        "not refused while the branch is still at base_sha: {row:?}"
+    );
+    maidan_store::replay_result_delivery(
+        h.store.as_ref(),
+        h.a.workspace_id,
+        h.a.thread_id,
+        row.id,
+        String::new(),
+    )
+    .await
+    .unwrap();
+    h.drain().await;
+
+    {
+        let fake = h.fake.lock().unwrap();
+        assert_eq!(fake.pulls.len(), 1, "the retry opened the pull request");
+        let head = &fake.refs[BRANCH];
+        assert_eq!(
+            fake.file(head, "src/greeting.txt").as_deref(),
+            Some("line one\nhello, world\nline three\n")
+        );
+    }
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(row.status, status::DELIVERED, "{row:?}");
 }
 
 #[tokio::test]
@@ -2609,6 +2739,42 @@ async fn a_change_to_a_pull_request_in_the_merge_queue_is_refused_before_any_wri
 }
 
 #[tokio::test]
+async fn a_pull_request_the_queue_dropped_for_a_conflict_takes_the_next_round_and_can_be_enqueued_again(
+) {
+    let mut h = harness().await;
+    h.state.merge_queue_labels =
+        maidan_types::MergeQueueLabels::parse(&format!("{REPO}=ready-to-merge")).unwrap();
+    h.allow_change().await;
+    let first = change("changed", &h.base_sha, BRANCH, DIFF);
+    h.route(&h.a, &first, 1).await;
+    h.drain().await;
+    let number = {
+        // GitHub's queue took it, then dropped it for a conflict and left
+        // the label on, as it does.
+        let mut f = h.fake.lock().unwrap();
+        f.pulls[0].labels.push("ready-to-merge".into());
+        let number = f.pulls[0].number;
+        f.dequeued.insert(number, "MERGE_CONFLICT".into());
+        number
+    };
+
+    h.route(&h.a, &first, 2).await;
+    h.drain().await;
+    let row = h.delivery(&h.a, "github_branch").await;
+    assert_eq!(
+        row.status,
+        status::DELIVERED,
+        "the round after a conflict dequeue is not refused: {row:?}"
+    );
+    let f = h.fake.lock().unwrap();
+    let pull = f.pulls.iter().find(|p| p.number == number).unwrap();
+    assert!(
+        !pull.labels.iter().any(|l| l == "ready-to-merge"),
+        "the stale label came off, so the new head is not queued unreviewed and a later enqueue labels it again"
+    );
+}
+
+#[tokio::test]
 async fn each_delivered_round_counts_toward_the_swarm_metrics() {
     let h = harness().await;
     h.allow_change().await;
@@ -2971,7 +3137,7 @@ async fn a_merged_pull_request_closes_its_task_on_the_next_sweep() {
         .await
         .unwrap();
     h.store
-        .set_thread_result(h.b.thread_id, h.b.member_id, &json!({"summary": "theirs"}))
+        .set_thread_result_claiming(h.b.thread_id, h.b.member_id, &json!({"summary": "theirs"}))
         .await
         .unwrap();
     h.store

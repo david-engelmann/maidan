@@ -42,6 +42,23 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v415.0.0](https://github.com/david-engelmann/maidan/releases/tag/v415.0.0) — the swarm at scale: waiting claims, CI and deploy tracking, metering, suspension, Rust 1.99
+
+The first release since `v414.0.0`. It ships every PR merged after that tag, through #1538. `CHANGELOG.md` under `[415.0.0]` has every entry, folded from `changelog.d/` fragments.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Claiming** | A claim skips a thread whose result is already set unless a reviewer sent it back. A session waits on any named event (`wait_for_event`, which replays after a lagged bus). Task attributes ride on the MCP context pack and the claim answer. A thread is found from its Slack message or pull request | `crates/maidan-store/src/claim_next.rs`, `crates/maidan-mcp/` |
+| **The change flow** | Tracked pull requests are keyed by workspace, and only the workspace that delivered a head may rewrite it. A PR or branch update GitHub refuses right after the commit is retried rather than dropped. A dequeued change is enqueued again on its next head. A deploy pipeline tells a merged change's thread where it went (`MAIDAN_DEPLOY_HOOK_SECRET`, inert unset). A skipped or failed result delivery emits `result_delivery_failed` | `crates/maidan-server/src/change_flow.rs`, `crates/maidan-server/src/change_sweep.rs` |
+| **Plans** | A planner amends a submitted plan: cancel, add, replace or rewire children | `crates/maidan-server/src/routes/plan.rs` |
+| **Swarm metrics** | Provider and harness slices from usage evidence. Per task: claim to first delivery, first-delivery CI, review wait from the first green CI, sends back, claim lapses and skipped deliveries, with slice rollups and `?until=` | `crates/maidan-types/src/change_metrics.rs` |
+| **Hosted controls** | An operator suspends a workspace and lifts it: every credential, share ticket and stream is refused and its background work stops. Each workspace's requests and MCP calls are metered into a daily ledger | `crates/maidan-server/src/suspension.rs`, `crates/maidan-store/` |
+| **Operator alerts** | A hung tick, an exited loop, and a loop failing every tick alert; refused posts are retried; a host suspend is not a stall. `MAIDAN_OPS_FAULT` proves each alert on a running stack | `crates/maidan-server/src/ops_alert.rs` |
+| **Session claimants** | The Claude Code skill installs per user. Recipes for the Cursor CLI, Codex and any OpenRouter model. Leases sized to long gates, renewed in the background by a renewer that dies with its session | `examples/` |
+| **Toolchain and process** | Rust 1.99 and edition 2024. The AWS SDK without its legacy TLS stack, retiring seven advisory ignores. CHANGELOG entries are `changelog.d/` fragments, and `make regen` rebuilds every golden and catalog copy | `rust-toolchain.toml`, `changelog.d/`, `scripts/regen.sh` |
+
+The deploy pins move to `v415.0.0` in the PR that follows the tag.
+
 ## [v414.0.0](https://github.com/david-engelmann/maidan/releases/tag/v414.0.0) — the swarm: claims, the change flow, swarm metrics and operator alerts
 
 The first release since `v413.0.0`. It ships every PR merged after that tag,

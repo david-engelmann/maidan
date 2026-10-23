@@ -335,6 +335,8 @@ fn sample_event(kind: EventKind) -> Event {
             status: None,
             failing_jobs: Vec::new(),
             reasons: Vec::new(),
+            environment: None,
+            deploy_url: None,
         },
         EventKind::ThreadHandoff => Event::ThreadHandoff {
             occurred_at,
@@ -345,6 +347,16 @@ fn sample_event(kind: EventKind) -> Event {
             repo: "example/repo".into(),
             pr_number: 1,
             to_engine: maidan_types::TaskEngine::Session,
+        },
+        EventKind::ResultDeliveryFailed => Event::ResultDeliveryFailed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            surface: "slack".into(),
+            selector: "C0123ABCDEF".into(),
+            status: "skipped".into(),
+            last_error: Some("target not in the workspace egress allowlist".into()),
         },
         EventKind::ReviewSubmitted => Event::ReviewSubmitted {
             occurred_at,
@@ -405,6 +417,14 @@ fn sample_event(kind: EventKind) -> Event {
             workspace_id,
             member_id,
             unfrozen_by: maidan_types::MemberId(id(13)),
+        },
+        EventKind::UsageOverAllowance => Event::UsageOverAllowance {
+            occurred_at,
+            workspace_id,
+            meter: maidan_types::UsageMeter::Requests,
+            month: "2026-10".into(),
+            quantity: 100_001,
+            allowance: 100_000,
         },
         EventKind::MessagePosted => Event::MessagePosted {
             occurred_at,
@@ -552,6 +572,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadLanded
             | EventKind::ThreadNotice
             | EventKind::ThreadHandoff
+            | EventKind::ResultDeliveryFailed
             | EventKind::ReviewSubmitted
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped
@@ -559,6 +580,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ProjectorMisconfigured
             | EventKind::MemberFrozen
             | EventKind::MemberUnfrozen
+            | EventKind::UsageOverAllowance
             | EventKind::MessagePosted
             | EventKind::MessageEdited
             | EventKind::MessageTombstoned

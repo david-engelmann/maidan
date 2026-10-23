@@ -154,10 +154,10 @@ async fn wait_for_member_event(
         None => store.max_event_id().await?,
     };
 
-    if let Some(since) = since_log_id {
-        if let Some(event) = lookback_member_event(store, auth, member_id, &kinds, since).await? {
-            return Ok(content_json(&event));
-        }
+    if let Some(since) = since_log_id
+        && let Some(event) = lookback_member_event(store, auth, member_id, &kinds, since).await?
+    {
+        return Ok(content_json(&event));
     }
 
     let deadline = tokio::time::Instant::now() + Duration::from_millis(wait as u64);
@@ -183,12 +183,11 @@ async fn wait_for_member_event(
         cursor = cursor.max(envelope.log_id);
         // Addressed to this member, but if it lives in a thread the caller can't
         // access, don't reveal it — keep waiting.
-        if !auth.bypass {
-            if let Some(tid) = envelope.event.thread_id() {
-                if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                    continue;
-                }
-            }
+        if !auth.bypass
+            && let Some(tid) = envelope.event.thread_id()
+            && !maidan_auth::can_access_thread(store, auth, tid).await?
+        {
+            continue;
         }
         return Ok(content_json(&envelope.event));
     }
@@ -223,12 +222,11 @@ async fn lookback_member_event(
             if event.member_id() != Some(member_id) {
                 continue;
             }
-            if !auth.bypass {
-                if let Some(tid) = event.thread_id() {
-                    if !maidan_auth::can_access_thread(store, auth, tid).await? {
-                        continue;
-                    }
-                }
+            if !auth.bypass
+                && let Some(tid) = event.thread_id()
+                && !maidan_auth::can_access_thread(store, auth, tid).await?
+            {
+                continue;
             }
             return Ok(Some(event));
         }

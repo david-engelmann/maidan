@@ -172,7 +172,7 @@ fn request_from_value(value: serde_json::Value) -> Result<JsonRpcRequest, JsonRp
         Some(_) => {
             return Err(JsonRpcError::invalid_request(
                 "id must be a string or an integer",
-            ))
+            ));
         }
     }
     if !object

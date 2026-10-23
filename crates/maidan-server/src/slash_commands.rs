@@ -64,10 +64,10 @@ pub fn resolve_slash_secret(
     if secret_ciphertext.is_empty() {
         return None;
     }
-    if let Ok(guard) = runtime.secrets.read() {
-        if let Some(secret) = guard.get(&command_id) {
-            return Some(secret.clone());
-        }
+    if let Ok(guard) = runtime.secrets.read()
+        && let Some(secret) = guard.get(&command_id)
+    {
+        return Some(secret.clone());
     }
     let key = runtime.encryption_key.as_deref()?;
     let secret = decrypt_peer_secret_rotating(secret_ciphertext, key).ok()?;

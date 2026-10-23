@@ -206,7 +206,7 @@ pub async fn create_audited(
 ) -> Result<ShareTicket, StoreError> {
     let mut tx = pool.begin().await?;
     let ticket = create_on(&mut tx, new).await?;
-    super::audit::append_counted(&mut tx, audit(&ticket)).await?;
+    super::audit::append_scoped(&mut tx, ticket.workspace_id, audit(&ticket)).await?;
     tx.commit().await?;
     Ok(ticket)
 }
@@ -222,7 +222,7 @@ pub async fn revoke_audited(
     let mut tx = pool.begin().await?;
     let revoked = revoke_on(&mut tx, workspace_id, id).await?;
     if revoked {
-        super::audit::append_counted(&mut tx, audit).await?;
+        super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     }
     tx.commit().await?;
     Ok(revoked)

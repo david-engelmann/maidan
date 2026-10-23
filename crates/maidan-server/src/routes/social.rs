@@ -22,12 +22,12 @@ pub async fn cast_vote(
     // One message→thread→channel fetch authorizes (was resolve_message_chain +
     // ensure_workspace + ensure_thread_access).
     maidan_auth::ensure_message_access(state.store.as_ref(), &auth, MessageId(message_id)).await?;
-    if let Some(c) = body.confidence {
-        if !(0.0..=1.0).contains(&c) {
-            return Err(crate::error::ApiError::BadRequest(
-                "confidence must be in 0..=1".into(),
-            ));
-        }
+    if let Some(c) = body.confidence
+        && !(0.0..=1.0).contains(&c)
+    {
+        return Err(crate::error::ApiError::BadRequest(
+            "confidence must be in 0..=1".into(),
+        ));
     }
     // Vote row + `VoteCast` event commit atomically (transactional outbox);
     // `publish_stored` then notifies the bus.

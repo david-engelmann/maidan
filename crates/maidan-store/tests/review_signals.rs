@@ -6,6 +6,7 @@
 
 use maidan_fsm::ThreadAction;
 use maidan_store::attribution::with_attribution;
+use maidan_store::test_support::SetResultClaiming;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     Attribution, ChannelId, DelegationGrantId, Event, EventKind, MemberId, MemberKind, NewChannel,
@@ -280,7 +281,10 @@ async fn run_suite(store: &dyn Store) {
         "status": "reviewed",
         "findings": [{ "severity": "critical" }],
     });
-    store.set_thread_result(t, bot, &critical).await.unwrap();
+    store
+        .set_thread_result_claiming(t, bot, &critical)
+        .await
+        .unwrap();
     let first = store
         .apply_critical_review_decision(t, bot, &critical)
         .await
@@ -303,7 +307,10 @@ async fn run_suite(store: &dyn Store) {
         1,
         "a replay that writes nothing does not clear the gate"
     );
-    store.set_thread_result(t, bot, &critical).await.unwrap();
+    store
+        .set_thread_result_claiming(t, bot, &critical)
+        .await
+        .unwrap();
     assert!(
         store
             .apply_critical_review_decision(t, bot, &critical)

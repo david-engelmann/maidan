@@ -303,10 +303,10 @@ pub(crate) async fn revoke_on(
 }
 
 pub(crate) fn map_token_err(err: sqlx::Error) -> StoreError {
-    if let sqlx::Error::Database(ref db) = err {
-        if db.is_unique_violation() {
-            return StoreError::Conflict("token hash already exists".into());
-        }
+    if let sqlx::Error::Database(ref db) = err
+        && db.is_unique_violation()
+    {
+        return StoreError::Conflict("token hash already exists".into());
     }
     StoreError::Database(err)
 }
@@ -345,7 +345,7 @@ async fn audit_on_tx(
     audit: crate::AuditFor<ApiToken>,
     token: &ApiToken,
 ) -> Result<(), StoreError> {
-    super::audit::append_on(tx, audit(token))
+    super::audit::append_scoped(tx, token.workspace_id, audit(token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     Ok(())
@@ -432,7 +432,7 @@ pub async fn rotate_audited(
         Some((Some(_),)) => {
             return Err(StoreError::Conflict(
                 "a delegated token is not rotated; exchange its grant for a new one".into(),
-            ))
+            ));
         }
         Some((None,)) => {}
     }

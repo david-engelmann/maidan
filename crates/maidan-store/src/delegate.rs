@@ -94,7 +94,14 @@ macro_rules! store_delegations {
                 replace_existing: bool,
                 audit: NewAuditEvent,
             ) -> Result<(), StoreError> {
-                data_audited::import_workspace(self.pool(), import, replace_existing, audit).await
+                data_audited::import_workspace(
+                    self.pool(),
+                    self.content_keys(),
+                    import,
+                    replace_existing,
+                    audit,
+                )
+                .await
             }
 
             async fn place_legal_hold_audited(
@@ -221,6 +228,33 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
             ) -> Result<Option<WorkspaceHandle>, StoreError> {
                 workspace_handles::get(self.read_pool(), workspace_id).await
+            }
+
+            async fn suspend_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                reason: &str,
+                suspended_by: Option<MemberId>,
+                audit: NewAuditEvent,
+            ) -> Result<maidan_types::WorkspaceSuspension, StoreError> {
+                suspensions::suspend(self.pool(), workspace_id, reason, suspended_by, audit).await
+            }
+
+            async fn lift_workspace_suspension(
+                &self,
+                workspace_id: WorkspaceId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                suspensions::lift(self.pool(), workspace_id, audit).await
+            }
+
+            // Read from the primary: a suspension must take effect on the next
+            // request, not when a replica catches up.
+            async fn get_workspace_suspension(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Option<maidan_types::WorkspaceSuspension>, StoreError> {
+                suspensions::get(self.pool(), workspace_id).await
             }
         }
     };
@@ -406,9 +440,10 @@ macro_rules! store_delegations {
                 &self,
                 thread_id: ThreadId,
                 produced_by: MemberId,
+                lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                thread_results::set(self.pool(), thread_id, produced_by, result).await
+                thread_results::set(self.pool(), thread_id, produced_by, lease_id, result).await
             }
 
             async fn get_thread_result(
@@ -587,6 +622,68 @@ macro_rules! store_delegations {
                 query: UsageRollupQuery,
             ) -> Result<UsageRollup, StoreError> {
                 usage_ledger::rollup(self.read_pool(), query).await
+            }
+
+            async fn add_usage_meters(
+                &self,
+                batch: &[maidan_types::UsageMeterDay],
+            ) -> Result<(), StoreError> {
+                usage_meters::add(self.pool(), batch).await
+            }
+
+            async fn set_usage_meters(
+                &self,
+                batch: &[maidan_types::UsageMeterDay],
+            ) -> Result<(), StoreError> {
+                usage_meters::set(self.pool(), batch).await
+            }
+
+            async fn list_unmeasured_workspaces(
+                &self,
+                day: chrono::NaiveDate,
+                meter: maidan_types::UsageMeter,
+                limit: i64,
+            ) -> Result<Vec<WorkspaceId>, StoreError> {
+                usage_meters::unmeasured(self.pool(), day, meter, limit).await
+            }
+
+            async fn workspace_stored_bytes(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<i64, StoreError> {
+                usage_meters::stored_bytes(self.read_pool(), workspace_id).await
+            }
+
+            async fn list_usage_meters_between(
+                &self,
+                since: chrono::NaiveDate,
+                until: chrono::NaiveDate,
+            ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError> {
+                usage_meters::list_between(self.read_pool(), since, until).await
+            }
+
+            async fn mark_over_allowance(
+                &self,
+                mark: &maidan_types::OverAllowance,
+                admins: &[MemberId],
+            ) -> Result<Option<StoredEvent>, StoreError> {
+                usage_allowance::mark(self.pool(), mark, admins).await
+            }
+
+            async fn list_over_allowance(
+                &self,
+                workspace_id: WorkspaceId,
+                month: &str,
+            ) -> Result<Vec<maidan_types::OverAllowance>, StoreError> {
+                usage_allowance::list(self.read_pool(), workspace_id, month).await
+            }
+
+            async fn list_usage_meters(
+                &self,
+                workspace_id: WorkspaceId,
+                since: chrono::NaiveDate,
+            ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError> {
+                usage_meters::list(self.read_pool(), workspace_id, since).await
             }
         }
     };
@@ -1288,7 +1385,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 error: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_failed(self.pool(), id, error).await
             }
 
@@ -1296,7 +1393,7 @@ macro_rules! store_delegations {
                 &self,
                 id: ResultDeliveryId,
                 reason: &str,
-            ) -> Result<(), StoreError> {
+            ) -> Result<Option<StoredEvent>, StoreError> {
                 result_deliveries::mark_skipped(self.pool(), id, reason).await
             }
 
@@ -2901,6 +2998,22 @@ macro_rules! store_delegations {
                 change_metrics::add_stale_base_notice(self.pool(), notice).await
             }
 
+            async fn record_deploy(
+                &self,
+                deploy: maidan_types::NewDeploy,
+            ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
+                change_metrics::record_deploy(self.pool(), deploy).await
+            }
+
+            async fn deploy_candidates(
+                &self,
+                repo: &str,
+                environment: &str,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError> {
+                change_metrics::deploy_candidates(self.read_pool(), repo, environment, limit).await
+            }
+
             async fn list_thread_notices(
                 &self,
                 thread_id: ThreadId,
@@ -3004,6 +3117,14 @@ macro_rules! store_delegations {
                 audit: NewAuditEvent,
             ) -> Result<bool, StoreError> {
                 footprints::clear_slot_capacity(self.pool(), workspace_id, slot, audit).await
+            }
+
+            async fn count_stalled_threads(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                progress_before: chrono::DateTime<chrono::Utc>,
+            ) -> Result<i64, StoreError> {
+                threads::count_stalled_threads(self.read_pool(), now, progress_before).await
             }
 
             async fn reap_expired_claims(
@@ -3470,14 +3591,14 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
             ) -> Result<WorkspacePurgeResult, StoreError> {
-                purge_workspace::purge(self.pool(), workspace_id).await
+                purge_workspace::purge(self.pool(), self.content_keys(), workspace_id).await
             }
 
             async fn erase_workspace(
                 &self,
                 workspace_id: WorkspaceId,
             ) -> Result<WorkspaceEraseResult, StoreError> {
-                erase_workspace::erase(self.pool(), workspace_id).await
+                erase_workspace::erase(self.pool(), self.content_keys(), workspace_id).await
             }
 
             async fn purge_message_audited(
@@ -3493,7 +3614,8 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 audit: crate::AuditFor<WorkspacePurgeResult>,
             ) -> Result<WorkspacePurgeResult, StoreError> {
-                data_audited::purge_workspace(self.pool(), workspace_id, audit).await
+                data_audited::purge_workspace(self.pool(), self.content_keys(), workspace_id, audit)
+                    .await
             }
 
             async fn erase_workspace_audited(
@@ -3501,7 +3623,8 @@ macro_rules! store_delegations {
                 workspace_id: WorkspaceId,
                 audit: crate::AuditFor<WorkspaceEraseResult>,
             ) -> Result<WorkspaceEraseResult, StoreError> {
-                data_audited::erase_workspace(self.pool(), workspace_id, audit).await
+                data_audited::erase_workspace(self.pool(), self.content_keys(), workspace_id, audit)
+                    .await
             }
         }
     };
@@ -3843,7 +3966,10 @@ macro_rules! store_delegations {
                 events::append(self.pool(), &self.keys, event, Some(origin)).await
             }
 
-            async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError> {
+            async fn rewrap_content_keys(
+                &self,
+                limit: i64,
+            ) -> Result<crate::store::RewrapPass, StoreError> {
                 content_keys::rewrap(self.pool(), &self.keys, limit).await
             }
 

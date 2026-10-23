@@ -56,7 +56,7 @@ async fn load_module(
             return Err(WasiResult::fail(
                 WasiFailureKind::InvalidModule,
                 "handler module is not an artifact of this workspace",
-            ))
+            ));
         }
         Err(err) => {
             tracing::warn!(error = %err, "wasi handler: artifact ref lookup failed");
@@ -117,12 +117,19 @@ pub async fn dispatch_wasi(
     // worker for the duration, so a handful of slow handlers could stall
     // unrelated requests. `spawn_blocking` keeps that off the reactor; the
     // caller's `DISPATCH_TIMEOUT` still bounds how long anyone waits for it.
+    let started = std::time::Instant::now();
     let result = tokio::task::spawn_blocking(move || maidan_wasi::run(&module, &invoke, limits))
         .await
         .unwrap_or_else(|err| {
             tracing::warn!(error = %err, "wasi handler: run task failed");
             WasiResult::fail(WasiFailureKind::Trap, "handler execution failed")
         });
+    // The run is metered for the workspace that installed the handler, which
+    // is the one it runs in.
+    let elapsed_ms = i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX);
+    state
+        .usage_meters
+        .record(workspace_id, maidan_types::UsageMeter::WasiMs, elapsed_ms);
 
     // Clamped here rather than in the sandbox: the sandbox's output cap bounds
     // host memory for the duration of a run, this bounds what gets written into

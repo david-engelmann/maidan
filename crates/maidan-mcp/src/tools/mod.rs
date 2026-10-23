@@ -1087,7 +1087,7 @@ pub async fn dispatch(
         "get_thread_result" => thread::get_thread_result(store, args).await,
         "list_thread_results" => thread::list_thread_results(store, auth, args).await,
         "list_result_deliveries" => delivery::list_result_deliveries(store, args).await,
-        "replay_result_delivery" => delivery::replay_result_delivery_tool(store, auth, args).await,
+        "replay_result_delivery" => delivery::replay_result_delivery_tool(server, auth, args).await,
         "set_thread_owner" => thread::set_thread_owner(store, args).await,
         "rename_thread" => thread::rename_thread(store, args).await,
         "set_thread_steer" => thread::set_thread_steer(server, auth, args).await,
@@ -1210,7 +1210,15 @@ async fn dispatch_rest(
         "get_artifact_metadata" => artifact::get_artifact_metadata(store, auth, args).await,
         "get_artifact" => artifact::get_artifact(server, auth, args).await,
         "search_messages" => {
-            search::search_messages(search, embedding_provider, store, auth, args).await
+            search::search_messages(
+                search,
+                embedding_provider,
+                store,
+                auth,
+                args,
+                server.usage_meters(),
+            )
+            .await
         }
         "register_slash_command" => automation::register_slash_command(store, auth, args).await,
         "list_slash_commands" => automation::list_slash_commands(store, auth, args).await,
@@ -1479,18 +1487,10 @@ mod self_scope_tests {
     /// sail through the gate — listed, and ungated. Nothing else would notice.
     #[test]
     fn every_scoped_tool_declares_the_argument_the_gate_reads() {
-        let catalog = include_str!("catalog.rs");
         let wrong: Vec<&str> = MEMBER_SCOPED_TOOLS
             .iter()
             .copied()
-            .filter(|name| {
-                let Some(start) = catalog.find(&format!("\"name\": \"{name}\"")) else {
-                    return true;
-                };
-                let rest = &catalog[start + 8..];
-                let end = rest.find("\"name\": \"").unwrap_or(rest.len());
-                !rest[..end].contains("\"member_id\"")
-            })
+            .filter(|name| declared_arguments(name).is_none_or(|args| !args.contains("member_id")))
             .collect();
         assert!(
             wrong.is_empty(),

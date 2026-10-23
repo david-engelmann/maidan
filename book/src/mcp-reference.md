@@ -3076,6 +3076,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "until": {
+      "description": "only pull requests opened before this time; with since, one window",
+      "format": "date-time",
+      "type": "string"
+    },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
       "format": "uuid",
@@ -3272,7 +3277,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `set_thread_result`
 
-**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output.
+**Set thread result.** Attach a task's structured result (arbitrary JSON). Upserts one result per thread and notifies waiters via a thread_result_set event. Use when finishing a task so a requester or parent can read the output. Fenced by your claim: pass claim_lease_id from the claim response; if the lease lapsed and someone else took the thread (or it was released), the call is refused (claim_lost) and nothing is stored, so stop the work.
 
 **Capability:** `thread:transition`
 
@@ -3281,6 +3286,11 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "claim_lease_id": {
+      "description": "the fencing token from the claim response's thread.claim_lease_id",
+      "format": "uuid",
+      "type": "string"
+    },
     "result": {
       "description": "structured JSON result payload (an object)",
       "type": "object"
@@ -3292,7 +3302,8 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
   },
   "required": [
     "thread_id",
-    "result"
+    "result",
+    "claim_lease_id"
   ],
   "type": "object"
 }

@@ -41,12 +41,12 @@ pub(super) async fn create_task_schedule(
     if a.title.trim().is_empty() {
         return Err(McpError::InvalidParams("title must not be empty".into()));
     }
-    if let Some(secs) = a.interval_secs {
-        if secs <= 0 {
-            return Err(McpError::InvalidParams(
-                "interval_secs must be positive (omit for a one-shot)".into(),
-            ));
-        }
+    if let Some(secs) = a.interval_secs
+        && secs <= 0
+    {
+        return Err(McpError::InvalidParams(
+            "interval_secs must be positive (omit for a one-shot)".into(),
+        ));
     }
     let channel_id = ChannelId(a.channel_id);
     let ctx = resolve_channel_context(store.as_ref(), channel_id)

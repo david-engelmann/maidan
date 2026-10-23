@@ -121,15 +121,13 @@ pub async fn post_message(
         .store
         .get_member_in(ctx.workspace_id, auth.member_id)
         .await
+        && member.kind == MemberKind::Human
+        && let Err(e) = state.store.clear_thread_status(ctx.thread_id).await
     {
-        if member.kind == MemberKind::Human {
-            if let Err(e) = state.store.clear_thread_status(ctx.thread_id).await {
-                tracing::warn!(
-                    thread_id = %ctx.thread_id.0,
-                    "clearing thread status after human post failed: {e}"
-                );
-            }
-        }
+        tracing::warn!(
+            thread_id = %ctx.thread_id.0,
+            "clearing thread status after human post failed: {e}"
+        );
     }
     Ok((StatusCode::CREATED, Json(message)))
 }

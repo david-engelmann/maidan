@@ -248,6 +248,8 @@ pub fn ci_notices(
         status,
         failing_jobs,
         reasons,
+        environment: None,
+        deploy_url: None,
         created_at: now,
     };
     let mut owed = vec![(

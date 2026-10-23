@@ -90,10 +90,10 @@ pub async fn hydrate_federation_secrets(state: &AppState) -> Result<(), String> 
 }
 
 pub fn resolve_outbound_secret(state: &AppState, peer: &Peer) -> Option<String> {
-    if let Ok(guard) = state.federation.outbound_secrets.read() {
-        if let Some(secret) = guard.get(&peer.id) {
-            return Some(secret.clone());
-        }
+    if let Ok(guard) = state.federation.outbound_secrets.read()
+        && let Some(secret) = guard.get(&peer.id)
+    {
+        return Some(secret.clone());
     }
     let ciphertext = peer.outbound_secret_ciphertext.as_deref()?;
     let key = state.federation.encryption_key.as_deref()?;
@@ -568,6 +568,8 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             status,
             failing_jobs,
             reasons,
+            environment,
+            deploy_url,
         } => ThreadNotice {
             occurred_at,
             workspace_id,
@@ -583,6 +585,8 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             status,
             failing_jobs,
             reasons,
+            environment,
+            deploy_url,
         },
         // Non-federatable (a locally-derived handoff) — never actually
         // ingested/remapped, but the exhaustive match must classify it.
@@ -604,6 +608,27 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             repo,
             pr_number,
             to_engine,
+        },
+        // Non-federatable (this deployment's own delivery outcome) — never
+        // ingested, but the exhaustive match must classify it.
+        ResultDeliveryFailed {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            surface,
+            selector,
+            status,
+            last_error,
+        } => ResultDeliveryFailed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            surface,
+            selector,
+            status,
+            last_error,
         },
         // Non-federatable (a locally-derived wait-timer signal) — never
         // actually ingested/remapped, but the exhaustive match must classify
@@ -668,6 +693,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             workspace_id,
             member_id,
             unfrozen_by,
+        },
+        // Non-federatable (this deployment's allowance), classified like the
+        // freeze above.
+        UsageOverAllowance {
+            occurred_at,
+            workspace_id: _,
+            meter,
+            month,
+            quantity,
+            allowance,
+        } => UsageOverAllowance {
+            occurred_at,
+            workspace_id,
+            meter,
+            month,
+            quantity,
+            allowance,
         },
         MessagePosted {
             occurred_at,
@@ -1090,23 +1132,21 @@ pub async fn peer_auth_middleware(
         .await
         .ok()
     else {
-        if !state.auth_disabled {
-            if let Err(response) =
+        if !state.auth_disabled
+            && let Err(response) =
                 crate::rate_limit::enforce_client_key(&state, &ip_key, false).await
-            {
-                return *response;
-            }
+        {
+            return *response;
         }
         return ApiError::Unauthorized.into_response();
     };
     // Auth is on, so the outer limiter did not count this bearer. A peer
     // credential that resolved keeps its own bucket.
-    if !state.auth_disabled {
-        if let Err(response) =
+    if !state.auth_disabled
+        && let Err(response) =
             crate::rate_limit::enforce_verified_bearer(&state, &secret, false).await
-        {
-            return *response;
-        }
+    {
+        return *response;
     }
     req.extensions_mut().insert(PeerContext(peer));
     next.run(req).await

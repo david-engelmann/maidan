@@ -147,6 +147,15 @@ async fn worker_delivers_a_queued_message_once() {
     let stats = egress_worker::sweep_once(&state).await;
     assert_eq!(stats.sent, 1);
     assert_eq!(sender.attempts.load(Ordering::SeqCst), 1);
+    // A sent delivery is metered for its workspace.
+    let deliveries: Vec<_> = state
+        .usage_meters
+        .take()
+        .into_iter()
+        .filter(|row| row.meter == maidan_types::UsageMeter::Deliveries)
+        .map(|row| (row.workspace_id, row.quantity))
+        .collect();
+    assert_eq!(deliveries, vec![(ws, 1)]);
     assert_eq!(
         sender.sent.lock().unwrap().as_slice(),
         [("C1".to_string(), "hi from maidan".to_string())]
@@ -379,4 +388,65 @@ async fn a_deployment_without_a_projector_sender_leaves_the_queue_alone() {
         .await
         .unwrap()
         .is_some());
+}
+
+fn suspend_audit(ws: WorkspaceId, action: &str) -> maidan_types::NewAuditEvent {
+    maidan_types::NewAuditEvent {
+        scope: maidan_types::AuditScope::Workspace(ws),
+        actor_id: None,
+        action: action.into(),
+        target_kind: Some("workspace".into()),
+        target_id: Some(ws.0),
+        metadata: serde_json::json!({}),
+    }
+}
+
+/// A suspended workspace's queued delivery is held back, not sent and not
+/// dead-lettered, while another workspace's goes out.
+#[tokio::test]
+async fn a_suspended_workspaces_delivery_is_held_back_and_another_goes_out() {
+    let sender = slack_sender(None);
+    let (state, store, _pool) = state_with(Some(sender.clone())).await;
+    let (suspended, suspended_thread) = scope(store.as_ref()).await;
+    let (open, open_thread) = scope(store.as_ref()).await;
+    store
+        .suspend_workspace(
+            suspended,
+            "abuse report",
+            None,
+            suspend_audit(suspended, "workspace.suspend"),
+        )
+        .await
+        .unwrap();
+    store
+        .enqueue_egress(queued(suspended, suspended_thread, 1))
+        .await
+        .unwrap();
+    store
+        .enqueue_egress(queued(open, open_thread, 2))
+        .await
+        .unwrap();
+
+    let stats = egress_worker::sweep_once(&state).await;
+    assert_eq!((stats.sent, stats.deferred, stats.dead), (1, 1, 0));
+    assert_eq!(
+        sender.attempts.load(Ordering::SeqCst),
+        1,
+        "one send, the open workspace's"
+    );
+    assert_eq!(store.count_dead_egress().await.unwrap(), 0);
+
+    // Lifted, the held delivery is due again after its deferral.
+    store
+        .lift_workspace_suspension(
+            suspended,
+            suspend_audit(suspended, "workspace.suspension_lift"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        egress_worker::sweep_once(&state).await.sent,
+        0,
+        "still deferred"
+    );
 }

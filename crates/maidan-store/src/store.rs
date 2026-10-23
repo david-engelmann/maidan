@@ -11,6 +11,15 @@ use crate::error::StoreError;
 /// minimal CRUD plus the few list/query operations the server needs in
 /// Cluster A. Richer queries (search, threading rollups) arrive in later
 /// clusters via dedicated traits and crates.
+/// What one [`Store::rewrap_content_keys`] pass did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RewrapPass {
+    /// Rows moved, rewrapped or destroyed.
+    pub changed: u64,
+    /// Rows the custody refused; they stay for a later pass.
+    pub skipped: u64,
+}
+
 #[async_trait]
 pub trait MetaStore: Send + Sync {
     async fn health_check(&self) -> Result<(), StoreError>;
@@ -257,6 +266,27 @@ pub trait WorkspaceStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Option<WorkspaceHandle>, StoreError>;
+    /// Suspend a workspace (or replace a standing suspension's reason),
+    /// audited in the same transaction. `NotFound` for no such workspace.
+    async fn suspend_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        reason: &str,
+        suspended_by: Option<MemberId>,
+        audit: NewAuditEvent,
+    ) -> Result<maidan_types::WorkspaceSuspension, StoreError>;
+    /// Lift a suspension, audited in the same transaction; `false` (and no
+    /// audit row) when the workspace was not suspended.
+    async fn lift_workspace_suspension(
+        &self,
+        workspace_id: WorkspaceId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// The suspension in force on a workspace, if any.
+    async fn get_workspace_suspension(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<maidan_types::WorkspaceSuspension>, StoreError>;
 }
 
 #[async_trait]
@@ -390,10 +420,17 @@ pub trait SkillStore: Send + Sync {
 pub trait ThreadResultStore: Send + Sync {
     /// A task's structured result: `set` upserts (a re-set overwrites), `get`
     /// returns `None` until one is produced.
+    ///
+    /// Fenced by the claim: `produced_by` must hold the thread under
+    /// `lease_id`, its live lease, checked in the write itself. A lease that
+    /// lapsed and was taken over, or released, is
+    /// [`StoreError::ClaimLost`] and nothing is stored, so a slow seat
+    /// cannot land a result over the seat that holds the work now.
     async fn set_thread_result(
         &self,
         thread_id: ThreadId,
         produced_by: MemberId,
+        lease_id: ClaimLeaseId,
         result: &serde_json::Value,
     ) -> Result<ThreadResult, StoreError>;
     async fn get_thread_result(
@@ -559,6 +596,51 @@ pub trait UsageLedgerStore: Send + Sync {
     /// Spend, cache shape, and cost per completed task. A thread or member
     /// outside the named workspace is `NotFound`.
     async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;
+    /// Add a flushed batch of usage-meter counts to their days' totals.
+    async fn add_usage_meters(
+        &self,
+        batch: &[maidan_types::UsageMeterDay],
+    ) -> Result<(), StoreError>;
+    /// Replace each row's day value, for a gauge meter.
+    async fn set_usage_meters(
+        &self,
+        batch: &[maidan_types::UsageMeterDay],
+    ) -> Result<(), StoreError>;
+    /// Live workspaces with no `meter` row on `day`, at most `limit`.
+    async fn list_unmeasured_workspaces(
+        &self,
+        day: chrono::NaiveDate,
+        meter: maidan_types::UsageMeter,
+        limit: i64,
+    ) -> Result<Vec<WorkspaceId>, StoreError>;
+    /// The bytes a workspace stores now: its artifacts and message bodies.
+    async fn workspace_stored_bytes(&self, workspace_id: WorkspaceId) -> Result<i64, StoreError>;
+    /// Every workspace's meters on days in `[since, until)`.
+    async fn list_usage_meters_between(
+        &self,
+        since: chrono::NaiveDate,
+        until: chrono::NaiveDate,
+    ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError>;
+    /// Mark a crossing of the allowance, once per workspace, meter and month,
+    /// appending its event and notifying `admins` in the same transaction.
+    /// `None` when it was marked already.
+    async fn mark_over_allowance(
+        &self,
+        mark: &maidan_types::OverAllowance,
+        admins: &[MemberId],
+    ) -> Result<Option<StoredEvent>, StoreError>;
+    /// One workspace's crossings in `month` (`YYYY-MM`).
+    async fn list_over_allowance(
+        &self,
+        workspace_id: WorkspaceId,
+        month: &str,
+    ) -> Result<Vec<maidan_types::OverAllowance>, StoreError>;
+    /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
+    async fn list_usage_meters(
+        &self,
+        workspace_id: WorkspaceId,
+        since: chrono::NaiveDate,
+    ) -> Result<Vec<maidan_types::UsageMeterDay>, StoreError>;
 }
 
 #[async_trait]
@@ -1127,16 +1209,20 @@ pub trait EgressStore: Send + Sync {
         external_ref: Option<&str>,
         revision: DateTime<Utc>,
     ) -> Result<(), StoreError>;
+    /// Both record the target's outcome and, when the row moves into
+    /// `failed` or `skipped`, append `ResultDeliveryFailed` in the same
+    /// transaction and return it for the caller to publish. `None` when the
+    /// row was already in that status (or is gone): the outcome was said.
     async fn mark_result_delivery_failed(
         &self,
         id: ResultDeliveryId,
         error: &str,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn mark_result_delivery_skipped(
         &self,
         id: ResultDeliveryId,
         reason: &str,
-    ) -> Result<(), StoreError>;
+    ) -> Result<Option<StoredEvent>, StoreError>;
     async fn get_result_delivery(
         &self,
         thread_id: ThreadId,
@@ -2394,6 +2480,25 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         notice: maidan_types::NewStaleBaseNotice,
     ) -> Result<Option<maidan_types::PostedNotice>, StoreError>;
+    /// Record a deploy a deploy hook reported: each merged pull request, in
+    /// any workspace, whose merge or merged head commit is `deploy.sha` in
+    /// `deploy.repo` gets one `deployed` notice on its thread, with its
+    /// event. So does each pull request in `deploy.contains`, in its own
+    /// workspace only. A repeat of the same deploy and outcome says nothing
+    /// again.
+    async fn record_deploy(
+        &self,
+        deploy: maidan_types::NewDeploy,
+    ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// The newest merged pull requests in `repo`, at most `limit`, that no
+    /// deploy to `environment` has yet succeeded for, with the commit each
+    /// merged as: what a deploy of a later commit may have shipped.
+    async fn deploy_candidates(
+        &self,
+        repo: &str,
+        environment: &str,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::DeployCandidate>, StoreError>;
     /// A thread's change notices, newest first, at most `limit`.
     async fn list_thread_notices(
         &self,
@@ -2477,6 +2582,17 @@ pub trait AssignmentStore: Send + Sync {
         slot: &str,
         audit: NewAuditEvent,
     ) -> Result<bool, StoreError>;
+    /// How many threads, across every workspace, are stalled at `now`: open,
+    /// held on a live lease the holder acknowledged, not declared anything
+    /// but working, and with no progress by the holder (its latest message on
+    /// the thread or its declaration, else the acknowledgement) after
+    /// `progress_before`. The same test as a board's `stalled` flag, counted
+    /// for the alert on a claim that only renews.
+    async fn count_stalled_threads(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        progress_before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, StoreError>;
 
     /// Return up to `limit` claims whose lease lapsed before `now` to the
     /// queue, appending a `ClaimExpired` for each dead holder in the same
@@ -3271,11 +3387,13 @@ pub trait EventStore: Send + Sync {
         event: &Event,
         origin: PeerId,
     ) -> Result<StoredEvent, StoreError>;
-    /// One batch of moving keys to where they belong: workspace keys under the
+    /// One pass of moving keys to where they belong: workspace keys under the
     /// primary instance KEK, data keys under their workspace's active key, and
-    /// retired workspace keys destroyed once nothing needs them. Returns how
-    /// many rows changed; `0` means done.
-    async fn rewrap_content_keys(&self, limit: i64) -> Result<u64, StoreError>;
+    /// retired workspace keys destroyed once nothing needs them. The pass pages
+    /// through every row, `limit` per transaction, so rows the custody refuses
+    /// never crowd out another tenant's. Done when nothing changed and nothing
+    /// was skipped.
+    async fn rewrap_content_keys(&self, limit: i64) -> Result<RewrapPass, StoreError>;
     /// Rows [`Self::rewrap_content_keys`] has still to change.
     async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
     /// Retire the workspace's key and make a new one. The workspace's data keys

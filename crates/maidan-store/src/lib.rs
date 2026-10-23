@@ -6,6 +6,7 @@
 pub mod a2a;
 pub mod approval_policy;
 pub mod attribution;
+mod audit_scope;
 mod cancel;
 mod plan_notices;
 
@@ -132,10 +133,12 @@ mod claim_next;
 pub mod content_keyring;
 mod content_keys;
 pub mod context_pack;
+pub mod custody;
 mod delegation_grants;
 mod footprints;
 #[macro_use]
 mod delegate;
+mod claimability;
 pub mod dialect;
 pub mod dm;
 pub mod embeddings_purge;
@@ -161,7 +164,9 @@ pub mod store;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod thread_access;
+mod thread_results;
 pub mod trace;
+pub mod usage_meters;
 mod usage_metrics;
 pub mod workspace_export;
 
@@ -218,8 +223,8 @@ pub use store::{
     DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
     GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, McpSubscriptionStore, MemberStore,
     MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore,
-    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, SessionStore,
-    ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore,
+    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
+    SessionStore, ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore,
     ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore, TokenStore,
     UsageLedgerStore, WebhookStore, WorkspaceStore,
 };

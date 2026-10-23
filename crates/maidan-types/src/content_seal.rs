@@ -23,7 +23,9 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::RwLock;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -378,6 +380,169 @@ pub fn parse_workspace_kek_id(kek_id: &str) -> Option<uuid::Uuid> {
         .and_then(|id| id.parse().ok())
 }
 
+/// What a custody call returns: a boxed future, so custodies are trait
+/// objects chosen by configuration.
+pub type CustodyFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SealError>> + Send + 'a>>;
+
+/// Who wraps workspace keys: the instance KEK ([`LocalCustody`]) or a cloud
+/// KMS. A workspace key row records the custody's name and the wrapping key
+/// id it returned; a read opens the key through the custody that owns that
+/// id, before it maps any row ([`ContentKeyring::open_workspace_keys`]).
+///
+/// The workspace key id is bound into every wrap (AEAD associated data
+/// locally, the encryption context in a KMS), so one workspace's wrapped key
+/// never opens as another's.
+pub trait WorkspaceKeyCustody: Send + Sync {
+    /// Stored in `maidan_workspace_keys.custody`.
+    fn name(&self) -> &'static str;
+    /// A SQL `LIKE` pattern matching every wrapping key id a new wrap by
+    /// this custody records. A row under any other id is moved here by the
+    /// rewrap pass.
+    fn current_wrapping_like(&self) -> String;
+    /// Whether a row wrapped under `wrapping_key_id` opens through this
+    /// custody.
+    fn owns(&self, wrapping_key_id: &str) -> bool;
+    fn wrap<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        key: &'a ContentKey,
+    ) -> CustodyFuture<'a, WrappedKey>;
+    fn unwrap<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &'a WrappedKey,
+    ) -> CustodyFuture<'a, ContentKey>;
+    /// Destroy what this custody holds for the workspace key, so its stored
+    /// form, or any copy of it, never opens again. Called before the row is
+    /// destroyed, in the same transaction: a refusal fails the erasure or
+    /// rotation, which then changes nothing.
+    fn destroy<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &'a WrappedKey,
+    ) -> CustodyFuture<'a, ()>;
+}
+
+/// Workspace keys wrapped by the instance KEKs: the primary wraps, the
+/// previous ones only unwrap until the rewrap pass moves their rows.
+pub struct LocalCustody {
+    primary: Kek,
+    previous: Vec<Kek>,
+}
+
+/// The custody name of [`LocalCustody`].
+pub const LOCAL_CUSTODY: &str = "local";
+
+impl LocalCustody {
+    pub fn new(primary: [u8; 32], previous: Vec<[u8; 32]>) -> Self {
+        Self {
+            primary: Kek::new(primary),
+            previous: previous.into_iter().map(Kek::new).collect(),
+        }
+    }
+
+    fn kek(&self, kek_id: &str) -> Result<&Kek, SealError> {
+        std::iter::once(&self.primary)
+            .chain(&self.previous)
+            .find(|kek| kek.id == kek_id)
+            .ok_or_else(|| SealError::UnknownKek(kek_id.to_string()))
+    }
+
+    /// Wrap a workspace key under the primary, synchronously.
+    pub fn seal(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        key: &ContentKey,
+    ) -> Result<WrappedKey, SealError> {
+        Ok(WrappedKey {
+            kek_id: self.primary.id.clone(),
+            blob: self
+                .primary
+                .seal(&workspace_wrap_aad(workspace_key_id), key.as_bytes())?,
+        })
+    }
+
+    /// Open a workspace key one of these KEKs wrapped, synchronously.
+    pub fn open(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &WrappedKey,
+    ) -> Result<ContentKey, SealError> {
+        let bytes = self
+            .kek(&wrapped.kek_id)?
+            .open(&workspace_wrap_aad(workspace_key_id), &wrapped.blob)?;
+        Ok(ContentKey::from_bytes(*bytes))
+    }
+}
+
+impl WorkspaceKeyCustody for LocalCustody {
+    fn name(&self) -> &'static str {
+        LOCAL_CUSTODY
+    }
+
+    fn current_wrapping_like(&self) -> String {
+        self.primary.id.clone()
+    }
+
+    fn owns(&self, wrapping_key_id: &str) -> bool {
+        self.kek(wrapping_key_id).is_ok()
+    }
+
+    fn wrap<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        key: &'a ContentKey,
+    ) -> CustodyFuture<'a, WrappedKey> {
+        let result = self.seal(workspace_key_id, key);
+        Box::pin(async move { result })
+    }
+
+    fn unwrap<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &'a WrappedKey,
+    ) -> CustodyFuture<'a, ContentKey> {
+        let result = self.open(workspace_key_id, wrapped);
+        Box::pin(async move { result })
+    }
+
+    /// The instance KEK wraps every workspace key, so there is nothing of
+    /// this one to destroy beyond its row.
+    fn destroy<'a>(
+        &'a self,
+        _workspace_key_id: uuid::Uuid,
+        _wrapped: &'a WrappedKey,
+    ) -> CustodyFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+impl LocalCustody {
+    /// The id of the KEK new wraps go under.
+    pub fn wrapping_id(&self) -> &str {
+        &self.primary.id
+    }
+}
+
+impl fmt::Debug for LocalCustody {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LocalCustody")
+            .field("primary", &self.primary.id)
+            .field(
+                "previous",
+                &self.previous.iter().map(|k| &k.id).collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+fn workspace_wrap_aad(workspace_key_id: uuid::Uuid) -> Vec<u8> {
+    let mut aad = WORKSPACE_WRAP_DOMAIN.to_vec();
+    aad.push(0);
+    aad.extend_from_slice(workspace_key_id.as_bytes());
+    aad
+}
+
 /// How long an opened workspace key stays in memory without being opened
 /// again. Each read that needs it reopens it from its row, so this bounds how
 /// long a key an erasure destroyed survives in a replica's memory.
@@ -408,17 +573,22 @@ struct OpenWorkspaceKey {
 /// instance KEK, and still opens; the rewrap pass moves it under its
 /// workspace's key.
 pub struct ContentKeyring {
-    primary: Kek,
-    previous: Vec<Kek>,
+    /// The instance KEKs: they wrap data keys written without a workspace
+    /// key, and are the local custody.
+    local: Arc<LocalCustody>,
+    /// Who wraps new workspace keys.
+    custody: Arc<dyn WorkspaceKeyCustody>,
     insecure_dev: bool,
     workspace: RwLock<HashMap<uuid::Uuid, OpenWorkspaceKey>>,
 }
 
 impl ContentKeyring {
+    /// A keyring whose workspace keys the instance KEKs wrap.
     pub fn new(primary: [u8; 32], previous: Vec<[u8; 32]>) -> Self {
+        let local = Arc::new(LocalCustody::new(primary, previous));
         Self {
-            primary: Kek::new(primary),
-            previous: previous.into_iter().map(Kek::new).collect(),
+            custody: local.clone(),
+            local,
             insecure_dev: false,
             workspace: RwLock::default(),
         }
@@ -430,20 +600,38 @@ impl ContentKeyring {
     pub fn insecure_dev() -> Self {
         let key: [u8; 32] = Sha256::digest(INSECURE_DEV_KEK_DOMAIN).into();
         Self {
-            primary: Kek::new(key),
-            previous: Vec::new(),
             insecure_dev: true,
-            workspace: RwLock::default(),
+            ..Self::new(key, Vec::new())
         }
+    }
+
+    /// Wrap new workspace keys with `custody` instead of the instance KEK.
+    /// Rows the instance KEK wrapped still open, and the rewrap pass moves
+    /// them to `custody`.
+    pub fn with_custody(mut self, custody: Arc<dyn WorkspaceKeyCustody>) -> Self {
+        self.custody = custody;
+        self
     }
 
     pub fn is_insecure_dev(&self) -> bool {
         self.insecure_dev
     }
 
-    /// Fingerprint of the primary KEK, as stored beside each key it wraps.
+    /// Fingerprint of the primary instance KEK.
     pub fn primary_id(&self) -> &str {
-        &self.primary.id
+        &self.local.primary.id
+    }
+
+    /// The custody new workspace keys go to, as stored in
+    /// `maidan_workspace_keys.custody`.
+    pub fn custody_name(&self) -> &'static str {
+        self.custody.name()
+    }
+
+    /// A SQL `LIKE` pattern every workspace key row's wrapping key id should
+    /// match; the rewrap pass moves the others.
+    pub fn workspace_wrapping_like(&self) -> String {
+        self.custody.current_wrapping_like()
     }
 
     fn wrap_aad(subject: uuid::Uuid) -> Vec<u8> {
@@ -453,34 +641,21 @@ impl ContentKeyring {
         aad
     }
 
-    fn workspace_wrap_aad(workspace_key_id: uuid::Uuid) -> Vec<u8> {
-        let mut aad = WORKSPACE_WRAP_DOMAIN.to_vec();
-        aad.push(0);
-        aad.extend_from_slice(workspace_key_id.as_bytes());
-        aad
-    }
-
-    fn instance_kek(&self, kek_id: &str) -> Result<&Kek, SealError> {
-        std::iter::once(&self.primary)
-            .chain(&self.previous)
-            .find(|kek| kek.id == kek_id)
-            .ok_or_else(|| SealError::UnknownKek(kek_id.to_string()))
-    }
-
     /// Wrap `key` for `subject` under the primary instance KEK. New data keys
     /// go under their workspace's key ([`Self::wrap_for_workspace`]); this is
     /// for a keyring with no workspace key, as in tests.
     pub fn wrap(&self, subject: uuid::Uuid, key: &ContentKey) -> Result<WrappedKey, SealError> {
         Ok(WrappedKey {
-            kek_id: self.primary.id.clone(),
+            kek_id: self.local.primary.id.clone(),
             blob: self
+                .local
                 .primary
                 .seal(&Self::wrap_aad(subject), key.as_bytes())?,
         })
     }
 
     /// Wrap `key` for `subject` under workspace key `workspace_key_id`, which
-    /// must be open ([`Self::open_workspace_key`]).
+    /// must be open ([`Self::open_workspace_keys`]).
     pub fn wrap_for_workspace(
         &self,
         workspace_key_id: uuid::Uuid,
@@ -522,62 +697,96 @@ impl ContentKeyring {
                     .ok_or_else(|| SealError::UnknownKek(wrapped.kek_id.clone()))?;
                 entry.kek.open(&aad, &wrapped.blob)?
             }
-            None => self
-                .instance_kek(&wrapped.kek_id)?
-                .open(&aad, &wrapped.blob)?,
+            None => self.local.kek(&wrapped.kek_id)?.open(&aad, &wrapped.blob)?,
         };
         Ok(ContentKey::from_bytes(*bytes))
     }
 
-    /// Wrap a new workspace key under the primary instance KEK, bound to its
-    /// id, and open it as that stored form.
-    pub fn wrap_workspace_key(
+    /// The custody that opens a row wrapped under `wrapping_key_id`: the
+    /// configured one, or the instance KEK for a row not yet rewrapped.
+    fn owner(&self, wrapping_key_id: &str) -> Result<&dyn WorkspaceKeyCustody, SealError> {
+        if self.custody.owns(wrapping_key_id) {
+            Ok(self.custody.as_ref())
+        } else if self.local.owns(wrapping_key_id) {
+            Ok(self.local.as_ref())
+        } else {
+            Err(SealError::UnknownKek(wrapping_key_id.to_string()))
+        }
+    }
+
+    /// Make a workspace key, wrap it with the custody and open it as that
+    /// stored form.
+    pub async fn create_workspace_key(
         &self,
         workspace_key_id: uuid::Uuid,
-        key: &ContentKey,
     ) -> Result<WrappedKey, SealError> {
-        let wrapped = WrappedKey {
-            kek_id: self.primary.id.clone(),
-            blob: self
-                .primary
-                .seal(&Self::workspace_wrap_aad(workspace_key_id), key.as_bytes())?,
-        };
+        let key = ContentKey::generate();
+        let wrapped = self.custody.wrap(workspace_key_id, &key).await?;
         self.install(workspace_key_id, *key.as_bytes(), wrapped.clone());
         Ok(wrapped)
     }
 
-    /// Open a stored workspace key so data keys under it wrap and unwrap,
-    /// unless it is open already from this same stored form.
-    /// `wrapped.kek_id` names the instance KEK that wrapped it.
-    pub fn open_workspace_key(
+    /// Open every stored workspace key a read is about to need, through the
+    /// custody that wrapped each, unless it is open already from that same
+    /// stored form. A read calls this before it maps its rows, which then
+    /// only check [`Self::require_open`].
+    pub async fn open_workspace_keys(
+        &self,
+        stored: impl IntoIterator<Item = (uuid::Uuid, WrappedKey)>,
+    ) -> Result<(), SealError> {
+        let mut wanted: HashMap<uuid::Uuid, WrappedKey> = HashMap::new();
+        for (id, wrapped) in stored {
+            if !self.is_open(id, &wrapped) {
+                wanted.insert(id, wrapped);
+            }
+        }
+        for (id, wrapped) in wanted {
+            let key = self.owner(&wrapped.kek_id)?.unwrap(id, &wrapped).await?;
+            self.install(id, *key.as_bytes(), wrapped);
+        }
+        Ok(())
+    }
+
+    /// Fail unless the workspace key is open from exactly this stored form:
+    /// the row is the truth.
+    pub fn require_open(
         &self,
         workspace_key_id: uuid::Uuid,
         wrapped: &WrappedKey,
     ) -> Result<(), SealError> {
         if self.is_open(workspace_key_id, wrapped) {
-            return Ok(());
+            Ok(())
+        } else {
+            Err(SealError::UnknownKek(workspace_kek_id(workspace_key_id)))
         }
-        let bytes = self
-            .instance_kek(&wrapped.kek_id)?
-            .open(&Self::workspace_wrap_aad(workspace_key_id), &wrapped.blob)?;
-        self.install(workspace_key_id, *bytes, wrapped.clone());
-        Ok(())
     }
 
-    /// Rewrap a stored workspace key under the primary instance KEK.
-    pub fn rewrap_workspace_key(
+    /// Rewrap a stored workspace key with the configured custody.
+    pub async fn rewrap_workspace_key(
         &self,
         workspace_key_id: uuid::Uuid,
         wrapped: &WrappedKey,
     ) -> Result<WrappedKey, SealError> {
-        let aad = Self::workspace_wrap_aad(workspace_key_id);
-        let bytes = self
-            .instance_kek(&wrapped.kek_id)?
-            .open(&aad, &wrapped.blob)?;
-        Ok(WrappedKey {
-            kek_id: self.primary.id.clone(),
-            blob: self.primary.seal(&aad, &bytes)?,
-        })
+        let key = self
+            .owner(&wrapped.kek_id)?
+            .unwrap(workspace_key_id, wrapped)
+            .await?;
+        self.custody.wrap(workspace_key_id, &key).await
+    }
+
+    /// Destroy a stored workspace key in the custody that wrapped it, and
+    /// drop it from memory. The caller destroys the row in the same
+    /// transaction, after this succeeds.
+    pub async fn destroy_workspace_key(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        wrapped: &WrappedKey,
+    ) -> Result<(), SealError> {
+        self.owner(&wrapped.kek_id)?
+            .destroy(workspace_key_id, wrapped)
+            .await?;
+        self.forget_workspace_key(workspace_key_id);
+        Ok(())
     }
 
     /// Drop an open workspace key from memory: its row was destroyed.
@@ -619,11 +828,8 @@ impl ContentKeyring {
 impl fmt::Debug for ContentKeyring {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ContentKeyring")
-            .field("primary", &self.primary.id)
-            .field(
-                "previous",
-                &self.previous.iter().map(|k| &k.id).collect::<Vec<_>>(),
-            )
+            .field("local", &self.local)
+            .field("custody", &self.custody.name())
             .field("insecure_dev", &self.insecure_dev)
             .field(
                 "open_workspace_keys",

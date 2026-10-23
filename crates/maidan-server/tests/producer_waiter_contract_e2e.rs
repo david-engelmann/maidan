@@ -484,7 +484,7 @@ async fn the_producers_waiter_round_trip_works_on_the_wire_it_uses() {
             Method::PUT,
             &format!("/threads/{tid}/result"),
             &worker,
-            Some(json!({ "result": envelope })),
+            Some(json!({ "result": envelope, "claim_lease_id": lease })),
         )
         .await;
 

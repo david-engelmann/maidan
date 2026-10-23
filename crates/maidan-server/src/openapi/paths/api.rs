@@ -2703,6 +2703,17 @@ pub fn list_deferred_threads() {}
     ))]
 pub fn find_thread() {}
 
+/// The workspace's usage for a UTC month, each meter against the instance's free allowance
+#[utoipa::path(get, path = "/workspaces/{id}/usage-meters", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id"), UsageMonthQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = MonthlyUsage),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn get_workspace_usage_meters() {}
+
 /// Swarm ramp metrics: per agent pull request and per repository
 #[utoipa::path(get, path = "/workspaces/{id}/swarm-metrics", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SwarmMetricsQuery),

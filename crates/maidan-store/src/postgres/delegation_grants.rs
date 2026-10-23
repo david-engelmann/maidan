@@ -204,7 +204,7 @@ pub async fn create_audited(
 ) -> Result<DelegationGrant, StoreError> {
     let mut tx = pool.begin().await?;
     let grant = create_on(&mut tx, new).await?;
-    super::audit::append_counted(&mut tx, audit(&grant)).await?;
+    super::audit::append_scoped(&mut tx, grant.workspace_id, audit(&grant)).await?;
     tx.commit().await?;
     Ok(grant)
 }
@@ -220,7 +220,7 @@ pub async fn revoke_audited(
 ) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
     let revoked = revoke_on(&mut tx, workspace_id, id).await?;
-    super::audit::append_counted(&mut tx, audit).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
     tx.commit().await?;
     Ok(revoked)
 }
@@ -234,7 +234,7 @@ pub async fn set_policy_audited(
 ) -> Result<DelegationPolicy, StoreError> {
     let mut tx = pool.begin().await?;
     let policy = set_policy_on(&mut tx, workspace_id, max_grant_days).await?;
-    super::audit::append_counted(&mut tx, audit(&policy)).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit(&policy)).await?;
     tx.commit().await?;
     Ok(policy)
 }

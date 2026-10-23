@@ -1,5 +1,5 @@
 // @ts-check
-import { api, base, headers, token, wid, writeApi } from "./api.js";
+import { api, apiReadPath, base, headers, token, wid, writeApi } from "./api.js";
 import { escapeHtml } from "./artifacts.js";
 import { responseError, showError, unreachable } from "./feedback.js";
 import { ago, leaseLeft, loadMembers, memberName } from "./people.js";
@@ -43,6 +43,46 @@ async function fetchList(suffix) {
   const res = await api(`${base()}${suffix}`, { headers: headers(), credentials: "include" });
   if (!res.ok) throw new Error(await responseError(res, "The server refused the list"));
   return res.json();
+}
+
+const METER_LABELS = {
+  requests: "Requests",
+  mcp_calls: "MCP tool calls",
+  embedding_calls: "Embeddings",
+  deliveries: "Deliveries sent",
+  wasi_ms: "WASI run time (ms)",
+  stored_bytes: "Stored bytes",
+};
+
+/** @param {any} usage */
+function renderUsage(usage) {
+  const rows = (usage.meters || [])
+    .map((m) => {
+      const label = escapeHtml(METER_LABELS[m.meter] || m.meter);
+      const of = m.allowance == null ? "" : ` <span class="muted">of ${escapeHtml(String(m.allowance))} free</span>`;
+      const over = m.over ? ` <strong>Past the free allowance.</strong>` : "";
+      return `<li class="swarm-row">${label}: ${escapeHtml(String(m.quantity))}${of}${over}</li>`;
+    })
+    .join("");
+  const note = `<p class="muted">Nothing is cut off or billed; past an allowance, the workspace's admins are told.</p>`;
+  setBox("swarm-usage", `<ul class="swarm-list" data-month="${escapeHtml(usage.month)}">${rows}</ul>${note}`);
+}
+
+// Usage is served to a signed-in session too, so it loads whether or not a
+// token is pasted, unlike the footprint lists below it.
+/** @param {string} id @param {() => boolean} current */
+async function loadUsage(id, current) {
+  try {
+    const res = await api(apiReadPath(`/workspaces/${id}/usage-meters`), {
+      headers: headers(),
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(await responseError(res, "The server refused the usage"));
+    const usage = await res.json();
+    if (current()) renderUsage(usage);
+  } catch (e) {
+    if (current()) sectionError("swarm-usage", e);
+  }
 }
 
 /** @param {any[]} claims */
@@ -132,14 +172,18 @@ function renderPauses(pauses, workspace) {
 // it read for is still the selected one; otherwise its rows would be a
 // stale snapshot, or another workspace's.
 let swarmLoadGen = 0;
+let usageLoadGen = 0;
 
 async function loadSwarm() {
   if (!wid()) {
-    ["swarm-claims", "swarm-deferred", "swarm-slots", "swarm-pauses"].forEach((id) =>
+    ["swarm-usage", "swarm-claims", "swarm-deferred", "swarm-slots", "swarm-pauses"].forEach((id) =>
       setBox(id, `<p class="muted">Set a workspace first.</p>`),
     );
     return;
   }
+  const usageGen = ++usageLoadGen;
+  const usageFor = wid();
+  loadUsage(usageFor, () => usageGen === usageLoadGen && wid() === usageFor);
   if (!token()) {
     const note = `<p class="muted">This panel reads the bearer API, like peers and token minting. Paste a token under Connect this browser to use it.</p>`;
     ["swarm-claims", "swarm-deferred", "swarm-slots", "swarm-pauses"].forEach((id) => setBox(id, note));

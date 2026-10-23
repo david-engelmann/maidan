@@ -4,7 +4,7 @@
 //! ones refuse a held workspace inside that same transaction.
 
 use maidan_types::{
-    LegalHold, LegalHoldId, MemberId, MessageId, NewAuditEvent, PreservedMessage,
+    ContentKeyring, LegalHold, LegalHoldId, MemberId, MessageId, NewAuditEvent, PreservedMessage,
     WorkspaceEraseResult, WorkspaceId, WorkspaceImport, WorkspacePurgeResult,
 };
 use sqlx::PgPool;
@@ -14,24 +14,26 @@ use crate::{error::StoreError, AuditFor};
 
 pub async fn purge_workspace(
     pool: &PgPool,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
     audit_for: AuditFor<WorkspacePurgeResult>,
 ) -> Result<WorkspacePurgeResult, StoreError> {
     let mut tx = pool.begin().await?;
-    let result = purge_workspace::purge_on(&mut tx, workspace_id).await?;
-    audit::append_counted(&mut tx, audit_for(&result)).await?;
+    let result = purge_workspace::purge_on(&mut tx, keys, workspace_id).await?;
+    audit::append_scoped(&mut tx, workspace_id, audit_for(&result)).await?;
     tx.commit().await?;
     Ok(result)
 }
 
 pub async fn erase_workspace(
     pool: &PgPool,
+    keys: &ContentKeyring,
     workspace_id: WorkspaceId,
     audit_for: AuditFor<WorkspaceEraseResult>,
 ) -> Result<WorkspaceEraseResult, StoreError> {
     let mut tx = pool.begin().await?;
-    let result = erase_workspace::erase_on(&mut tx, workspace_id).await?;
-    audit::append_counted(&mut tx, audit_for(&result)).await?;
+    let result = erase_workspace::erase_on(&mut tx, keys, workspace_id).await?;
+    audit::append_scoped(&mut tx, workspace_id, audit_for(&result)).await?;
     tx.commit().await?;
     Ok(result)
 }
@@ -40,16 +42,17 @@ pub async fn erase_workspace(
 /// in the same transaction: a failed import leaves it as it was, not gone.
 pub async fn import_workspace(
     pool: &PgPool,
+    keys: &ContentKeyring,
     bundle: &WorkspaceImport,
     replace_existing: bool,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
     let mut tx = pool.begin().await?;
     if replace_existing {
-        erase_workspace::erase_on(&mut tx, bundle.workspace.id).await?;
+        erase_workspace::erase_on(&mut tx, keys, bundle.workspace.id).await?;
     }
     import::import_on(&mut tx, bundle).await?;
-    audit::append_counted(&mut tx, event).await?;
+    audit::append_scoped(&mut tx, bundle.workspace.id, event).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -60,8 +63,9 @@ pub async fn purge_message(
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
     let mut tx = pool.begin().await?;
+    // Scope first: the message, and so its workspace, is gone after the purge.
+    audit::append_scoped(&mut tx, crate::audit_scope::AuditOwner::Message(id), event).await?;
     messages::purge_on(&mut tx, id).await?;
-    audit::append_counted(&mut tx, event).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -75,7 +79,7 @@ pub async fn place_legal_hold(
 ) -> Result<LegalHold, StoreError> {
     let mut tx = pool.begin().await?;
     let hold = legal_hold::place_on(&mut tx, workspace_id, reason, placed_by).await?;
-    audit::append_counted(&mut tx, audit_for(&hold)).await?;
+    audit::append_scoped(&mut tx, workspace_id, audit_for(&hold)).await?;
     tx.commit().await?;
     Ok(hold)
 }
@@ -90,7 +94,7 @@ pub async fn lift_legal_hold(
     let mut tx = pool.begin().await?;
     let lifted = legal_hold::lift_on(&mut tx, workspace_id, hold_id).await?;
     if let Some(disposal) = &lifted {
-        audit::append_counted(&mut tx, disposal.recorded_in(event)).await?;
+        audit::append_scoped(&mut tx, workspace_id, disposal.recorded_in(event)).await?;
     }
     tx.commit().await?;
     Ok(lifted.is_some())
@@ -104,7 +108,7 @@ pub async fn read_preserved_messages(
     event: NewAuditEvent,
 ) -> Result<Vec<PreservedMessage>, StoreError> {
     let mut tx = pool.begin().await?;
-    audit::append_counted(&mut tx, event).await?;
+    audit::append_scoped(&mut tx, workspace_id, event).await?;
     let preserved = legal_hold::preserved_on(&mut tx, workspace_id).await?;
     tx.commit().await?;
     Ok(preserved)

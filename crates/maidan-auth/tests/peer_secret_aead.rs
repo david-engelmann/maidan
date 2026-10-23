@@ -80,37 +80,51 @@ fn encryption_key_from_env_accepts_hex_and_base64_and_rejects_the_rest() {
     const VAR: &str = "FEDERATION_ENCRYPTION_KEY";
 
     // Missing -> MissingKey.
-    std::env::remove_var(VAR);
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::remove_var(VAR) };
     assert!(matches!(
         encryption_key_from_env(),
         Err(PeerSecretError::MissingKey)
     ));
 
     // 64-char hex -> the corresponding 32 bytes.
-    std::env::set_var(VAR, "ab".repeat(32));
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var(VAR, "ab".repeat(32)) };
     assert_eq!(encryption_key_from_env().expect("hex key"), [0xab; 32]);
 
     // Surrounding whitespace is trimmed.
-    std::env::set_var(VAR, format!("  {}  ", "cd".repeat(32)));
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var(VAR, format!("  {}  ", "cd".repeat(32))) };
     assert_eq!(encryption_key_from_env().expect("trimmed hex"), [0xcd; 32]);
 
     // Valid base64 of exactly 32 bytes.
-    std::env::set_var(VAR, STANDARD.encode(KEY_A));
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var(VAR, STANDARD.encode(KEY_A)) };
     assert_eq!(encryption_key_from_env().expect("base64 key"), KEY_A);
 
     // Base64 that decodes to the wrong length -> InvalidKey.
-    std::env::set_var(VAR, STANDARD.encode([0u8; 16]));
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var(VAR, STANDARD.encode([0u8; 16])) };
     assert!(matches!(
         encryption_key_from_env(),
         Err(PeerSecretError::InvalidKey)
     ));
 
     // Neither valid hex nor valid base64 -> InvalidKey.
-    std::env::set_var(VAR, "not-a-key");
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var(VAR, "not-a-key") };
     assert!(matches!(
         encryption_key_from_env(),
         Err(PeerSecretError::InvalidKey)
     ));
 
-    std::env::remove_var(VAR);
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::remove_var(VAR) };
 }
