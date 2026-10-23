@@ -345,7 +345,7 @@ async fn audit_on_tx(
     audit: crate::AuditFor<ApiToken>,
     token: &ApiToken,
 ) -> Result<(), StoreError> {
-    super::audit::append_on(tx, audit(token))
+    super::audit::append_scoped(tx, token.workspace_id, audit(token))
         .await
         .inspect_err(|_| crate::attribution::count_audit_write_failure())?;
     Ok(())

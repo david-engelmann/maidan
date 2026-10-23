@@ -46,7 +46,7 @@ pub async fn create_audited(
 ) -> Result<MaidanSession, StoreError> {
     let mut tx = pool.begin().await?;
     let session = create_on(&mut tx, new).await?;
-    super::audit::append_counted(&mut tx, audit(&session)).await?;
+    super::audit::append_scoped(&mut tx, session.workspace_id, audit(&session)).await?;
     tx.commit().await?;
     Ok(session)
 }
@@ -92,7 +92,7 @@ pub async fn delete_audited(
     .await?
     .ok_or(StoreError::NotFound)?;
     let session = row_to_session(&row)?;
-    super::audit::append_counted(&mut tx, audit(&session)).await?;
+    super::audit::append_scoped(&mut tx, session.workspace_id, audit(&session)).await?;
     tx.commit().await?;
     Ok(session)
 }

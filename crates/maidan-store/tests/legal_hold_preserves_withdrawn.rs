@@ -15,9 +15,9 @@ use maidan_types::{
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
-fn event(action: &str) -> NewAuditEvent {
+fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
-        scope: maidan_types::AuditScope::Instance,
+        scope: maidan_types::AuditScope::Workspace(ws),
         actor_id: None,
         action: action.into(),
         target_kind: None,
@@ -117,11 +117,11 @@ where
 
     // Under a hold, the member sees the same, and the store keeps the words.
     let first = store
-        .place_legal_hold_audited(ws, "matter 1", None, Box::new(|_| event("place")))
+        .place_legal_hold_audited(ws, "matter 1", None, Box::new(move |_| event(ws, "place")))
         .await
         .unwrap();
     let second = store
-        .place_legal_hold_audited(ws, "matter 2", None, Box::new(|_| event("place")))
+        .place_legal_hold_audited(ws, "matter 2", None, Box::new(move |_| event(ws, "place")))
         .await
         .unwrap();
     assert_ne!(first.id, second.id, "a second matter is a second hold");
@@ -132,7 +132,7 @@ where
         "the live row is blank"
     );
     let preserved = store
-        .read_preserved_messages_audited(ws, event("legal_hold.preserved_read"))
+        .read_preserved_messages_audited(ws, event(ws, "legal_hold.preserved_read"))
         .await
         .unwrap();
     assert_eq!(preserved.len(), 1, "only what was withdrawn under the hold");
@@ -152,12 +152,12 @@ where
 
     // Lifting one matter's hold releases nothing while another stands.
     assert!(store
-        .lift_legal_hold_audited(ws, first.id, event("legal_hold.lift.first"))
+        .lift_legal_hold_audited(ws, first.id, event(ws, "legal_hold.lift.first"))
         .await
         .unwrap());
     assert_eq!(
         store
-            .read_preserved_messages_audited(ws, event("legal_hold.preserved_read"))
+            .read_preserved_messages_audited(ws, event(ws, "legal_hold.preserved_read"))
             .await
             .unwrap()
             .len(),
@@ -165,17 +165,17 @@ where
         "the other matter still holds the words"
     );
     assert!(!store
-        .lift_legal_hold_audited(ws, first.id, event("legal_hold.lift.again"))
+        .lift_legal_hold_audited(ws, first.id, event(ws, "legal_hold.lift.again"))
         .await
         .unwrap());
 
     // Lifting the last disposes of it, and says so.
     assert!(store
-        .lift_legal_hold_audited(ws, second.id, event("legal_hold.lift"))
+        .lift_legal_hold_audited(ws, second.id, event(ws, "legal_hold.lift"))
         .await
         .unwrap());
     assert!(store
-        .read_preserved_messages_audited(ws, event("legal_hold.preserved_read"))
+        .read_preserved_messages_audited(ws, event(ws, "legal_hold.preserved_read"))
         .await
         .unwrap()
         .is_empty());
@@ -192,13 +192,13 @@ where
 
     // A preserved read that cannot be recorded returns nothing.
     store
-        .place_legal_hold_audited(ws, "matter 3", None, Box::new(|_| event("place")))
+        .place_legal_hold_audited(ws, "matter 3", None, Box::new(move |_| event(ws, "place")))
         .await
         .unwrap();
     say_then_withdraw(store, thread, author, "again", "again, edited").await;
     break_audit().await;
     assert!(store
-        .read_preserved_messages_audited(ws, event("legal_hold.preserved_read"))
+        .read_preserved_messages_audited(ws, event(ws, "legal_hold.preserved_read"))
         .await
         .is_err());
 }

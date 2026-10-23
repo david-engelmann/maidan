@@ -82,7 +82,7 @@ pub async fn set_audited(
         .await?;
     }
     let stored = get_on(&mut tx, workspace_id).await?;
-    super::audit::append_counted(&mut tx, audit(&stored)).await?;
+    super::audit::append_scoped(&mut tx, workspace_id, audit(&stored)).await?;
     tx.commit().await?;
     Ok(stored)
 }
