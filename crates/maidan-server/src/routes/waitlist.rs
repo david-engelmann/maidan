@@ -5,7 +5,7 @@
 
 use axum::{
     extract::State,
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Extension, Json,
 };
@@ -41,7 +41,7 @@ fn invite_hash(token: &str) -> String {
 /// The whole waitlist surface is part of sign-up: an instance that never
 /// enabled it collects nothing and shows nothing. 404, the same answer the
 /// sign-up start gives there.
-fn require_signup(state: &AppState) -> ApiResult<()> {
+pub(crate) fn require_signup(state: &AppState) -> ApiResult<()> {
     let enabled = state
         .oidc
         .as_ref()
@@ -54,35 +54,96 @@ fn require_signup(state: &AppState) -> ApiResult<()> {
     }
 }
 
-/// A plausible email shape: one `@`, non-empty local part and domain, a
-/// dot in the domain, no spaces. Deliverability is the provider's problem
-/// at sign-up; this only keeps the list free of shapes that are not
+/// Longest local part (before the `@`) an address may have, per RFC 5321.
+const MAX_LOCAL_CHARS: usize = 64;
+
+/// A plausible email shape: one `@`, a local part of at most 64 characters,
+/// a dotted domain whose labels are letters, digits and inner hyphens, and
+/// no whitespace, control characters or address punctuation that only a
+/// quoted or display-name form would use. Deliverability is the provider's
+/// problem at sign-up; this only keeps the list free of shapes that are not
 /// addresses at all.
 fn plausible_email(email: &str) -> bool {
     let email = email.trim();
-    if email.chars().count() > MAX_EMAIL_CHARS || email.chars().any(char::is_whitespace) {
+    if email.chars().count() > MAX_EMAIL_CHARS
+        || email
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || "<>()[]\\,;:\"".contains(c))
+    {
         return false;
     }
     let Some((local, domain)) = email.split_once('@') else {
         return false;
     };
-    !local.is_empty()
-        && domain.contains('.')
-        && !domain.starts_with('.')
-        && !domain.ends_with('.')
-        && !domain.contains('@')
+    if local.is_empty() || local.chars().count() > MAX_LOCAL_CHARS || domain.contains('@') {
+        return false;
+    }
+    let labels: Vec<&str> = domain.split('.').collect();
+    labels.len() >= 2
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && label.chars().count() <= 63
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.chars().all(|c| c.is_alphanumeric() || c == '-')
+        })
+}
+
+/// Whether a browser sent this request from another site. A request with
+/// an `Origin` must name this host; one without falls back to
+/// `Sec-Fetch-Site`. A client that sends neither (curl, an SDK) is not a
+/// browser being driven by another page, so it passes; the rate limits
+/// still apply to it.
+fn cross_site(headers: &HeaderMap) -> bool {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_ascii_lowercase);
+    if let Some(origin) = headers.get(header::ORIGIN) {
+        let origin_host = origin
+            .to_str()
+            .ok()
+            .and_then(|o| o.split_once("://"))
+            .map(|(_, rest)| rest.trim_end_matches('/').to_ascii_lowercase());
+        return match (origin_host, host) {
+            (Some(origin_host), Some(host)) => origin_host != host,
+            _ => true,
+        };
+    }
+    headers
+        .get("sec-fetch-site")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|site| site != "same-origin" && site != "none")
+}
+
+/// The one answer a join gets, whether the address is new, already listed,
+/// or the form was filled in by a bot: the list is not an oracle for who is
+/// on it, and a bot learns nothing from its answer.
+fn joined(email: &str) -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "email": email, "status": "waiting" })),
+    )
 }
 
 /// `POST /waitlist` — a signed-out visitor joins the waitlist. Public by
 /// design; the rate-limit middleware charges it per address and per email
-/// domain. A repeat join for an address already listed answers exactly
-/// like a fresh one: the list is not an oracle for who is on it, and the
-/// first row (and any invite minted from it) stands.
+/// domain. A browser must post it from this origin. A repeat join for an
+/// address already listed answers exactly like a fresh one, and the first
+/// row (and any invite minted from it) stands. A join whose hidden
+/// `website` field is filled in is a bot's: it answers the same and stores
+/// nothing.
 pub async fn join_waitlist(
     State(state): State<AppState>,
+    headers: HeaderMap,
     ApiJson(body): ApiJson<JoinWaitlistRequest>,
 ) -> ApiResult<impl IntoResponse> {
     require_signup(&state)?;
+    if cross_site(&headers) {
+        return Err(ApiError::Forbidden(
+            "the waitlist takes joins from this site only".into(),
+        ));
+    }
     if !body.consent {
         return Err(ApiError::BadRequest(
             "joining the waitlist needs consent to be contacted".into(),
@@ -98,6 +159,13 @@ pub async fn join_waitlist(
             "say briefly what you would use Maidan for".into(),
         ));
     }
+    if body
+        .website
+        .as_deref()
+        .is_some_and(|w| !w.trim().is_empty())
+    {
+        return Ok(joined(&email));
+    }
     let now = Utc::now();
     match state
         .store
@@ -108,10 +176,7 @@ pub async fn join_waitlist(
         })
         .await
     {
-        Ok(_) | Err(maidan_store::StoreError::Conflict(_)) => Ok((
-            StatusCode::CREATED,
-            Json(serde_json::json!({ "email": email, "status": "waiting" })),
-        )),
+        Ok(_) | Err(maidan_store::StoreError::Conflict(_)) => Ok(joined(&email)),
         Err(err) => Err(err.into()),
     }
 }

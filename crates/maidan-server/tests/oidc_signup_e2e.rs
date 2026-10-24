@@ -556,3 +556,149 @@ async fn boot_refuses_signup_beside_auto_provisioning() {
         Ok(_) => panic!("boot must refuse the pair, got settings"),
     }
 }
+
+async fn raw_join(env: &Env, body: Value, extra: &[(&str, &str)]) -> (StatusCode, String) {
+    let mut req = env
+        .client
+        .post(format!("{}/waitlist", env.base))
+        .json(&body);
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let res = req.send().await.unwrap();
+    let status = res.status();
+    (status, res.text().await.unwrap())
+}
+
+#[tokio::test]
+async fn a_repeat_join_gets_a_byte_identical_answer_to_a_fresh_one() {
+    let env = spawn(true, vec![]).await;
+    let body = json!({"email": "grace@example.com", "use_case": "review swarm", "consent": true});
+    let fresh = raw_join(&env, body.clone(), &[]).await;
+    let repeat = raw_join(&env, body, &[]).await;
+    assert_eq!(fresh.0, StatusCode::CREATED);
+    assert_eq!(fresh, repeat, "a listed address must not be told apart");
+}
+
+#[tokio::test]
+async fn a_filled_honeypot_is_answered_like_a_join_and_stores_nothing() {
+    let env = spawn(true, vec![]).await;
+    let human = raw_join(
+        &env,
+        json!({"email": "lin@example.com", "use_case": "agents", "consent": true, "website": ""}),
+        &[],
+    )
+    .await;
+    let bot = raw_join(
+        &env,
+        json!({"email": "bot@example.com", "use_case": "agents", "consent": true, "website": "https://spam.example"}),
+        &[],
+    )
+    .await;
+    assert_eq!(human.0, StatusCode::CREATED);
+    assert_eq!(bot.0, StatusCode::CREATED);
+    assert_eq!(
+        bot.1.replace("bot@", "lin@"),
+        human.1,
+        "the bot's answer has the human's shape"
+    );
+    let op = env.token(&["operator:global"]).await;
+    let (_, list) = env.operator_list(&op).await;
+    let emails: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["email"].as_str())
+        .collect();
+    assert_eq!(emails, vec!["lin@example.com"]);
+}
+
+#[tokio::test]
+async fn the_waitlist_refuses_shapes_that_are_not_email_addresses() {
+    let env = spawn(true, vec![]).await;
+    let long_local = format!("{}@example.com", "a".repeat(65));
+    let long_total = format!("a@{}.com", "b".repeat(260));
+    for email in [
+        "plain",
+        "@example.com",
+        "ada@",
+        "ada@localhost",
+        "ada@example..com",
+        "ada@-example.com",
+        "ada@exa_mple.com",
+        "Ada <ada@example.com>",
+        "ada@example.com\u{0}",
+        "ada@@example.com",
+        "a,b@example.com",
+        long_local.as_str(),
+        long_total.as_str(),
+    ] {
+        let (status, _) = env.join(email, "swarms", true).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{email:?}");
+    }
+    let too_long_note = "x".repeat(2_001);
+    let (status, _) = env.join("ada@example.com", &too_long_note, true).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_join_posted_from_another_site_is_refused_and_one_from_this_site_is_taken() {
+    let env = spawn(true, vec![]).await;
+    let host = env.base.trim_start_matches("http://").to_string();
+    let body = json!({"email": "kay@example.com", "use_case": "swarms", "consent": true});
+    let (status, _) = raw_join(&env, body.clone(), &[("origin", "https://evil.example")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = raw_join(&env, body.clone(), &[("origin", "null")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = raw_join(&env, body.clone(), &[("sec-fetch-site", "cross-site")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let same = format!("http://{host}");
+    let (status, text) = raw_join(&env, body, &[("origin", same.as_str())]).await;
+    assert_eq!(status, StatusCode::CREATED, "{text}");
+}
+
+#[tokio::test]
+async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_on() {
+    let env = spawn(true, vec![]).await;
+    let res = env
+        .client
+        .get(format!("{}/", env.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let h = res.headers().clone();
+    let csp = h["content-security-policy"].to_str().unwrap().to_string();
+    assert!(csp.contains("default-src 'none'"), "{csp}");
+    assert!(csp.contains("script-src 'self'"), "{csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
+    assert!(!csp.contains("unsafe-inline"), "{csp}");
+    assert_eq!(h["x-content-type-options"], "nosniff");
+    assert_eq!(h["x-frame-options"], "DENY");
+    assert_eq!(h["referrer-policy"], "no-referrer");
+    let html = res.text().await.unwrap();
+    assert!(
+        html.contains("id=\"wl-website\""),
+        "the honeypot field is on the page"
+    );
+    assert!(!html.contains("<script>"), "no inline script");
+    assert!(!html.contains("style="), "no inline style");
+    for asset in ["landing.css", "landing.js"] {
+        let res = env
+            .client
+            .get(format!("{}/landing/{asset}", env.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{asset}");
+        assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+    }
+    let off = spawn(false, vec![]).await;
+    let res = off
+        .client
+        .get(format!("{}/", off.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
