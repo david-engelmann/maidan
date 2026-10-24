@@ -77,6 +77,13 @@ pub(crate) struct ClaimSql<'a> {
     /// work. A named engine takes only threads routed to it: a thread with
     /// no engine, or another engine, is not handed over.
     pub engine: &'a str,
+    /// Placeholder bound to the service lane the claimer runs in, or NULL
+    /// for none. Lane is a tiebreak, never a filter: among threads of equal
+    /// aged priority, a lane claimer is handed threads in its lane first, then
+    /// unlaned ones, then other lanes; a claimer with no lane is handed
+    /// unlaned threads first. Priority and wait still rank first, so an
+    /// urgent thread is never held back by lane.
+    pub lane: &'a str,
     /// True when transition `tr` moved `cand` to `open` at or after its
     /// result `r` was produced. Each backend compares the two times its own
     /// way, since SQLite stores them as text.
@@ -93,7 +100,8 @@ pub(crate) struct ClaimSql<'a> {
 }
 
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
-/// `scope`: the highest priority aged by its wait, then the oldest. The
+/// `scope`: the highest priority aged by its wait, then one [`warm_for`] the
+/// claimer, then the oldest. The
 /// candidate thread is aliased `cand` and its channel `ch`; the caller appends
 /// any row lock.
 pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<'_>) -> String {
@@ -106,6 +114,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         lapsed_worked_secs,
         repo,
         engine,
+        lane,
         requeued_after_result,
         warm_hold_since,
         warm_ttl_since,
@@ -116,6 +125,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
+    let warm = warm_for(member);
     let warming = sibling_warming(now, warm_hold_since, warm_ttl_since, later_than);
     let refused = crate::review_family::refused_to(member);
     let claimable = claimability::claimable(&ThreadSql {
@@ -123,6 +133,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         lapsed_worked_secs,
         requeued_after_result,
     });
+    let lane_rank = lane_rank(lane);
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
@@ -150,8 +161,27 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            AND NOT {refused}
            AND {readable}
            AND NOT {warming}
-         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, cand.created_at ASC, cand.id ASC
+         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,
+                  {warm} DESC, {lane_rank} ASC, cand.created_at ASC, cand.id ASC
          LIMIT 1"
+    )
+}
+
+/// 1 when `member` was the last to hold `cand`, else 0 (Context Economics
+/// C6). The agent that last held a thread most likely still has its prompt
+/// prefix cached, so a re-queued thread (changes requested, or a lapsed
+/// claim) goes back to it ahead of older work of the same aged priority.
+/// Only a tiebreak: it never outranks priority or waiting, and never
+/// withholds a thread from anyone else.
+pub(crate) fn warm_for(member: &str) -> String {
+    format!(
+        "(CASE WHEN EXISTS (
+             SELECT 1 FROM maidan_thread_workers w
+             WHERE w.thread_id = cand.id AND w.member_id = {member}
+               AND w.last_held_seq = (
+                   SELECT MAX(w2.last_held_seq) FROM maidan_thread_workers w2
+                   WHERE w2.thread_id = cand.id)
+         ) THEN 1 ELSE 0 END)"
     )
 }
 
@@ -242,4 +272,17 @@ pub(crate) fn readable_by(member: &str, dm_channel: &str) -> String {
         "(SELECT claimer.workspace_id FROM maidan_members claimer WHERE claimer.id = {member})"
     );
     readable_thread("cand.id", &own_workspace, member, dm_channel)
+}
+
+/// 0 for a thread in the claimer's `lane` (an unlaned thread when the claimer
+/// has none), 1 for an unlaned thread under a lane claimer, 2 for any other
+/// lane: the tiebreak after aged priority, so lane routes without reserving
+/// and without overriding priority.
+fn lane_rank(lane: &str) -> String {
+    let cand_lane =
+        "(SELECT la.lane FROM maidan_thread_attributes la WHERE la.thread_id = cand.id)";
+    format!(
+        "CASE WHEN COALESCE({cand_lane}, '') = COALESCE({lane}, '') THEN 0 \
+         WHEN {cand_lane} IS NULL THEN 1 ELSE 2 END"
+    )
 }

@@ -1193,7 +1193,9 @@ remains for shell/CI. A job runs in-process on the replica that started it; its 
 
 ## Hosted on Cloudflare
 
-`dev.maidan.world` runs `main` on Cloudflare Containers. A Worker
+`maidan.world` runs the newest release and `dev.maidan.world` runs `main`,
+both on Cloudflare Containers, each with its own Worker, Neon project, R2
+bucket and secrets. A Worker
 (`deploy/cloudflare/`) takes every request and hands it to one Maidan
 container, which sleeps after 15 minutes without a request and starts again on
 the next one. Nothing the server keeps lives in the container: Postgres is a
@@ -1208,6 +1210,38 @@ which clients reconnect.
 | Postgres | Neon project `maidan-dev`, Postgres 17 with pgvector | Direct connection, not the pooler, because the bus `LISTEN`s |
 | Artifacts | R2 bucket `maidan-artifacts-dev` | `ARTIFACT_BACKEND=s3`, `S3_REGION=auto` |
 | Scheduled work | An hourly cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake |
+
+| Instance | Worker and config | Runs | Postgres | Artifacts |
+|----------|-------------------|------|----------|-----------|
+| `maidan.world` | `maidan-prod`, `wrangler.prod.jsonc` | The release a GitHub Release publishes (`deploy prod`) | Neon project `maidan` (prod) | `maidan-artifacts-prod` |
+| `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `main`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
+
+### maidan.world
+
+Publishing a GitHub Release runs `deploy prod`
+(`.github/workflows/deploy-prod.yml`). It refuses an image the release
+workflow did not sign (`cosign verify`), pushes the release's own
+`ghcr.io/david-engelmann/maidan-server:<tag>` to the account registry, deploys
+`wrangler.prod.jsonc`, waits until `/health` reports the tag, and checks that
+`GET /me` without a token answers 401. A dispatch with a tag deploys that
+release, to roll back or forward. The job reads its Cloudflare token from the
+`prod` environment.
+
+People sign in through a Cloudflare Access for SaaS OIDC app (`maidan.world`
+in Zero Trust), whose only login method is a one-time code mailed to the
+address, so `MAIDAN_OIDC_EMAILS_VERIFIED=1` treats its email claims as
+verified. Sign-up is by waitlist invite (`MAIDAN_SIGNUP=1`, no
+auto-provisioning): the waitlist form is public, an operator invites from
+`/operator/waitlist`, and only an invited address finishes sign-up. The Zero
+Trust free plan counts each person who signs in as a seat.
+
+Its Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
+`MAIDAN_SESSION_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `S3_ENDPOINT`,
+`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, set with
+`npx wrangler secret put <NAME> -c wrangler.prod.jsonc`. The KEK, the session
+secret and the OIDC secret are prod's own; the R2 keys should be a token
+scoped to `maidan-artifacts-prod` alone. The first admin comes from `maidan init` against the prod Neon
+project, with the same `DATABASE_URL` and `MAIDAN_CONTENT_KEK`.
 
 ### Deploying
 
