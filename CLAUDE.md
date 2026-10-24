@@ -75,31 +75,38 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-12)
+## Current state (2026-10-24)
 
-- **Releases:** latest **`v416.0.0`** (2026-10-23), key custody,
-  metering and the review tier. Release tags are cut when the maintainer chooses, not per
-  cluster, so some clusters were never tagged (v23–26, v78–100, v311, v350–401,
-  v403, v411); their work ships in the next tag. Tagging is the maintainer's
-  call.
-- **The queue is the launch path** (Open Work Next, in order): the OAuth
-  server (Next 23), per-tenant key custody (Next 25), the hosted deployment
-  at maidan.world (Next 24), waitlist and sign-up (Next 26), usage metering
-  (Next 27), abuse controls (Next 28), then validation, live client tests,
-  the launch polish and the launch release (Next 14, 17, 13, 12, 30, 29).
-  The approval rules hold throughout: since #1325 a gate is accepted only by
-  a browser session the person signed in to or `approval:grant`, nobody
-  accepts their own request, and `approval_decide` (#1332) sends a person to
-  confirm in the console unless the workspace set a threshold. These assume
-  auth is on: `AUTH_DISABLED` checks nothing and is never a deployment mode.
-  Most `wip/` branches hold work that has since shipped: check the Open Work
-  row they name before building on one.
-- **Every deploy path pins `v413.0.0`.** `scripts/check-deploy-pins.sh` (the
-  `deploy pins` job) keeps fifteen pins on the newest tag, `docs/Pi.md`
+- **Releases:** latest **`v417.0.0`** (2026-10-24), maidan.world,
+  second-family review and cache-aware claims. Tags are cut whenever the swarm stack needs
+  newer code (the maintainer, 2026-10-23), from a `main` whose eight required
+  checks passed, with the record PR first and the pins PR after the release
+  publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
+  v350–401, v403, v411).
+- **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
+  41): a seat runner for session work, run caps that work on macOS, finding
+  and closing threads by attribute, the rest of Program C, the nightly
+  mutation shards, and the M13 alert proof. Then the launch path (Next 23,
+  24, 14, 17, 13, 12, 30, 29). The approval rules hold throughout: since
+  #1325 a gate is accepted only by a browser session the person signed in to
+  or `approval:grant`, nobody accepts their own request, and
+  `approval_decide` (#1332) sends a person to confirm in the console unless
+  the workspace set a threshold. `AUTH_DISABLED` checks nothing and is never
+  a deployment mode.
+- **The swarm stack is local** (decided 2026-10-14) and runs any `main`
+  commit whose required checks passed. Its operator pins and deploys it;
+  coordination with the agents working on this repo is on issue #1495.
+- **Every deploy path pins `v416.0.0`.** `scripts/check-deploy-pins.sh` (the
+  `deploy pins` job) keeps the pins on the newest tag, `docs/Pi.md`
   included, and says which lines to change after the next one. The `:dev`
   images in `compose.yaml` and the charts' default values are built from
   source on purpose. Pointing anyone at a deploy is part of the launch, the
   maintainer's call.
+- **The shared machine is the scarce resource.** Several agents build on
+  one Mac. Cap every local build and test run (time and resident memory),
+  run narrow tests only while the 15-minute load is under 130, keep 65 GB of
+  disk free, and delete a target directory when its pull request merges.
+  macOS has no `timeout` and ignores `ulimit -v` (Open Work, Next 35).
 - **The forward plan is the ranked list in
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).
@@ -109,11 +116,10 @@ change.
   keeper reconciles after the merge. When each PR edited its own row, every PR
   conflicted with every other.
 - **Decisions only the maintainer makes** are listed in Open Work under
-  "Decisions pending the maintainer" (on 2026-10-12: where the hosted service
-  runs, the launch date and release, and the go for directory submissions). The launch
-  itself is decided: open source plus a hosted service at maidan.world, and
-  Open Work's Next is the path to it, ending at the `maidan-launch-1.0` gate. Don't guess at them. The ones he delegated are under
-  "Recently decided" and in [`docs/Decisions.md`](docs/Decisions.md).
+  "Decisions pending the maintainer" (on 2026-10-24: the launch date and
+  release, and the go for directory submissions). Don't guess at them. The
+  ones he delegated are under "Recently decided" and in
+  [`docs/Decisions.md`](docs/Decisions.md).
 
 Working beside other agents (several PRs are usually open at once):
 
@@ -387,7 +393,8 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   is no compatibility promise (Open Work, F-54).
 - **Don't bypass GPG signing** unless told to. No signing key is configured;
   tags through `v413.0.0` are annotated and unsigned.
-- **Don't cut release tags.** That is the maintainer's call.
+- **Don't cut release tags** unless you are the coordinator: the maintainer
+  delegated tagging to it on 2026-10-23.
 
 ## When you are stuck
 

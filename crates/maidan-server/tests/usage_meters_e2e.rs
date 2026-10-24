@@ -105,6 +105,9 @@ async fn requests_and_mcp_calls_count_for_the_callers_workspace_only() {
 /// searcher's workspace.
 #[tokio::test]
 async fn a_semantic_search_counts_one_embedding_for_the_searchers_workspace() {
+    // A 500 here names its cause only in the server log; keep it in the
+    // captured output.
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let mut state: Option<AppState> = None;
     let h = spawn_with(|s| state = Some(s.clone())).await;
     let state = state.unwrap();
@@ -130,7 +133,9 @@ async fn a_semantic_search_counts_one_embedding_for_the_searchers_workspace() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(status, StatusCode::OK, "semantic search answered {body}");
     maidan_server::usage_meters::flush_once(&state).await;
     assert!(meters(store, a)
         .await

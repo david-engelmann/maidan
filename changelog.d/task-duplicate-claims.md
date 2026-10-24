@@ -1,3 +1,0 @@
-### Duplicate tasks are not claimable
-
-- **Added:** Duplicate tasks are not claimable (Context Economics C8b): a task whose fingerprint was linked to a task that is still open or in review is withheld from claim-next (and counted unclaimable in queue depth), and an explicit claim on it is refused with `409`, pointing at `GET /threads/{id}/fingerprint` to reuse the original. Once the original closes, or after `DELETE /threads/{id}/fingerprint/duplicate-of` clears a wrong link, it is claimable again. A direct assignment by an operator is not refused. The fingerprint is computed once, from the brief and inputs at creation; replacing task attributes later does not recompute it or relink, so a duplicate link reflects what was asked for, not later edits.

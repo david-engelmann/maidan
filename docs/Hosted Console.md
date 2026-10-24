@@ -51,7 +51,7 @@ is a variant of the existing login:
    with no workspace. That needs `maidan_oidc_pending.workspace_id` to become
    nullable (a migration) and a pending-row kind, so a sign-up `state` can
    never complete a sign-in or the other way round.
-2. **The callback.** It requires `email_verified`. It then creates, in one
+2. **The callback.** It requires a verified email (`email_verified`, or a missing claim the operator vouches for with `MAIDAN_OIDC_EMAILS_VERIFIED`). It then creates, in one
    transaction:
    - the workspace;
    - a human admin member;
@@ -75,7 +75,14 @@ is right for a single-company deployment and wrong for a shared instance. The
 hosted configuration is:
 - `MAIDAN_OIDC_AUTO_PROVISION` unset;
 - `MAIDAN_OIDC_LINK_EMAIL=1`;
-- `MAIDAN_SIGNUP=1`.
+- `MAIDAN_SIGNUP=1`;
+- `MAIDAN_OIDC_EMAILS_VERIFIED=1` where the provider does not send
+  `email_verified`, as Cloudflare Access does not (maidan.world). Only while
+  the provider's every login method proves the address: on maidan.world the
+  Access app allows the emailed one-time code and nothing else. Adding a
+  login method that passes an unproven email would let it take over a
+  pre-provisioned member by link-by-email, redeem that address's invite, and
+  pass the sign-up domain list.
 
 **Proposed:** boot refuses `MAIDAN_SIGNUP=1` together with auto-provisioning.
 

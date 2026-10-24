@@ -9,6 +9,7 @@
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
+import { edgeRedirect, isSitePage, SITE_CSP, withSecurityHeaders } from "./edge.js";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
@@ -23,6 +24,18 @@ const SERVER_ENV = [
   "S3_REGION",
   "S3_ACCESS_KEY_ID",
   "S3_SECRET_ACCESS_KEY",
+  "MAIDAN_OIDC_ENABLED",
+  "MAIDAN_OIDC_ISSUER",
+  "MAIDAN_OIDC_CLIENT_ID",
+  "MAIDAN_OIDC_CLIENT_SECRET",
+  "MAIDAN_OIDC_REDIRECT_URI",
+  "MAIDAN_OIDC_LINK_EMAIL",
+  "MAIDAN_OIDC_EMAILS_VERIFIED",
+  "MAIDAN_SIGNUP",
+  "MAIDAN_SIGNUP_EMAIL_DOMAINS",
+  "MAIDAN_FREE_ALLOWANCE",
+  "MAIDAN_OPS_ALERT_CHANNEL",
+  "MAIDAN_SLACK_BOT_TOKEN",
 ];
 
 export class MaidanServer extends Container {
@@ -48,16 +61,28 @@ export class MaidanServer extends Container {
 
 export default {
   async fetch(request, env) {
+    const hasSite = env.ASSETS !== undefined;
+    const redirect = edgeRedirect(request, { hasSite });
+    if (redirect) {
+      return redirect;
+    }
+    if (hasSite && isSitePage(request)) {
+      return withSecurityHeaders(await env.ASSETS.fetch(request), {
+        "content-security-policy": SITE_CSP,
+      });
+    }
     // A probe would wake a sleeping container only to be told 404.
     if (isScannerProbe(new URL(request.url).pathname)) {
-      return new Response("not found\n", { status: 404 });
+      return withSecurityHeaders(new Response("not found\n", { status: 404 }));
     }
     // A client-sent X-Forwarded-For would let it pick the address it is rate
     // limited as; replace it with the address Cloudflare connected from.
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-for", request.headers.get("cf-connecting-ip") ?? "");
     headers.set("x-forwarded-proto", "https");
-    return getContainer(env.MAIDAN).fetch(new Request(request, { headers }));
+    return withSecurityHeaders(
+      await getContainer(env.MAIDAN).fetch(new Request(request, { headers })),
+    );
   },
 
   // Schedules, retries and sweeps run only while the container is awake. The
