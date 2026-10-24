@@ -1355,8 +1355,10 @@ mod tests {
 
     #[test]
     fn a_standard_price_must_not_overflow_or_undercut_the_charge() {
+        // Over a million input tokens, so an i64::MAX rate overflows the
+        // i64 charge after the per-million division.
         let tokens = TokenUsage {
-            input: 1_000,
+            input: 2_000_000,
             output: 10,
             ..TokenUsage::default()
         };
