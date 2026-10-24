@@ -1382,18 +1382,27 @@ mod tests {
                 ..UsageEvidence::default()
             },
         };
-        assert!(entry(price).validate().is_ok(), "equal to the charge is fine");
+        assert!(
+            entry(price).validate().is_ok(),
+            "equal to the charge is fine"
+        );
         let overflow = PriceSnapshot {
             input_usd_micros_per_million: i64::MAX,
             ..price
         };
         let err = entry(overflow).validate().unwrap_err();
-        assert!(err.contains("standard_price") && err.contains("overflow"), "{err}");
+        assert!(
+            err.contains("standard_price") && err.contains("overflow"),
+            "{err}"
+        );
         let cheaper = PriceSnapshot {
             input_usd_micros_per_million: 500_000,
             ..price
         };
-        assert!(entry(cheaper).validate().unwrap_err().contains("below usd_micros"));
+        assert!(entry(cheaper)
+            .validate()
+            .unwrap_err()
+            .contains("below usd_micros"));
     }
 
     #[test]

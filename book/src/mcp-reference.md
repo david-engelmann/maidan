@@ -1119,7 +1119,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         },
         "standard_price": {
           "additionalProperties": false,
-          "description": "the standard-tier price of a call in a cheaper lane (batch, or a batch or flex service_tier), so the usage rollup shows the lane saving; refused on any other call",
+          "description": "the standard-tier price of a call in a cheaper lane (batch, or a batch or flex service_tier), so the usage rollup shows the lane saving as reported; refused on any other call, or if its charge for the reported tokens overflows or is below the charged amount",
           "properties": {
             "cache_read_usd_micros_per_million": {
               "minimum": 0,

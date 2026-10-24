@@ -11168,7 +11168,7 @@
               },
               {
                 "$ref": "#/components/schemas/PriceSnapshot",
-                "description": "What the same model charges per million tokens on its standard tier,\nfor a call that ran in a cheaper lane (batch, or a `batch` or `flex`\nservice tier). Reporter evidence like the charged price: Maidan keeps\nno discount table. The ledger shows the lane saving from it."
+                "description": "What the same model charges per million tokens on its standard tier,\nfor a call that ran in a cheaper lane (batch, or a `batch` or `flex`\nservice tier). Reporter evidence like the charged price: Maidan keeps\nno discount table. The ledger shows the lane saving from it, as\nreported. Its charge for the reported tokens must not overflow or fall\nbelow the charged `usd_micros`."
               }
             ]
           }
@@ -11295,12 +11295,12 @@
             "type": "integer"
           },
           "lane_saved_usd_micros": {
-            "description": "The lane saving: `lane_standard_usd_micros` less what those same\nreports were charged.",
+            "description": "The lane saving, as reported: `lane_standard_usd_micros` less what\nthose same reports were charged. Never negative, since a standard\nprice below the charge is refused at ingest.",
             "format": "int64",
             "type": "integer"
           },
           "lane_standard_usd_micros": {
-            "description": "What the lane reports that carried a standard price would have cost\nat it.",
+            "description": "What the lane reports that carried a standard price would have cost\nat it, as reported.",
             "format": "int64",
             "type": "integer"
           },
