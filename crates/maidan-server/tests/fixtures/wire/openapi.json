@@ -3962,6 +3962,13 @@
           "use_case": {
             "description": "What the visitor would use Maidan for, in their own words.",
             "type": "string"
+          },
+          "website": {
+            "description": "Left empty by people. The page hides this field; a form-filling bot\nfills it, and its join is answered like any other and not stored.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -31064,6 +31071,16 @@
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A browser posted the join from another site"
           },
           "404": {
             "content": {

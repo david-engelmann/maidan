@@ -1142,6 +1142,7 @@ pub fn list_global_audit() {}
     responses(
         (status = 201, description = "Waiting; the same answer for an address already on the list"),
         (status = 400, response = BadRequest),
+        (status = 403, description = "A browser posted the join from another site", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
         (status = 429, description = "Rate limited for this address or this email domain", body = ProblemDetails, content_type = "application/problem+json"),
     )

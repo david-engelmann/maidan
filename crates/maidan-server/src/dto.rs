@@ -1839,6 +1839,10 @@ pub struct JoinWaitlistRequest {
     /// The visitor agreed to be contacted about a place. A join without
     /// consent is refused: the consent timestamp is the point of the row.
     pub consent: bool,
+    /// Left empty by people. The page hides this field; a form-filling bot
+    /// fills it, and its join is answered like any other and not stored.
+    #[serde(default)]
+    pub website: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
