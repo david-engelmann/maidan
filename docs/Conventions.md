@@ -122,6 +122,18 @@ Then run `cargo vet prune` to drop exemptions and imports nothing needs any
 more, and commit the `supply-chain/` changes with the `Cargo.lock` change.
 `cargo vet --locked` must pass locally before you push.
 
+## The shared machine
+
+Several agents build on one machine, so every local build and test run is
+capped: `scripts/capped --time 900 --mem-gb 16 -- cargo test -p <crate>`
+kills the command's whole process group past either cap (exit 124 for time,
+137 for memory). It exists because macOS has no `timeout` and ignores
+`ulimit -v`, and a test that leaked to 171 GB froze the machine on
+2026-10-23. Run only narrow tests (`-p`, `--test`) while the 15-minute load is
+over 130, keep 65 GB of disk free, and delete a target directory when its
+pull request merges. CI runs the full suite. `scripts/check-capped.sh`, in
+the `lint` job, holds the script to both caps.
+
 ## Secrets
 
 - `.env`, `maidan.toml`, `*.pem`, `*.key` are ignored.

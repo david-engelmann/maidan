@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Run a command under a wall-clock and resident-memory cap, on macOS too.
+
+macOS has no `timeout`, and it ignores `ulimit -v`, so a runaway test can
+take the whole shared machine (one reached 171 GB on 2026-10-23). This runs
+the command in its own process group, sums the group's resident memory every
+two seconds, and kills the whole group when either cap is passed.
+
+    capped [--time SECS] [--mem-gb GB] -- command args...
+
+Defaults: 900 s and 16 GB. Exit status is the command's own, 124 when the
+time cap killed it, and 137 when the memory cap did.
+"""
+import argparse
+import os
+import signal
+import subprocess
+import sys
+import time
+
+
+def group_rss_kb(pgid: int) -> int:
+    out = subprocess.run(
+        ["ps", "-A", "-o", "pgid=,rss="], capture_output=True, text=True
+    ).stdout
+    total = 0
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == str(pgid):
+            total += int(parts[1])
+    return total
+
+
+def kill_group(pgid: int) -> None:
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        # macOS answers EPERM, not ESRCH, once the group is only zombies.
+        except (ProcessLookupError, PermissionError):
+            return
+        time.sleep(3)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--time", type=int, default=900)
+    parser.add_argument("--mem-gb", type=float, default=16.0)
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    if not command:
+        parser.error("no command given")
+    limit_kb = int(args.mem_gb * 1024 * 1024)
+    child = subprocess.Popen(command, start_new_session=True)
+    pgid = child.pid
+    started = time.monotonic()
+    while True:
+        try:
+            return child.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        if time.monotonic() - started > args.time:
+            print(f"capped: over {args.time}s, killing {command[0]}", file=sys.stderr)
+            kill_group(pgid)
+            return 124
+        rss = group_rss_kb(pgid)
+        if rss > limit_kb:
+            print(
+                f"capped: {rss // 1024} MB resident is over {args.mem_gb} GB, killing {command[0]}",
+                file=sys.stderr,
+            )
+            kill_group(pgid)
+            return 137
+
+
+if __name__ == "__main__":
+    sys.exit(main())
