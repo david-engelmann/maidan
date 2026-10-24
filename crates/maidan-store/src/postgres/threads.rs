@@ -808,7 +808,7 @@ async fn claim_next_in_tx(
     // takeover of a lapsed lease can end the dead holder's claim, charged.
     let row = sqlx::query(&format!(
         "WITH next AS ({candidate} FOR UPDATE OF cand SKIP LOCKED)
-         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = $11, work_started_at = NULL, updated_at = NOW()
+         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = $11, work_started_at = NULL, updated_at = $11
          FROM next WHERE t.id = next.id
          RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by, next.prev_assignee, next.prev_deadline, next.prev_started"
     ))
