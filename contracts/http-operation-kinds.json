@@ -210,6 +210,7 @@
   {"method":"GET","path":"/threads/{id}/dependents","kind":"reads"},
   {"method":"GET","path":"/threads/{id}/evidence","kind":"reads"},
   {"method":"GET","path":"/threads/{id}/fingerprint","kind":"reads"},
+  {"method":"DELETE","path":"/threads/{id}/fingerprint/duplicate-of","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/footprint","kind":"reads"},
   {"method":"PUT","path":"/threads/{id}/footprint","kind":"changes"},
   {"method":"DELETE","path":"/threads/{id}/land-gate","kind":"changes"},

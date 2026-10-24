@@ -1,0 +1,3 @@
+### Claim-next warms, then fans out
+
+- **Changed:** `claim_next` warms, then fans out (Context Economics C5). Siblings that share a prompt prefix (the children of one recipe run, or siblings with the same task fingerprint) are handed out one at a time at first. The rest wait until that claim reports usage, which means the provider has written the shared prefix, so they read it instead of each writing it cold. They wait at most 120 s after the first claim, stop waiting when that claim is released or its lease lapses, and don't wait at all while a sibling's usage report is under 5 minutes old. Other children of a parent (plan, review, manual sub-threads) and unrelated work are never held back. Every age is measured from the app clock.

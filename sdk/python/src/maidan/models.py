@@ -170,6 +170,8 @@ class TaskAttributes(Model):
     linear_issue: Optional[str] = None
     #: The change's review tier, ``A`` or ``B``; unset counts as B.
     tier: Optional[str] = None
+    #: The service lane it may run in, ``batch`` or ``flex``; unset runs at standard rates.
+    lane: Optional[str] = None
     #: The provider family a review child is routed to; server-set.
     review_family: Optional[str] = None
 

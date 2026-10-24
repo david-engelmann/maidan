@@ -548,6 +548,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_task_fingerprint),
         )
         .route(
+            "/threads/{id}/fingerprint/duplicate-of",
+            delete(routes::clear_task_duplicate),
+        )
+        .route(
             "/threads/{id}/attributes",
             put(routes::set_thread_attributes),
         )

@@ -134,6 +134,36 @@ impl TaskTier {
     }
 }
 
+/// The service lane a thread's model calls may run in (Context Economics
+/// C7). A thread whose deadline has slack can be marked for a provider's
+/// batch API (about half price, results within hours) or its flex tier
+/// (discounted, slower, may be refused under load). Unset is the realtime
+/// lane, the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum TaskLane {
+    Batch,
+    Flex,
+}
+
+impl TaskLane {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Batch => "batch",
+            Self::Flex => "flex",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "batch" => Some(Self::Batch),
+            "flex" => Some(Self::Flex),
+            _ => None,
+        }
+    }
+}
+
 /// A workspace's default engine: where a thread created there with no
 /// engine named is routed. `None` leaves such threads unrouted, and an
 /// engine-filtered claim never takes them.
@@ -217,6 +247,10 @@ pub struct TaskAttributes {
     /// changes it. Read by the metrics only; nothing routes or gates on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<TaskTier>,
+    /// The service lane the task may run in: batch or flex for work whose
+    /// deadline has slack, unset for realtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<TaskLane>,
     /// The provider family a review child is routed to: one other than the
     /// family of the change's author, picked when the change entered review.
     /// Set by the server only; setting attributes leaves it as it was.
@@ -256,6 +290,28 @@ impl TaskAttributes {
             }
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod lane_tests {
+    use super::*;
+
+    #[test]
+    fn a_lane_round_trips_by_its_lowercase_name() {
+        for lane in [TaskLane::Batch, TaskLane::Flex] {
+            assert_eq!(TaskLane::parse(lane.as_str()), Some(lane));
+            assert_eq!(
+                serde_json::to_string(&lane).unwrap(),
+                format!("\"{}\"", lane.as_str())
+            );
+        }
+        assert_eq!(TaskLane::parse("realtime"), None);
+        let attrs: TaskAttributes = serde_json::from_str(r#"{"lane":"batch"}"#).unwrap();
+        assert_eq!(attrs.lane, Some(TaskLane::Batch));
+        assert!(!serde_json::to_string(&TaskAttributes::default())
+            .unwrap()
+            .contains("lane"));
     }
 }
 
