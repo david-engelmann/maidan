@@ -77,8 +77,8 @@ change.
 
 ## Current state (2026-10-24)
 
-- **Releases:** latest **`v416.0.0`** (2026-10-23), key custody,
-  metering and the review tier. Tags are cut whenever the swarm stack needs
+- **Releases:** latest **`v417.0.0`** (2026-10-24), maidan.world,
+  second-family review and cache-aware claims. Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,

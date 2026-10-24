@@ -42,6 +42,20 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v417.0.0](https://github.com/david-engelmann/maidan/releases/tag/v417.0.0) — maidan.world, second-family review, and cache-aware claims
+
+The first release since `v416.0.0`. It ships every PR merged after that tag, through #1598. `CHANGELOG.md` under `[417.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Hosted** | maidan.world runs the release on Cloudflare Containers (`deploy prod`: a cosign-verified image, then `/health` and an anonymous-`/me` check), with sign-in through a Cloudflare Access OIDC app, sign-up by invite, its own landing, privacy, terms and support pages, and HTTPS-only edge headers. `MAIDAN_OIDC_EMAILS_VERIFIED` lets the operator vouch for a provider whose every login proves the address | `deploy/cloudflare/`, `crates/maidan-server/src/oidc/` |
+| **Review** | A change's review is routed to a second provider family, and a verdict names the head it reviewed; a push voids it. A claim held into review lapses like any other, and release works after a result | `crates/maidan-store/src/review_family.rs`, `crates/maidan-store/src/claim_next.rs` |
+| **Claiming** | Siblings that share a prefix warm, then fan out; `claim_next` prefers the claimer's warm work and orders by service lane (`batch`, `flex`); duplicate tasks are fingerprinted, linked and withheld. Task attributes refuse an unknown key | `crates/maidan-store/src/claim_next.rs`, `crates/maidan-types/src/task_attributes.rs` |
+| **The change flow** | A pull request a merge queue squashed and closed lands its task; a stacked base is refused and carried as `depends_on`; gate notices are said once they hold (migration 0201) | `crates/maidan-server/src/change_sweep.rs`, `crates/maidan-server/src/ci_watch.rs` |
+| **Operations** | `scripts/capped` caps a local run's time and memory on macOS; the claimant runbook checks the toolchain before a claim; the Codex recipe names its model and approves Maidan's tools. tokio 1.54.1 and the S3 client without SigV4a clear RUSTSEC-2026-0386 and -0387 | `scripts/capped`, `examples/` |
+
+The deploy pins move to `v417.0.0` in the PR that follows the tag.
+
 ## [v416.0.0](https://github.com/david-engelmann/maidan/releases/tag/v416.0.0) — key custody, metering and the review tier
 
 The first release since `v415.0.0`. It ships every PR merged after that tag, through #1553. `CHANGELOG.md` under `[416.0.0]` has every entry.
