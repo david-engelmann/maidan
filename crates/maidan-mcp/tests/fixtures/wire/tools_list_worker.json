@@ -647,6 +647,40 @@
               "service_tier": {
                 "maxLength": 64,
                 "type": "string"
+              },
+              "standard_price": {
+                "additionalProperties": false,
+                "description": "the standard-tier price of a call in a cheaper lane (batch, or a batch or flex service_tier), so the usage rollup shows the lane saving as reported; refused on any other call, or if its charge for the reported tokens overflows or is below the charged amount",
+                "properties": {
+                  "cache_read_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "cache_write_1h_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "cache_write_5m_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "input_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "output_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "input_usd_micros_per_million",
+                  "output_usd_micros_per_million",
+                  "cache_read_usd_micros_per_million",
+                  "cache_write_5m_usd_micros_per_million",
+                  "cache_write_1h_usd_micros_per_million"
+                ],
+                "type": "object"
               }
             },
             "type": "object"

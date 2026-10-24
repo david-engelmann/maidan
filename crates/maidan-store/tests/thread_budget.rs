@@ -758,6 +758,14 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
         cache_write_1h_usd_micros_per_million: 2_000_000,
     };
     let usd = price.charge_usd_micros(tokens).expect("charge");
+    let standard = PriceSnapshot {
+        input_usd_micros_per_million: 2_000_000,
+        output_usd_micros_per_million: 4_000_000,
+        cache_read_usd_micros_per_million: 200_000,
+        cache_write_5m_usd_micros_per_million: 2_500_000,
+        cache_write_1h_usd_micros_per_million: 4_000_000,
+    };
+    let at_standard = standard.charge_usd_micros(tokens).expect("standard");
     let sha = "ab".repeat(32);
     let evidence = UsageEvidence {
         provider: Some("anthropic".into()),
@@ -768,6 +776,8 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
         cache_key: Some("session-1".into()),
         cache_miss_reason: Some("prefix changed".into()),
         pack_sha256: vec![sha.clone()],
+        // The batch call's standard-tier price: twice the batch rates.
+        standard_price: Some(standard),
     };
     let report = NewUsageLedgerEntry {
         usage_report_id: uuid::Uuid::new_v4(),
@@ -823,6 +833,13 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
     assert_eq!(rollup.cost_per_completed_task_usd_micros, Some(usd));
     assert!(rollup.hit_rate_ppm.is_some());
     assert!(rollup.saved_usd_micros > 0);
+    assert_eq!(rollup.lane_reports, 1);
+    assert_eq!(rollup.lane_usd_micros, usd);
+    assert_eq!(rollup.lane_standard_usd_micros, at_standard);
+    assert_eq!(rollup.lane_saved_usd_micros, at_standard - usd);
+    assert!(rollup.lane_saved_usd_micros > 0);
+    assert_eq!(rollup.lane_unpriced_reports, 0);
+    assert_eq!(stored.evidence.standard_price, Some(standard));
 
     let workspace = store
         .usage_rollup(UsageRollupQuery {
@@ -834,6 +851,36 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
         .expect("workspace rollup");
     assert_eq!(workspace.completed_tasks, 1);
     assert_eq!(workspace.cost_per_completed_task_usd_micros, Some(usd));
+
+    // A standard price whose charge overflows is refused, and the rollup
+    // still answers with the same totals.
+    let overflowing = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        evidence: UsageEvidence {
+            standard_price: Some(PriceSnapshot {
+                input_usd_micros_per_million: i64::MAX,
+                ..standard
+            }),
+            ..evidence.clone()
+        },
+        ..report.clone()
+    };
+    let err = store
+        .report_accounted_usage(&overflowing)
+        .await
+        .expect_err("overflowing standard price");
+    assert!(err.to_string().contains("standard_price"), "{err}");
+    let after = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("rollup after a refused report");
+    assert_eq!(after.reports, workspace.reports);
+    assert_eq!(after.lane_standard_usd_micros, at_standard);
+    assert_eq!(after.lane_saved_usd_micros, at_standard - usd);
 
     let member_rollup = store
         .usage_rollup(UsageRollupQuery {
