@@ -143,6 +143,16 @@ impl OidcSettings {
             })
             .unwrap_or_default();
 
+        // An operator's word stands in for the provider's: say so at boot, so
+        // a login method added at the provider later is checked against it.
+        let emails_verified = env_flag("MAIDAN_OIDC_EMAILS_VERIFIED");
+        if emails_verified {
+            tracing::warn!(
+                issuer = %issuer,
+                "MAIDAN_OIDC_EMAILS_VERIFIED: a missing email_verified claim counts as verified; every login method at this provider must prove the address"
+            );
+        }
+
         Ok(Some(Self {
             enabled: true,
             mock,
@@ -158,7 +168,7 @@ impl OidcSettings {
             auto_mint,
             signup,
             signup_email_domains,
-            emails_verified: env_flag("MAIDAN_OIDC_EMAILS_VERIFIED"),
+            emails_verified,
         }))
     }
 }

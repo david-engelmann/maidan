@@ -34,7 +34,7 @@ HttpOnly session; the page does not keep the token.
 | Human login via OIDC | Map IdP `sub` (+ `iss`) to a `Member` with `kind: human`. |
 | First-admin token mint after login | The session endpoint may mint the first `token:admin` when the workspace has none; agents keep using bearer tokens. |
 | Workspace scoping unchanged | OIDC does not replace workspace-scoped capabilities. |
-| Production-safe defaults | No implicit trust of `email` without verified claims; PKCE mandatory for public clients. |
+| Production-safe defaults | No implicit trust of `email` without verified claims, unless the operator sets `MAIDAN_OIDC_EMAILS_VERIFIED` for a provider whose every login proves the address (see Email trust); PKCE mandatory for public clients. |
 
 ## Non-goals
 
@@ -346,7 +346,7 @@ fast track without an authorization server").
 | Replay | `nonce` in id_token; reject if mismatch. |
 | Token leakage | HttpOnly, `SameSite=Lax` session cookie; `Secure` in production; PKCE required. |
 | Confused deputy | Bind `workspace_id` into `state`; callback refuses workspace drift. |
-| Email trust | Use `email` for linking only when `email_verified` is true; auto-provision may use it for handle/display. |
+| Email trust | Use `email` for linking, invites and sign-up only when it is verified: `email_verified: true`, or, with `MAIDAN_OIDC_EMAILS_VERIFIED=1`, a missing (or `null`) claim. An explicit `false` is never trusted. The flag is safe only while every login method the provider offers proves the address: a second method that passes an unproven `email` would let it take over a pre-provisioned member by link-by-email, redeem that address's invite, and pass the sign-up domain list. Auto-provision may use `email` for handle/display. |
 | Session fixation | Create a new server-side session row after successful login. |
 
 [Threat model](Threat-Model.md) T16/T17 cover trace redaction and the risks of a
