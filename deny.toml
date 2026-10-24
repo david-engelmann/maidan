@@ -20,10 +20,6 @@ id = "RUSTSEC-2026-0387"
 reason = "crypto-bigint 0.5.5, which has no fixed release, via p256/p384 0.13: openidconnect verifies ID-token signatures with public keys (no secret to leak), and web_push's VAPID signing and ECDH run server-side with no caller-observable timing; web_push moves to p256 0.14 (crypto-bigint 0.7.7, fixed) when openidconnect does (Open Work, small fixes)"
 
 [[advisories.ignore]]
-id = "RUSTSEC-2026-0381"
-reason = "webpki-roots 0.26.11 (via sqlx-core) is a shim that re-exports webpki-roots 1.x, locked at the fixed 1.0.10; its bundled roots are 1.0.10's"
-
-[[advisories.ignore]]
 id = "RUSTSEC-2023-0071"
 reason = "rsa via openidconnect for RS256 id_token verify; no fixed release; network timing risk accepted for OIDC (v2.0.2)"
 
