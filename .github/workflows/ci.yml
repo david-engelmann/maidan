@@ -111,6 +111,8 @@ jobs:
         run: ./scripts/check-deploy-contract.sh
       - name: agent contract golden files
         run: ./scripts/check-agent-contract.sh
+      - name: run caps (scripts/capped)
+        run: ./scripts/check-capped.sh
       - name: no internal project names
         run: ./scripts/check-no-internal-names.sh
 
