@@ -807,6 +807,55 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
     assert_eq!(stored.evidence.pack_sha256, vec![sha]);
     assert_eq!(stored.stamp.tokens.cache_write_1h, 2);
 
+    // A standard price whose charge overflows is refused while the reporter
+    // still holds the lease, and the rollup still answers with the same totals.
+    let before = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("rollup before a refused report");
+    // Over a million input tokens, so an i64::MAX standard rate overflows the
+    // i64 charge after the per-million division (the charge itself does not).
+    let many = TokenUsage {
+        input: 2_000_000,
+        ..tokens
+    };
+    let overflowing = NewUsageLedgerEntry {
+        usage_report_id: uuid::Uuid::new_v4(),
+        tokens: many,
+        usd_micros: price.charge_usd_micros(many).expect("charge"),
+        evidence: UsageEvidence {
+            standard_price: Some(PriceSnapshot {
+                input_usd_micros_per_million: i64::MAX,
+                ..standard
+            }),
+            ..evidence.clone()
+        },
+        ..report.clone()
+    };
+    let err = store
+        .report_accounted_usage(&overflowing)
+        .await
+        .expect_err("overflowing standard price");
+    let message = err.to_string();
+    assert!(message.contains("standard_price"), "{message}");
+    assert!(message.contains("overflow"), "{message}");
+    let after = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("rollup after a refused report");
+    assert_eq!(after.reports, before.reports);
+    assert_eq!(after.lane_reports, 1);
+    assert_eq!(after.lane_standard_usd_micros, at_standard);
+    assert_eq!(after.lane_saved_usd_micros, at_standard - usd);
+
     store
         .transition_thread(thread.id, member.id, maidan_fsm::ThreadAction::StartReview)
         .await
@@ -851,36 +900,6 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
         .expect("workspace rollup");
     assert_eq!(workspace.completed_tasks, 1);
     assert_eq!(workspace.cost_per_completed_task_usd_micros, Some(usd));
-
-    // A standard price whose charge overflows is refused, and the rollup
-    // still answers with the same totals.
-    let overflowing = NewUsageLedgerEntry {
-        usage_report_id: uuid::Uuid::new_v4(),
-        evidence: UsageEvidence {
-            standard_price: Some(PriceSnapshot {
-                input_usd_micros_per_million: i64::MAX,
-                ..standard
-            }),
-            ..evidence.clone()
-        },
-        ..report.clone()
-    };
-    let err = store
-        .report_accounted_usage(&overflowing)
-        .await
-        .expect_err("overflowing standard price");
-    assert!(err.to_string().contains("standard_price"), "{err}");
-    let after = store
-        .usage_rollup(UsageRollupQuery {
-            workspace_id: ws.id,
-            thread_id: None,
-            member_id: None,
-        })
-        .await
-        .expect("rollup after a refused report");
-    assert_eq!(after.reports, workspace.reports);
-    assert_eq!(after.lane_standard_usd_micros, at_standard);
-    assert_eq!(after.lane_saved_usd_micros, at_standard - usd);
 
     let member_rollup = store
         .usage_rollup(UsageRollupQuery {
