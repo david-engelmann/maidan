@@ -21,4 +21,4 @@ reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no
 # roots it bundles are 1.0.10's.
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0381"
-reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: webpki-roots 0.26.11 is a shim over webpki-roots 1.x, locked at the fixed 1.0.10; accepted in deny.toml"
+reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: webpki-roots 0.26.11 is a shim over webpki-roots 1.x, locked at the fixed 1.0.10 (RustSec lists 0.26.11 as unaffected, so cargo-deny needs no ignore)"
