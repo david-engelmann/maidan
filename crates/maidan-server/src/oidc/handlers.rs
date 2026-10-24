@@ -452,7 +452,8 @@ pub async fn callback(
 
         let sub = claims.subject().to_string();
         let email = claims.email().map(|m| m.to_string());
-        let email_verified = claims.email_verified().unwrap_or(false);
+        let email_verified =
+            email_is_verified(claims.email_verified(), oidc.settings.emails_verified);
         (oidc.settings.issuer.clone(), sub, email, email_verified)
     };
 
@@ -716,4 +717,28 @@ pub async fn logout(
     let mut response = Redirect::to(&location).into_response();
     response.headers_mut().extend(headers);
     Ok(response)
+}
+
+/// Whether a sign-in's email counts as verified: the provider's own
+/// `email_verified` claim when it sends one, and otherwise the operator's
+/// word that this provider only ever hands out proven addresses.
+fn email_is_verified(claim: Option<bool>, provider_vouches: bool) -> bool {
+    claim.unwrap_or(provider_vouches)
+}
+
+#[cfg(test)]
+mod email_verified_tests {
+    use super::email_is_verified;
+
+    #[test]
+    fn a_missing_claim_is_unverified_unless_the_operator_vouches_for_the_provider() {
+        assert!(!email_is_verified(None, false));
+        assert!(email_is_verified(None, true));
+    }
+
+    #[test]
+    fn an_explicit_claim_wins_over_the_operator_setting() {
+        assert!(!email_is_verified(Some(false), true));
+        assert!(email_is_verified(Some(true), false));
+    }
 }

@@ -392,6 +392,7 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         auto_mint: false,
         signup: false,
         signup_email_domains: Vec::new(),
+        emails_verified: false,
     })
     .await
     .expect("discover loopback provider");

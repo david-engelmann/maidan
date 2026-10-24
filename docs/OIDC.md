@@ -206,6 +206,7 @@ settings are:
 | `MAIDAN_OIDC_MOCK` | no | Deterministic dev/CI provider; rejected with `MAIDAN_ENV=production`. |
 | `MAIDAN_OIDC_AUTO_PROVISION` | no | `1` permits a new OIDC identity to create a human member; otherwise the identity must already be provisioned or linked. |
 | `MAIDAN_OIDC_LINK_EMAIL` | no | `1` permits linking a verified email claim to an existing member handle. |
+| `MAIDAN_OIDC_EMAILS_VERIFIED` | no | `1` treats an `email` claim that arrives without `email_verified` as verified. Set it only for a provider whose every login proves the address, such as Cloudflare Access with the emailed one-time code as its only login method. An explicit `email_verified: false` stays unverified. |
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on; permits the first-admin session mint. Set `0` to disable. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` adds the UI `auto_mint=1` hint when the workspace has no active `token:admin`; requires first-admin mint. |
 | `MAIDAN_OIDC_PENDING_TTL_SECS` | no | Pending login lifetime (default `600`). |

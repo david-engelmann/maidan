@@ -62,6 +62,12 @@ pub struct OidcSettings {
     /// Email domains (lower-cased) whose verified addresses may sign up
     /// without an invite. Empty unless `MAIDAN_SIGNUP_EMAIL_DOMAINS` is set.
     pub signup_email_domains: Vec<String>,
+    /// When true, an `email` claim the provider sends without
+    /// `email_verified` counts as verified. For a provider whose every login
+    /// proves the address, such as Cloudflare Access with its emailed
+    /// one-time code; an explicit `email_verified: false` still counts as
+    /// unverified.
+    pub emails_verified: bool,
 }
 
 impl OidcSettings {
@@ -152,6 +158,7 @@ impl OidcSettings {
             auto_mint,
             signup,
             signup_email_domains,
+            emails_verified: env_flag("MAIDAN_OIDC_EMAILS_VERIFIED"),
         }))
     }
 }
