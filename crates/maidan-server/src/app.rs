@@ -1195,8 +1195,12 @@ pub fn router(state: AppState) -> Router {
 
     async fn landing_asset(
         crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
+        axum::extract::State(state): axum::extract::State<AppState>,
         headers: axum::http::HeaderMap,
     ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        if crate::routes::require_signup(&state).is_err() {
+            return Err(axum::http::StatusCode::NOT_FOUND);
+        }
         let (content_type, body) = match name.as_str() {
             "landing.css" => (
                 "text/css; charset=utf-8",

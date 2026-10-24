@@ -94,17 +94,22 @@ fn plausible_email(email: &str) -> bool {
 /// `Sec-Fetch-Site`. A client that sends neither (curl, an SDK) is not a
 /// browser being driven by another page, so it passes; the rate limits
 /// still apply to it.
-fn cross_site(headers: &HeaderMap) -> bool {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_ascii_lowercase);
+fn cross_site(headers: &HeaderMap, public_origin: Option<&str>) -> bool {
     if let Some(origin) = headers.get(header::ORIGIN) {
-        let origin_host = origin
-            .to_str()
-            .ok()
-            .and_then(|o| o.split_once("://"))
-            .map(|(_, rest)| rest.trim_end_matches('/').to_ascii_lowercase());
+        let Ok(origin) = origin.to_str() else {
+            return true;
+        };
+        let origin = origin.trim_end_matches('/').to_ascii_lowercase();
+        // Behind a proxy the Host header is whatever the proxy sends, so the
+        // configured public origin is the one a browser's Origin must match.
+        if let Some(public) = public_origin {
+            return origin != public.trim_end_matches('/').to_ascii_lowercase();
+        }
+        let host = headers
+            .get(header::HOST)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_ascii_lowercase);
+        let origin_host = origin.split_once("://").map(|(_, rest)| rest.to_string());
         return match (origin_host, host) {
             (Some(origin_host), Some(host)) => origin_host != host,
             _ => true,
@@ -139,7 +144,7 @@ pub async fn join_waitlist(
     ApiJson(body): ApiJson<JoinWaitlistRequest>,
 ) -> ApiResult<impl IntoResponse> {
     require_signup(&state)?;
-    if cross_site(&headers) {
+    if cross_site(&headers, state.public_origin.as_deref()) {
         return Err(ApiError::Forbidden(
             "the waitlist takes joins from this site only".into(),
         ));

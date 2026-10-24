@@ -35,6 +35,10 @@ struct Env {
 }
 
 async fn spawn(signup: bool, domains: Vec<String>) -> Env {
+    spawn_with(signup, domains, None).await
+}
+
+async fn spawn_with(signup: bool, domains: Vec<String>, public_origin: Option<&str>) -> Env {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -86,6 +90,7 @@ async fn spawn(signup: bool, domains: Vec<String>) -> Env {
         end_session_url: None,
         logout_client_id: None,
     }));
+    state.public_origin = public_origin.map(str::to_string);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let app = router(state);
@@ -681,8 +686,22 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         html.contains("id=\"wl-website\""),
         "the honeypot field is on the page"
     );
-    assert!(!html.contains("<script>"), "no inline script");
-    assert!(!html.contains("style="), "no inline style");
+    let lower = html.to_ascii_lowercase();
+    let mut rest = lower.as_str();
+    while let Some(at) = rest.find("<script") {
+        let tag = &rest[at..];
+        let end = tag.find('>').unwrap_or(tag.len());
+        assert!(
+            tag[..end].contains(" src="),
+            "a script without src: {}",
+            &tag[..end]
+        );
+        assert!(tag[end..].starts_with("></script>"), "a script with a body");
+        rest = &tag[end..];
+    }
+    assert!(!lower.contains("<style"), "no style element");
+    assert!(!lower.contains("style="), "no inline style");
+    assert!(!has_inline_handler(&lower), "no inline handlers");
     for asset in ["landing.css", "landing.js"] {
         let res = env
             .client
@@ -701,4 +720,111 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+fn has_inline_handler(html: &str) -> bool {
+    [
+        "onclick=",
+        "onload=",
+        "onerror=",
+        "onsubmit=",
+        "oninput=",
+        "onchange=",
+    ]
+    .iter()
+    .any(|h| html.contains(h))
+}
+
+#[tokio::test]
+async fn an_origin_matching_the_public_url_is_taken_even_when_the_host_differs() {
+    let env = spawn_with(true, vec![], Some("https://maidan.example.com")).await;
+    let body = json!({"email": "pat@example.com", "use_case": "swarms", "consent": true});
+    let (status, text) = raw_join(
+        &env,
+        body.clone(),
+        &[("origin", "https://maidan.example.com")],
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{text}");
+    let host_origin = env.base.clone();
+    let (status, _) = raw_join(&env, body.clone(), &[("origin", host_origin.as_str())]).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "the Host header no longer vouches"
+    );
+    let (status, _) = raw_join(&env, body, &[("origin", "https://evil.example")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn landing_asset_paths_other_than_the_two_files_are_not_found() {
+    let env = spawn(true, vec![]).await;
+    for path in [
+        "/landing/../Cargo.toml",
+        "/landing/%2e%2e%2fCargo.toml",
+        "/landing/..%2fsrc%2fapp.rs",
+        "/landing/index.html",
+        "/landing/landing.css.map",
+        "/landing/nope.js",
+        "/landing/",
+    ] {
+        let res = env
+            .client
+            .get(format!("{}{path}", env.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn landing_assets_are_not_found_where_sign_up_is_off() {
+    let off = spawn(false, vec![]).await;
+    for asset in ["landing.css", "landing.js"] {
+        let res = off
+            .client
+            .get(format!("{}/landing/{asset}", off.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND, "{asset}");
+    }
+}
+
+#[tokio::test]
+async fn a_cross_site_plain_text_or_form_post_is_refused_and_stores_nothing() {
+    let env = spawn(true, vec![]).await;
+    let json_text = r#"{"email":"eve@example.com","use_case":"x","consent":true}"#;
+    for (content_type, body) in [
+        ("text/plain", json_text.to_string()),
+        (
+            "application/x-www-form-urlencoded",
+            "email=eve%40example.com&use_case=x&consent=true".to_string(),
+        ),
+        (
+            "multipart/form-data; boundary=x",
+            format!("--x\r\n{json_text}\r\n--x--"),
+        ),
+    ] {
+        let res = env
+            .client
+            .post(format!("{}/waitlist", env.base))
+            .header("content-type", content_type)
+            .header("origin", "https://evil.example")
+            .header("sec-fetch-site", "cross-site")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            res.status().is_client_error(),
+            "{content_type}: {}",
+            res.status()
+        );
+    }
+    let op = env.token(&["operator:global"]).await;
+    let (_, list) = env.operator_list(&op).await;
+    assert_eq!(list.as_array().map(Vec::len), Some(0), "nothing was stored");
 }
