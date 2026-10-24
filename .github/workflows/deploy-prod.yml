@@ -1,0 +1,91 @@
+name: deploy prod
+
+# maidan.world runs a release on Cloudflare Containers (deploy/cloudflare/,
+# wrangler.prod.jsonc; docs/Production.md "Hosted on Cloudflare"). Publishing a
+# GitHub Release deploys it; a dispatch deploys a named tag, to roll back or
+# forward. The image is the release's own, cosign-verified, never a build of
+# main.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to deploy (vN.N.N)"
+        required: true
+
+# One deploy at a time; a newer one waits rather than racing the rollout.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: prod
+      url: https://maidan.world
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      IMAGE: ghcr.io/david-engelmann/maidan-server
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: deploy/cloudflare
+    steps:
+      - name: the tag is a release tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      # The release workflow signs each image keylessly; refuse an image it
+      # did not sign, so a re-pointed tag cannot reach production.
+      - name: verify the release image
+        run: |
+          cosign verify "$IMAGE:$TAG" \
+            --certificate-identity-regexp '^https://github\.com/david-engelmann/maidan/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - run: npm ci
+      - name: push the release image to the account registry
+        run: |
+          # Pull the linux/amd64 manifest by digest: a multi-platform pull
+          # keeps the index, whose platform wrangler cannot read.
+          digest=$(docker buildx imagetools inspect "$IMAGE:$TAG" --raw \
+            | jq -r '.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest')
+          docker pull "$IMAGE@$digest"
+          docker tag "$IMAGE@$digest" "maidan-server:$TAG"
+          npx wrangler containers push "maidan-server:$TAG"
+      - name: deploy
+        run: |
+          image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$TAG"
+          sed -i "s#\"image\": \"registry.cloudflare.com/ACCOUNT/maidan-server:RELEASE\"#\"image\": \"$image\"#" wrangler.prod.jsonc
+          grep -q "\"image\": \"$image\"" wrangler.prod.jsonc
+          # The first deploy can look for the Durable Object namespace before
+          # it is visible (DURABLE_OBJECT_NOT_FOUND); the second finds it.
+          npx wrangler deploy -c wrangler.prod.jsonc || { sleep 15; npx wrangler deploy -c wrangler.prod.jsonc; }
+      - name: maidan.world runs this release
+        run: |
+          for _ in $(seq 1 36); do
+            got=$(curl -fsS https://maidan.world/health | jq -r .version || true)
+            if [ "$got" = "$TAG" ]; then echo "maidan.world runs $TAG"; exit 0; fi
+            sleep 10
+          done
+          echo "maidan.world answers ${got:-nothing}, not $TAG" >&2
+          exit 1
+      # An anonymous caller reads nothing: a production instance with auth
+      # off must never pass this step.
+      - name: anonymous access is refused
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://maidan.world/me)
+          [ "$code" = 401 ] || { echo "GET /me without a token answered $code, not 401" >&2; exit 1; }
