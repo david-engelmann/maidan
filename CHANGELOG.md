@@ -7,6 +7,124 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [417.0.0] — 2026-10-24
+
+The first release since 416.0.0. It ships every PR merged after the 416.0.0
+tag, through #1598: maidan.world runs the release on Cloudflare with sign-in
+through Cloudflare Access and sign-up by invite, a provider can vouch for its
+emails, reviews are routed to a second provider family and name the head
+they reviewed, claims warm a shared prefix before fanning out, prefer the
+claimer's warm work and order by service lane, duplicate tasks are linked and
+withheld, task attributes refuse unknown keys, Graphite-squashed pull
+requests land their tasks, gate notices are said once they hold, and local
+runs are capped on macOS.
+
+### A seat checks its toolchain before it claims
+
+- **Changed:** the claimant runbook runs the toolchain's version and the repository's narrowest check before every claim, and stops without claiming when either fails, so a seat that cannot build no longer takes hollow claims. It names the allowed Codex model (`gpt-5.6-sol`, never `gpt-6-astra`).
+
+### The Codex recipe runs unattended
+
+- **Fixed:** the Codex claimant recipe names its model (`-m gpt-5.6-sol`; a ChatGPT login refuses models outside its cache), approves the Maidan tools up front so `report_usage` is not refused under `codex exec`, and gives the sandbox network access in its config. The Codex and Cursor CLI prompts take the runbook's one-hour lease instead of fifteen minutes.
+
+### Sign-up domain charge follow-ups
+
+- **Fixed:** An invite that was used or expired while its holder was logging in is refused before the sign-up domain budget is charged, and inviting an entry that already signed up is refused before the invite budget is charged.
+- **Fixed:** Email domains with several trailing dots share one rate-limit bucket with the bare domain.
+
+### tokio 1.54.1 for RUSTSEC-2026-0386
+
+- **Fixed:** tokio moves from 1.52.3 to 1.54.1 (and 1.53.1 to 1.54.1 in `fuzz/`) for RUSTSEC-2026-0386, `AsyncFd`'s constructors violating I/O safety. Maidan does not use `AsyncFd`; the advisory failed `cargo deny` for every pull request.
+
+### A pull request's gate is said once it holds, not on every flicker
+
+- **Fixed:** `gate_blocked` and `gate_clear` flapped while GitHub's merge state flickered between `BLOCKED` and `CLEAN` as checks and the merge queue settled: one tracked pull request said ten of them on one head. A gate change is now said once two reads in a row agree on it (one change-sweep tick, 120 s by default) and it differs from the gate last said, which is kept with the pull request's CI record (`gate_said`, migration 0201), so a restart does not say it again. A real change is said one tick later than before. A record from before the migration says its next held gate once.
+
+### A pull request a merge queue squashed and closed lands its task
+
+- **Fixed:** a merge queue that squashes a pull request into a commit of its own on the base and then closes it (Graphite's does, so GitHub reports the pull request unmerged) left the task `in_review` with a "closed without merging" notice. The change sweep now counts the close as a landing when the base has a commit from the day before the close whose subject ends `(#N)`, and records that commit for deploy tracking. A revert or a passing mention does not count.
+
+### Security
+
+- **Changed:** key custody errors now say whether the KMS *refused* the call (access denied, disabled or missing key, wrong key or ciphertext) or was *unavailable* (throttling, timeouts, anything else). The rewrap pass caches only refusals, so a transient KMS failure skips just the row it hit, not every data key under that workspace key for the rest of the pass.
+- **Changed:** the server's background rewrap no longer exits once nothing is left. It retries stalled or failed passes with a doubling wait capped at ten minutes, and when idle looks again every ten minutes, so a workspace-key rotation made after boot is finished without a restart. Follow-up to #1534 (#1547).
+
+### A claim held into review lapses like any other
+
+- **Fixed:** the claim reaper only freed lapsed leases on `open` threads, so a claimant that published its result, moved the thread to `in_review` and then died, or failed to release, held its slot for good. Lapsed leases are now reaped on every live thread that is not `closed` or `archived`, with the same `ClaimExpired`. Releasing after the result is published works and stays fenced to the current lease, and a regression test pins both.
+
+### A change no longer opens on another change's branch
+
+- **Changed:** a `github_branch` target whose base is another change's `feature/agent-*` branch is now refused, with a reason that names `depends_on`. Stacked child pull requests were closed by GitHub when their base landed and was deleted (or when the merge queue closed it). Every change now opens on the repository's base, and the order between changes is a thread dependency, which holds the child unclaimed until its parent closes, so the child is built on a base that already has the parent.
+
+### Members can set their own display name
+
+- **Added:** `PATCH /members/{id}` sets or clears the caller's own display name (`workspace:write`). A display name could previously only be set at creation, so a member created without one stayed nameless in every surface that shows one.
+- **Changed:** a display name is now checked the same way on every path that sets one (`PATCH /members/{id}`, member create, agent create): trimmed, blank means none, and over 100 characters or containing a control character (NUL, newlines) or a format character (every Unicode Cf, including tag characters), a blank-rendering character (variation selectors, Hangul fillers, combining grapheme joiner) or a line/paragraph separator is a 400.
+
+### Every deploy path pins v416.0.0
+
+- **Changed:** every deploy pin and install command (Helm prod values for both charts, the quickstart compose file and Dockerfile with its tarball SHA-256s, the prod kustomize overlay, the README, `docs/Production.md`, `docs/Pi.md` and the three listings) moves from `v415.0.0` to `v416.0.0`, and the stack's bundled chart is repackaged.
+
+### Task attributes refuse an unknown key
+
+- **Fixed:** `PUT /threads/{id}/attributes`, and `attributes` on a thread create or a plan child, return 400 on a key they do not know instead of dropping it. A body wrapped as `{"attributes": {…}}` used to parse as all defaults and wipe the thread's engine, acceptance and Linear issue. The MCP tools were already strict; the `create_thread` schema now says so (`additionalProperties: false`).
+
+### Reviews are routed to a second provider family
+
+- **Added:** when a change enters review and its claimant's own usage records on it name a provider family (Anthropic, OpenAI including `o1`/`o3`/`o4` models, Google or xAI, read from the latest such record's provider or model), the server spawns its review child with `attributes.review_family` set to a different family. `claim_next` refuses that child to any seat whose usage records in the same workspace name the author's family. Any such record counts, however old, so a seat that ever reported under the author's family is refused that review permanently. `review_family` is server-set, and setting attributes leaves it as it was (migration 0202).
+
+### Task fingerprints with an advisory duplicate link
+
+- **Added:** Task fingerprints (Context Economics C8a): every new thread with a brief, from any creation path (plain create, create with attributes, plan children including review children, recipe threads), stores a versioned SHA-256 fingerprint of its title, description and task inputs, linked to the oldest open or in-review identical task in the same workspace. Claimed tasks are still open, so in-flight work is a duplicate target; closed tasks and other workspaces never are. Imported history is not fingerprinted. Read it with `GET /threads/{id}/fingerprint`; `duplicate_of` is hidden when the caller cannot see the original. Migration 0204. The link is advisory: reuse offers and claim refusal follow in C8b.
+
+### Review verdicts name the head they reviewed
+
+- **Added:** every review verdict now records `head_sha`, the full head SHA of the change's tracked pull request when the verdict was submitted (for a review child, its parent change's pull). It appears on `ThreadReview` and in the review history (migration 0203).
+- **Changed:** when a CI read shows the pull request's head moved, approvals on the change and its review children that named an earlier head are dismissed and no longer count toward close; re-approving names the new head. An approval with no named head (given before this change, or while no pull was tracked) is never dismissed this way. When a change tracks more than one pull, a verdict names the most recently read one, and a head change on any of them dismisses approvals naming another. Dismissal publishes no event yet (#1572). A push that lands between reading the head and submitting a verdict is not caught; a client-named `head_sha` is a planned follow-up.
+
+### Claim-next warms, then fans out
+
+- **Changed:** `claim_next` warms, then fans out (Context Economics C5). Siblings that share a prompt prefix (the children of one recipe run, or siblings with the same task fingerprint) are handed out one at a time at first. The rest wait until that claim reports usage, which means the provider has written the shared prefix, so they read it instead of each writing it cold. They wait at most 120 s after the first claim, stop waiting when that claim is released or its lease lapses, and don't wait at all while a sibling's usage report is under 5 minutes old. Other children of a parent (plan, review, manual sub-threads) and unrelated work are never held back. Every age is measured from the app clock.
+
+### Duplicate tasks are not claimable
+
+- **Added:** Duplicate tasks are not claimable (Context Economics C8b): a task whose fingerprint was linked to a task that is still open or in review is withheld from claim-next (and counted unclaimable in queue depth), and an explicit claim on it is refused with `409`, pointing at `GET /threads/{id}/fingerprint` to reuse the original. Once the original closes, or after `DELETE /threads/{id}/fingerprint/duplicate-of` clears a wrong link, it is claimable again. A direct assignment by an operator is not refused. The fingerprint is computed once, from the brief and inputs at creation; replacing task attributes later does not recompute it or relink, so a duplicate link reflects what was asked for, not later edits.
+
+### A thread can run in the batch or flex lane
+
+- **Added:** a `lane` task attribute (Context Economics C7a): `batch` or `flex`, the service lane a thread may run in. Unset runs at standard rates. It can be set on thread create, `PUT /threads/{id}/attributes`, and the MCP `create_thread` and `set_thread_attributes`, and it is carried on live claims and the change metrics rows. Claim routing by lane follows in C7b. Migration 0205 adds a nullable `lane` column to `maidan_thread_attributes` and changes no existing data.
+
+### Advisories: crypto-bigint, fastmcp, undici
+
+- **Fixed:** the S3 client drops the `sigv4a` feature, which nothing used and which pulled crypto-bigint 0.7.5 (RUSTSEC-2026-0387) into the root and fuzz lockfiles. crypto-bigint 0.5.5 remains through p256 0.13 (OpenID Connect verification and web push), has no fixed release, and is ignored in `deny.toml` with the reason. `fastmcp` is floored at 3.4.10 in the OpenHands recipe, and `undici` is overridden to 7.30.1 in the Cloudflare deploy tooling.
+
+### Local runs are capped on macOS too
+
+- **Added:** `scripts/capped` runs a command in its own process group and kills the group past a wall-clock or resident-memory cap (exit 124 or 137). macOS has no `timeout` and ignores `ulimit -v`, and a test leaked to 171 GB on the shared machine. The claimant runbook, `docs/Conventions.md` and CLAUDE.md name it, and `scripts/check-capped.sh` runs in the `lint` job.
+
+### Server tests run SQLite as a deployed instance does
+
+- **Fixed:** the shared server test harness used `sqlite::memory:` with a pool, which runs in shared-cache mode, where a read that meets a background write fails at once with `SQLITE_LOCKED`. A semantic search raced the indexer and answered 500 now and then (`usage_meters_e2e`, twice on unrelated PRs). The harness now uses a file in its temp dir with WAL and a busy timeout on every connection.
+
+### Claim routing by service lane
+
+- **Added:** Claim routing by service lane (Context Economics C7b). `POST /channels/{id}/threads/claim-next`, the workspace claim-next, and the MCP `claim_next_thread` and `claim_next_workspace_thread` take an optional `lane` (`batch` or `flex`) naming the lane the claimer runs in. Lane is a tiebreak within aged priority and never filters the queue: the claim order is priority plus hours waiting, then lane, then age. Among threads of equal aged priority, a claimer in a lane gets threads in that lane first, then unlaned threads, then threads in the other lane, and a claimer with no lane gets unlaned threads first. An urgent unlaned thread still beats a low-priority thread in the claimer's lane, and laned work ages like any other, so it is never held back. An unknown lane is refused on REST and MCP.
+
+### An OIDC provider can vouch for its emails
+
+- **Added:** `MAIDAN_OIDC_EMAILS_VERIFIED=1` treats an `email` claim that arrives without `email_verified` as verified, for a provider whose every login proves the address (Cloudflare Access with its emailed one-time code). An explicit `email_verified: false` still counts as unverified. maidan.world signs in through Cloudflare Access, whose tokens do not document the claim.
+
+### Claim-next prefers warm work
+
+- **Changed:** `claim_next` prefers warm work (Context Economics C6): among candidates of equal aged priority, a thread the claimer was the last to hold comes ahead of older ones, so a re-queued or lapsed thread goes back to the agent whose prompt prefix is most likely still cached. It is a tiebreak only: priority and waiting time still rank first, and no thread is withheld from anyone.
+
+### maidan.world runs the newest release on Cloudflare
+
+- **Added:** `deploy prod` deploys a published release to maidan.world: it verifies the release image's cosign signature, pushes it to the account registry, deploys `deploy/cloudflare/wrangler.prod.jsonc`, waits for `/health` to report the tag, and checks that an anonymous `/me` is refused. Sign-in is a Cloudflare Access for SaaS OIDC app, and sign-up is by waitlist invite.
+- **Added:** the Worker in front of both instances redirects plain HTTP to HTTPS, sends a browser opening `/` to the console, and adds HSTS, `X-Content-Type-Options: nosniff` and a referrer policy to every answer, leaving WebSocket upgrades untouched.
+- **Added:** maidan.world serves its own landing page, privacy policy, terms of service and support page from the Worker's static assets (`deploy/cloudflare/site/`), with a strict content security policy; self-hosted instances and dev are unchanged.
+
 ## [416.0.0] — 2026-10-23
 
 The first release since 415.0.0. It ships every PR merged after the 415.0.0
