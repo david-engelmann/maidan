@@ -727,13 +727,13 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         "acceptance": "The bridge retries twice; its test proves it.",
         "linear_issue": "ENG-123"
     });
-    for title in ["first", "second"] {
-        let (status, made) = create_thread(
-            &base,
-            &room,
-            json!({ "title": title, "attributes": attributes }),
-        )
-        .await;
+    // Each thread names its own issue: two open change threads for one
+    // issue are a likely duplicate, and claim_next withholds the second.
+    let mut second = attributes.clone();
+    second["linear_issue"] = json!("ENG-124");
+    for (title, attrs) in [("first", &attributes), ("second", &second)] {
+        let (status, made) =
+            create_thread(&base, &room, json!({ "title": title, "attributes": attrs })).await;
         assert_eq!(status, StatusCode::CREATED, "{made}");
     }
 
@@ -746,7 +746,8 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         )
         .await,
     );
-    assert_eq!(over_mcp["attributes"], attributes, "{over_mcp}");
+    let claimed = [&attributes, &second];
+    assert!(claimed.contains(&&over_mcp["attributes"]), "{over_mcp}");
     let over_rest: Value = reqwest::Client::new()
         .post(format!(
             "{base}/channels/{}/threads/claim-next",
@@ -760,7 +761,7 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         .json()
         .await
         .unwrap();
-    assert_eq!(over_rest["attributes"], attributes, "{over_rest}");
+    assert!(claimed.contains(&&over_rest["attributes"]), "{over_rest}");
     assert_ne!(over_rest["id"], over_mcp["id"]);
 
     let pack = tool_result(
@@ -772,5 +773,8 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         )
         .await,
     );
-    assert_eq!(pack["thread"]["attributes"], attributes, "{pack}");
+    assert_eq!(
+        pack["thread"]["attributes"], over_mcp["attributes"],
+        "{pack}"
+    );
 }
