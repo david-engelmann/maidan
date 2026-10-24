@@ -75,6 +75,8 @@ struct Model {
     holders: HashMap<usize, Holder>,
     /// The last token each thread was claimed with before its current one.
     stale: HashMap<usize, ClaimLeaseId>,
+    /// The member who last took hold of each thread (`last_held_seq`).
+    last_holder: HashMap<usize, usize>,
 }
 
 impl Model {
@@ -192,11 +194,20 @@ async fn run(ops: Vec<Op>) {
                     .claim_next_thread(w.channel, w.members[member], lease, None)
                     .await
                     .unwrap();
-                let expected = (0..THREADS).find(|t| model.claimable(*t));
+                // The oldest claimable thread, except that one this member
+                // last held comes first (warm affinity, C6; no priorities
+                // here, and the threads are minutes apart at most).
+                let expected = (0..THREADS)
+                    .find(|t| model.claimable(*t) && model.last_holder.get(t) == Some(&member))
+                    .or_else(|| (0..THREADS).find(|t| model.claimable(*t)));
                 match (got, expected) {
                     (None, None) => {}
                     (Some(t), Some(i)) => {
-                        assert_eq!(t.id, w.threads[i], "claimed the oldest claimable thread");
+                        assert_eq!(
+                            t.id, w.threads[i],
+                            "claimed the warm thread, else the oldest claimable one"
+                        );
+                        model.last_holder.insert(i, member);
                         let token = t.claim_lease_id.expect("a claim carries a token");
                         if let Some(old) = model.holders.get(&i) {
                             model.stale.insert(i, old.lease);
