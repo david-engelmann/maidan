@@ -28,7 +28,7 @@ use maidan_types::{
 use reqwest::Method;
 use serde_json::{json, Value};
 use sqlx::{
-    sqlite::{SqlitePool, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
     Row,
 };
 use uuid::Uuid;
@@ -75,20 +75,27 @@ pub async fn spawn() -> Harness {
 
 /// [`spawn`], with `configure` applied to the state before the router is built.
 pub async fn spawn_with(configure: impl FnOnce(&mut AppState)) -> Harness {
+    let dir = tempfile::tempdir().unwrap();
+    // A file, not `sqlite::memory:`: a pool's in-memory database runs in
+    // shared-cache mode, where a reader that meets a writer fails at once
+    // with SQLITE_LOCKED instead of waiting, and a request that raced a
+    // background write answered 500. WAL and a busy timeout on every
+    // connection are how a deployed instance runs.
+    let options = SqliteConnectOptions::new()
+        .filename(dir.path().join("maidan.db"))
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(Duration::from_secs(5))
+        .foreign_keys(true);
     let pool = SqlitePoolOptions::new()
         .max_connections(8)
-        .connect("sqlite::memory:")
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(&pool)
+        .connect_with(options)
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> =
         Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
-    let dir = tempfile::tempdir().unwrap();
     let key = Some(Arc::new([7u8; 32]));
     let mut state = AppState::new(
         store.clone(),
