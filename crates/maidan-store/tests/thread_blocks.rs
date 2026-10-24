@@ -233,7 +233,7 @@ async fn run_claim_skip_suite(store: &dyn Store) {
 
     // The with_event path shares the same skip.
     let (again, events) = store
-        .claim_next_thread_with_event(channel.id, member.id, None, None, None)
+        .claim_next_thread_with_event(channel.id, member.id, None, None, None, None)
         .await
         .expect("claim_next_with_event");
     assert!(again.is_none(), "t1 still blocked, t3 still DAG-blocked");
