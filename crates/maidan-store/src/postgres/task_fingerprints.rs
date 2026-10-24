@@ -95,3 +95,51 @@ pub async fn get(
     })
     .transpose()
 }
+
+/// The live original `thread_id` duplicates, if any: the task its
+/// fingerprint was linked to, while that task is still open or in review.
+/// Mirrors [`crate::claimability::DUPLICATE`].
+pub(crate) async fn live_original_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<Option<ThreadId>, StoreError> {
+    let original: Option<Uuid> = sqlx::query_scalar(
+        "SELECT orig.id FROM maidan_task_fingerprints fp
+         JOIN maidan_threads orig ON orig.id = fp.duplicate_of
+         WHERE fp.thread_id = $1 AND orig.tombstoned_at IS NULL
+           AND orig.state IN ('open', 'in_review')",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *conn)
+    .await?;
+    Ok(original.map(ThreadId))
+}
+
+/// Refuse a claim on a live duplicate. The original is not named: the
+/// claimer may not be able to read it, and the fingerprint route shows it to
+/// those who can.
+pub(crate) async fn refuse_duplicate_claim_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    if live_original_on(conn, thread_id).await?.is_some() {
+        return Err(StoreError::Conflict(
+            "this task duplicates an open task: reuse that one (GET /threads/{id}/fingerprint names it), or clear the link to claim this one".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Clear `thread_id`'s duplicate link, so it is claimable again. `NotFound`
+/// when the thread has no fingerprint. Idempotent.
+pub async fn clear_duplicate(pool: &PgPool, thread_id: ThreadId) -> Result<(), StoreError> {
+    let done =
+        sqlx::query("UPDATE maidan_task_fingerprints SET duplicate_of = NULL WHERE thread_id = $1")
+            .bind(thread_id.0)
+            .execute(pool)
+            .await?;
+    if done.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    Ok(())
+}

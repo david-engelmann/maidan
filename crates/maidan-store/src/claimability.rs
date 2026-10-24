@@ -43,6 +43,14 @@ pub(crate) fn available(now: &str) -> String {
 pub(crate) const PARKED: &str =
     "EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = cand.id)";
 
+/// A live duplicate (Context Economics C8b): created with a fingerprint
+/// identical to a task that is still open or in review, so the work goes to
+/// that original instead. Clearing the link makes it claimable again.
+pub(crate) const DUPLICATE: &str = "EXISTS (SELECT 1 FROM maidan_task_fingerprints fp
+                        JOIN maidan_threads orig ON orig.id = fp.duplicate_of
+                        WHERE fp.thread_id = cand.id AND orig.tombstoned_at IS NULL
+                          AND orig.state IN ('open', 'in_review'))";
+
 /// Carries an explicit block.
 pub(crate) const BLOCKED: &str =
     "EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = cand.id)";
@@ -89,10 +97,14 @@ pub(crate) fn deferred(now: &str) -> String {
     crate::footprints::deferred("cand.id", now)
 }
 
-/// Kept off the queue until someone acts (parked, out of budget, or already
-/// finished): queue depth's `unclaimable`.
+/// Kept off the queue until someone acts (parked, out of budget, already
+/// finished, or a live duplicate): queue depth's `unclaimable`.
 pub(crate) fn withheld(sql: &ThreadSql<'_>) -> String {
-    format!("({PARKED} OR {} OR {})", over_budget(sql), finished(sql))
+    format!(
+        "({PARKED} OR {DUPLICATE} OR {} OR {})",
+        over_budget(sql),
+        finished(sql)
+    )
 }
 
 /// Waiting on something that clears by itself or by a decision (a block, a

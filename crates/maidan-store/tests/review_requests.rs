@@ -57,7 +57,7 @@ async fn handed_to_review(store: &dyn Store, ws: WorkspaceId, worker: MemberId) 
         .create_thread(NewThread {
             channel_id: channel,
             parent_thread_id: None,
-            title: Some("task".into()),
+            title: Some(distinct_brief("task")),
             description: None,
             created_by: None,
         })
@@ -512,4 +512,11 @@ async fn review_requests_list_what_waits_on_a_named_reviewer_postgres() {
     run_unassigned_suite(&store).await;
     run_result_gate_suite(&store).await;
     run_closed_without_review_suite(&store).await;
+}
+
+/// `base` with a unique suffix, so fixture tasks created alike in one
+/// workspace never share a fingerprint: a live duplicate is not claimable
+/// (Context Economics C8b), and these tests are not about duplicates.
+fn distinct_brief(base: &str) -> String {
+    format!("{base} {}", uuid::Uuid::now_v7())
 }
