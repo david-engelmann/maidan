@@ -77,6 +77,13 @@ pub(crate) struct ClaimSql<'a> {
     /// work. A named engine takes only threads routed to it: a thread with
     /// no engine, or another engine, is not handed over.
     pub engine: &'a str,
+    /// Placeholder bound to the service lane the claimer runs in, or NULL
+    /// for none. Lane is a tiebreak, never a filter: among threads of equal
+    /// aged priority, a lane claimer is handed threads in its lane first, then
+    /// unlaned ones, then other lanes; a claimer with no lane is handed
+    /// unlaned threads first. Priority and wait still rank first, so an
+    /// urgent thread is never held back by lane.
+    pub lane: &'a str,
     /// True when transition `tr` moved `cand` to `open` at or after its
     /// result `r` was produced. Each backend compares the two times its own
     /// way, since SQLite stores them as text.
@@ -107,6 +114,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         lapsed_worked_secs,
         repo,
         engine,
+        lane,
         requeued_after_result,
         warm_hold_since,
         warm_ttl_since,
@@ -125,6 +133,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         lapsed_worked_secs,
         requeued_after_result,
     });
+    let lane_rank = lane_rank(lane);
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
@@ -153,7 +162,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            AND {readable}
            AND NOT {warming}
          ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,
-                  {warm} DESC, cand.created_at ASC, cand.id ASC
+                  {warm} DESC, {lane_rank} ASC, cand.created_at ASC, cand.id ASC
          LIMIT 1"
     )
 }
@@ -263,4 +272,17 @@ pub(crate) fn readable_by(member: &str, dm_channel: &str) -> String {
         "(SELECT claimer.workspace_id FROM maidan_members claimer WHERE claimer.id = {member})"
     );
     readable_thread("cand.id", &own_workspace, member, dm_channel)
+}
+
+/// 0 for a thread in the claimer's `lane` (an unlaned thread when the claimer
+/// has none), 1 for an unlaned thread under a lane claimer, 2 for any other
+/// lane: the tiebreak after aged priority, so lane routes without reserving
+/// and without overriding priority.
+fn lane_rank(lane: &str) -> String {
+    let cand_lane =
+        "(SELECT la.lane FROM maidan_thread_attributes la WHERE la.thread_id = cand.id)";
+    format!(
+        "CASE WHEN COALESCE({cand_lane}, '') = COALESCE({lane}, '') THEN 0 \
+         WHEN {cand_lane} IS NULL THEN 1 ELSE 2 END"
+    )
 }

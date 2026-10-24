@@ -117,7 +117,7 @@ async fn the_new_holder_keeps_the_thread(store: &dyn Store, handover: Handover) 
     // Well past the old lease.
     tokio::time::sleep(Duration::from_millis(1_500)).await;
     let (taken, events) = store
-        .claim_next_thread_with_event(w.channel, w.claimer, Some(LEASE_SECS), None, None)
+        .claim_next_thread_with_event(w.channel, w.claimer, Some(LEASE_SECS), None, None, None)
         .await
         .unwrap();
     assert!(
