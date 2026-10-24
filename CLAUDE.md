@@ -342,6 +342,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 
 ## Harness gotchas (for agents)
 
+- **Cap every local build and test run** with `scripts/capped --time 900
+  --mem-gb 16 -- <command>`. `timeout` is missing on macOS and `ulimit -v` is
+  ignored there, so neither caps anything ([`docs/Conventions.md`](docs/Conventions.md),
+  "The shared machine").
 - **`Edit` needs a fresh `Read`.** `cargo fmt` rewrites files; re-read before a
   second edit.
 - **macOS `sed -i` needs a backup suffix:** `sed -i.bak '…' f && rm f.bak`.
