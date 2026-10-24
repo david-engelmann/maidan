@@ -9,7 +9,7 @@
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
-import { edgeRedirect, withSecurityHeaders } from "./edge.js";
+import { edgeRedirect, isSitePage, SITE_CSP, withSecurityHeaders } from "./edge.js";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
@@ -61,9 +61,15 @@ export class MaidanServer extends Container {
 
 export default {
   async fetch(request, env) {
-    const redirect = edgeRedirect(request);
+    const hasSite = env.ASSETS !== undefined;
+    const redirect = edgeRedirect(request, { hasSite });
     if (redirect) {
       return redirect;
+    }
+    if (hasSite && isSitePage(request)) {
+      return withSecurityHeaders(await env.ASSETS.fetch(request), {
+        "content-security-policy": SITE_CSP,
+      });
     }
     // A probe would wake a sleeping container only to be told 404.
     if (isScannerProbe(new URL(request.url).pathname)) {

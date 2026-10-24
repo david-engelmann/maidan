@@ -21,6 +21,9 @@
       "max_instances": 1
     }
   ],
+  // The hosted site's pages (landing, privacy, terms, support); the Worker
+  // decides which requests they answer (src/edge.js, SITE_PATHS).
+  "assets": { "directory": "./site", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": {
     "bindings": [{ "name": "MAIDAN", "class_name": "MaidanServer" }]
   },

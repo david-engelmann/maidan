@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { edgeRedirect, withSecurityHeaders, SECURITY_HEADERS } from "../src/edge.js";
+import { edgeRedirect, isSitePage, withSecurityHeaders, SECURITY_HEADERS, SITE_CSP } from "../src/edge.js";
 
 const get = (url, accept) =>
   new Request(url, { headers: accept ? { accept } : {} });
@@ -34,4 +34,24 @@ test("every answer gains the security headers it did not set", () => {
 test("a WebSocket upgrade passes through untouched", () => {
   const upgrade = { status: 101, headers: new Headers() };
   assert.equal(withSecurityHeaders(upgrade), upgrade);
+});
+
+test("an instance with a site serves its landing page instead of redirecting", () => {
+  assert.equal(edgeRedirect(get("https://maidan.world/", "text/html"), { hasSite: true }), null);
+  assert.equal(edgeRedirect(get("http://maidan.world/privacy"), { hasSite: true }).status, 301);
+});
+
+test("only the site's pages are served from the site", () => {
+  assert.ok(isSitePage(get("https://maidan.world/privacy")));
+  assert.ok(isSitePage(get("https://maidan.world/", "text/html")));
+  assert.ok(!isSitePage(get("https://maidan.world/", "application/json")), "API clients reach the server at /");
+  assert.ok(!isSitePage(get("https://maidan.world/ui/")));
+  assert.ok(!isSitePage(get("https://maidan.world/health")));
+  assert.ok(!isSitePage(new Request("https://maidan.world/terms", { method: "POST" })));
+});
+
+test("a site page carries the site's strict policy", () => {
+  const res = withSecurityHeaders(new Response("<html>"), { "content-security-policy": SITE_CSP });
+  assert.equal(res.headers.get("content-security-policy"), SITE_CSP);
+  assert.equal(res.headers.get("x-content-type-options"), "nosniff");
 });

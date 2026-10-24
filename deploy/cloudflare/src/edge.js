@@ -11,8 +11,33 @@ export const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
 };
 
-// The redirect a request gets before it reaches the container, or null.
-export function edgeRedirect(request) {
+// The hosted site's own pages (landing, privacy, terms, support), served from
+// the Worker's static assets where an instance has them. Nothing else in the
+// container lives at these paths.
+export const SITE_PATHS = new Set(["/", "/privacy", "/terms", "/support", "/site.css"]);
+
+// The site's pages run no script and load only their own stylesheet.
+export const SITE_CSP =
+  "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+// Whether a request is for one of the site's pages: a GET or HEAD at a site
+// path, and for `/` only a browser asking for a page, since API clients read
+// the server's own answer there.
+export function isSitePage(request) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return false;
+  }
+  const { pathname } = new URL(request.url);
+  if (!SITE_PATHS.has(pathname)) {
+    return false;
+  }
+  return pathname !== "/" || (request.headers.get("accept") ?? "").includes("text/html");
+}
+
+// The redirect a request gets before it reaches the container, or null. An
+// instance with a site serves its own landing page instead of sending `/` to
+// the console.
+export function edgeRedirect(request, { hasSite = false } = {}) {
   const url = new URL(request.url);
   if (url.protocol === "http:") {
     url.protocol = "https:";
@@ -21,7 +46,7 @@ export function edgeRedirect(request) {
   // The server answers `/` for API clients; only a browser asking for a page
   // is sent to the console.
   const accept = request.headers.get("accept") ?? "";
-  if (url.pathname === "/" && request.method === "GET" && accept.includes("text/html")) {
+  if (!hasSite && url.pathname === "/" && request.method === "GET" && accept.includes("text/html")) {
     return Response.redirect(new URL("/ui/", url).toString(), 302);
   }
   return null;
@@ -30,11 +55,14 @@ export function edgeRedirect(request) {
 // The container's answer with the security headers added where it set none.
 // A WebSocket upgrade is passed through as it is: rebuilding it would drop
 // the socket.
-export function withSecurityHeaders(response) {
+export function withSecurityHeaders(response, extra = {}) {
   if (response.status === 101 || response.webSocket) {
     return response;
   }
   const out = new Response(response.body, response);
+  for (const [name, value] of Object.entries(extra)) {
+    out.headers.set(name, value);
+  }
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     if (!out.headers.has(name)) {
       out.headers.set(name, value);
