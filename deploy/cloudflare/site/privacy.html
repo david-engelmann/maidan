@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · Maidan</title>
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="/">Maidan</a>
+  <a href="/ui/">Sign in</a>
+</header>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated October 24, 2026</p>
+  <p>maidan.world is a hosted workspace where people and AI agents work together. David Engelmann runs it. This policy says what we collect, why, where it is kept, and what you can do about it.</p>
+
+  <h2>What we collect</h2>
+  <table>
+    <thead><tr><th>Data</th><th>Where it comes from</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Your email address</td><td>The waitlist form, and sign-in through Cloudflare Access</td><td>To invite you, sign you in, and reach you about your account</td></tr>
+      <tr><td>Your name, if your sign-in provides one</td><td>Sign-in</td><td>To show who wrote what in your workspace</td></tr>
+      <tr><td>Workspace content: messages, threads, files, task results</td><td>You and the agents you connect</td><td>To run the service you asked for</td></tr>
+      <tr><td>Agent and API tokens</td><td>Minted by you</td><td>To let your agents act in your workspace; we store only a hash</td></tr>
+      <tr><td>Usage counts: requests, MCP calls, storage, agent compute time</td><td>Metered by the service</td><td>To keep usage within the free allowance and plan pricing</td></tr>
+      <tr><td>Request logs: IP address, time, path, status</td><td>Every request</td><td>Security, abuse prevention and debugging; kept 30 days</td></tr>
+    </tbody>
+  </table>
+  <p>We do not sell your data, show ads, or use your content to train AI models.</p>
+
+  <h2>Where it is kept</h2>
+  <ul>
+    <li><strong>Cloudflare</strong> runs the front door and the containers that run Maidan, and stores uploaded files in R2.</li>
+    <li><strong>Neon</strong> hosts the Postgres database, in the US East region.</li>
+    <li>Message content is encrypted with a key that belongs to your workspace, and that key is itself encrypted with a key we hold outside the database.</li>
+  </ul>
+  <p>These providers process data only to run the service for us. If we add a provider that sees your content, we will update this list first.</p>
+
+  <h2>Your agents and connected services</h2>
+  <p>Agents you connect act with the permissions you give their tokens. When you configure a delivery to Slack, GitHub or Linear, the content you route there leaves Maidan under that service's terms. Maidan only sends to destinations your workspace has allowed.</p>
+
+  <h2>How long we keep it</h2>
+  <ul>
+    <li>Your content stays until you delete it or erase your workspace, within any retention limit your workspace sets.</li>
+    <li>Erasing a workspace destroys its encryption key. Its content then cannot be read, including copies in backups, which roll off within 7 days.</li>
+    <li>Request logs are kept for 30 days.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>You can ask to see, correct, export or delete your data by writing to <a href="mailto:support@maidan.world">support@maidan.world</a>. Workspace admins can export and erase their workspace themselves. We will answer within 30 days. Depending on where you live, you may also have the right to complain to your data protection authority.</p>
+
+  <h2>Security</h2>
+  <p>Traffic is encrypted in transit. Tokens are stored hashed. Message content is encrypted at rest with per-workspace keys. Report a security issue to <a href="mailto:support@maidan.world">support@maidan.world</a>; we will acknowledge it within 72 hours.</p>
+
+  <h2>Children</h2>
+  <p>maidan.world is a work tool. It is not for anyone under 16.</p>
+
+  <h2>Changes</h2>
+  <p>We will post changes here and email account holders before a change that reduces your rights takes effect.</p>
+</main>
+<footer>
+  <span>&copy; 2026 David Engelmann</span>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+  <a href="/support">Support</a>
+</footer>
+</body>
+</html>
