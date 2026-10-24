@@ -589,6 +589,7 @@ async fn claim_next_candidate(
     now: DateTime<Utc>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
     let sql = claim_next::candidate_select(
         scope,
@@ -600,12 +601,13 @@ async fn claim_next_candidate(
             dm_channel: "?4",
             repo: "?5",
             engine: "?6",
+            lane: "?7",
             requeued_after_result: REQUEUED_AFTER_RESULT,
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
-            warm_hold_since: "?7",
-            warm_ttl_since: "?8",
+            warm_hold_since: "?8",
+            warm_ttl_since: "?9",
             later_than: "julianday({col}) > julianday({t})",
         },
     );
@@ -616,6 +618,7 @@ async fn claim_next_candidate(
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
+        .bind(lane.map(|lane| lane.as_str()))
         .bind((now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS)).to_rfc3339())
         .bind((now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS)).to_rfc3339())
         .fetch_optional(&mut **tx)
@@ -873,6 +876,7 @@ pub async fn claim_next(
         now,
         None,
         engine,
+        None,
     )
     .await?
     else {
@@ -968,6 +972,7 @@ pub(crate) async fn claim_next_with_event(
     lease_secs: Option<i64>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let now = Utc::now();
@@ -976,7 +981,7 @@ pub(crate) async fn claim_next_with_event(
     // lease can end the dead holder's claim (RETURNING would only give the
     // post-update row).
     let Some(candidate) =
-        claim_next_candidate(&mut tx, scope, member_id, now, repo, engine).await?
+        claim_next_candidate(&mut tx, scope, member_id, now, repo, engine, lane).await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));

@@ -300,7 +300,7 @@ async fn run_claim_expired_suite(store: &dyn Store) {
 
     // m1 claims with an already-expired lease → a fresh claim: only the assignment.
     let (claimed, ev1) = store
-        .claim_next_thread_with_event(ch.id, m1.id, Some(-1), None, None)
+        .claim_next_thread_with_event(ch.id, m1.id, Some(-1), None, None, None)
         .await
         .expect("claim m1");
     assert_eq!(claimed.map(|c| c.id), Some(t.id));
@@ -309,7 +309,7 @@ async fn run_claim_expired_suite(store: &dyn Store) {
 
     // m2 reclaims the expired lease → ClaimExpired (for m1) THEN the assignment.
     let (reclaimed, ev2) = store
-        .claim_next_thread_with_event(ch.id, m2.id, Some(3600), None, None)
+        .claim_next_thread_with_event(ch.id, m2.id, Some(3600), None, None, None)
         .await
         .expect("reclaim m2");
     assert_eq!(reclaimed.map(|c| c.id), Some(t.id));
