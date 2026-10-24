@@ -98,6 +98,43 @@ pub async fn set_default_engine(
     Ok(())
 }
 
+/// The workspace's review-children setting.
+pub async fn review_children(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<maidan_types::ReviewChildren, StoreError> {
+    let row: Option<String> =
+        sqlx::query_scalar("SELECT review_children FROM maidan_workspaces WHERE id = ?1")
+            .bind(workspace_id.0)
+            .fetch_optional(pool)
+            .await?;
+    let stored = row.ok_or(StoreError::NotFound)?;
+    // The column's CHECK admits only the two values.
+    Ok(maidan_types::ReviewChildren::parse(&stored).unwrap_or_default())
+}
+
+/// Set the workspace's review-children setting, with its audit row in the
+/// same transaction. Changes already in review keep their children.
+pub async fn set_review_children(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    setting: maidan_types::ReviewChildren,
+    audit: NewAuditEvent,
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await?;
+    let updated = sqlx::query("UPDATE maidan_workspaces SET review_children = ?2 WHERE id = ?1")
+        .bind(workspace_id.0)
+        .bind(setting.as_str())
+        .execute(&mut *tx)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Whether `thread_id` is a review task, read in the caller's transaction.
 pub(crate) async fn is_review_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,

@@ -961,6 +961,18 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/review-children",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/review-children",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{id}/slots",
     "capability": "workspace:read",
     "surface": "http"

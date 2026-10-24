@@ -2913,6 +2913,23 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn workspace_review_children(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<maidan_types::ReviewChildren, StoreError> {
+                thread_attributes::review_children(self.pool(), workspace_id).await
+            }
+
+            async fn set_workspace_review_children(
+                &self,
+                workspace_id: WorkspaceId,
+                setting: maidan_types::ReviewChildren,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                thread_attributes::set_review_children(self.pool(), workspace_id, setting, audit)
+                    .await
+            }
+
             async fn list_linear_notices_due(
                 &self,
                 workspace_id: WorkspaceId,

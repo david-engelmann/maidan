@@ -628,6 +628,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{id}/default-engine" && method == "PUT" {
         return b.json(&json!({ "engine": null }));
     }
+    if path == "/workspaces/{id}/review-children" && method == "PUT" {
+        return b.json(&json!({ "review_children": "spawn" }));
+    }
     if path == "/workspaces/{id}/slots" && method == "PUT" {
         return b.json(&json!({ "slot": "rust-build", "capacity": 2 }));
     }

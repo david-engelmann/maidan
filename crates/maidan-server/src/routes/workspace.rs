@@ -260,6 +260,52 @@ pub async fn set_workspace_default_engine(
     Ok(Json(body))
 }
 
+/// `GET /workspaces/:id/review-children` — whether a change entering review
+/// spawns its second-family review child. `workspace:read`.
+pub async fn get_workspace_review_children(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<WorkspaceReviewChildren>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    let review_children = state.store.workspace_review_children(workspace_id).await?;
+    Ok(Json(WorkspaceReviewChildren { review_children }))
+}
+
+/// `PUT /workspaces/:id/review-children` — `spawn` or `off`. It decides
+/// whether every change entering review gets an engine-routed review task,
+/// so it takes `token:admin` and is audited.
+pub async fn set_workspace_review_children(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<WorkspaceReviewChildren>,
+) -> ApiResult<Json<WorkspaceReviewChildren>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, TOKEN_ADMIN)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state
+        .store
+        .set_workspace_review_children(
+            workspace_id,
+            body.review_children,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(workspace_id),
+                actor_id: Some(auth.actor_id),
+                action: "workspace.review_children.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(workspace_id.0),
+                metadata: serde_json::json!({
+                    "review_children": body.review_children.as_str(),
+                }),
+            },
+        )
+        .await?;
+    Ok(Json(body))
+}
+
 /// Export the whole workspace content graph as a signed
 /// `maidan.workspace.export/1` envelope. Gated on `token:admin`. Tokens die on
 /// export — secrets are omitted and the envelope records `token_policy`.

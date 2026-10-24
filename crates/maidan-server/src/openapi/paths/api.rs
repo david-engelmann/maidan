@@ -2933,6 +2933,30 @@ pub fn get_workspace_default_engine() {}
     ))]
 pub fn set_workspace_default_engine() {}
 
+/// Whether a change entering review spawns its second-family review child
+#[utoipa::path(get, path = "/workspaces/{id}/review-children", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceReviewChildren),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn get_workspace_review_children() {}
+
+/// Set whether a change entering review spawns its second-family review child (spawn or off)
+#[utoipa::path(put, path = "/workspaces/{id}/review-children", tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id")),
+    request_body = WorkspaceReviewChildren,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = WorkspaceReviewChildren),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn set_workspace_review_children() {}
+
 /// Remove a slot's capacity
 #[utoipa::path(delete, path = "/workspaces/{id}/slots", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), SlotQuery),
