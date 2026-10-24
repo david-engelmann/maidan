@@ -2241,6 +2241,7 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: Option<i64>,
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
+        lane: Option<maidan_types::TaskLane>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2253,6 +2254,7 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: Option<i64>,
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
+        lane: Option<maidan_types::TaskLane>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When

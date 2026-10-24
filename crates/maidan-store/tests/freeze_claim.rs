@@ -69,7 +69,7 @@ async fn run_suite(store: &dyn Store) {
         .expect("claim")
         .is_none());
     let (claimed, _) = store
-        .claim_next_thread_with_event(channel.id, member.id, None, None, None)
+        .claim_next_thread_with_event(channel.id, member.id, None, None, None, None)
         .await
         .expect("claim_with_event");
     assert!(

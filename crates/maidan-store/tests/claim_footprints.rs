@@ -524,7 +524,14 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
     .await;
 
     let (claimed, _) = store
-        .claim_next_thread_with_event(room.channel, room.agents[0], Some(600), Some(REPO), None)
+        .claim_next_thread_with_event(
+            room.channel,
+            room.agents[0],
+            Some(600),
+            Some(REPO),
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -539,12 +546,20 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             Some(600),
             Some(REPO),
             None,
+            None,
         )
         .await
         .unwrap();
     assert!(claimed.is_none(), "nothing else names the repository");
     let (claimed, _) = store
-        .claim_next_workspace_thread_with_event(room.ws, room.agents[1], Some(600), None, None)
+        .claim_next_workspace_thread_with_event(
+            room.ws,
+            room.agents[1],
+            Some(600),
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -558,6 +573,7 @@ async fn a_claimer_serving_one_repository_takes_only_its_work(store: Arc<dyn Sto
             room.agents[1],
             Some(600),
             Some("example/other"),
+            None,
             None,
         )
         .await
@@ -831,6 +847,7 @@ async fn concurrent_claimers_never_overlap_a_lane_or_overfill_a_slot(store: Arc<
                         room.channel,
                         room.agents[agent],
                         Some(600),
+                        None,
                         None,
                         None,
                     )
