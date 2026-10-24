@@ -3,8 +3,8 @@
 //! and the open task with the same fingerprint it was linked to when
 //! created.
 
-use axum::{extract::State, Extension, Json};
-use maidan_auth::capability::WORKSPACE_READ;
+use axum::{extract::State, http::StatusCode, Extension, Json};
+use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
 use maidan_auth::AuthContext;
 use maidan_types::{TaskFingerprint, ThreadId};
 
@@ -37,4 +37,20 @@ pub async fn get_task_fingerprint(
         fingerprint.duplicate_of = None;
     }
     Ok(Json(fingerprint))
+}
+
+/// Clear a thread's duplicate link (C8b): a live duplicate is withheld from
+/// claims, so this is how a task wrongly linked becomes claimable. `204`;
+/// `404` when the thread has no fingerprint. `thread:transition` + thread
+/// access.
+pub async fn clear_task_duplicate(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<StatusCode> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    state.store.clear_task_duplicate(thread_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

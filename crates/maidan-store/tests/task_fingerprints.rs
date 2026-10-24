@@ -243,6 +243,96 @@ async fn the_plain_create_path_stores_and_links_a_fingerprint(store: Arc<dyn Sto
     assert_eq!(stored.duplicate_of, Some(first));
 }
 
+/// A live duplicate is withheld from claim-next and refused on an explicit
+/// claim; the original is handed out instead (C8b).
+async fn a_live_duplicate_is_not_claimable(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "dupe-claims", 2).await;
+    let original = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    let duplicate = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    let err = store
+        .claim_thread(duplicate, room.agents[0])
+        .await
+        .expect_err("a live duplicate is refused");
+    assert!(matches!(err, StoreError::Conflict(_)), "{err:?}");
+    let first = store
+        .claim_next_thread(room.channel, room.agents[0], Some(600), None)
+        .await
+        .unwrap()
+        .expect("the original is claimable");
+    assert_eq!(first.id, original);
+    // Claimed, the original is still open work, so the duplicate stays
+    // withheld.
+    assert!(store
+        .claim_next_thread(room.channel, room.agents[1], Some(600), None)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+/// Clearing the link, or the original closing, makes the duplicate
+/// claimable.
+async fn a_cleared_or_orphaned_duplicate_is_claimable(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "dupe-release", 1).await;
+    let original = create(store.as_ref(), room.channel, "Ship the index", None).await;
+    let cleared = create(store.as_ref(), room.channel, "Ship the index", None).await;
+    let orphaned = create(store.as_ref(), room.channel, "Ship the index", None).await;
+    store.clear_task_duplicate(cleared).await.unwrap();
+    assert_eq!(
+        store
+            .get_task_fingerprint(cleared)
+            .await
+            .unwrap()
+            .unwrap()
+            .duplicate_of,
+        None
+    );
+    assert!(
+        store
+            .claim_thread(cleared, room.agents[0])
+            .await
+            .unwrap()
+            .claimed
+    );
+    assert!(store.claim_thread(orphaned, room.agents[0]).await.is_err());
+    store
+        .transition_thread(
+            original,
+            room.agents[0],
+            maidan_fsm::ThreadAction::StartReview,
+        )
+        .await
+        .unwrap();
+    assert!(store.claim_thread(orphaned, room.agents[0]).await.is_err());
+    store
+        .transition_thread(original, room.agents[0], maidan_fsm::ThreadAction::Close)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .claim_thread(orphaned, room.agents[0])
+            .await
+            .unwrap()
+            .claimed
+    );
+    // A thread with no fingerprint has no link to clear.
+    let (blank, _) = store
+        .create_thread_with_footprint(
+            NewThread {
+                title: None,
+                ..new_thread(room.channel, "x")
+            },
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.clear_task_duplicate(blank.id).await,
+        Err(StoreError::NotFound)
+    ));
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -312,4 +402,6 @@ on_both_backends!(
     a_closed_task_is_not_linked,
     a_thread_with_no_brief_has_no_fingerprint,
     the_plain_create_path_stores_and_links_a_fingerprint,
+    a_live_duplicate_is_not_claimable,
+    a_cleared_or_orphaned_duplicate_is_claimable,
 );
