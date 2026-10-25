@@ -413,6 +413,7 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         auto_mint: false,
         signup: false,
         signup_email_domains: Vec::new(),
+        signup_open: false,
         emails_verified: false,
     })
     .await
@@ -730,6 +731,7 @@ async fn spawn_linking_maidan(
         auto_mint: false,
         signup: true,
         signup_email_domains: vec!["example.com".into()],
+        signup_open: false,
         emails_verified,
     })
     .await
