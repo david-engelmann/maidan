@@ -148,12 +148,13 @@ async fn assert_signup(store: &dyn Store) {
     let after = store.get_waitlist_entry(entry.id).await.unwrap();
     assert_eq!(after.status, WaitlistStatus::SignedUp);
     assert_eq!(after.workspace_id, Some(outcome.workspace.id));
+    // (A fresh subject, so the refusal is the invite's and not the identity's.)
     let (a1, a2) = no_audit();
-    let again = store
-        .complete_oidc_signup(signup("ada@example.com", Some(entry.id)), a1, a2)
-        .await;
+    let mut again = signup("ada@example.com", Some(entry.id));
+    again.subject = "sub-ada-2".into();
+    let again = store.complete_oidc_signup(again, a1, a2).await;
     assert!(
-        matches!(again, Err(StoreError::Conflict(_))),
+        matches!(&again, Err(StoreError::Conflict(m)) if m != maidan_store::SIGNUP_IDENTITY_TAKEN),
         "a consumed invite must not sign up twice, got {again:?}"
     );
     // And no new invite can be minted over a completed sign-up.
@@ -186,10 +187,13 @@ async fn assert_signup(store: &dyn Store) {
         .await
         .unwrap();
     let (a1, a2) = no_audit();
-    let wrong_email = store
-        .complete_oidc_signup(signup("ada@example.com", Some(other.id)), a1, a2)
-        .await;
-    assert!(matches!(wrong_email, Err(StoreError::Conflict(_))));
+    let mut wrong_email = signup("ada@example.com", Some(other.id));
+    wrong_email.subject = "sub-ada-3".into();
+    let wrong_email = store.complete_oidc_signup(wrong_email, a1, a2).await;
+    assert!(
+        matches!(&wrong_email, Err(StoreError::Conflict(m)) if m != maidan_store::SIGNUP_IDENTITY_TAKEN),
+        "the invite's refusal, not the identity's: {wrong_email:?}"
+    );
     // An expired invite is refused the same way.
     store
         .set_waitlist_invite(
@@ -200,10 +204,13 @@ async fn assert_signup(store: &dyn Store) {
         .await
         .unwrap();
     let (a1, a2) = no_audit();
-    let expired = store
-        .complete_oidc_signup(signup("grace@example.com", Some(other.id)), a1, a2)
-        .await;
-    assert!(matches!(expired, Err(StoreError::Conflict(_))));
+    let mut expired = signup("grace@example.com", Some(other.id));
+    expired.subject = "sub-grace".into();
+    let expired = store.complete_oidc_signup(expired, a1, a2).await;
+    assert!(
+        matches!(&expired, Err(StoreError::Conflict(m)) if m != maidan_store::SIGNUP_IDENTITY_TAKEN),
+        "the invite's refusal, not the identity's: {expired:?}"
+    );
 
     // The domain path: no invite. A waiting entry with the same address is
     // marked signed up and bound to the new workspace.
@@ -288,4 +295,115 @@ async fn waitlist_and_signup_postgres() {
     run_postgres_migrations(&pool).await.unwrap();
     let store = PostgresStore::for_tests(pool);
     assert_signup(&store).await;
+}
+
+/// Two callbacks for one identity at once, beside a third for another
+/// identity: exactly one of the pair creates a workspace and the other is
+/// refused as an identity that already has one, while the other identity
+/// signs up untouched by their lock.
+async fn assert_concurrent_signups_for_one_identity_make_one_workspace(store: &dyn Store) {
+    let issuer = "https://idp.example";
+    let attempt = |subject: &str, email: &str| {
+        let mut new = signup(email, None);
+        new.subject = subject.into();
+        new.handle = subject.into();
+        let (a1, a2) = no_audit();
+        store.complete_oidc_signup(new, a1, a2)
+    };
+    let (first, second, other) = futures::join!(
+        attempt("sub-twice", "twice@example.com"),
+        attempt("sub-twice", "twice@example.com"),
+        attempt("sub-other", "other@example.com"),
+    );
+    let won: Vec<_> = [&first, &second]
+        .into_iter()
+        .filter(|r| r.is_ok())
+        .collect();
+    assert_eq!(
+        won.len(),
+        1,
+        "exactly one must land: {first:?} / {second:?}"
+    );
+    let lost = if first.is_ok() { &second } else { &first };
+    assert!(
+        matches!(lost, Err(StoreError::Conflict(m)) if m == maidan_store::SIGNUP_IDENTITY_TAKEN),
+        "the loser is refused as an identity with a workspace, got {lost:?}"
+    );
+    assert_eq!(
+        store
+            .list_subject_workspaces(issuer, "sub-twice", 10)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    let other = other.unwrap();
+    let theirs = store
+        .list_subject_workspaces(issuer, "sub-other", 10)
+        .await
+        .unwrap();
+    assert_eq!(theirs.len(), 1);
+    assert_eq!(theirs[0].workspace_id, other.workspace.id);
+    assert_ne!(
+        Some(other.workspace.id),
+        won.first()
+            .and_then(|r| r.as_ref().ok())
+            .map(|o| o.workspace.id)
+    );
+}
+
+#[tokio::test]
+async fn concurrent_signups_for_one_identity_make_one_workspace_sqlite() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        dir.path().join("signup.db").display()
+    );
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .after_connect(|conn, _| {
+            Box::pin(async move {
+                sqlx::query("PRAGMA foreign_keys = ON")
+                    .execute(&mut *conn)
+                    .await?;
+                sqlx::query("PRAGMA busy_timeout = 5000")
+                    .execute(&mut *conn)
+                    .await?;
+                Ok(())
+            })
+        })
+        .connect(&url)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = SqliteStore::for_tests(pool);
+    assert_concurrent_signups_for_one_identity_make_one_workspace(&store).await;
+}
+
+#[tokio::test]
+async fn concurrent_signups_for_one_identity_make_one_workspace_postgres() {
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.unwrap();
+    let port = container.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .unwrap();
+    run_postgres_migrations(&pool).await.unwrap();
+    let store = PostgresStore::for_tests(pool);
+    assert_concurrent_signups_for_one_identity_make_one_workspace(&store).await;
 }

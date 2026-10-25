@@ -358,7 +358,31 @@ pub async fn complete_signup(
 ) -> Result<OidcSignupOutcome, StoreError> {
     let now = Utc::now();
     let email_lower = new.email.to_lowercase();
-    let mut tx = pool.begin().await?;
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+
+    // `BEGIN IMMEDIATE` (above) holds the write lock from the first
+    // statement, so two callbacks for one identity serialize and the second
+    // sees the first's identity row.
+    // The handler checks this before charging the domain budget; checked
+    // again here under the lock, with the front door's own filters, so a
+    // concurrent callback for the same identity cannot mint a second workspace.
+    let taken: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM maidan_oidc_identities o
+             JOIN maidan_members m ON m.id = o.member_id AND m.workspace_id = o.workspace_id
+             WHERE o.issuer = ? AND o.subject = ?
+               AND NOT EXISTS (SELECT 1 FROM maidan_scim_users s
+                               WHERE s.member_id = o.member_id AND s.active = 0)
+               AND NOT EXISTS (SELECT 1 FROM maidan_member_freezes f
+                               WHERE f.member_id = o.member_id))",
+    )
+    .bind(&new.issuer)
+    .bind(&new.subject)
+    .fetch_one(&mut *tx)
+    .await?;
+    if taken {
+        return Err(StoreError::Conflict(crate::SIGNUP_IDENTITY_TAKEN.into()));
+    }
 
     if let Some(entry_id) = new.invite_entry_id {
         let gate = sqlx::query(
