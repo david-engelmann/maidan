@@ -3263,6 +3263,117 @@
         ],
         "type": "object"
       },
+      "FleetConformance": {
+        "description": "A workspace's recent completed reports against a fleet profile.",
+        "properties": {
+          "conforming": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "conforms": {
+            "description": "Whether every report read conforms. True when there are none.",
+            "type": "boolean"
+          },
+          "members": {
+            "description": "Sorted by member id.",
+            "items": {
+              "$ref": "#/components/schemas/MemberConformance"
+            },
+            "type": "array"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/FleetProfile"
+          },
+          "reports": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "profile",
+          "reports",
+          "conforming",
+          "conforms",
+          "members"
+        ],
+        "type": "object"
+      },
+      "FleetDivergence": {
+        "description": "One divergent value and how many of the member's reports carried it.\n`seen` is absent when the report sent no value (or, for the boot pack, did\nnot list it).",
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/FleetField"
+          },
+          "reports": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "seen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "reports"
+        ],
+        "type": "object"
+      },
+      "FleetField": {
+        "description": "The profile field a report diverged on.",
+        "enum": [
+          "harness",
+          "harness_version",
+          "provider",
+          "model",
+          "boot_pack"
+        ],
+        "type": "string"
+      },
+      "FleetProfile": {
+        "additionalProperties": false,
+        "description": "The published build a fleet runs. Every field is optional; an unset field\nis not checked.",
+        "properties": {
+          "boot_pack_sha256": {
+            "description": "sha256, hex, of the boot pack every call must list in `pack_sha256`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "harness": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "harness_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "FollowChannel": {
         "description": "Follow a channel.",
         "properties": {
@@ -4671,6 +4782,36 @@
           "kind",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "MemberConformance": {
+        "description": "One member's reports against the profile.",
+        "properties": {
+          "conforming": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "divergences": {
+            "description": "Sorted by field, then value.",
+            "items": {
+              "$ref": "#/components/schemas/FleetDivergence"
+            },
+            "type": "array"
+          },
+          "member_id": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "reports": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "member_id",
+          "reports",
+          "conforming",
+          "divergences"
         ],
         "type": "object"
       },
@@ -34800,6 +34941,116 @@
           }
         ],
         "summary": "Get a workspace's usage counts",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/usage-conformance": {
+      "get": {
+        "operationId": "get_workspace_usage_conformance",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "harness",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "harness_version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "sha256, hex, of the boot pack every call must list.",
+            "in": "query",
+            "name": "boot_pack_sha256",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Newest completed reports to read, 1 to 1000; omitted, 200.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetConformance"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Fleet conformance: a workspace's newest usage reports against a harness profile",
         "tags": [
           "workspaces"
         ]

@@ -6,7 +6,7 @@ use maidan_types::*;
 
 use super::{cap, ensure_workspace, publish_stored, ApiResult};
 use crate::error::ApiError;
-use crate::extract::{ApiJson, ApiPath};
+use crate::extract::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 async fn rollup(state: &AppState, query: UsageRollupQuery) -> ApiResult<Json<UsageRollup>> {
@@ -55,6 +55,37 @@ pub async fn get_workspace_usage_rollup(
         },
     )
     .await
+}
+
+/// Fleet conformance: the workspace's newest completed usage reports read
+/// against a published harness profile (harness, version, provider, model,
+/// boot pack), per member. `workspace:read`, the caller's workspace only.
+pub async fn get_workspace_usage_conformance(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(query): ApiQuery<crate::dto::FleetConformanceQuery>,
+) -> ApiResult<Json<FleetConformance>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, maidan_auth::capability::WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let limit = query.limit.unwrap_or(200);
+    if !(1..=1000).contains(&limit) {
+        return Err(ApiError::BadRequest("limit must be 1 to 1000".into()));
+    }
+    let profile = FleetProfile {
+        harness: query.harness,
+        harness_version: query.harness_version,
+        provider: query.provider,
+        model: query.model,
+        boot_pack_sha256: query.boot_pack_sha256,
+    };
+    let entries = state
+        .store
+        .list_workspace_usage_ledger(workspace_id, limit)
+        .await?;
+    Ok(Json(profile.check(workspace_id, &entries)))
 }
 
 /// The same rollup for one member of the caller's workspace.

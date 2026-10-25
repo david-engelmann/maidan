@@ -242,6 +242,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_workspace_usage_rollup),
         )
         .route(
+            "/workspaces/{id}/usage-conformance",
+            get(routes::get_workspace_usage_conformance),
+        )
+        .route(
             "/workspaces/{id}/tombstones",
             get(routes::list_workspace_tombstones),
         )

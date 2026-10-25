@@ -529,6 +529,22 @@ pub struct UsageMonthQuery {
     pub month: Option<String>,
 }
 
+/// Query params for a fleet conformance check: the published harness profile
+/// to check against, each field optional (an unset or blank one is not
+/// checked), and how many of the newest completed reports to read.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FleetConformanceQuery {
+    pub harness: Option<String>,
+    pub harness_version: Option<String>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    /// sha256, hex, of the boot pack every call must list.
+    pub boot_pack_sha256: Option<String>,
+    /// Newest completed reports to read, 1 to 1000; omitted, 200.
+    pub limit: Option<i64>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

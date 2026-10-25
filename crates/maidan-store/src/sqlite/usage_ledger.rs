@@ -36,6 +36,25 @@ pub async fn list_for_thread(
     rows.iter().map(row_to_entry).collect()
 }
 
+/// The most recent completed reports in a workspace, newest first.
+pub async fn list_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<UsageLedgerEntry>, StoreError> {
+    let limit = limit.clamp(1, 1000);
+    let rows = sqlx::query(
+        "SELECT * FROM maidan_usage_ledger
+         WHERE workspace_id = ? AND budget IS NOT NULL
+         ORDER BY accepted_at DESC, usage_report_id DESC LIMIT ?",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_entry).collect()
+}
+
 /// A call in a cheaper lane, the SQL twin of `UsageEvidence::in_lane`.
 const LANE: &str = "(batch <> 0 OR LOWER(TRIM(service_tier)) IN ('batch', 'flex'))";
 
