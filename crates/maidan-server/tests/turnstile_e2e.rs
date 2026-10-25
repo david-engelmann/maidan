@@ -364,3 +364,63 @@ async fn with_turnstile_unset_nothing_asks_for_a_token_and_the_csp_is_unchanged(
         maidan_server::app::BOARD_UI_CSP
     );
 }
+
+/// A siteverify stand-in that answers every call with one fixed status and body.
+#[allow(clippy::disallowed_methods)]
+async fn spawn_fixed_siteverify(status: u16, body: &'static str) -> String {
+    let app = Router::new().route(
+        "/siteverify",
+        post(move || async move {
+            (
+                axum::http::StatusCode::from_u16(status).unwrap(),
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                body,
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{addr}/siteverify")
+}
+
+#[tokio::test]
+async fn a_siteverify_error_status_or_malformed_answer_fails_closed() {
+    let ok_body = r#"{"success":true,"hostname":"maidan.example","action":"waitlist"}"#;
+    for (status, body, email) in [
+        (500, ok_body, "status@seven.example"),
+        (200, "not json", "garbage@seven.example"),
+        (
+            200,
+            r#"{"hostname":"maidan.example"}"#,
+            "nosuccess@seven.example",
+        ),
+    ] {
+        let base = spawn(Some(settings(spawn_fixed_siteverify(status, body).await))).await;
+        let (got, answer) = join(&base, email, Some("good-waitlist")).await;
+        assert_eq!(got, StatusCode::BAD_GATEWAY, "{status} {body}");
+        assert!(!answer.to_string().contains(SECRET), "{answer}");
+    }
+}
+
+#[tokio::test]
+async fn a_success_without_a_hostname_or_action_is_refused() {
+    for body in [
+        r#"{"success":true,"action":"waitlist"}"#,
+        r#"{"success":true,"hostname":"maidan.example"}"#,
+    ] {
+        let base = spawn(Some(settings(spawn_fixed_siteverify(200, body).await))).await;
+        let (got, _) = join(&base, "partial@eight.example", Some("good-waitlist")).await;
+        assert_eq!(got, StatusCode::FORBIDDEN, "{body}");
+    }
+}
+
+#[tokio::test]
+async fn an_oversized_token_is_refused_without_calling_siteverify() {
+    let (url, seen) = spawn_siteverify().await;
+    let base = spawn(Some(settings(url))).await;
+    let long = "a".repeat(2049);
+    let (status, _) = join(&base, "long@nine.example", Some(&long)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(seen.lock().unwrap().is_empty());
+}
