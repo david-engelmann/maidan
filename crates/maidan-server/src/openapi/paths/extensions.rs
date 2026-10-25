@@ -126,6 +126,22 @@ pub fn get_workspace_usage() {}
 )]
 pub fn get_workspace_usage_rollup() {}
 
+/// Fleet conformance: a workspace's newest usage reports against a harness profile
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/usage-conformance",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id"), FleetConformanceQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = FleetConformance),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn get_workspace_usage_conformance() {}
+
 /// List a workspace's withdrawn messages
 #[utoipa::path(
     get,

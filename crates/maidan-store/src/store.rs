@@ -600,6 +600,13 @@ pub trait UsageLedgerStore: Send + Sync {
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
+    /// Completed reports across a workspace, newest first, capped at 1000.
+    /// What the fleet conformance check reads.
+    async fn list_workspace_usage_ledger(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
     /// Spend, cache shape, and cost per completed task. A thread or member
     /// outside the named workspace is `NotFound`.
     async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;

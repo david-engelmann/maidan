@@ -1345,6 +1345,17 @@ cost per completed task. `POST /threads/{id}/usage/otel` accepts the same
 heartbeat with token counts taken from GenAI usage attributes; the price
 snapshot is still the caller's, and Maidan computes `usd_micros`.
 
+`GET /workspaces/{id}/usage-conformance` is the fleet conformance check
+(`workspace:read`, the caller's workspace only). It reads the newest completed
+reports (`limit`, 1 to 1000, default 200) against a published harness profile
+given as query parameters: `harness`, `harness_version`, `provider`, `model`
+and `boot_pack_sha256` (which every call must list in `pack_sha256`). An unset
+or blank parameter is not checked. The answer counts reports and conforming
+reports per member and lists each divergent value with how many reports sent
+it, so a fleet can find the member whose build splits the shared system and
+tools prefix. A report that sent no value for a checked field diverges with no
+`seen` value.
+
 #### Normalizing provider usage
 
 Providers disagree on what "input tokens" means, so each SDK has a pure
