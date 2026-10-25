@@ -87,22 +87,35 @@ pub async fn resolve_member_for_login(
         return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));
     }
 
-    let handle = handle_from_claims(subject, email);
-    let (member, how) = match store.get_member_by_handle(workspace_id, &handle).await {
-        Ok(m) => (m, LoginMember::Linked),
-        Err(maidan_store::StoreError::NotFound) => {
-            let created = store
+    // Auto-provision only ever creates a member. It never attaches the login
+    // to a member that already holds the derived handle: the email's local
+    // part proves nothing about who owns that handle, so `admin@attacker.com`
+    // must not become `admin`. Linking an existing member is the job of
+    // `MAIDAN_OIDC_LINK_EMAIL`, which needs the whole verified address.
+    let base = handle_from_claims(subject, email);
+    let mut created = None;
+    for handle in [base.clone(), disambiguated_handle(&base, subject)] {
+        match store.get_member_by_handle(workspace_id, &handle).await {
+            Ok(_) => continue,
+            Err(maidan_store::StoreError::NotFound) => {}
+            Err(err) => return Err(err.into()),
+        }
+        created = Some(
+            store
                 .create_member(NewMember {
                     workspace_id,
                     handle,
                     display_name: email.map(str::to_string),
                     kind: MemberKind::Human,
                 })
-                .await?;
-            (created, LoginMember::Provisioned)
-        }
-        Err(err) => return Err(err.into()),
+                .await?,
+        );
+        break;
+    }
+    let Some(member) = created else {
+        return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));
     };
+    let how = LoginMember::Provisioned;
 
     store
         .upsert_oidc_identity(NewOidcIdentity {
@@ -115,6 +128,18 @@ pub async fn resolve_member_for_login(
         .await?;
 
     Ok((member.id, how))
+}
+
+/// The handle a provisioned member takes when the one derived from the email
+/// is already held: the base, a dash, and the first twelve handle-safe
+/// characters of the subject.
+fn disambiguated_handle(base: &str, subject: &str) -> String {
+    let suffix: String = subject
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(12)
+        .collect();
+    format!("{base}-{suffix}")
 }
 
 pub async fn touch_identity(

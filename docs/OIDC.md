@@ -162,10 +162,14 @@ Migration 0012 creates these tables in Postgres and SQLite:
 
 **Member linking rules:**
 
-1. First login with `(iss, sub)` in workspace → when auto-provisioning is enabled,
-   create `Member { kind: human }`, or attach to a pre-provisioned member if
-   `MAIDAN_OIDC_LINK_EMAIL` matches a verified `email` claim; otherwise reject
-   an unprovisioned identity.
+1. First login with `(iss, sub)` in workspace → attach to a pre-provisioned
+   member if `MAIDAN_OIDC_LINK_EMAIL` is on and the member's handle equals the
+   whole verified `email`; otherwise, when auto-provisioning is enabled, create
+   a new `Member { kind: human }`; otherwise reject an unprovisioned identity.
+   Auto-provisioning never attaches a login to an existing member. Its handle
+   comes from the email's local part, and when that handle is taken the new
+   member gets the handle, a dash and the start of the subject instead, so
+   `admin@attacker.com` never becomes the existing `admin`.
 2. Subsequent logins → same `member_id`.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
    A person who is a member of several workspaces has one identity row and one
