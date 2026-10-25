@@ -150,7 +150,37 @@ After each flush, the `usage_meters` loop checks the workspaces it touched.
 A workspace past an allowance is marked once per meter and month
 (`maidan_usage_over_allowance`). In the same transaction it records a
 `usage_over_allowance` event and notifies each of its admins (members with a
-live `token:admin` token). Nothing is cut off or billed.
+live `token:admin` token). Nothing is billed.
+
+#### The hard cutoff for open sign-up workspaces
+
+A workspace records how it was created in `maidan_workspaces.origin`:
+`operator` (created by an operator, and every workspace from before the
+column), `signup` (an invited or domain-listed sign-up) or `open` (a sign-up
+let in by `MAIDAN_SIGNUP_OPEN`). The sign-up transaction writes it once, and
+no route changes it.
+
+Only `open` workspaces are cut off. Once an `open` workspace is marked past
+a meter's allowance, the work that meter counts is refused until the month
+turns or the allowance is raised or removed:
+
+| Meter | Refused | Answer |
+|---|---|---|
+| `requests` | every authenticated request except `GET /workspaces/{id}/usage-meters` and `GET /members/{id}/notifications[/grouped]`, so its admin can see why | `429 Too Many Requests`, problem type `rate-limited`, naming the meter |
+| `mcp_calls` | MCP tool calls | JSON-RPC error `-32030`, `data.meter` |
+| `embedding_calls` | semantic and hybrid search (REST and MCP) | `429` / `-32030` |
+
+`deliveries`, `wasi_ms` and `stored_bytes` stay mark-only for now. The
+refusal is `429` rather than `403` because the workspace may do the same
+thing again next month; it is not a permission. A refused request is not
+counted. The crossing's `usage_over_allowance` notice to each admin is the
+admin notice; it is sent when the cutoff starts.
+
+Every replica reloads the cutoff from the store each tick
+(`MAIDAN_USAGE_METER_FLUSH_SECS`) and at boot. Counts are flushed once an
+interval, so an open workspace can overshoot its allowance by up to one
+interval's traffic per replica before it is refused. Operator-created and
+invited workspaces keep the mark-only rule.
 
 - `GET /workspaces/{id}/usage-meters?month=YYYY-MM` (`workspace:read`, the
   caller's own workspace) gives the month per meter: the quantity, the

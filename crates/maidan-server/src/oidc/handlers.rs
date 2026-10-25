@@ -316,6 +316,7 @@ async fn complete_signup(
                 email: email.clone(),
                 invite_entry_id: pending.invite_entry_id,
                 session_expires_at,
+                open: matches!(gate, SignupGate::Open),
             },
             Box::new(move |core| NewAuditEvent {
                 scope: AuditScope::Workspace(core.workspace.id),

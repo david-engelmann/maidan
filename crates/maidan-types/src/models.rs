@@ -3615,6 +3615,10 @@ pub struct NewOidcSignup {
     /// and addressed to `email` (case-insensitive).
     pub invite_entry_id: Option<WaitlistEntryId>,
     pub session_expires_at: DateTime<Utc>,
+    /// Let in by open sign-up (`MAIDAN_SIGNUP_OPEN`) rather than by an
+    /// invite or a listed domain. Recorded as the workspace's origin, which
+    /// is what holds it to the hard allowance cutoff.
+    pub open: bool,
 }
 
 /// What a completed sign-up made, before the session: the audit closure for

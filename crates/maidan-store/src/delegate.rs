@@ -686,6 +686,13 @@ macro_rules! store_delegations {
                 usage_allowance::list(self.read_pool(), workspace_id, month).await
             }
 
+            async fn list_usage_cut_off(
+                &self,
+                month: &str,
+            ) -> Result<Vec<(WorkspaceId, maidan_types::UsageMeter)>, StoreError> {
+                usage_allowance::list_cut_off(self.pool(), month).await
+            }
+
             async fn list_usage_meters(
                 &self,
                 workspace_id: WorkspaceId,

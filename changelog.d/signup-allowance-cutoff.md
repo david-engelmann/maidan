@@ -1,0 +1,3 @@
+### Open sign-up workspaces are cut off past their free allowance
+
+- **Added:** a workspace records its origin (`operator`, `signup` or `open`; migration 0209). A workspace created by open sign-up (`MAIDAN_SIGNUP_OPEN`) that is marked past its free allowance is refused that meter's work for the rest of the month: requests answer `429 Too Many Requests` (its usage and notifications stay readable), MCP tool calls answer JSON-RPC `-32030`, and semantic and hybrid search are refused on `embedding_calls`. The existing crossing notice tells its admins. Operator-created and invited workspaces stay mark-only. The cutoff is reloaded on every replica each flush tick, so it can trail the crossing by one interval.

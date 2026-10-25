@@ -103,3 +103,30 @@ fn row_to_mark(row: &sqlx::postgres::PgRow) -> Result<Option<OverAllowance>, Sto
         marked_at: row.try_get("marked_at")?,
     }))
 }
+
+/// The meters each open sign-up workspace is past in `month`: its crossings,
+/// held to workspaces whose origin is `open`. Every replica reads this each
+/// tick to refuse the metered action, so a crossing marked by one replica
+/// cuts the workspace off on all of them.
+pub async fn list_cut_off(
+    pool: &PgPool,
+    month: &str,
+) -> Result<Vec<(WorkspaceId, UsageMeter)>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT o.workspace_id, o.meter
+         FROM maidan_usage_over_allowance o
+         JOIN maidan_workspaces w ON w.id = o.workspace_id
+         WHERE o.month = $1 AND w.origin = 'open'",
+    )
+    .bind(month)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let meter: String = row.try_get("meter")?;
+        if let Some(meter) = UsageMeter::parse(&meter) {
+            out.push((WorkspaceId(row.try_get("workspace_id")?), meter));
+        }
+    }
+    Ok(out)
+}

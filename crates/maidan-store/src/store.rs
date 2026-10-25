@@ -642,6 +642,12 @@ pub trait UsageLedgerStore: Send + Sync {
         workspace_id: WorkspaceId,
         month: &str,
     ) -> Result<Vec<maidan_types::OverAllowance>, StoreError>;
+    /// Every open sign-up workspace's crossings in `month` (`YYYY-MM`), as
+    /// (workspace, meter): what the hard allowance cutoff refuses.
+    async fn list_usage_cut_off(
+        &self,
+        month: &str,
+    ) -> Result<Vec<(WorkspaceId, maidan_types::UsageMeter)>, StoreError>;
     /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
     async fn list_usage_meters(
         &self,
