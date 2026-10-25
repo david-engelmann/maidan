@@ -3959,6 +3959,13 @@
           "email": {
             "type": "string"
           },
+          "turnstile_token": {
+            "description": "The Turnstile widget's token. Required when the instance runs\nTurnstile, ignored otherwise.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "use_case": {
             "description": "What the visitor would use Maidan for, in their own words.",
             "type": "string"
@@ -11854,6 +11861,13 @@
           "sessions": {
             "description": "Whether this server issues a browser session (OIDC, or a pasted token\nexchanged for a cookie). Sign out posts `/auth/logout` when this is\ntrue, even if the page has not cached a member id.",
             "type": "boolean"
+          },
+          "turnstile_site_key": {
+            "description": "The Turnstile site key the sign-up pages render their widget with,\nwhen the instance runs Turnstile. Public by design.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -13588,6 +13602,15 @@
           {
             "in": "query",
             "name": "return_to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Turnstile widget's token, when the instance runs Turnstile.",
+            "in": "query",
+            "name": "turnstile",
             "required": false,
             "schema": {
               "type": "string"

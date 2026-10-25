@@ -683,3 +683,4 @@
   input[type="checkbox"], input[type="radio"] { width: 1.5rem; height: 1.5rem; }
   .kbd.mod-k, .palette-foot { display: none; }
 }
+.turnstile-slot { min-height: 65px; }
