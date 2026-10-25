@@ -273,6 +273,82 @@ impl<L: EventLog> NotifyFloor<L> {
 /// `MAIDAN_SIM_SEEDS` sets how many seeds run (default 400);
 /// `MAIDAN_SIM_SEED` runs one seed, to replay a failure.
 #[cfg(all(test, not(feature = "loom")))]
+mod drain_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use chrono::{DateTime, Utc};
+    use maidan_types::{Event, Workspace, WorkspaceId};
+    use uuid::Uuid;
+
+    use super::*;
+
+    fn envelope(log_id: i64) -> BusEnvelope {
+        let at = DateTime::<Utc>::from_timestamp(0, 0).unwrap_or_default();
+        BusEnvelope {
+            log_id,
+            event: Event::WorkspaceCreated {
+                occurred_at: at,
+                workspace: Workspace {
+                    id: WorkspaceId(Uuid::nil()),
+                    name: "w".into(),
+                    created_at: at,
+                    updated_at: at,
+                    tombstoned_at: None,
+                },
+            },
+            attribution: None,
+            trace: None,
+        }
+    }
+
+    /// Answers the first page with three events, and fails every read
+    /// after it, so a drain that asks again shows up as incomplete.
+    struct OnePage {
+        reads: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl EventLog for OnePage {
+        async fn head(&self) -> Result<i64, BusError> {
+            Ok(3)
+        }
+
+        async fn page_after(
+            &self,
+            _after: i64,
+            _limit: i64,
+        ) -> Result<Vec<(i64, Result<BusEnvelope, BusError>)>, BusError> {
+            match self.reads.fetch_add(1, Ordering::SeqCst) {
+                0 => Ok((1..=3).map(|id| (id, Ok(envelope(id)))).collect()),
+                _ => Err(BusError::Closed),
+            }
+        }
+
+        async fn get(&self, id: i64) -> Result<BusEnvelope, BusError> {
+            Ok(envelope(id))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_short_page_ends_the_drain_without_reading_again() {
+        let log = OnePage {
+            reads: AtomicUsize::new(0),
+        };
+        let tx = ShardedBroadcast::new(16);
+        let stats = HydrateStats::default();
+        let drained = drain(&log, &tx, &stats, 0, None).await;
+        assert_eq!(
+            drained,
+            Drained {
+                reached: 3,
+                complete: true
+            }
+        );
+        assert_eq!(log.reads.load(Ordering::SeqCst), 1, "one page, one read");
+    }
+}
+
+#[cfg(all(test, not(feature = "loom")))]
 mod sim {
     use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
     use std::sync::Mutex;
