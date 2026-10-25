@@ -3,7 +3,10 @@
 
 use std::path::PathBuf;
 
-use maidan::{cache_key, cache_key_fields, cached_prefix, gateway_session, BootPrefix, CacheError};
+use maidan::{
+    cache_key, cache_key_fields, cache_salt, cached_prefix, gateway_session, routing_hints,
+    BootPrefix, CacheError,
+};
 use serde_json::Value;
 
 fn cases() -> Value {
@@ -26,6 +29,17 @@ fn each(section: &str, check: impl Fn(&Value, Result<Value, CacheError>)) {
                 case["thread_id"].as_str().unwrap(),
                 None,
                 None,
+            )
+            .map(|f| serde_json::to_value(f).unwrap()),
+            "routing_hints" => routing_hints(
+                case["router"].as_str().unwrap(),
+                case["thread_id"].as_str().unwrap(),
+                case["parent_thread_id"].as_str(),
+            )
+            .map(|f| serde_json::to_value(f).unwrap()),
+            "cache_salt" => cache_salt(
+                case["workspace_id"].as_str().unwrap(),
+                case["salt_key"].as_str().unwrap().as_bytes(),
             )
             .map(|f| serde_json::to_value(f).unwrap()),
             other => panic!("no section {other}"),
@@ -84,4 +98,27 @@ fn the_cache_key_goes_where_each_provider_reads_it() {
 #[test]
 fn the_thread_id_is_each_gateways_session_id() {
     each("gateway_session", expect);
+}
+
+#[test]
+fn a_child_thread_is_routed_by_its_parent_on_every_router() {
+    each("routing_hints", expect);
+}
+
+#[test]
+fn the_cache_salt_is_shared_inside_a_workspace_and_differs_across_workspaces_and_keys() {
+    each("cache_salt", expect);
+    let all = cases();
+    let salts: Vec<&Value> = all["cache_salt"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c.get("expected"))
+        .collect();
+    assert_eq!(salts.len(), 4);
+    assert_ne!(salts[0], salts[1], "two workspaces share a salt");
+    assert_ne!(salts[0], salts[2], "two keys give one salt");
+    for salt in salts {
+        assert_eq!(salt["body"]["cache_salt"].as_str().unwrap().len(), 43);
+    }
 }

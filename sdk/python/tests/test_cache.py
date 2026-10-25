@@ -12,7 +12,9 @@ from maidan import (
     cache_key,
     cache_key_fields,
     cached_prefix,
+    cache_salt,
     gateway_session,
+    routing_hints,
 )
 
 CASES = json.loads(
@@ -61,3 +63,27 @@ def test_the_thread_id_is_each_gateways_session_id():
                 gateway_session(case["gateway"], case["thread_id"])
         else:
             assert gateway_session(case["gateway"], case["thread_id"]) == case["expected"], case["gateway"]
+
+
+def test_a_child_thread_is_routed_by_its_parent_on_every_router():
+    for case in CASES["routing_hints"]:
+        call = lambda: routing_hints(case["router"], case["thread_id"], case.get("parent_thread_id"))  # noqa: E731
+        if "expected_error" in case:
+            with pytest.raises(CacheError, match=case["expected_error"]):
+                call()
+        else:
+            assert call() == case["expected"], case["router"]
+
+
+def test_the_cache_salt_is_shared_inside_a_workspace_and_differs_across_workspaces_and_keys():
+    for case in CASES["cache_salt"]:
+        if "expected_error" in case:
+            with pytest.raises(CacheError, match=case["expected_error"]):
+                cache_salt(case["workspace_id"], case["salt_key"])
+        else:
+            assert cache_salt(case["workspace_id"], case["salt_key"]) == case["expected"]
+    salts = [c["expected"]["body"]["cache_salt"] for c in CASES["cache_salt"] if "expected" in c]
+    assert len(salts) == 4
+    assert salts[0] != salts[1], "two workspaces share a salt"
+    assert salts[0] != salts[2], "two keys give one salt"
+    assert all(len(s) == 43 for s in salts)
