@@ -236,6 +236,13 @@ not `pending`. Go ahead only on `accepted`. Never approve your own request.
 If you cannot finish (the gate stays red, the task is unclear, the checkout
 is broken), go to step 5 with a non-`changed` status.
 
+Whatever you tried and saw fail, post it on the thread before you deliver or
+release, one line per attempt: `FAIL: <what you thought would work> |
+<the evidence it did not>`, for example `FAIL: the stale lock comes from the
+reaper | reaper disabled, still reproduces in test_x`. The next claimant
+reads the thread first and does not repeat it. A lease that lapses still
+returns the thread to the queue; these lines are what it keeps of your work.
+
 ## 5. Deliver
 
 Maidan, not the session, makes the commit and opens the pull request: the
