@@ -54,6 +54,45 @@ pub fn readable_past_cutoff(method: &axum::http::Method, matched: Option<&str>) 
         )
 }
 
+/// Write routes that add stored bytes: posting a message and uploading an
+/// artifact. An open sign-up workspace past its `stored_bytes` allowance is
+/// refused these; reads, edits and deletes stay open, so it can make room.
+pub fn adds_stored_bytes(method: &axum::http::Method, matched: Option<&str>) -> bool {
+    method == axum::http::Method::POST
+        && matches!(
+            matched,
+            Some("/threads/{tid}/messages")
+                | Some("/dm/{id}/messages")
+                | Some("/group-dms/{id}/messages")
+                | Some("/artifacts")
+                | Some("/artifacts/multipart")
+                | Some("/artifacts/multipart/{upload_id}/complete")
+                | Some("/ui/api/threads/{tid}/messages")
+                | Some("/ui/api/dm/{id}/messages")
+                | Some("/ui/api/group-dms/{id}/messages")
+                | Some("/ui/api/artifacts")
+        )
+}
+
+/// How long background work for a cut-off workspace (an egress delivery, a
+/// web push) is parked before it is looked at again. Long enough not to spin
+/// on it; the cutoff set itself is refreshed every tick, so work resumes
+/// within this once the allowance is raised or a new month starts.
+pub const CUT_OFF_DEFER: chrono::Duration = chrono::Duration::minutes(15);
+
+/// Whether the workspace of `member_id` is cut off on `meter`. A failed
+/// member lookup is not a cutoff.
+pub async fn member_cut_off(
+    state: &AppState,
+    member_id: maidan_types::MemberId,
+    meter: maidan_types::UsageMeter,
+) -> bool {
+    match state.store.get_member(member_id).await {
+        Ok(member) => state.usage_meters.is_cut_off(member.workspace_id, meter),
+        Err(_) => false,
+    }
+}
+
 /// The refusal for metered work past the free allowance: `429 Too Many
 /// Requests`, naming the meter. Only an open sign-up workspace is refused.
 pub fn cut_off_error(meter: maidan_types::UsageMeter) -> crate::error::ApiError {

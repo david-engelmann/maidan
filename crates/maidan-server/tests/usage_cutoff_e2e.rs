@@ -183,3 +183,105 @@ async fn the_cutoff_lifts_when_the_operator_drops_the_allowance() {
     assert!(!state.usage_meters.is_cut_off(open, UsageMeter::Requests));
     assert_eq!(status(&h, &bearer, &home).await.0, StatusCode::OK);
 }
+
+async fn a_thread(store: &dyn Store, ws: WorkspaceId) -> ThreadId {
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws,
+            name: "eng".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: None,
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id
+}
+
+#[tokio::test]
+async fn past_its_stored_bytes_an_open_workspace_cannot_add_messages_while_others_can() {
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| {
+        s.usage_allowance = std::sync::Arc::new(UsageAllowance::parse("stored_bytes=10").unwrap());
+        state = Some(s.clone());
+    })
+    .await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let caps = || {
+        vec![
+            capability::WORKSPACE_READ.to_string(),
+            capability::MESSAGE_POST.to_string(),
+        ]
+    };
+    let (open, open_admin) = signed_up(store, "ada", true).await;
+    let (other, other_admin) = signed_up(store, "bea", true).await;
+    let (invited, invited_admin) = signed_up(store, "cy", false).await;
+    let ops = store
+        .create_workspace(NewWorkspace { name: "ops".into() })
+        .await
+        .unwrap()
+        .id;
+    let ops_admin = member(store, ops, "admin", MemberKind::Human).await;
+    let month = UsageMonth::of(Utc::now().date_naive()).label();
+    for ws in [open, invited, ops] {
+        let mark = OverAllowance {
+            workspace_id: ws,
+            meter: UsageMeter::StoredBytes,
+            month: month.clone(),
+            quantity: 11,
+            allowance: 10,
+            marked_at: Utc::now(),
+        };
+        store.mark_over_allowance(&mark, &[]).await.unwrap();
+    }
+    maidan_server::usage_meters::refresh_cut_off(&state).await;
+
+    let post = |bearer: String, thread: ThreadId| {
+        let h = &h;
+        async move {
+            h.send(
+                Method::POST,
+                &format!("/threads/{}/messages", thread.0),
+                &bearer,
+                Some(serde_json::json!({ "body": "hello" })),
+            )
+            .await
+        }
+    };
+
+    let open_bearer = token(store, open, open_admin, caps()).await;
+    let res = post(open_bearer.clone(), a_thread(store, open).await).await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    let body: Value = res.json().await.unwrap_or(Value::Null);
+    assert!(
+        body.to_string().contains("free allowance for stored_bytes"),
+        "{body}"
+    );
+    // Reading still works, so the workspace can see what to clear.
+    assert_eq!(
+        status(&h, &open_bearer, &format!("/workspaces/{}", open.0))
+            .await
+            .0,
+        StatusCode::OK
+    );
+
+    for (ws, who) in [
+        (other, other_admin),
+        (invited, invited_admin),
+        (ops, ops_admin),
+    ] {
+        let bearer = token(store, ws, who, caps()).await;
+        let res = post(bearer, a_thread(store, ws).await).await;
+        assert!(res.status().is_success(), "{}", res.status());
+    }
+}

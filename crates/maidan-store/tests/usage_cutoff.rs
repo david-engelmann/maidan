@@ -98,6 +98,32 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap()
         .is_empty());
+
+    // Every meter, not just requests: past each one, the open workspace is
+    // listed on each, and the invited and operator ones on none.
+    for ws in [open_a, invited, operator] {
+        for meter in UsageMeter::ALL {
+            over(store, ws, meter, "2026-08").await;
+        }
+    }
+    let mut listed = store.list_usage_cut_off("2026-08").await.unwrap();
+    listed.sort_by_key(|(_, meter)| meter.as_str());
+    let mut expected: Vec<_> = UsageMeter::ALL.into_iter().map(|m| (open_a, m)).collect();
+    expected.sort_by_key(|(_, meter)| meter.as_str());
+    assert_eq!(
+        listed, expected,
+        "each meter cuts off the open workspace only"
+    );
+
+    // A new open workspace signs up while another is cut off, and starts
+    // with nothing cut off.
+    let fresh = signed_up(store, "dee", true).await;
+    assert!(store
+        .list_usage_cut_off("2026-08")
+        .await
+        .unwrap()
+        .iter()
+        .all(|(ws, _)| *ws != fresh));
 }
 
 #[tokio::test]

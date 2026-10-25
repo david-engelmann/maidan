@@ -1025,6 +1025,13 @@ impl McpServer {
             if meters.is_cut_off(auth.workspace_id, maidan_types::UsageMeter::McpCalls) {
                 return Err(McpError::OverAllowance(maidan_types::UsageMeter::McpCalls));
             }
+            if tools::adds_stored_bytes(name)
+                && meters.is_cut_off(auth.workspace_id, maidan_types::UsageMeter::StoredBytes)
+            {
+                return Err(McpError::OverAllowance(
+                    maidan_types::UsageMeter::StoredBytes,
+                ));
+            }
             meters.record(auth.workspace_id, maidan_types::UsageMeter::McpCalls, 1);
         }
         let deadline = tools::deadline(name);

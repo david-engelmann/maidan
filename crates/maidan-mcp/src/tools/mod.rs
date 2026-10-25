@@ -272,6 +272,22 @@ pub fn is_read_only(name: &str) -> bool {
     READ_ONLY_TOOLS.binary_search(&name).is_ok()
 }
 
+/// Tools that add stored bytes: posting a message and uploading an artifact.
+/// Past the `stored_bytes` allowance an open sign-up workspace is refused
+/// these, matching the REST write routes.
+pub fn adds_stored_bytes(name: &str) -> bool {
+    matches!(
+        name,
+        "post_message"
+            | "post_dm_message"
+            | "post_group_dm_message"
+            | "upload_artifact"
+            | "begin_artifact_multipart"
+            | "upload_artifact_multipart_part"
+            | "complete_artifact_multipart"
+    )
+}
+
 pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
     match name {
         "list_channels"
@@ -1557,6 +1573,32 @@ mod deadline_tests {
             } else {
                 assert_eq!(limit, TOOL_DEADLINE, "{name}");
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod stored_bytes_tests {
+    use super::*;
+
+    /// The tools refused past the stored-bytes allowance are real tools, and
+    /// reads and edits are not among them.
+    #[test]
+    fn only_tools_that_add_bytes_are_refused_past_the_stored_bytes_allowance() {
+        let names: Vec<String> = catalog()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect();
+        let refused: Vec<&String> = names.iter().filter(|n| adds_stored_bytes(n)).collect();
+        assert_eq!(refused.len(), 7, "{refused:?}");
+        for kept in [
+            "list_messages",
+            "get_artifact",
+            "edit_message",
+            "tombstone_message",
+        ] {
+            assert!(names.iter().any(|n| n == kept), "{kept} is not a tool");
+            assert!(!adds_stored_bytes(kept), "{kept}");
         }
     }
 }

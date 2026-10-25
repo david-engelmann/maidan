@@ -168,9 +168,12 @@ turns or the allowance is raised or removed:
 |---|---|---|
 | `requests` | every authenticated request except `GET /workspaces/{id}/usage-meters` and `GET /members/{id}/notifications[/grouped]`, so its admin can see why | `429 Too Many Requests`, problem type `rate-limited`, naming the meter |
 | `mcp_calls` | MCP tool calls | JSON-RPC error `-32030`, `data.meter` |
-| `embedding_calls` | semantic and hybrid search (REST and MCP) | `429` / `-32030` |
+| `embedding_calls` | semantic and hybrid search (REST and MCP), and embedding new messages (they are stored and found by keyword search, with no vector) | `429` / `-32030` |
+| `deliveries` | egress to Slack, GitHub and Linear, mail, and web push | queued egress and mail are parked for 15 minutes at a time (`over_allowance` in `maidan_egress_delivered_total` / `maidan_email_delivered_total`), not failed or retried; web push is skipped (`skipped_over_allowance`) |
+| `wasi_ms` | WASI slash handlers | the handler does not run; the slash response is `ok: false`, `error_kind: "over_allowance"` |
+| `stored_bytes` | writes that add bytes: posting a message (thread, DM, group DM) and uploading an artifact (single or multipart), on REST and MCP | `429` / `-32030`; reading, editing and deleting stay open so the workspace can make room |
 
-`deliveries`, `wasi_ms` and `stored_bytes` stay mark-only for now. The
+The
 refusal is `429` rather than `403` because the workspace may do the same
 thing again next month; it is not a permission. A refused request is not
 counted. The crossing's `usage_over_allowance` notice to each admin is the
@@ -179,7 +182,11 @@ admin notice; it is sent when the cutoff starts.
 Every replica reloads the cutoff from the store each tick
 (`MAIDAN_USAGE_METER_FLUSH_SECS`) and at boot. Counts are flushed once an
 interval, so an open workspace can overshoot its allowance by up to one
-interval's traffic per replica before it is refused. Operator-created and
+interval's traffic per replica before it is refused.
+At the boundary expect an overshoot of 1–2 flush intervals: one for the
+counts to be flushed and marked, and up to one more for every replica to
+reload the cutoff. `stored_bytes` is measured once a UTC day, so its
+cutoff can start up to a day after the crossing. Operator-created and
 invited workspaces keep the mark-only rule.
 
 - `GET /workspaces/{id}/usage-meters?month=YYYY-MM` (`workspace:read`, the
