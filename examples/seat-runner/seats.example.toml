@@ -1,0 +1,34 @@
+# Seat runner config. Copy to seats.toml and fill in the workspace and repos.
+seats = 2           # session seats claiming at once
+idle_secs = 60      # wait after a run that did no work
+
+[maidan]
+url = "http://127.0.0.1:8080"
+workspace_id = "00000000-0000-0000-0000-000000000000"
+token_env = "MAIDAN_TOKEN"   # the seat token is read from this variable, never from here
+lease_secs = 3600
+
+[harness]
+name = "codex"
+model = "gpt-5.6-sol"        # must be on the harness's allowlist in seat_runner.py
+# bin = "codex"
+# prompt = "examples/seat-runner/prompt.md"
+
+[caps]
+capped = "scripts/capped"    # capped --time S --mem-gb G -- cmd
+run_secs = 5400
+run_mem_gb = 48
+preflight_secs = 900
+preflight_mem_gb = 16
+
+[host]
+max_load15 = 130             # skip a run while the 15-minute load is at or over this
+min_free_gb = 65             # skip a run while the checkout's disk has less free
+
+[[repos]]
+repo = "owner/name"
+checkout = "~/src/name"
+# The toolchain's version, then the repository's own narrow check.
+preflight = [["cargo", "--version"], ["cargo", "test", "-p", "smallest-crate", "--lib", "-q"]]
+# Shared build state outside the checkout that the harness sandbox must write.
+writable_roots = []
