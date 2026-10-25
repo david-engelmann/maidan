@@ -1672,17 +1672,31 @@ fn queue_workspace(auth: &AuthContext, args: &Value) -> Result<WorkspaceId, McpE
     Ok(workspace_id)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceQueueDepthArgs {
+    workspace_id: uuid::Uuid,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
+}
+
 /// `get_queue_depth` across every channel of the caller's workspace: the sum of
 /// the depths of the channels it may read, counting a DM only for its
-/// participants. The MCP twin of `GET /workspaces/:wid/queue-depth`.
+/// participants, narrowed by `claim_next_workspace_thread`'s `repo` and
+/// `engine`. The MCP twin of `GET /workspaces/:wid/queue-depth`.
 pub(super) async fn get_workspace_queue_depth(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let workspace_id = queue_workspace(auth, args)?;
+    let a: WorkspaceQueueDepthArgs = crate::tools::parse_args(args)?;
+    let repo = claim_repo(a.repo.as_deref())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
     let depth = store
-        .workspace_queue_depth(workspace_id, queue_reader(auth))
+        .workspace_queue_depth(workspace_id, queue_reader(auth), repo.as_deref(), a.engine)
         .await?;
     Ok(content_json(&depth))
 }

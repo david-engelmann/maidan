@@ -1122,10 +1122,11 @@ pub fn get_channel_occupancy() {}
 
 /// Get a workspace's task-queue depth
 #[utoipa::path(get, path = "/workspaces/{wid}/queue-depth", tag = "workspaces",
-    params(("wid" = Uuid, Path, description = "Workspace id")),
+    params(("wid" = Uuid, Path, description = "Workspace id"), WorkspaceQueueDepthQuery),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = QueueDepth, description = "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants"),
+        (status = 200, body = QueueDepth, description = "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo` and `engine` narrow it as they narrow claim-next"),
+        (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]

@@ -99,6 +99,23 @@ pub(crate) struct ClaimSql<'a> {
     pub later_than: &'a str,
 }
 
+/// Threads aliased `cand` within the claimer's `repo` (its footprint names
+/// it) and routed to its `engine`, each placeholder NULL for any work. Queue
+/// depth applies the same predicate, so a filtered depth's `ready` is what a
+/// claimer with the same filters would be handed.
+pub(crate) fn served_by(repo: &str, engine: &str) -> String {
+    format!(
+        "({repo} IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_thread_footprints rf
+               WHERE rf.thread_id = cand.id AND rf.repo = {repo}
+           ))
+           AND ({engine} IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_thread_attributes a
+               WHERE a.thread_id = cand.id AND a.engine = {engine}
+           ))"
+    )
+}
+
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
 /// `scope`: the highest priority aged by its wait, then one [`warm_for`] the
 /// claimer, then the oldest. The
@@ -134,6 +151,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         requeued_after_result,
     });
     let lane_rank = lane_rank(lane);
+    let served = served_by(repo, engine);
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
@@ -150,14 +168,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            AND NOT EXISTS (
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = {member}
            )
-           AND ({repo} IS NULL OR EXISTS (
-               SELECT 1 FROM maidan_thread_footprints rf
-               WHERE rf.thread_id = cand.id AND rf.repo = {repo}
-           ))
-           AND ({engine} IS NULL OR EXISTS (
-               SELECT 1 FROM maidan_thread_attributes a
-               WHERE a.thread_id = cand.id AND a.engine = {engine}
-           ))
+           AND {served}
            AND NOT {refused}
            AND {readable}
            AND NOT {warming}
