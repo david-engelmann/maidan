@@ -75,10 +75,15 @@ def test_a_child_thread_is_routed_by_its_parent_and_dynamo_gets_both():
             assert call() == case["expected"], case["router"]
 
 
-def test_the_cache_salt_is_shared_inside_a_workspace_and_differs_across_two():
+def test_the_cache_salt_is_shared_inside_a_workspace_and_differs_across_workspaces_and_keys():
     for case in CASES["cache_salt"]:
-        assert cache_salt(case["workspace_id"]) == case["expected"]
-    a, b = CASES["cache_salt"]
-    assert a["expected"] != b["expected"]
-    with pytest.raises(CacheError):
-        cache_salt("")
+        if "expected_error" in case:
+            with pytest.raises(CacheError, match=case["expected_error"]):
+                cache_salt(case["workspace_id"], case["salt_key"])
+        else:
+            assert cache_salt(case["workspace_id"], case["salt_key"]) == case["expected"]
+    salts = [c["expected"]["body"]["cache_salt"] for c in CASES["cache_salt"] if "expected" in c]
+    assert len(salts) == 4
+    assert salts[0] != salts[1], "two workspaces share a salt"
+    assert salts[0] != salts[2], "two keys give one salt"
+    assert all(len(s) == 43 for s in salts)

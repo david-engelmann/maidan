@@ -195,10 +195,14 @@ pub fn gateway_session(
 }
 
 /// Affinity headers for a self-hosted KV-aware router, from thread and claim
-/// structure. Dynamo takes the thread as the session and the parent as the
-/// parent session; the routers with one key take the parent's thread when
-/// there is one, so a child lands where its parent's prefix is warm. These
-/// are hints: no router accepts a prefix hash from a client.
+/// structure. Every router keys a child by its parent, so a child lands where
+/// its parent's prefix is warm. Dynamo does that itself: it takes the thread as
+/// the session and, from v1.6 with session affinity on, binds a request that
+/// carries `X-Dynamo-Parent-Session-ID` under that parent, so it gets both.
+/// The routers with one key take the parent's thread when there is one.
+/// AIBrix also gets `routing-strategy: session-affinity`. SGLang caps the key
+/// at 128 bytes and AIBrix at 256; a longer key is an error. These are hints:
+/// no router accepts a prefix hash from a client.
 pub fn routing_hints(
     router: &str,
     thread_id: &str,
@@ -209,7 +213,12 @@ pub fn routing_hints(
     }
     let parent = parent_thread_id.filter(|p| !p.is_empty());
     let affinity = parent.unwrap_or(thread_id);
-    let one = |name: &str| Map::from_iter([(name.to_owned(), json!(affinity))]);
+    let one = |name: &str, max: usize| {
+        if affinity.len() > max {
+            return err(format!("routing key is longer than {max} bytes"));
+        }
+        Ok(Map::from_iter([(name.to_owned(), json!(affinity))]))
+    };
     let headers = match router {
         "dynamo" => {
             let mut h = Map::from_iter([("X-Dynamo-Session-ID".to_owned(), json!(thread_id))]);
@@ -218,9 +227,13 @@ pub fn routing_hints(
             }
             h
         }
-        "llm-d" => one("x-session-id"),
-        "aibrix" => one("x-aibrix-session-key"),
-        "sglang" => one("X-SMG-Routing-Key"),
+        "llm-d" => one("x-session-id", usize::MAX)?,
+        "aibrix" => {
+            let mut h = one("x-aibrix-session-key", 256)?;
+            h.insert("routing-strategy".to_owned(), json!("session-affinity"));
+            h
+        }
+        "sglang" => one("X-SMG-Routing-Key", 128)?,
         other => return err(format!("unknown router {other}")),
     };
     Ok(RequestFields {
@@ -229,17 +242,63 @@ pub fn routing_hints(
     })
 }
 
+/// The shortest `salt_key` [`cache_salt`] accepts, in bytes.
+pub const MIN_SALT_KEY_BYTES: usize = 32;
+
 /// vLLM's `cache_salt` for one workspace: prefix blocks are shared inside the
-/// workspace and never across two. The workspace id is hashed, so the salt
-/// does not reveal it.
-pub fn cache_salt(workspace_id: &str) -> Result<RequestFields, CacheError> {
+/// workspace and never across two. The salt is
+/// `HMAC-SHA256(salt_key, "cache_salt\n" + workspace_id)` as unpadded base64url
+/// (43 characters), so it cannot be computed from the workspace id alone.
+///
+/// Set it from a trusted server-side component that holds `salt_key` (at least
+/// 32 bytes), never from an end client. It is a cache partition, not an auth
+/// token: it decides which requests may share prefix blocks, nothing more.
+pub fn cache_salt(workspace_id: &str, salt_key: &[u8]) -> Result<RequestFields, CacheError> {
     if workspace_id.is_empty() {
         return err("workspace id is required");
     }
-    let digest = hex(&Sha256::digest(
-        format!("cache_salt\n{workspace_id}").as_bytes(),
-    ));
-    Ok(body(
-        json!({"cache_salt": format!("maidan-{}", &digest[..32])}),
-    ))
+    if salt_key.len() < MIN_SALT_KEY_BYTES {
+        return err(format!(
+            "salt key must be at least {MIN_SALT_KEY_BYTES} bytes"
+        ));
+    }
+    let mac = hmac_sha256(salt_key, format!("cache_salt\n{workspace_id}").as_bytes());
+    Ok(body(json!({"cache_salt": base64url(&mac)})))
+}
+
+/// RFC 2104 HMAC over SHA-256, on the `sha2` the crate already depends on.
+fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    const BLOCK: usize = 64;
+    let mut k = [0u8; BLOCK];
+    if key.len() > BLOCK {
+        k[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        k[..key.len()].copy_from_slice(key);
+    }
+    let pad = |byte: u8| k.map(|b| b ^ byte);
+    let inner = Sha256::new()
+        .chain_update(pad(0x36))
+        .chain_update(message)
+        .finalize();
+    Sha256::new()
+        .chain_update(pad(0x5c))
+        .chain_update(inner)
+        .finalize()
+        .into()
+}
+
+/// RFC 4648 base64url without padding.
+fn base64url(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, &b)| n | u32::from(b) << (16 - 8 * i));
+        for i in 0..=chunk.len() {
+            out.push(char::from(ALPHABET[(n >> (18 - 6 * i) & 63) as usize]));
+        }
+    }
+    out
 }

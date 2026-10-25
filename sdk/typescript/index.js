@@ -11,6 +11,7 @@ export {
   cacheKey,
   cacheKeyFields,
   cacheSalt,
+  MIN_SALT_KEY_BYTES,
   cachedPrefix,
   gatewaySession,
   routingHints,

@@ -55,7 +55,7 @@ pub use usage::{
 // Provider-cache helpers: pure functions beside the client.
 pub use cache::{
     cache_key, cache_key_fields, cache_salt, cached_prefix, gateway_session, routing_hints,
-    BootPrefix, CacheError, RequestFields,
+    BootPrefix, CacheError, RequestFields, MIN_SALT_KEY_BYTES,
 };
 
 /// The client version, tracked independently of the server.

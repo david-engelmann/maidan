@@ -68,9 +68,17 @@ test("a child thread is routed by its parent and Dynamo gets both", () => {
   }
 });
 
-test("the cache salt is shared inside a workspace and differs across two", async () => {
-  for (const c of CASES.cache_salt) assert.deepEqual(await cacheSalt(c.workspace_id), c.expected);
-  const [a, b] = CASES.cache_salt;
-  assert.notDeepEqual(a.expected, b.expected);
-  await assert.rejects(() => cacheSalt(""), CacheError);
+test("the cache salt is shared inside a workspace and differs across workspaces and keys", async () => {
+  for (const c of CASES.cache_salt) {
+    if (c.expected_error) {
+      await assert.rejects(() => cacheSalt(c.workspace_id, c.salt_key), (e) => e instanceof CacheError && e.message.includes(c.expected_error));
+    } else {
+      assert.deepEqual(await cacheSalt(c.workspace_id, c.salt_key), c.expected);
+    }
+  }
+  const salts = CASES.cache_salt.filter((c) => c.expected).map((c) => c.expected.body.cache_salt);
+  assert.equal(salts.length, 4);
+  assert.notEqual(salts[0], salts[1], "two workspaces share a salt");
+  assert.notEqual(salts[0], salts[2], "two keys give one salt");
+  for (const s of salts) assert.equal(s.length, 43);
 });

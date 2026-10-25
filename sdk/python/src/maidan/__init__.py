@@ -13,6 +13,7 @@ from .cache import (
     cache_key_fields,
     cached_prefix,
     cache_salt,
+    MIN_SALT_KEY_BYTES,
     gateway_session,
     routing_hints,
 )
@@ -140,6 +141,7 @@ __all__ = [
     "cached_prefix",
     "event_type",
     "cache_salt",
+    "MIN_SALT_KEY_BYTES",
     "gateway_session",
     "routing_hints",
     "new_idempotency_key",

@@ -133,17 +133,20 @@ export function gatewaySession(gateway, threadId, options = {}) {
 }
 
 const ONE_KEY_ROUTERS = {
-  "llm-d": "x-session-id",
-  aibrix: "x-aibrix-session-key",
-  sglang: "X-SMG-Routing-Key",
+  "llm-d": { header: "x-session-id", max: Infinity },
+  aibrix: { header: "x-aibrix-session-key", max: 256 },
+  sglang: { header: "X-SMG-Routing-Key", max: 128 },
 };
 
 /**
  * Affinity headers for a self-hosted KV-aware router, from thread and claim
- * structure. Dynamo takes the thread as the session and the parent as the
- * parent session; the routers with one key take the parent's thread when
- * there is one, so a child lands where its parent's prefix is warm. Hints
- * only: no router accepts a prefix hash from a client.
+ * structure. Every router keys a child by its parent, so a child lands where its parent's
+ * prefix is warm. Dynamo takes the thread as the session and the parent as the
+ * parent session, and (v1.6+, with session affinity on) binds the child under
+ * the parent itself. The one-key routers take the parent's thread when there is
+ * one. AIBrix also gets `routing-strategy: session-affinity`. SGLang caps the
+ * key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only: no
+ * router accepts a prefix hash from a client.
  */
 export function routingHints(router, threadId, options = {}) {
   if (!threadId) throw new CacheError("thread id is required");
@@ -153,17 +156,38 @@ export function routingHints(router, threadId, options = {}) {
     if (parent) headers["X-Dynamo-Parent-Session-ID"] = parent;
     return { headers };
   }
-  const name = Object.hasOwn(ONE_KEY_ROUTERS, router) ? ONE_KEY_ROUTERS[router] : undefined;
-  if (!name) throw new CacheError(`unknown router ${router}`);
-  return { headers: { [name]: parent ?? threadId } };
+  const spec = Object.hasOwn(ONE_KEY_ROUTERS, router) ? ONE_KEY_ROUTERS[router] : undefined;
+  if (!spec) throw new CacheError(`unknown router ${router}`);
+  const key = parent ?? threadId;
+  if (new TextEncoder().encode(key).length > spec.max) {
+    throw new CacheError(`routing key is longer than ${spec.max} bytes`);
+  }
+  const headers = { [spec.header]: key };
+  if (router === "aibrix") headers["routing-strategy"] = "session-affinity";
+  return { headers };
 }
 
+/** The shortest salt key `cacheSalt` accepts, in bytes. */
+export const MIN_SALT_KEY_BYTES = 32;
+
 /**
- * vLLM's `cache_salt` for one workspace: prefix blocks are shared inside the
- * workspace and never across two. The workspace id is hashed in.
+ * vLLM's `cache_salt` for one workspace: HMAC-SHA256(saltKey,
+ * "cache_salt\n" + workspaceId) as unpadded base64url (43 characters), so it
+ * cannot be computed from the workspace id alone. The key must be at least 32
+ * bytes. Set the salt from a trusted server-side component that holds the key,
+ * never from an end client. It is a cache partition, not an auth token.
  */
-export async function cacheSalt(workspaceId) {
+export async function cacheSalt(workspaceId, saltKey) {
   if (!workspaceId) throw new CacheError("workspace id is required");
-  const digest = await sha256Hex(`cache_salt\n${workspaceId}`);
-  return { body: { cache_salt: `maidan-${digest.slice(0, 32)}` } };
+  const key = typeof saltKey === "string" ? new TextEncoder().encode(saltKey) : saltKey;
+  if (!(key instanceof Uint8Array) || key.length < MIN_SALT_KEY_BYTES) {
+    throw new CacheError(`salt key must be at least ${MIN_SALT_KEY_BYTES} bytes`);
+  }
+  const subtle = globalThis.crypto?.subtle ?? (await import("node:crypto")).webcrypto.subtle;
+  const k = await subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(
+    await subtle.sign("HMAC", k, new TextEncoder().encode(`cache_salt\n${workspaceId}`)),
+  );
+  const b64 = btoa(String.fromCharCode(...mac));
+  return { body: { cache_salt: b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") } };
 }

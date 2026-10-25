@@ -8,7 +8,9 @@ TypeScript, Go and Rust SDKs give the same output for the same input
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import re
 from dataclasses import dataclass
 from typing import Any, Union
@@ -16,6 +18,7 @@ from typing import Any, Union
 __all__ = [
     "BootPrefix",
     "CacheError",
+    "MIN_SALT_KEY_BYTES",
     "boot_prefix",
     "cache_key",
     "cache_key_fields",
@@ -139,18 +142,21 @@ def gateway_session(gateway: str, thread_id: str, path: str = "/", name: str = "
 
 
 _ONE_KEY_ROUTERS = {
-    "llm-d": "x-session-id",
-    "aibrix": "x-aibrix-session-key",
-    "sglang": "X-SMG-Routing-Key",
+    "llm-d": ("x-session-id", None),
+    "aibrix": ("x-aibrix-session-key", 256),
+    "sglang": ("X-SMG-Routing-Key", 128),
 }
 
 
 def routing_hints(router: str, thread_id: str, parent_thread_id: str | None = None) -> dict:
     """Affinity headers for a self-hosted KV-aware router.
 
-    Dynamo takes the thread as the session and the parent as the parent
-    session; the routers with one key take the parent's thread when there is
-    one, so a child lands where its parent's prefix is warm. Hints only: no
+    Every router keys a child by its parent, so a child lands where its parent's
+    prefix is warm. Dynamo takes the thread as the session and the parent as the
+    parent session, and (v1.6+, with session affinity on) binds the child under
+    the parent itself. The one-key routers take the parent's thread when there is
+    one. AIBrix also gets ``routing-strategy: session-affinity``. SGLang caps the
+    key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only: no
     router accepts a prefix hash from a client.
     """
     if not thread_id:
@@ -161,15 +167,34 @@ def routing_hints(router: str, thread_id: str, parent_thread_id: str | None = No
         if parent:
             headers["X-Dynamo-Parent-Session-ID"] = parent
         return {"headers": headers}
-    name = _ONE_KEY_ROUTERS.get(router)
-    if name is None:
+    spec = _ONE_KEY_ROUTERS.get(router)
+    if spec is None:
         raise CacheError(f"unknown router {router}")
-    return {"headers": {name: parent or thread_id}}
+    name, limit = spec
+    key = parent or thread_id
+    if limit is not None and len(key.encode("utf-8")) > limit:
+        raise CacheError(f"routing key is longer than {limit} bytes")
+    headers = {name: key}
+    if router == "aibrix":
+        headers["routing-strategy"] = "session-affinity"
+    return {"headers": headers}
 
 
-def cache_salt(workspace_id: str) -> dict:
-    """vLLM's ``cache_salt`` for one workspace, never the same in two."""
+MIN_SALT_KEY_BYTES = 32
+"""The shortest ``salt_key`` :func:`cache_salt` accepts, in bytes."""
+
+
+def cache_salt(workspace_id: str, salt_key: Union[str, bytes]) -> dict:
+    """vLLM's ``cache_salt`` for one workspace: HMAC-SHA256(salt_key,
+    "cache_salt\n" + workspace_id) as unpadded base64url (43 characters), so it
+    cannot be computed from the workspace id alone. The key must be at least 32
+    bytes. Set the salt from a trusted server-side component that holds the key,
+    never from an end client. It is a cache partition, not an auth token.
+    """
     if not workspace_id:
         raise CacheError("workspace id is required")
-    digest = hashlib.sha256(f"cache_salt\n{workspace_id}".encode("utf-8")).hexdigest()
-    return {"body": {"cache_salt": f"maidan-{digest[:32]}"}}
+    key = salt_key.encode("utf-8") if isinstance(salt_key, str) else bytes(salt_key)
+    if len(key) < MIN_SALT_KEY_BYTES:
+        raise CacheError(f"salt key must be at least {MIN_SALT_KEY_BYTES} bytes")
+    mac = hmac.new(key, f"cache_salt\n{workspace_id}".encode("utf-8"), hashlib.sha256).digest()
+    return {"body": {"cache_salt": base64.urlsafe_b64encode(mac).rstrip(b"=").decode("ascii")}}
