@@ -229,56 +229,79 @@ class Tree:
     process group is the first thing signalled. `capped` starts its command
     in another session, and once `capped` exits that command is reparented
     and no longer found under it, so the groups and pids seen while the
-    child runs are kept, pruned to the live ones on every refresh. Nothing
-    is signalled unless a fresh process table still ties it to this tree."""
+    child runs are kept, pruned to the live ones on every refresh.
+
+    Nothing is signalled unless a fresh process table still ties it to this
+    tree. Once the root is reaped its pid may be reused, so from then on the
+    root pid is never walked from or signalled: only live members of the
+    tracked groups, and tracked pids still in the group they were seen in,
+    are reached. `lock` makes reaping and signalling exclusive, so no signal
+    goes out between the reap and `root_reaped`."""
 
     def __init__(self, root: int) -> None:
         self.root = root
-        self.pids: set[int] = {root}
+        self.reaped = False
+        self.lock = threading.RLock()
+        self.pids: dict[int, int] = {}  # pid -> pgid it was seen in
         self.groups: set[int] = {root}  # start_new_session: pgid == pid
 
-    def _scan(self) -> tuple[dict[int, tuple[int, int]], set[int]]:
-        """The process table, and which pids belong to this tree in it: a
-        descendant of the root, or a member of one of its groups."""
+    def root_reaped(self) -> None:
+        with self.lock:
+            self.reaped = True
+            self.pids.pop(self.root, None)
+
+    def _scan(self) -> tuple[dict[int, tuple[int, int]], dict[int, int]]:
+        """The process table, and the pids in it that belong to this tree,
+        each with its process group."""
         table = {pid: (ppid, pgid) for pid, ppid, pgid in process_table()}
         own = os.getpgrp()
-        children: dict[int, list[int]] = {}
-        for pid, (ppid, _) in table.items():
-            children.setdefault(ppid, []).append(pid)
-        ours: set[int] = set()
-        todo = [self.root] if self.root in table else []
-        while todo:
-            pid = todo.pop()
-            if pid in ours:
-                continue
-            ours.add(pid)
-            todo.extend(children.get(pid, []))
-        ours |= {pid for pid, (_, pgid) in table.items() if pgid in self.groups and pgid != own}
-        return table, ours
+        ours: dict[int, int] = {}
+        if not self.reaped and self.root in table:
+            children: dict[int, list[int]] = {}
+            for pid, (ppid, _) in table.items():
+                children.setdefault(ppid, []).append(pid)
+            todo = [self.root]
+            while todo:
+                pid = todo.pop()
+                if pid not in ours:
+                    ours[pid] = table[pid][1]
+                    todo.extend(children.get(pid, []))
+        for pid, pgid in self.pids.items():
+            if pid in table and table[pid][1] == pgid:
+                ours[pid] = pgid
+        for pid, (_, pgid) in table.items():
+            if pgid in self.groups:
+                ours[pid] = pgid
+        if self.reaped:
+            ours.pop(self.root, None)
+        return table, {p: g for p, g in ours.items() if g != own}
 
-    def refresh(self) -> set[int]:
-        table, ours = self._scan()
-        own = os.getpgrp()
-        self.pids = ours
-        self.groups = {g for g in self.groups | {table[p][1] for p in ours}
-                       if g != own and any(pg == g for _, pg in table.values())}
-        return ours
+    def refresh(self) -> dict[int, int]:
+        with self.lock:
+            table, ours = self._scan()
+            self.pids = ours
+            live = {pgid for _, pgid in table.values()}
+            self.groups = {g for g in self.groups | set(ours.values()) if g in live and g != os.getpgrp()}
+            if self.reaped and not any(g == self.root for g in ours.values()):
+                self.groups.discard(self.root)
+            return ours
 
     def alive(self) -> bool:
         return bool(self.refresh())
 
     def signal(self, sig: int) -> None:
-        ours = self.refresh()
-        for g in self.groups:
-            try:
-                os.killpg(g, sig)
-            except (ProcessLookupError, PermissionError):
-                pass
-        for p in ours:
-            try:
-                os.kill(p, sig)
-            except (ProcessLookupError, PermissionError):
-                pass
+        with self.lock:
+            ours = self.refresh()
+            for g in set(ours.values()):
+                try:
+                    os.killpg(g, sig)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            for p in ours:
+                try:
+                    os.kill(p, sig)
+                except (ProcessLookupError, PermissionError):
+                    pass
 
     def kill(self, grace: float) -> None:
         """SIGTERM, up to `grace` seconds, then SIGKILL whatever is left."""
@@ -337,11 +360,13 @@ class Runner:
             if self.stop.is_set():
                 tree.kill(self.cfg.kill_grace_secs)
             while True:
-                try:
-                    code = proc.wait(timeout=0.5)
-                    break
-                except subprocess.TimeoutExpired:
+                with tree.lock:
+                    code = proc.poll()
+                    if code is not None:
+                        tree.root_reaped()
+                        break
                     tree.refresh()
+                time.sleep(0.2)
             tree.kill(self.cfg.kill_grace_secs)
             return code
         finally:

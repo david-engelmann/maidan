@@ -354,10 +354,19 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         self.addCleanup(child.kill)
         tree = seat_runner.Tree(child.pid)
         tree.refresh()
-        tree.pids.add(outsider.pid)  # as if a tracked pid had been reused
+        tree.pids[outsider.pid] = child.pid  # as if a tracked pid had been reused
         tree.kill(1)
         self.assertEqual(child.wait(10), -signal.SIGTERM)
         self.assertIsNone(outsider.poll(), "the outside process is still running")
+
+    def test_a_process_holding_a_reaped_roots_pid_survives_a_tree_kill(self):
+        outsider = subprocess.Popen(["sleep", "60"])
+        self.addCleanup(outsider.kill)
+        tree = seat_runner.Tree(outsider.pid)  # the reaped root's pid, reused
+        tree.groups = set()
+        tree.root_reaped()
+        tree.kill(1)
+        self.assertIsNone(outsider.poll(), "the process now holding the pid is still running")
 
     def test_a_model_list_missing_from_the_config_is_refused_at_startup(self):
         maidan = FakeMaidan()
