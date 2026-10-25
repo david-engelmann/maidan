@@ -56,8 +56,8 @@ pub(crate) fn require_signup(state: &AppState) -> ApiResult<()> {
 
 /// The footer links to the instance's privacy policy and terms, for the
 /// waitlist page's `<!-- policy-links -->` slot; empty where neither is set.
-/// Boot already refused a value that could leave its attribute; the escape
-/// keeps an `&` in a query string valid HTML.
+/// Boot already refused a value that could leave its attribute, but settings
+/// built in code skip that check, so the value is escaped here as well.
 pub(crate) fn policy_links_html(state: &AppState) -> String {
     let Some(oidc) = state.oidc.as_ref() else {
         return String::new();
@@ -69,10 +69,19 @@ pub(crate) fn policy_links_html(state: &AppState) -> String {
     ]
     .into_iter()
     .filter_map(|(url, label)| {
-        url.map(|url| format!("<a href=\"{}\">{label}</a>", url.replace('&', "&amp;")))
+        url.map(|url| format!("<a href=\"{}\">{label}</a>", attribute_escaped(url)))
     })
     .collect::<Vec<_>>()
     .join("\n      ")
+}
+
+/// `text` safe inside a double-quoted HTML attribute.
+fn attribute_escaped(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Longest local part (before the `@`) an address may have, per RFC 5321.
@@ -327,4 +336,17 @@ pub async fn invite_waitlist_entry(
         signup_path: format!("/auth/oidc/signup?invite={token}"),
         invite_expires_at: expires_at,
     }))
+}
+
+#[cfg(test)]
+mod attribute_escape_tests {
+    use super::attribute_escaped;
+
+    #[test]
+    fn a_link_built_without_boot_checks_cannot_leave_its_attribute() {
+        assert_eq!(
+            attribute_escaped(r#"/p?a=1&b="x"'<y>"#),
+            "/p?a=1&amp;b=&quot;x&quot;&#39;&lt;y&gt;"
+        );
+    }
 }

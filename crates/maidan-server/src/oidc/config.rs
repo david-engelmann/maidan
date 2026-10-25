@@ -273,9 +273,13 @@ fn check_policy_url(name: &'static str, raw: &str) -> Result<Option<String>, Con
         return Ok(None);
     }
     let on_origin = value.starts_with('/') && !value.starts_with("//");
-    let https = value
-        .strip_prefix("https://")
-        .is_some_and(|rest| !rest.is_empty() && !rest.starts_with('/'));
+    // The host a visitor reads must be the one the link opens:
+    // `https://maidan.world@evil.example/terms` shows one and opens the
+    // other, so an authority with userinfo is refused.
+    let https = value.strip_prefix("https://").is_some_and(|rest| {
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        !authority.is_empty() && !authority.contains('@')
+    });
     if !on_origin && !https {
         return Err(ConfigError::Invalid(
             name,
@@ -355,6 +359,9 @@ mod policy_url_tests {
             "/pri vacy",
             "/privacy'",
             "/a\\b",
+            "https://user:pass@example.com/privacy",
+            "https://maidan.world@evil.example/terms",
+            "https://?x",
         ] {
             assert!(
                 matches!(
