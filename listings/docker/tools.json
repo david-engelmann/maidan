@@ -333,7 +333,7 @@
       "name": "get_channel_occupancy"
     },
     {
-      "description": "get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.",
+      "description": "get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo and engine narrow the count as they narrow claim_next_workspace_thread.",
       "name": "get_workspace_queue_depth"
     },
     {

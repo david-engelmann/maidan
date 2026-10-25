@@ -1726,11 +1726,16 @@ pub trait ThreadStore: Send + Sync {
 
     /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
     /// of `workspace_id`: the sum of its channels' counts for the same reader.
-    /// A reader from another workspace counts nothing.
+    /// A reader from another workspace counts nothing. `repo` (normalized)
+    /// and `engine` narrow the count as they narrow
+    /// [`claim_next_workspace_thread`](Self::claim_next_workspace_thread), so
+    /// `ready` is what a claimer with the same filters would be handed.
     async fn workspace_queue_depth(
         &self,
         workspace_id: WorkspaceId,
         readable_by: Option<MemberId>,
+        repo: Option<&str>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —

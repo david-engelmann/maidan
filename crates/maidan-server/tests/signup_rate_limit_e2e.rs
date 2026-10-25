@@ -203,3 +203,31 @@ async fn a_chunked_join_is_charged_to_its_domain_too() {
         StatusCode::TOO_MANY_REQUESTS
     );
 }
+
+#[tokio::test]
+async fn a_bot_filling_the_honeypot_still_spends_its_address_budget() {
+    let base = spawn().await;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap();
+    let bot = |email: &'static str| {
+        client
+            .post(format!("{base}/waitlist"))
+            .header("x-forwarded-for", "10.0.0.9")
+            .json(&json!({
+                "email": email,
+                "use_case": "swarms",
+                "consent": true,
+                "website": "https://spam.example",
+            }))
+            .send()
+    };
+    for email in ["a@one.example", "b@two.example", "c@three.example"] {
+        assert_eq!(bot(email).await.unwrap().status(), StatusCode::CREATED);
+    }
+    assert_eq!(
+        bot("d@four.example").await.unwrap().status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+}

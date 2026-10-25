@@ -47,7 +47,7 @@ pub use score::{
 pub use sqlite::SqliteSearch;
 pub use sqlite_vec::{
     ensure_auto_extension, pool_options as sqlite_pool_options,
-    pool_options_with as sqlite_pool_options_with, vec_available,
+    pool_options_with as sqlite_pool_options_with, vec_available, vec_ready,
 };
 pub use tap_projector::{backfill_search, SearchTap};
 pub use traits::Search;

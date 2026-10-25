@@ -3962,6 +3962,13 @@
           "use_case": {
             "description": "What the visitor would use Maidan for, in their own words.",
             "type": "string"
+          },
+          "website": {
+            "description": "Left empty by people. The page hides this field; a form-filling bot\nfills it, and its join is answered like any other and not stored.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -31085,6 +31092,16 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A browser posted the join from another site"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -39893,6 +39910,24 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Count only threads whose footprint names this repository (`owner/name`\nor a GitHub clone URL). Omitted, any work.",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Count only threads routed to this engine (`pi`, `session` or\n`human`). Omitted, any work.",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskEngine"
+            }
           }
         ],
         "responses": {
@@ -39904,7 +39939,7 @@
                 }
               }
             },
-            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants"
+            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo` and `engine` narrow it as they narrow claim-next"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
