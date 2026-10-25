@@ -35,6 +35,10 @@ struct Env {
 }
 
 async fn spawn(signup: bool, domains: Vec<String>) -> Env {
+    spawn_with(signup, domains, None).await
+}
+
+async fn spawn_with(signup: bool, domains: Vec<String>, public_origin: Option<&str>) -> Env {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -79,6 +83,7 @@ async fn spawn(signup: bool, domains: Vec<String>) -> Env {
             auto_mint: false,
             signup,
             signup_email_domains: domains,
+            emails_verified: false,
         },
         session_secret: Arc::from(SECRET),
         client: None,
@@ -86,6 +91,7 @@ async fn spawn(signup: bool, domains: Vec<String>) -> Env {
         end_session_url: None,
         logout_client_id: None,
     }));
+    state.public_origin = public_origin.map(str::to_string);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let app = router(state);
@@ -555,4 +561,271 @@ async fn boot_refuses_signup_beside_auto_provisioning() {
         Err(other) => panic!("boot must refuse the pair, got a different error: {other}"),
         Ok(_) => panic!("boot must refuse the pair, got settings"),
     }
+}
+
+async fn raw_join(env: &Env, body: Value, extra: &[(&str, &str)]) -> (StatusCode, String) {
+    let mut req = env
+        .client
+        .post(format!("{}/waitlist", env.base))
+        .json(&body);
+    for (name, value) in extra {
+        req = req.header(*name, *value);
+    }
+    let res = req.send().await.unwrap();
+    let status = res.status();
+    (status, res.text().await.unwrap())
+}
+
+#[tokio::test]
+async fn a_repeat_join_gets_a_byte_identical_answer_to_a_fresh_one() {
+    let env = spawn(true, vec![]).await;
+    let body = json!({"email": "grace@example.com", "use_case": "review swarm", "consent": true});
+    let fresh = raw_join(&env, body.clone(), &[]).await;
+    let repeat = raw_join(&env, body, &[]).await;
+    assert_eq!(fresh.0, StatusCode::CREATED);
+    assert_eq!(fresh, repeat, "a listed address must not be told apart");
+}
+
+#[tokio::test]
+async fn a_filled_honeypot_is_answered_like_a_join_and_stores_nothing() {
+    let env = spawn(true, vec![]).await;
+    let human = raw_join(
+        &env,
+        json!({"email": "lin@example.com", "use_case": "agents", "consent": true, "website": ""}),
+        &[],
+    )
+    .await;
+    let bot = raw_join(
+        &env,
+        json!({"email": "bot@example.com", "use_case": "agents", "consent": true, "website": "https://spam.example"}),
+        &[],
+    )
+    .await;
+    assert_eq!(human.0, StatusCode::CREATED);
+    assert_eq!(bot.0, StatusCode::CREATED);
+    assert_eq!(
+        bot.1.replace("bot@", "lin@"),
+        human.1,
+        "the bot's answer has the human's shape"
+    );
+    let op = env.token(&["operator:global"]).await;
+    let (_, list) = env.operator_list(&op).await;
+    let emails: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e["email"].as_str())
+        .collect();
+    assert_eq!(emails, vec!["lin@example.com"]);
+}
+
+#[tokio::test]
+async fn the_waitlist_refuses_shapes_that_are_not_email_addresses() {
+    let env = spawn(true, vec![]).await;
+    let long_local = format!("{}@example.com", "a".repeat(65));
+    let long_total = format!("a@{}.com", "b".repeat(260));
+    for email in [
+        "plain",
+        "@example.com",
+        "ada@",
+        "ada@localhost",
+        "ada@example..com",
+        "ada@-example.com",
+        "ada@exa_mple.com",
+        "Ada <ada@example.com>",
+        "ada@example.com\u{0}",
+        "ada@@example.com",
+        "a,b@example.com",
+        long_local.as_str(),
+        long_total.as_str(),
+    ] {
+        let (status, _) = env.join(email, "swarms", true).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{email:?}");
+    }
+    let too_long_note = "x".repeat(2_001);
+    let (status, _) = env.join("ada@example.com", &too_long_note, true).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_join_posted_from_another_site_is_refused_and_one_from_this_site_is_taken() {
+    let env = spawn(true, vec![]).await;
+    let host = env.base.trim_start_matches("http://").to_string();
+    let body = json!({"email": "kay@example.com", "use_case": "swarms", "consent": true});
+    let (status, _) = raw_join(&env, body.clone(), &[("origin", "https://evil.example")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = raw_join(&env, body.clone(), &[("origin", "null")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = raw_join(&env, body.clone(), &[("sec-fetch-site", "cross-site")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let same = format!("http://{host}");
+    let (status, text) = raw_join(&env, body, &[("origin", same.as_str())]).await;
+    assert_eq!(status, StatusCode::CREATED, "{text}");
+}
+
+#[tokio::test]
+async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_on() {
+    let env = spawn(true, vec![]).await;
+    let res = env
+        .client
+        .get(format!("{}/", env.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let h = res.headers().clone();
+    let csp = h["content-security-policy"].to_str().unwrap().to_string();
+    assert!(csp.contains("default-src 'none'"), "{csp}");
+    assert!(csp.contains("script-src 'self'"), "{csp}");
+    assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
+    assert!(!csp.contains("unsafe-inline"), "{csp}");
+    assert_eq!(h["x-content-type-options"], "nosniff");
+    assert_eq!(h["x-frame-options"], "DENY");
+    assert_eq!(h["referrer-policy"], "no-referrer");
+    let html = res.text().await.unwrap();
+    assert!(
+        html.contains("id=\"wl-website\""),
+        "the honeypot field is on the page"
+    );
+    let lower = html.to_ascii_lowercase();
+    let mut rest = lower.as_str();
+    while let Some(at) = rest.find("<script") {
+        let tag = &rest[at..];
+        let end = tag.find('>').unwrap_or(tag.len());
+        assert!(
+            tag[..end].contains(" src="),
+            "a script without src: {}",
+            &tag[..end]
+        );
+        assert!(tag[end..].starts_with("></script>"), "a script with a body");
+        rest = &tag[end..];
+    }
+    assert!(!lower.contains("<style"), "no style element");
+    assert!(!lower.contains("style="), "no inline style");
+    assert!(!has_inline_handler(&lower), "no inline handlers");
+    for asset in ["landing.css", "landing.js"] {
+        let res = env
+            .client
+            .get(format!("{}/landing/{asset}", env.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "{asset}");
+        assert_eq!(res.headers()["x-content-type-options"], "nosniff");
+    }
+    let off = spawn(false, vec![]).await;
+    let res = off
+        .client
+        .get(format!("{}/", off.base))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+fn has_inline_handler(html: &str) -> bool {
+    [
+        "onclick=",
+        "onload=",
+        "onerror=",
+        "onsubmit=",
+        "oninput=",
+        "onchange=",
+    ]
+    .iter()
+    .any(|h| html.contains(h))
+}
+
+#[tokio::test]
+async fn an_origin_matching_the_public_url_is_taken_even_when_the_host_differs() {
+    let env = spawn_with(true, vec![], Some("https://maidan.example.com")).await;
+    let body = json!({"email": "pat@example.com", "use_case": "swarms", "consent": true});
+    let (status, text) = raw_join(
+        &env,
+        body.clone(),
+        &[("origin", "https://maidan.example.com")],
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{text}");
+    let host_origin = env.base.clone();
+    let (status, _) = raw_join(&env, body.clone(), &[("origin", host_origin.as_str())]).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "the Host header no longer vouches"
+    );
+    let (status, _) = raw_join(&env, body, &[("origin", "https://evil.example")]).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn landing_asset_paths_other_than_the_two_files_are_not_found() {
+    let env = spawn(true, vec![]).await;
+    for path in [
+        "/landing/../Cargo.toml",
+        "/landing/%2e%2e%2fCargo.toml",
+        "/landing/..%2fsrc%2fapp.rs",
+        "/landing/index.html",
+        "/landing/landing.css.map",
+        "/landing/nope.js",
+        "/landing/",
+    ] {
+        let res = env
+            .client
+            .get(format!("{}{path}", env.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn landing_assets_are_not_found_where_sign_up_is_off() {
+    let off = spawn(false, vec![]).await;
+    for asset in ["landing.css", "landing.js"] {
+        let res = off
+            .client
+            .get(format!("{}/landing/{asset}", off.base))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::NOT_FOUND, "{asset}");
+    }
+}
+
+#[tokio::test]
+async fn a_cross_site_plain_text_or_form_post_is_refused_and_stores_nothing() {
+    let env = spawn(true, vec![]).await;
+    let json_text = r#"{"email":"eve@example.com","use_case":"x","consent":true}"#;
+    for (content_type, body) in [
+        ("text/plain", json_text.to_string()),
+        (
+            "application/x-www-form-urlencoded",
+            "email=eve%40example.com&use_case=x&consent=true".to_string(),
+        ),
+        (
+            "multipart/form-data; boundary=x",
+            format!("--x\r\n{json_text}\r\n--x--"),
+        ),
+    ] {
+        let res = env
+            .client
+            .post(format!("{}/waitlist", env.base))
+            .header("content-type", content_type)
+            .header("origin", "https://evil.example")
+            .header("sec-fetch-site", "cross-site")
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            res.status().is_client_error(),
+            "{content_type}: {}",
+            res.status()
+        );
+    }
+    let op = env.token(&["operator:global"]).await;
+    let (_, list) = env.operator_list(&op).await;
+    assert_eq!(list.as_array().map(Vec::len), Some(0), "nothing was stored");
 }

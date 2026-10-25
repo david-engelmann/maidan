@@ -2025,6 +2025,8 @@ macro_rules! store_delegations {
                     self.read_pool(),
                     QueueScope::Channel(channel_id),
                     readable_by,
+                    None,
+                    None,
                 )
                 .await
             }
@@ -2033,11 +2035,15 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
                 readable_by: Option<MemberId>,
+                repo: Option<&str>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
                     QueueScope::Workspace(workspace_id),
                     readable_by,
+                    repo,
+                    engine,
                 )
                 .await
             }

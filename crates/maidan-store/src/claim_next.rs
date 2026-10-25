@@ -99,8 +99,26 @@ pub(crate) struct ClaimSql<'a> {
     pub later_than: &'a str,
 }
 
+/// Threads aliased `cand` within the claimer's `repo` (its footprint names
+/// it) and routed to its `engine`, each placeholder NULL for any work. Queue
+/// depth applies the same predicate, so a filtered depth's `ready` is what a
+/// claimer with the same filters would be handed.
+pub(crate) fn served_by(repo: &str, engine: &str) -> String {
+    format!(
+        "({repo} IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_thread_footprints rf
+               WHERE rf.thread_id = cand.id AND rf.repo = {repo}
+           ))
+           AND ({engine} IS NULL OR EXISTS (
+               SELECT 1 FROM maidan_thread_attributes a
+               WHERE a.thread_id = cand.id AND a.engine = {engine}
+           ))"
+    )
+}
+
 /// `SELECT {columns}` of the one thread `claim_next` would give the claimer in
-/// `scope`: the highest priority aged by its wait, then the oldest. The
+/// `scope`: the highest priority aged by its wait, then one [`warm_for`] the
+/// claimer, then the oldest. The
 /// candidate thread is aliased `cand` and its channel `ch`; the caller appends
 /// any row lock.
 pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<'_>) -> String {
@@ -124,6 +142,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         ClaimScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = readable_by(member, dm_channel);
+    let warm = warm_for(member);
     let warming = sibling_warming(now, warm_hold_since, warm_ttl_since, later_than);
     let refused = crate::review_family::refused_to(member);
     let claimable = claimability::claimable(&ThreadSql {
@@ -132,6 +151,7 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
         requeued_after_result,
     });
     let lane_rank = lane_rank(lane);
+    let served = served_by(repo, engine);
     format!(
         "SELECT {columns} FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
@@ -148,19 +168,31 @@ pub(crate) fn candidate_select(scope: ClaimScope, columns: &str, sql: &ClaimSql<
            AND NOT EXISTS (
                SELECT 1 FROM maidan_member_freezes f WHERE f.member_id = {member}
            )
-           AND ({repo} IS NULL OR EXISTS (
-               SELECT 1 FROM maidan_thread_footprints rf
-               WHERE rf.thread_id = cand.id AND rf.repo = {repo}
-           ))
-           AND ({engine} IS NULL OR EXISTS (
-               SELECT 1 FROM maidan_thread_attributes a
-               WHERE a.thread_id = cand.id AND a.engine = {engine}
-           ))
+           AND {served}
            AND NOT {refused}
            AND {readable}
            AND NOT {warming}
-         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC, {lane_rank} ASC, cand.created_at ASC, cand.id ASC
+         ORDER BY (COALESCE(p.priority, 0) + {hours_waiting}) DESC,
+                  {warm} DESC, {lane_rank} ASC, cand.created_at ASC, cand.id ASC
          LIMIT 1"
+    )
+}
+
+/// 1 when `member` was the last to hold `cand`, else 0 (Context Economics
+/// C6). The agent that last held a thread most likely still has its prompt
+/// prefix cached, so a re-queued thread (changes requested, or a lapsed
+/// claim) goes back to it ahead of older work of the same aged priority.
+/// Only a tiebreak: it never outranks priority or waiting, and never
+/// withholds a thread from anyone else.
+pub(crate) fn warm_for(member: &str) -> String {
+    format!(
+        "(CASE WHEN EXISTS (
+             SELECT 1 FROM maidan_thread_workers w
+             WHERE w.thread_id = cand.id AND w.member_id = {member}
+               AND w.last_held_seq = (
+                   SELECT MAX(w2.last_held_seq) FROM maidan_thread_workers w2
+                   WHERE w2.thread_id = cand.id)
+         ) THEN 1 ELSE 0 END)"
     )
 }
 
