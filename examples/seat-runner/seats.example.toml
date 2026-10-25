@@ -1,0 +1,47 @@
+# Seat runner config. Copy to seats.toml and fill in the workspace and repos.
+# The numbers below are cautious starting points for a small machine.
+# Tune them for yours.
+seats = 1               # tune this: session seats claiming at once
+idle_secs = 60          # wait after a run that did no work
+kill_grace_secs = 10    # SIGTERM, then SIGKILL after this many seconds
+
+[maidan]
+url = "http://127.0.0.1:8080"   # use https for anything that is not loopback
+workspace_id = "00000000-0000-0000-0000-000000000000"
+token_env = "MAIDAN_TOKEN"   # the seat token is read from this variable, never from here
+# Other variables that must never reach the repository's preflight commands.
+secret_env = []
+lease_secs = 3600            # also bounds how long a crashed runner's claim stays held
+release_attempts = 4         # tries for a release the server did not answer
+release_backoff_secs = 2     # doubled after each try
+
+[harness]
+name = "codex"
+models = ["example-model"]   # the models this runner may start; `model` must be one
+model = "example-model"
+pass_token = true            # Codex's MCP config reads the token from token_env
+# bin = "codex"
+# prompt = "examples/seat-runner/prompt.md"
+
+[caps]
+# `capped` ships in this repository (scripts/capped). It runs a command under
+# a wall-clock and memory cap and exits 124 when the time cap fired and 137
+# when the memory cap fired.
+capped = "scripts/capped"
+run_secs = 3600              # tune this
+run_mem_gb = 8               # tune this
+preflight_secs = 600         # tune this
+preflight_mem_gb = 4         # tune this
+
+[host]
+# Defaults when unset: max_load15 = the CPU count, min_free_gb = 5.
+max_load15 = 4               # tune this: skip a run while the 15-minute load is at or over this
+min_free_gb = 5              # tune this: skip a run while the checkout's disk has less free
+
+[[repos]]
+repo = "owner/name"
+checkout = "~/src/name"
+# The toolchain's version, then the repository's own narrow check.
+preflight = [["cargo", "--version"], ["cargo", "test", "-p", "smallest-crate", "--lib", "-q"]]
+# Shared build state outside the checkout that the harness sandbox must write.
+writable_roots = []
