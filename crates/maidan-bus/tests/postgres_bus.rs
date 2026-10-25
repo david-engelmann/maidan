@@ -299,3 +299,67 @@ async fn backfill_drains_the_missed_range_onto_the_broadcast() {
     // A second heal from the new high-water is a no-op (nothing new committed).
     assert_eq!(bus.backfill(high_water).await, high_water);
 }
+
+/// The listener's high-water mark starts at the log head read at connect,
+/// so events already in the log before the bus came up are not replayed:
+/// the first NOTIFY after connect delivers only its own event.
+#[tokio::test]
+async fn events_already_in_the_log_at_connect_are_not_replayed_by_the_first_notify() {
+    let Some((_container, pool)) = postgres_pool().await else {
+        return;
+    };
+    let store = PostgresStore::for_tests(pool.clone());
+    let workspace_created = |name: &str| Event::WorkspaceCreated {
+        occurred_at: Utc::now(),
+        workspace: Workspace {
+            id: WorkspaceId(uuid::Uuid::new_v4()),
+            name: name.into(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            tombstoned_at: None,
+        },
+    };
+    for name in ["old-a", "old-b", "old-c"] {
+        store.append_event(&workspace_created(name)).await.unwrap();
+    }
+
+    let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let mut sub = bus.subscribe(EventFilter::all()).await.unwrap();
+
+    let event = workspace_created("new");
+    let stored = store.append_event(&event).await.unwrap();
+    bus.publish(BusEnvelope {
+        log_id: stored.id,
+        event,
+        attribution: None,
+        trace: None,
+    })
+    .await
+    .unwrap();
+
+    let item = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timeout waiting for event")
+        .expect("stream closed");
+    let BusItem::Event(first) = item else {
+        panic!("expected event item");
+    };
+    assert_eq!(
+        first.log_id, stored.id,
+        "the first delivery is the new event"
+    );
+    assert!(
+        tokio::time::timeout(Duration::from_millis(500), sub.next())
+            .await
+            .is_err(),
+        "nothing from before connect follows it"
+    );
+    assert_eq!(
+        bus.hydrate_stats().snapshot().backfilled,
+        0,
+        "no back-fill ran"
+    );
+}

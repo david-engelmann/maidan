@@ -181,10 +181,11 @@ pub async fn signup(
             Some(entry.id)
         }
         None => {
-            // Without an invite only a domain-listed address can finish,
-            // and that is decided at the callback from the verified email.
-            // With no domain list either, there is nothing to start.
-            if oidc.settings.signup_email_domains.is_empty() {
+            // Without an invite only a domain-listed address can finish
+            // (or, with open sign-up, any verified one), and that is decided
+            // at the callback from the verified email. With neither, there
+            // is nothing to start.
+            if oidc.settings.signup_email_domains.is_empty() && !oidc.settings.signup_open {
                 return Err(ApiError::Forbidden("sign-up is by invite".into()));
             }
             None
@@ -217,6 +218,7 @@ pub async fn signup(
 enum SignupGate {
     Invite,
     Domain,
+    Open,
 }
 
 /// Finish a sign-up at the callback: gate on the verified email, then let
@@ -264,6 +266,7 @@ async fn complete_signup(
             }
             SignupGate::Invite
         }
+        None if oidc.settings.signup_open => SignupGate::Open,
         None => {
             let domain = email
                 .rsplit_once('@')
@@ -326,6 +329,7 @@ async fn complete_signup(
                     "via": match gate {
                         SignupGate::Invite => "invite",
                         SignupGate::Domain => "domain",
+                        SignupGate::Open => "open",
                     },
                 }),
             }),
