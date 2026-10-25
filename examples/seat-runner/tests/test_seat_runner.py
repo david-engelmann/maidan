@@ -26,9 +26,15 @@ class FakeMaidan:
     """Answers queue-depth with `ready` and claim-next with a claim or null,
     and records every call."""
 
-    def __init__(self, ready: int = 1, claim: bool = True) -> None:
+    def __init__(self, ready: int = 1, claim: bool = True, ack_status: int = 200,
+                 drop_releases: int = 0) -> None:
         self.ready = ready
         self.claim = claim
+        self.ack_status = ack_status
+        # Hang up on this many release calls before answering one.
+        self.drop_releases = drop_releases
+        self.on_ack = lambda: None
+        self.on_release = lambda: None
         self.calls: list[tuple[str, str, object]] = []
         fake = self
 
@@ -40,6 +46,16 @@ class FakeMaidan:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n)) if n else None
                 fake.calls.append((method, self.path, body))
+                status = 200
+                if self.path.endswith("/claim/release"):
+                    fake.on_release()
+                    if fake.drop_releases > 0:
+                        fake.drop_releases -= 1
+                        self.close_connection = True
+                        return
+                if self.path.endswith("/claim/acknowledge"):
+                    fake.on_ack()
+                    status = fake.ack_status
                 if self.path.startswith(f"/workspaces/{WS}/queue-depth"):
                     out = {"open": fake.ready, "ready": fake.ready, "assigned": 0, "blocked": 0, "unclaimable": 0}
                 elif self.path.endswith("/threads/claim-next"):
@@ -47,7 +63,7 @@ class FakeMaidan:
                 else:
                     out = {}
                 data = json.dumps(out).encode()
-                self.send_response(200)
+                self.send_response(status)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -76,10 +92,11 @@ class SeatRunnerTest(unittest.TestCase):
         os.environ["FAKE_HARNESS_LOG"] = str(self.harness_log)
         os.environ["FAKE_HARNESS_SECS"] = "0"
         os.environ["MAIDAN_TOKEN"] = "seat-token"
+        os.environ.pop("FAKE_HARNESS_IGNORE_TERM", None)
 
     def config(self, maidan: FakeMaidan, **over) -> Path:
         values = {
-            "model": "gpt-5.6-sol",
+            "model": "example-model",
             "preflight": '[["true"]]',
             "run_secs": 30,
             "max_load15": 100000,
@@ -90,13 +107,16 @@ class SeatRunnerTest(unittest.TestCase):
         path.write_text(f"""
 seats = 1
 idle_secs = 0
+kill_grace_secs = 1
 [maidan]
 url = "{maidan.url}"
 workspace_id = "{WS}"
+release_backoff_secs = 0.01
 [harness]
 name = "codex"
 bin = "{HERE / 'fake_harness.py'}"
 model = "{values['model']}"
+models = ["example-model"]
 [caps]
 capped = "{HERE / 'fake_capped.py'}"
 run_secs = {values['run_secs']}
@@ -168,8 +188,8 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         maidan = FakeMaidan()
         self.addCleanup(maidan.close)
         with self.assertRaises(seat_runner.ConfigError):
-            seat_runner.load_config(self.config(maidan, model="gpt-6-astra"), dict(os.environ))
-        self.assertEqual(seat_runner.main(["--config", str(self.config(maidan, model="gpt-6-astra"))]), 2)
+            seat_runner.load_config(self.config(maidan, model="other-model"), dict(os.environ))
+        self.assertEqual(seat_runner.main(["--config", str(self.config(maidan, model="other-model"))]), 2)
         self.assertEqual(maidan.calls, [])
 
     def test_the_harness_runs_with_the_model_approval_mode_writable_roots_and_the_claim(self):
@@ -179,7 +199,7 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
         (run,) = self.harness_runs()
         argv = run["argv"]
-        self.assertEqual(argv[:3], ["exec", "-m", "gpt-5.6-sol"])
+        self.assertEqual(argv[:3], ["exec", "-m", "example-model"])
         self.assertIn('mcp_servers.maidan.default_tools_approval_mode="approve"', argv)
         self.assertIn(f'sandbox_workspace_write.writable_roots=["{self.tmp / "build-slots"}"]', argv)
         self.assertIn(THREAD, argv[-1])
@@ -216,6 +236,124 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         time.sleep(0.5)
         with self.assertRaises(ProcessLookupError, msg="the harness is gone"):
             os.kill(run["pid"], 0)
+
+    def releases(self, maidan: FakeMaidan) -> list[object]:
+        return [b for _, p, b in maidan.calls if p == f"/threads/{THREAD}/claim/release"]
+
+    def test_an_unreachable_release_is_retried_until_the_server_answers(self):
+        maidan = FakeMaidan(drop_releases=2)
+        self.addCleanup(maidan.close)
+        runner, out = self.runner(maidan)
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        self.assertEqual(len(self.releases(maidan)), 3)
+        self.assertEqual(json.loads(out.getvalue())["release"], 200)
+
+    def test_a_seat_survives_a_server_that_is_down(self):
+        maidan = FakeMaidan()
+        runner, out = self.runner(maidan)
+        maidan.close()
+        maidan.server.server_close()
+        runner.seat_loop(0, once=True)
+        self.assertEqual(json.loads(out.getvalue())["outcome"], "queue_unreachable")
+
+    def test_a_seat_logs_an_unexpected_error_and_keeps_its_thread(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        runner, out = self.runner(maidan)
+        runs = []
+
+        def boom(seat, repo):
+            runs.append(seat)
+            if len(runs) == 1:
+                raise RuntimeError("boom")
+            runner.stop.set()
+            return "no_work"
+
+        runner.run_once = boom
+        runner.seat_loop(0, once=False)
+        self.assertEqual(len(runs), 2, "the loop went on after the error")
+        line = json.loads(out.getvalue().splitlines()[0])
+        self.assertEqual((line["outcome"], line["detail"]), ("error", "RuntimeError: boom"))
+
+    def test_a_stop_between_claim_and_launch_releases_without_starting_the_harness(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        runner, out = self.runner(maidan)
+        maidan.on_ack = runner.shutdown
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "stopped")
+        self.assertEqual(self.harness_runs(), [])
+        self.assertEqual(self.releases(maidan), [{"claim_lease_id": LEASE}])
+
+    def test_a_failed_acknowledge_releases_without_starting_the_harness(self):
+        maidan = FakeMaidan(ack_status=409)
+        self.addCleanup(maidan.close)
+        runner, out = self.runner(maidan)
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ack_failed")
+        self.assertEqual(self.harness_runs(), [])
+        self.assertEqual(self.releases(maidan), [{"claim_lease_id": LEASE}])
+
+    def test_a_harness_that_ignores_sigterm_is_killed_before_its_claim_is_released(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        os.environ["FAKE_HARNESS_SECS"] = "60"
+        os.environ["FAKE_HARNESS_IGNORE_TERM"] = "1"
+        runner, _ = self.runner(maidan, run_secs=120)
+        alive_at_release = []
+
+        def check():
+            (run,) = self.harness_runs()
+            try:
+                os.kill(run["pid"], 0)
+                alive_at_release.append(True)
+            except ProcessLookupError:
+                alive_at_release.append(False)
+
+        maidan.on_release = check
+        seat = threading.Thread(target=runner.run_once, args=(0, runner.cfg.repos[0]))
+        seat.start()
+        deadline = time.monotonic() + 20
+        while not self.harness_runs() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        time.sleep(0.5)
+        runner.shutdown()
+        seat.join(30)
+        self.assertFalse(seat.is_alive())
+        self.assertEqual(alive_at_release, [False])
+
+    def test_the_preflight_never_sees_the_seat_token_or_other_listed_secrets(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        os.environ["OTHER_SECRET"] = "hush"
+        self.addCleanup(os.environ.pop, "OTHER_SECRET", None)
+        dump = self.tmp / "preflight.env"
+        path = self.config(maidan, preflight=f'[["sh", "-c", "env > {dump}"]]')
+        path.write_text(path.read_text().replace(
+            "[maidan]\n", '[maidan]\nsecret_env = ["OTHER_SECRET"]\n'))
+        runner = seat_runner.Runner(seat_runner.load_config(path, dict(os.environ)), out=io.StringIO())
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        env = dump.read_text()
+        self.assertNotIn("seat-token", env)
+        self.assertNotIn("hush", env)
+        (run,) = self.harness_runs()
+        self.assertEqual(run["token"], "seat-token", "the harness gets it for its MCP connection")
+
+    def test_the_harness_runs_without_the_token_when_pass_token_is_off(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        path = self.config(maidan)
+        path.write_text(path.read_text().replace("[harness]\n", "[harness]\npass_token = false\n"))
+        runner = seat_runner.Runner(seat_runner.load_config(path, dict(os.environ)), out=io.StringIO())
+        self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+        (run,) = self.harness_runs()
+        self.assertIsNone(run["token"])
+
+    def test_a_model_list_missing_from_the_config_is_refused_at_startup(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        path = self.config(maidan)
+        path.write_text(path.read_text().replace('models = ["example-model"]\n', ""))
+        with self.assertRaises(seat_runner.ConfigError):
+            seat_runner.load_config(path, dict(os.environ))
 
 
 if __name__ == "__main__":
