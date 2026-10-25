@@ -36,6 +36,9 @@ pub async fn list_for_thread(
     rows.iter().map(row_to_entry).collect()
 }
 
+/// A call in a cheaper lane, the SQL twin of `UsageEvidence::in_lane`.
+const LANE: &str = "(batch OR LOWER(TRIM(service_tier)) IN ('batch', 'flex'))";
+
 pub async fn rollup(pool: &PgPool, query: UsageRollupQuery) -> Result<UsageRollup, StoreError> {
     query.scope_name().map_err(StoreError::InvalidInput)?;
     let (filter, thread, member) = scope_filter(pool, query).await?;
@@ -51,9 +54,20 @@ pub async fn rollup(pool: &PgPool, query: UsageRollupQuery) -> Result<UsageRollu
             COALESCE(SUM(
                 ((input_tokens + cache_read_tokens + cache_write_5m_tokens + cache_write_1h_tokens) * input_price
                  + output_tokens * output_price + 999999) / 1000000
-            ), 0)::bigint AS uncached_usd_micros
+            ), 0)::bigint AS uncached_usd_micros,
+            COALESCE(SUM(CASE WHEN {lane} THEN 1 ELSE 0 END), 0)::bigint AS lane_reports,
+            COALESCE(SUM(CASE WHEN {lane} THEN usd_micros ELSE 0 END), 0)::bigint AS lane_usd_micros,
+            COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN 1 ELSE 0 END), 0)::bigint AS lane_priced_reports,
+            COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN usd_micros ELSE 0 END), 0)::bigint AS lane_priced_usd_micros,
+            COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN
+                (input_tokens * standard_input_price + output_tokens * standard_output_price
+                 + cache_read_tokens * standard_cache_read_price
+                 + cache_write_5m_tokens * standard_cache_write_5m_price
+                 + cache_write_1h_tokens * standard_cache_write_1h_price + 999999) / 1000000
+                ELSE 0 END), 0)::bigint AS lane_standard_usd_micros
          FROM maidan_usage_ledger
-         WHERE budget IS NOT NULL AND {filter}"
+         WHERE budget IS NOT NULL AND {filter}",
+        lane = LANE
     ))
     .bind(query.workspace_id.0)
     .bind(thread)
@@ -69,6 +83,11 @@ pub async fn rollup(pool: &PgPool, query: UsageRollupQuery) -> Result<UsageRollu
         cache_write_1h_tokens: row.get("cache_write_1h_tokens"),
         usd_micros: row.get("usd_micros"),
         uncached_usd_micros: row.get("uncached_usd_micros"),
+        lane_reports: row.get("lane_reports"),
+        lane_usd_micros: row.get("lane_usd_micros"),
+        lane_priced_reports: row.get("lane_priced_reports"),
+        lane_priced_usd_micros: row.get("lane_priced_usd_micros"),
+        lane_standard_usd_micros: row.get("lane_standard_usd_micros"),
     };
     let (completed_tasks, completed_usd) = completed(pool, query).await?;
     UsageRollup::from_sums(query, sums, completed_tasks, completed_usd)
@@ -209,6 +228,7 @@ pub(super) async fn reserve_in_tx(
     workspace_id: WorkspaceId,
 ) -> Result<bool, StoreError> {
     let packs = packs_json(&new.evidence)?;
+    let standard = new.evidence.standard_price;
     let result = sqlx::query(
         "INSERT INTO maidan_usage_ledger (
             usage_report_id, workspace_id, thread_id, reporter_id,
@@ -217,8 +237,10 @@ pub(super) async fn reserve_in_tx(
             input_price, output_price, cache_read_price,
             cache_write_5m_price, cache_write_1h_price, usd_micros, turns,
             provider, service_tier, batch, harness, harness_version,
-            cache_key, cache_miss_reason, pack_sha256
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+            cache_key, cache_miss_reason, pack_sha256,
+            standard_input_price, standard_output_price, standard_cache_read_price,
+            standard_cache_write_5m_price, standard_cache_write_1h_price
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
          ON CONFLICT (usage_report_id) DO NOTHING",
     )
     .bind(new.usage_report_id)
@@ -247,6 +269,11 @@ pub(super) async fn reserve_in_tx(
     .bind(new.evidence.cache_key.as_deref())
     .bind(new.evidence.cache_miss_reason.as_deref())
     .bind(packs)
+    .bind(standard.map(|p| p.input_usd_micros_per_million))
+    .bind(standard.map(|p| p.output_usd_micros_per_million))
+    .bind(standard.map(|p| p.cache_read_usd_micros_per_million))
+    .bind(standard.map(|p| p.cache_write_5m_usd_micros_per_million))
+    .bind(standard.map(|p| p.cache_write_1h_usd_micros_per_million))
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() == 1)
@@ -339,6 +366,7 @@ fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<UsageLedgerEntry, StoreEr
             cache_key: row.get("cache_key"),
             cache_miss_reason: row.get("cache_miss_reason"),
             pack_sha256: packs,
+            standard_price: standard_price(row),
         },
         budget: serde_json::from_value(budget)?,
         stopped: row
@@ -350,5 +378,19 @@ fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<UsageLedgerEntry, StoreEr
             .ok_or_else(|| StoreError::Conflict("usage report event is still pending".into()))?,
         claim_failed_event_id: row.get("claim_failed_event_id"),
         accepted_at: row.get("accepted_at"),
+    })
+}
+
+/// The five standard rates, written together, or `None` for a row without one.
+fn standard_price(row: &sqlx::postgres::PgRow) -> Option<PriceSnapshot> {
+    Some(PriceSnapshot {
+        input_usd_micros_per_million: row.get::<Option<i64>, _>("standard_input_price")?,
+        output_usd_micros_per_million: row.get::<Option<i64>, _>("standard_output_price")?,
+        cache_read_usd_micros_per_million: row
+            .get::<Option<i64>, _>("standard_cache_read_price")?,
+        cache_write_5m_usd_micros_per_million: row
+            .get::<Option<i64>, _>("standard_cache_write_5m_price")?,
+        cache_write_1h_usd_micros_per_million: row
+            .get::<Option<i64>, _>("standard_cache_write_1h_price")?,
     })
 }

@@ -100,12 +100,11 @@ async fn an_unacknowledged_claim_is_reported_once_and_left_alone(store: &dyn Sto
         panic!("not a ClaimUnacknowledged: {event:?}");
     };
     assert_eq!(member_id, holder, "names the holder");
-    // A claim stamps `updated_at` and `claimed_at` together, on the store's
-    // clock (the container's, for Postgres), so compare against that.
-    assert!(
-        (claimed_at - held.updated_at).num_milliseconds().abs() <= 1,
-        "claimed_at {claimed_at} is when the claim was taken ({})",
-        held.updated_at
+    // A claim stamps `updated_at` and `claimed_at` from one clock reading,
+    // so the event names the exact moment the claim was taken.
+    assert_eq!(
+        claimed_at, held.updated_at,
+        "claimed_at is when the claim was taken"
     );
     assert_eq!(thread.assignee_id, Some(holder));
 
