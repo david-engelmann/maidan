@@ -27,7 +27,8 @@ class FakeMaidan:
     and records every call."""
 
     def __init__(self, ready: int = 1, claim: bool = True, ack_status: int = 200,
-                 drop_releases: int = 0) -> None:
+                 drop_releases: int = 0, kind: str | None = None) -> None:
+        self.kind = kind
         self.ready = ready
         self.claim = claim
         self.ack_status = ack_status
@@ -60,6 +61,8 @@ class FakeMaidan:
                     out = {"open": fake.ready, "ready": fake.ready, "assigned": 0, "blocked": 0, "unclaimable": 0}
                 elif self.path.endswith("/threads/claim-next"):
                     out = {"id": THREAD, "claim_lease_id": LEASE} if fake.claim else None
+                    if out is not None and fake.kind:
+                        out["attributes"] = {"kind": fake.kind}
                 else:
                     out = {}
                 data = json.dumps(out).encode()
@@ -101,6 +104,7 @@ class SeatRunnerTest(unittest.TestCase):
             "run_secs": 30,
             "max_load15": 100000,
             "min_free_gb": 0,
+            "harness_extra": "",
             **over,
         }
         path = self.tmp / "seats.toml"
@@ -117,6 +121,7 @@ name = "codex"
 bin = "{HERE / 'fake_harness.py'}"
 model = "{values['model']}"
 models = ["example-model"]
+{values['harness_extra']}
 [caps]
 capped = "{HERE / 'fake_capped.py'}"
 run_secs = {values['run_secs']}
@@ -379,3 +384,25 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_a_review_thread_runs_the_review_prompt_and_other_kinds_the_default(self):
+        review = self.tmp / "review-prompt.md"
+        review.write_text("REVIEW-PROMPT-MARKER: red-team this pull request.")
+        extra = f'prompts = {{ review = "{review}" }}'
+        for kind, marker, skips_runbook in [("review", "REVIEW-PROMPT-MARKER", False), ("change", "session claimant", True)]:
+            self.harness_log.unlink(missing_ok=True)
+            maidan = FakeMaidan(kind=kind)
+            self.addCleanup(maidan.close)
+            runner, _ = self.runner(maidan, harness_extra=extra)
+            self.assertEqual(runner.run_once(0, runner.cfg.repos[0]), "ran")
+            (run,) = self.harness_runs()
+            prompt = run["argv"][-1]
+            self.assertIn(marker, prompt, kind)
+            self.assertIn(THREAD, prompt)
+            self.assertEqual("start at \"3. Read the task\"" in prompt, skips_runbook, kind)
+
+    def test_a_kind_prompt_that_does_not_exist_is_refused_at_startup(self):
+        maidan = FakeMaidan()
+        self.addCleanup(maidan.close)
+        with self.assertRaises(seat_runner.ConfigError):
+            self.runner(maidan, harness_extra=f'prompts = {{ review = "{self.tmp / "missing.md"}" }}')

@@ -71,6 +71,9 @@ class Config:
     model: str
     pass_token: bool
     prompt: str
+    # A prompt per task kind (`attributes.kind` on the claimed thread), e.g. a
+    # review thread runs the red-team prompt; any other kind runs `prompt`.
+    prompts: dict[str, str]
     capped: str
     run_secs: int
     run_mem_gb: float
@@ -128,6 +131,10 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
     for r in repos:
         if not r.preflight:
             raise ConfigError(f"{r.repo}: a preflight (toolchain version and narrow check) is required")
+    prompts = {str(kind): str(Path(path).expanduser()) for kind, path in harness.get("prompts", {}).items()}
+    for kind, path in prompts.items():
+        if not Path(path).is_file():
+            raise ConfigError(f"[harness.prompts] {kind}: no prompt file at {path}")
     seats = int(raw.get("seats", 1))
     if seats < 1:
         raise ConfigError("seats must be at least 1")
@@ -146,6 +153,7 @@ def load_config(path: Path, env: dict[str, str]) -> Config:
         model=model,
         pass_token=bool(harness.get("pass_token", True)),
         prompt=str(Path(harness.get("prompt", Path(__file__).with_name("prompt.md"))).expanduser()),
+        prompts=prompts,
         capped=str(Path(caps.get("capped", "scripts/capped")).expanduser()),
         run_secs=int(caps.get("run_secs", 3600)),
         run_mem_gb=float(caps.get("run_mem_gb", 8)),
@@ -188,14 +196,21 @@ class Maidan:
             return UNREACHABLE, str(e)
 
 
-def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str) -> list[str]:
-    prompt = Path(cfg.prompt).read_text()
+def harness_command(cfg: Config, repo: Repo, thread_id: str, lease_id: str,
+                    kind: str | None = None) -> list[str]:
+    prompt_path = cfg.prompts.get(kind or "", cfg.prompt)
+    prompt = Path(prompt_path).read_text()
     prompt += (
         f"\n\nThis run's claim is already taken and acknowledged: thread_id "
-        f"`{thread_id}`, claim_lease_id `{lease_id}`, repo `{repo.repo}`. Skip the "
-        "runbook's sections \"0b. Before every claim: the toolchain\", \"1. Claim\" and "
-        "\"2. Acknowledge\", and start at \"3. Read the task\".\n"
+        f"`{thread_id}`, claim_lease_id `{lease_id}`, repo `{repo.repo}`. Do not "
+        "claim or acknowledge it again."
     )
+    if prompt_path == cfg.prompt:
+        prompt += (
+            " Skip the runbook's sections \"0b. Before every claim: the toolchain\", "
+            "\"1. Claim\" and \"2. Acknowledge\", and start at \"3. Read the task\"."
+        )
+    prompt += "\n"
     cmd = [
         cfg.harness_bin, "exec",
         "-m", cfg.model,
@@ -432,6 +447,8 @@ class Runner:
                 and isinstance(claim.get("claim_lease_id"), str)):
             return done("claim_failed", status=status, detail="claim answer without id and claim_lease_id")
         thread_id, lease_id = claim["id"], claim["claim_lease_id"]
+        attributes = claim.get("attributes")
+        kind = attributes.get("kind") if isinstance(attributes, dict) else None
         outcome, code = "stopped", None
         try:
             ack, _ = self.api.call("POST", f"/threads/{thread_id}/claim/acknowledge",
@@ -442,7 +459,7 @@ class Runner:
                 code = self.run_process(
                     seat,
                     capped(self.cfg, self.cfg.run_secs, self.cfg.run_mem_gb,
-                           harness_command(self.cfg, repo, thread_id, lease_id)),
+                           harness_command(self.cfg, repo, thread_id, lease_id, kind)),
                     repo.checkout,
                     self.env(with_token=self.cfg.pass_token),
                 )
