@@ -398,6 +398,8 @@
   {"method":"GET","path":"/workspaces/{id}/results","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/retention","kind":"reads"},
   {"method":"PUT","path":"/workspaces/{id}/retention","kind":"changes"},
+  {"method":"GET","path":"/workspaces/{id}/review-children","kind":"reads"},
+  {"method":"PUT","path":"/workspaces/{id}/review-children","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/room","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/run-occupancy","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/run-threads","kind":"reads"},

@@ -173,6 +173,43 @@ pub struct WorkspaceDefaultEngine {
     pub engine: Option<TaskEngine>,
 }
 
+/// Whether a change entering review spawns its second-family review child.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ReviewChildren {
+    /// Spawn a `kind: review` child routed away from the author's family.
+    #[default]
+    Spawn,
+    /// Spawn none; review stays with the pull request's own reviewers.
+    Off,
+}
+
+impl ReviewChildren {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Spawn => "spawn",
+            Self::Off => "off",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "spawn" => Some(Self::Spawn),
+            "off" => Some(Self::Off),
+            _ => None,
+        }
+    }
+}
+
+/// A workspace's review-children setting, read and set by
+/// `/workspaces/{id}/review-children`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WorkspaceReviewChildren {
+    pub review_children: ReviewChildren,
+}
+
 /// The model provider families a review can be routed between, in the
 /// order a review family is picked, each with the words that name it in a
 /// usage record's provider or model. The SQL twin is built from this table.

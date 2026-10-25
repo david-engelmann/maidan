@@ -909,3 +909,99 @@ async fn a_lane_claim_takes_its_lane_first_over_rest() {
     let rest = claim(json!({ "lease_secs": 600 })).await;
     assert_eq!(rest["title"], "plain work", "{rest}");
 }
+
+async fn review_children(
+    base: &str,
+    token: &str,
+    ws: WorkspaceId,
+    put: Option<Value>,
+) -> (StatusCode, Value) {
+    let url = format!("{base}/workspaces/{}/review-children", ws.0);
+    let client = reqwest::Client::new();
+    let request = match put {
+        Some(body) => client.put(url).json(&body),
+        None => client.get(url),
+    };
+    let response = request.bearer_auth(token).send().await.unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn a_workspace_admin_turns_review_children_off_and_the_change_is_audited() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "review-children").await;
+    let (_admin, admin) = member_with(
+        store.as_ref(),
+        room.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+
+    let (status, unset) = review_children(&base, &room.token, room.ws, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unset, json!({ "review_children": "spawn" }));
+    let off = json!({ "review_children": "off" });
+    let (status, _) = review_children(&base, &room.token, room.ws, Some(off.clone())).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "it is an operator's call");
+    let (status, set) = review_children(&base, &admin, room.ws, Some(off.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    assert_eq!(set, off);
+    let audit = store
+        .list_audit_for_workspace(room.ws, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.action == "workspace.review_children.set")
+        .expect("the change is audited");
+    assert_eq!(audit.metadata, off);
+    let (status, _) = review_children(
+        &base,
+        &admin,
+        room.ws,
+        Some(json!({ "review_children": "sometimes" })),
+    )
+    .await;
+    assert!(status.is_client_error(), "an unknown setting is refused");
+}
+
+#[tokio::test]
+async fn another_workspace_cannot_read_or_set_review_children() {
+    let (base, store) = spawn().await;
+    let victim = room(store.as_ref(), "victim").await;
+    let attacker = room(store.as_ref(), "attacker").await;
+    let (_m, victim_admin) = member_with(
+        store.as_ref(),
+        victim.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+    let (_m, attacker_admin) = member_with(
+        store.as_ref(),
+        attacker.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+
+    let off = json!({ "review_children": "off" });
+    let (status, _) = review_children(&base, &victim_admin, victim.ws, Some(off.clone())).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, attacker_own) = review_children(&base, &attacker_admin, attacker.ws, None).await;
+    assert_eq!(
+        attacker_own,
+        json!({ "review_children": "spawn" }),
+        "the victim's setting does not reach another workspace"
+    );
+    for put in [None, Some(json!({ "review_children": "spawn" }))] {
+        let (status, body) = review_children(&base, &attacker_admin, victim.ws, put).await;
+        assert!(
+            status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+            "another tenant must be refused, got {status}: {body}"
+        );
+    }
+    let (_, read) = review_children(&base, &victim_admin, victim.ws, None).await;
+    assert_eq!(read, off, "the victim's setting holds");
+}

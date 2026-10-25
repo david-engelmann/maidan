@@ -2420,6 +2420,20 @@ pub trait AssignmentStore: Send + Sync {
         engine: Option<maidan_types::TaskEngine>,
         audit: NewAuditEvent,
     ) -> Result<(), StoreError>;
+    /// Whether a change entering review in the workspace spawns its
+    /// second-family review child.
+    async fn workspace_review_children(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<maidan_types::ReviewChildren, StoreError>;
+    /// Set the workspace's review-children setting, audited in the same
+    /// transaction. Applies to changes entering review afterwards.
+    async fn set_workspace_review_children(
+        &self,
+        workspace_id: WorkspaceId,
+        setting: maidan_types::ReviewChildren,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
     /// Claim and release notices due on tasks' Linear issues in a workspace.
     async fn list_linear_notices_due(
         &self,
