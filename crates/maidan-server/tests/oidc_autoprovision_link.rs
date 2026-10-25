@@ -129,7 +129,14 @@ async fn a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_confli
     store: Arc<dyn Store>,
 ) {
     let (ws, admin) = workspace_with_admin(store.as_ref(), "a").await;
-    let (got, how) = login(store.as_ref(), ws, "sub-upper", "ADMIN@attacker.example", true).await;
+    let (got, how) = login(
+        store.as_ref(),
+        ws,
+        "sub-upper",
+        "ADMIN@attacker.example",
+        true,
+    )
+    .await;
     assert_ne!(got, admin);
     assert_eq!(how, LoginMember::Provisioned);
     // A login that loses the race for a handle sees this conflict from the
@@ -147,8 +154,7 @@ async fn a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_confli
 
 #[tokio::test]
 async fn a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict_sqlite() {
-    a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict(sqlite().await)
-        .await;
+    a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict(sqlite().await).await;
 }
 
 #[tokio::test]
