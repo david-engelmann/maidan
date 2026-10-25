@@ -66,6 +66,21 @@ pub struct ResultDelivery {
     /// GitHub comment id. `None` means "post next time", with the hidden body
     /// marker as the recovery path rather than a guess.
     pub external_ref: Option<String>,
+    /// The pull request a `github_branch` delivery landed as, decoded from the
+    /// `<commit_sha>#<pull_number>` handle in [`Self::external_ref`]. `None`
+    /// for every other surface, and for a branch row whose handle does not
+    /// decode. Derived when a row is materialized from storage (see
+    /// [`Self::derive_pull_fields`]); never persisted.
+    #[serde(default)]
+    pub pr_number: Option<i64>,
+    /// The commit a `github_branch` delivery landed, decoded from the same
+    /// handle as [`Self::pr_number`].
+    #[serde(default)]
+    pub head_sha: Option<String>,
+    /// The pull request's web URL, built from the target's repository and
+    /// [`Self::pr_number`]. Derived alongside it; `None` whenever it is.
+    #[serde(default)]
+    pub pr_url: Option<String>,
     /// The newest `ThreadResult::produced_at` this row has accepted. Monotonic:
     /// arming only ever moves it forward, which is the dedup.
     pub armed_revision: DateTime<Utc>,
@@ -98,6 +113,25 @@ impl ResultDelivery {
     pub fn reference(&self) -> Option<ExternalRef> {
         ExternalRef::for_target(&self.target()?, self.external_ref.as_deref()?)
     }
+
+    /// Decode the stored handle into the derived pull-request fields
+    /// ([`Self::pr_number`], [`Self::head_sha`], [`Self::pr_url`]). Only a
+    /// `github_branch` row whose handle decodes has them; anything else keeps
+    /// the `None`s. The store calls this wherever it materializes a row, so a
+    /// read never has to re-derive — and a row built in memory (a test, a
+    /// replay in flight) can call it too rather than copying the decode.
+    pub fn derive_pull_fields(&mut self) {
+        if let Some(ExternalRef::GithubBranch {
+            repo,
+            commit_sha,
+            pull_number,
+        }) = self.reference()
+        {
+            self.pr_number = Some(pull_number);
+            self.head_sha = Some(commit_sha);
+            self.pr_url = Some(format!("https://github.com/{repo}/pull/{pull_number}"));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -112,6 +146,9 @@ mod tests {
             selector: selector.into(),
             status: status::DELIVERED.into(),
             external_ref: external_ref.map(str::to_string),
+            pr_number: None,
+            head_sha: None,
+            pr_url: None,
             armed_revision: Utc::now(),
             delivered_revision: None,
             attempts: 1,
@@ -149,6 +186,63 @@ mod tests {
                 ts: "1699999999.001200".into()
             })
         );
+    }
+
+    #[test]
+    fn a_branch_row_derives_its_pull_request_fields_from_the_handle() {
+        const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+        let mut branch = row(
+            "github_branch",
+            "example/repo@feature",
+            Some(&format!("{SHA}#42")),
+        );
+        branch.derive_pull_fields();
+        assert_eq!(branch.pr_number, Some(42));
+        assert_eq!(branch.head_sha.as_deref(), Some(SHA));
+        assert_eq!(
+            branch.pr_url.as_deref(),
+            Some("https://github.com/example/repo/pull/42")
+        );
+        // The raw handle stays as stored — the fields are a view of it.
+        assert_eq!(
+            branch.external_ref.as_deref(),
+            Some("0123456789abcdef0123456789abcdef01234567#42")
+        );
+
+        // The derived triple serializes alongside the row; a non-branch row
+        // serializes the same fields as nulls.
+        let value = serde_json::to_value(&branch).unwrap();
+        assert_eq!(value["pr_number"], serde_json::json!(42));
+        assert_eq!(
+            value["pr_url"],
+            serde_json::json!("https://github.com/example/repo/pull/42")
+        );
+        let slack = row("slack", "C0123ABCDEF", Some("1699999999.001200"));
+        let value = serde_json::to_value(&slack).unwrap();
+        assert_eq!(value["pr_number"], serde_json::Value::Null);
+        assert_eq!(value["head_sha"], serde_json::Value::Null);
+        assert_eq!(value["pr_url"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn a_branch_row_with_an_undecodable_handle_derives_nothing() {
+        for handle in [
+            None,
+            Some("not-a-handle"),
+            Some("abc123#42"),
+            Some("0123456789abcdef0123456789abcdef01234567#0"),
+        ] {
+            let mut branch = row("github_branch", "example/repo@feature", handle);
+            branch.derive_pull_fields();
+            assert_eq!(branch.pr_number, None, "handle {handle:?}");
+            assert_eq!(branch.head_sha, None, "handle {handle:?}");
+            assert_eq!(branch.pr_url, None, "handle {handle:?}");
+        }
+        // A comment delivery's numeric handle is not a pull reference either.
+        let mut gh = row("github", "example/repo#42", Some("998877"));
+        gh.derive_pull_fields();
+        assert_eq!(gh.pr_number, None);
+        assert_eq!(gh.pr_url, None);
     }
 
     #[test]

@@ -285,13 +285,16 @@ pub async fn set_template_warnings(
 }
 
 fn row_to_delivery(row: &sqlx::postgres::PgRow) -> ResultDelivery {
-    ResultDelivery {
+    let mut delivery = ResultDelivery {
         id: ResultDeliveryId(row.get("id")),
         thread_id: ThreadId(row.get("thread_id")),
         surface: row.get("surface"),
         selector: row.get("selector"),
         status: row.get("status"),
         external_ref: row.get("external_ref"),
+        pr_number: None,
+        head_sha: None,
+        pr_url: None,
         armed_revision: row.get("armed_revision"),
         delivered_revision: row.get("delivered_revision"),
         attempts: row.get("attempts"),
@@ -302,7 +305,9 @@ fn row_to_delivery(row: &sqlx::postgres::PgRow) -> ResultDelivery {
             .unwrap_or_default(),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
-    }
+    };
+    delivery.derive_pull_fields();
+    delivery
 }
 
 /// The commit last delivered to a pull request by the change flow; see
