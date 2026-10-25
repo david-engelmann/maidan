@@ -169,6 +169,14 @@ pub struct UsageEvidence {
     /// sha256, hex, of each Maidan pack the call used.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pack_sha256: Vec<String>,
+    /// What the same model charges per million tokens on its standard tier,
+    /// for a call that ran in a cheaper lane (batch, or a `batch` or `flex`
+    /// service tier). Reporter evidence like the charged price: Maidan keeps
+    /// no discount table. The ledger shows the lane saving from it, as
+    /// reported. Its charge for the reported tokens must not overflow or fall
+    /// below the charged `usd_micros`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standard_price: Option<PriceSnapshot>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -191,7 +199,26 @@ impl UsageEvidence {
                 return Err("pack_sha256 entries must be 64 hex characters".into());
             }
         }
+        if let Some(standard) = self.standard_price {
+            if !self.in_lane() {
+                return Err(
+                    "standard_price is for a call in a cheaper lane: set batch, or a batch or flex service_tier"
+                        .into(),
+                );
+            }
+            standard.charge_usd_micros(TokenUsage::default())?;
+        }
         Ok(())
+    }
+
+    /// True when the call ran in a cheaper lane: a batch call, or a `batch`
+    /// or `flex` service tier (case-insensitive). The rollup SQL in both
+    /// backends uses the same rule.
+    pub fn in_lane(&self) -> bool {
+        self.batch
+            || self.service_tier.as_deref().is_some_and(|tier| {
+                matches!(tier.trim().to_ascii_lowercase().as_str(), "batch" | "flex")
+            })
     }
 
     /// Fill only the holes. An explicit field on the request wins over one
@@ -221,6 +248,9 @@ impl UsageEvidence {
         }
         if !explicit.pack_sha256.is_empty() {
             self.pack_sha256.clone_from(&explicit.pack_sha256);
+        }
+        if explicit.standard_price.is_some() {
+            self.standard_price = explicit.standard_price;
         }
     }
 }
@@ -383,6 +413,20 @@ impl NewUsageLedgerEntry {
                 actual = self.usd_micros
             ));
         }
+        if let Some(standard) = self.evidence.standard_price {
+            // Checked like the charge, so no stored row can overflow the
+            // rollup, and a standard price below the charge is refused: the
+            // lane saving is never negative.
+            let at_standard = standard
+                .charge_usd_micros(self.tokens)
+                .map_err(|err| format!("standard_price: {err}"))?;
+            if at_standard < self.usd_micros {
+                return Err(format!(
+                    "standard_price charge {at_standard} is below usd_micros {actual}: a cheaper lane cannot cost more than standard",
+                    actual = self.usd_micros
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -463,6 +507,19 @@ pub struct UsageRollup {
     pub usd_micros: i64,
     pub uncached_usd_micros: i64,
     pub saved_usd_micros: i64,
+    /// Reports from calls in a cheaper lane (batch, or a batch or flex tier).
+    pub lane_reports: i64,
+    /// What those lane reports were charged.
+    pub lane_usd_micros: i64,
+    /// What the lane reports that carried a standard price would have cost
+    /// at it, as reported.
+    pub lane_standard_usd_micros: i64,
+    /// The lane saving, as reported: `lane_standard_usd_micros` less what
+    /// those same reports were charged. Never negative, since a standard
+    /// price below the charge is refused at ingest.
+    pub lane_saved_usd_micros: i64,
+    /// Lane reports with no standard price, whose saving is unknown.
+    pub lane_unpriced_reports: i64,
     pub hit_rate_ppm: Option<i64>,
     pub write_share_ppm: Option<i64>,
     pub completed_tasks: i64,
@@ -482,6 +539,13 @@ pub struct UsageSums {
     pub cache_write_1h_tokens: i64,
     pub usd_micros: i64,
     pub uncached_usd_micros: i64,
+    pub lane_reports: i64,
+    pub lane_usd_micros: i64,
+    /// Lane reports that carried a standard price.
+    pub lane_priced_reports: i64,
+    /// What those priced lane reports were charged.
+    pub lane_priced_usd_micros: i64,
+    pub lane_standard_usd_micros: i64,
 }
 
 impl UsageRollup {
@@ -508,6 +572,15 @@ impl UsageRollup {
             .uncached_usd_micros
             .checked_sub(sums.usd_micros)
             .ok_or_else(|| "saved usd overflow".to_string())?;
+        let lane_saved = sums
+            .lane_standard_usd_micros
+            .checked_sub(sums.lane_priced_usd_micros)
+            .ok_or_else(|| "lane saved usd overflow".to_string())?;
+        let lane_unpriced = sums
+            .lane_reports
+            .checked_sub(sums.lane_priced_reports)
+            .filter(|n| *n >= 0)
+            .ok_or_else(|| "lane report counts are inconsistent".to_string())?;
         let cost = if completed_tasks == 0 {
             None
         } else {
@@ -527,6 +600,11 @@ impl UsageRollup {
             usd_micros: sums.usd_micros,
             uncached_usd_micros: sums.uncached_usd_micros,
             saved_usd_micros: saved,
+            lane_reports: sums.lane_reports,
+            lane_usd_micros: sums.lane_usd_micros,
+            lane_standard_usd_micros: sums.lane_standard_usd_micros,
+            lane_saved_usd_micros: lane_saved,
+            lane_unpriced_reports: lane_unpriced,
             hit_rate_ppm: ppm(sums.cache_read_tokens, prompt)?,
             write_share_ppm: ppm(
                 sums.cache_write_5m_tokens
@@ -801,6 +879,9 @@ pub fn token_usage_from_genai(
             512,
         )?,
         pack_sha256: packs,
+        // Telemetry carries no standard-tier price; a reporter sends it
+        // explicitly, and the overlay keeps it.
+        standard_price: None,
     };
     evidence.validate()?;
     Ok((tokens, evidence, model))
@@ -1114,6 +1195,7 @@ mod tests {
                 cache_write_1h_tokens: 50,
                 usd_micros: 293,
                 uncached_usd_micros: 500,
+                ..UsageSums::default()
             },
             2,
             200,
@@ -1124,6 +1206,64 @@ mod tests {
         assert_eq!(rollup.saved_usd_micros, 207);
         assert_eq!(rollup.cost_per_completed_task_usd_micros, Some(100));
         assert_eq!(rollup.scope, "workspace");
+    }
+
+    #[test]
+    fn rollup_shows_the_lane_saving_of_priced_lane_reports() {
+        let query = UsageRollupQuery {
+            workspace_id: WorkspaceId::new(),
+            thread_id: None,
+            member_id: None,
+        };
+        let rollup = UsageRollup::from_sums(
+            query,
+            UsageSums {
+                reports: 4,
+                usd_micros: 900,
+                lane_reports: 3,
+                lane_usd_micros: 400,
+                lane_priced_reports: 2,
+                lane_priced_usd_micros: 300,
+                lane_standard_usd_micros: 600,
+                ..UsageSums::default()
+            },
+            0,
+            0,
+        )
+        .unwrap();
+        assert_eq!(rollup.lane_reports, 3);
+        assert_eq!(rollup.lane_usd_micros, 400);
+        assert_eq!(rollup.lane_standard_usd_micros, 600);
+        assert_eq!(rollup.lane_saved_usd_micros, 300);
+        assert_eq!(rollup.lane_unpriced_reports, 1);
+    }
+
+    #[test]
+    fn a_standard_price_is_only_for_a_call_in_a_cheaper_lane() {
+        let price = PriceSnapshot {
+            input_usd_micros_per_million: 2,
+            ..PriceSnapshot::default()
+        };
+        let mut evidence = UsageEvidence {
+            standard_price: Some(price),
+            ..UsageEvidence::default()
+        };
+        assert!(evidence.validate().unwrap_err().contains("cheaper lane"));
+        evidence.service_tier = Some("priority".into());
+        assert!(evidence.validate().is_err());
+        for tier in ["flex", "Batch"] {
+            evidence.service_tier = Some(tier.into());
+            assert!(evidence.in_lane());
+            evidence.validate().unwrap();
+        }
+        evidence.service_tier = None;
+        evidence.batch = true;
+        evidence.validate().unwrap();
+        evidence.standard_price = Some(PriceSnapshot {
+            output_usd_micros_per_million: -1,
+            ..PriceSnapshot::default()
+        });
+        assert!(evidence.validate().is_err());
     }
 
     fn attrs(value: serde_json::Value) -> Map<String, Value> {
@@ -1211,6 +1351,60 @@ mod tests {
             .charge_usd_micros(huge)
             .unwrap_err()
             .contains("overflow"));
+    }
+
+    #[test]
+    fn a_standard_price_must_not_overflow_or_undercut_the_charge() {
+        // Over a million input tokens, so an i64::MAX rate overflows the
+        // i64 charge after the per-million division.
+        let tokens = TokenUsage {
+            input: 2_000_000,
+            output: 10,
+            ..TokenUsage::default()
+        };
+        let price = PriceSnapshot {
+            input_usd_micros_per_million: 1_000_000,
+            output_usd_micros_per_million: 2_000_000,
+            ..PriceSnapshot::default()
+        };
+        let usd_micros = price.charge_usd_micros(tokens).unwrap();
+        let entry = |standard: PriceSnapshot| NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::nil(),
+            thread_id: ThreadId::new(),
+            reporter: MemberId::new(),
+            claim_lease_id: ClaimLeaseId::new(),
+            model: "m".into(),
+            tokens,
+            usd_micros,
+            price_snapshot: price,
+            turns: 0,
+            evidence: UsageEvidence {
+                batch: true,
+                standard_price: Some(standard),
+                ..UsageEvidence::default()
+            },
+        };
+        assert!(
+            entry(price).validate().is_ok(),
+            "equal to the charge is fine"
+        );
+        let overflow = PriceSnapshot {
+            input_usd_micros_per_million: i64::MAX,
+            ..price
+        };
+        let err = entry(overflow).validate().unwrap_err();
+        assert!(
+            err.contains("standard_price") && err.contains("overflow"),
+            "{err}"
+        );
+        let cheaper = PriceSnapshot {
+            input_usd_micros_per_million: 500_000,
+            ..price
+        };
+        assert!(entry(cheaper)
+            .validate()
+            .unwrap_err()
+            .contains("below usd_micros"));
     }
 
     #[test]
