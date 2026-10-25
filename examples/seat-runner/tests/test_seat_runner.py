@@ -347,6 +347,18 @@ writable_roots = ["{self.tmp / 'build-slots'}"]
         (run,) = self.harness_runs()
         self.assertIsNone(run["token"])
 
+    def test_a_pid_outside_the_tree_survives_a_tree_kill(self):
+        outsider = subprocess.Popen(["sleep", "60"])
+        self.addCleanup(outsider.kill)
+        child = subprocess.Popen(["sleep", "60"], start_new_session=True)
+        self.addCleanup(child.kill)
+        tree = seat_runner.Tree(child.pid)
+        tree.refresh()
+        tree.pids.add(outsider.pid)  # as if a tracked pid had been reused
+        tree.kill(1)
+        self.assertEqual(child.wait(10), -signal.SIGTERM)
+        self.assertIsNone(outsider.poll(), "the outside process is still running")
+
     def test_a_model_list_missing_from_the_config_is_refused_at_startup(self):
         maidan = FakeMaidan()
         self.addCleanup(maidan.close)

@@ -225,44 +225,56 @@ def process_table() -> list[tuple[int, int, int]]:
 
 
 class Tree:
-    """The pids and process groups one child has started, gathered while it
-    runs: once `capped` exits, its command is reparented and no longer found
-    under it, so the set is kept as it grows."""
+    """What one child has started. The child runs in its own session, so its
+    process group is the first thing signalled. `capped` starts its command
+    in another session, and once `capped` exits that command is reparented
+    and no longer found under it, so the groups and pids seen while the
+    child runs are kept, pruned to the live ones on every refresh. Nothing
+    is signalled unless a fresh process table still ties it to this tree."""
 
     def __init__(self, root: int) -> None:
         self.root = root
         self.pids: set[int] = {root}
-        self.groups: set[int] = set()
+        self.groups: set[int] = {root}  # start_new_session: pgid == pid
 
-    def refresh(self) -> None:
-        table = process_table()
+    def _scan(self) -> tuple[dict[int, tuple[int, int]], set[int]]:
+        """The process table, and which pids belong to this tree in it: a
+        descendant of the root, or a member of one of its groups."""
+        table = {pid: (ppid, pgid) for pid, ppid, pgid in process_table()}
+        own = os.getpgrp()
         children: dict[int, list[int]] = {}
-        group_of = {}
-        for pid, ppid, pgid in table:
+        for pid, (ppid, _) in table.items():
             children.setdefault(ppid, []).append(pid)
-            group_of[pid] = pgid
-        todo = [self.root]
+        ours: set[int] = set()
+        todo = [self.root] if self.root in table else []
         while todo:
             pid = todo.pop()
-            if pid in group_of:
-                self.groups.add(group_of[pid])
-            for child in children.get(pid, []):
-                if child not in self.pids:
-                    self.pids.add(child)
-                todo.append(child)
-        self.groups.discard(os.getpgrp())
+            if pid in ours:
+                continue
+            ours.add(pid)
+            todo.extend(children.get(pid, []))
+        ours |= {pid for pid, (_, pgid) in table.items() if pgid in self.groups and pgid != own}
+        return table, ours
+
+    def refresh(self) -> set[int]:
+        table, ours = self._scan()
+        own = os.getpgrp()
+        self.pids = ours
+        self.groups = {g for g in self.groups | {table[p][1] for p in ours}
+                       if g != own and any(pg == g for _, pg in table.values())}
+        return ours
 
     def alive(self) -> bool:
-        live = {pid for pid, _, _ in process_table()}
-        return bool(self.pids & live)
+        return bool(self.refresh())
 
     def signal(self, sig: int) -> None:
+        ours = self.refresh()
         for g in self.groups:
             try:
                 os.killpg(g, sig)
             except (ProcessLookupError, PermissionError):
                 pass
-        for p in self.pids:
+        for p in ours:
             try:
                 os.kill(p, sig)
             except (ProcessLookupError, PermissionError):
@@ -270,7 +282,6 @@ class Tree:
 
     def kill(self, grace: float) -> None:
         """SIGTERM, up to `grace` seconds, then SIGKILL whatever is left."""
-        self.refresh()
         self.signal(signal.SIGTERM)
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline and self.alive():
