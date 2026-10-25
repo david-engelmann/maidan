@@ -53,6 +53,7 @@ fn mock_oidc_settings(auto_mint: bool) -> OidcSettings {
         auto_mint,
         signup: false,
         signup_email_domains: Vec::new(),
+        signup_open: false,
         emails_verified: false,
     }
 }
