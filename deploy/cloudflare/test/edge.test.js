@@ -43,7 +43,7 @@ test("an instance with a site serves its landing page instead of redirecting", (
 
 test("only the site's pages are served from the site", () => {
   assert.ok(isSitePage(get("https://maidan.world/privacy")));
-  assert.ok(isSitePage(get("https://maidan.world/", "text/html")));
+  assert.ok(!isSitePage(get("https://maidan.world/", "text/html")), "the server's waitlist page answers /");
   assert.ok(!isSitePage(get("https://maidan.world/", "application/json")), "API clients reach the server at /");
   assert.ok(!isSitePage(get("https://maidan.world/ui/")));
   assert.ok(!isSitePage(get("https://maidan.world/health")));

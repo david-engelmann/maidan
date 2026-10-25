@@ -213,6 +213,8 @@ settings are:
 | `MAIDAN_SIGNUP` | no | `1` enables the waitlist and invited sign-up at `/auth/oidc/signup`; default off, and the whole surface 404s while off. Boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. |
 | `MAIDAN_SIGNUP_EMAIL_DOMAINS` | no | Comma-separated email domains that may sign up without an invite when sign-up is on. |
 | `MAIDAN_SIGNUP_OPEN` | no | `1` lets any verified email sign up without an invite, still behind the sign-up rate limits. Needs `MAIDAN_SIGNUP=1`; boot refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`. |
+| `MAIDAN_SIGNUP_PRIVACY_URL` | no | Where the instance's privacy policy lives: a path on this origin (`/privacy`) or an `https://` URL. The waitlist page links it in its footer, since it asks for an email address. Boot refuses any other shape. |
+| `MAIDAN_SIGNUP_TERMS_URL` | no | The same for the terms of service. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered redirect used when the provider exposes `end_session_endpoint`. |
 | `MAIDAN_SESSION_SECRET` | OIDC | HMAC key for signed `maidan_session` cookies and resume tokens. |
 | `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours). |

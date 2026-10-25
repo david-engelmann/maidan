@@ -1,6 +1,6 @@
 // What the Worker decides before and after the container: plain HTTP goes to
-// HTTPS, a browser opening the bare origin lands in the console, and every
-// answer carries the headers that keep a browser on HTTPS and off content
+// HTTPS, a browser opening the bare origin of an instance without a site
+// lands in the console, and every answer carries the headers that keep a browser on HTTPS and off content
 // sniffing. Kept apart from the Worker so it is testable without the Workers
 // runtime.
 
@@ -11,32 +11,28 @@ export const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
 };
 
-// The hosted site's own pages (landing, privacy, terms, support), served from
-// the Worker's static assets where an instance has them. Nothing else in the
-// container lives at these paths.
-export const SITE_PATHS = new Set(["/", "/privacy", "/terms", "/support", "/site.css"]);
+// The hosted site's policy pages (privacy, terms, support), served from the
+// Worker's static assets where an instance has them. Nothing else in the
+// container lives at these paths. The front page is the server's own waitlist
+// page, which links the first two (`MAIDAN_SIGNUP_PRIVACY_URL`, `_TERMS_URL`).
+export const SITE_PATHS = new Set(["/privacy", "/terms", "/support", "/site.css"]);
 
 // The site's pages run no script and load only their own stylesheet.
 export const SITE_CSP =
   "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 // Whether a request is for one of the site's pages: a GET or HEAD at a site
-// path, and for `/` only a browser asking for a page, since API clients read
-// the server's own answer there.
+// path.
 export function isSitePage(request) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return false;
   }
-  const { pathname } = new URL(request.url);
-  if (!SITE_PATHS.has(pathname)) {
-    return false;
-  }
-  return pathname !== "/" || (request.headers.get("accept") ?? "").includes("text/html");
+  return SITE_PATHS.has(new URL(request.url).pathname);
 }
 
 // The redirect a request gets before it reaches the container, or null. An
-// instance with a site serves its own landing page instead of sending `/` to
-// the console.
+// instance with a site lets the server's waitlist page answer `/` instead of
+// sending it to the console.
 export function edgeRedirect(request, { hasSite = false } = {}) {
   const url = new URL(request.url);
   if (url.protocol === "http:") {

@@ -54,6 +54,27 @@ pub(crate) fn require_signup(state: &AppState) -> ApiResult<()> {
     }
 }
 
+/// The footer links to the instance's privacy policy and terms, for the
+/// waitlist page's `<!-- policy-links -->` slot; empty where neither is set.
+/// Boot already refused a value that could leave its attribute; the escape
+/// keeps an `&` in a query string valid HTML.
+pub(crate) fn policy_links_html(state: &AppState) -> String {
+    let Some(oidc) = state.oidc.as_ref() else {
+        return String::new();
+    };
+    let settings = &oidc.settings;
+    [
+        (settings.privacy_url.as_deref(), "Privacy"),
+        (settings.terms_url.as_deref(), "Terms"),
+    ]
+    .into_iter()
+    .filter_map(|(url, label)| {
+        url.map(|url| format!("<a href=\"{}\">{label}</a>", url.replace('&', "&amp;")))
+    })
+    .collect::<Vec<_>>()
+    .join("\n      ")
+}
+
 /// Longest local part (before the `@`) an address may have, per RFC 5321.
 const MAX_LOCAL_CHARS: usize = 64;
 
