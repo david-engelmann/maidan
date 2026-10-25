@@ -580,6 +580,7 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
+    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
@@ -618,6 +619,7 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
+    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
@@ -776,6 +778,7 @@ async fn claim_next_in_tx(
     lease_secs: Option<i64>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
@@ -791,12 +794,13 @@ async fn claim_next_in_tx(
             dm_channel: "$5",
             repo: "$6::text",
             engine: "$7::text",
+            lane: "$8::text",
             requeued_after_result: REQUEUED_AFTER_RESULT,
             now: "NOW()",
             hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
-            warm_hold_since: "$8::timestamptz",
-            warm_ttl_since: "$9::timestamptz",
+            warm_hold_since: "$9::timestamptz",
+            warm_ttl_since: "$10::timestamptz",
             later_than: "{col} > {t}",
         },
     );
@@ -804,7 +808,7 @@ async fn claim_next_in_tx(
     // takeover of a lapsed lease can end the dead holder's claim, charged.
     let row = sqlx::query(&format!(
         "WITH next AS ({candidate} FOR UPDATE OF cand SKIP LOCKED)
-         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = $10, work_started_at = NULL, updated_at = NOW()
+         UPDATE maidan_threads t SET assignee_id = $1, assignment_expires_at = $3, claim_lease_id = $4, claimed_at = $11, work_started_at = NULL, updated_at = $11
          FROM next WHERE t.id = next.id
          RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by, next.prev_assignee, next.prev_deadline, next.prev_started"
     ))
@@ -815,6 +819,7 @@ async fn claim_next_in_tx(
     .bind(DM_CHANNEL_NAME)
     .bind(repo)
     .bind(engine.map(|engine| engine.as_str()))
+    .bind(lane.map(|lane| lane.as_str()))
     .bind(now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS))
     .bind(now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS))
     .bind(now)
@@ -845,6 +850,7 @@ pub async fn claim_next(
         lease_secs,
         None,
         engine,
+        None,
     )
     .await?
     else {
@@ -870,6 +876,8 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     reader: "$2::uuid",
     dm_channel: "$3",
     now: "NOW()",
+    repo: "$4::text",
+    engine: "$5::text",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
     requeued_after_result: REQUEUED_AFTER_RESULT,
 };
@@ -885,11 +893,15 @@ pub async fn queue_depth(
     pool: &PgPool,
     scope: QueueScope,
     readable_by: Option<MemberId>,
+    repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<QueueDepth, StoreError> {
     let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
+        .bind(repo)
+        .bind(engine.map(|engine| engine.as_str()))
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -915,6 +927,8 @@ pub async fn occupancy(
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
+        .bind(None::<&str>)
+        .bind(None::<&str>)
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
@@ -937,10 +951,11 @@ pub(crate) async fn claim_next_with_event(
     lease_secs: Option<i64>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let Some((thread, lapsed)) =
-        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo, engine).await?
+        claim_next_in_tx(&mut tx, scope, member_id, lease_secs, repo, engine, lane).await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));

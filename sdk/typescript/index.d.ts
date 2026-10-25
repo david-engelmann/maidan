@@ -255,6 +255,8 @@ export interface TaskAttributes {
   linear_issue?: string;
   /** The change's review tier; unset counts as B. */
   tier?: "A" | "B";
+  /** The service lane it may run in; unset runs at standard rates. */
+  lane?: "batch" | "flex";
   /** The provider family a review child is routed to; server-set. */
   review_family?: string;
 }
@@ -536,6 +538,27 @@ export function gatewaySession(
   threadId: ThreadId,
   options?: { path?: string; name?: string },
 ): RequestFields;
+
+/**
+ * Affinity headers for a self-hosted KV-aware router. Every router, Dynamo
+ * included, gets the parent's thread as its one key when there is one; AIBrix also gets `routing-strategy: session-affinity`.
+ * A key over 128 bytes (SGLang) or 256 bytes (AIBrix) throws.
+ */
+export function routingHints(
+  router: "dynamo" | "llm-d" | "aibrix" | "sglang",
+  threadId: ThreadId,
+  options?: { parentThreadId?: ThreadId },
+): RequestFields;
+
+/** The shortest salt key `cacheSalt` accepts, in bytes. */
+export const MIN_SALT_KEY_BYTES: 32;
+
+/**
+ * vLLM's `cache_salt` for one workspace: HMAC-SHA256 under a server-side key
+ * of at least 32 bytes, unpadded base64url. Set it from a trusted server-side
+ * component; it is a cache partition, not an auth token.
+ */
+export function cacheSalt(workspaceId: WorkspaceId, saltKey: string | Uint8Array): Promise<RequestFields>;
 
 export declare class Client {
   baseUrl: string;

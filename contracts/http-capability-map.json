@@ -840,6 +840,12 @@
     "surface": "http"
   },
   {
+    "method": "DELETE",
+    "path": "/threads/{id}/fingerprint/duplicate-of",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "POST",
     "path": "/threads/{id}/plan",
     "capability": "workspace:write",
@@ -950,6 +956,18 @@
   {
     "method": "PUT",
     "path": "/workspaces/{id}/default-engine",
+    "capability": "token:admin",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/review-children",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PUT",
+    "path": "/workspaces/{id}/review-children",
     "capability": "token:admin",
     "surface": "http"
   },

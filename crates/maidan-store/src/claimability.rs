@@ -43,6 +43,35 @@ pub(crate) fn available(now: &str) -> String {
 pub(crate) const PARKED: &str =
     "EXISTS (SELECT 1 FROM maidan_thread_unclaimable u WHERE u.thread_id = cand.id)";
 
+/// A live duplicate (Context Economics C8b): created with a fingerprint
+/// identical to a task that is still open or in review, so the work goes to
+/// that original instead. Clearing the link makes it claimable again.
+pub(crate) const DUPLICATE: &str = "EXISTS (SELECT 1 FROM maidan_task_fingerprints fp
+                        JOIN maidan_threads orig ON orig.id = fp.duplicate_of
+                        WHERE fp.thread_id = cand.id AND orig.tombstoned_at IS NULL
+                          AND orig.state IN ('open', 'in_review'))";
+
+/// A likely duplicate by Linear issue (C8 follow-up): a change thread whose
+/// `linear_issue` already has another live change thread in review in the
+/// same workspace, whatever engine either is routed to. Titles often differ
+/// ("Session: ENG-1 ..." against "ENG-1 ..."), so the fingerprint alone misses
+/// it. Closing the thread, or clearing its duplicate link (which records
+/// `cleared_at`), lifts the hold; so does the other thread leaving review.
+pub(crate) const ISSUE_IN_REVIEW: &str = "EXISTS (SELECT 1 FROM maidan_thread_attributes ia
+                        JOIN maidan_channels ich ON ich.id = cand.channel_id
+                        JOIN maidan_thread_attributes oa
+                          ON oa.linear_issue = ia.linear_issue AND oa.thread_id <> ia.thread_id
+                        JOIN maidan_threads o ON o.id = oa.thread_id
+                        JOIN maidan_channels och ON och.id = o.channel_id
+                        WHERE ia.thread_id = cand.id AND ia.kind = 'change'
+                          AND ia.linear_issue IS NOT NULL
+                          AND oa.kind = 'change'
+                          AND och.workspace_id = ich.workspace_id
+                          AND o.tombstoned_at IS NULL AND o.state = 'in_review'
+                          AND NOT EXISTS (SELECT 1 FROM maidan_task_fingerprints cf
+                                          WHERE cf.thread_id = cand.id
+                                            AND cf.cleared_at IS NOT NULL))";
+
 /// Carries an explicit block.
 pub(crate) const BLOCKED: &str =
     "EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = cand.id)";
@@ -89,10 +118,15 @@ pub(crate) fn deferred(now: &str) -> String {
     crate::footprints::deferred("cand.id", now)
 }
 
-/// Kept off the queue until someone acts (parked, out of budget, or already
-/// finished): queue depth's `unclaimable`.
+/// Kept off the queue until someone acts (parked, out of budget, already
+/// finished, a live duplicate, or a likely duplicate of an issue in review):
+/// queue depth's `unclaimable`.
 pub(crate) fn withheld(sql: &ThreadSql<'_>) -> String {
-    format!("({PARKED} OR {} OR {})", over_budget(sql), finished(sql))
+    format!(
+        "({PARKED} OR {DUPLICATE} OR {ISSUE_IN_REVIEW} OR {} OR {})",
+        over_budget(sql),
+        finished(sql)
+    )
 }
 
 /// Waiting on something that clears by itself or by a decision (a block, a

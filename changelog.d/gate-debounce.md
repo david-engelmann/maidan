@@ -1,3 +1,0 @@
-### A pull request's gate is said once it holds, not on every flicker
-
-- **Fixed:** `gate_blocked` and `gate_clear` flapped while GitHub's merge state flickered between `BLOCKED` and `CLEAN` as checks and the merge queue settled: one tracked pull request said ten of them on one head. A gate change is now said once two reads in a row agree on it (one change-sweep tick, 120 s by default) and it differs from the gate last said, which is kept with the pull request's CI record (`gate_said`, migration 0201), so a restart does not say it again. A real change is said one tick later than before. A record from before the migration says its next held gate once.

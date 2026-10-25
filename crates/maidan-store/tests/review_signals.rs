@@ -60,7 +60,7 @@ async fn thread(store: &dyn Store, channel: ChannelId) -> ThreadId {
         .create_thread(NewThread {
             channel_id: channel,
             parent_thread_id: None,
-            title: Some("task".into()),
+            title: Some(distinct_brief("task")),
             description: None,
             created_by: None,
         })
@@ -360,4 +360,11 @@ async fn every_review_verdict_appends_review_submitted_with_the_last_worker_post
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+}
+
+/// `base` with a unique suffix, so fixture tasks created alike in one
+/// workspace never share a fingerprint: a live duplicate is not claimable
+/// (Context Economics C8b), and these tests are not about duplicates.
+fn distinct_brief(base: &str) -> String {
+    format!("{base} {}", uuid::Uuid::now_v7())
 }

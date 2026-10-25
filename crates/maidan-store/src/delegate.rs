@@ -1914,6 +1914,10 @@ macro_rules! store_delegations {
                 task_fingerprints::get(self.read_pool(), thread_id).await
             }
 
+            async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError> {
+                task_fingerprints::clear_duplicate(self.pool(), thread_id).await
+            }
+
             async fn get_thread_attributes(
                 &self,
                 thread_id: ThreadId,
@@ -2021,6 +2025,8 @@ macro_rules! store_delegations {
                     self.read_pool(),
                     QueueScope::Channel(channel_id),
                     readable_by,
+                    None,
+                    None,
                 )
                 .await
             }
@@ -2029,11 +2035,15 @@ macro_rules! store_delegations {
                 &self,
                 workspace_id: WorkspaceId,
                 readable_by: Option<MemberId>,
+                repo: Option<&str>,
+                engine: Option<maidan_types::TaskEngine>,
             ) -> Result<QueueDepth, StoreError> {
                 threads::queue_depth(
                     self.read_pool(),
                     QueueScope::Workspace(workspace_id),
                     readable_by,
+                    repo,
+                    engine,
                 )
                 .await
             }
@@ -2671,6 +2681,7 @@ macro_rules! store_delegations {
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
+                lane: Option<maidan_types::TaskLane>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2679,6 +2690,7 @@ macro_rules! store_delegations {
                     lease_secs,
                     repo,
                     engine,
+                    lane,
                 )
                 .await
             }
@@ -2690,6 +2702,7 @@ macro_rules! store_delegations {
                 lease_secs: Option<i64>,
                 repo: Option<&str>,
                 engine: Option<maidan_types::TaskEngine>,
+                lane: Option<maidan_types::TaskLane>,
             ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
                 threads::claim_next_with_event(
                     self.pool(),
@@ -2698,6 +2711,7 @@ macro_rules! store_delegations {
                     lease_secs,
                     repo,
                     engine,
+                    lane,
                 )
                 .await
             }
@@ -2902,6 +2916,23 @@ macro_rules! store_delegations {
                 audit: NewAuditEvent,
             ) -> Result<(), StoreError> {
                 thread_attributes::set_default_engine(self.pool(), workspace_id, engine, audit)
+                    .await
+            }
+
+            async fn workspace_review_children(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<maidan_types::ReviewChildren, StoreError> {
+                thread_attributes::review_children(self.pool(), workspace_id).await
+            }
+
+            async fn set_workspace_review_children(
+                &self,
+                workspace_id: WorkspaceId,
+                setting: maidan_types::ReviewChildren,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                thread_attributes::set_review_children(self.pool(), workspace_id, setting, audit)
                     .await
             }
 

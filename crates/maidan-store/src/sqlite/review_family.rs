@@ -29,6 +29,19 @@ pub(crate) async fn spawn_in_tx(
     if kind.is_some_and(|kind| kind != TaskKind::Change.as_str()) {
         return Ok(());
     }
+    // A workspace that turned review children off spawns none.
+    let setting: String = sqlx::query_scalar(
+        "SELECT w.review_children FROM maidan_threads t
+         JOIN maidan_channels ch ON ch.id = t.channel_id
+         JOIN maidan_workspaces w ON w.id = ch.workspace_id
+         WHERE t.id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    if setting == maidan_types::ReviewChildren::Off.as_str() {
+        return Ok(());
+    }
     let live_child: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM maidan_threads t
          JOIN maidan_thread_attributes a ON a.thread_id = t.id

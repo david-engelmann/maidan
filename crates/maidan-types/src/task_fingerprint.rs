@@ -5,7 +5,8 @@
 //! The fingerprint covers what a worker is asked to do: the title, the
 //! description, the kind, the engine, the threat-model flag, the acceptance
 //! text and the Linear issue. Bookkeeping that does not change the work (the
-//! size estimate, the review tier, the priority, the footprint) is left out.
+//! size estimate, the review tier, the service lane, the priority, the
+//! footprint) is left out.
 //! Text is trimmed; nothing else is normalized, so two briefs that differ
 //! by a word never share a fingerprint. Each field is length-prefixed, so no
 //! two different briefs encode to the same bytes.
@@ -146,6 +147,7 @@ mod tests {
         let sized = TaskAttributes {
             size: crate::TaskSize::parse("S"),
             tier: crate::TaskTier::parse("A"),
+            lane: crate::TaskLane::parse("batch"),
             ..base.clone()
         };
         assert_eq!(fp(Some("t"), None, &base), fp(Some("t"), None, &sized));

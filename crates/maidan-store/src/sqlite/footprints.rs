@@ -36,6 +36,7 @@ fn item_row(row: &sqlx::sqlite::SqliteRow) -> ItemRow {
         task_size: row.try_get("task_size").ok().flatten(),
         task_acceptance: row.try_get("task_acceptance").ok().flatten(),
         task_tier: row.try_get("task_tier").ok().flatten(),
+        task_lane: row.try_get("task_lane").ok().flatten(),
     }
 }
 
@@ -121,7 +122,7 @@ pub async fn list_active(
                 f.repo, f.mode, f.kind, f.value,
                 a.kind AS task_kind, a.engine AS task_engine,
                 a.threat_model AS threat_model, a.size AS task_size, a.acceptance AS task_acceptance,
-                a.tier AS task_tier
+                a.tier AS task_tier, a.lane AS task_lane
          FROM maidan_thread_footprints f
          JOIN maidan_threads held ON held.id = f.thread_id
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = f.thread_id

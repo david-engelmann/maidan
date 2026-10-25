@@ -34,7 +34,7 @@ HttpOnly session; the page does not keep the token.
 | Human login via OIDC | Map IdP `sub` (+ `iss`) to a `Member` with `kind: human`. |
 | First-admin token mint after login | The session endpoint may mint the first `token:admin` when the workspace has none; agents keep using bearer tokens. |
 | Workspace scoping unchanged | OIDC does not replace workspace-scoped capabilities. |
-| Production-safe defaults | No implicit trust of `email` without verified claims; PKCE mandatory for public clients. |
+| Production-safe defaults | No implicit trust of `email` without verified claims, unless the operator sets `MAIDAN_OIDC_EMAILS_VERIFIED` for a provider whose every login proves the address (see Email trust); PKCE mandatory for public clients. |
 
 ## Non-goals
 
@@ -206,11 +206,13 @@ settings are:
 | `MAIDAN_OIDC_MOCK` | no | Deterministic dev/CI provider; rejected with `MAIDAN_ENV=production`. |
 | `MAIDAN_OIDC_AUTO_PROVISION` | no | `1` permits a new OIDC identity to create a human member; otherwise the identity must already be provisioned or linked. |
 | `MAIDAN_OIDC_LINK_EMAIL` | no | `1` permits linking a verified email claim to an existing member handle. |
+| `MAIDAN_OIDC_EMAILS_VERIFIED` | no | `1` treats an `email` claim that arrives without `email_verified` as verified. Set it only for a provider whose every login proves the address, such as Cloudflare Access with the emailed one-time code as its only login method. An explicit `email_verified: false` stays unverified. |
 | `MAIDAN_OIDC_FIRST_ADMIN` | no | Default on; permits the first-admin session mint. Set `0` to disable. |
 | `MAIDAN_OIDC_AUTO_MINT` | no | `1` adds the UI `auto_mint=1` hint when the workspace has no active `token:admin`; requires first-admin mint. |
 | `MAIDAN_OIDC_PENDING_TTL_SECS` | no | Pending login lifetime (default `600`). |
 | `MAIDAN_SIGNUP` | no | `1` enables the waitlist and invited sign-up at `/auth/oidc/signup`; default off, and the whole surface 404s while off. Boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. |
 | `MAIDAN_SIGNUP_EMAIL_DOMAINS` | no | Comma-separated email domains that may sign up without an invite when sign-up is on. |
+| `MAIDAN_SIGNUP_OPEN` | no | `1` lets any verified email sign up without an invite, still behind the sign-up rate limits. Needs `MAIDAN_SIGNUP=1`; boot refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`. |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered redirect used when the provider exposes `end_session_endpoint`. |
 | `MAIDAN_SESSION_SECRET` | OIDC | HMAC key for signed `maidan_session` cookies and resume tokens. |
 | `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours). |
@@ -345,7 +347,7 @@ fast track without an authorization server").
 | Replay | `nonce` in id_token; reject if mismatch. |
 | Token leakage | HttpOnly, `SameSite=Lax` session cookie; `Secure` in production; PKCE required. |
 | Confused deputy | Bind `workspace_id` into `state`; callback refuses workspace drift. |
-| Email trust | Use `email` for linking only when `email_verified` is true; auto-provision may use it for handle/display. |
+| Email trust | Use `email` for linking, invites and sign-up only when it is verified: `email_verified: true`, or, with `MAIDAN_OIDC_EMAILS_VERIFIED=1`, a missing (or `null`) claim. An explicit `false` is never trusted. The flag is safe only while every login method the provider offers proves the address: a second method that passes an unproven `email` would let it take over a pre-provisioned member by link-by-email, redeem that address's invite, and pass the sign-up domain list. Auto-provision may use `email` for handle/display. |
 | Session fixation | Create a new server-side session row after successful login. |
 
 [Threat model](Threat-Model.md) T16/T17 cover trace redaction and the risks of a

@@ -353,6 +353,36 @@ pub async fn complete_signup(
     let email_lower = new.email.to_lowercase();
     let mut tx = pool.begin().await?;
 
+    // Two callbacks for one identity serialize here; the second sees the
+    // first's identity row once it commits and is turned away.
+    sqlx::query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('maidan.signup:' || $1 || '\\n' || $2, 0))",
+    )
+    .bind(&new.issuer)
+    .bind(&new.subject)
+    .execute(&mut *tx)
+    .await?;
+    // The handler checks this before charging the domain budget; checked
+    // again here under the lock, with the front door's own filters, so a
+    // concurrent callback for the same identity cannot mint a second workspace.
+    let taken: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+             SELECT 1 FROM maidan_oidc_identities o
+             JOIN maidan_members m ON m.id = o.member_id AND m.workspace_id = o.workspace_id
+             WHERE o.issuer = $1 AND o.subject = $2
+               AND NOT EXISTS (SELECT 1 FROM maidan_scim_users s
+                               WHERE s.member_id = o.member_id AND NOT s.active)
+               AND NOT EXISTS (SELECT 1 FROM maidan_member_freezes f
+                               WHERE f.member_id = o.member_id))",
+    )
+    .bind(&new.issuer)
+    .bind(&new.subject)
+    .fetch_one(&mut *tx)
+    .await?;
+    if taken {
+        return Err(StoreError::Conflict(crate::SIGNUP_IDENTITY_TAKEN.into()));
+    }
+
     if let Some(entry_id) = new.invite_entry_id {
         let gate = sqlx::query(
             "SELECT status, invite_expires_at, email_lower

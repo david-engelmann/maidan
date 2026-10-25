@@ -65,6 +65,25 @@ use crate::{
 /// same default origin, which is what `form-action 'self'` allows.
 pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
+/// Content-Security-Policy for the public waitlist page at `/`. Stricter than
+/// the board's: the page loads one stylesheet and one module from this
+/// origin, posts JSON to `/waitlist` on this origin, and nothing else. No
+/// inline script or style, no images beyond the inline SVG mark, no frames.
+pub const LANDING_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+/// The headers every waitlist page answer carries, besides its CSP: the page
+/// is never framed, never sniffed, and leaks no referrer to the links on it.
+fn landing_headers(content_type: &'static str) -> [(axum::http::HeaderName, &'static str); 5] {
+    use axum::http::header;
+    [
+        (header::CONTENT_TYPE, content_type),
+        (header::CONTENT_SECURITY_POLICY, LANDING_CSP),
+        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        (header::X_FRAME_OPTIONS, "DENY"),
+        (header::REFERRER_POLICY, "no-referrer"),
+    ]
+}
+
 /// Every load of the board page or an asset revalidates: `no-cache` lets the
 /// browser keep a copy, and the ETag below turns an unchanged one into a 304
 /// with no body. A max-age would let a browser run cached modules from before a
@@ -203,6 +222,11 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{id}/default-engine",
             get(routes::get_workspace_default_engine)
                 .merge(put(routes::set_workspace_default_engine)),
+        )
+        .route(
+            "/workspaces/{id}/review-children",
+            get(routes::get_workspace_review_children)
+                .merge(put(routes::set_workspace_review_children)),
         )
         .route("/workspaces/{id}", delete(routes::erase_workspace))
         .route("/workspaces/{id}/audit", get(routes::list_workspace_audit))
@@ -546,6 +570,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/threads/{id}/fingerprint",
             get(routes::get_task_fingerprint),
+        )
+        .route(
+            "/threads/{id}/fingerprint/duplicate-of",
+            delete(routes::clear_task_duplicate),
         )
         .route(
             "/threads/{id}/attributes",
@@ -1153,6 +1181,63 @@ pub fn router(state: AppState) -> Router {
             share_consumer::middleware,
         ));
 
+    // The public waitlist page. It is part of sign-up, like the form's POST:
+    // an instance that never turned sign-up on keeps answering 404 at `/`.
+    async fn landing_page(
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> axum::response::Response {
+        use axum::response::IntoResponse as _;
+        if crate::routes::require_signup(&state).is_err() {
+            return crate::error::ApiError::NotFound.into_response();
+        }
+        landing_body(
+            &headers,
+            "text/html; charset=utf-8",
+            include_str!("../static/landing/index.html"),
+        )
+    }
+
+    async fn landing_asset(
+        crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        if crate::routes::require_signup(&state).is_err() {
+            return Err(axum::http::StatusCode::NOT_FOUND);
+        }
+        let (content_type, body) = match name.as_str() {
+            "landing.css" => (
+                "text/css; charset=utf-8",
+                include_str!("../static/landing/landing.css"),
+            ),
+            "landing.js" => (
+                "text/javascript; charset=utf-8",
+                include_str!("../static/landing/landing.js"),
+            ),
+            _ => return Err(axum::http::StatusCode::NOT_FOUND),
+        };
+        Ok(landing_body(&headers, content_type, body))
+    }
+
+    fn landing_body(
+        headers: &axum::http::HeaderMap,
+        content_type: &'static str,
+        body: &'static str,
+    ) -> axum::response::Response {
+        use axum::response::IntoResponse as _;
+        let etag = strong_etag(body.as_bytes());
+        if if_none_match_fresh(headers, &etag) {
+            return (
+                axum::http::StatusCode::NOT_MODIFIED,
+                landing_headers(content_type),
+                ui_cache_headers(&etag),
+            )
+                .into_response();
+        }
+        (landing_headers(content_type), ui_cache_headers(&etag), body).into_response()
+    }
+
     async fn ui_index(headers: axum::http::HeaderMap) -> axum::response::Response {
         use axum::response::IntoResponse as _;
         const BODY: &str = include_str!("../static/index.html");
@@ -1663,6 +1748,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/openapi.json", get(openapi::openapi_json))
         .route("/metrics", get(metrics::scrape))
+        .route("/", get(landing_page))
+        .route("/landing/{name}", get(landing_asset))
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .route("/ui/static/{name}", get(ui_asset))

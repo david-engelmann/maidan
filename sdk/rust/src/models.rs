@@ -290,6 +290,8 @@ model! {
         linear_issue: Option<String>,
         /// The change's review tier, `A` or `B`; unset counts as B.
         tier: Option<String>,
+        /// The service lane it may run in, `batch` or `flex`; unset runs at standard rates.
+        lane: Option<String>,
         /// The provider family a review child is routed to; server-set.
         review_family: Option<String>,
     }

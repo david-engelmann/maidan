@@ -1623,6 +1623,11 @@ pub trait ThreadStore: Send + Sync {
         thread_id: ThreadId,
     ) -> Result<Option<maidan_types::TaskFingerprint>, StoreError>;
 
+    /// Clear a thread's duplicate link (Context Economics C8b), so a task
+    /// wrongly linked as a duplicate can be claimed. `NotFound` when the
+    /// thread has no fingerprint. Idempotent.
+    async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError>;
+
     /// Replace a thread's task attributes whole. `NotFound` when the
     /// thread does not exist.
     async fn set_thread_attributes(
@@ -1721,11 +1726,16 @@ pub trait ThreadStore: Send + Sync {
 
     /// [`channel_queue_depth`](Self::channel_queue_depth) across every channel
     /// of `workspace_id`: the sum of its channels' counts for the same reader.
-    /// A reader from another workspace counts nothing.
+    /// A reader from another workspace counts nothing. `repo` (normalized)
+    /// and `engine` narrow the count as they narrow
+    /// [`claim_next_workspace_thread`](Self::claim_next_workspace_thread), so
+    /// `ready` is what a claimer with the same filters would be handed.
     async fn workspace_queue_depth(
         &self,
         workspace_id: WorkspaceId,
         readable_by: Option<MemberId>,
+        repo: Option<&str>,
+        engine: Option<maidan_types::TaskEngine>,
     ) -> Result<QueueDepth, StoreError>;
 
     /// Channel occupancy: the two-clocks refinement of `channel_queue_depth` —
@@ -2236,6 +2246,7 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: Option<i64>,
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
+        lane: Option<maidan_types::TaskLane>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
     /// [`claim_next_thread_with_event`](Self::claim_next_thread_with_event)
     /// across every channel of `workspace_id` that `member_id` may read: the
@@ -2248,6 +2259,7 @@ pub trait AssignmentStore: Send + Sync {
         lease_secs: Option<i64>,
         repo: Option<&str>,
         engine: Option<maidan_types::TaskEngine>,
+        lane: Option<maidan_types::TaskLane>,
     ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError>;
 
     /// Replace a thread's claim footprint (`None` or no items clears it). When
@@ -2406,6 +2418,20 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
         engine: Option<maidan_types::TaskEngine>,
+        audit: NewAuditEvent,
+    ) -> Result<(), StoreError>;
+    /// Whether a change entering review in the workspace spawns its
+    /// second-family review child.
+    async fn workspace_review_children(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<maidan_types::ReviewChildren, StoreError>;
+    /// Set the workspace's review-children setting, audited in the same
+    /// transaction. Applies to changes entering review afterwards.
+    async fn set_workspace_review_children(
+        &self,
+        workspace_id: WorkspaceId,
+        setting: maidan_types::ReviewChildren,
         audit: NewAuditEvent,
     ) -> Result<(), StoreError>;
     /// Claim and release notices due on tasks' Linear issues in a workspace.

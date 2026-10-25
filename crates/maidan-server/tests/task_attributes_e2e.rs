@@ -727,13 +727,13 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         "acceptance": "The bridge retries twice; its test proves it.",
         "linear_issue": "ENG-123"
     });
-    for title in ["first", "second"] {
-        let (status, made) = create_thread(
-            &base,
-            &room,
-            json!({ "title": title, "attributes": attributes }),
-        )
-        .await;
+    // Each thread names its own issue: two open change threads for one
+    // issue are a likely duplicate, and claim_next withholds the second.
+    let mut second = attributes.clone();
+    second["linear_issue"] = json!("ENG-124");
+    for (title, attrs) in [("first", &attributes), ("second", &second)] {
+        let (status, made) =
+            create_thread(&base, &room, json!({ "title": title, "attributes": attrs })).await;
         assert_eq!(status, StatusCode::CREATED, "{made}");
     }
 
@@ -746,7 +746,8 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         )
         .await,
     );
-    assert_eq!(over_mcp["attributes"], attributes, "{over_mcp}");
+    let claimed = [&attributes, &second];
+    assert!(claimed.contains(&&over_mcp["attributes"]), "{over_mcp}");
     let over_rest: Value = reqwest::Client::new()
         .post(format!(
             "{base}/channels/{}/threads/claim-next",
@@ -760,7 +761,7 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         .json()
         .await
         .unwrap();
-    assert_eq!(over_rest["attributes"], attributes, "{over_rest}");
+    assert!(claimed.contains(&&over_rest["attributes"]), "{over_rest}");
     assert_ne!(over_rest["id"], over_mcp["id"]);
 
     let pack = tool_result(
@@ -772,5 +773,235 @@ async fn the_claim_answer_and_the_context_pack_carry_the_task_attributes() {
         )
         .await,
     );
-    assert_eq!(pack["thread"]["attributes"], attributes, "{pack}");
+    assert_eq!(
+        pack["thread"]["attributes"], over_mcp["attributes"],
+        "{pack}"
+    );
+}
+
+/// A lane other than batch or flex is refused on every REST and MCP way in,
+/// at intake, on replace and on a claim, and changes nothing.
+#[tokio::test]
+async fn an_unknown_lane_is_refused_on_rest_and_mcp() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "bad-lane").await;
+    let bad = json!({ "kind": "change", "lane": "standard" });
+
+    let (status, _) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "bad lane", "attributes": bad }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let refused = tool(
+        &base,
+        &room.token,
+        "create_thread",
+        json!({ "channel_id": room.channel.0, "title": "bad lane", "attributes": bad }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    assert!(
+        store.list_threads(room.channel).await.unwrap().is_empty(),
+        "a refused lane makes no thread"
+    );
+
+    let (status, ok) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "batch work", "attributes": { "kind": "change", "lane": "batch" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{ok}");
+    let thread_id = ok["id"].as_str().unwrap().to_string();
+    let http = reqwest::Client::new();
+    let response = http
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&room.token)
+        .json(&bad)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let refused = tool(
+        &base,
+        &room.token,
+        "set_thread_attributes",
+        json!({ "thread_id": thread_id, "kind": "change", "lane": "standard" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert_eq!(
+        read["attributes"]["lane"], "batch",
+        "a refused lane changes nothing"
+    );
+
+    let response = http
+        .post(format!(
+            "{base}/channels/{}/threads/claim-next",
+            room.channel.0
+        ))
+        .bearer_auth(&room.token)
+        .json(&json!({ "lease_secs": 600, "lane": "standard" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        response.status().is_client_error(),
+        "a claim naming an unknown lane is refused: {}",
+        response.status()
+    );
+    let refused = tool(
+        &base,
+        &room.token,
+        "claim_next_thread",
+        json!({ "channel_id": room.channel.0, "lane": "standard" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+    let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert!(
+        read["assignee_id"].is_null(),
+        "a refused claim takes nothing: {read}"
+    );
+}
+
+/// A claim naming a lane takes that lane's thread before older unlaned work
+/// of equal priority (lane breaks the tie), and a claim with no lane then
+/// still takes what is left.
+#[tokio::test]
+async fn a_lane_claim_takes_its_lane_first_over_rest() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "claim-lanes").await;
+    for (title, lane) in [("plain work", None), ("flex work", Some("flex"))] {
+        let mut attributes = json!({ "kind": "change" });
+        if let Some(lane) = lane {
+            attributes["lane"] = json!(lane);
+        }
+        let (status, _) = create_thread(
+            &base,
+            &room,
+            json!({ "title": title, "attributes": attributes }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let http = reqwest::Client::new();
+    let url = format!("{base}/channels/{}/threads/claim-next", room.channel.0);
+    let claim = |body: Value| {
+        let (http, url, token) = (http.clone(), url.clone(), room.token.clone());
+        async move {
+            http.post(url)
+                .bearer_auth(token)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap()
+        }
+    };
+    let flex = claim(json!({ "lease_secs": 600, "lane": "flex" })).await;
+    assert_eq!(flex["title"], "flex work", "{flex}");
+    let rest = claim(json!({ "lease_secs": 600 })).await;
+    assert_eq!(rest["title"], "plain work", "{rest}");
+}
+
+async fn review_children(
+    base: &str,
+    token: &str,
+    ws: WorkspaceId,
+    put: Option<Value>,
+) -> (StatusCode, Value) {
+    let url = format!("{base}/workspaces/{}/review-children", ws.0);
+    let client = reqwest::Client::new();
+    let request = match put {
+        Some(body) => client.put(url).json(&body),
+        None => client.get(url),
+    };
+    let response = request.bearer_auth(token).send().await.unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn a_workspace_admin_turns_review_children_off_and_the_change_is_audited() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "review-children").await;
+    let (_admin, admin) = member_with(
+        store.as_ref(),
+        room.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+
+    let (status, unset) = review_children(&base, &room.token, room.ws, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unset, json!({ "review_children": "spawn" }));
+    let off = json!({ "review_children": "off" });
+    let (status, _) = review_children(&base, &room.token, room.ws, Some(off.clone())).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "it is an operator's call");
+    let (status, set) = review_children(&base, &admin, room.ws, Some(off.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{set}");
+    assert_eq!(set, off);
+    let audit = store
+        .list_audit_for_workspace(room.ws, 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.action == "workspace.review_children.set")
+        .expect("the change is audited");
+    assert_eq!(audit.metadata, off);
+    let (status, _) = review_children(
+        &base,
+        &admin,
+        room.ws,
+        Some(json!({ "review_children": "sometimes" })),
+    )
+    .await;
+    assert!(status.is_client_error(), "an unknown setting is refused");
+}
+
+#[tokio::test]
+async fn another_workspace_cannot_read_or_set_review_children() {
+    let (base, store) = spawn().await;
+    let victim = room(store.as_ref(), "victim").await;
+    let attacker = room(store.as_ref(), "attacker").await;
+    let (_m, victim_admin) = member_with(
+        store.as_ref(),
+        victim.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+    let (_m, attacker_admin) = member_with(
+        store.as_ref(),
+        attacker.ws,
+        "admin",
+        &[capability::TOKEN_ADMIN, capability::WORKSPACE_READ],
+    )
+    .await;
+
+    let off = json!({ "review_children": "off" });
+    let (status, _) = review_children(&base, &victim_admin, victim.ws, Some(off.clone())).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, attacker_own) = review_children(&base, &attacker_admin, attacker.ws, None).await;
+    assert_eq!(
+        attacker_own,
+        json!({ "review_children": "spawn" }),
+        "the victim's setting does not reach another workspace"
+    );
+    for put in [None, Some(json!({ "review_children": "spawn" }))] {
+        let (status, body) = review_children(&base, &attacker_admin, victim.ws, put).await;
+        assert!(
+            status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+            "another tenant must be refused, got {status}: {body}"
+        );
+    }
+    let (_, read) = review_children(&base, &victim_admin, victim.ws, None).await;
+    assert_eq!(read, off, "the victim's setting holds");
 }

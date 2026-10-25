@@ -44,7 +44,7 @@ const CLIENT_ID: &str = "maidan-loopback-test";
 const SESSION_SECRET: &str = "loopback-oidc-session-secret-32bytes";
 const KEY_ID: &str = "loopback-es256";
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 enum TokenMode {
     #[default]
     Valid,
@@ -52,7 +52,15 @@ enum TokenMode {
     BadSignature,
     BadAudience,
     BadIssuer,
+    /// The token carries `email` but no `email_verified` claim.
+    EmailVerifiedMissing,
+    /// The token says `email_verified: false`.
+    EmailUnverified,
 }
+
+/// Both tests set the same process environment for `OidcRuntime::init`;
+/// they take turns so one's restore cannot land in the other's setup.
+static ENV_LOCK: Mutex<()> = Mutex::const_new(());
 
 struct AuthorizationGrant {
     client_id: String,
@@ -188,19 +196,27 @@ fn id_token(provider: &ProviderState, grant: &AuthorizationGrant, mode: TokenMod
         serde_json::to_vec(&json!({"alg": "ES256", "kid": KEY_ID, "typ": "JWT"}))
             .expect("serialize JWT header"),
     );
-    let claims = URL_SAFE_NO_PAD.encode(
-        serde_json::to_vec(&json!({
-            "iss": issuer,
-            "sub": "loopback-user",
-            "aud": audience,
-            "exp": now + 300,
-            "iat": now,
-            "nonce": nonce,
-            "email": "loopback@example.com",
-            "email_verified": true
-        }))
-        .expect("serialize ID-token claims"),
-    );
+    let mut body = json!({
+        "iss": issuer,
+        "sub": "loopback-user",
+        "aud": audience,
+        "exp": now + 300,
+        "iat": now,
+        "nonce": nonce,
+        "email": "loopback@example.com",
+        "email_verified": true
+    });
+    match mode {
+        TokenMode::EmailVerifiedMissing => {
+            body.as_object_mut()
+                .expect("claims object")
+                .remove("email_verified");
+        }
+        TokenMode::EmailUnverified => body["email_verified"] = json!(false),
+        _ => {}
+    }
+    let claims =
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&body).expect("serialize ID-token claims"));
     let signing_input = format!("{header}.{claims}");
     let key = match mode {
         TokenMode::BadSignature => &provider.bad_signing_key,
@@ -299,13 +315,17 @@ async fn follow_login(
     base: &str,
     workspace_id: Uuid,
 ) -> reqwest::Response {
-    let login = client
-        .get(format!(
-            "{base}/auth/oidc/login?workspace_id={workspace_id}"
-        ))
-        .send()
-        .await
-        .expect("start OIDC login");
+    follow_from(
+        client,
+        &format!("{base}/auth/oidc/login?workspace_id={workspace_id}"),
+    )
+    .await
+}
+
+/// Start a login or sign-up at `start` and follow it through the provider
+/// to Maidan's callback, returning the callback's answer.
+async fn follow_from(client: &reqwest::Client, start: &str) -> reqwest::Response {
+    let login = client.get(start).send().await.expect("start OIDC flow");
     assert_eq!(login.status(), ClientStatus::TEMPORARY_REDIRECT);
     let authorization_url = login
         .headers()
@@ -334,6 +354,7 @@ async fn follow_login(
 
 #[tokio::test]
 async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() {
+    let _env_lock = ENV_LOCK.lock().await;
     let idp_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind loopback IdP");
@@ -392,6 +413,8 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         auto_mint: false,
         signup: false,
         signup_email_domains: Vec::new(),
+        signup_open: false,
+        emails_verified: false,
     })
     .await
     .expect("discover loopback provider");
@@ -671,4 +694,178 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
 
     maidan_server.abort();
     idp_server.abort();
+}
+
+fn sets_session(response: &reqwest::Response) -> bool {
+    response
+        .headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .any(|value| value.as_bytes().starts_with(b"maidan_session="))
+}
+
+/// A Maidan in front of `issuer` with link-by-email and domain sign-up on,
+/// and the operator's `MAIDAN_OIDC_EMAILS_VERIFIED` as given.
+async fn spawn_linking_maidan(
+    issuer: &str,
+    store: Arc<dyn Store>,
+    pool: sqlx::SqlitePool,
+    emails_verified: bool,
+) -> (String, tokio::task::JoinHandle<()>, tempfile::TempDir) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind Maidan");
+    let base = format!("http://{}", listener.local_addr().expect("Maidan address"));
+    let oidc = OidcRuntime::init(OidcSettings {
+        enabled: true,
+        mock: false,
+        issuer: issuer.to_string(),
+        redirect_uri: format!("{base}/auth/oidc/callback"),
+        auto_provision: false,
+        link_email: true,
+        session_ttl_secs: 3600,
+        pending_ttl_secs: 600,
+        cookie_secure: false,
+        post_logout_redirect_uri: None,
+        first_admin_mint: true,
+        auto_mint: false,
+        signup: true,
+        signup_email_domains: vec!["example.com".into()],
+        signup_open: false,
+        emails_verified,
+    })
+    .await
+    .expect("discover loopback provider");
+    let artifact_dir = tempfile::tempdir().expect("artifact tempdir");
+    let mut state = AppState::new(
+        store,
+        Arc::new(LocalFsStore::new(artifact_dir.path())),
+        Arc::new(maidan_bus::InMemoryBus::new()),
+        Arc::new(maidan_search::SqliteSearch::new(pool)),
+        Arc::new(maidan_search::HashV1Provider),
+        false,
+        false,
+        FederationRuntime::new(true, None),
+        Arc::new(AtomicI64::new(0)),
+        None,
+    );
+    state.oidc = Some(Arc::new(oidc));
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router(state))
+            .await
+            .expect("serve Maidan");
+    });
+    (base, server, artifact_dir)
+}
+
+/// Link-by-email and sign-up take an email only when it is verified: the
+/// provider's own `email_verified` when it sends one, and the operator's
+/// `MAIDAN_OIDC_EMAILS_VERIFIED` only when the claim is missing. An explicit
+/// `false` is refused whatever the operator says.
+#[tokio::test]
+async fn a_missing_email_verified_counts_only_when_the_operator_vouches_and_never_over_false() {
+    let _env_lock = ENV_LOCK.lock().await;
+    let idp_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind loopback IdP");
+    let issuer = format!("http://{}", idp_listener.local_addr().expect("IdP address"));
+    let provider = Arc::new(ProviderState {
+        issuer: issuer.clone(),
+        signing_key: SigningKey::from_slice(&[0x41; 32]).expect("fixture signing key"),
+        bad_signing_key: SigningKey::from_slice(&[0x42; 32]).expect("bad fixture key"),
+        grants: Mutex::new(HashMap::new()),
+        next_mode: Mutex::new(TokenMode::Valid),
+        bad_state_next: AtomicBool::new(false),
+        discovery_seen: AtomicBool::new(false),
+        authorize_seen: AtomicBool::new(false),
+        token_seen: AtomicBool::new(false),
+        jwks_seen: AtomicBool::new(false),
+        logout_seen: AtomicBool::new(false),
+    });
+    let idp_app = Router::new()
+        .route("/.well-known/openid-configuration", get(discovery))
+        .route("/authorize", get(authorize))
+        .route("/token", post(token))
+        .route("/jwks", get(jwks))
+        .with_state(provider.clone());
+    let _idp = tokio::spawn(async move {
+        axum::serve(idp_listener, idp_app)
+            .await
+            .expect("serve loopback IdP");
+    });
+    let _env = EnvGuard::set(&[
+        ("MAIDAN_SESSION_SECRET", Some(SESSION_SECRET)),
+        ("MAIDAN_OIDC_CLIENT_ID", Some(CLIENT_ID)),
+        ("MAIDAN_OIDC_CLIENT_SECRET", None),
+    ]);
+    let client = reqwest::Client::builder()
+        .redirect(Policy::none())
+        .build()
+        .expect("HTTP client");
+
+    for emails_verified in [false, true] {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("connect sqlite");
+        run_sqlite_migrations(&pool).await.expect("migrate sqlite");
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let workspace = store
+            .create_workspace(NewWorkspace {
+                name: "link-by-email".into(),
+            })
+            .await
+            .expect("create workspace");
+        store
+            .create_member(maidan_types::NewMember {
+                workspace_id: workspace.id,
+                handle: "loopback@example.com".into(),
+                kind: maidan_types::MemberKind::Human,
+                display_name: None,
+            })
+            .await
+            .expect("pre-provision the member");
+        let (base, _server, _dir) =
+            spawn_linking_maidan(&issuer, store, pool, emails_verified).await;
+
+        for (mode, vouched_ok) in [
+            (TokenMode::EmailUnverified, false),
+            (TokenMode::EmailVerifiedMissing, emails_verified),
+        ] {
+            let label = format!("{mode:?} with MAIDAN_OIDC_EMAILS_VERIFIED={emails_verified}");
+            // Sign-up first: a sign-up refuses an identity that already has
+            // a workspace here, which the link below gives it.
+            *provider.next_mode.lock().await = mode;
+            let signed_up = follow_from(&client, &format!("{base}/auth/oidc/signup")).await;
+            assert_eq!(
+                sets_session(&signed_up),
+                vouched_ok,
+                "sign-up, {label}: {}",
+                signed_up.status()
+            );
+            if !vouched_ok {
+                assert!(
+                    signed_up.status().is_client_error(),
+                    "sign-up, {label}: {}",
+                    signed_up.status()
+                );
+            }
+            *provider.next_mode.lock().await = mode;
+            let linked = follow_login(&client, &base, workspace.id.0).await;
+            assert_eq!(
+                sets_session(&linked),
+                vouched_ok,
+                "link by email, {label}: {}",
+                linked.status()
+            );
+            if !vouched_ok {
+                assert!(
+                    linked.status().is_client_error(),
+                    "link by email, {label}: {}",
+                    linked.status()
+                );
+            }
+        }
+    }
 }

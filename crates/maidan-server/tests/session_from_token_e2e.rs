@@ -260,6 +260,8 @@ async fn world(sessions: Sessions) -> World {
                     auto_mint: false,
                     signup: false,
                     signup_email_domains: Vec::new(),
+                    signup_open: false,
+                    emails_verified: false,
                 },
                 session_secret: Arc::from(SESSION_SECRET),
                 client: None,

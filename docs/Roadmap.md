@@ -37,11 +37,11 @@ The next gate is **`maidan-launch-1.0`**, the launch (decided 2026-10-12). A
 waitlist, sign-up through the OIDC front door, a new workspace, an agent
 connected through OAuth from an MCP client, a task claimed, reviewed and
 closed, and the usage that path metered. The gate passes on the launch
-release, with every row from Next 23 to Next 32 in Open Work closed.
+release, with the launch rows in Open Work (Next 23, 24, 29 and 30) closed.
 
 ## Where it is
 
-The latest release is `v413.0.0` (2026-10-11). The work in flight and the
+The latest release is `v416.0.0` (2026-10-23). The work in flight and the
 launch path are the **Now** and **Next** sections of [Open Work](Open%20Work.md),
 which end at the launch gate. `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
 run the binary from `CARGO_TARGET_DIR` when it is set.
@@ -51,7 +51,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
    newest release, no chart renders a default credential or the `dev` image,
    and a contract keeps the pins from drifting (both #1156). Done: every
-   deploy path pins `v413.0.0`, including the ARM64 page with auth on, and the
+   deploy path pins the newest tag (`v416.0.0`), including the ARM64 page with auth on, and the
    stack's bundled Postgres and MinIO run in the chart since #1172. Open Work's
    **Before anyone deploys** has no open blocker.
 1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
@@ -144,9 +144,11 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    on `main` (#1239, #1240). The canonical pack is on `main` (#1241); the
    ledger prices every cache tier and rolls up cost per completed task
    (#1242). Workspace queue depth shipped in #1265, and the SDK usage
-   normalizers and boot-pack helpers in #1297 and #1299. Next: the
-   cost-per-success pilot, under a cap the runner enforces (decided
-   2026-10-08).
+   normalizers and boot-pack helpers in #1297 and #1299. Warm-then-fan-out
+   (#1585), duplicate tasks (#1578, #1579) and the batch and flex lane
+   (#1587) are on `main`; warm affinity and lane routing are in review. Next:
+   the rest of C (Open Work, Next 38), then the cost-per-success pilot, under a
+   cap the runner enforces (decided 2026-10-08).
    The research behind it is kept in the [archive](archive/Context%20Economics%20research%202026-10/README.md).
 7. **Launch** (decided 2026-10-12). Maidan launches as open source plus a
    hosted service at maidan.world. The console takes sign-ups through a
@@ -155,13 +157,14 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    storage and the like, and usage past it is billed: metering comes before
    launch, billing after. The path, in Open Work's order:
    - **Connect.** The OAuth 2.1 server people connect their MCP clients
-     through (Next 23): discovery (#1364), refresh and revocation (#1367, in review),
-     then consent management, hardening and a recorded run from real clients.
-   - **Host.** Per-tenant key custody before a stranger's data lands
-     (Next 25), the deployment on the maidan.world layout with staging, a
-     demo host, backups, alerts and a status page (Next 24), the waitlist,
-     sign-up and invites (Next 26), usage metering against the free allowance
-     (Next 27), and abuse controls (Next 28).
+     through (Next 23): P0 to P5 are on `main`; open is a recorded run from
+     real clients against the demo host.
+   - **Host.** Per-tenant key custody, with AWS KMS (#1394, #1534), the
+     waitlist, sign-up and invites, usage metering against the free
+     allowance (#1518, #1529, #1544), and abuse controls (suspension #1516,
+     per-domain limits #1555) are on `main`. Open: the deployment on the
+     maidan.world layout with staging, a demo host, backups, alerts and a
+     status page (Next 24).
    - **Prove.** A validated version (Next 14), the ChatGPT card and the
      connect recipes tested live (Next 17, Next 13), the listing assets and
      demo instance (Next 12), and the launch polish (Next 30). Public `main`
@@ -180,6 +183,22 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
    to confirm unless the workspace set a threshold. `AUTH_DISABLED` is never a
    deployment mode. The privacy policy, terms and trust page are the
    maintainer's, prepared outside the repo.
+
+8. **The swarm factory runs unattended.** Many agents, of several model
+   families, take work for one repository from a Maidan queue on a local
+   stack (decided 2026-10-14), without colliding and without merging
+   unreviewed code: footprints, leases and fencing, plans that a person
+   releases, review by a second model family on the exact head, CI, merge
+   queue and deploy tracking, and a ledger per provider and harness. The
+   stack runs any `main` commit whose required checks passed. Ramp step 1
+   (four concurrent claimants on wax) ran on `v415`; the limit at step 2 was
+   agent-ready tickets, not capacity. A seat runner keeps session seats
+   claiming under capped runs (#1612), and on 2026-10-24/25 a Codex seat
+   delivered wax changes and ran some twenty second-family red-team reviews
+   through Maidan, posting each verdict on its pull request. Next (Open
+   Work, Next 36 to Next 41): finding and closing threads by attribute, the
+   rest of Program C, and a day at 8 concurrent claimants with no stuck
+   thread.
 
 ## What Maidan will not become
 

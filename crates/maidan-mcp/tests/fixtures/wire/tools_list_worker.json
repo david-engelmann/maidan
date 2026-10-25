@@ -166,6 +166,14 @@
             ],
             "type": "string"
           },
+          "lane": {
+            "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
+            "enum": [
+              "batch",
+              "flex"
+            ],
+            "type": "string"
+          },
           "lease_secs": {
             "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
             "maximum": 604800,
@@ -201,6 +209,14 @@
               "pi",
               "session",
               "human"
+            ],
+            "type": "string"
+          },
+          "lane": {
+            "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
+            "enum": [
+              "batch",
+              "flex"
             ],
             "type": "string"
           },
@@ -647,6 +663,40 @@
               "service_tier": {
                 "maxLength": 64,
                 "type": "string"
+              },
+              "standard_price": {
+                "additionalProperties": false,
+                "description": "the standard-tier price of a call in a cheaper lane (batch, or a batch or flex service_tier), so the usage rollup shows the lane saving as reported; refused on any other call, or if its charge for the reported tokens overflows or is below the charged amount",
+                "properties": {
+                  "cache_read_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "cache_write_1h_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "cache_write_5m_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "input_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "output_usd_micros_per_million": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "input_usd_micros_per_million",
+                  "output_usd_micros_per_million",
+                  "cache_read_usd_micros_per_million",
+                  "cache_write_5m_usd_micros_per_million",
+                  "cache_write_1h_usd_micros_per_million"
+                ],
+                "type": "object"
               }
             },
             "type": "object"
@@ -826,6 +876,14 @@
               "change",
               "plan",
               "review"
+            ],
+            "type": "string"
+          },
+          "lane": {
+            "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates",
+            "enum": [
+              "batch",
+              "flex"
             ],
             "type": "string"
           },

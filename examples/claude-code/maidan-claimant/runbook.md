@@ -227,10 +227,21 @@ not `pending`. Go ahead only on `accepted`. Never approve your own request.
    if the repository has it, else whatever its contributor docs name as the
    check before pushing (formatting, lints, the tests for what you touched).
    Fix what fails. Keep the command and its last lines of output for the
-   Testing section.
+   Testing section. On a machine other agents share, run every local build
+   and test under a time and memory cap: Maidan's `scripts/capped --time
+   2400 --mem-gb 32 -- <command>` works on macOS, where `timeout` is missing
+   and `ulimit -v` is ignored. A run it stops (exit 124 or 137) is a
+   failure to report, not to retry in a loop.
 
 If you cannot finish (the gate stays red, the task is unclear, the checkout
 is broken), go to step 5 with a non-`changed` status.
+
+Whatever you tried and saw fail, post it on the thread before you deliver or
+release, one line per attempt: `FAIL: <what you thought would work> |
+<the evidence it did not>`, for example `FAIL: the stale lock comes from the
+reaper | reaper disabled, still reproduces in test_x`. The next claimant
+reads the thread first and does not repeat it. A lease that lapses still
+returns the thread to the queue; these lines are what it keeps of your work.
 
 ## 5. Deliver
 

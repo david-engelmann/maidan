@@ -181,10 +181,11 @@ pub async fn signup(
             Some(entry.id)
         }
         None => {
-            // Without an invite only a domain-listed address can finish,
-            // and that is decided at the callback from the verified email.
-            // With no domain list either, there is nothing to start.
-            if oidc.settings.signup_email_domains.is_empty() {
+            // Without an invite only a domain-listed address can finish
+            // (or, with open sign-up, any verified one), and that is decided
+            // at the callback from the verified email. With neither, there
+            // is nothing to start.
+            if oidc.settings.signup_email_domains.is_empty() && !oidc.settings.signup_open {
                 return Err(ApiError::Forbidden("sign-up is by invite".into()));
             }
             None
@@ -217,6 +218,7 @@ pub async fn signup(
 enum SignupGate {
     Invite,
     Domain,
+    Open,
 }
 
 /// Finish a sign-up at the callback: gate on the verified email, then let
@@ -264,6 +266,7 @@ async fn complete_signup(
             }
             SignupGate::Invite
         }
+        None if oidc.settings.signup_open => SignupGate::Open,
         None => {
             let domain = email
                 .rsplit_once('@')
@@ -289,7 +292,7 @@ async fn complete_signup(
         .is_empty()
     {
         return Err(ApiError::Forbidden(
-            "this identity already has a workspace here; sign in instead".into(),
+            maidan_store::SIGNUP_IDENTITY_TAKEN.into(),
         ));
     }
 
@@ -326,6 +329,7 @@ async fn complete_signup(
                     "via": match gate {
                         SignupGate::Invite => "invite",
                         SignupGate::Domain => "domain",
+                        SignupGate::Open => "open",
                     },
                 }),
             }),
@@ -344,6 +348,11 @@ async fn complete_signup(
         )
         .await
         .map_err(|err| match err {
+            maidan_store::StoreError::Conflict(msg)
+                if msg == maidan_store::SIGNUP_IDENTITY_TAKEN =>
+            {
+                ApiError::Forbidden(msg)
+            }
             maidan_store::StoreError::Conflict(_) | maidan_store::StoreError::NotFound => {
                 ApiError::Forbidden("the invite is no longer valid".into())
             }
@@ -452,7 +461,8 @@ pub async fn callback(
 
         let sub = claims.subject().to_string();
         let email = claims.email().map(|m| m.to_string());
-        let email_verified = claims.email_verified().unwrap_or(false);
+        let email_verified =
+            email_is_verified(claims.email_verified(), oidc.settings.emails_verified);
         (oidc.settings.issuer.clone(), sub, email, email_verified)
     };
 
@@ -716,4 +726,28 @@ pub async fn logout(
     let mut response = Redirect::to(&location).into_response();
     response.headers_mut().extend(headers);
     Ok(response)
+}
+
+/// Whether a sign-in's email counts as verified: the provider's own
+/// `email_verified` claim when it sends one, and otherwise the operator's
+/// word that this provider only ever hands out proven addresses.
+fn email_is_verified(claim: Option<bool>, provider_vouches: bool) -> bool {
+    claim.unwrap_or(provider_vouches)
+}
+
+#[cfg(test)]
+mod email_verified_tests {
+    use super::email_is_verified;
+
+    #[test]
+    fn a_missing_claim_is_unverified_unless_the_operator_vouches_for_the_provider() {
+        assert!(!email_is_verified(None, false));
+        assert!(email_is_verified(None, true));
+    }
+
+    #[test]
+    fn an_explicit_claim_wins_over_the_operator_setting() {
+        assert!(!email_is_verified(Some(false), true));
+        assert!(email_is_verified(Some(true), false));
+    }
 }

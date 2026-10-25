@@ -8,6 +8,7 @@
     "/ws/subscribe"
   ],
   "not_streams": [
+    "/",
     "/.well-known/agent-card.json",
     "/a2a/v1/extendedAgentCard",
     "/a2a/v1/message{method}",
@@ -20,6 +21,7 @@
     "/integrations/deploys/events",
     "/integrations/github/events",
     "/integrations/slack/events",
+    "/landing/{name}",
     "/llms.txt",
     "/mcp",
     "/mcp/reviewer",

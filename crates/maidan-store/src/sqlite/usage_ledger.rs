@@ -36,6 +36,9 @@ pub async fn list_for_thread(
     rows.iter().map(row_to_entry).collect()
 }
 
+/// A call in a cheaper lane, the SQL twin of `UsageEvidence::in_lane`.
+const LANE: &str = "(batch <> 0 OR LOWER(TRIM(service_tier)) IN ('batch', 'flex'))";
+
 pub async fn rollup(pool: &SqlitePool, query: UsageRollupQuery) -> Result<UsageRollup, StoreError> {
     query.scope_name().map_err(StoreError::InvalidInput)?;
     let (filter, thread, member) = scope_filter(pool, query).await?;
@@ -51,9 +54,20 @@ pub async fn rollup(pool: &SqlitePool, query: UsageRollupQuery) -> Result<UsageR
             CAST(COALESCE(SUM(
                 ((input_tokens + cache_read_tokens + cache_write_5m_tokens + cache_write_1h_tokens) * input_price
                  + output_tokens * output_price + 999999) / 1000000
-            ), 0) AS INTEGER) AS uncached_usd_micros
+            ), 0) AS INTEGER) AS uncached_usd_micros,
+            CAST(COALESCE(SUM(CASE WHEN {lane} THEN 1 ELSE 0 END), 0) AS INTEGER) AS lane_reports,
+            CAST(COALESCE(SUM(CASE WHEN {lane} THEN usd_micros ELSE 0 END), 0) AS INTEGER) AS lane_usd_micros,
+            CAST(COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN 1 ELSE 0 END), 0) AS INTEGER) AS lane_priced_reports,
+            CAST(COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN usd_micros ELSE 0 END), 0) AS INTEGER) AS lane_priced_usd_micros,
+            CAST(COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN
+                (input_tokens * standard_input_price + output_tokens * standard_output_price
+                 + cache_read_tokens * standard_cache_read_price
+                 + cache_write_5m_tokens * standard_cache_write_5m_price
+                 + cache_write_1h_tokens * standard_cache_write_1h_price + 999999) / 1000000
+                ELSE 0 END), 0) AS INTEGER) AS lane_standard_usd_micros
          FROM maidan_usage_ledger
-         WHERE budget IS NOT NULL AND {filter}"
+         WHERE budget IS NOT NULL AND {filter}",
+        lane = LANE
     ))
     .bind(query.workspace_id.0)
     .bind(thread)
@@ -69,6 +83,11 @@ pub async fn rollup(pool: &SqlitePool, query: UsageRollupQuery) -> Result<UsageR
         cache_write_1h_tokens: row.get("cache_write_1h_tokens"),
         usd_micros: row.get("usd_micros"),
         uncached_usd_micros: row.get("uncached_usd_micros"),
+        lane_reports: row.get("lane_reports"),
+        lane_usd_micros: row.get("lane_usd_micros"),
+        lane_priced_reports: row.get("lane_priced_reports"),
+        lane_priced_usd_micros: row.get("lane_priced_usd_micros"),
+        lane_standard_usd_micros: row.get("lane_standard_usd_micros"),
     };
     let (completed_tasks, completed_usd) = completed(pool, query).await?;
     UsageRollup::from_sums(query, sums, completed_tasks, completed_usd)
@@ -207,6 +226,7 @@ pub(super) async fn reserve_in_tx(
     workspace_id: WorkspaceId,
 ) -> Result<bool, StoreError> {
     let packs = packs_json(&new.evidence)?;
+    let standard = new.evidence.standard_price;
     let result = sqlx::query(
         "INSERT OR IGNORE INTO maidan_usage_ledger (
             usage_report_id, workspace_id, thread_id, reporter_id,
@@ -215,8 +235,10 @@ pub(super) async fn reserve_in_tx(
             input_price, output_price, cache_read_price,
             cache_write_5m_price, cache_write_1h_price, usd_micros, turns,
             provider, service_tier, batch, harness, harness_version,
-            cache_key, cache_miss_reason, pack_sha256
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            cache_key, cache_miss_reason, pack_sha256,
+            standard_input_price, standard_output_price, standard_cache_read_price,
+            standard_cache_write_5m_price, standard_cache_write_1h_price
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(new.usage_report_id)
     .bind(workspace_id.0)
@@ -244,6 +266,11 @@ pub(super) async fn reserve_in_tx(
     .bind(new.evidence.cache_key.as_deref())
     .bind(new.evidence.cache_miss_reason.as_deref())
     .bind(packs)
+    .bind(standard.map(|p| p.input_usd_micros_per_million))
+    .bind(standard.map(|p| p.output_usd_micros_per_million))
+    .bind(standard.map(|p| p.cache_read_usd_micros_per_million))
+    .bind(standard.map(|p| p.cache_write_5m_usd_micros_per_million))
+    .bind(standard.map(|p| p.cache_write_1h_usd_micros_per_million))
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() == 1)
@@ -336,6 +363,7 @@ fn row_to_entry(row: &sqlx::sqlite::SqliteRow) -> Result<UsageLedgerEntry, Store
             cache_key: row.get("cache_key"),
             cache_miss_reason: row.get("cache_miss_reason"),
             pack_sha256: packs,
+            standard_price: standard_price(row),
         },
         budget: serde_json::from_str(&budget)?,
         stopped: row
@@ -347,5 +375,19 @@ fn row_to_entry(row: &sqlx::sqlite::SqliteRow) -> Result<UsageLedgerEntry, Store
             .ok_or_else(|| StoreError::Conflict("usage report event is still pending".into()))?,
         claim_failed_event_id: row.get("claim_failed_event_id"),
         accepted_at: row.get("accepted_at"),
+    })
+}
+
+/// The five standard rates, written together, or `None` for a row without one.
+fn standard_price(row: &sqlx::sqlite::SqliteRow) -> Option<PriceSnapshot> {
+    Some(PriceSnapshot {
+        input_usd_micros_per_million: row.get::<Option<i64>, _>("standard_input_price")?,
+        output_usd_micros_per_million: row.get::<Option<i64>, _>("standard_output_price")?,
+        cache_read_usd_micros_per_million: row
+            .get::<Option<i64>, _>("standard_cache_read_price")?,
+        cache_write_5m_usd_micros_per_million: row
+            .get::<Option<i64>, _>("standard_cache_write_5m_price")?,
+        cache_write_1h_usd_micros_per_million: row
+            .get::<Option<i64>, _>("standard_cache_write_1h_price")?,
     })
 }

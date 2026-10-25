@@ -589,6 +589,7 @@ async fn claim_next_candidate(
     now: DateTime<Utc>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<Option<sqlx::sqlite::SqliteRow>, StoreError> {
     let sql = claim_next::candidate_select(
         scope,
@@ -600,12 +601,13 @@ async fn claim_next_candidate(
             dm_channel: "?4",
             repo: "?5",
             engine: "?6",
+            lane: "?7",
             requeued_after_result: REQUEUED_AFTER_RESULT,
             hours_waiting:
                 "CAST((strftime('%s','now') - strftime('%s', cand.created_at)) / 3600 AS INTEGER)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
-            warm_hold_since: "?7",
-            warm_ttl_since: "?8",
+            warm_hold_since: "?8",
+            warm_ttl_since: "?9",
             later_than: "julianday({col}) > julianday({t})",
         },
     );
@@ -616,6 +618,7 @@ async fn claim_next_candidate(
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
+        .bind(lane.map(|lane| lane.as_str()))
         .bind((now - chrono::Duration::seconds(claim_next::WARM_HOLD_SECS)).to_rfc3339())
         .bind((now - chrono::Duration::seconds(claim_next::WARM_TTL_SECS)).to_rfc3339())
         .fetch_optional(&mut **tx)
@@ -662,6 +665,7 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
+    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
@@ -704,6 +708,7 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
+    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
@@ -871,6 +876,7 @@ pub async fn claim_next(
         now,
         None,
         engine,
+        None,
     )
     .await?
     else {
@@ -896,6 +902,8 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     reader: "?2",
     dm_channel: "?3",
     now: "?4",
+    repo: "?5",
+    engine: "?6",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
     requeued_after_result: REQUEUED_AFTER_RESULT,
 };
@@ -913,12 +921,16 @@ pub async fn queue_depth(
     pool: &SqlitePool,
     scope: QueueScope,
     readable_by: Option<MemberId>,
+    repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<QueueDepth, StoreError> {
     let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
         .bind(Utc::now().to_rfc3339())
+        .bind(repo)
+        .bind(engine.map(|engine| engine.as_str()))
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -943,6 +955,8 @@ pub async fn occupancy(
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
         .bind(Utc::now().to_rfc3339())
+        .bind(None::<&str>)
+        .bind(None::<&str>)
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
@@ -966,6 +980,7 @@ pub(crate) async fn claim_next_with_event(
     lease_secs: Option<i64>,
     repo: Option<&str>,
     engine: Option<maidan_types::TaskEngine>,
+    lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
     let now = Utc::now();
@@ -974,7 +989,7 @@ pub(crate) async fn claim_next_with_event(
     // lease can end the dead holder's claim (RETURNING would only give the
     // post-update row).
     let Some(candidate) =
-        claim_next_candidate(&mut tx, scope, member_id, now, repo, engine).await?
+        claim_next_candidate(&mut tx, scope, member_id, now, repo, engine, lane).await?
     else {
         tx.commit().await?;
         return Ok((None, Vec::new()));

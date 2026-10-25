@@ -626,6 +626,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           ],
           "type": "string"
         },
+        "lane": {
+          "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates",
+          "enum": [
+            "batch",
+            "flex"
+          ],
+          "type": "string"
+        },
         "linear_issue": {
           "description": "the Linear issue the task is for, such as ENG-123; where the workspace turned claim comments on, the claim and release are said on it",
           "type": "string"
@@ -1108,6 +1116,40 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "service_tier": {
           "maxLength": 64,
           "type": "string"
+        },
+        "standard_price": {
+          "additionalProperties": false,
+          "description": "the standard-tier price of a call in a cheaper lane (batch, or a batch or flex service_tier), so the usage rollup shows the lane saving as reported; refused on any other call, or if its charge for the reported tokens overflows or is below the charged amount",
+          "properties": {
+            "cache_read_usd_micros_per_million": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cache_write_1h_usd_micros_per_million": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cache_write_5m_usd_micros_per_million": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "input_usd_micros_per_million": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "output_usd_micros_per_million": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "input_usd_micros_per_million",
+            "output_usd_micros_per_million",
+            "cache_read_usd_micros_per_million",
+            "cache_write_5m_usd_micros_per_million",
+            "cache_write_1h_usd_micros_per_million"
+          ],
+          "type": "object"
         }
       },
       "type": "object"
@@ -2273,6 +2315,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       ],
       "type": "string"
     },
+    "lane": {
+      "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
+      "enum": [
+        "batch",
+        "flex"
+      ],
+      "type": "string"
+    },
     "lease_secs": {
       "description": "lease in seconds (1 s to 7 days); renew before it lapses, or the thread is reaped and returns to the queue with a ClaimExpired. Omitted, the server's default lease applies (MAIDAN_CLAIM_DEFAULT_LEASE_SECS, 600 s)",
       "maximum": 604800,
@@ -2308,6 +2358,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "pi",
         "session",
         "human"
+      ],
+      "type": "string"
+    },
+    "lane": {
+      "description": "the service lane this worker runs in; lane breaks ties, never filters: among threads of equal priority and wait, threads in this lane come first, then unlaned ones, then other lanes. Omitted, unlaned threads win the tie",
+      "enum": [
+        "batch",
+        "flex"
       ],
       "type": "string"
     },
@@ -2464,6 +2522,14 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
         "change",
         "plan",
         "review"
+      ],
+      "type": "string"
+    },
+    "lane": {
+      "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates",
+      "enum": [
+        "batch",
+        "flex"
       ],
       "type": "string"
     },
@@ -2929,7 +2995,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_queue_depth`
 
-**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.
+**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo and engine narrow the count as they narrow claim_next_workspace_thread.
 
 **Capability:** `workspace:read`
 
@@ -2938,6 +3004,19 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "engine": {
+      "description": "count only threads routed to this engine, as claim_next_workspace_thread's engine. Omitted, any work",
+      "enum": [
+        "pi",
+        "session",
+        "human"
+      ],
+      "type": "string"
+    },
+    "repo": {
+      "description": "count only threads whose footprint names this repository (owner/name or a GitHub clone URL), as claim_next_workspace_thread's repo. Omitted, any work",
+      "type": "string"
+    },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
       "format": "uuid",

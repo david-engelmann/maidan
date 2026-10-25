@@ -4,7 +4,8 @@
 
 use chrono::Utc;
 use maidan_types::{
-    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskSize, TaskTier, ThreadId, WorkspaceId,
+    NewAuditEvent, TaskAttributes, TaskEngine, TaskKind, TaskLane, TaskSize, TaskTier, ThreadId,
+    WorkspaceId,
 };
 use sqlx::{PgPool, Row};
 
@@ -19,8 +20,8 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $7)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $7)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -31,6 +32,7 @@ pub(crate) async fn insert_on(
     .bind(Utc::now())
     .bind(attributes.linear_issue.as_deref())
     .bind(attributes.tier.map(TaskTier::as_str))
+    .bind(attributes.lane.map(TaskLane::as_str))
     .execute(&mut *conn)
     .await?;
     Ok(())
@@ -100,6 +102,43 @@ pub async fn set_default_engine(
     Ok(())
 }
 
+/// The workspace's review-children setting.
+pub async fn review_children(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+) -> Result<maidan_types::ReviewChildren, StoreError> {
+    let row: Option<String> =
+        sqlx::query_scalar("SELECT review_children FROM maidan_workspaces WHERE id = $1")
+            .bind(workspace_id.0)
+            .fetch_optional(pool)
+            .await?;
+    let stored = row.ok_or(StoreError::NotFound)?;
+    // The column's CHECK admits only the two values.
+    Ok(maidan_types::ReviewChildren::parse(&stored).unwrap_or_default())
+}
+
+/// Set the workspace's review-children setting, with its audit row in the
+/// same transaction. Changes already in review keep their children.
+pub async fn set_review_children(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    setting: maidan_types::ReviewChildren,
+    audit: NewAuditEvent,
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await?;
+    let updated = sqlx::query("UPDATE maidan_workspaces SET review_children = $2 WHERE id = $1")
+        .bind(workspace_id.0)
+        .bind(setting.as_str())
+        .execute(&mut *tx)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(StoreError::NotFound);
+    }
+    super::audit::append_scoped(&mut tx, workspace_id, audit).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// Whether `thread_id` is a review task, read in the caller's transaction.
 pub(crate) async fn is_review_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -117,7 +156,7 @@ pub(crate) async fn is_review_in_tx(
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, review_family FROM maidan_thread_attributes WHERE thread_id = $1",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family FROM maidan_thread_attributes WHERE thread_id = $1",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -140,6 +179,9 @@ pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, S
         tier: row
             .try_get::<Option<String>, _>("tier")?
             .and_then(|tier| TaskTier::parse(&tier)),
+        lane: row
+            .try_get::<Option<String>, _>("lane")?
+            .and_then(|lane| TaskLane::parse(&lane)),
         review_family: row.try_get("review_family")?,
     })
 }
@@ -159,8 +201,8 @@ pub async fn set(
         return Err(StoreError::NotFound);
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $7)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $7)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
@@ -169,6 +211,7 @@ pub async fn set(
              acceptance = excluded.acceptance,
              linear_issue = excluded.linear_issue,
              tier = excluded.tier,
+             lane = excluded.lane,
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -180,6 +223,7 @@ pub async fn set(
     .bind(Utc::now())
     .bind(attributes.linear_issue.as_deref())
     .bind(attributes.tier.map(TaskTier::as_str))
+    .bind(attributes.lane.map(TaskLane::as_str))
     .execute(pool)
     .await?;
     // The server-set review routing is left as stored and read back.

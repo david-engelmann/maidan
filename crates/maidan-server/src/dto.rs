@@ -207,6 +207,12 @@ pub struct ClaimNextThread {
     /// to another engine, or not routed at all, is then never claimed.
     #[serde(default)]
     pub engine: Option<TaskEngine>,
+    /// The service lane this worker runs in (`batch` or `flex`). Lane breaks
+    /// ties, never filters: among threads of equal priority and wait, threads
+    /// in this lane come first, then unlaned ones, then other lanes. Omitted,
+    /// unlaned threads win the tie.
+    #[serde(default)]
+    pub lane: Option<maidan_types::TaskLane>,
 }
 
 /// Extend a claimed thread's lease, for the current assignee holding the
@@ -432,6 +438,20 @@ pub struct SetThreadLineage {
 pub struct ActiveClaimsQuery {
     /// `owner/name` (or a GitHub clone URL); omitted lists every repository.
     pub repo: Option<String>,
+}
+
+/// Query params for a workspace's queue depth: the filters
+/// `POST /workspaces/:wid/threads/claim-next` takes, so the depth sizes a pool
+/// of workers that claim with them.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct WorkspaceQueueDepthQuery {
+    /// Count only threads whose footprint names this repository (`owner/name`
+    /// or a GitHub clone URL). Omitted, any work.
+    pub repo: Option<String>,
+    /// Count only threads routed to this engine (`pi`, `session` or
+    /// `human`). Omitted, any work.
+    pub engine: Option<TaskEngine>,
 }
 
 /// Query params for a thread's transition history.
@@ -1833,6 +1853,10 @@ pub struct JoinWaitlistRequest {
     /// The visitor agreed to be contacted about a place. A join without
     /// consent is refused: the consent timestamp is the point of the row.
     pub consent: bool,
+    /// Left empty by people. The page hides this field; a form-filling bot
+    /// fills it, and its join is answered like any other and not stored.
+    #[serde(default)]
+    pub website: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

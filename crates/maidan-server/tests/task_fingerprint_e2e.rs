@@ -242,3 +242,64 @@ async fn duplicate_of_is_hidden_unless_the_caller_can_see_the_original() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["duplicate_of"], json!(original));
 }
+
+async fn claim_next_text(base: &str, room: &Room) -> String {
+    reqwest::Client::new()
+        .post(format!(
+            "{base}/channels/{}/threads/claim-next",
+            room.channel.0
+        ))
+        .bearer_auth(&room.token)
+        .json(&json!({ "lease_secs": 600 }))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap()
+}
+
+/// A live duplicate is skipped by claim-next until its link is cleared
+/// (C8b); clearing needs `thread:transition` and a fingerprint.
+#[tokio::test]
+async fn claim_next_skips_a_live_duplicate_until_its_link_is_cleared() {
+    let (base, store) = spawn().await;
+    let home = room(store.as_ref(), "dupe-queue").await;
+    let brief = json!({ "title": "Fix the sweep" });
+    let (_, original) = create_thread(&base, &home, brief.clone()).await;
+    let (_, duplicate) = create_thread(&base, &home, brief).await;
+    let original = original["id"].as_str().unwrap().to_string();
+    let duplicate = duplicate["id"].as_str().unwrap().to_string();
+
+    let first = claim_next_text(&base, &home).await;
+    assert!(first.contains(&original), "{first}");
+    let second = claim_next_text(&base, &home).await;
+    assert!(!second.contains(&duplicate), "{second}");
+
+    let http = reqwest::Client::new();
+    let url = format!("{base}/threads/{duplicate}/fingerprint/duplicate-of");
+    let status = http
+        .delete(&url)
+        .bearer_auth(&home.token)
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let third = claim_next_text(&base, &home).await;
+    assert!(third.contains(&duplicate), "{third}");
+
+    // Another tenant cannot clear it.
+    let away = room(store.as_ref(), "dupe-away").await;
+    let status = http
+        .delete(&url)
+        .bearer_auth(&away.token)
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert!(
+        status == StatusCode::NOT_FOUND || status == StatusCode::FORBIDDEN,
+        "{status}"
+    );
+}

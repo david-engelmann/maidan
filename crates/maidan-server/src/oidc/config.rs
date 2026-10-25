@@ -62,6 +62,17 @@ pub struct OidcSettings {
     /// Email domains (lower-cased) whose verified addresses may sign up
     /// without an invite. Empty unless `MAIDAN_SIGNUP_EMAIL_DOMAINS` is set.
     pub signup_email_domains: Vec<String>,
+    /// When true (`MAIDAN_SIGNUP_OPEN`), any verified email may sign up
+    /// without an invite, still behind the per-address and per-domain
+    /// sign-up limits. Needs `MAIDAN_SIGNUP`; boot refuses it beside a
+    /// domain list, which would otherwise be silently ignored.
+    pub signup_open: bool,
+    /// When true, an `email` claim the provider sends without
+    /// `email_verified` counts as verified. For a provider whose every login
+    /// proves the address, such as Cloudflare Access with its emailed
+    /// one-time code; an explicit `email_verified: false` still counts as
+    /// unverified.
+    pub emails_verified: bool,
 }
 
 impl OidcSettings {
@@ -128,7 +139,7 @@ impl OidcSettings {
                 "cannot be set together with MAIDAN_OIDC_AUTO_PROVISION".into(),
             ));
         }
-        let signup_email_domains = std::env::var("MAIDAN_SIGNUP_EMAIL_DOMAINS")
+        let signup_email_domains: Vec<String> = std::env::var("MAIDAN_SIGNUP_EMAIL_DOMAINS")
             .map(|raw| {
                 raw.split(',')
                     .map(|d| d.trim().to_lowercase())
@@ -136,6 +147,18 @@ impl OidcSettings {
                     .collect()
             })
             .unwrap_or_default();
+        let signup_open = env_flag("MAIDAN_SIGNUP_OPEN");
+        check_open_signup(signup, signup_open, !signup_email_domains.is_empty())?;
+
+        // An operator's word stands in for the provider's: say so at boot, so
+        // a login method added at the provider later is checked against it.
+        let emails_verified = env_flag("MAIDAN_OIDC_EMAILS_VERIFIED");
+        if emails_verified {
+            tracing::warn!(
+                issuer = %issuer,
+                "MAIDAN_OIDC_EMAILS_VERIFIED: a missing email_verified claim counts as verified; every login method at this provider must prove the address"
+            );
+        }
 
         Ok(Some(Self {
             enabled: true,
@@ -152,6 +175,8 @@ impl OidcSettings {
             auto_mint,
             signup,
             signup_email_domains,
+            signup_open,
+            emails_verified,
         }))
     }
 }
@@ -217,5 +242,61 @@ impl OidcRuntime {
             end_session_url,
             logout_client_id: Some(logout_client_id),
         })
+    }
+}
+
+/// Open sign-up widens the invited one, so it means nothing without
+/// `MAIDAN_SIGNUP`, and a domain list beside it would be ignored: refuse
+/// both at boot rather than run a door the operator did not describe.
+fn check_open_signup(signup: bool, open: bool, has_domains: bool) -> Result<(), ConfigError> {
+    if !open {
+        return Ok(());
+    }
+    if !signup {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_SIGNUP_OPEN",
+            "needs MAIDAN_SIGNUP=1".into(),
+        ));
+    }
+    if has_domains {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_SIGNUP_OPEN",
+            "cannot be set together with MAIDAN_SIGNUP_EMAIL_DOMAINS".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod open_signup_tests {
+    use super::*;
+
+    fn refused_var(r: Result<(), ConfigError>) -> Option<&'static str> {
+        match r {
+            Err(ConfigError::Invalid(var, _)) => Some(var),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn open_signup_is_refused_without_signup_itself() {
+        assert_eq!(
+            refused_var(check_open_signup(false, true, false)),
+            Some("MAIDAN_SIGNUP_OPEN")
+        );
+    }
+
+    #[test]
+    fn open_signup_is_refused_beside_a_domain_list() {
+        assert_eq!(
+            refused_var(check_open_signup(true, true, true)),
+            Some("MAIDAN_SIGNUP_OPEN")
+        );
+    }
+
+    #[test]
+    fn open_signup_with_signup_and_no_domain_list_boots() {
+        assert!(check_open_signup(true, true, false).is_ok());
+        assert!(check_open_signup(false, false, true).is_ok());
     }
 }

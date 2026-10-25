@@ -1530,6 +1530,17 @@
               }
             ]
           },
+          "lane": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskLane",
+                "description": "The service lane this worker runs in (`batch` or `flex`). Lane breaks\nties, never filters: among threads of equal priority and wait, threads\nin this lane come first, then unlaned ones, then other lanes. Omitted,\nunlaned threads win the tie."
+              }
+            ]
+          },
           "lease_secs": {
             "description": "Lease in seconds (1 s to 7 days). The holder renews before it lapses;\na lapsed claim is reaped and the thread returns to the queue with a\n`ClaimExpired`. Omitted, the server's default lease applies\n(`MAIDAN_CLAIM_DEFAULT_LEASE_SECS`, 600 s).",
             "format": "int64",
@@ -3951,6 +3962,13 @@
           "use_case": {
             "description": "What the visitor would use Maidan for, in their own words.",
             "type": "string"
+          },
+          "website": {
+            "description": "Left empty by people. The page hides this field; a form-filling bot\nfills it, and its join is answered like any other and not stored.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -7616,6 +7634,14 @@
         ],
         "type": "object"
       },
+      "ReviewChildren": {
+        "description": "Whether a change entering review spawns its second-family review child.",
+        "enum": [
+          "spawn",
+          "off"
+        ],
+        "type": "string"
+      },
       "ReviewDecision": {
         "description": "A reviewer's decision on a thread.",
         "enum": [
@@ -9412,6 +9438,17 @@
           "kind": {
             "$ref": "#/components/schemas/TaskKind"
           },
+          "lane": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskLane",
+                "description": "The service lane the task may run in: batch or flex for work whose\ndeadline has slack, unset for realtime."
+              }
+            ]
+          },
           "linear_issue": {
             "description": "The Linear issue the task is for (`ENG-1234`). Where the workspace\nhas turned claim comments on, the task's claim and release are said\non it.",
             "type": [
@@ -9499,6 +9536,14 @@
           "change",
           "plan",
           "review"
+        ],
+        "type": "string"
+      },
+      "TaskLane": {
+        "description": "The service lane a thread's model calls may run in (Context Economics\nC7). A thread whose deadline has slack can be marked for a provider's\nbatch API (about half price, results within hours) or its flex tier\n(discounted, slower, may be refused under load). Unset is the realtime\nlane, the default.",
+        "enum": [
+          "batch",
+          "flex"
         ],
         "type": "string"
       },
@@ -11163,6 +11208,17 @@
               "string",
               "null"
             ]
+          },
+          "standard_price": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PriceSnapshot",
+                "description": "What the same model charges per million tokens on its standard tier,\nfor a call that ran in a cheaper lane (batch, or a `batch` or `flex`\nservice tier). Reporter evidence like the charged price: Maidan keeps\nno discount table. The ledger shows the lane saving from it, as\nreported. Its charge for the reported tokens must not overflow or fall\nbelow the charged `usd_micros`."
+              }
+            ]
           }
         },
         "type": "object"
@@ -11281,6 +11337,31 @@
             "format": "int64",
             "type": "integer"
           },
+          "lane_reports": {
+            "description": "Reports from calls in a cheaper lane (batch, or a batch or flex tier).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_saved_usd_micros": {
+            "description": "The lane saving, as reported: `lane_standard_usd_micros` less what\nthose same reports were charged. Never negative, since a standard\nprice below the charge is refused at ingest.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_standard_usd_micros": {
+            "description": "What the lane reports that carried a standard price would have cost\nat it, as reported.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_unpriced_reports": {
+            "description": "Lane reports with no standard price, whose saving is unknown.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_usd_micros": {
+            "description": "What those lane reports were charged.",
+            "format": "int64",
+            "type": "integer"
+          },
           "member_id": {
             "oneOf": [
               {
@@ -11347,6 +11428,11 @@
           "usd_micros",
           "uncached_usd_micros",
           "saved_usd_micros",
+          "lane_reports",
+          "lane_usd_micros",
+          "lane_standard_usd_micros",
+          "lane_saved_usd_micros",
+          "lane_unpriced_reports",
           "completed_tasks",
           "completed_usd_micros"
         ],
@@ -12120,6 +12206,18 @@
           "content_keys_destroyed",
           "artifacts_removed",
           "occurred_at"
+        ],
+        "type": "object"
+      },
+      "WorkspaceReviewChildren": {
+        "description": "A workspace's review-children setting, read and set by\n`/workspaces/{id}/review-children`.",
+        "properties": {
+          "review_children": {
+            "$ref": "#/components/schemas/ReviewChildren"
+          }
+        },
+        "required": [
+          "review_children"
         ],
         "type": "object"
       },
@@ -24863,6 +24961,76 @@
         ]
       }
     },
+    "/threads/{id}/fingerprint/duplicate-of": {
+      "delete": {
+        "description": "A task linked as a duplicate of an open or in-review task is withheld\nfrom claims; clearing the link makes it claimable. `404` when the thread\nhas no fingerprint.",
+        "operationId": "clear_task_duplicate",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Link cleared"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Clear a thread's duplicate link",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/threads/{id}/footprint": {
       "get": {
         "operationId": "get_thread_footprint",
@@ -30987,6 +31155,16 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A browser posted the join from another site"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -33497,6 +33675,155 @@
           }
         ],
         "summary": "Set a workspace's retention",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/review-children": {
+      "get": {
+        "operationId": "get_workspace_review_children",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceReviewChildren"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Whether a change entering review spawns its second-family review child",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "put": {
+        "operationId": "set_workspace_review_children",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceReviewChildren"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceReviewChildren"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Set whether a change entering review spawns its second-family review child (spawn or off)",
         "tags": [
           "workspaces"
         ]
@@ -39646,6 +39973,24 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Count only threads whose footprint names this repository (`owner/name`\nor a GitHub clone URL). Omitted, any work.",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Count only threads routed to this engine (`pi`, `session` or\n`human`). Omitted, any work.",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskEngine"
+            }
           }
         ],
         "responses": {
@@ -39657,7 +40002,7 @@
                 }
               }
             },
-            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants"
+            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo` and `engine` narrow it as they narrow claim-next"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"

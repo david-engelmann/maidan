@@ -192,6 +192,67 @@ where
         .await
         .expect("set");
     assert_eq!(restated.review_family.as_deref(), Some("openai"));
+
+    // With review children off, a change entering review spawns none, and
+    // the other tenant keeps the default.
+    assert_eq!(
+        store.workspace_review_children(ws).await.expect("read"),
+        ReviewChildren::Spawn
+    );
+    store
+        .set_workspace_review_children(
+            ws,
+            ReviewChildren::Off,
+            NewAuditEvent {
+                scope: AuditScope::Workspace(ws),
+                actor_id: None,
+                action: "workspace.review_children.set".into(),
+                target_kind: Some("workspace".into()),
+                target_id: Some(ws.0),
+                metadata: json!({ "review_children": "off" }),
+            },
+        )
+        .await
+        .expect("set off");
+    assert_eq!(
+        store.workspace_review_children(ws).await.expect("read"),
+        ReviewChildren::Off
+    );
+    assert_eq!(
+        store
+            .workspace_review_children(elsewhere)
+            .await
+            .expect("read"),
+        ReviewChildren::Spawn,
+        "one workspace's setting never reaches another"
+    );
+    let quiet = store.create_thread(new("quiet")).await.expect("thread").id;
+    store.claim_thread(quiet, author).await.expect("claim");
+    record(Usage {
+        ws: ws.0,
+        thread: quiet.0,
+        reporter: author.0,
+        model: "claude-sonnet-4",
+    })
+    .await;
+    store
+        .set_thread_result_claiming(quiet, author, &json!({"status": "done"}))
+        .await
+        .expect("result");
+    store
+        .transition_thread(quiet, author, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+    for seat in [other, roamer] {
+        assert!(
+            store
+                .claim_next_thread(channel, seat, None, None)
+                .await
+                .expect("claim next")
+                .is_none(),
+            "with review children off no review task is spawned"
+        );
+    }
 }
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger

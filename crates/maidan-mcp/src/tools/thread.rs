@@ -1028,6 +1028,11 @@ struct ClaimNextThreadArgs {
     /// engine, or not routed at all, is never handed over.
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
+    /// The service lane the claimer runs in: among threads of equal priority
+    /// and wait, threads in it come first, then unlaned ones, then other
+    /// lanes. Omitted, unlaned threads win the tie.
+    #[serde(default)]
+    lane: Option<maidan_types::TaskLane>,
 }
 
 /// The repository a claimer serves, normalized as footprints store it.
@@ -1069,6 +1074,7 @@ pub(super) async fn claim_next_thread(
             Some(lease_secs),
             repo.as_deref(),
             a.engine,
+            a.lane,
         )
         .await?;
     publish_claim(server, claimed).await
@@ -1084,6 +1090,8 @@ struct ClaimNextWorkspaceThreadArgs {
     repo: Option<String>,
     #[serde(default)]
     engine: Option<maidan_types::TaskEngine>,
+    #[serde(default)]
+    lane: Option<maidan_types::TaskLane>,
     /// With nothing claimable now, wait up to this long for work to become
     /// claimable and claim it, instead of answering null at once.
     #[serde(default)]
@@ -1143,6 +1151,7 @@ pub(super) async fn claim_next_workspace_thread(
                 Some(lease_secs),
                 repo.as_deref(),
                 a.engine,
+                a.lane,
             )
             .await?;
         let Some(stream) = signals.as_mut().filter(|_| claimed.0.is_none()) else {
@@ -1338,6 +1347,8 @@ struct SetThreadAttributesArgs {
     linear_issue: Option<String>,
     #[serde(default)]
     tier: Option<maidan_types::TaskTier>,
+    #[serde(default)]
+    lane: Option<maidan_types::TaskLane>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1360,6 +1371,7 @@ pub(super) async fn set_thread_attributes(
                 acceptance: a.acceptance,
                 linear_issue: a.linear_issue,
                 tier: a.tier,
+                lane: a.lane,
                 review_family: None,
             }
             .validated()
@@ -1660,17 +1672,31 @@ fn queue_workspace(auth: &AuthContext, args: &Value) -> Result<WorkspaceId, McpE
     Ok(workspace_id)
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceQueueDepthArgs {
+    workspace_id: uuid::Uuid,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    engine: Option<maidan_types::TaskEngine>,
+}
+
 /// `get_queue_depth` across every channel of the caller's workspace: the sum of
 /// the depths of the channels it may read, counting a DM only for its
-/// participants. The MCP twin of `GET /workspaces/:wid/queue-depth`.
+/// participants, narrowed by `claim_next_workspace_thread`'s `repo` and
+/// `engine`. The MCP twin of `GET /workspaces/:wid/queue-depth`.
 pub(super) async fn get_workspace_queue_depth(
     store: &Arc<dyn Store>,
     auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
-    let workspace_id = queue_workspace(auth, args)?;
+    let a: WorkspaceQueueDepthArgs = crate::tools::parse_args(args)?;
+    let repo = claim_repo(a.repo.as_deref())?;
+    let workspace_id = WorkspaceId(a.workspace_id);
+    auth.ensure_workspace(workspace_id)?;
     let depth = store
-        .workspace_queue_depth(workspace_id, queue_reader(auth))
+        .workspace_queue_depth(workspace_id, queue_reader(auth), repo.as_deref(), a.engine)
         .await?;
     Ok(content_json(&depth))
 }
