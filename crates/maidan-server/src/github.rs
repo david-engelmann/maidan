@@ -569,6 +569,10 @@ pub struct GithubPullSnapshot {
     /// The checks on the head commit; `None` when this read did not carry
     /// them, empty when nothing has reported yet.
     pub checks: Option<Vec<GithubCheck>>,
+    /// GitHub refused this token the head's checks (`FORBIDDEN` on the
+    /// rollup). The read still answers, with no checks, so without this the
+    /// head would look like one nothing has reported on, forever.
+    pub checks_denied: bool,
     /// What else decides whether it can merge; `None` when this read did not
     /// carry it.
     pub gate: Option<GithubGate>,
@@ -725,6 +729,7 @@ pub trait GithubGit: Send + Sync {
         Ok(GithubPullSnapshot {
             brief: self.pull_brief(repo, pull_number).await?,
             checks: None,
+            checks_denied: false,
             gate: None,
             ahead: None,
         })
@@ -1219,6 +1224,59 @@ impl GithubApiClient {
         })
     }
 
+    /// The checks on `head_sha` read from the Actions and commit-status
+    /// APIs (Actions and Commit statuses read), for a token GitHub will not
+    /// show check runs. Each workflow run is one check named for its
+    /// workflow, except that a failed run is opened to its jobs, so a
+    /// failure names the job and its log tail can be fetched. Check runs
+    /// from apps other than Actions are not seen this way.
+    async fn actions_checks(
+        &self,
+        repo: &str,
+        head_sha: &str,
+    ) -> Result<Vec<GithubCheck>, GithubError> {
+        if !maidan_types::is_git_sha(head_sha) {
+            return Err(GithubError::Refused(format!(
+                "`{head_sha}` is not a commit"
+            )));
+        }
+        let runs = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/actions/runs?head_sha={head_sha}&per_page=100"),
+                )
+                .await?,
+            )
+            .await?;
+        let mut jobs = std::collections::HashMap::new();
+        for run_id in failed_run_ids(&runs) {
+            let answer = self
+                .send_json(
+                    self.request(
+                        reqwest::Method::GET,
+                        repo,
+                        &format!("/actions/runs/{run_id}/jobs?per_page=100"),
+                    )
+                    .await?,
+                )
+                .await?;
+            jobs.insert(run_id, answer);
+        }
+        let statuses = self
+            .send_json(
+                self.request(
+                    reqwest::Method::GET,
+                    repo,
+                    &format!("/commits/{head_sha}/status"),
+                )
+                .await?,
+            )
+            .await?;
+        Ok(actions_checks_from(&runs, &jobs, &statuses))
+    }
+
     async fn send_json(
         &self,
         request: reqwest::RequestBuilder,
@@ -1640,7 +1698,25 @@ impl GithubGit for GithubApiClient {
             "query": PULL_SNAPSHOT_QUERY,
             "variables": { "owner": owner, "name": name, "number": pull_number },
         }));
-        snapshot_from(&self.send_json(request).await?)
+        let mut snapshot = snapshot_from(&self.send_json(request).await?)?;
+        if snapshot.checks_denied {
+            // A fine-grained token cannot be granted check runs at all, but
+            // it can read Actions and commit statuses: read the head's CI
+            // from those. Still refused, the snapshot stays denied and the
+            // sweep says what the token lacks.
+            let head = snapshot.brief.head_sha.clone();
+            if let Ok(checks) = self.actions_checks(repo, &head).await {
+                snapshot.checks = Some(checks);
+                snapshot.checks_denied = false;
+                // Required contexts name jobs, and a passing run is read
+                // whole under its workflow's name, so a required check
+                // would read as never reported.
+                if let Some(gate) = snapshot.gate.as_mut() {
+                    gate.required_checks = None;
+                }
+            }
+        }
+        Ok(snapshot)
     }
 
     async fn commit_on_branch(
@@ -2356,6 +2432,7 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
     Ok(GithubPullSnapshot {
         brief,
         checks,
+        checks_denied: rollup_denied(value),
         gate: Some(gate),
         // A pull request lists the commits its head has that its base lacks.
         ahead: pull
@@ -2363,6 +2440,111 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
             .and_then(serde_json::Value::as_i64)
             .map(|commits| commits > 0),
     })
+}
+
+/// A REST run or job's state, in the GraphQL spelling [`check_from`] reads.
+fn upper(node: &serde_json::Value, key: &str) -> serde_json::Value {
+    node.get(key)
+        .and_then(serde_json::Value::as_str)
+        .map_or(serde_json::Value::Null, |text| {
+            serde_json::Value::String(text.to_ascii_uppercase())
+        })
+}
+
+/// The ids of the workflow runs in an `actions/runs` answer that failed.
+fn failed_run_ids(runs: &serde_json::Value) -> Vec<i64> {
+    list(
+        runs.get("workflow_runs")
+            .unwrap_or(&serde_json::Value::Null),
+    )
+    .filter(|run| {
+        check_from(&run_node(run)).is_some_and(|check| check.state == GithubCheckState::Failed)
+    })
+    .filter_map(|run| run.get("id").and_then(serde_json::Value::as_i64))
+    .collect()
+}
+
+/// A workflow run as a rollup `CheckRun` node, named for its workflow.
+fn run_node(run: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "__typename": "CheckRun",
+        "name": run.get("name").cloned().unwrap_or(serde_json::Value::Null),
+        "status": upper(run, "status"),
+        "conclusion": upper(run, "conclusion"),
+    })
+}
+
+/// The checks the Actions and commit-status answers describe: one per run,
+/// or one per job for a failed run whose jobs were read, then one per
+/// commit status. Read through [`check_from`], so a state means here what it
+/// means in the rollup.
+fn actions_checks_from(
+    runs: &serde_json::Value,
+    jobs: &std::collections::HashMap<i64, serde_json::Value>,
+    statuses: &serde_json::Value,
+) -> Vec<GithubCheck> {
+    let mut checks = Vec::new();
+    for run in list(
+        runs.get("workflow_runs")
+            .unwrap_or(&serde_json::Value::Null),
+    ) {
+        let run_jobs: Vec<GithubCheck> = run
+            .get("id")
+            .and_then(serde_json::Value::as_i64)
+            .and_then(|id| jobs.get(&id))
+            .map(|answer| {
+                list(answer.get("jobs").unwrap_or(&serde_json::Value::Null))
+                    .filter_map(|job| {
+                        check_from(&serde_json::json!({
+                            "__typename": "CheckRun",
+                            "name": job.get("name").cloned().unwrap_or(serde_json::Value::Null),
+                            "status": upper(job, "status"),
+                            "conclusion": upper(job, "conclusion"),
+                            "databaseId": job.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                            "checkSuite": {"app": {"slug": "github-actions"}},
+                        }))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if run_jobs.is_empty() {
+            checks.extend(check_from(&run_node(run)));
+        } else {
+            checks.extend(run_jobs);
+        }
+    }
+    checks.extend(
+        list(statuses.get("statuses").unwrap_or(&serde_json::Value::Null)).filter_map(|status| {
+            check_from(&serde_json::json!({
+                "__typename": "StatusContext",
+                "context": status.get("context").cloned().unwrap_or(serde_json::Value::Null),
+                "state": upper(status, "state"),
+            }))
+        }),
+    );
+    checks
+}
+
+/// Whether GitHub refused the head's `statusCheckRollup`. A fine-grained
+/// token without Checks and Commit statuses read reads the pull request
+/// fine, and GitHub answers the rollup `null` with a `FORBIDDEN` error beside
+/// the data rather than failing the read.
+fn rollup_denied(value: &serde_json::Value) -> bool {
+    value
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|error| {
+            error.get("type").and_then(serde_json::Value::as_str) == Some("FORBIDDEN")
+                && error
+                    .get("path")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|path| {
+                        path.iter()
+                            .any(|part| part.as_str() == Some("statusCheckRollup"))
+                    })
+        })
 }
 
 /// One `statusCheckRollup` context as a check, or `None` for a node this
@@ -2669,6 +2851,79 @@ mod tests {
         let snapshot =
             snapshot_from(&snapshot_answer("abc", "def", serde_json::json!([]))).unwrap();
         assert_eq!(snapshot.checks, None);
+    }
+
+    #[test]
+    fn a_rollup_github_refuses_the_token_reads_as_denied_not_as_no_checks() {
+        let mut denied = snapshot_answer("abc", "abc", serde_json::json!([]));
+        denied["data"]["repository"]["pullRequest"]["commits"]["nodes"][0]["commit"]
+            ["statusCheckRollup"] = serde_json::Value::Null;
+        denied["errors"] = serde_json::json!([{
+            "type": "FORBIDDEN",
+            "path": ["repository", "pullRequest", "commits", "nodes", 0, "commit", "statusCheckRollup"],
+            "message": "Resource not accessible by personal access token",
+        }]);
+        let snapshot = snapshot_from(&denied).unwrap();
+        assert!(snapshot.checks_denied);
+        assert_eq!(snapshot.checks, Some(vec![]));
+
+        let readable =
+            snapshot_from(&snapshot_answer("abc", "abc", serde_json::json!([]))).unwrap();
+        assert!(!readable.checks_denied);
+
+        // A refusal elsewhere in the answer is not the checks'.
+        let mut other = snapshot_answer("abc", "abc", serde_json::json!([]));
+        other["errors"] = serde_json::json!([{
+            "type": "FORBIDDEN",
+            "path": ["repository", "pullRequest", "baseRef", "branchProtectionRule"],
+        }]);
+        assert!(!snapshot_from(&other).unwrap().checks_denied);
+    }
+
+    #[test]
+    fn the_actions_fallback_reads_runs_opens_failed_ones_to_jobs_and_adds_statuses() {
+        let runs = serde_json::json!({"workflow_runs": [
+            {"id": 1, "name": "CI", "status": "completed", "conclusion": "failure"},
+            {"id": 2, "name": "Docs", "status": "completed", "conclusion": "success"},
+            {"id": 3, "name": "E2E", "status": "in_progress", "conclusion": null},
+            {"id": 4, "name": "Lint", "status": "completed", "conclusion": "cancelled"},
+        ]});
+        assert_eq!(failed_run_ids(&runs), vec![1, 4]);
+        // Run 4's jobs went unread: it stays one failed check, by workflow.
+        let jobs = std::collections::HashMap::from([(
+            1,
+            serde_json::json!({"jobs": [
+                {"id": 11, "name": "unit tests", "status": "completed", "conclusion": "failure"},
+                {"id": 12, "name": "clippy", "status": "completed", "conclusion": "success"},
+            ]}),
+        )]);
+        let statuses = serde_json::json!({"statuses": [
+            {"context": "ci/legacy", "state": "error"},
+            {"context": "deploy/preview", "state": "pending"},
+        ]});
+        let read: Vec<(String, GithubCheckState, Option<i64>)> =
+            actions_checks_from(&runs, &jobs, &statuses)
+                .into_iter()
+                .map(|c| (c.name, c.state, c.job_id))
+                .collect();
+        assert_eq!(
+            read,
+            vec![
+                ("unit tests".into(), GithubCheckState::Failed, Some(11)),
+                ("clippy".into(), GithubCheckState::Passed, Some(12)),
+                ("Docs".into(), GithubCheckState::Passed, None),
+                ("E2E".into(), GithubCheckState::Pending, None),
+                ("Lint".into(), GithubCheckState::Failed, None),
+                ("ci/legacy".into(), GithubCheckState::Failed, None),
+                ("deploy/preview".into(), GithubCheckState::Pending, None),
+            ]
+        );
+        let summary = crate::ci_watch::summarize(&actions_checks_from(&runs, &jobs, &statuses));
+        assert_eq!(
+            summary.first_failing_job,
+            Some(11),
+            "the failed job's log is the one fetched"
+        );
     }
 
     #[test]
