@@ -43,6 +43,12 @@ pub(crate) struct QueueSql<'a> {
     pub dm_channel: &'a str,
     /// The current time, compared with a lease deadline.
     pub now: &'a str,
+    /// Placeholder bound to a normalized repository, or NULL for any work:
+    /// [`claim_next::served_by`]'s `repo`.
+    pub repo: &'a str,
+    /// Placeholder bound to an engine, or NULL for any work:
+    /// [`claim_next::served_by`]'s `engine`.
+    pub engine: &'a str,
     /// [`ThreadSql::lapsed_worked_secs`].
     pub lapsed_worked_secs: &'a str,
     /// [`ThreadSql::requeued_after_result`].
@@ -154,7 +160,8 @@ fn occupancy_columns(t: &ThreadSql<'_>) -> String {
     )
 }
 
-/// `FROM … WHERE` of the open, live threads in `scope` the reader may read,
+/// `FROM … WHERE` of the open, live threads in `scope` the reader may read and
+/// the repo and engine filters admit,
 /// aliased `cand` as [`claim_next::readable_by`] expects, with their channel
 /// `ch`.
 fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
@@ -162,6 +169,8 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
         scope: scope_id,
         reader,
         dm_channel,
+        repo,
+        engine,
         ..
     } = sql;
     let in_scope = match scope {
@@ -169,10 +178,12 @@ fn open_threads(scope: QueueScope, sql: &QueueSql<'_>) -> String {
         QueueScope::Workspace(_) => format!("ch.workspace_id = {scope_id}"),
     };
     let readable = claim_next::readable_by(reader, dm_channel);
+    let served = claim_next::served_by(repo, engine);
     format!(
         "FROM maidan_threads cand
          JOIN maidan_channels ch ON ch.id = cand.channel_id
          WHERE {in_scope} AND cand.state = 'open' AND cand.tombstoned_at IS NULL
-           AND ({reader} IS NULL OR ({readable}))"
+           AND ({reader} IS NULL OR ({readable}))
+           AND {served}"
     )
 }

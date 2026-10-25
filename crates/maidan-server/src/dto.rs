@@ -440,6 +440,20 @@ pub struct ActiveClaimsQuery {
     pub repo: Option<String>,
 }
 
+/// Query params for a workspace's queue depth: the filters
+/// `POST /workspaces/:wid/threads/claim-next` takes, so the depth sizes a pool
+/// of workers that claim with them.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct WorkspaceQueueDepthQuery {
+    /// Count only threads whose footprint names this repository (`owner/name`
+    /// or a GitHub clone URL). Omitted, any work.
+    pub repo: Option<String>,
+    /// Count only threads routed to this engine (`pi`, `session` or
+    /// `human`). Omitted, any work.
+    pub engine: Option<TaskEngine>,
+}
+
 /// Query params for a thread's transition history.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -1839,6 +1853,10 @@ pub struct JoinWaitlistRequest {
     /// The visitor agreed to be contacted about a place. A join without
     /// consent is refused: the consent timestamp is the point of the row.
     pub consent: bool,
+    /// Left empty by people. The page hides this field; a form-filling bot
+    /// fills it, and its join is answered like any other and not stored.
+    #[serde(default)]
+    pub website: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

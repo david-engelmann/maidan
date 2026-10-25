@@ -96,6 +96,30 @@ pub async fn load_on_connection(conn: &mut SqliteConnection) -> Result<(), sqlx:
     }
 }
 
+/// Load `sqlite-vec` on this connection and report whether it answers.
+///
+/// A pool can hold connections opened before [`ensure_auto_extension`] ran,
+/// which lack the extension, so the check and the vector query must share
+/// one connection: asking the pool can land on a newer connection and the
+/// query on an older one, which fails with "no such function".
+pub async fn vec_ready(conn: &mut SqliteConnection) -> bool {
+    #[cfg(feature = "sqlite-vec")]
+    {
+        if load_on_connection(conn).await.is_err() {
+            return false;
+        }
+        sqlx::query_scalar::<_, String>("SELECT vec_version()")
+            .fetch_one(&mut *conn)
+            .await
+            .is_ok()
+    }
+    #[cfg(not(feature = "sqlite-vec"))]
+    {
+        let _ = conn;
+        false
+    }
+}
+
 /// Whether `vec_distance_cosine` is callable on this pool.
 pub async fn vec_available(pool: &sqlx::SqlitePool) -> bool {
     #[cfg(feature = "sqlite-vec")]
