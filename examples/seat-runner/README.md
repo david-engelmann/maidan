@@ -81,6 +81,18 @@ long such a claim stays held.
 Use an `https` URL for any server that is not on loopback: the runner warns
 otherwise, because the bearer token would cross the network in clear.
 
+## Prompts by kind
+
+A seat takes whatever session work its repository has, changes and reviews
+alike. `harness.prompt` is the prompt for a change; `harness.prompts` maps a
+task kind (the claimed thread's `attributes.kind`) to its own prompt, e.g.
+`prompts = { review = "examples/seat-runner/review-prompt.md" }` runs a review
+thread through the [red-team runbook](../claude-code/maidan-claimant/red-team.md)
+and posts the verdict on the pull request. A kind with no entry runs the
+default prompt. A listed prompt file that does not exist is refused at startup.
+Which work comes first is the queue's call: `claim-next` orders by priority and
+age, so a producer marks a blocker's review with a higher `priority`.
+
 ## Models
 
 `harness.models` lists the models this runner may start, and

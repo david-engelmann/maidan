@@ -22,6 +22,8 @@ model = "example-model"
 pass_token = true            # Codex's MCP config reads the token from token_env
 # bin = "codex"
 # prompt = "examples/seat-runner/prompt.md"
+# A prompt per task kind; a review thread runs the red-team runbook.
+# prompts = { review = "examples/seat-runner/review-prompt.md" }
 
 [caps]
 # `capped` ships in this repository (scripts/capped). It runs a command under
