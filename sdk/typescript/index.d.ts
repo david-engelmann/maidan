@@ -540,8 +540,8 @@ export function gatewaySession(
 ): RequestFields;
 
 /**
- * Affinity headers for a self-hosted KV-aware router. Every router keys a
- * child by its parent; AIBrix also gets `routing-strategy: session-affinity`.
+ * Affinity headers for a self-hosted KV-aware router. Every router, Dynamo
+ * included, gets the parent's thread as its one key when there is one; AIBrix also gets `routing-strategy: session-affinity`.
  * A key over 128 bytes (SGLang) or 256 bytes (AIBrix) throws.
  */
 export function routingHints(

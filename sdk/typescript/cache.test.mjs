@@ -60,7 +60,7 @@ test("the thread id is each gateway's session id", () => {
   }
 });
 
-test("a child thread is routed by its parent and Dynamo gets both", () => {
+test("a child thread is routed by its parent on every router", () => {
   for (const c of CASES.routing_hints) {
     const opts = c.parent_thread_id === undefined ? {} : { parentThreadId: c.parent_thread_id };
     if (c.expected_error) expectError(() => routingHints(c.router, c.thread_id, opts), c.expected_error);

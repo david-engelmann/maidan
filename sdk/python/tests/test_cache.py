@@ -65,7 +65,7 @@ def test_the_thread_id_is_each_gateways_session_id():
             assert gateway_session(case["gateway"], case["thread_id"]) == case["expected"], case["gateway"]
 
 
-def test_a_child_thread_is_routed_by_its_parent_and_dynamo_gets_both():
+def test_a_child_thread_is_routed_by_its_parent_on_every_router():
     for case in CASES["routing_hints"]:
         call = lambda: routing_hints(case["router"], case["thread_id"], case.get("parent_thread_id"))  # noqa: E731
         if "expected_error" in case:

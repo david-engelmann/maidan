@@ -101,7 +101,7 @@ fn the_thread_id_is_each_gateways_session_id() {
 }
 
 #[test]
-fn a_child_thread_is_routed_by_its_parent_and_dynamo_gets_both() {
+fn a_child_thread_is_routed_by_its_parent_on_every_router() {
     each("routing_hints", expect);
 }
 

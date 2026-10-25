@@ -210,7 +210,7 @@ the full acceptance criteria.
   resources, written once and read by many.
 - **C11. Self-hosted routing hints.** Session, parent and affinity headers
   derived from thread and claim structure, emitted by the SDKs: Dynamo's
-  `X-Dynamo-Session-ID` and `X-Dynamo-Parent-Session-ID`, llm-d's
+  `X-Dynamo-Session-ID` (the parent's thread for a child), llm-d's
   `x-session-id`, AIBrix's `x-aibrix-session-key`, the SGLang router's
   `X-SMG-Routing-Key` and TensorRT-LLM's subagent affinity id, with a
   per-workspace `cache_salt` for isolation (an HMAC under a server-side key,

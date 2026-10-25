@@ -144,7 +144,7 @@ func TestGatewaySessionIsTheThreadID(t *testing.T) {
 	}
 }
 
-func TestAChildThreadIsRoutedByItsParentAndDynamoGetsBoth(t *testing.T) {
+func TestAChildThreadIsRoutedByItsParentOnEveryRouter(t *testing.T) {
 	for _, c := range loadCacheCases(t).RoutingHints {
 		got, err := RoutingHints(c.Router, c.ThreadID, c.ParentThread)
 		if c.ExpectedError != "" {

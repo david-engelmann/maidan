@@ -316,8 +316,7 @@
       "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
       "expected": {
         "headers": {
-          "X-Dynamo-Session-ID": "0199a3c3-0000-7000-8000-0000000000a1",
-          "X-Dynamo-Parent-Session-ID": "0199a3c3-0000-7000-8000-0000000000b2"
+          "X-Dynamo-Session-ID": "0199a3c3-0000-7000-8000-0000000000b2"
         }
       }
     },

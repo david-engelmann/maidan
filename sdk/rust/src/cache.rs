@@ -195,13 +195,14 @@ pub fn gateway_session(
 }
 
 /// Affinity headers for a self-hosted KV-aware router, from thread and claim
-/// structure. Every router keys a child by its parent, so a child lands where
-/// its parent's prefix is warm. Dynamo does that itself: it takes the thread as
-/// the session and, from v1.6 with session affinity on, binds a request that
-/// carries `X-Dynamo-Parent-Session-ID` under that parent, so it gets both.
-/// The routers with one key take the parent's thread when there is one.
-/// AIBrix also gets `routing-strategy: session-affinity`. SGLang caps the key
-/// at 128 bytes and AIBrix at 256; a longer key is an error. These are hints:
+/// structure. Every router keys a child by its parent, so a child lands where its parent's
+/// prefix is warm: Dynamo, llm-d, AIBrix and SGLang all get the parent's thread
+/// as their one affinity key when there is one. Dynamo's docs say affinity uses
+/// `X-Dynamo-Session-ID` alone (with `--router-session-affinity-ttl-secs` set)
+/// and `X-Dynamo-Parent-Session-ID` is trace metadata, so a child sends its
+/// parent's thread as the session and no parent header (its own id is not a
+/// parent). AIBrix also gets `routing-strategy: session-affinity`. SGLang caps
+/// the key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only:
 /// no router accepts a prefix hash from a client.
 pub fn routing_hints(
     router: &str,
@@ -211,8 +212,9 @@ pub fn routing_hints(
     if thread_id.is_empty() {
         return err("thread id is required");
     }
-    let parent = parent_thread_id.filter(|p| !p.is_empty());
-    let affinity = parent.unwrap_or(thread_id);
+    let affinity = parent_thread_id
+        .filter(|p| !p.is_empty())
+        .unwrap_or(thread_id);
     let one = |name: &str, max: usize| {
         if affinity.len() > max {
             return err(format!("routing key is longer than {max} bytes"));
@@ -220,13 +222,7 @@ pub fn routing_hints(
         Ok(Map::from_iter([(name.to_owned(), json!(affinity))]))
     };
     let headers = match router {
-        "dynamo" => {
-            let mut h = Map::from_iter([("X-Dynamo-Session-ID".to_owned(), json!(thread_id))]);
-            if let Some(p) = parent {
-                h.insert("X-Dynamo-Parent-Session-ID".to_owned(), json!(p));
-            }
-            h
-        }
+        "dynamo" => one("X-Dynamo-Session-ID", usize::MAX)?,
         "llm-d" => one("x-session-id", usize::MAX)?,
         "aibrix" => {
             let mut h = one("x-aibrix-session-key", 256)?;

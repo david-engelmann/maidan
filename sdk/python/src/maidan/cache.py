@@ -142,6 +142,7 @@ def gateway_session(gateway: str, thread_id: str, path: str = "/", name: str = "
 
 
 _ONE_KEY_ROUTERS = {
+    "dynamo": ("X-Dynamo-Session-ID", None),
     "llm-d": ("x-session-id", None),
     "aibrix": ("x-aibrix-session-key", 256),
     "sglang": ("X-SMG-Routing-Key", 128),
@@ -152,21 +153,18 @@ def routing_hints(router: str, thread_id: str, parent_thread_id: str | None = No
     """Affinity headers for a self-hosted KV-aware router.
 
     Every router keys a child by its parent, so a child lands where its parent's
-    prefix is warm. Dynamo takes the thread as the session and the parent as the
-    parent session, and (v1.6+, with session affinity on) binds the child under
-    the parent itself. The one-key routers take the parent's thread when there is
-    one. AIBrix also gets ``routing-strategy: session-affinity``. SGLang caps the
-    key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only: no
-    router accepts a prefix hash from a client.
+    prefix is warm: Dynamo, llm-d, AIBrix and SGLang all get the parent's thread
+    as their one affinity key when there is one. Dynamo's docs say affinity uses
+    ``X-Dynamo-Session-ID`` alone (with ``--router-session-affinity-ttl-secs`` set)
+    and ``X-Dynamo-Parent-Session-ID`` is trace metadata, so a child sends its
+    parent's thread as the session and no parent header (its own id is not a
+    parent). AIBrix also gets ``routing-strategy: session-affinity``. SGLang caps
+    the key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only:
+    no router accepts a prefix hash from a client.
     """
     if not thread_id:
         raise CacheError("thread id is required")
     parent = parent_thread_id or None
-    if router == "dynamo":
-        headers = {"X-Dynamo-Session-ID": thread_id}
-        if parent:
-            headers["X-Dynamo-Parent-Session-ID"] = parent
-        return {"headers": headers}
     spec = _ONE_KEY_ROUTERS.get(router)
     if spec is None:
         raise CacheError(f"unknown router {router}")

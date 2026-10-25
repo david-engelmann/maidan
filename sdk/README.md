@@ -69,7 +69,9 @@ client, which could otherwise pick another workspace's partition. The salt is a
 cache partition, not an auth token: it decides which requests may share vLLM
 prefix blocks and grants nothing.
 
-`routing_hints` keys a child thread by its parent for every router. Dynamo gets
-both ids and, from v1.6 with session affinity on, binds a child under its
-parent itself. AIBrix also gets `routing-strategy: session-affinity`. A routing
+`routing_hints` keys a child thread by its parent for every router: the
+parent's thread is the one affinity key. For Dynamo that is
+`X-Dynamo-Session-ID`, which Dynamo's docs say is what affinity uses (with
+`--router-session-affinity-ttl-secs` set); `X-Dynamo-Parent-Session-ID` is
+trace metadata there, and the SDKs do not send it. AIBrix also gets `routing-strategy: session-affinity`. A routing
 key over 128 bytes (SGLang) or 256 bytes (AIBrix) is an error.
