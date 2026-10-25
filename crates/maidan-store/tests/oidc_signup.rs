@@ -154,7 +154,7 @@ async fn assert_signup(store: &dyn Store) {
     again.subject = "sub-ada-2".into();
     let again = store.complete_oidc_signup(again, a1, a2).await;
     assert!(
-        matches!(again, Err(StoreError::Conflict(_))),
+        matches!(&again, Err(StoreError::Conflict(m)) if m != maidan_store::SIGNUP_IDENTITY_TAKEN),
         "a consumed invite must not sign up twice, got {again:?}"
     );
     // And no new invite can be minted over a completed sign-up.
@@ -190,7 +190,10 @@ async fn assert_signup(store: &dyn Store) {
     let mut wrong_email = signup("ada@example.com", Some(other.id));
     wrong_email.subject = "sub-ada-3".into();
     let wrong_email = store.complete_oidc_signup(wrong_email, a1, a2).await;
-    assert!(matches!(wrong_email, Err(StoreError::Conflict(_))));
+    assert!(
+        matches!(&wrong_email, Err(StoreError::Conflict(m)) if m != maidan_store::SIGNUP_IDENTITY_TAKEN),
+        "the invite's refusal, not the identity's: {wrong_email:?}"
+    );
     // An expired invite is refused the same way.
     store
         .set_waitlist_invite(
@@ -204,7 +207,10 @@ async fn assert_signup(store: &dyn Store) {
     let mut expired = signup("grace@example.com", Some(other.id));
     expired.subject = "sub-grace".into();
     let expired = store.complete_oidc_signup(expired, a1, a2).await;
-    assert!(matches!(expired, Err(StoreError::Conflict(_))));
+    assert!(
+        matches!(&expired, Err(StoreError::Conflict(m)) if m != maidan_store::SIGNUP_IDENTITY_TAKEN),
+        "the invite's refusal, not the identity's: {expired:?}"
+    );
 
     // The domain path: no invite. A waiting entry with the same address is
     // marked signed up and bound to the new workspace.
