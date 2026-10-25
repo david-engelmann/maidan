@@ -122,6 +122,12 @@ pub(crate) fn abandoned_delete() -> BlobReap {
 
 /// Why a review-requirement write was refused: it would lower the requirement
 /// and the caller may not. Checked in the write's transaction.
+/// The `Conflict` text `complete_oidc_signup` returns when, under its lock,
+/// the identity already has a workspace this instance would sign it in to:
+/// a concurrent callback for the same identity committed first.
+pub const SIGNUP_IDENTITY_TAKEN: &str =
+    "this identity already has a workspace here; sign in instead";
+
 pub const REVIEW_LOWER_REFUSAL: &str =
     "lowering a review requirement needs the channel:admin capability";
 mod attestation;

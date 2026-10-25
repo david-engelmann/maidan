@@ -292,7 +292,7 @@ async fn complete_signup(
         .is_empty()
     {
         return Err(ApiError::Forbidden(
-            "this identity already has a workspace here; sign in instead".into(),
+            maidan_store::SIGNUP_IDENTITY_TAKEN.into(),
         ));
     }
 
@@ -348,6 +348,11 @@ async fn complete_signup(
         )
         .await
         .map_err(|err| match err {
+            maidan_store::StoreError::Conflict(msg)
+                if msg == maidan_store::SIGNUP_IDENTITY_TAKEN =>
+            {
+                ApiError::Forbidden(msg)
+            }
             maidan_store::StoreError::Conflict(_) | maidan_store::StoreError::NotFound => {
                 ApiError::Forbidden("the invite is no longer valid".into())
             }
