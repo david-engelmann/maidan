@@ -56,5 +56,22 @@ and `sdk-go-v0.3.0` at the commit the server release is cut from. Each job
 refuses a tag that differs from its package's version.
 
 `cache-fixtures/cases.json` holds the inputs and outputs of the cache helpers
-(boot prefix hash, breakpoints, cache keys, gateway sessions). All four SDK
+(boot prefix hash, breakpoints, cache keys, gateway sessions, self-hosted
+routing hints and the per-workspace vLLM `cache_salt`). All four SDK
 suites read it, so the helpers give the same request parts in every language.
+Its salt keys are public test keys and must never be used anywhere else.
+
+`cache_salt(workspace_id, salt_key)` is `HMAC-SHA256(salt_key, "cache_salt\n" +
+workspace_id)` as unpadded base64url (43 characters). The key is a secret of at
+least 32 bytes that lives server-side; a shorter key is an error. Set the salt
+from a trusted server-side component (your proxy or gateway), never from an end
+client, which could otherwise pick another workspace's partition. The salt is a
+cache partition, not an auth token: it decides which requests may share vLLM
+prefix blocks and grants nothing.
+
+`routing_hints` keys a child thread by its parent for every router: the
+parent's thread is the one affinity key. For Dynamo that is
+`X-Dynamo-Session-ID`, which Dynamo's docs say is what affinity uses (with
+`--router-session-affinity-ttl-secs` set); `X-Dynamo-Parent-Session-ID` is
+trace metadata there, and the SDKs do not send it. AIBrix also gets `routing-strategy: session-affinity`. A routing
+key over 128 bytes (SGLang) or 256 bytes (AIBrix) is an error.

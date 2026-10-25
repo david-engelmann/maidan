@@ -1,0 +1,3 @@
+### A second change thread for an issue in review is held as a likely duplicate
+
+- **Added:** `claim_next` withholds a change thread whose `linear_issue` already has another live change thread in review in the same workspace, whatever engine either runs on (C8 follow-up). It counts as unclaimable in queue depth. Closing it, the other thread leaving review, or `DELETE /threads/{id}/fingerprint/duplicate-of` lifts the hold. Two open change threads for one issue now get the advisory `duplicate_of` link even when their titles differ, so the newer is held as C8b holds an identical brief. Review threads and other workspaces' threads never count. Migration 0207 adds `cleared_at` to `maidan_task_fingerprints` and an index on `maidan_thread_attributes.linear_issue`.

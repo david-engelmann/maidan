@@ -39,6 +39,15 @@ async fn spawn(signup: bool, domains: Vec<String>) -> Env {
 }
 
 async fn spawn_with(signup: bool, domains: Vec<String>, public_origin: Option<&str>) -> Env {
+    spawn_full(signup, domains, public_origin, false).await
+}
+
+async fn spawn_full(
+    signup: bool,
+    domains: Vec<String>,
+    public_origin: Option<&str>,
+    signup_open: bool,
+) -> Env {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -83,6 +92,7 @@ async fn spawn_with(signup: bool, domains: Vec<String>, public_origin: Option<&s
             auto_mint: false,
             signup,
             signup_email_domains: domains,
+            signup_open,
             emails_verified: false,
         },
         session_secret: Arc::from(SECRET),
@@ -505,6 +515,71 @@ async fn a_listed_domain_signs_up_without_an_invite() {
         )
         .await;
     assert_eq!(callback.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn open_signup_gives_each_verified_address_its_own_workspace_without_an_invite() {
+    let env = spawn_full(true, vec![], None, true).await;
+    // Two people on unrelated domains, neither invited nor listed.
+    let ada = env
+        .signup_roundtrip(
+            format!("{}/auth/oidc/signup", env.base),
+            "sub-ada",
+            "ada@example.org",
+        )
+        .await;
+    assert_eq!(ada.status(), StatusCode::TEMPORARY_REDIRECT);
+    let ada_cookie = session_cookie(&ada);
+    let bob = env
+        .signup_roundtrip(
+            format!("{}/auth/oidc/signup", env.base),
+            "sub-bob",
+            "bob@other.net",
+        )
+        .await;
+    assert_eq!(bob.status(), StatusCode::TEMPORARY_REDIRECT);
+    let bob_cookie = session_cookie(&bob);
+
+    // Each session sees only its own, fresh workspace.
+    let ada_ws = env
+        .store
+        .list_subject_workspaces(ISSUER, "sub-ada", 10)
+        .await
+        .unwrap();
+    let bob_ws = env
+        .store
+        .list_subject_workspaces(ISSUER, "sub-bob", 10)
+        .await
+        .unwrap();
+    assert_eq!(ada_ws.len(), 1, "ada has exactly one workspace");
+    assert_eq!(bob_ws.len(), 1, "bob has exactly one workspace");
+    assert_ne!(
+        ada_ws[0].workspace_id, bob_ws[0].workspace_id,
+        "the tenants are separate"
+    );
+    assert_ne!(ada_cookie, bob_cookie);
+
+    // The audit row says how the door was opened.
+    let events = env
+        .store
+        .list_audit_for_workspace(ada_ws[0].workspace_id, 50)
+        .await
+        .unwrap();
+    let signup = events
+        .iter()
+        .find(|e| e.action == "workspace.signup")
+        .expect("a sign-up audit row");
+    assert_eq!(signup.metadata["via"], "open");
+
+    // Open does not mean repeatable: the same identity is sent to sign in.
+    let again = env
+        .signup_roundtrip(
+            format!("{}/auth/oidc/signup", env.base),
+            "sub-ada",
+            "ada@example.org",
+        )
+        .await;
+    assert_eq!(again.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

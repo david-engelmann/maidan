@@ -20,6 +20,9 @@ type cacheCase struct {
 	WorkspaceID   string          `json:"workspace_id"`
 	Group         string          `json:"group"`
 	ThreadID      string          `json:"thread_id"`
+	Router        string          `json:"router"`
+	ParentThread  string          `json:"parent_thread_id"`
+	SaltKey       string          `json:"salt_key"`
 	Expected      json.RawMessage `json:"expected"`
 	ExpectedError string          `json:"expected_error"`
 }
@@ -30,6 +33,8 @@ type cacheCases struct {
 	CacheKey       []cacheCase `json:"cache_key"`
 	CacheKeyFields []cacheCase `json:"cache_key_fields"`
 	GatewaySession []cacheCase `json:"gateway_session"`
+	RoutingHints   []cacheCase `json:"routing_hints"`
+	CacheSalt      []cacheCase `json:"cache_salt"`
 }
 
 func loadCacheCases(t *testing.T) cacheCases {
@@ -136,5 +141,50 @@ func TestGatewaySessionIsTheThreadID(t *testing.T) {
 			t.Fatalf("%s: %v", c.Gateway, err)
 		}
 		sameJSON(t, c.Gateway, got, c.Expected)
+	}
+}
+
+func TestAChildThreadIsRoutedByItsParentOnEveryRouter(t *testing.T) {
+	for _, c := range loadCacheCases(t).RoutingHints {
+		got, err := RoutingHints(c.Router, c.ThreadID, c.ParentThread)
+		if c.ExpectedError != "" {
+			wantCacheError(t, c.Router, err, c.ExpectedError)
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", c.Router, err)
+		}
+		sameJSON(t, c.Router, got, c.Expected)
+	}
+}
+
+func TestTheCacheSaltIsSharedInsideAWorkspaceAndDiffersAcrossWorkspacesAndKeys(t *testing.T) {
+	var salts []string
+	for _, c := range loadCacheCases(t).CacheSalt {
+		got, err := CacheSalt(c.WorkspaceID, []byte(c.SaltKey))
+		if c.ExpectedError != "" {
+			wantCacheError(t, c.WorkspaceID, err, c.ExpectedError)
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		sameJSON(t, c.WorkspaceID, got, c.Expected)
+		salt, _ := got.Body["cache_salt"].(string)
+		salts = append(salts, salt)
+	}
+	if len(salts) != 4 {
+		t.Fatalf("want 4 salts, got %d", len(salts))
+	}
+	if salts[0] == salts[1] {
+		t.Fatal("two workspaces share a salt")
+	}
+	if salts[0] == salts[2] {
+		t.Fatal("two keys give one salt")
+	}
+	for _, s := range salts {
+		if len(s) != 43 {
+			t.Fatalf("salt %q is not 43 characters", s)
+		}
 	}
 }

@@ -1,6 +1,8 @@
 //! Task fingerprints (Context Economics C8) on both backends: stored in the
 //! create transaction, linked to the oldest open identical task in the same
-//! workspace, never across workspaces, and never to a closed task.
+//! workspace, never across workspaces, and never to a closed task. A change
+//! thread for a Linear issue that another change thread has in review is
+//! withheld as a likely duplicate.
 //! Postgres runs under testcontainers (skipped without Docker).
 
 use std::sync::Arc;
@@ -333,6 +335,217 @@ async fn a_cleared_or_orphaned_duplicate_is_claimable(store: Arc<dyn Store>) {
     ));
 }
 
+fn issue(key: &str) -> Option<TaskAttributes> {
+    Some(TaskAttributes {
+        linear_issue: Some(key.into()),
+        ..TaskAttributes::default()
+    })
+}
+
+/// Two open change threads for one Linear issue are linked even when their
+/// titles differ; the older is the original (C8 follow-up).
+async fn the_same_issue_under_another_title_is_linked(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "issue-link", 1).await;
+    let first = create(
+        store.as_ref(),
+        room.channel,
+        "Session: ENG-6001 land the board",
+        issue("ENG-6001"),
+    )
+    .await;
+    let second = create(
+        store.as_ref(),
+        room.channel,
+        "ENG-6001 land the board",
+        issue("ENG-6001"),
+    )
+    .await;
+    let other = create(
+        store.as_ref(),
+        room.channel,
+        "ENG-6002 land the board",
+        issue("ENG-6002"),
+    )
+    .await;
+    let review = create(
+        store.as_ref(),
+        room.channel,
+        "Review ENG-6001",
+        Some(TaskAttributes {
+            kind: TaskKind::Review,
+            linear_issue: Some("ENG-6001".into()),
+            ..TaskAttributes::default()
+        }),
+    )
+    .await;
+    let fp = |id| {
+        let store = store.clone();
+        async move {
+            store
+                .get_task_fingerprint(id)
+                .await
+                .unwrap()
+                .unwrap()
+                .duplicate_of
+        }
+    };
+    assert_eq!(fp(first).await, None);
+    assert_eq!(fp(second).await, Some(first));
+    assert_eq!(fp(other).await, None);
+    // A review of the issue is not a second attempt at the change.
+    assert_eq!(fp(review).await, None);
+}
+
+/// A change thread whose issue already has another change thread in review
+/// is withheld from claim-next and counted unclaimable, until the other
+/// leaves review or someone clears the hold. A review thread for the issue,
+/// or another workspace's thread, does not hold it.
+async fn a_change_whose_issue_is_in_review_is_withheld(store: Arc<dyn Store>) {
+    let home = room(store.as_ref(), "issue-hold", 1).await;
+    let agent = home.agents[0];
+    // The stale thread is the older one, so no creation-time link holds it;
+    // only the in-review rule can.
+    let stale = create(
+        store.as_ref(),
+        home.channel,
+        "Session: ENG-6001 land the board",
+        issue("ENG-6001"),
+    )
+    .await;
+    let delivered = create(
+        store.as_ref(),
+        home.channel,
+        "ENG-6001 land the board",
+        issue("ENG-6001"),
+    )
+    .await;
+    store
+        .transition_thread(delivered, agent, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    assert!(store
+        .claim_next_thread(home.channel, agent, Some(600), None)
+        .await
+        .unwrap()
+        .is_none());
+    let depth = store.channel_queue_depth(home.channel, None).await.unwrap();
+    assert_eq!((depth.ready, depth.unclaimable), (0, 1), "{depth:?}");
+
+    // Another workspace's thread for the same issue, in review, holds nothing
+    // here, and nothing there is linked to this workspace.
+    let elsewhere = room(store.as_ref(), "issue-elsewhere", 1).await;
+    let theirs = create(
+        store.as_ref(),
+        elsewhere.channel,
+        "ENG-6001 land the board",
+        issue("ENG-6001"),
+    )
+    .await;
+    assert_eq!(
+        store
+            .get_task_fingerprint(theirs)
+            .await
+            .unwrap()
+            .unwrap()
+            .duplicate_of,
+        None
+    );
+    let fresh = create(
+        store.as_ref(),
+        elsewhere.channel,
+        "Session: ENG-6001 again",
+        issue("ENG-6001"),
+    )
+    .await;
+    store.clear_task_duplicate(fresh).await.unwrap();
+    store
+        .transition_thread(
+            theirs,
+            elsewhere.agents[0],
+            maidan_fsm::ThreadAction::StartReview,
+        )
+        .await
+        .unwrap();
+    // `fresh` was cleared, so their in-review thread does not hold it.
+    assert_eq!(
+        store
+            .claim_next_thread(elsewhere.channel, elsewhere.agents[0], Some(600), None)
+            .await
+            .unwrap()
+            .map(|t| t.id),
+        Some(fresh)
+    );
+
+    // Clearing the stale thread's hold makes it claimable here.
+    store.clear_task_duplicate(stale).await.unwrap();
+    assert_eq!(
+        store
+            .claim_next_thread(home.channel, agent, Some(600), None)
+            .await
+            .unwrap()
+            .map(|t| t.id),
+        Some(stale)
+    );
+}
+
+/// The hold lifts when the other thread leaves review, and a review thread
+/// in review for the issue never holds a change.
+async fn the_issue_hold_lifts_when_review_ends(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "issue-lift", 1).await;
+    let agent = room.agents[0];
+    let stale = create(
+        store.as_ref(),
+        room.channel,
+        "Session: ENG-7001 tidy",
+        issue("ENG-7001"),
+    )
+    .await;
+    let reviewer = create(
+        store.as_ref(),
+        room.channel,
+        "Review ENG-7001",
+        Some(TaskAttributes {
+            kind: TaskKind::Review,
+            linear_issue: Some("ENG-7001".into()),
+            ..TaskAttributes::default()
+        }),
+    )
+    .await;
+    store
+        .transition_thread(reviewer, agent, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    let delivered = create(
+        store.as_ref(),
+        room.channel,
+        "ENG-7001 tidy",
+        issue("ENG-7001"),
+    )
+    .await;
+    store.clear_task_duplicate(delivered).await.unwrap();
+    store
+        .transition_thread(delivered, agent, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    assert!(store
+        .claim_next_thread(room.channel, agent, Some(600), None)
+        .await
+        .unwrap()
+        .is_none());
+    store
+        .transition_thread(delivered, agent, maidan_fsm::ThreadAction::Close)
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .claim_next_thread(room.channel, agent, Some(600), None)
+            .await
+            .unwrap()
+            .map(|t| t.id),
+        Some(stale)
+    );
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -404,4 +617,7 @@ on_both_backends!(
     the_plain_create_path_stores_and_links_a_fingerprint,
     a_live_duplicate_is_not_claimable,
     a_cleared_or_orphaned_duplicate_is_claimable,
+    the_same_issue_under_another_title_is_linked,
+    a_change_whose_issue_is_in_review_is_withheld,
+    the_issue_hold_lifts_when_review_ends,
 );

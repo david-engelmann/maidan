@@ -11186,6 +11186,17 @@
               "string",
               "null"
             ]
+          },
+          "standard_price": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PriceSnapshot",
+                "description": "What the same model charges per million tokens on its standard tier,\nfor a call that ran in a cheaper lane (batch, or a `batch` or `flex`\nservice tier). Reporter evidence like the charged price: Maidan keeps\nno discount table. The ledger shows the lane saving from it, as\nreported. Its charge for the reported tokens must not overflow or fall\nbelow the charged `usd_micros`."
+              }
+            ]
           }
         },
         "type": "object"
@@ -11304,6 +11315,31 @@
             "format": "int64",
             "type": "integer"
           },
+          "lane_reports": {
+            "description": "Reports from calls in a cheaper lane (batch, or a batch or flex tier).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_saved_usd_micros": {
+            "description": "The lane saving, as reported: `lane_standard_usd_micros` less what\nthose same reports were charged. Never negative, since a standard\nprice below the charge is refused at ingest.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_standard_usd_micros": {
+            "description": "What the lane reports that carried a standard price would have cost\nat it, as reported.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_unpriced_reports": {
+            "description": "Lane reports with no standard price, whose saving is unknown.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "lane_usd_micros": {
+            "description": "What those lane reports were charged.",
+            "format": "int64",
+            "type": "integer"
+          },
           "member_id": {
             "oneOf": [
               {
@@ -11370,6 +11406,11 @@
           "usd_micros",
           "uncached_usd_micros",
           "saved_usd_micros",
+          "lane_reports",
+          "lane_usd_micros",
+          "lane_standard_usd_micros",
+          "lane_saved_usd_micros",
+          "lane_unpriced_reports",
           "completed_tasks",
           "completed_usd_micros"
         ],

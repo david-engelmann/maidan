@@ -33,7 +33,11 @@ pub(crate) async fn record_on(
             .bind(thread.channel_id.0)
             .fetch_one(&mut *conn)
             .await?;
-    insert_on(conn, thread.id, workspace_id, &fingerprint).await
+    let issue = attributes
+        .linear_issue
+        .as_deref()
+        .filter(|_| attributes.kind == maidan_types::TaskKind::Change);
+    insert_on(conn, thread.id, workspace_id, &fingerprint, issue).await
 }
 
 /// Store `fingerprint` for the new `thread_id` inside the create
@@ -44,8 +48,9 @@ async fn insert_on(
     thread_id: ThreadId,
     workspace_id: Uuid,
     fingerprint: &str,
+    linear_issue: Option<&str>,
 ) -> Result<Option<ThreadId>, StoreError> {
-    let duplicate_of: Option<Uuid> = sqlx::query_scalar(
+    let same_brief: Option<Uuid> = sqlx::query_scalar(
         "SELECT f.thread_id
          FROM maidan_task_fingerprints f
          JOIN maidan_threads t ON t.id = f.thread_id
@@ -59,6 +64,30 @@ async fn insert_on(
     .bind(thread_id.0)
     .fetch_optional(&mut *conn)
     .await?;
+    // No identical brief: a change thread for the same Linear issue is still
+    // a likely duplicate, even under another title (C8 follow-up).
+    let duplicate_of = match (same_brief, linear_issue) {
+        (Some(id), _) => Some(id),
+        (None, Some(issue)) => {
+            sqlx::query_scalar(
+                "SELECT t.id
+                 FROM maidan_thread_attributes a
+                 JOIN maidan_threads t ON t.id = a.thread_id
+                 JOIN maidan_channels ch ON ch.id = t.channel_id
+                 WHERE ch.workspace_id = ?1 AND a.linear_issue = ?2 AND a.kind = 'change'
+                   AND t.id <> ?3
+                   AND t.tombstoned_at IS NULL AND t.state IN ('open', 'in_review')
+                 ORDER BY t.created_at, t.id
+                 LIMIT 1",
+            )
+            .bind(workspace_id)
+            .bind(issue)
+            .bind(thread_id.0)
+            .fetch_optional(&mut *conn)
+            .await?
+        }
+        (None, None) => None,
+    };
     sqlx::query(
         "INSERT INTO maidan_task_fingerprints (thread_id, workspace_id, fingerprint, duplicate_of, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -133,8 +162,9 @@ pub(crate) async fn refuse_duplicate_claim_on(
 /// when the thread has no fingerprint. Idempotent.
 pub async fn clear_duplicate(pool: &SqlitePool, thread_id: ThreadId) -> Result<(), StoreError> {
     let done =
-        sqlx::query("UPDATE maidan_task_fingerprints SET duplicate_of = NULL WHERE thread_id = ?1")
+        sqlx::query("UPDATE maidan_task_fingerprints SET duplicate_of = NULL, cleared_at = ?2 WHERE thread_id = ?1")
             .bind(thread_id.0)
+            .bind(Utc::now().to_rfc3339())
             .execute(pool)
             .await?;
     if done.rows_affected() == 0 {
