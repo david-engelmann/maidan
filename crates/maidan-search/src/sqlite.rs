@@ -180,7 +180,8 @@ impl Search for SqliteSearch {
         } else {
             String::new()
         };
-        if sqlite_vec::vec_available(&self.pool).await {
+        let mut conn = self.pool.acquire().await?;
+        if sqlite_vec::vec_ready(&mut conn).await {
             let query_bytes = embedding_bytes(embedding);
             let sql = format!(
                 r#"
@@ -233,7 +234,7 @@ impl Search for SqliteSearch {
             let rows = q
                 .bind(&query_bytes)
                 .bind(limit)
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *conn)
                 .await?;
 
             let mut hits: Vec<SearchHit> = rows
@@ -289,7 +290,7 @@ impl Search for SqliteSearch {
         if let Some(rid) = reader_id {
             q = q.bind(rid);
         }
-        let rows = q.fetch_all(&self.pool).await?;
+        let rows = q.fetch_all(&mut *conn).await?;
 
         let mut hits: Vec<SearchHit> = rows
             .iter()

@@ -1,0 +1,1 @@
+- SQLite semantic search now checks for sqlite-vec and runs its query on the same connection, so a pooled connection opened before the extension was registered no longer fails with "no such function: vec_distance_cosine" (HTTP 500).
