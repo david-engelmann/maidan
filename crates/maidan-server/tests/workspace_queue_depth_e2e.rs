@@ -376,3 +376,187 @@ async fn wait_for_ready_in_the_workspace_skips_what_the_caller_may_not_read() {
         "a member of the private channel is woken by its thread: {insider_replay}"
     );
 }
+
+/// A task in `channel_id` with an optional repository footprint and engine.
+async fn routed_task(
+    store: &dyn Store,
+    channel_id: ChannelId,
+    repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
+) -> ThreadId {
+    let footprint = repo.map(|repo| maidan_types::Footprint {
+        repo: repo.into(),
+        mode: maidan_types::FootprintMode::Shared,
+        items: vec![maidan_types::FootprintItem {
+            kind: maidan_types::FootprintKind::Glob,
+            value: "src/**".into(),
+        }],
+    });
+    let attributes = engine.map(|engine| maidan_types::TaskAttributes {
+        engine: Some(engine),
+        ..maidan_types::TaskAttributes::default()
+    });
+    store
+        .create_thread_with_footprint(
+            NewThread {
+                channel_id,
+                parent_thread_id: None,
+                title: None,
+                description: None,
+                created_by: None,
+            },
+            footprint,
+            attributes,
+            None,
+        )
+        .await
+        .unwrap()
+        .0
+        .id
+}
+
+/// The depth over REST and over MCP for one filter, asserted equal.
+async fn filtered_depth(
+    h: &Harness,
+    bearer: &str,
+    ws: WorkspaceId,
+    query: &str,
+    args: Value,
+) -> Value {
+    let (status, depth) = get(
+        h,
+        bearer,
+        &format!("/workspaces/{}/queue-depth?{query}", ws.0),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{query}: {depth}");
+    let mut args = args;
+    args["workspace_id"] = json!(ws.0);
+    let mcp = tool_json(&call_tool(h, bearer, "get_workspace_queue_depth", args).await);
+    assert_eq!(depth, mcp, "the MCP depth matches REST for {query}");
+    depth
+}
+
+/// The workspace depth narrows by repository and engine as claim-next does, a
+/// clone URL counts as its `owner/name`, and another tenant's matching work
+/// never counts nor can be counted with a filter.
+#[tokio::test]
+async fn the_workspace_depth_counts_only_work_the_repo_and_engine_filters_admit() {
+    use maidan_types::TaskEngine::{Pi, Session};
+    let h = spawn().await;
+    let store = h.store.as_ref();
+    let ws_a = workspace(store, "filters-a").await;
+    let ws_b = workspace(store, "filters-b").await;
+    let agent_a = member(store, ws_a, "agent", MemberKind::Agent).await;
+    let agent_b = member(store, ws_b, "agent", MemberKind::Agent).await;
+    let chan_a = channel(store, ws_a, "work", false).await;
+    let chan_b = channel(store, ws_b, "work", false).await;
+    routed_task(store, chan_a, Some("acme/api"), Some(Pi)).await;
+    routed_task(store, chan_a, Some("acme/api"), Some(Session)).await;
+    routed_task(store, chan_a, Some("acme/web"), Some(Pi)).await;
+    routed_task(store, chan_a, None, None).await;
+    for _ in 0..3 {
+        routed_task(store, chan_b, Some("acme/api"), Some(Pi)).await;
+    }
+    let bearer_a = agent_token(store, ws_a, agent_a).await;
+    let bearer_b = agent_token(store, ws_b, agent_b).await;
+
+    let all = filtered_depth(&h, &bearer_a, ws_a, "", json!({})).await;
+    assert_eq!(all["open"], 4, "unfiltered, every thread: {all}");
+    let api = filtered_depth(
+        &h,
+        &bearer_a,
+        ws_a,
+        "repo=acme/api",
+        json!({ "repo": "acme/api" }),
+    )
+    .await;
+    assert_eq!(api["ready"], 2, "the two acme/api threads: {api}");
+    let url = filtered_depth(
+        &h,
+        &bearer_a,
+        ws_a,
+        "repo=https://github.com/Acme/API.git",
+        json!({ "repo": "https://github.com/Acme/API.git" }),
+    )
+    .await;
+    assert_eq!(url, api, "a clone URL counts as its owner/name");
+    let pi = filtered_depth(&h, &bearer_a, ws_a, "engine=pi", json!({ "engine": "pi" })).await;
+    assert_eq!(
+        pi["ready"], 2,
+        "the two pi threads, never the unrouted one: {pi}"
+    );
+    let both = filtered_depth(
+        &h,
+        &bearer_a,
+        ws_a,
+        "repo=acme/api&engine=pi",
+        json!({ "repo": "acme/api", "engine": "pi" }),
+    )
+    .await;
+    assert_eq!(both["ready"], 1, "both filters hold at once: {both}");
+
+    let res = h
+        .send(
+            Method::POST,
+            &format!("/workspaces/{}/threads/claim-next", ws_a.0),
+            &bearer_a,
+            Some(json!({ "repo": "acme/api", "engine": "pi" })),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let both = filtered_depth(
+        &h,
+        &bearer_a,
+        ws_a,
+        "repo=acme/api&engine=pi",
+        json!({ "repo": "acme/api", "engine": "pi" }),
+    )
+    .await;
+    assert_eq!(
+        (both["ready"].as_i64(), both["assigned"].as_i64()),
+        (Some(0), Some(1)),
+        "the filtered claim moved the filtered count: {both}"
+    );
+
+    let b = filtered_depth(
+        &h,
+        &bearer_b,
+        ws_b,
+        "repo=acme/api&engine=pi",
+        json!({ "repo": "acme/api", "engine": "pi" }),
+    )
+    .await;
+    assert_eq!(b["ready"], 3, "B counts its own matching work only: {b}");
+    let (status, body) = get(
+        &h,
+        &bearer_a,
+        &format!("/workspaces/{}/queue-depth?repo=acme/api&engine=pi", ws_b.0),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let res = call_tool(
+        &h,
+        &bearer_a,
+        "get_workspace_queue_depth",
+        json!({ "workspace_id": ws_b.0, "repo": "acme/api", "engine": "pi" }),
+    )
+    .await;
+    assert!(
+        res.get("error").is_some() || res["result"]["isError"] == true,
+        "the filtered tool refuses another workspace: {res}"
+    );
+    assert!(!res.to_string().contains("\\\"open\\\""), "{res}");
+
+    let (status, body) = get(
+        &h,
+        &bearer_a,
+        &format!("/workspaces/{}/queue-depth?repo=not%20a%20repo", ws_a.0),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "a malformed repo is refused: {body}"
+    );
+}

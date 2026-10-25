@@ -145,19 +145,27 @@ pub async fn get_channel_queue_depth(
 
 /// `GET /workspaces/:wid/queue-depth` — the channel depth summed over every
 /// channel of the caller's workspace it may read, for sizing a pool of workers
-/// that claim with `POST /workspaces/:wid/threads/claim-next`. `workspace:read`.
+/// that claim with `POST /workspaces/:wid/threads/claim-next`, narrowed by the
+/// same `repo` and `engine` filters. `workspace:read`.
 pub async fn get_workspace_queue_depth(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(wid): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<WorkspaceQueueDepthQuery>,
 ) -> ApiResult<Json<QueueDepth>> {
+    let repo = q
+        .repo
+        .as_deref()
+        .map(maidan_types::normalize_repo)
+        .transpose()
+        .map_err(ApiError::BadRequest)?;
     let workspace_id = WorkspaceId(wid);
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
     state.store.get_workspace(workspace_id).await?;
     let depth = state
         .store
-        .workspace_queue_depth(workspace_id, queue_reader(&auth))
+        .workspace_queue_depth(workspace_id, queue_reader(&auth), repo.as_deref(), q.engine)
         .await?;
     Ok(Json(depth))
 }
