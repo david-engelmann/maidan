@@ -39741,6 +39741,24 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "Count only threads whose footprint names this repository (`owner/name`\nor a GitHub clone URL). Omitted, any work.",
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Count only threads routed to this engine (`pi`, `session` or\n`human`). Omitted, any work.",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskEngine"
+            }
           }
         ],
         "responses": {
@@ -39752,7 +39770,7 @@
                 }
               }
             },
-            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants"
+            "description": "The channel depth summed over every channel of the workspace the caller may read: a private channel's threads count only for its members, a DM's only for its participants. `repo` and `engine` narrow it as they narrow claim-next"
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
