@@ -12,7 +12,10 @@ from .cache import (
     cache_key,
     cache_key_fields,
     cached_prefix,
+    cache_salt,
+    MIN_SALT_KEY_BYTES,
     gateway_session,
+    routing_hints,
 )
 from .client import (
     MAX_PAGE_SIZE,
@@ -137,7 +140,10 @@ __all__ = [
     "cache_key_fields",
     "cached_prefix",
     "event_type",
+    "cache_salt",
+    "MIN_SALT_KEY_BYTES",
     "gateway_session",
+    "routing_hints",
     "new_idempotency_key",
     "normalize_usage",
     "parse_room_lsn",

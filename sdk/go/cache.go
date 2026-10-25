@@ -6,7 +6,9 @@
 package maidan
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"regexp"
@@ -144,4 +146,68 @@ func GatewaySession(gateway, threadID, path, name string) (RequestFields, error)
 		return RequestFields{Body: M{field: threadID}}, nil
 	}
 	return RequestFields{}, cacheErr("unknown gateway %s", gateway)
+}
+
+type oneKeyRouter struct {
+	header string
+	max    int // bytes; 0 is no limit
+}
+
+var oneKeyRouters = map[string]oneKeyRouter{
+	"dynamo": {header: "X-Dynamo-Session-ID"},
+	"llm-d":  {header: "x-session-id"},
+	"aibrix": {header: "x-aibrix-session-key", max: 256},
+	"sglang": {header: "X-SMG-Routing-Key", max: 128},
+}
+
+// RoutingHints is the affinity headers for a self-hosted KV-aware router,
+// from thread and claim structure. Every router keys a child by its parent, so a child lands where its parent's
+// prefix is warm: Dynamo, llm-d, AIBrix and SGLang all get the parent's thread
+// as their one affinity key when there is one. Dynamo's docs say affinity uses
+// `X-Dynamo-Session-ID` alone (with `--router-session-affinity-ttl-secs` set)
+// and `X-Dynamo-Parent-Session-ID` is trace metadata, so a child sends its
+// parent's thread as the session and no parent header (its own id is not a
+// parent). AIBrix also gets `routing-strategy: session-affinity`. SGLang caps
+// the key at 128 bytes and AIBrix at 256; a longer key is an error. Hints only:
+// no router accepts a prefix hash from a client.
+func RoutingHints(router, threadID, parentThreadID string) (RequestFields, error) {
+	if threadID == "" {
+		return RequestFields{}, cacheErr("thread id is required")
+	}
+	spec, ok := oneKeyRouters[router]
+	if !ok {
+		return RequestFields{}, cacheErr("unknown router %s", router)
+	}
+	affinity := threadID
+	if parentThreadID != "" {
+		affinity = parentThreadID
+	}
+	if spec.max > 0 && len(affinity) > spec.max {
+		return RequestFields{}, cacheErr("routing key is longer than %d bytes", spec.max)
+	}
+	h := map[string]string{spec.header: affinity}
+	if router == "aibrix" {
+		h["routing-strategy"] = "session-affinity"
+	}
+	return RequestFields{Headers: h}, nil
+}
+
+// MinSaltKeyBytes is the shortest saltKey CacheSalt accepts.
+const MinSaltKeyBytes = 32
+
+// CacheSalt is vLLM's `cache_salt` for one workspace: HMAC-SHA256(saltKey,
+// "cache_salt\n" + workspaceId) as unpadded base64url (43 characters), so it
+// cannot be computed from the workspace id alone. The key must be at least 32
+// bytes. Set the salt from a trusted server-side component that holds the key,
+// never from an end client. It is a cache partition, not an auth token.
+func CacheSalt(workspaceID string, saltKey []byte) (RequestFields, error) {
+	if workspaceID == "" {
+		return RequestFields{}, cacheErr("workspace id is required")
+	}
+	if len(saltKey) < MinSaltKeyBytes {
+		return RequestFields{}, cacheErr("salt key must be at least %d bytes", MinSaltKeyBytes)
+	}
+	mac := hmac.New(sha256.New, saltKey)
+	mac.Write([]byte("cache_salt\n" + workspaceID))
+	return RequestFields{Body: M{"cache_salt": base64.RawURLEncoding.EncodeToString(mac.Sum(nil))}}, nil
 }

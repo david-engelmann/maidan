@@ -64,4 +64,28 @@ mod tests {
         h.check().expect("ok after successful recv");
         assert!(h.last_ok_unix_ms() > 0);
     }
+
+    #[test]
+    fn errors_are_counted_and_the_last_success_is_stamped_with_the_wall_clock() {
+        let h = ListenerHealth::default();
+        h.record_error();
+        h.record_error();
+        h.record_error();
+        assert_eq!(h.errors_total(), 3, "every error is counted");
+
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_default();
+        h.record_ok();
+        let after = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_default();
+        let stamped = h.last_ok_unix_ms();
+        assert!(
+            (before..=after).contains(&stamped),
+            "last_ok_unix_ms {stamped} is the time of the success ({before}..={after})"
+        );
+    }
 }

@@ -9,7 +9,9 @@ import {
   cacheKey,
   cacheKeyFields,
   cachedPrefix,
+  cacheSalt,
   gatewaySession,
+  routingHints,
 } from "./index.js";
 
 const CASES = JSON.parse(
@@ -56,4 +58,27 @@ test("the thread id is each gateway's session id", () => {
     if (c.expected_error) expectError(() => gatewaySession(c.gateway, c.thread_id), c.expected_error);
     else assert.deepEqual(gatewaySession(c.gateway, c.thread_id), c.expected, c.gateway);
   }
+});
+
+test("a child thread is routed by its parent on every router", () => {
+  for (const c of CASES.routing_hints) {
+    const opts = c.parent_thread_id === undefined ? {} : { parentThreadId: c.parent_thread_id };
+    if (c.expected_error) expectError(() => routingHints(c.router, c.thread_id, opts), c.expected_error);
+    else assert.deepEqual(routingHints(c.router, c.thread_id, opts), c.expected, c.router);
+  }
+});
+
+test("the cache salt is shared inside a workspace and differs across workspaces and keys", async () => {
+  for (const c of CASES.cache_salt) {
+    if (c.expected_error) {
+      await assert.rejects(() => cacheSalt(c.workspace_id, c.salt_key), (e) => e instanceof CacheError && e.message.includes(c.expected_error));
+    } else {
+      assert.deepEqual(await cacheSalt(c.workspace_id, c.salt_key), c.expected);
+    }
+  }
+  const salts = CASES.cache_salt.filter((c) => c.expected).map((c) => c.expected.body.cache_salt);
+  assert.equal(salts.length, 4);
+  assert.notEqual(salts[0], salts[1], "two workspaces share a salt");
+  assert.notEqual(salts[0], salts[2], "two keys give one salt");
+  for (const s of salts) assert.equal(s.length, 43);
 });

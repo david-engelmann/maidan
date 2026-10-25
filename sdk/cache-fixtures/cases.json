@@ -299,5 +299,178 @@
       "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
       "expected_error": "unknown gateway"
     }
+  ],
+  "routing_hints": [
+    {
+      "router": "dynamo",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "X-Dynamo-Session-ID": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "dynamo",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "X-Dynamo-Session-ID": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "llm-d",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "x-session-id": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "llm-d",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "x-session-id": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "aibrix",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "x-aibrix-session-key": "0199a3c3-0000-7000-8000-0000000000a1",
+          "routing-strategy": "session-affinity"
+        }
+      }
+    },
+    {
+      "router": "aibrix",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "x-aibrix-session-key": "0199a3c3-0000-7000-8000-0000000000b2",
+          "routing-strategy": "session-affinity"
+        }
+      }
+    },
+    {
+      "router": "sglang",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "X-SMG-Routing-Key": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "sglang",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "X-SMG-Routing-Key": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "sglang",
+      "thread_id": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "expected": {
+        "headers": {
+          "X-SMG-Routing-Key": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
+        }
+      }
+    },
+    {
+      "router": "sglang",
+      "thread_id": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "expected_error": "routing key is longer than 128 bytes"
+    },
+    {
+      "router": "aibrix",
+      "thread_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": {
+        "headers": {
+          "x-aibrix-session-key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "routing-strategy": "session-affinity"
+        }
+      }
+    },
+    {
+      "router": "aibrix",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected_error": "routing key is longer than 256 bytes"
+    },
+    {
+      "router": "dynamo",
+      "thread_id": "",
+      "expected_error": "thread id is required"
+    },
+    {
+      "router": "nope",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected_error": "unknown router"
+    }
+  ],
+  "cache_salt": [
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "salt_key": "maidan-public-test-salt-key-not-a-secret-0001",
+      "expected": {
+        "body": {
+          "cache_salt": "4AEchc1Dox3wt7A19g22-o4xSCxvHhbWvad9OQTt0ww"
+        }
+      }
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b42",
+      "salt_key": "maidan-public-test-salt-key-not-a-secret-0001",
+      "expected": {
+        "body": {
+          "cache_salt": "libZe7bZJcHjuwT_cSMMF-ChW5IvaXjXFSY2Poo-VbU"
+        }
+      }
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "salt_key": "maidan-public-test-salt-key-not-a-secret-0002",
+      "expected": {
+        "body": {
+          "cache_salt": "BBJLPb0sZxFEE13whhj03FZDa4jLEctypyP2R3qrrVs"
+        }
+      }
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "salt_key": "maidan-public-test-salt-key-longer-than-one-sha256-block-maidan-public-test-salt-key-longer-than-one-sha256-block-",
+      "expected": {
+        "body": {
+          "cache_salt": "RB4BnVphZcUdiUMsmvU7RHLZItYGWnXfG3gI64icJ_4"
+        }
+      }
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "salt_key": "",
+      "expected_error": "salt key must be at least 32 bytes"
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "salt_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expected_error": "salt key must be at least 32 bytes"
+    },
+    {
+      "workspace_id": "",
+      "salt_key": "maidan-public-test-salt-key-not-a-secret-0001",
+      "expected_error": "workspace id is required"
+    }
   ]
 }

@@ -61,6 +61,14 @@ does it with OpenHands' terminal and file editor, asks a person before anything
 irreversible, and hands the result back for review. `--check` verifies the
 connection and the token's tools without a model.
 
+## Seat runner
+
+[`seat-runner/`](seat-runner/) keeps N session seats claiming, one task per
+harness run. Before each run it checks the host's load and disk, polls the
+queue depth for its engine and repository, and runs the repository's
+preflight, all outside the harness sandbox. It then claims, runs the whole
+harness under `capped` and always releases the claim, on SIGTERM too.
+
 ## Claude Code and Cursor sessions
 
 [`claude-code/`](claude-code/) is a Claude Code skill and [`cursor/`](cursor/) a
