@@ -56,5 +56,6 @@ and `sdk-go-v0.3.0` at the commit the server release is cut from. Each job
 refuses a tag that differs from its package's version.
 
 `cache-fixtures/cases.json` holds the inputs and outputs of the cache helpers
-(boot prefix hash, breakpoints, cache keys, gateway sessions). All four SDK
+(boot prefix hash, breakpoints, cache keys, gateway sessions, self-hosted
+routing hints and the per-workspace vLLM `cache_salt`). All four SDK
 suites read it, so the helpers give the same request parts in every language.

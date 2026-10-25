@@ -10,8 +10,10 @@ export {
   bootPrefix,
   cacheKey,
   cacheKeyFields,
+  cacheSalt,
   cachedPrefix,
   gatewaySession,
+  routingHints,
 } from "./cache.js";
 
 /** The URI prefix of every problem `type` the server emits (RFC 9457). */

@@ -20,7 +20,9 @@ __all__ = [
     "cache_key",
     "cache_key_fields",
     "cached_prefix",
+    "cache_salt",
     "gateway_session",
+    "routing_hints",
 ]
 
 
@@ -134,3 +136,40 @@ def gateway_session(gateway: str, thread_id: str, path: str = "/", name: str = "
         field = "tensorzero::episode_id" if gateway == "tensorzero" else "episode_id"
         return {"body": {field: thread_id}}
     raise CacheError(f"unknown gateway {gateway}")
+
+
+_ONE_KEY_ROUTERS = {
+    "llm-d": "x-session-id",
+    "aibrix": "x-aibrix-session-key",
+    "sglang": "X-SMG-Routing-Key",
+}
+
+
+def routing_hints(router: str, thread_id: str, parent_thread_id: str | None = None) -> dict:
+    """Affinity headers for a self-hosted KV-aware router.
+
+    Dynamo takes the thread as the session and the parent as the parent
+    session; the routers with one key take the parent's thread when there is
+    one, so a child lands where its parent's prefix is warm. Hints only: no
+    router accepts a prefix hash from a client.
+    """
+    if not thread_id:
+        raise CacheError("thread id is required")
+    parent = parent_thread_id or None
+    if router == "dynamo":
+        headers = {"X-Dynamo-Session-ID": thread_id}
+        if parent:
+            headers["X-Dynamo-Parent-Session-ID"] = parent
+        return {"headers": headers}
+    name = _ONE_KEY_ROUTERS.get(router)
+    if name is None:
+        raise CacheError(f"unknown router {router}")
+    return {"headers": {name: parent or thread_id}}
+
+
+def cache_salt(workspace_id: str) -> dict:
+    """vLLM's ``cache_salt`` for one workspace, never the same in two."""
+    if not workspace_id:
+        raise CacheError("workspace id is required")
+    digest = hashlib.sha256(f"cache_salt\n{workspace_id}".encode("utf-8")).hexdigest()
+    return {"body": {"cache_salt": f"maidan-{digest[:32]}"}}

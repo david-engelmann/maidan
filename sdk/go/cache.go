@@ -145,3 +145,46 @@ func GatewaySession(gateway, threadID, path, name string) (RequestFields, error)
 	}
 	return RequestFields{}, cacheErr("unknown gateway %s", gateway)
 }
+
+var oneKeyRouters = map[string]string{
+	"llm-d":  "x-session-id",
+	"aibrix": "x-aibrix-session-key",
+	"sglang": "X-SMG-Routing-Key",
+}
+
+// RoutingHints is the affinity headers for a self-hosted KV-aware router,
+// from thread and claim structure. Dynamo takes the thread as the session and
+// the parent as the parent session; the routers with one key take the
+// parent's thread when parentThreadID is not empty, so a child lands where its
+// parent's prefix is warm. Hints only: no router accepts a prefix hash.
+func RoutingHints(router, threadID, parentThreadID string) (RequestFields, error) {
+	if threadID == "" {
+		return RequestFields{}, cacheErr("thread id is required")
+	}
+	if router == "dynamo" {
+		h := map[string]string{"X-Dynamo-Session-ID": threadID}
+		if parentThreadID != "" {
+			h["X-Dynamo-Parent-Session-ID"] = parentThreadID
+		}
+		return RequestFields{Headers: h}, nil
+	}
+	name, ok := oneKeyRouters[router]
+	if !ok {
+		return RequestFields{}, cacheErr("unknown router %s", router)
+	}
+	affinity := threadID
+	if parentThreadID != "" {
+		affinity = parentThreadID
+	}
+	return RequestFields{Headers: map[string]string{name: affinity}}, nil
+}
+
+// CacheSalt is vLLM's cache_salt for one workspace: prefix blocks are shared
+// inside the workspace and never across two. The workspace id is hashed in.
+func CacheSalt(workspaceID string) (RequestFields, error) {
+	if workspaceID == "" {
+		return RequestFields{}, cacheErr("workspace id is required")
+	}
+	sum := sha256.Sum256([]byte("cache_salt\n" + workspaceID))
+	return RequestFields{Body: M{"cache_salt": "maidan-" + hex.EncodeToString(sum[:])[:32]}}, nil
+}

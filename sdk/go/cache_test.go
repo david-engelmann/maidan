@@ -20,6 +20,8 @@ type cacheCase struct {
 	WorkspaceID   string          `json:"workspace_id"`
 	Group         string          `json:"group"`
 	ThreadID      string          `json:"thread_id"`
+	Router        string          `json:"router"`
+	ParentThread  string          `json:"parent_thread_id"`
 	Expected      json.RawMessage `json:"expected"`
 	ExpectedError string          `json:"expected_error"`
 }
@@ -30,6 +32,8 @@ type cacheCases struct {
 	CacheKey       []cacheCase `json:"cache_key"`
 	CacheKeyFields []cacheCase `json:"cache_key_fields"`
 	GatewaySession []cacheCase `json:"gateway_session"`
+	RoutingHints   []cacheCase `json:"routing_hints"`
+	CacheSalt      []cacheCase `json:"cache_salt"`
 }
 
 func loadCacheCases(t *testing.T) cacheCases {
@@ -136,5 +140,36 @@ func TestGatewaySessionIsTheThreadID(t *testing.T) {
 			t.Fatalf("%s: %v", c.Gateway, err)
 		}
 		sameJSON(t, c.Gateway, got, c.Expected)
+	}
+}
+
+func TestAChildThreadIsRoutedByItsParentAndDynamoGetsBoth(t *testing.T) {
+	for _, c := range loadCacheCases(t).RoutingHints {
+		got, err := RoutingHints(c.Router, c.ThreadID, c.ParentThread)
+		if c.ExpectedError != "" {
+			wantCacheError(t, c.Router, err, c.ExpectedError)
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", c.Router, err)
+		}
+		sameJSON(t, c.Router, got, c.Expected)
+	}
+}
+
+func TestTheCacheSaltIsSharedInsideAWorkspaceAndDiffersAcrossTwo(t *testing.T) {
+	cases := loadCacheCases(t).CacheSalt
+	for _, c := range cases {
+		got, err := CacheSalt(c.WorkspaceID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sameJSON(t, c.WorkspaceID, got, c.Expected)
+	}
+	if string(cases[0].Expected) == string(cases[1].Expected) {
+		t.Fatal("two workspaces share a salt")
+	}
+	if _, err := CacheSalt(""); err == nil {
+		t.Fatal("an empty workspace id gave a salt")
 	}
 }

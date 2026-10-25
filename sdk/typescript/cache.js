@@ -131,3 +131,39 @@ export function gatewaySession(gateway, threadId, options = {}) {
       throw new CacheError(`unknown gateway ${gateway}`);
   }
 }
+
+const ONE_KEY_ROUTERS = {
+  "llm-d": "x-session-id",
+  aibrix: "x-aibrix-session-key",
+  sglang: "X-SMG-Routing-Key",
+};
+
+/**
+ * Affinity headers for a self-hosted KV-aware router, from thread and claim
+ * structure. Dynamo takes the thread as the session and the parent as the
+ * parent session; the routers with one key take the parent's thread when
+ * there is one, so a child lands where its parent's prefix is warm. Hints
+ * only: no router accepts a prefix hash from a client.
+ */
+export function routingHints(router, threadId, options = {}) {
+  if (!threadId) throw new CacheError("thread id is required");
+  const parent = options.parentThreadId || undefined;
+  if (router === "dynamo") {
+    const headers = { "X-Dynamo-Session-ID": threadId };
+    if (parent) headers["X-Dynamo-Parent-Session-ID"] = parent;
+    return { headers };
+  }
+  const name = Object.hasOwn(ONE_KEY_ROUTERS, router) ? ONE_KEY_ROUTERS[router] : undefined;
+  if (!name) throw new CacheError(`unknown router ${router}`);
+  return { headers: { [name]: parent ?? threadId } };
+}
+
+/**
+ * vLLM's `cache_salt` for one workspace: prefix blocks are shared inside the
+ * workspace and never across two. The workspace id is hashed in.
+ */
+export async function cacheSalt(workspaceId) {
+  if (!workspaceId) throw new CacheError("workspace id is required");
+  const digest = await sha256Hex(`cache_salt\n${workspaceId}`);
+  return { body: { cache_salt: `maidan-${digest.slice(0, 32)}` } };
+}

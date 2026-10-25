@@ -3,7 +3,10 @@
 
 use std::path::PathBuf;
 
-use maidan::{cache_key, cache_key_fields, cached_prefix, gateway_session, BootPrefix, CacheError};
+use maidan::{
+    cache_key, cache_key_fields, cache_salt, cached_prefix, gateway_session, routing_hints,
+    BootPrefix, CacheError,
+};
 use serde_json::Value;
 
 fn cases() -> Value {
@@ -28,6 +31,14 @@ fn each(section: &str, check: impl Fn(&Value, Result<Value, CacheError>)) {
                 None,
             )
             .map(|f| serde_json::to_value(f).unwrap()),
+            "routing_hints" => routing_hints(
+                case["router"].as_str().unwrap(),
+                case["thread_id"].as_str().unwrap(),
+                case["parent_thread_id"].as_str(),
+            )
+            .map(|f| serde_json::to_value(f).unwrap()),
+            "cache_salt" => cache_salt(case["workspace_id"].as_str().unwrap())
+                .map(|f| serde_json::to_value(f).unwrap()),
             other => panic!("no section {other}"),
         };
         check(case, got);
@@ -84,4 +95,23 @@ fn the_cache_key_goes_where_each_provider_reads_it() {
 #[test]
 fn the_thread_id_is_each_gateways_session_id() {
     each("gateway_session", expect);
+}
+
+#[test]
+fn a_child_thread_is_routed_by_its_parent_and_dynamo_gets_both() {
+    each("routing_hints", expect);
+}
+
+#[test]
+fn the_cache_salt_is_shared_inside_a_workspace_and_differs_across_two() {
+    each("cache_salt", expect);
+    let all = cases();
+    let salts: Vec<&Value> = all["cache_salt"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| &c["expected"])
+        .collect();
+    assert_ne!(salts[0], salts[1]);
+    assert!(cache_salt("").is_err());
 }

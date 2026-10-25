@@ -9,7 +9,9 @@ import {
   cacheKey,
   cacheKeyFields,
   cachedPrefix,
+  cacheSalt,
   gatewaySession,
+  routingHints,
 } from "./index.js";
 
 const CASES = JSON.parse(
@@ -56,4 +58,19 @@ test("the thread id is each gateway's session id", () => {
     if (c.expected_error) expectError(() => gatewaySession(c.gateway, c.thread_id), c.expected_error);
     else assert.deepEqual(gatewaySession(c.gateway, c.thread_id), c.expected, c.gateway);
   }
+});
+
+test("a child thread is routed by its parent and Dynamo gets both", () => {
+  for (const c of CASES.routing_hints) {
+    const opts = c.parent_thread_id === undefined ? {} : { parentThreadId: c.parent_thread_id };
+    if (c.expected_error) expectError(() => routingHints(c.router, c.thread_id, opts), c.expected_error);
+    else assert.deepEqual(routingHints(c.router, c.thread_id, opts), c.expected, c.router);
+  }
+});
+
+test("the cache salt is shared inside a workspace and differs across two", async () => {
+  for (const c of CASES.cache_salt) assert.deepEqual(await cacheSalt(c.workspace_id), c.expected);
+  const [a, b] = CASES.cache_salt;
+  assert.notDeepEqual(a.expected, b.expected);
+  await assert.rejects(() => cacheSalt(""), CacheError);
 });

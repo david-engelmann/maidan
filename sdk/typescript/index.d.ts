@@ -539,6 +539,19 @@ export function gatewaySession(
   options?: { path?: string; name?: string },
 ): RequestFields;
 
+/**
+ * Affinity headers for a self-hosted KV-aware router. Dynamo gets the session
+ * and parent session; the one-key routers get the parent's thread when given.
+ */
+export function routingHints(
+  router: "dynamo" | "llm-d" | "aibrix" | "sglang",
+  threadId: ThreadId,
+  options?: { parentThreadId?: ThreadId },
+): RequestFields;
+
+/** vLLM's `cache_salt` for one workspace, never the same in two. */
+export function cacheSalt(workspaceId: WorkspaceId): Promise<RequestFields>;
+
 export declare class Client {
   baseUrl: string;
   token: string;

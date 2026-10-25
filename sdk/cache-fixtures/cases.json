@@ -299,5 +299,112 @@
       "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
       "expected_error": "unknown gateway"
     }
+  ],
+  "routing_hints": [
+    {
+      "router": "dynamo",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "X-Dynamo-Session-ID": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "dynamo",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "X-Dynamo-Session-ID": "0199a3c3-0000-7000-8000-0000000000a1",
+          "X-Dynamo-Parent-Session-ID": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "llm-d",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "x-session-id": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "llm-d",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "x-session-id": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "aibrix",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "x-aibrix-session-key": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "aibrix",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "x-aibrix-session-key": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "sglang",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected": {
+        "headers": {
+          "X-SMG-Routing-Key": "0199a3c3-0000-7000-8000-0000000000a1"
+        }
+      }
+    },
+    {
+      "router": "sglang",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "parent_thread_id": "0199a3c3-0000-7000-8000-0000000000b2",
+      "expected": {
+        "headers": {
+          "X-SMG-Routing-Key": "0199a3c3-0000-7000-8000-0000000000b2"
+        }
+      }
+    },
+    {
+      "router": "dynamo",
+      "thread_id": "",
+      "expected_error": "thread id is required"
+    },
+    {
+      "router": "nope",
+      "thread_id": "0199a3c3-0000-7000-8000-0000000000a1",
+      "expected_error": "unknown router"
+    }
+  ],
+  "cache_salt": [
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b41",
+      "expected": {
+        "body": {
+          "cache_salt": "maidan-d032c42d625b0eadddd92906209331e5"
+        }
+      }
+    },
+    {
+      "workspace_id": "0199a3c2-7b1e-7cc0-9f00-3d0c5a1e2b42",
+      "expected": {
+        "body": {
+          "cache_salt": "maidan-90e6b69674b356d867298c73e892659c"
+        }
+      }
+    }
   ]
 }

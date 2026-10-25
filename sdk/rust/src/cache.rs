@@ -193,3 +193,53 @@ pub fn gateway_session(
         other => return err(format!("unknown gateway {other}")),
     })
 }
+
+/// Affinity headers for a self-hosted KV-aware router, from thread and claim
+/// structure. Dynamo takes the thread as the session and the parent as the
+/// parent session; the routers with one key take the parent's thread when
+/// there is one, so a child lands where its parent's prefix is warm. These
+/// are hints: no router accepts a prefix hash from a client.
+pub fn routing_hints(
+    router: &str,
+    thread_id: &str,
+    parent_thread_id: Option<&str>,
+) -> Result<RequestFields, CacheError> {
+    if thread_id.is_empty() {
+        return err("thread id is required");
+    }
+    let parent = parent_thread_id.filter(|p| !p.is_empty());
+    let affinity = parent.unwrap_or(thread_id);
+    let one = |name: &str| Map::from_iter([(name.to_owned(), json!(affinity))]);
+    let headers = match router {
+        "dynamo" => {
+            let mut h = Map::from_iter([("X-Dynamo-Session-ID".to_owned(), json!(thread_id))]);
+            if let Some(p) = parent {
+                h.insert("X-Dynamo-Parent-Session-ID".to_owned(), json!(p));
+            }
+            h
+        }
+        "llm-d" => one("x-session-id"),
+        "aibrix" => one("x-aibrix-session-key"),
+        "sglang" => one("X-SMG-Routing-Key"),
+        other => return err(format!("unknown router {other}")),
+    };
+    Ok(RequestFields {
+        body: None,
+        headers: Some(headers),
+    })
+}
+
+/// vLLM's `cache_salt` for one workspace: prefix blocks are shared inside the
+/// workspace and never across two. The workspace id is hashed, so the salt
+/// does not reveal it.
+pub fn cache_salt(workspace_id: &str) -> Result<RequestFields, CacheError> {
+    if workspace_id.is_empty() {
+        return err("workspace id is required");
+    }
+    let digest = hex(&Sha256::digest(
+        format!("cache_salt\n{workspace_id}").as_bytes(),
+    ));
+    Ok(body(
+        json!({"cache_salt": format!("maidan-{}", &digest[..32])}),
+    ))
+}
