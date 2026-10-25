@@ -9,3 +9,16 @@ exclude_globs = [
   # says nothing about the store.
   "crates/maidan-store/src/test_support.rs",
 ]
+
+exclude_re = [
+  # `if !full` ends a back-fill on a short page. Deleting the `!` makes a
+  # short page re-read the same cursor forever, so every drain in the bus
+  # test binary (the notify-floor simulation runs hundreds) spins until
+  # cargo-mutants' timeout. The behavior is pinned by
+  # `drain_tests::a_short_page_ends_the_drain_without_reading_again`; the
+  # mutant can only ever be a TIMEOUT that costs the shard two minutes.
+  'notify_floor\.rs:\d+:\d+: delete ! in drain$',
+  # The fake event log inside that test module: mutating a test double
+  # tests the test, not the bus.
+  'notify_floor\.rs:\d+:\d+: .*\bdrain_tests::',
+]

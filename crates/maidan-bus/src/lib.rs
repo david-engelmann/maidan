@@ -51,9 +51,32 @@ pub const DEFAULT_BROADCAST_CAP: usize = 1024;
 /// (`RecvError::Lagged`), at the cost of more retained memory per channel.
 /// Non-positive or unparseable values fall back to the default.
 pub fn broadcast_cap_from_env() -> usize {
-    std::env::var("MAIDAN_BUS_BROADCAST_CAP")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
+    broadcast_cap(std::env::var("MAIDAN_BUS_BROADCAST_CAP").ok().as_deref())
+}
+
+/// The capacity a raw `MAIDAN_BUS_BROADCAST_CAP` value asks for, or the
+/// default when it is unset, zero or not a number.
+fn broadcast_cap(raw: Option<&str>) -> usize {
+    raw.and_then(|s| s.parse::<usize>().ok())
         .filter(|&n| n > 0)
         .unwrap_or(DEFAULT_BROADCAST_CAP)
+}
+
+#[cfg(test)]
+mod broadcast_cap_tests {
+    use super::*;
+
+    #[test]
+    fn a_positive_cap_is_used_as_given() {
+        assert_eq!(broadcast_cap(Some("5")), 5);
+        assert_eq!(broadcast_cap(Some("4096")), 4096);
+    }
+
+    #[test]
+    fn a_zero_missing_or_unparseable_cap_falls_back_to_the_default() {
+        assert_eq!(broadcast_cap(Some("0")), DEFAULT_BROADCAST_CAP);
+        assert_eq!(broadcast_cap(None), DEFAULT_BROADCAST_CAP);
+        assert_eq!(broadcast_cap(Some("-3")), DEFAULT_BROADCAST_CAP);
+        assert_eq!(broadcast_cap(Some("lots")), DEFAULT_BROADCAST_CAP);
+    }
 }
