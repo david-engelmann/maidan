@@ -48,6 +48,11 @@ name = "sqlite_vec"
 path = "tests/sqlite_vec.rs"
 required-features = ["sqlite-vec"]
 
+[[test]]
+name = "sqlite_vec_pre_registration"
+path = "tests/sqlite_vec_pre_registration.rs"
+required-features = ["sqlite-vec"]
+
 [[bench]]
 name = "search_hot"
 harness = false

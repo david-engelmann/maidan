@@ -2961,7 +2961,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `get_workspace_queue_depth`
 
-**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants.
+**Get workspace queue depth.** get_queue_depth across every channel of the workspace you may read, as {open, ready, assigned, blocked, unclaimable}: the sum of those channels' depths, for sizing a pool of workers that claim with claim_next_workspace_thread. A private channel's threads count only for its members and a DM's only for its participants. repo and engine narrow the count as they narrow claim_next_workspace_thread.
 
 **Capability:** `workspace:read`
 
@@ -2970,6 +2970,19 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 ```json
 {
   "properties": {
+    "engine": {
+      "description": "count only threads routed to this engine, as claim_next_workspace_thread's engine. Omitted, any work",
+      "enum": [
+        "pi",
+        "session",
+        "human"
+      ],
+      "type": "string"
+    },
+    "repo": {
+      "description": "count only threads whose footprint names this repository (owner/name or a GitHub clone URL), as claim_next_workspace_thread's repo. Omitted, any work",
+      "type": "string"
+    },
     "workspace_id": {
       "description": "your own workspace (whoami's workspace_id)",
       "format": "uuid",

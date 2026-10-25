@@ -876,6 +876,8 @@ const QUEUE_SQL: QueueSql<'static> = QueueSql {
     reader: "$2::uuid",
     dm_channel: "$3",
     now: "NOW()",
+    repo: "$4::text",
+    engine: "$5::text",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
     requeued_after_result: REQUEUED_AFTER_RESULT,
 };
@@ -891,11 +893,15 @@ pub async fn queue_depth(
     pool: &PgPool,
     scope: QueueScope,
     readable_by: Option<MemberId>,
+    repo: Option<&str>,
+    engine: Option<maidan_types::TaskEngine>,
 ) -> Result<QueueDepth, StoreError> {
     let row = sqlx::query(&queue_counts::queue_depth_select(scope, &QUEUE_SQL))
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
+        .bind(repo)
+        .bind(engine.map(|engine| engine.as_str()))
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -921,6 +927,8 @@ pub async fn occupancy(
         .bind(scope.id())
         .bind(readable_by.map(|m| m.0))
         .bind(DM_CHANNEL_NAME)
+        .bind(None::<&str>)
+        .bind(None::<&str>)
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
