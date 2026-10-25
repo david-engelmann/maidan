@@ -100,17 +100,24 @@ pub async fn resolve_member_for_login(
             Err(maidan_store::StoreError::NotFound) => {}
             Err(err) => return Err(err.into()),
         }
-        created = Some(
-            store
-                .create_member(NewMember {
-                    workspace_id,
-                    handle,
-                    display_name: email.map(str::to_string),
-                    kind: MemberKind::Human,
-                })
-                .await?,
-        );
-        break;
+        // A login racing this one can take the handle between the lookup and
+        // the insert; that is a taken handle, so move on to the next one.
+        match store
+            .create_member(NewMember {
+                workspace_id,
+                handle,
+                display_name: email.map(str::to_string),
+                kind: MemberKind::Human,
+            })
+            .await
+        {
+            Ok(member) => {
+                created = Some(member);
+                break;
+            }
+            Err(maidan_store::StoreError::Conflict(_)) => continue,
+            Err(err) => return Err(err.into()),
+        }
     }
     let Some(member) = created else {
         return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));

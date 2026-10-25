@@ -125,6 +125,43 @@ async fn legitimate_auto_provision_creates_a_member_and_reuses_it_on_the_next_lo
     assert_eq!((second, how), (first, LoginMember::Existing));
 }
 
+async fn a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict(
+    store: Arc<dyn Store>,
+) {
+    let (ws, admin) = workspace_with_admin(store.as_ref(), "a").await;
+    let (got, how) = login(store.as_ref(), ws, "sub-upper", "ADMIN@attacker.example", true).await;
+    assert_ne!(got, admin);
+    assert_eq!(how, LoginMember::Provisioned);
+    // A login that loses the race for a handle sees this conflict from the
+    // insert and moves on to the fallback handle instead of failing.
+    let raced = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: "Admin".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await;
+    assert!(matches!(raced, Err(maidan_store::StoreError::Conflict(_))));
+}
+
+#[tokio::test]
+async fn a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict_sqlite() {
+    a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict(sqlite().await)
+        .await;
+}
+
+#[tokio::test]
+async fn a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    a_case_folded_local_part_does_not_attach_and_a_taken_handle_is_a_conflict(Arc::new(
+        PostgresStore::for_tests(pool),
+    ))
+    .await;
+}
+
 #[tokio::test]
 async fn an_attackers_email_local_part_does_not_attach_to_an_existing_member_sqlite() {
     an_attackers_local_part_does_not_attach_to_an_existing_member(sqlite().await).await;
