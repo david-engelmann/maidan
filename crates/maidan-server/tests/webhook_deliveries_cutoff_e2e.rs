@@ -290,3 +290,80 @@ async fn past_its_deliveries_allowance_a_workspace_sends_no_webhooks_while_anoth
     })
     .await;
 }
+
+/// The cutoff is read at send time, per workspace: a delivery enqueued before
+/// its workspace was cut off, then replayed by its own operator after, still
+/// sends nothing, while the other tenant's failing hook is retried and
+/// counted only to that tenant.
+#[tokio::test]
+async fn a_delivery_enqueued_before_the_cutoff_and_replayed_after_it_still_sends_nothing() {
+    // SAFETY: test setup. Maidan reads this variable only through std,
+    // whose environment lock serializes the read with this write.
+    unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
+    let backend = sqlite().await;
+    let state = state_on(&backend);
+    let store = backend.store.as_ref();
+    let (a, _) = signed_up(store, "ada", true).await;
+    let (b, _) = signed_up(store, "bea", true).await;
+    let (a_addr, a_hits) = receiver(StatusCode::OK).await;
+    let (down_addr, down_hits) = receiver(StatusCode::INTERNAL_SERVER_ERROR).await;
+    let a_sub = subscribed(&state, a, a_addr).await;
+    let b_down = subscribed(&state, b, down_addr).await;
+
+    // Enqueued while A is under its allowance, then dead-lettered.
+    let a_dead = store
+        .enqueue_webhook_delivery(a_sub, 1, "{}")
+        .await
+        .unwrap();
+    store.quarantine_webhook_delivery(a_dead).await.unwrap();
+    store
+        .enqueue_webhook_delivery(b_down, 2, "{}")
+        .await
+        .unwrap();
+
+    let month = UsageMonth::of(Utc::now().date_naive()).label();
+    store
+        .mark_over_allowance(
+            &OverAllowance {
+                workspace_id: a,
+                meter: UsageMeter::Deliveries,
+                month,
+                quantity: 11,
+                allowance: 10,
+                marked_at: Utc::now(),
+            },
+            &[],
+        )
+        .await
+        .unwrap();
+    maidan_server::usage_meters::refresh_cut_off(&state).await;
+    let _ = state.usage_meters.take();
+
+    // A's operator replays the dead delivery after the cutoff.
+    store.replay_webhook_delivery(a_dead, a).await.unwrap();
+    webhook_worker::poll_deliveries(&state, 16).await.unwrap();
+
+    assert_eq!(
+        a_hits.load(Ordering::SeqCst),
+        0,
+        "a replay does not outrank the cutoff"
+    );
+    let parked = store.get_webhook_delivery(a_dead, a).await.unwrap();
+    assert_eq!(parked.attempts, 0, "parking is not an attempt");
+    assert!(parked.delivered_at.is_none() && parked.quarantined_at.is_none());
+    assert_eq!(
+        down_hits.load(Ordering::SeqCst),
+        1,
+        "B's failing hook is tried"
+    );
+    let deliveries = state.usage_meters.take();
+    let of = |ws: WorkspaceId| -> i64 {
+        deliveries
+            .iter()
+            .filter(|d| d.workspace_id == ws && d.meter == UsageMeter::Deliveries)
+            .map(|d| d.quantity)
+            .sum()
+    };
+    assert_eq!(of(a), 0, "B's failures are never charged to A");
+    assert_eq!(of(b), 1, "B's failed attempt counts to B");
+}
