@@ -386,9 +386,12 @@ pub fn is_github_repo(s: &str) -> bool {
 }
 
 /// A branch name git would accept (`git check-ref-format --branch`), less
-/// anything that could reach a URL path as something other than a name.
+/// anything that could reach a URL path as something other than a name, and
+/// ASCII only, so a look-alike (`prоd` with a Cyrillic `о`) or an invisible
+/// character (`prod` plus a zero-width space) is not taken for another name.
 pub fn is_branch_name(s: &str) -> bool {
-    !s.is_empty()
+    s.is_ascii()
+        && !s.is_empty()
         && s.len() <= 255
         && !s.starts_with(['/', '-', '.'])
         && !s.ends_with(['/', '.'])
