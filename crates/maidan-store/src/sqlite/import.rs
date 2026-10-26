@@ -130,6 +130,12 @@ pub(crate) async fn import_on(
         .bind(t.tombstoned_at)
         .execute(&mut *tx)
         .await?;
+        // An imported holder has worked the thread, as a claim would have
+        // recorded: without the row, a holder who releases it passes the
+        // past-holder checks as if they never held it.
+        if let Some(holder) = t.assignee_id {
+            super::thread_workers::record_in_tx(&mut tx, t.id, holder).await?;
+        }
     }
 
     for msg in &b.messages {
