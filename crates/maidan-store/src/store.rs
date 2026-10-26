@@ -4391,8 +4391,11 @@ pub trait WebhookStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<WebhookSubscription>, StoreError>;
+    /// Revoke a subscription owned by `workspace_id`; another workspace's id
+    /// is not found and changes nothing.
     async fn revoke_webhook_subscription(
         &self,
+        workspace_id: WorkspaceId,
         id: WebhookSubscriptionId,
     ) -> Result<WebhookSubscription, StoreError>;
     async fn list_enabled_webhook_subscriptions(
