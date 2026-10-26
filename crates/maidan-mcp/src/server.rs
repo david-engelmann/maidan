@@ -1021,6 +1021,12 @@ impl McpServer {
         }
         // Counted once the call is authorized to run, whatever it answers.
         if let (Some(meters), false) = (&self.usage_meters, auth.bypass) {
+            // The hard allowance cutoff: refused before it runs, not counted.
+            if meters.is_cut_off(auth.workspace_id, maidan_types::UsageMeter::McpCalls) {
+                return Err(McpError::OverAllowance(maidan_types::UsageMeter::McpCalls));
+            }
+            // Stored bytes are refused by the store's message and artifact
+            // writes, whichever tool reaches them.
             meters.record(auth.workspace_id, maidan_types::UsageMeter::McpCalls, 1);
         }
         let deadline = tools::deadline(name);

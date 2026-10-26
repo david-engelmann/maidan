@@ -1909,6 +1909,179 @@ async fn a_retired_key_that_will_not_destroy_is_counted_as_undestroyed(db: Db) {
     assert!(!kms.holds(old));
 }
 
+/// Red-team #1630: a cut-off tenant's refused upload reaps its bytes only
+/// when no row holds the sha, and never takes bytes another tenant holds or
+/// is mid-way through uploading. `blobs` stands in for the blob store; the
+/// reap's delete removes from it and the other tenant's upload puts back
+/// what a reap took (`restore_if_reaped`).
+async fn rt1630_a_refused_upload_never_deletes_another_tenants_bytes(db: Db) {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    let store = db.store(kek(1));
+    let a = room(store.as_ref(), "rt-cut").await;
+    let b = room(store.as_ref(), "rt-open").await;
+    store
+        .usage_meters()
+        .set_cut_off([(a.ws.id, UsageMeter::StoredBytes)]);
+    let blobs = Arc::new(Mutex::new(HashSet::<String>::new()));
+    let deleting = |entered: Option<tokio::sync::oneshot::Sender<()>>,
+                    release: Option<tokio::sync::oneshot::Receiver<()>>,
+                    sha: String|
+     -> BlobDelete<'static> {
+        let blobs = blobs.clone();
+        Box::new(move || {
+            Box::pin(async move {
+                if let Some(entered) = entered {
+                    let _ = entered.send(());
+                }
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+                blobs.lock().unwrap().remove(&sha);
+                Ok(())
+            })
+        })
+    };
+
+    // 1. B already holds the sha: A's late refusal keeps B's bytes.
+    let held = "e1".repeat(32);
+    blobs.lock().unwrap().insert(held.clone());
+    store
+        .upsert_artifact_with_event(upload(&held, b.alice.id), Some(b.ws.id))
+        .await
+        .unwrap();
+    let refused = store
+        .upsert_artifact_with_event(upload(&held, a.alice.id), Some(a.ws.id))
+        .await;
+    assert!(
+        matches!(
+            refused,
+            Err(StoreError::OverAllowance(UsageMeter::StoredBytes))
+        ),
+        "{refused:?}"
+    );
+    let reaped = maidan_store::blob_reap_retry::reap_or_queue(
+        store.as_ref(),
+        &held,
+        a.ws.id,
+        deleting(None, None, held.clone()),
+    )
+    .await;
+    assert_eq!(reaped, BlobReap::Referenced);
+    assert!(blobs.lock().unwrap().contains(&held), "B's bytes survive");
+    assert!(store
+        .get_artifact_for_workspace(b.ws.id, &held)
+        .await
+        .is_ok());
+    assert!(!store.artifact_ref_exists(a.ws.id, &held).await.unwrap());
+
+    // 2. Race: B has put the bytes but not yet its row when A's refused
+    // upload reaps. B's row write waits for the reap's lease, then B
+    // restores the bytes, so B ends with a row and its bytes.
+    let raced = "e2".repeat(32);
+    blobs.lock().unwrap().insert(raced.clone());
+    let refused = store
+        .upsert_artifact_with_event(upload(&raced, a.alice.id), Some(a.ws.id))
+        .await;
+    assert!(matches!(refused, Err(StoreError::OverAllowance(_))));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let reaper = {
+        let (store, sha, ws) = (store.clone(), raced.clone(), a.ws.id);
+        let delete = deleting(Some(entered_tx), Some(release_rx), raced.clone());
+        tokio::spawn(async move {
+            maidan_store::blob_reap_retry::reap_or_queue(store.as_ref(), &sha, ws, delete).await
+        })
+    };
+    entered_rx.await.unwrap();
+    let uploader = {
+        let (store, sha, who, ws, blobs) = (
+            store.clone(),
+            raced.clone(),
+            b.alice.id,
+            b.ws.id,
+            blobs.clone(),
+        );
+        tokio::spawn(async move {
+            let row = store
+                .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                .await;
+            // restore_if_reaped
+            blobs.lock().unwrap().insert(sha);
+            row
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(
+        !uploader.is_finished(),
+        "B's row must wait for A's reap of the same sha"
+    );
+    release_tx.send(()).unwrap();
+    assert_eq!(reaper.await.unwrap(), BlobReap::Deleted);
+    uploader.await.unwrap().unwrap();
+    assert!(blobs.lock().unwrap().contains(&raced), "B's bytes restored");
+    assert!(store
+        .get_artifact_for_workspace(b.ws.id, &raced)
+        .await
+        .is_ok());
+    assert!(!store.artifact_ref_exists(a.ws.id, &raced).await.unwrap());
+    // A retried reap of A's refusal now finds B's row and keeps the bytes.
+    let again = maidan_store::blob_reap_retry::reap_or_queue(
+        store.as_ref(),
+        &raced,
+        a.ws.id,
+        deleting(None, None, raced.clone()),
+    )
+    .await;
+    assert_eq!(again, BlobReap::Referenced);
+    assert!(blobs.lock().unwrap().contains(&raced));
+
+    // 3. Many concurrent rounds: B uploads while A's refusal reaps.
+    for i in 0..20u8 {
+        let sha = format!("{:02x}", 0x30 + i).repeat(32);
+        blobs.lock().unwrap().insert(sha.clone());
+        let a_side = {
+            let (store, sha, who, ws) = (store.clone(), sha.clone(), a.alice.id, a.ws.id);
+            let delete = deleting(None, None, sha.clone());
+            tokio::spawn(async move {
+                let refused = store
+                    .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                    .await;
+                assert!(refused.is_err());
+                maidan_store::blob_reap_retry::reap_or_queue(store.as_ref(), &sha, ws, delete).await
+            })
+        };
+        let b_side = {
+            let (store, sha, who, ws, blobs) = (
+                store.clone(),
+                sha.clone(),
+                b.alice.id,
+                b.ws.id,
+                blobs.clone(),
+            );
+            tokio::spawn(async move {
+                store
+                    .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                    .await
+                    .unwrap();
+                if !blobs.lock().unwrap().contains(&sha) {
+                    blobs.lock().unwrap().insert(sha);
+                }
+            })
+        };
+        let _ = a_side.await.unwrap();
+        b_side.await.unwrap();
+        assert!(
+            blobs.lock().unwrap().contains(&sha),
+            "round {i}: B's bytes gone"
+        );
+        assert!(store
+            .get_artifact_for_workspace(b.ws.id, &sha)
+            .await
+            .is_ok());
+    }
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -2060,6 +2233,20 @@ mod blob_reap {
             eraser.await.unwrap().unwrap();
         }
         writer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rt1630_refused_upload_reap_sqlite() {
+        let (_dir, db) = sqlite_file().await;
+        super::rt1630_a_refused_upload_never_deletes_another_tenants_bytes(db).await;
+    }
+
+    #[tokio::test]
+    async fn rt1630_refused_upload_reap_postgres() {
+        let Some((_container, db)) = super::postgres().await else {
+            return;
+        };
+        super::rt1630_a_refused_upload_never_deletes_another_tenants_bytes(db).await;
     }
 
     #[tokio::test]

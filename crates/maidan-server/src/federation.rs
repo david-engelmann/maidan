@@ -149,6 +149,10 @@ pub(crate) enum IngestOutcome {
     SkippedNotFederatable,
 }
 
+// Exempt from the hard allowance cutoff, deliberately: ingest appends an
+// operator-configured peer's federated events and writes no message rows or
+// artifacts, so it adds none of the cut-off workspace's stored bytes. See
+// docs/Operations.md, "The hard cutoff for open sign-up workspaces".
 pub(crate) async fn ingest_envelope(
     state: &AppState,
     peer: &Peer,

@@ -22,6 +22,7 @@ fn signup(email: &str, invite: Option<WaitlistEntryId>) -> NewOidcSignup {
         email: email.into(),
         invite_entry_id: invite,
         session_expires_at: Utc::now() + Duration::from_secs(3600),
+        open: false,
     }
 }
 

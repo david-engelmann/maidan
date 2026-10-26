@@ -151,7 +151,10 @@ fn sample() -> WorkspaceImport {
 
 async fn run_suite(store: &dyn Store) {
     let b = sample();
-    store.import_workspace(&b).await.expect("import");
+    store
+        .import_workspace(&b, maidan_types::WorkspaceOrigin::Operator)
+        .await
+        .expect("import");
 
     let ws = b.workspace.id;
     let got = store.get_workspace(ws).await.expect("workspace");

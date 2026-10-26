@@ -22,13 +22,28 @@ macro_rules! store_delegations {
             async fn write_lsn(&self) -> Result<Option<Lsn>, StoreError> {
                 self.current_wal_lsn().await
             }
+
+            fn usage_meters(&self) -> ::std::sync::Arc<crate::usage_meters::UsageMeterBuffer> {
+                self.usage_meters.clone()
+            }
         }
     };
     ($store:ty, WorkspaceStore) => {
         #[::async_trait::async_trait]
         impl WorkspaceStore for $store {
-            async fn import_workspace(&self, i: &WorkspaceImport) -> Result<(), StoreError> {
-                import::import_workspace(self.pool(), i).await
+            async fn import_workspace(
+                &self,
+                i: &WorkspaceImport,
+                origin: WorkspaceOrigin,
+            ) -> Result<(), StoreError> {
+                import::import_workspace(self.pool(), i, origin).await
+            }
+
+            async fn workspace_origin(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<WorkspaceOrigin, StoreError> {
+                import::workspace_origin(self.pool(), workspace_id).await
             }
 
             async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError> {
@@ -92,6 +107,7 @@ macro_rules! store_delegations {
                 &self,
                 import: &WorkspaceImport,
                 replace_existing: bool,
+                origin: WorkspaceOrigin,
                 audit: NewAuditEvent,
             ) -> Result<(), StoreError> {
                 data_audited::import_workspace(
@@ -99,6 +115,7 @@ macro_rules! store_delegations {
                     self.content_keys(),
                     import,
                     replace_existing,
+                    origin,
                     audit,
                 )
                 .await
@@ -692,6 +709,13 @@ macro_rules! store_delegations {
                 month: &str,
             ) -> Result<Vec<maidan_types::OverAllowance>, StoreError> {
                 usage_allowance::list(self.read_pool(), workspace_id, month).await
+            }
+
+            async fn list_usage_cut_off(
+                &self,
+                month: &str,
+            ) -> Result<Vec<(WorkspaceId, maidan_types::UsageMeter)>, StoreError> {
+                usage_allowance::list_cut_off(self.pool(), month).await
             }
 
             async fn list_usage_meters(
@@ -3531,7 +3555,12 @@ macro_rules! store_delegations {
     ($store:ty, MessageStore) => {
         #[::async_trait::async_trait]
         impl MessageStore for $store {
+            // Every message writer lands here (thread, DM and group-DM posts,
+            // seeds, A2A sends, GitHub and Slack inbound), so the stored-bytes
+            // cutoff is enforced here rather than per route or tool.
             async fn post_message(&self, new: NewMessage) -> Result<Message, StoreError> {
+                messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
+                    .await?;
                 messages::create(self.pool(), new).await
             }
 
@@ -3540,6 +3569,8 @@ macro_rules! store_delegations {
                 new: NewMessage,
                 dm_conversation_id: Option<DmConversationId>,
             ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::refuse_past_stored_bytes(self.pool(), &self.usage_meters, new.thread_id)
+                    .await?;
                 messages::create_with_event(self.pool(), &self.keys, new, dm_conversation_id).await
             }
 
@@ -3550,6 +3581,13 @@ macro_rules! store_delegations {
                 edit: EditMessage,
                 dm_conversation_id: Option<DmConversationId>,
             ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::refuse_growth_past_stored_bytes(
+                    self.pool(),
+                    &self.usage_meters,
+                    id,
+                    &edit,
+                )
+                .await?;
                 messages::edit_with_posted_event(
                     self.pool(),
                     &self.keys,
@@ -3567,6 +3605,13 @@ macro_rules! store_delegations {
                 editor_id: MemberId,
                 edit: EditMessage,
             ) -> Result<Message, StoreError> {
+                messages::refuse_growth_past_stored_bytes(
+                    self.pool(),
+                    &self.usage_meters,
+                    id,
+                    &edit,
+                )
+                .await?;
                 messages::edit(self.pool(), id, editor_id, edit).await
             }
 
@@ -3577,6 +3622,13 @@ macro_rules! store_delegations {
                 edit: EditMessage,
                 dm_conversation_id: Option<DmConversationId>,
             ) -> Result<(Message, StoredEvent), StoreError> {
+                messages::refuse_growth_past_stored_bytes(
+                    self.pool(),
+                    &self.usage_meters,
+                    id,
+                    &edit,
+                )
+                .await?;
                 messages::edit_with_event(
                     self.pool(),
                     &self.keys,
@@ -3883,6 +3935,12 @@ macro_rules! store_delegations {
                 new: NewArtifact,
                 ref_workspace: Option<WorkspaceId>,
             ) -> Result<(Artifact, StoredEvent), StoreError> {
+                // Every scoped upload (REST, MCP, multipart, snapshots) lands
+                // here, so the stored-bytes cutoff is enforced here.
+                if let Some(workspace_id) = ref_workspace {
+                    self.usage_meters
+                        .refuse(workspace_id, ::maidan_types::UsageMeter::StoredBytes)?;
+                }
                 artifacts::upsert_with_event(self.pool(), new, ref_workspace).await
             }
 

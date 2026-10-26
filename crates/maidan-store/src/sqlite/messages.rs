@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 use crate::sqlite::events;
+use crate::usage_meters::UsageMeterBuffer;
 
 /// Tool-use blocks in a new message's content.
 fn new_tool_uses(content: &Option<Vec<ContentBlock>>) -> i64 {
@@ -59,6 +60,59 @@ async fn enforce_tool_budget(
         }
     }
     Ok(())
+}
+
+/// Refuse a post to `thread_id` when its workspace is cut off on
+/// `stored_bytes`. Looks the workspace up only while some workspace is.
+/// System notices (cancellation and plan notices) are written by the store
+/// itself and are not held to it.
+pub(crate) async fn refuse_past_stored_bytes(
+    pool: &SqlitePool,
+    meters: &UsageMeterBuffer,
+    thread_id: ThreadId,
+) -> Result<(), StoreError> {
+    if !meters.any_cut_off(maidan_types::UsageMeter::StoredBytes) {
+        return Ok(());
+    }
+    let workspace: Option<Uuid> = sqlx::query_scalar(
+        "SELECT c.workspace_id FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id WHERE t.id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?;
+    match workspace {
+        Some(workspace) => meters.refuse(
+            WorkspaceId(workspace),
+            maidan_types::UsageMeter::StoredBytes,
+        ),
+        None => Ok(()),
+    }
+}
+
+/// Refuse an edit that makes message `id` longer when its workspace is cut
+/// off on `stored_bytes`. Edits that keep or shrink a body still run, so a
+/// workspace can make room.
+pub(crate) async fn refuse_growth_past_stored_bytes(
+    pool: &SqlitePool,
+    meters: &UsageMeterBuffer,
+    id: MessageId,
+    edit: &EditMessage,
+) -> Result<(), StoreError> {
+    if !meters.any_cut_off(maidan_types::UsageMeter::StoredBytes) {
+        return Ok(());
+    }
+    let existing = get(pool, id).await?;
+    let size = |body: &str, content: &Option<Vec<ContentBlock>>| {
+        body.len()
+            + content
+                .as_ref()
+                .map_or(0, |c| serde_json::to_vec(c).map_or(0, |v| v.len()))
+    };
+    if size(&edit.body, &edit.content) <= size(&existing.body, &existing.content) {
+        return Ok(());
+    }
+    refuse_past_stored_bytes(pool, meters, existing.thread_id).await
 }
 
 pub async fn create(pool: &SqlitePool, new: NewMessage) -> Result<Message, StoreError> {

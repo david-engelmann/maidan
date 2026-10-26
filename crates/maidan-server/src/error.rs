@@ -410,6 +410,7 @@ impl From<StoreError> for ApiError {
                 tracing::error!(error = %e, "content key error");
                 Self::Internal("content key error".into())
             }
+            StoreError::OverAllowance(meter) => crate::usage_meters::cut_off_error(meter),
         }
     }
 }

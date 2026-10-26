@@ -1199,9 +1199,9 @@ async fn dispatch_rest(
         "add_reference" => reference::add_reference(server, args).await,
         "list_references" => reference::list_references(store, args).await,
         "upload_artifact" => artifact::upload_artifact(server, auth, args).await,
-        "begin_artifact_multipart" => artifact::begin_artifact_multipart(artifacts).await,
+        "begin_artifact_multipart" => artifact::begin_artifact_multipart(server, auth).await,
         "upload_artifact_multipart_part" => {
-            artifact::upload_artifact_multipart_part(artifacts, args).await
+            artifact::upload_artifact_multipart_part(server, auth, args).await
         }
         "complete_artifact_multipart" => {
             artifact::complete_artifact_multipart(server, auth, args).await
