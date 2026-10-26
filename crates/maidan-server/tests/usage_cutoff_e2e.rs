@@ -395,3 +395,157 @@ async fn past_its_stored_bytes_an_open_workspace_cannot_seed_send_over_a2a_or_im
         WorkspaceOrigin::Open
     );
 }
+
+/// Two open tenants, A cut off on stored bytes and B not. B's writes go on
+/// (messages, uploads); A cannot write, cannot clone B's bundle into a fresh
+/// workspace, and cannot restore over B. B keeps its origin and its data.
+#[tokio::test]
+async fn a_cut_off_tenant_cannot_import_into_or_restore_over_another_that_still_writes() {
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| {
+        s.usage_allowance = std::sync::Arc::new(UsageAllowance::parse("stored_bytes=10").unwrap());
+        s.attach_export_signing(maidan_auth::ExportSigningKey::from_seed([0x23; 32]));
+        state = Some(s.clone());
+    })
+    .await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let caps = || {
+        vec![
+            capability::WORKSPACE_READ.to_string(),
+            capability::WORKSPACE_WRITE.to_string(),
+            capability::MESSAGE_POST.to_string(),
+            capability::ARTIFACT_UPLOAD.to_string(),
+            capability::TOKEN_ADMIN.to_string(),
+        ]
+    };
+    let (a, a_admin) = signed_up(store, "ada", true).await;
+    let (b, b_admin) = signed_up(store, "bea", true).await;
+    let a_bearer = token(store, a, a_admin, caps()).await;
+    let b_bearer = token(store, b, b_admin, caps()).await;
+    let a_thread_id = a_thread(store, a).await;
+    let b_thread_id = a_thread(store, b).await;
+    let b_bundle: Value = h
+        .send(
+            Method::GET,
+            &format!("/workspaces/{}/export", b.0),
+            &b_bearer,
+            None,
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+
+    let mark = OverAllowance {
+        workspace_id: a,
+        meter: UsageMeter::StoredBytes,
+        month: UsageMonth::of(Utc::now().date_naive()).label(),
+        quantity: 11,
+        allowance: 10,
+        marked_at: Utc::now(),
+    };
+    store.mark_over_allowance(&mark, &[]).await.unwrap();
+    maidan_server::usage_meters::refresh_cut_off(&state).await;
+    assert!(state.usage_meters.is_cut_off(a, UsageMeter::StoredBytes));
+    assert!(!state.usage_meters.is_cut_off(b, UsageMeter::StoredBytes));
+
+    async fn post_to(h: &Harness, bearer: &str, thread: ThreadId) -> reqwest::Response {
+        h.send(
+            Method::POST,
+            &format!("/threads/{}/messages", thread.0),
+            bearer,
+            Some(serde_json::json!({ "body": "hello there" })),
+        )
+        .await
+    }
+    let upload = |bearer: &str, bytes: &'static [u8]| {
+        h.client
+            .post(h.url("/artifacts?kind=attachment"))
+            .bearer_auth(bearer)
+            .body(bytes)
+            .send()
+    };
+    assert_eq!(
+        post_to(&h, &a_bearer, a_thread_id).await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(
+        upload(&a_bearer, b"a's bytes past the cutoff")
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    // A cannot post into B's thread either.
+    assert!(!post_to(&h, &a_bearer, b_thread_id)
+        .await
+        .status()
+        .is_success());
+
+    // B is untouched by A's cutoff.
+    assert!(post_to(&h, &b_bearer, b_thread_id)
+        .await
+        .status()
+        .is_success());
+    assert!(upload(&b_bearer, b"b's bytes")
+        .await
+        .unwrap()
+        .status()
+        .is_success());
+
+    // A cannot clone B's bundle into a fresh workspace.
+    let before = store.count_workspaces().await.unwrap();
+    let res = h
+        .send(
+            Method::POST,
+            "/workspaces/import?mode=new",
+            &a_bearer,
+            Some(b_bundle.clone()),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "A import new");
+    assert_eq!(store.count_workspaces().await.unwrap(), before);
+    // Nor restore over B.
+    let res = h
+        .send(
+            Method::POST,
+            "/workspaces/import?mode=restore&force=true",
+            &a_bearer,
+            Some(b_bundle.clone()),
+        )
+        .await;
+    assert!(
+        !res.status().is_success(),
+        "A restore over B: {}",
+        res.status()
+    );
+    // B still exists, still open, still has its message, and still writes.
+    assert_eq!(
+        store.workspace_origin(b).await.unwrap(),
+        WorkspaceOrigin::Open
+    );
+    assert_eq!(
+        store.workspace_origin(a).await.unwrap(),
+        WorkspaceOrigin::Open
+    );
+    assert!(post_to(&h, &b_bearer, b_thread_id)
+        .await
+        .status()
+        .is_success());
+    // B may restore itself (it is not cut off) and stays open.
+    let res = h
+        .send(
+            Method::POST,
+            "/workspaces/import?mode=restore&force=true",
+            &b_bearer,
+            Some(b_bundle),
+        )
+        .await;
+    assert!(res.status().is_success(), "B restore: {}", res.status());
+    assert_eq!(
+        store.workspace_origin(b).await.unwrap(),
+        WorkspaceOrigin::Open
+    );
+}
+
