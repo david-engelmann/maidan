@@ -39,7 +39,11 @@ Each seat takes the configured repositories in turn. For each run:
    If one fails, nothing is claimed.
 4. **Claim.** `POST /workspaces/{wid}/threads/claim-next` with
    `engine: "session"` and the repo, then acknowledge. A `null` claim ends
-   the run.
+   the run. Only a thread whose footprint names the repo is claimed, so a
+   producer gives each thread one (`PUT /threads/{id}/footprint`). A
+   footprint needs at least one item: an empty `items` list clears it, and
+   the thread is then never claimed. A review that touches nothing can use
+   a shared lane item (`{"kind": "lane", "value": "red-team"}`).
 5. **Harness.** The whole harness process runs under
    `capped --time run_secs --mem-gb run_mem_gb`. A cap inside the sandbox
    could not measure anything. Codex runs as

@@ -140,13 +140,16 @@ pub async fn set_review_children(
     Ok(())
 }
 
-/// Whether `thread_id` is a review task, read in the caller's transaction.
+/// Whether `thread_id` is a review child opened through the review family,
+/// read in the caller's transaction. Only the server sets `review_family`, so
+/// a `kind = review` label alone, set at create or later, exempts nothing
+/// from the parent's ordering hold (#1556).
 pub(crate) async fn is_review_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
 ) -> Result<bool, StoreError> {
     Ok(sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = $1 AND kind = 'review'",
+        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = $1 AND kind = 'review' AND review_family IS NOT NULL",
     )
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
@@ -204,12 +207,13 @@ pub async fn set(
     }
     // One author family per change: restating it is fine, naming another is
     // refused, and the upsert's COALESCE keeps it even if this read raced.
+    let mut tx = pool.begin().await?;
     if let Some(named) = attributes.author_family.as_deref() {
         let stored: Option<Option<String>> = sqlx::query_scalar(
             "SELECT author_family FROM maidan_thread_attributes WHERE thread_id = $1",
         )
         .bind(thread_id.0)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await?;
         if let Some(Some(stored)) = stored
             && stored != named
@@ -245,8 +249,23 @@ pub async fn set(
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
     .bind(attributes.author_family.as_deref())
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    // Naming the family after a seat of that family already holds the
+    // review would leave it holding work it may not do: every claim-time
+    // check ran while the thread was unlabeled. Refuse, and roll back.
+    let held_by_family: Option<String> = sqlx::query_scalar(&format!(
+        "SELECT {} FROM maidan_threads t WHERE t.id = $1 AND t.assignee_id IS NOT NULL",
+        crate::review_family::shared_family("t.assignee_id", "$1")
+    ))
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten();
+    if let Some(family) = held_by_family {
+        return Err(crate::review_family::same_family_refusal(&family));
+    }
+    tx.commit().await?;
     // The server-set review routing is left as stored and read back, and
     // an author family once stored is kept (see `TaskAttributes`).
     get(pool, thread_id).await

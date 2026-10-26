@@ -132,6 +132,7 @@ against it.
 | `resources/read` of `maidan://workspaces/{id}`, `maidan://channels/{id}` | 60000 | `private` | Changes on a rename, a topic edit or an archive. A subscriber hears `notifications/resources/updated` and drops its copy at once. |
 | `resources/read` of `maidan://boots/{channel_id}` | 60000 | `private` | The workspace boot for a channel. It changes when the glossary or an accepted decision changes, not when a thread is claimed. Private because access is per caller. |
 | `resources/read` of `maidan://threads/{id}` | 0 | `private` | Changes with every post, claim and transition. |
+| `resources/read` of `maidan://digests/{thread_id}` | 0 | `private` | The pointer to a thread's current digest. It moves when a newer digest is linked; the bytes it names are `maidan://artifacts/{sha256}`, cached by hash. |
 
 ---
 
@@ -209,6 +210,35 @@ docs are 2026. **Staying 2024-only is not an option.**
 
 J3 is Hardening (protocol upgrade), not Bet 2. Bet 2 **M.0 is J3**. The
 pack (M.1) and public cut wait on it. Do not sneak this into a docs PR.
+
+## PayerStamp usage extension (v1)
+
+URI: `https://github.com/david-engelmann/maidan/blob/main/docs/Protocols.md#payerstamp-usage-extension-v1`.
+The agent card lists it under `capabilities.extensions` with `required: false`.
+
+A remote agent working a Maidan thread over A2A reports its spend in the same
+ledger as `POST /threads/{id}/usage`. It puts the unchanged REST body
+(`usage_report_id`, `claim_lease_id`, `model`, `tokens`, `usd_micros`,
+`price_snapshot`, `turns`, `evidence`) in `SendMessage`'s
+`message.metadata[<URI>]`:
+
+- The `contextId` is the thread. The caller needs `thread:transition` and the
+  live claim lease, exactly as on REST. A stale lease, another workspace's
+  thread, or a malformed body is `-32602` and nothing is posted.
+- The reporter is the authenticated member; the payer is the thread's
+  workspace. Neither is accepted from the body.
+- A retry with the same `usage_report_id` returns the same entry.
+- The spend is recorded before the message is posted. A report on a missing
+  or unknown `contextId` is `-32602` and creates no thread and no binding. If
+  the post fails after the spend is recorded, the spend stays, and a retry
+  with the same `usage_report_id` is idempotent: it returns that entry.
+- The task's `metadata[<URI>]` echoes the accepted ledger entry, including its
+  `stamp`. The report is not copied into the stored message metadata.
+
+Every delivery task also carries `metadata.maidan.affinityKey`: the parent
+thread when the context has one, otherwise the thread. A peer routes every
+call that shares the key to one cache, the same rule the SDK's
+`routing_hints` uses.
 
 ## Gaps worth closing
 

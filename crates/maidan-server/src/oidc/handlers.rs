@@ -148,6 +148,7 @@ fn authorize_redirect(
 /// consumed or expire while the provider round trip runs.
 pub async fn signup(
     State(state): State<AppState>,
+    headers: HeaderMap,
     ApiQuery(q): ApiQuery<crate::dto::OidcSignupQuery>,
 ) -> Result<Response, ApiError> {
     let oidc = state
@@ -156,6 +157,19 @@ pub async fn signup(
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
     if !oidc.settings.signup {
         return Err(ApiError::NotFound);
+    }
+
+    // The check runs before the invite is looked up, so a caller who has
+    // not passed it learns nothing about which invites exist (#1631).
+    if let Some(turnstile) = state.turnstile.as_deref() {
+        let token = q.turnstile.as_deref().map(str::trim).unwrap_or_default();
+        // A browser that followed an invite link straight here has not
+        // solved anything yet: send it to the console's check, which comes
+        // back with a token. Any other caller is refused outright.
+        if token.is_empty() && accepts_html(&headers) {
+            return Ok(Redirect::to(&signup_check_path(&q)).into_response());
+        }
+        crate::turnstile::verify(turnstile, Some(token), crate::turnstile::Action::Signup).await?;
     }
 
     let invite_entry_id = match q.invite.as_deref() {
@@ -212,6 +226,29 @@ pub async fn signup(
         .await?;
 
     authorize_redirect(oidc, state_token, nonce, &pkce_verifier)
+}
+
+/// Whether a request is a browser navigation, which takes a page.
+fn accepts_html(headers: &HeaderMap) -> bool {
+    headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("text/html"))
+}
+
+/// The console page that renders the sign-up check and then starts the
+/// sign-up again with the token, carrying the invite and return path.
+fn signup_check_path(q: &crate::dto::OidcSignupQuery) -> String {
+    let mut path = "/ui/?signup_check=1".to_string();
+    if let Some(invite) = q.invite.as_deref() {
+        path.push_str("&invite=");
+        path.push_str(&urlencoding::encode(invite));
+    }
+    if let Some(return_to) = q.return_to.as_deref() {
+        path.push_str("&return_to=");
+        path.push_str(&urlencoding::encode(return_to));
+    }
+    path
 }
 
 /// How a sign-up was gated, for the audit row.
@@ -316,6 +353,7 @@ async fn complete_signup(
                 email: email.clone(),
                 invite_entry_id: pending.invite_entry_id,
                 session_expires_at,
+                open: matches!(gate, SignupGate::Open),
             },
             Box::new(move |core| NewAuditEvent {
                 scope: AuditScope::Workspace(core.workspace.id),

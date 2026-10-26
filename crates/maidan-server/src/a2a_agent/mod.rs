@@ -12,6 +12,7 @@ pub(crate) mod card;
 mod error;
 mod jsonrpc;
 pub(crate) mod ops;
+pub(crate) mod payer_stamp;
 pub(crate) mod push;
 mod rest;
 mod version;

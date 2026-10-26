@@ -3,13 +3,15 @@
 //! [`maidan_types::content_seal`].
 
 use chrono::Utc;
-use maidan_types::{parse_workspace_kek_id, ContentKeyring, WrappedKey};
+use maidan_types::{
+    parse_workspace_kek_id, ContentKeyring, CustodyFuture, SealError, WrapJournal, WrappedKey,
+};
 use sqlx::{Acquire, PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
-use crate::store::RewrapPass;
+use crate::store::{RewrapPass, StraySweep};
 
 /// The key row for `subject`, locked for the rest of the transaction so a
 /// concurrent shred cannot interleave with a seal, with the workspace key that
@@ -92,6 +94,7 @@ pub(crate) async fn active_workspace_key(
         .await?
         .rows_affected();
         if inserted == 1 {
+            clear_pending_in_tx(tx, id, &wrapped.kek_id).await?;
             return Ok(id);
         }
         keys.forget_workspace_key(id);
@@ -296,6 +299,7 @@ pub async fn rewrap(
         .bind(keys.custody_name())
         .execute(&mut *sp)
         .await?;
+                clear_pending_in_tx(&mut sp, id, &rewrapped.kek_id).await?;
                 Ok(())
             }
             .await;
@@ -445,6 +449,7 @@ pub async fn rewrap(
             {
                 tracing::warn!(workspace_key = %id, error = %err, "custody refused to destroy a retired workspace key; skipped");
                 pass.skipped += 1;
+                pass.undestroyed += 1;
                 continue;
             }
             let marked = sqlx::query(
@@ -486,4 +491,164 @@ pub async fn count_needing_rewrap(pool: &PgPool, keys: &ContentKeyring) -> Resul
     .fetch_one(pool)
     .await?;
     Ok(count as u64)
+}
+
+/// The wrap journal in `maidan_pending_custody_keys`. Each call commits on
+/// its own pooled connection, outside whatever transaction is waiting on the
+/// wrap, so a rollback of that transaction keeps the journal row.
+pub struct PgWrapJournal {
+    pool: PgPool,
+}
+
+impl PgWrapJournal {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+fn journal_error(err: sqlx::Error) -> SealError {
+    tracing::warn!(error = %err, "could not write the custody wrap journal");
+    SealError::Unavailable
+}
+
+impl WrapJournal for PgWrapJournal {
+    fn intend<'a>(&'a self, workspace_key_id: Uuid) -> CustodyFuture<'a, ()> {
+        Box::pin(async move {
+            sqlx::query(
+                "INSERT INTO maidan_pending_custody_keys (workspace_key_id, wrapping_key_id, intended_at)
+                 VALUES ($1, NULL, $2)
+                 ON CONFLICT (workspace_key_id)
+                 DO UPDATE SET wrapping_key_id = NULL, intended_at = $2",
+            )
+            .bind(workspace_key_id)
+            // The server's clock, the same one the sweep's cutoff is taken on.
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(journal_error)?;
+            Ok(())
+        })
+    }
+
+    fn record<'a>(
+        &'a self,
+        workspace_key_id: Uuid,
+        wrapping_key_id: &'a str,
+    ) -> CustodyFuture<'a, ()> {
+        Box::pin(async move {
+            let updated = sqlx::query(
+                "UPDATE maidan_pending_custody_keys SET wrapping_key_id = $2
+                 WHERE workspace_key_id = $1",
+            )
+            .bind(workspace_key_id)
+            .bind(wrapping_key_id)
+            .execute(&self.pool)
+            .await
+            .map_err(journal_error)?
+            .rows_affected();
+            if updated == 1 {
+                Ok(())
+            } else {
+                Err(SealError::Unavailable)
+            }
+        })
+    }
+}
+
+/// Drop the journal row for a wrap whose workspace key row this transaction
+/// stores: it commits, or rolls back, with the row.
+async fn clear_pending_in_tx(
+    tx: &mut Transaction<'_, Postgres>,
+    workspace_key_id: Uuid,
+    wrapping_key_id: &str,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "DELETE FROM maidan_pending_custody_keys
+         WHERE workspace_key_id = $1 AND wrapping_key_id = $2",
+    )
+    .bind(workspace_key_id)
+    .bind(wrapping_key_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Destroy custody keys older than `grace` (by this server's clock) that this
+/// database journalled a wrap for and no workspace key row refers to; see
+/// [`crate::EventStore::sweep_stray_custody_keys`]. A key this database never
+/// journalled is never destroyed, whatever its tags say. Each key is checked
+/// and destroyed on its own, with no transaction held across the custody
+/// call, and a refusal is logged and counted, never fatal.
+pub async fn sweep_stray(
+    pool: &PgPool,
+    keys: &ContentKeyring,
+    grace: std::time::Duration,
+) -> Result<StraySweep, StoreError> {
+    let mut sweep = StraySweep::default();
+    let Some(created_before) = chrono::Duration::from_std(grace)
+        .ok()
+        .and_then(|grace| Utc::now().checked_sub_signed(grace))
+    else {
+        return Ok(sweep);
+    };
+    // Rows whose workspace key row committed elsewhere (a crash between the
+    // two) are done.
+    sqlx::query(
+        "DELETE FROM maidan_pending_custody_keys p
+         USING maidan_workspace_keys k
+         WHERE k.wrapping_key_id = p.wrapping_key_id",
+    )
+    .execute(pool)
+    .await?;
+    for key in keys.custody_keys_before(created_before).await? {
+        let journalled: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM maidan_pending_custody_keys
+             WHERE workspace_key_id = $1 AND wrapping_key_id = $2 AND intended_at < $3)",
+        )
+        .bind(key.workspace_key_id)
+        .bind(&key.wrapping_key_id)
+        .bind(created_before)
+        .fetch_one(pool)
+        .await?;
+        if !journalled {
+            continue;
+        }
+        let referenced: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM maidan_workspace_keys WHERE wrapping_key_id = $1)",
+        )
+        .bind(&key.wrapping_key_id)
+        .fetch_one(pool)
+        .await?;
+        if referenced {
+            continue;
+        }
+        match keys.destroy_stray_custody_key(&key).await {
+            Ok(()) => {
+                sweep.destroyed += 1;
+                sqlx::query(
+                    "DELETE FROM maidan_pending_custody_keys
+                     WHERE workspace_key_id = $1 AND wrapping_key_id = $2",
+                )
+                .bind(key.workspace_key_id)
+                .bind(&key.wrapping_key_id)
+                .execute(pool)
+                .await?;
+            }
+            Err(err) => {
+                tracing::warn!(workspace_key = %key.workspace_key_id, error = %err, "custody refused to destroy a stray key; retrying next sweep");
+                sweep.failed += 1;
+            }
+        }
+    }
+    // A wrap that never returned a key id past the grace period: the custody
+    // cleans up a key whose encrypt failed, and nothing proves which key any
+    // other one made, so the row only goes.
+    sqlx::query(
+        "DELETE FROM maidan_pending_custody_keys
+         WHERE wrapping_key_id IS NULL AND intended_at < $1",
+    )
+    .bind(created_before)
+    .execute(pool)
+    .await?;
+    Ok(sweep)
 }

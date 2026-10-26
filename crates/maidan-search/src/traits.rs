@@ -53,13 +53,16 @@ pub trait Search: Send + Sync {
         model: &str,
     ) -> Result<Vec<SearchHit>, SearchError>;
 
-    /// Re-embed all live messages for the provider's model (optional workspace scope).
+    /// Re-embed all live messages for the provider's model (optional workspace
+    /// scope). With `meters`, each batch skips workspaces cut off on
+    /// `embedding_calls` and counts what it embeds before the provider call.
     async fn reindex_embeddings(
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         workspace_id: Option<WorkspaceId>,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<ReindexReport, SearchError> {
-        let _ = (provider, workspace_id);
+        let _ = (provider, workspace_id, meters);
         Err(SearchError::Unsupported("reindex_embeddings"))
     }
 
@@ -67,13 +70,15 @@ pub trait Search: Send + Sync {
     /// provider's model — newest first — and return what was done. This is
     /// how a message the live indexer failed to embed, or never saw because the
     /// process stopped, is recovered without a full reindex. Backends without
-    /// vectors are `Unsupported`.
+    /// vectors are `Unsupported`. With `meters`, workspaces cut off on
+    /// `embedding_calls` are skipped and what is embedded is counted.
     async fn embed_missing(
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         limit: i64,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<ReindexReport, SearchError> {
-        let _ = (provider, limit);
+        let _ = (provider, limit, meters);
         Err(SearchError::Unsupported("embed_missing"))
     }
 

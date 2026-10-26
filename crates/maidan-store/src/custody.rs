@@ -15,8 +15,9 @@ use std::sync::RwLock;
 use aws_sdk_kms::error::ProvideErrorMetadata;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::Tag;
+use chrono::{DateTime, Utc};
 use maidan_types::{
-    ContentKey, CustodyFuture, LocalCustody, SealError, WorkspaceKeyCustody, WrappedKey,
+    ContentKey, CustodyFuture, CustodyKey, LocalCustody, SealError, WorkspaceKeyCustody, WrappedKey,
 };
 use uuid::Uuid;
 
@@ -32,23 +33,33 @@ const CONTEXT_KEY: &str = "maidan_workspace_key";
 /// The shortest waiting period AWS KMS allows before it deletes a key. The
 /// key is disabled at once, so nothing decrypts with it in the meantime.
 const DELETION_WINDOW_DAYS: i32 = 7;
+/// The KMS key tag naming the Maidan instance that created a key, so the
+/// stray-key sweep only ever lists its own instance's keys in a shared
+/// account.
+const INSTANCE_TAG: &str = "maidan_instance";
 
 /// Workspace keys each wrapped by a KMS key of their own, created on first
 /// wrap with `CreateKey` and tagged with the workspace key id, then used
 /// through `Encrypt`/`Decrypt` with that id as encryption context.
 /// Destroying one disables its KMS key and schedules its deletion.
+///
+/// With an instance name, each key is also tagged with it, and
+/// [`WorkspaceKeyCustody::held_keys`] lists the keys carrying both tags.
+/// Without one, keys are not tagged with an instance and nothing is listed,
+/// so the stray-key sweep never touches a key it cannot prove is its own.
 pub struct AwsKmsCustody {
     client: aws_sdk_kms::Client,
+    instance: Option<String>,
 }
 
 impl AwsKmsCustody {
-    pub fn new(client: aws_sdk_kms::Client) -> Self {
-        Self { client }
+    pub fn new(client: aws_sdk_kms::Client, instance: Option<String>) -> Self {
+        Self { client, instance }
     }
 
     /// A client from the default AWS configuration chain (region,
     /// credentials, endpoint override).
-    pub async fn from_default_config() -> Self {
+    pub async fn from_default_config(instance: Option<String>) -> Self {
         use aws_smithy_http_client::tls;
         let https = aws_smithy_http_client::Builder::new()
             .tls_provider(tls::Provider::Rustls(
@@ -59,7 +70,57 @@ impl AwsKmsCustody {
             .http_client(https)
             .load()
             .await;
-        Self::new(aws_sdk_kms::Client::new(&shared))
+        Self::new(aws_sdk_kms::Client::new(&shared), instance)
+    }
+
+    /// The listed key, when it is one of this instance's enabled workspace
+    /// keys created before `created_before`. A key this role may not read
+    /// the tags of belongs to someone else: skipped, not an error.
+    async fn own_key(
+        &self,
+        instance: &str,
+        key_id: &str,
+        created_before: DateTime<Utc>,
+    ) -> Result<Option<CustodyKey>, SealError> {
+        let tags = match self.client.list_resource_tags().key_id(key_id).send().await {
+            Ok(out) => out.tags.unwrap_or_default(),
+            Err(err) if kms_error_kind(err.code()) == SealError::Refused => return Ok(None),
+            Err(err) => return Err(Self::kms_error("ListResourceTags", err)),
+        };
+        let tag = |name: &str| {
+            tags.iter()
+                .find(|t| t.tag_key() == name)
+                .map(|t| t.tag_value().to_string())
+        };
+        if tag(INSTANCE_TAG).as_deref() != Some(instance) {
+            return Ok(None);
+        }
+        let Some(workspace_key_id) = tag(CONTEXT_KEY).and_then(|v| v.parse::<Uuid>().ok()) else {
+            return Ok(None);
+        };
+        let described = self.client.describe_key().key_id(key_id).send().await;
+        // A key this role may not describe is someone else's: skipped, like
+        // one whose tags it may not read, so one key never stops the sweep.
+        let described = match described {
+            Ok(out) => out,
+            Err(err) if kms_error_kind(err.code()) == SealError::Refused => return Ok(None),
+            Err(err) => return Err(Self::kms_error("DescribeKey", err)),
+        };
+        let Some(meta) = described.key_metadata else {
+            return Ok(None);
+        };
+        let enabled = meta.key_state == Some(aws_sdk_kms::types::KeyState::Enabled);
+        let old_enough = meta
+            .creation_date
+            .is_some_and(|created| created.secs() < created_before.timestamp());
+        if !(enabled && old_enough) {
+            return Ok(None);
+        }
+        let arn = meta.arn.unwrap_or(meta.key_id);
+        Ok(Some(CustodyKey {
+            workspace_key_id,
+            wrapping_key_id: format!("{AWS_KMS_PREFIX}{arn}"),
+        }))
     }
 
     fn kms_error(op: &str, err: impl fmt::Display + ProvideErrorMetadata) -> SealError {
@@ -107,6 +168,10 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
         format!("{AWS_KMS_PREFIX}%")
     }
 
+    fn creates_keys(&self) -> bool {
+        true
+    }
+
     fn owns(&self, wrapping_key_id: &str) -> bool {
         wrapping_key_id.starts_with(AWS_KMS_PREFIX)
     }
@@ -122,11 +187,21 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
                 .tag_value(workspace_key_id.to_string())
                 .build()
                 .map_err(|_| SealError::Malformed)?;
-            let created = self
+            let mut create = self
                 .client
                 .create_key()
                 .description(format!("Maidan workspace key {workspace_key_id}"))
-                .tags(tag)
+                .tags(tag);
+            if let Some(instance) = &self.instance {
+                create = create.tags(
+                    Tag::builder()
+                        .tag_key(INSTANCE_TAG)
+                        .tag_value(instance)
+                        .build()
+                        .map_err(|_| SealError::Malformed)?,
+                );
+            }
+            let created = create
                 .send()
                 .await
                 .map_err(|err| Self::kms_error("CreateKey", err))?;
@@ -238,6 +313,41 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
             Ok(())
         })
     }
+
+    fn held_keys<'a>(
+        &'a self,
+        created_before: DateTime<Utc>,
+    ) -> CustodyFuture<'a, Vec<CustodyKey>> {
+        Box::pin(async move {
+            let Some(instance) = self.instance.as_deref() else {
+                return Ok(Vec::new());
+            };
+            let mut held = Vec::new();
+            let mut marker: Option<String> = None;
+            loop {
+                let page = self
+                    .client
+                    .list_keys()
+                    .set_marker(marker.take())
+                    .send()
+                    .await
+                    .map_err(|err| Self::kms_error("ListKeys", err))?;
+                for entry in page.keys() {
+                    let Some(key_id) = entry.key_id() else {
+                        continue;
+                    };
+                    if let Some(key) = self.own_key(instance, key_id, created_before).await? {
+                        held.push(key);
+                    }
+                }
+                match (page.truncated, page.next_marker) {
+                    (true, Some(next)) => marker = Some(next),
+                    _ => break,
+                }
+            }
+            Ok(held)
+        })
+    }
 }
 
 impl fmt::Debug for AwsKmsCustody {
@@ -253,6 +363,7 @@ impl fmt::Debug for AwsKmsCustody {
 pub struct FakeKmsCustody {
     name: String,
     keys: RwLock<HashMap<Uuid, LocalCustody>>,
+    created: RwLock<HashMap<Uuid, DateTime<Utc>>>,
     refused: RwLock<HashSet<Uuid>>,
     unavailable: RwLock<HashMap<Uuid, usize>>,
     unwraps: std::sync::atomic::AtomicUsize,
@@ -263,6 +374,7 @@ impl FakeKmsCustody {
         Self {
             name: name.to_string(),
             keys: RwLock::default(),
+            created: RwLock::default(),
             refused: RwLock::default(),
             unavailable: RwLock::default(),
             unwraps: std::sync::atomic::AtomicUsize::new(0),
@@ -331,6 +443,10 @@ impl FakeKmsCustody {
             .write()
             .map_err(|_| SealError::Authentication)?
             .insert(workspace_key_id, own);
+        self.created
+            .write()
+            .map_err(|_| SealError::Authentication)?
+            .insert(workspace_key_id, Utc::now());
         Ok(WrappedKey {
             kek_id: self.wrapping_id(workspace_key_id),
             blob: sealed.blob,
@@ -367,7 +483,23 @@ impl FakeKmsCustody {
             .write()
             .map_err(|_| SealError::Authentication)?
             .remove(&workspace_key_id);
+        self.created
+            .write()
+            .map_err(|_| SealError::Authentication)?
+            .remove(&workspace_key_id);
         Ok(())
+    }
+
+    fn held_now(&self, created_before: DateTime<Utc>) -> Result<Vec<CustodyKey>, SealError> {
+        let created = self.created.read().map_err(|_| SealError::Unavailable)?;
+        Ok(created
+            .iter()
+            .filter(|(_, at)| **at < created_before)
+            .map(|(id, _)| CustodyKey {
+                workspace_key_id: *id,
+                wrapping_key_id: self.wrapping_id(*id),
+            })
+            .collect())
     }
 }
 
@@ -378,6 +510,10 @@ impl WorkspaceKeyCustody for FakeKmsCustody {
 
     fn current_wrapping_like(&self) -> String {
         format!("{FAKE_KMS_PREFIX}{}:%", self.name)
+    }
+
+    fn creates_keys(&self) -> bool {
+        true
     }
 
     fn owns(&self, wrapping_key_id: &str) -> bool {
@@ -419,6 +555,17 @@ impl WorkspaceKeyCustody for FakeKmsCustody {
         _wrapped: &'a WrappedKey,
     ) -> CustodyFuture<'a, ()> {
         let result = self.destroy_now(workspace_key_id);
+        Box::pin(async move {
+            tokio::task::yield_now().await;
+            result
+        })
+    }
+
+    fn held_keys<'a>(
+        &'a self,
+        created_before: DateTime<Utc>,
+    ) -> CustodyFuture<'a, Vec<CustodyKey>> {
+        let result = self.held_now(created_before);
         Box::pin(async move {
             tokio::task::yield_now().await;
             result
@@ -475,6 +622,192 @@ mod tests {
             Err(SealError::Unavailable)
         );
         assert!(kms.unwrap(mine, &wrapped).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_fake_custody_lists_the_keys_it_holds_created_before_the_cutoff() {
+        let kms = FakeKmsCustody::new("t");
+        let (kept, gone) = (Uuid::now_v7(), Uuid::now_v7());
+        kms.wrap(kept, &ContentKey::generate()).await.unwrap();
+        let wrapped = kms.wrap(gone, &ContentKey::generate()).await.unwrap();
+        kms.destroy(gone, &wrapped).await.unwrap();
+        let later = Utc::now() + chrono::Duration::seconds(1);
+        assert_eq!(
+            kms.held_keys(later).await.unwrap(),
+            vec![CustodyKey {
+                workspace_key_id: kept,
+                wrapping_key_id: format!("fake-kms:t:{kept}"),
+            }]
+        );
+        let earlier = Utc::now() - chrono::Duration::hours(1);
+        assert!(kms.held_keys(earlier).await.unwrap().is_empty());
+    }
+
+    type Reply = dyn Fn(
+            http::Request<aws_smithy_types::body::SdkBody>,
+        ) -> http::Response<aws_smithy_types::body::SdkBody>
+        + Send
+        + Sync;
+
+    /// An HTTP client that answers every request from a closure.
+    #[derive(Clone)]
+    struct FnClient(std::sync::Arc<Reply>);
+
+    impl std::fmt::Debug for FnClient {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("FnClient")
+        }
+    }
+
+    impl FnClient {
+        fn shared(
+            f: impl Fn(
+                    http::Request<aws_smithy_types::body::SdkBody>,
+                ) -> http::Response<aws_smithy_types::body::SdkBody>
+                + Send
+                + Sync
+                + 'static,
+        ) -> aws_smithy_runtime_api::client::http::SharedHttpClient {
+            aws_smithy_runtime_api::client::http::SharedHttpClient::new(FnClient(
+                std::sync::Arc::new(f),
+            ))
+        }
+    }
+
+    impl aws_smithy_runtime_api::client::http::HttpConnector for FnClient {
+        fn call(
+            &self,
+            request: aws_smithy_runtime_api::client::orchestrator::HttpRequest,
+        ) -> aws_smithy_runtime_api::client::http::HttpConnectorFuture {
+            let response = (self.0)(request.try_into_http1x().unwrap());
+            aws_smithy_runtime_api::client::http::HttpConnectorFuture::ready(Ok(
+                aws_smithy_runtime_api::client::orchestrator::HttpResponse::try_from(response)
+                    .unwrap(),
+            ))
+        }
+    }
+
+    impl aws_smithy_runtime_api::client::http::HttpClient for FnClient {
+        fn http_connector(
+            &self,
+            _: &aws_smithy_runtime_api::client::http::HttpConnectorSettings,
+            _: &aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+        ) -> aws_smithy_runtime_api::client::http::SharedHttpConnector {
+            aws_smithy_runtime_api::client::http::SharedHttpConnector::new(self.clone())
+        }
+    }
+
+    /// A KMS account shared by three deployments: `prod`, `staging`, and one
+    /// that set no instance name. Answers ListKeys, ListResourceTags and
+    /// DescribeKey from the table below.
+    fn shared_account_kms(instance: Option<&str>) -> AwsKmsCustody {
+        use aws_smithy_types::body::SdkBody;
+        let client = FnClient::shared(|req: http::Request<SdkBody>| {
+            let target = req
+                .headers()
+                .get("x-amz-target")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            let body = String::from_utf8_lossy(req.body().bytes().unwrap_or_default()).to_string();
+            let wk = |n: u8| format!("0190a000-0000-7000-8000-00000000000{n}");
+            let tags = |key: &str| match key {
+                "k-prod" => format!(
+                    r#"[{{"TagKey":"maidan_instance","TagValue":"prod"}},{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(1)
+                ),
+                "k-staging" => format!(
+                    r#"[{{"TagKey":"maidan_instance","TagValue":"staging"}},{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(2)
+                ),
+                "k-denied" => format!(
+                    r#"[{{"TagKey":"maidan_instance","TagValue":"prod"}},{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(4)
+                ),
+                "k-untagged" => format!(
+                    r#"[{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(3)
+                ),
+                _ => "[]".to_string(),
+            };
+            let key = ["k-prod", "k-staging", "k-denied", "k-untagged", "k-other"]
+                .into_iter()
+                .find(|k| body.contains(&format!("\"{k}\"")))
+                .unwrap_or("k-other");
+            let json = match target.as_str() {
+                    "TrentService.ListKeys" => r#"{"Keys":[{"KeyId":"k-prod"},{"KeyId":"k-staging"},{"KeyId":"k-denied"},{"KeyId":"k-untagged"},{"KeyId":"k-other"}],"Truncated":false}"#.to_string(),
+                    "TrentService.ListResourceTags" => format!(r#"{{"Tags":{},"Truncated":false}}"#, tags(key)),
+                    "TrentService.DescribeKey" => format!(
+                        r#"{{"KeyMetadata":{{"KeyId":"{key}","Arn":"arn:aws:kms:us-east-1:1:key/{key}","KeyState":"Enabled","CreationDate":1600000000}}}}"#
+                    ),
+                    _ => "{}".to_string(),
+                };
+            // The role may read k-denied's tags but not describe it.
+            let (status, json) = if target == "TrentService.DescribeKey" && key == "k-denied" {
+                (
+                    400,
+                    r#"{"__type":"AccessDeniedException","message":"denied"}"#.to_string(),
+                )
+            } else {
+                (200, json)
+            };
+            http::Response::builder()
+                .status(status)
+                .header("content-type", "application/x-amz-json-1.1")
+                .body(SdkBody::from(json))
+                .unwrap()
+        });
+        let config = aws_sdk_kms::Config::builder()
+            .behavior_version(aws_sdk_kms::config::BehaviorVersion::latest())
+            .region(aws_sdk_kms::config::Region::new("us-east-1"))
+            .credentials_provider(aws_sdk_kms::config::Credentials::new(
+                "a", "b", None, None, "test",
+            ))
+            .http_client(client)
+            .build();
+        AwsKmsCustody::new(
+            aws_sdk_kms::Client::from_conf(config),
+            instance.map(str::to_string),
+        )
+    }
+
+    #[tokio::test]
+    async fn the_sweep_lists_only_keys_tagged_with_its_own_instance_in_a_shared_account() {
+        let held = shared_account_kms(Some("prod"))
+            .held_keys(Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(
+            held,
+            vec![CustodyKey {
+                workspace_key_id: "0190a000-0000-7000-8000-000000000001".parse().unwrap(),
+                wrapping_key_id: format!("{AWS_KMS_PREFIX}arn:aws:kms:us-east-1:1:key/k-prod"),
+            }],
+            "staging's, undescribable, untagged and foreign keys are never listed"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_instance_with_no_name_lists_no_keys_at_all() {
+        assert!(shared_account_kms(None)
+            .held_keys(Utc::now())
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_instance_name_that_differs_only_by_case_or_prefix_lists_nothing() {
+        for name in ["Prod", "pro", "prod ", "stag"] {
+            assert!(
+                shared_account_kms(Some(name))
+                    .held_keys(Utc::now())
+                    .await
+                    .unwrap()
+                    .is_empty(),
+                "{name:?}"
+            );
+        }
     }
 
     #[test]

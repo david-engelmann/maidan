@@ -151,6 +151,18 @@ pub fn init() {
             "Content key rows the last rewrap pass left because the key custody refused them (0 when none)"
         );
         describe_gauge!(
+            "maidan_workspace_keys_undestroyed",
+            "Retired workspace keys whose custody key the last rewrap pass could not destroy, e.g. a KMS key disabled by hand (0 when none)"
+        );
+        describe_counter!(
+            "maidan_custody_stray_keys_destroyed_total",
+            "Custody keys no workspace key row referred to (a wrap whose transaction never committed), destroyed by the stray-key sweep"
+        );
+        describe_gauge!(
+            "maidan_custody_stray_keys_failed",
+            "Stray custody keys the last sweep could not destroy (0 when none)"
+        );
+        describe_gauge!(
             "maidan_indexer_last_event_age_seconds",
             "Seconds since the background indexer last made progress (0 if never); an idle instance ages here, so alert on maidan_indexer_pending_age_seconds"
         );

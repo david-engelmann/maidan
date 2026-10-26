@@ -72,6 +72,7 @@ period is cut, and clients retry.
 | `MAIDAN_CONTENT_KEK_PREVIOUS` | during a rotation | Comma-separated retired KEKs still able to unwrap. Requires `MAIDAN_CONTENT_KEK`. |
 | `MAIDAN_WORKSPACE_KEY_CUSTODY` | no | Who wraps each workspace's key: `local` (the instance KEK, the default) or `aws-kms`. Switching rows over is the rewrap pass's job: keys the old custody wrapped keep opening until it has moved them. An unknown value refuses boot. |
 | `MAIDAN_WORKSPACE_KEY_CUSTODY=aws-kms` IAM | with `aws-kms` | Each workspace key gets its own KMS key: `CreateKey` (tagged `maidan_workspace_key=<id>`), `TagResource`, `Encrypt`/`Decrypt` with the workspace key id as encryption context, and on rotation or erasure `DisableKey` then `ScheduleKeyDeletion` (7-day window), so an erased workspace cannot be opened from any backup. Credentials and region come from the AWS chain: environment variables, web identity, SSO, profile static keys, ECS/EC2 instance roles. `credential_process` profiles are not supported (the SDK is built without that provider so the binaries run on Debian 12's glibc). |
+| `MAIDAN_KMS_INSTANCE` | with `aws-kms` | A name unique to this instance within the AWS account. Each KMS key is also tagged `maidan_instance=<name>`, and an hourly sweep (needing `ListKeys`, `ListResourceTags` and `DescribeKey`) schedules deletion of this instance's enabled keys older than a day that this database journalled a wrap for (`maidan_pending_custody_keys`, committed before the key is created) and no workspace key row refers to, the leftovers of a wrap whose transaction never committed. A key this database never journalled is never destroyed, so a second deployment reusing the name (a staging restored from a prod snapshot, blue/green on separate databases) cannot destroy the first one's keys. On SQLite the journal is held in memory, so keys left by a wrap before a restart are kept, not destroyed. Unset, keys carry no instance tag and nothing is swept. `maidan_custody_stray_keys_destroyed_total` counts what the sweep destroyed and `maidan_custody_stray_keys_failed` what it could not, and goes up when a whole sweep fails; `maidan_workspace_keys_undestroyed` counts retired keys whose KMS key will not be destroyed, for example one disabled by hand. |
 | `FEDERATION_DISABLED` | no | Set to `1` to disable the outbound poll worker. |
 | `FEDERATION_POLL_INTERVAL_SECS` | no | Outbound poll interval (default `30`). Each tick polls every enabled peer; a peer whose target is refused, has no outbound secret, or fails to answer is logged and skipped, and the rest are still polled. Counter `maidan_federation_peer_polls_total{outcome}` (`ok`, `refused`, `no_secret`, `failed`). |
 | `MAIDAN_EMBEDDING_PROVIDER` | no | `hash-v1` (default) or `openai-compatible`. |
@@ -1234,6 +1235,11 @@ verified. Sign-up is by waitlist invite (`MAIDAN_SIGNUP=1`, no
 auto-provisioning): the waitlist form is public, an operator invites from
 `/operator/waitlist`, and only an invited address finishes sign-up. The Zero
 Trust free plan counts each person who signs in as a seat.
+
+The front page is the server's own waitlist page. The Worker serves only the
+site's policy pages (`/privacy`, `/terms`, `/support`) from its static assets
+(`deploy/cloudflare/site/`), and `MAIDAN_SIGNUP_PRIVACY_URL` and
+`MAIDAN_SIGNUP_TERMS_URL` link the first two from the waitlist page's footer.
 
 Its Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
 `MAIDAN_SESSION_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `S3_ENDPOINT`,

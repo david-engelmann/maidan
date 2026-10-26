@@ -1,6 +1,13 @@
 {
   "capabilities": {
     "extendedAgentCard": true,
+    "extensions": [
+      {
+        "description": "Usage accounting: a message's metadata may carry one usage report (the POST /threads/{id}/usage body) under this URI; it is recorded in the workspace's claim-fenced ledger and the accepted PayerStamp is returned in the task's metadata.",
+        "required": false,
+        "uri": "https://github.com/david-engelmann/maidan/blob/main/docs/Protocols.md#payerstamp-usage-extension-v1"
+      }
+    ],
     "pushNotifications": true,
     "streaming": true
   },

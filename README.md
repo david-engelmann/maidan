@@ -208,7 +208,7 @@ export MAIDAN_CONTENT_KEK="$(openssl rand -hex 32)"   # keep it in your secret m
 docker run -p 8080:8080 \
   -e DATABASE_URL="postgres://…" -e MAIDAN_SESSION_SECRET=<32+ bytes> \
   -e MAIDAN_CONTENT_KEK \
-  ghcr.io/david-engelmann/maidan-server:v417.0.0     # pin a tag, not :latest
+  ghcr.io/david-engelmann/maidan-server:v418.0.0     # pin a tag, not :latest
 ```
 
 The server refuses to start without `MAIDAN_CONTENT_KEK`: it wraps the key that
@@ -219,7 +219,7 @@ admin token with the separately published, tag-matched CLI image (or a downloade
 binary) against the same database:
 
 ```sh
-MAIDAN_TAG=v417.0.0
+MAIDAN_TAG=v418.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL="postgres://…" -e MAIDAN_CONTENT_KEK \

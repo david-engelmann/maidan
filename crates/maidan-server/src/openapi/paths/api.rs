@@ -1596,6 +1596,17 @@ pub fn get_evidence_timeline() {}
     ))]
 pub fn list_thread_artifacts() {}
 
+/// A thread's current digest
+#[utoipa::path(get, path = "/threads/{id}/digest", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The newest linked artifact of kind `digest`: its sha256, `maidan://artifacts/{sha256}` URI, size and who linked it. Fetch the bytes once by hash; they never change.", body = ThreadDigest),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "No such thread, or no digest linked to it", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn get_thread_digest() {}
+
 /// Link an artifact to a thread
 #[utoipa::path(put, path = "/threads/{id}/artifacts/{sha256}", tag = "threads",
     params(

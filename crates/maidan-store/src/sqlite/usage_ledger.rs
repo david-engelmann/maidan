@@ -1,7 +1,7 @@
 use maidan_types::{
-    ClaimLeaseId, MemberId, NewUsageLedgerEntry, PayerStamp, PriceSnapshot, ThreadBudget, ThreadId,
-    TokenUsage, UsageEvidence, UsageLedgerEntry, UsageRollup, UsageRollupQuery, UsageSums,
-    WorkspaceId,
+    ClaimLeaseId, MemberId, NewUsageLedgerEntry, PayerStamp, PriceSnapshot, TaskClassUsageRow,
+    ThreadBudget, ThreadId, TokenUsage, UsageEvidence, UsageLedgerEntry, UsageRollup,
+    UsageRollupQuery, UsageSums, WorkspaceId,
 };
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
@@ -34,6 +34,63 @@ pub async fn list_for_thread(
     .fetch_all(pool)
     .await?;
     rows.iter().map(row_to_entry).collect()
+}
+
+/// The most recent completed reports in a workspace, newest first.
+pub async fn list_for_workspace(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+    limit: i64,
+) -> Result<Vec<UsageLedgerEntry>, StoreError> {
+    let limit = limit.clamp(1, 1000);
+    let rows = sqlx::query(
+        "SELECT * FROM maidan_usage_ledger
+         WHERE workspace_id = ? AND budget IS NOT NULL
+         ORDER BY accepted_at DESC, usage_report_id DESC LIMIT ?",
+    )
+    .bind(workspace_id.0)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_entry).collect()
+}
+
+/// Completed reports grouped by thread, model and effort, with each thread's
+/// kind, size and whether it completed: what model and effort by task class
+/// reads. Tombstoned threads are left out. Capped at 20,000 groups.
+pub async fn task_class_usage(
+    pool: &SqlitePool,
+    workspace_id: WorkspaceId,
+) -> Result<Vec<TaskClassUsageRow>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT l.thread_id, COALESCE(a.kind, 'change') AS kind, a.size AS size,
+                (t.state IN ('closed', 'archived')) AS completed,
+                l.model AS model, l.effort AS effort,
+                COUNT(*) AS reports, COALESCE(SUM(l.usd_micros), 0) AS usd
+         FROM maidan_usage_ledger l
+         JOIN maidan_threads t ON t.id = l.thread_id
+         LEFT JOIN maidan_thread_attributes a ON a.thread_id = l.thread_id
+         WHERE l.workspace_id = ? AND l.budget IS NOT NULL AND t.tombstoned_at IS NULL
+         GROUP BY l.thread_id, a.kind, a.size, t.state, l.model, l.effort
+         ORDER BY l.thread_id, l.model, l.effort
+         LIMIT 20000",
+    )
+    .bind(workspace_id.0)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|row| TaskClassUsageRow {
+            thread_id: ThreadId(row.get("thread_id")),
+            kind: row.get("kind"),
+            size: row.get("size"),
+            completed: row.get("completed"),
+            model: row.get("model"),
+            effort: row.get("effort"),
+            reports: row.get("reports"),
+            usd_micros: row.get("usd"),
+        })
+        .collect())
 }
 
 /// A call in a cheaper lane, the SQL twin of `UsageEvidence::in_lane`.
@@ -237,8 +294,8 @@ pub(super) async fn reserve_in_tx(
             provider, service_tier, batch, harness, harness_version,
             cache_key, cache_miss_reason, pack_sha256,
             standard_input_price, standard_output_price, standard_cache_read_price,
-            standard_cache_write_5m_price, standard_cache_write_1h_price
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            standard_cache_write_5m_price, standard_cache_write_1h_price, effort
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     )
     .bind(new.usage_report_id)
     .bind(workspace_id.0)
@@ -271,6 +328,7 @@ pub(super) async fn reserve_in_tx(
     .bind(standard.map(|p| p.cache_read_usd_micros_per_million))
     .bind(standard.map(|p| p.cache_write_5m_usd_micros_per_million))
     .bind(standard.map(|p| p.cache_write_1h_usd_micros_per_million))
+    .bind(new.evidence.effort.as_deref())
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() == 1)
@@ -360,6 +418,7 @@ fn row_to_entry(row: &sqlx::sqlite::SqliteRow) -> Result<UsageLedgerEntry, Store
             batch: row.get("batch"),
             harness: row.get("harness"),
             harness_version: row.get("harness_version"),
+            effort: row.get("effort"),
             cache_key: row.get("cache_key"),
             cache_miss_reason: row.get("cache_miss_reason"),
             pack_sha256: packs,

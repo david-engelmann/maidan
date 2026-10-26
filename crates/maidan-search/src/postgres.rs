@@ -432,16 +432,18 @@ impl Search for PostgresSearch {
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         workspace_id: Option<WorkspaceId>,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<crate::reindex::ReindexReport, SearchError> {
-        reindex_postgres(&self.pool, self, provider, workspace_id).await
+        reindex_postgres(&self.pool, self, provider, workspace_id, meters).await
     }
 
     async fn embed_missing(
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         limit: i64,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<crate::reindex::ReindexReport, SearchError> {
-        crate::reindex::embed_missing_postgres(&self.pool, self, provider, limit).await
+        crate::reindex::embed_missing_postgres(&self.pool, self, provider, limit, meters).await
     }
 
     async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {

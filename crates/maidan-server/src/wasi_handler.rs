@@ -96,6 +96,14 @@ pub async fn dispatch_wasi(
     author_id: MemberId,
     message_id: MessageId,
 ) -> Value {
+    // The hard allowance cutoff: past its wasi_ms allowance an open sign-up
+    // workspace's handlers do not run.
+    if state
+        .usage_meters
+        .is_cut_off(workspace_id, maidan_types::UsageMeter::WasiMs)
+    {
+        return over_allowance_envelope();
+    }
     let module = match load_module(state, auth, command).await {
         Ok(bytes) => bytes,
         Err(failure) => return envelope(failure),
@@ -145,6 +153,20 @@ pub async fn dispatch_wasi(
 /// messages to the person who wrote the handler, and collapsing them is the
 /// difference between a fixable report and a shrug.
 ///
+/// The failure envelope for a handler that did not run because its open
+/// sign-up workspace is past the `wasi_ms` allowance. Same shape as a run
+/// failure, with nothing captured.
+fn over_allowance_envelope() -> Value {
+    json!({
+        "ok": false,
+        "error": "this workspace is past its free allowance for wasi_ms this month",
+        "error_kind": "over_allowance",
+        "exit_code": Value::Null,
+        "stdout": "",
+        "stderr": "",
+    })
+}
+
 /// A failure still carries whatever the guest managed to write. A handler that
 /// prints its progress and then trips a limit is diagnosable from the partial
 /// output and useless without it.

@@ -365,6 +365,12 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
 
     // Finish a KEK rotation: rewrap keys still under a previous KEK.
     maidan_server::content_keys::spawn_rewrap(store.clone(), std::time::Duration::from_secs(30));
+    // Destroy custody keys whose wrap never reached a stored row.
+    maidan_server::content_keys::spawn_stray_sweep(
+        store.clone(),
+        maidan_server::content_keys::STRAY_SWEEP_EVERY,
+        maidan_server::content_keys::STRAY_GRACE,
+    );
 
     let artifacts: Arc<dyn maidan_artifacts::ArtifactStore> = match &config.artifact_backend {
         ArtifactBackend::LocalFs { root } => {
@@ -557,13 +563,14 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         )
         .with_usage_meters(state.usage_meters.clone());
         if let Some(repair) = maidan_server::embed_repair::config_from_env() {
-            let (search, provider, metrics) = (
+            let (search, provider, metrics, meters) = (
                 state.search.clone(),
                 state.embedding_provider.clone(),
                 metrics.clone(),
+                state.usage_meters.clone(),
             );
             tokio::spawn(async move {
-                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
+                maidan_server::embed_repair::run(search, provider, metrics, meters, repair).await;
             });
         }
         (Arc::new(handler), metrics)
@@ -634,6 +641,9 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.public_origin =
         maidan_server::oauth::metadata::public_origin_from(public_origin.as_deref())
             .map_err(anyhow::Error::msg)?;
+    state.turnstile =
+        maidan_server::turnstile::TurnstileSettings::from_env(state.public_origin.as_deref())?
+            .map(Arc::new);
     let oauth_clients = maidan_server::oauth::registry::load_preregistered_clients(&state)
         .await
         .map_err(|e| anyhow::anyhow!("loading pre-registered OAuth clients: {e:?}"))?;

@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
-use crate::store::RewrapPass;
+use crate::store::{RewrapPass, StraySweep};
 
 /// The key row for `subject`, with the workspace key that wraps it. SQLite
 /// serializes writers, so the append's transaction already excludes a
@@ -417,6 +417,7 @@ pub async fn rewrap(
             {
                 tracing::warn!(workspace_key = %id, error = %err, "custody refused to destroy a retired workspace key; skipped");
                 pass.skipped += 1;
+                pass.undestroyed += 1;
                 continue;
             }
             let marked = sqlx::query(
@@ -461,4 +462,71 @@ pub async fn count_needing_rewrap(
     .fetch_one(pool)
     .await?;
     Ok(count as u64)
+}
+
+/// Destroy custody keys older than `grace` (by this server's clock) that this
+/// store's keyring journalled a wrap for and no workspace key row refers to;
+/// see [`crate::EventStore::sweep_stray_custody_keys`]. SQLite serializes
+/// writers, so a journal row cannot commit outside the transaction waiting on
+/// the wrap; the journal is the keyring's in-memory one, and a restart only
+/// ever leaves keys behind, never destroys one. A key the journal does not
+/// hold is never destroyed, whatever its tags say.
+pub async fn sweep_stray(
+    pool: &SqlitePool,
+    keys: &ContentKeyring,
+    grace: std::time::Duration,
+) -> Result<StraySweep, StoreError> {
+    let mut sweep = StraySweep::default();
+    let Some(created_before) = chrono::Duration::from_std(grace)
+        .ok()
+        .and_then(|grace| Utc::now().checked_sub_signed(grace))
+    else {
+        return Ok(sweep);
+    };
+    let journal = keys.memory_wrap_journal();
+    let pending = journal.pending();
+    for wrap in &pending {
+        let Some(wrapping_key_id) = &wrap.wrapping_key_id else {
+            // A wrap that never returned a key id past the grace period: the
+            // custody cleans up a key whose encrypt failed, and nothing proves
+            // which key any other one made, so the entry only goes.
+            if wrap.intended_at < created_before {
+                journal.clear(wrap.workspace_key_id);
+            }
+            continue;
+        };
+        if referenced(pool, wrapping_key_id).await? {
+            journal.clear(wrap.workspace_key_id);
+        }
+    }
+    for key in keys.custody_keys_before(created_before).await? {
+        let journalled = pending.iter().any(|wrap| {
+            wrap.workspace_key_id == key.workspace_key_id
+                && wrap.wrapping_key_id.as_deref() == Some(key.wrapping_key_id.as_str())
+                && wrap.intended_at < created_before
+        });
+        if !journalled || referenced(pool, &key.wrapping_key_id).await? {
+            continue;
+        }
+        match keys.destroy_stray_custody_key(&key).await {
+            Ok(()) => {
+                sweep.destroyed += 1;
+                journal.clear(key.workspace_key_id);
+            }
+            Err(err) => {
+                tracing::warn!(workspace_key = %key.workspace_key_id, error = %err, "custody refused to destroy a stray key; retrying next sweep");
+                sweep.failed += 1;
+            }
+        }
+    }
+    Ok(sweep)
+}
+
+async fn referenced(pool: &SqlitePool, wrapping_key_id: &str) -> Result<bool, StoreError> {
+    Ok(sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM maidan_workspace_keys WHERE wrapping_key_id = ?)",
+    )
+    .bind(wrapping_key_id)
+    .fetch_one(pool)
+    .await?)
 }

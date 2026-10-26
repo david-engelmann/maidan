@@ -398,6 +398,52 @@ where
         .await
         .expect("an openai member claims an anthropic change's review");
     assert!(direct.claimed);
+
+    // Naming the family after a seat of that family already holds the
+    // review is refused and changes nothing: every claim-time check ran
+    // while the thread was unlabeled, so the set is the last place to stop it.
+    let (late, _) = store
+        .create_thread_with_footprint(
+            new("review labelled late"),
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("late review");
+    assert!(
+        store
+            .claim_thread(late.id, other)
+            .await
+            .expect("claim")
+            .claimed
+    );
+    let labelled = store
+        .set_thread_attributes(
+            late.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("openai".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await;
+    assert!(
+        matches!(&labelled, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{labelled:?}"
+    );
+    assert_eq!(
+        store
+            .get_thread_attributes(late.id)
+            .await
+            .expect("attrs")
+            .author_family,
+        None,
+        "the refused set stored nothing"
+    );
 }
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger

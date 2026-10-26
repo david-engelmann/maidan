@@ -170,6 +170,20 @@ async fn run_sod_suite(store: &dyn Store) {
         "claimer landing its own owned thread must be rejected, got {denied:?}"
     );
 
+    // Releasing the claim does not make the work someone else's: a past
+    // holder still cannot land it.
+    store
+        .unassign_thread(thread.id)
+        .await
+        .expect("release the claim");
+    let after_release = store
+        .transition_thread(thread.id, claimer.id, maidan_fsm::ThreadAction::Close)
+        .await;
+    assert!(
+        matches!(after_release, Err(StoreError::Conflict(_))),
+        "a past holder landing its own owned thread must be rejected, got {after_release:?}"
+    );
+
     // The owner (a non-claimer) may land it.
     let landed = store
         .transition_thread(thread.id, owner.id, maidan_fsm::ThreadAction::Close)

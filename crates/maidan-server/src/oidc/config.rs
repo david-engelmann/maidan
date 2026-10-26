@@ -73,6 +73,12 @@ pub struct OidcSettings {
     /// one-time code; an explicit `email_verified: false` still counts as
     /// unverified.
     pub emails_verified: bool,
+    /// Where the instance's privacy policy and terms live
+    /// (`MAIDAN_SIGNUP_PRIVACY_URL`, `MAIDAN_SIGNUP_TERMS_URL`): a path on
+    /// this origin or an `https://` URL. The waitlist page links each one
+    /// that is set, since it asks visitors for an email address.
+    pub privacy_url: Option<String>,
+    pub terms_url: Option<String>,
 }
 
 impl OidcSettings {
@@ -160,6 +166,9 @@ impl OidcSettings {
             );
         }
 
+        let privacy_url = policy_url("MAIDAN_SIGNUP_PRIVACY_URL")?;
+        let terms_url = policy_url("MAIDAN_SIGNUP_TERMS_URL")?;
+
         Ok(Some(Self {
             enabled: true,
             mock,
@@ -177,6 +186,8 @@ impl OidcSettings {
             signup_email_domains,
             signup_open,
             emails_verified,
+            privacy_url,
+            terms_url,
         }))
     }
 }
@@ -245,6 +256,47 @@ impl OidcRuntime {
     }
 }
 
+/// A policy link from the environment, or `None` where it is unset or
+/// blank. The waitlist page puts it in an `href`, so it is a path on this
+/// origin or an `https://` URL and nothing that could leave the attribute or
+/// run as script; a typo is refused at boot rather than shipped as a dead link.
+fn policy_url(name: &'static str) -> Result<Option<String>, ConfigError> {
+    let Ok(raw) = std::env::var(name) else {
+        return Ok(None);
+    };
+    check_policy_url(name, &raw)
+}
+
+fn check_policy_url(name: &'static str, raw: &str) -> Result<Option<String>, ConfigError> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let on_origin = value.starts_with('/') && !value.starts_with("//");
+    // The host a visitor reads must be the one the link opens:
+    // `https://maidan.world@evil.example/terms` shows one and opens the
+    // other, so an authority with userinfo is refused.
+    let https = value.strip_prefix("https://").is_some_and(|rest| {
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        !authority.is_empty() && !authority.contains('@')
+    });
+    if !on_origin && !https {
+        return Err(ConfigError::Invalid(
+            name,
+            "must be a path on this origin (`/privacy`) or an https:// URL".into(),
+        ));
+    }
+    if value.chars().any(|c| {
+        c.is_whitespace() || c.is_control() || matches!(c, '"' | '\'' | '<' | '>' | '\\' | '`')
+    }) {
+        return Err(ConfigError::Invalid(
+            name,
+            "has a space, quote, angle bracket, backslash or control character".into(),
+        ));
+    }
+    Ok(Some(value.to_string()))
+}
+
 /// Open sign-up widens the invited one, so it means nothing without
 /// `MAIDAN_SIGNUP`, and a domain list beside it would be ignored: refuse
 /// both at boot rather than run a door the operator did not describe.
@@ -265,6 +317,61 @@ fn check_open_signup(signup: bool, open: bool, has_domains: bool) -> Result<(), 
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod policy_url_tests {
+    use super::*;
+
+    #[test]
+    fn a_policy_link_is_a_path_on_this_origin_or_an_https_url() {
+        for ok in [
+            "/privacy",
+            "/legal/terms.html",
+            "https://example.com/privacy?v=2&x=1",
+        ] {
+            assert_eq!(
+                check_policy_url("MAIDAN_SIGNUP_PRIVACY_URL", ok)
+                    .ok()
+                    .flatten()
+                    .as_deref(),
+                Some(ok)
+            );
+        }
+        assert_eq!(
+            check_policy_url("MAIDAN_SIGNUP_PRIVACY_URL", "  ")
+                .ok()
+                .flatten(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_policy_link_that_could_leave_the_attribute_or_the_origin_is_refused() {
+        for bad in [
+            "privacy",
+            "//evil.example/privacy",
+            "http://example.com/privacy",
+            "https:///privacy",
+            "javascript:alert(1)",
+            "/privacy\" onmouseover=\"x",
+            "/privacy><script>",
+            "/pri vacy",
+            "/privacy'",
+            "/a\\b",
+            "https://user:pass@example.com/privacy",
+            "https://maidan.world@evil.example/terms",
+            "https://?x",
+        ] {
+            assert!(
+                matches!(
+                    check_policy_url("MAIDAN_SIGNUP_TERMS_URL", bad),
+                    Err(ConfigError::Invalid("MAIDAN_SIGNUP_TERMS_URL", _))
+                ),
+                "{bad}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

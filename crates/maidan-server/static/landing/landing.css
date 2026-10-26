@@ -142,3 +142,4 @@ button[aria-busy="true"] { opacity: 0.7; cursor: progress; }
   .card { padding: 1.5rem; }
   .lede { font-size: 1.05rem; }
 }
+.turnstile-slot { min-height: 65px; margin: 0.5rem 0; }

@@ -213,6 +213,23 @@ pub struct ThreadArtifact {
     pub linked_at: DateTime<Utc>,
 }
 
+/// A thread's current digest: the newest artifact of kind `digest` linked to
+/// it, as the caller's workspace holds it. The bytes are fetched once by
+/// sha256 (`GET /artifacts/{sha256}` or `maidan://artifacts/{sha256}`) and
+/// never change, so every reader may cache them by hash.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadDigest {
+    pub thread_id: ThreadId,
+    pub sha256: String,
+    /// `maidan://artifacts/{sha256}`.
+    pub uri: String,
+    pub size_bytes: i64,
+    pub mime_type: Option<String>,
+    pub linked_by: MemberId,
+    pub linked_at: DateTime<Utc>,
+}
+
 impl ThreadState {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -269,6 +286,9 @@ pub enum ArtifactKind {
     /// A frozen, content-addressed context pack — tamper-evident "exactly what
     /// the agent was handed".
     ContextSnapshot,
+    /// A thread digest: a summary written once and read by every agent that
+    /// joins the thread, addressed by its sha256 (C10).
+    Digest,
 }
 
 impl ArtifactKind {
@@ -280,6 +300,7 @@ impl ArtifactKind {
             Self::CodeDump => "code_dump",
             Self::Attachment => "attachment",
             Self::ContextSnapshot => "context_snapshot",
+            Self::Digest => "digest",
         }
     }
 
@@ -291,13 +312,14 @@ impl ArtifactKind {
             "code_dump" => Some(Self::CodeDump),
             "attachment" => Some(Self::Attachment),
             "context_snapshot" => Some(Self::ContextSnapshot),
+            "digest" => Some(Self::Digest),
             _ => None,
         }
     }
 
     /// Media: an attachment, screenshot or recording. Media counts against a
     /// workspace's media quota and expires once nothing references it.
-    /// Transcripts, code dumps and context snapshots are evidence, and are
+    /// Transcripts, code dumps, context snapshots and digests are evidence, and are
     /// never counted or expired.
     pub fn is_media(self) -> bool {
         matches!(self, Self::Attachment | Self::Screenshot | Self::Recording)
@@ -309,6 +331,7 @@ impl ArtifactKind {
             Self::Recording | Self::Attachment => "application/octet-stream",
             Self::Transcript | Self::CodeDump => "text/plain",
             Self::ContextSnapshot => "application/json",
+            Self::Digest => "text/markdown",
         }
     }
 }
@@ -3615,6 +3638,41 @@ pub struct NewOidcSignup {
     /// and addressed to `email` (case-insensitive).
     pub invite_entry_id: Option<WaitlistEntryId>,
     pub session_expires_at: DateTime<Utc>,
+    /// Let in by open sign-up (`MAIDAN_SIGNUP_OPEN`) rather than by an
+    /// invite or a listed domain. Recorded as the workspace's origin, which
+    /// is what holds it to the hard allowance cutoff.
+    pub open: bool,
+}
+
+/// How a workspace came to be (`maidan_workspaces.origin`). Only `Open`
+/// workspaces are held to the hard allowance cutoff; the others are only
+/// marked. An import carries one, so importing a bundle can never turn an
+/// open workspace into an operator one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceOrigin {
+    Operator,
+    Signup,
+    Open,
+}
+
+impl WorkspaceOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::Signup => "signup",
+            Self::Open => "open",
+        }
+    }
+
+    /// The stored text back to an origin. Unknown text reads as `Open`, the
+    /// strictest, so a bad row is never let off the cutoff.
+    pub fn from_stored(s: &str) -> Self {
+        match s {
+            "operator" => Self::Operator,
+            "signup" => Self::Signup,
+            _ => Self::Open,
+        }
+    }
 }
 
 /// What a completed sign-up made, before the session: the audit closure for

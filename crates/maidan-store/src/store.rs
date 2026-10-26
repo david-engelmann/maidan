@@ -18,10 +18,27 @@ pub struct RewrapPass {
     pub changed: u64,
     /// Rows the custody refused; they stay for a later pass.
     pub skipped: u64,
+    /// Of `skipped`, retired workspace keys whose custody key would not be
+    /// destroyed (for example a KMS key someone disabled by hand).
+    pub undestroyed: u64,
+}
+
+/// What one [`EventStore::sweep_stray_custody_keys`] pass did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StraySweep {
+    /// Custody keys no workspace key row refers to, now destroyed.
+    pub destroyed: u64,
+    /// Stray keys the custody would not destroy; tried again next sweep.
+    pub failed: u64,
 }
 
 #[async_trait]
 pub trait MetaStore: Send + Sync {
+    /// The meter buffer whose cutoff set this store's message and artifact
+    /// writes consult. The server meters through this same buffer, so the
+    /// set it refreshes is the set the store enforces.
+    fn usage_meters(&self) -> std::sync::Arc<crate::usage_meters::UsageMeterBuffer>;
+
     async fn health_check(&self) -> Result<(), StoreError>;
 
     /// The primary's current WAL write position — the read-replica causality
@@ -104,7 +121,17 @@ pub trait WorkspaceStore: Send + Sync {
     /// timestamps preserved, in one transaction. The inverse of the export. Id
     /// remapping (fresh workspace vs same-id restore) and the already-exists
     /// guard are the caller's job.
-    async fn import_workspace(&self, import: &WorkspaceImport) -> Result<(), StoreError>;
+    /// Insert `import` as a new workspace of `origin`.
+    async fn import_workspace(
+        &self,
+        import: &WorkspaceImport,
+        origin: WorkspaceOrigin,
+    ) -> Result<(), StoreError>;
+    /// How `workspace_id` came to be.
+    async fn workspace_origin(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<WorkspaceOrigin, StoreError>;
 
     async fn create_workspace(&self, new: NewWorkspace) -> Result<Workspace, StoreError>;
     /// Create a workspace and append its `WorkspaceCreated` event atomically.
@@ -154,10 +181,15 @@ pub trait WorkspaceStore: Send + Sync {
     /// With `replace_existing`, the named workspace is erased first in that
     /// transaction (refused under legal hold), so a failed import leaves it
     /// intact.
+    ///
+    /// The imported workspace gets `origin`, except that a replaced one
+    /// keeps the origin it had: a restore never changes how a workspace is
+    /// held to the allowance.
     async fn import_workspace_audited(
         &self,
         import: &WorkspaceImport,
         replace_existing: bool,
+        origin: WorkspaceOrigin,
         audit: NewAuditEvent,
     ) -> Result<(), StoreError>;
     /// [`Self::place_legal_hold`] with its audit row in the same transaction.
@@ -600,6 +632,20 @@ pub trait UsageLedgerStore: Send + Sync {
         thread_id: ThreadId,
         limit: i64,
     ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
+    /// Completed reports across a workspace, newest first, capped at 1000.
+    /// What the fleet conformance check reads.
+    async fn list_workspace_usage_ledger(
+        &self,
+        workspace_id: WorkspaceId,
+        limit: i64,
+    ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
+    /// Completed reports grouped by thread, model and effort, with each
+    /// thread's kind, size and completion: the input to model and effort by
+    /// task class (C12). The workspace's threads only.
+    async fn task_class_usage(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<TaskClassUsageRow>, StoreError>;
     /// Spend, cache shape, and cost per completed task. A thread or member
     /// outside the named workspace is `NotFound`.
     async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;
@@ -642,6 +688,12 @@ pub trait UsageLedgerStore: Send + Sync {
         workspace_id: WorkspaceId,
         month: &str,
     ) -> Result<Vec<maidan_types::OverAllowance>, StoreError>;
+    /// Every open sign-up workspace's crossings in `month` (`YYYY-MM`), as
+    /// (workspace, meter): what the hard allowance cutoff refuses.
+    async fn list_usage_cut_off(
+        &self,
+        month: &str,
+    ) -> Result<Vec<(WorkspaceId, maidan_types::UsageMeter)>, StoreError>;
     /// A workspace's metered usage from `since` (a UTC day) on, oldest first.
     async fn list_usage_meters(
         &self,
@@ -3437,6 +3489,15 @@ pub trait EventStore: Send + Sync {
     async fn rewrap_content_keys(&self, limit: i64) -> Result<RewrapPass, StoreError>;
     /// Rows [`Self::rewrap_content_keys`] has still to change.
     async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
+    /// Destroy every custody key older than `grace` that no workspace key row,
+    /// in any workspace, refers to. A key is created before the transaction
+    /// that stores its row, so a rollback or a lost race leaves one behind.
+    /// The cutoff is this server's clock minus `grace`, taken here and never
+    /// from the caller, so a wrap still in flight stays out of the sweep.
+    async fn sweep_stray_custody_keys(
+        &self,
+        grace: std::time::Duration,
+    ) -> Result<StraySweep, StoreError>;
     /// Retire the workspace's key and make a new one. The workspace's data keys
     /// move to it on the next [`Self::rewrap_content_keys`] passes, which then
     /// destroy the retired key; no sealed message is rewritten. Returns the

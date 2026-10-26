@@ -54,6 +54,36 @@ pub(crate) fn require_signup(state: &AppState) -> ApiResult<()> {
     }
 }
 
+/// The footer links to the instance's privacy policy and terms, for the
+/// waitlist page's `<!-- policy-links -->` slot; empty where neither is set.
+/// Boot already refused a value that could leave its attribute, but settings
+/// built in code skip that check, so the value is escaped here as well.
+pub(crate) fn policy_links_html(state: &AppState) -> String {
+    let Some(oidc) = state.oidc.as_ref() else {
+        return String::new();
+    };
+    let settings = &oidc.settings;
+    [
+        (settings.privacy_url.as_deref(), "Privacy"),
+        (settings.terms_url.as_deref(), "Terms"),
+    ]
+    .into_iter()
+    .filter_map(|(url, label)| {
+        url.map(|url| format!("<a href=\"{}\">{label}</a>", attribute_escaped(url)))
+    })
+    .collect::<Vec<_>>()
+    .join("\n      ")
+}
+
+/// `text` safe inside a double-quoted HTML attribute.
+fn attribute_escaped(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 /// Longest local part (before the `@`) an address may have, per RFC 5321.
 const MAX_LOCAL_CHARS: usize = 64;
 
@@ -163,6 +193,17 @@ pub async fn join_waitlist(
         return Err(ApiError::BadRequest(
             "say briefly what you would use Maidan for".into(),
         ));
+    }
+    // Checked once the form is well-formed, so a typo does not spend the
+    // visitor's token, and before the honeypot, so a bot that solved
+    // nothing learns nothing from either answer.
+    if let Some(turnstile) = state.turnstile.as_deref() {
+        crate::turnstile::verify(
+            turnstile,
+            body.turnstile_token.as_deref(),
+            crate::turnstile::Action::Waitlist,
+        )
+        .await?;
     }
     if body
         .website
@@ -306,4 +347,17 @@ pub async fn invite_waitlist_entry(
         signup_path: format!("/auth/oidc/signup?invite={token}"),
         invite_expires_at: expires_at,
     }))
+}
+
+#[cfg(test)]
+mod attribute_escape_tests {
+    use super::attribute_escaped;
+
+    #[test]
+    fn a_link_built_without_boot_checks_cannot_leave_its_attribute() {
+        assert_eq!(
+            attribute_escaped(r#"/p?a=1&b="x"'<y>"#),
+            "/p?a=1&amp;b=&quot;x&quot;&#39;&lt;y&gt;"
+        );
+    }
 }

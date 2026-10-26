@@ -92,6 +92,13 @@ pub(super) async fn search_messages(
                 .await?
         }
         SearchMessagesMode::Semantic => {
+            if let (Some(meters), false) = (meters, auth.bypass)
+                && meters.is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+            {
+                return Err(crate::error::McpError::OverAllowance(
+                    maidan_types::UsageMeter::EmbeddingCalls,
+                ));
+            }
             let embedding = maidan_search::embed_off_worker(embedding_provider, &a.query)
                 .await
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;
@@ -107,6 +114,13 @@ pub(super) async fn search_messages(
                 .await?
         }
         SearchMessagesMode::Hybrid => {
+            if let (Some(meters), false) = (meters, auth.bypass)
+                && meters.is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+            {
+                return Err(crate::error::McpError::OverAllowance(
+                    maidan_types::UsageMeter::EmbeddingCalls,
+                ));
+            }
             let embedding = maidan_search::embed_off_worker(embedding_provider, &a.query)
                 .await
                 .map_err(|e| McpError::Internal(format!("embedding generation failed: {e}")))?;

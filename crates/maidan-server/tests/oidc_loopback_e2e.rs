@@ -415,6 +415,8 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
         signup_email_domains: Vec::new(),
         signup_open: false,
         emails_verified: false,
+        privacy_url: None,
+        terms_url: None,
     })
     .await
     .expect("discover loopback provider");
@@ -733,6 +735,8 @@ async fn spawn_linking_maidan(
         signup_email_domains: vec!["example.com".into()],
         signup_open: false,
         emails_verified,
+        privacy_url: None,
+        terms_url: None,
     })
     .await
     .expect("discover loopback provider");
