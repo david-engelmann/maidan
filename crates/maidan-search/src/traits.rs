@@ -53,13 +53,16 @@ pub trait Search: Send + Sync {
         model: &str,
     ) -> Result<Vec<SearchHit>, SearchError>;
 
-    /// Re-embed all live messages for the provider's model (optional workspace scope).
+    /// Re-embed all live messages for the provider's model (optional workspace
+    /// scope). With `meters`, each batch skips workspaces cut off on
+    /// `embedding_calls` and counts what it embeds before the provider call.
     async fn reindex_embeddings(
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         workspace_id: Option<WorkspaceId>,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<ReindexReport, SearchError> {
-        let _ = (provider, workspace_id);
+        let _ = (provider, workspace_id, meters);
         Err(SearchError::Unsupported("reindex_embeddings"))
     }
 

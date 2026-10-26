@@ -771,3 +771,241 @@ async fn a_workspace_past_its_embedding_allowance_cannot_reindex_itself_while_an
         "the refused workspace is metered no embedding calls"
     );
 }
+
+/// Cuts a workspace off on `embedding_calls` as soon as it is asked to embed,
+/// as the usage_meters loop would mid-job. Counts what it embeds for it.
+struct CutsOffOnFirstEmbed {
+    inner: maidan_search::HashV1Provider,
+    meters: std::sync::Arc<maidan_store::usage_meters::UsageMeterBuffer>,
+    target: std::sync::Mutex<Option<WorkspaceId>>,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl maidan_search::EmbeddingProvider for CutsOffOnFirstEmbed {
+    fn model_name(&self) -> &str {
+        maidan_search::EmbeddingProvider::model_name(&self.inner)
+    }
+    fn dimension(&self) -> usize {
+        maidan_search::EmbeddingProvider::dimension(&self.inner)
+    }
+    fn embed(&self, body: &str) -> Result<Vec<f32>, maidan_search::EmbeddingProviderError> {
+        let target = *self
+            .target
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(ws) = target {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.meters.set_cut_off([(ws, UsageMeter::EmbeddingCalls)]);
+        }
+        self.inner.embed(body)
+    }
+}
+
+#[tokio::test]
+async fn a_workspace_cut_off_mid_reindex_embeds_no_further_batch() {
+    let meters = std::sync::Arc::new(maidan_store::usage_meters::UsageMeterBuffer::new());
+    let provider = std::sync::Arc::new(CutsOffOnFirstEmbed {
+        inner: maidan_search::HashV1Provider,
+        meters: meters.clone(),
+        target: std::sync::Mutex::new(None),
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let h = spawn_with(|s| {
+        s.usage_meters = meters.clone();
+        s.embedding_provider = provider.clone();
+    })
+    .await;
+    let store = h.store.as_ref();
+    let (ws, admin) = signed_up(store, "ada", true).await;
+    let thread = a_thread(store, ws).await;
+    for i in 0..100 {
+        store
+            .post_message(NewMessage {
+                thread_id: thread,
+                author_id: admin,
+                body: format!("message {i}"),
+                metadata: serde_json::json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+    }
+    let bearer = token(
+        store,
+        ws,
+        admin,
+        vec![
+            capability::WORKSPACE_READ.to_string(),
+            capability::WORKSPACE_WRITE.to_string(),
+        ],
+    )
+    .await;
+    *provider
+        .target
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(ws);
+    let res = h
+        .send(
+            Method::POST,
+            "/operator/reindex-embeddings",
+            &bearer,
+            Some(serde_json::json!({ "workspace_id": ws.0 })),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::ACCEPTED, "not cut off yet");
+    let job: Value = res.json().await.unwrap_or(Value::Null);
+    let job_id = job["job_id"].as_str().unwrap_or_default().to_string();
+    for _ in 0..200 {
+        let (_, body) = status(
+            &h,
+            &bearer,
+            &format!("/operator/reindex-embeddings/{job_id}"),
+        )
+        .await;
+        if body["status"] != "running" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let embedded = provider.calls.load(std::sync::atomic::Ordering::SeqCst);
+    assert!(
+        embedded > 0,
+        "the job embeds its first batch before the cutoff lands"
+    );
+    assert!(
+        embedded <= 32,
+        "cut off during its first batch, the job still embedded {embedded} of 100"
+    );
+}
+
+/// Holds every embed until released, so a reindex job stays running.
+struct HeldProvider {
+    inner: maidan_search::HashV1Provider,
+    released: std::sync::atomic::AtomicBool,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl maidan_search::EmbeddingProvider for HeldProvider {
+    fn model_name(&self) -> &str {
+        maidan_search::EmbeddingProvider::model_name(&self.inner)
+    }
+    fn dimension(&self) -> usize {
+        maidan_search::EmbeddingProvider::dimension(&self.inner)
+    }
+    fn embed(&self, body: &str) -> Result<Vec<f32>, maidan_search::EmbeddingProviderError> {
+        // Bounded, so a failed test cannot hang on a held embed.
+        for _ in 0..2000 {
+            if self.released.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.embed(body)
+    }
+}
+
+// Several workers: the held embed occupies one blocking thread while the
+// server answers the other requests.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_reindex_requests_for_one_workspace_re_embed_it_only_once() {
+    let provider = std::sync::Arc::new(HeldProvider {
+        inner: maidan_search::HashV1Provider,
+        released: std::sync::atomic::AtomicBool::new(true),
+        calls: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| {
+        s.embedding_provider = provider.clone();
+        state = Some(s.clone());
+    })
+    .await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let (ws, admin) = signed_up(store, "ada", true).await;
+    let thread = a_thread(store, ws).await;
+    for i in 0..10 {
+        store
+            .post_message(NewMessage {
+                thread_id: thread,
+                author_id: admin,
+                body: format!("message {i}"),
+                metadata: serde_json::json!({}),
+                content: None,
+            })
+            .await
+            .unwrap();
+    }
+    let bearer = token(
+        store,
+        ws,
+        admin,
+        vec![
+            capability::WORKSPACE_READ.to_string(),
+            capability::WORKSPACE_WRITE.to_string(),
+        ],
+    )
+    .await;
+    // Let the live indexer embed the posts, then hold the provider so the
+    // reindex job stays running while the other requests arrive.
+    for _ in 0..200 {
+        if provider.calls.load(std::sync::atomic::Ordering::SeqCst) >= 10 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    provider
+        .released
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    provider.calls.store(0, std::sync::atomic::Ordering::SeqCst);
+    let _ = state.usage_meters.take();
+    let body = serde_json::json!({ "workspace_id": ws.0 });
+    let sends = (0..5).map(|_| {
+        h.send(
+            Method::POST,
+            "/operator/reindex-embeddings",
+            &bearer,
+            Some(body.clone()),
+        )
+    });
+    let statuses: Vec<StatusCode> = futures::future::join_all(sends)
+        .await
+        .into_iter()
+        .map(|r| r.status())
+        .collect();
+    // Release before asserting: a held embed keeps the runtime from shutting
+    // down on a failed assert.
+    provider
+        .released
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let accepted = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::ACCEPTED)
+        .count();
+    let conflicts = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::CONFLICT)
+        .count();
+    assert_eq!((accepted, conflicts), (1, 4), "statuses were {statuses:?}");
+    for _ in 0..200 {
+        if provider.calls.load(std::sync::atomic::Ordering::SeqCst) >= 10 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        provider.calls.load(std::sync::atomic::Ordering::SeqCst),
+        10,
+        "the workspace is re-embedded once"
+    );
+    let metered: i64 = state
+        .usage_meters
+        .take()
+        .iter()
+        .filter(|r| r.workspace_id == ws && r.meter == UsageMeter::EmbeddingCalls)
+        .map(|r| r.quantity)
+        .sum();
+    assert_eq!(metered, 10, "what is embedded is metered once");
+}

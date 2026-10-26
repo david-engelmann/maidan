@@ -358,3 +358,58 @@ async fn the_repair_sweep_embeds_and_meters_nothing_on_sqlite_where_it_does_not_
         "nothing is metered when nothing is embedded"
     );
 }
+
+/// A workspace reindex with meters: the cut-off workspace embeds nothing and
+/// is metered nothing; the other embeds and is metered message by message.
+async fn a_metered_reindex_skips_the_cut_off_workspace(store: &dyn Store, search: &dyn Search) {
+    let cut = post(store, 3).await;
+    let open = post(store, 2).await;
+    let (cut_ws, open_ws) = (workspace_of(&cut), workspace_of(&open));
+    let meters = UsageMeterBuffer::new();
+    meters.set_cut_off([(cut_ws, UsageMeter::EmbeddingCalls)]);
+    let hash: Arc<dyn EmbeddingProvider> = Arc::new(HashV1Provider);
+
+    let refused = search
+        .reindex_embeddings(&hash, Some(cut_ws), Some(&meters))
+        .await
+        .unwrap();
+    assert_eq!(
+        refused.processed, 0,
+        "the cut-off workspace is not re-embedded"
+    );
+    let done = search
+        .reindex_embeddings(&hash, Some(open_ws), Some(&meters))
+        .await
+        .unwrap();
+    assert_eq!(done.processed, 2);
+    let counts = meters.take();
+    let calls = |w: WorkspaceId| -> i64 {
+        counts
+            .iter()
+            .filter(|r| r.workspace_id == w && r.meter == UsageMeter::EmbeddingCalls)
+            .map(|r| r.quantity)
+            .sum()
+    };
+    assert_eq!(calls(open_ws), 2, "each re-embedded message is metered");
+    assert_eq!(calls(cut_ws), 0);
+}
+
+#[tokio::test]
+async fn a_metered_reindex_skips_a_cut_off_workspace_and_meters_the_other_postgres() {
+    let Some(fx) = fixture().await else { return };
+    a_metered_reindex_skips_the_cut_off_workspace(fx.store.as_ref(), fx.search.as_ref()).await;
+}
+
+#[tokio::test]
+async fn a_metered_reindex_skips_a_cut_off_workspace_and_meters_the_other_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = SqliteStore::for_tests(pool.clone());
+    let search = SqliteSearch::new(pool);
+    search.ensure_model(&HashV1Provider).await.unwrap();
+    a_metered_reindex_skips_the_cut_off_workspace(&store, &search).await;
+}

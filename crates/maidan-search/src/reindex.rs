@@ -30,6 +30,7 @@ pub async fn reindex_postgres(
     search: &dyn Search,
     provider: &Arc<dyn EmbeddingProvider>,
     workspace_id: Option<WorkspaceId>,
+    meters: Option<&UsageMeterBuffer>,
 ) -> Result<ReindexReport, SearchError> {
     embedding_tables::ensure_model_postgres(
         pool,
@@ -40,7 +41,7 @@ pub async fn reindex_postgres(
     .await?;
 
     let rows = fetch_messages_postgres(pool, workspace_id).await?;
-    reindex_rows(search, provider, rows, None).await
+    reindex_rows(search, provider, rows, meters).await
 }
 
 pub async fn reindex_sqlite(
@@ -48,12 +49,13 @@ pub async fn reindex_sqlite(
     search: &dyn Search,
     provider: &Arc<dyn EmbeddingProvider>,
     workspace_id: Option<WorkspaceId>,
+    meters: Option<&UsageMeterBuffer>,
 ) -> Result<ReindexReport, SearchError> {
     embedding_tables::ensure_model_sqlite(pool, provider.model_name(), provider.dimension())
         .await?;
 
     let rows = fetch_messages_sqlite(pool, workspace_id).await?;
-    reindex_rows(search, provider, rows, None).await
+    reindex_rows(search, provider, rows, meters).await
 }
 
 /// Session advisory-lock key for the repair sweep, so that of several replicas
@@ -207,9 +209,9 @@ async fn fetch_messages_postgres(
     workspace_id: Option<WorkspaceId>,
 ) -> Result<Vec<MessageRow>, SearchError> {
     let wid = workspace_id.map(|w| w.0);
-    let rows = sqlx::query_as::<_, (Uuid, String)>(
+    let rows = sqlx::query_as::<_, (Uuid, String, Uuid)>(
         r#"
-        SELECT m.id, m.body
+        SELECT m.id, m.body, c.workspace_id
         FROM maidan_messages m
         JOIN maidan_threads t ON t.id = m.thread_id
         JOIN maidan_channels c ON c.id = t.channel_id
@@ -223,10 +225,10 @@ async fn fetch_messages_postgres(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, body)| MessageRow {
+        .map(|(id, body, workspace_id)| MessageRow {
             id: MessageId(id),
             body,
-            workspace_id,
+            workspace_id: Some(WorkspaceId(workspace_id)),
         })
         .collect())
 }
@@ -236,9 +238,9 @@ async fn fetch_messages_sqlite(
     workspace_id: Option<WorkspaceId>,
 ) -> Result<Vec<MessageRow>, SearchError> {
     let wid = workspace_id.map(|w| w.0);
-    let rows = sqlx::query_as::<_, (Uuid, String)>(
+    let rows = sqlx::query_as::<_, (Uuid, String, Uuid)>(
         r#"
-        SELECT m.id, m.body
+        SELECT m.id, m.body, c.workspace_id
         FROM maidan_messages m
         JOIN maidan_threads t ON t.id = m.thread_id
         JOIN maidan_channels c ON c.id = t.channel_id
@@ -253,10 +255,10 @@ async fn fetch_messages_sqlite(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, body)| MessageRow {
+        .map(|(id, body, workspace_id)| MessageRow {
             id: MessageId(id),
             body,
-            workspace_id,
+            workspace_id: Some(WorkspaceId(workspace_id)),
         })
         .collect())
 }

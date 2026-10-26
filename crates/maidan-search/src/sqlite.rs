@@ -327,8 +327,9 @@ impl Search for SqliteSearch {
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         workspace_id: Option<WorkspaceId>,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<crate::reindex::ReindexReport, SearchError> {
-        reindex_sqlite(&self.pool, self, provider, workspace_id).await
+        reindex_sqlite(&self.pool, self, provider, workspace_id, meters).await
     }
 
     async fn ensure_model(&self, provider: &dyn EmbeddingProvider) -> Result<(), SearchError> {

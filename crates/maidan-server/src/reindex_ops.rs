@@ -25,6 +25,40 @@ pub struct StartReindexEmbeddings {
     pub workspace_id: Option<Uuid>,
 }
 
+/// Workspaces with a reindex job running on this replica. A second job for
+/// the same workspace is refused with 409, so concurrent requests cannot each
+/// re-embed the whole workspace; across replicas, the per-batch cutoff check
+/// and record-before-call bound the rest.
+static RUNNING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<WorkspaceId>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Holds a workspace's slot in [`RUNNING`] until the job ends.
+struct RunningJob(WorkspaceId);
+
+impl RunningJob {
+    fn claim(workspace_id: WorkspaceId) -> Option<Self> {
+        let mut running = RUNNING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Not `then_some(Self(..))`: that builds the guard even when the
+        // slot is taken, and its drop would free the running job's slot.
+        if running.insert(workspace_id) {
+            Some(Self(workspace_id))
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for RunningJob {
+    fn drop(&mut self) {
+        RUNNING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&self.0);
+    }
+}
+
 fn cap(auth: &AuthContext, capability: &str) -> ApiResult<()> {
     auth.require_capability(capability).map_err(Into::into)
 }
@@ -56,6 +90,15 @@ pub async fn start_reindex_embeddings(
         // one workspace admin's (`token:admin` is scoped to its workspace).
         None => cap(&auth, OPERATOR_GLOBAL)?,
     }
+    let running = match workspace_id {
+        Some(wid) => Some(RunningJob::claim(wid).ok_or_else(|| {
+            ApiError::Conflict("a reindex job is already running for this workspace".into())
+        })?),
+        None => None,
+    };
+    // A workspace's own reindex is metered and stops at the cutoff batch by
+    // batch; an operator's is not.
+    let metered = workspace_id.is_some() && !auth.bypass;
 
     let job_id = Uuid::now_v7();
     let model = state.embedding_provider.model_name().to_string();
@@ -87,23 +130,16 @@ pub async fn start_reindex_embeddings(
     let audit_workspace = workspace_id.map(|w| w.0);
     let mut job_clone = job.clone();
     maidan_store::attribution::spawn(async move {
-        let result = search.reindex_embeddings(&provider, workspace_id).await;
+        let _running = running;
+        let result = search
+            .reindex_embeddings(&provider, workspace_id, metered.then_some(meters.as_ref()))
+            .await;
         job_clone.finished_at = Some(Utc::now());
         match result {
             Ok(report) => {
                 job_clone.status = ReindexJobStatus::Completed;
                 job_clone.processed = Some(report.processed);
                 job_clone.failed = Some(report.failed);
-                // Every message sent to the provider counts toward the
-                // workspace's embedding_calls, as the live indexer counts it.
-                if let Some(wid) = workspace_id {
-                    let calls = report.processed.saturating_add(report.failed);
-                    meters.record(
-                        wid,
-                        maidan_types::UsageMeter::EmbeddingCalls,
-                        i64::try_from(calls).unwrap_or(i64::MAX),
-                    );
-                }
             }
             Err(err) => {
                 job_clone.status = ReindexJobStatus::Failed;
