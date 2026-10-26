@@ -45,6 +45,7 @@ pub mod spawn;
 pub mod suspension;
 pub mod tap;
 pub mod task_attributes;
+pub mod task_class_routing;
 pub mod task_fingerprint;
 pub mod thread_lookup;
 pub mod trace;
@@ -98,6 +99,7 @@ pub use suspension::{
 };
 pub use tap::*;
 pub use task_attributes::*;
+pub use task_class_routing::*;
 pub use task_fingerprint::*;
 pub use thread_lookup::{ExternalThreadRef, ThreadLookup};
 pub use trace::*;
