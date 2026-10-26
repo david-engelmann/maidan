@@ -111,6 +111,103 @@ async fn suite(store: &dyn Store) {
     }
 }
 
+async fn sqlite_store() -> SqliteStore {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    SqliteStore::for_tests(pool)
+}
+
+/// A crafted bundle cannot leave a holder behind that the import did not
+/// write in full: a holder that does not exist refuses the whole import, a
+/// re-import adds no second row, and a later failure in the same import rolls
+/// the holder back with the thread.
+async fn crafted(store: &dyn Store) {
+    let a = bundle("a");
+    store
+        .import_workspace(&a, WorkspaceOrigin::Operator)
+        .await
+        .unwrap();
+
+    let mut ghost = bundle("ghost");
+    ghost.threads[0].assignee_id = Some(MemberId(uuid::Uuid::new_v4()));
+    assert!(store
+        .import_workspace(&ghost, WorkspaceOrigin::Operator)
+        .await
+        .is_err());
+    assert!(store
+        .list_thread_workers(ghost.threads[0].id)
+        .await
+        .unwrap()
+        .is_empty());
+
+    assert!(store
+        .import_workspace(&a, WorkspaceOrigin::Operator)
+        .await
+        .is_err());
+    assert_eq!(
+        store.list_thread_workers(a.threads[0].id).await.unwrap(),
+        vec![a.members[0].id]
+    );
+
+    let mut torn = bundle("torn");
+    torn.messages.push(Message {
+        id: MessageId(uuid::Uuid::new_v4()),
+        thread_id: ThreadId(uuid::Uuid::new_v4()),
+        author_id: torn.members[0].id,
+        body: "orphan".into(),
+        metadata: serde_json::json!({}),
+        content: None,
+        posted_at: Utc::now(),
+        edited_at: None,
+        tombstoned_at: None,
+    });
+    assert!(store
+        .import_workspace(&torn, WorkspaceOrigin::Operator)
+        .await
+        .is_err());
+    assert!(store
+        .list_thread_workers(torn.threads[0].id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn a_crafted_import_cannot_record_a_holder_it_did_not_import_in_full() {
+    crafted(&sqlite_store().await).await;
+}
+
+/// Today a bundle whose thread names another workspace's member as holder
+/// imports, and that member is recorded as having worked the thread.
+#[tokio::test]
+#[ignore = "fails until import refuses a holder from outside the bundle"]
+async fn an_import_naming_another_workspaces_member_as_holder_is_refused() {
+    let store = sqlite_store().await;
+    let a = bundle("a");
+    store
+        .import_workspace(&a, WorkspaceOrigin::Operator)
+        .await
+        .unwrap();
+    let mut foreign = bundle("foreign");
+    foreign.threads[0].assignee_id = Some(a.members[0].id);
+    assert!(store
+        .import_workspace(&foreign, WorkspaceOrigin::Operator)
+        .await
+        .is_err());
+    assert!(store
+        .list_thread_workers(foreign.threads[0].id)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 #[tokio::test]
 async fn an_imported_threads_holder_is_recorded_as_having_worked_it_on_sqlite() {
     let pool = SqlitePoolOptions::new()
