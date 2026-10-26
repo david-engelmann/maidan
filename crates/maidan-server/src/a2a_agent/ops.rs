@@ -26,6 +26,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 use super::error::{denied, hidden, internal, store};
+use super::payer_stamp::{self, PAYER_STAMP_EXTENSION};
 use super::push;
 use crate::state::AppState;
 
@@ -305,6 +306,7 @@ pub(crate) async fn send_message(
     let history_length = history_length(config.history_length)?;
     let message = req.message;
     validate_message(&message)?;
+    let usage = payer_stamp::report(&message)?;
     let citations = citations(&message)?;
     let push = match config.task_push_notification_config {
         Some(config) => Some(push::prepare(state, auth, config)?),
@@ -313,16 +315,42 @@ pub(crate) async fn send_message(
     if let Some(task_id) = message.task_id.as_deref().filter(|t| !t.is_empty()) {
         return Err(continue_task(state, auth, task_id, message.context_id.as_deref()).await);
     }
+    // A spend report needs a thread that already exists: resolving its context
+    // never creates or binds one, so a refused report leaves nothing behind.
     let (scope, context_id) = match message.context_id.as_deref().filter(|c| !c.is_empty()) {
+        Some(context_id) if usage.is_some() => (
+            existing_context(state, auth, context_id)
+                .await?
+                .ok_or_else(|| {
+                    A2aError::invalid_params(
+                        "a usage report needs the contextId of an existing thread",
+                    )
+                })?,
+            context_id.to_string(),
+        ),
         Some(context_id) => (
             client_context(state, auth, context_id).await?,
             context_id.to_string(),
         ),
+        None if usage.is_some() => {
+            return Err(A2aError::invalid_params(
+                "a usage report needs the contextId of an existing thread",
+            ));
+        }
         None => {
             let scope = new_thread(state, auth).await?;
             (scope, scope.thread_id.0.to_string())
         }
     };
+
+    // Spend before the post: a refused report posts nothing (and, above,
+    // creates no thread). If the post below fails after the spend is recorded,
+    // the spend stays, and a retry with the same report id returns that row.
+    let accepted = match usage {
+        Some(report) => Some(payer_stamp::record(state, auth, scope, report).await?),
+        None => None,
+    };
+    let affinity_key = payer_stamp::affinity_key(state, scope.thread_id).await?;
 
     let content = message_content(&message);
     let body = message_text(&message).unwrap_or_else(|| maidan_types::derive_body(&content));
@@ -365,9 +393,16 @@ pub(crate) async fn send_message(
         },
         artifacts: None,
         history: None,
-        metadata: Some(json!({
-            "maidan": { "messageId": posted.id.0, "threadId": scope.thread_id.0 }
-        })),
+        metadata: Some(task_metadata(
+            json!({
+                "maidan": {
+                    "messageId": posted.id.0,
+                    "threadId": scope.thread_id.0,
+                    "affinityKey": affinity_key,
+                }
+            }),
+            accepted.as_ref(),
+        )?),
     };
     save(
         state,
@@ -469,10 +504,22 @@ fn citations(message: &A2aMessage) -> Result<Option<Value>, A2aError> {
 
 /// The A2A envelope fields kept with the Maidan message, so history renders
 /// what the client sent.
+/// A delivery task's metadata, with the accepted PayerStamp under the
+/// extension's key when the message carried a usage report.
+fn task_metadata(
+    mut metadata: Value,
+    accepted: Option<&maidan_types::UsageLedgerEntry>,
+) -> Result<Value, A2aError> {
+    if let Some(entry) = accepted {
+        metadata[PAYER_STAMP_EXTENSION] = payer_stamp::stamp(entry)?;
+    }
+    Ok(metadata)
+}
+
 fn a2a_metadata(message: &A2aMessage) -> Value {
     let mut out = json!({ "messageId": message.message_id });
     if let Some(metadata) = &message.metadata {
-        out["metadata"] = metadata.clone();
+        out["metadata"] = payer_stamp::without_report(metadata);
     }
     if !message.extensions.is_empty() {
         out["extensions"] = json!(message.extensions);
@@ -518,6 +565,29 @@ async fn client_context(
     auth: &AuthContext,
     context_id: &str,
 ) -> Result<ThreadScope, A2aError> {
+    if let Some(scope) = existing_context(state, auth, context_id).await? {
+        return Ok(scope);
+    }
+    let workspace_id = auth.workspace_id;
+    let created = new_thread(state, auth).await?;
+    let bound = state
+        .store
+        .bind_a2a_context(workspace_id, context_id, created.thread_id)
+        .await
+        .map_err(store)?;
+    if bound == created.thread_id {
+        return Ok(created);
+    }
+    authorize(state, auth, bound).await
+}
+
+/// The thread a client's `contextId` already names, by binding or as a thread
+/// id in this workspace. Creates and binds nothing.
+async fn existing_context(
+    state: &AppState,
+    auth: &AuthContext,
+    context_id: &str,
+) -> Result<Option<ThreadScope>, A2aError> {
     let workspace_id = auth.workspace_id;
     if let Some(thread_id) = state
         .store
@@ -525,7 +595,7 @@ async fn client_context(
         .await
         .map_err(store)?
     {
-        return authorize(state, auth, thread_id).await;
+        return authorize(state, auth, thread_id).await.map(Some);
     }
     if let Ok(id) = Uuid::parse_str(context_id) {
         match state.store.get_thread(ThreadId(id)).await {
@@ -538,23 +608,14 @@ async fn client_context(
                 // Another workspace's thread id is just an unknown context
                 // here: nothing reveals that it exists.
                 if channel.workspace_id == workspace_id {
-                    return authorize(state, auth, thread.id).await;
+                    return authorize(state, auth, thread.id).await.map(Some);
                 }
             }
             Err(StoreError::NotFound) => {}
             Err(err) => return Err(store(err)),
         }
     }
-    let created = new_thread(state, auth).await?;
-    let bound = state
-        .store
-        .bind_a2a_context(workspace_id, context_id, created.thread_id)
-        .await
-        .map_err(store)?;
-    if bound == created.thread_id {
-        return Ok(created);
-    }
-    authorize(state, auth, bound).await
+    Ok(None)
 }
 
 async fn authorize(
