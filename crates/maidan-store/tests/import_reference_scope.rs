@@ -247,6 +247,74 @@ async fn dangling(store: &dyn Store) {
     assert!(store.get_workspace(b.workspace.id).await.is_err());
 }
 
+fn restore_event(ws: WorkspaceId) -> NewAuditEvent {
+    NewAuditEvent {
+        scope: AuditScope::Workspace(ws),
+        actor_id: None,
+        action: "workspace.import".into(),
+        target_kind: Some("workspace".into()),
+        target_id: Some(ws.0),
+        metadata: serde_json::Value::Null,
+    }
+}
+
+/// A forced restore erases the workspace it names before it writes, in one
+/// transaction. A bundle refused after that erase, whether by the reference
+/// check or by an id already held in another tenant, leaves both tenants as
+/// they were.
+async fn forced(store: &dyn Store) {
+    let a = bundle("forced-a");
+    store
+        .import_workspace(&a, WorkspaceOrigin::Operator)
+        .await
+        .unwrap();
+    let b = bundle("forced-b");
+    store
+        .import_workspace(&b, WorkspaceOrigin::Operator)
+        .await
+        .unwrap();
+
+    let mut reaching = b.clone();
+    reaching.messages[0].author_id = a.members[0].id;
+    let err = store
+        .import_workspace_audited(
+            &reaching,
+            true,
+            WorkspaceOrigin::Operator,
+            restore_event(b.workspace.id),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, StoreError::InvalidInput(_)), "{err:?}");
+
+    let mut colliding = b.clone();
+    let mut stolen = member(b.workspace.id, "stolen");
+    stolen.id = a.members[0].id;
+    colliding.members.push(stolen);
+    assert!(
+        store
+            .import_workspace_audited(
+                &colliding,
+                true,
+                WorkspaceOrigin::Operator,
+                restore_event(b.workspace.id),
+            )
+            .await
+            .is_err(),
+        "a restore reusing another tenant's member id was accepted"
+    );
+
+    for t in [&a, &b] {
+        assert!(store.get_workspace(t.workspace.id).await.is_ok());
+        let members = store.list_members(t.workspace.id).await.unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].id, t.members[0].id);
+        let msgs = store.list_messages(t.threads[0].id, 10).await.unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].author_id, t.members[0].id);
+    }
+}
+
 #[tokio::test]
 async fn a_restore_reaching_into_another_tenant_is_refused_on_sqlite() {
     let pool = SqlitePoolOptions::new()
@@ -261,6 +329,7 @@ async fn a_restore_reaching_into_another_tenant_is_refused_on_sqlite() {
     let store = SqliteStore::for_tests(pool);
     suite(&store).await;
     dangling(&store).await;
+    forced(&store).await;
 }
 
 #[tokio::test]
@@ -296,4 +365,5 @@ async fn a_restore_reaching_into_another_tenant_is_refused_on_postgres() {
     let store = PostgresStore::for_tests(pool);
     suite(&store).await;
     dangling(&store).await;
+    forced(&store).await;
 }
