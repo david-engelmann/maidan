@@ -1859,6 +1859,8 @@ pub struct OidcSignupQuery {
     /// address in the instance's sign-up domain list needs none.
     pub invite: Option<String>,
     pub return_to: Option<String>,
+    /// The Turnstile widget's token, when the instance runs Turnstile.
+    pub turnstile: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1873,6 +1875,10 @@ pub struct JoinWaitlistRequest {
     /// fills it, and its join is answered like any other and not stored.
     #[serde(default)]
     pub website: Option<String>,
+    /// The Turnstile widget's token. Required when the instance runs
+    /// Turnstile, ignored otherwise.
+    #[serde(default)]
+    pub turnstile_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

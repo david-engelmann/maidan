@@ -1076,6 +1076,10 @@ pub struct WellKnownAuth {
     /// board shows its waitlist form only when this is present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_signup: Option<String>,
+    /// The Turnstile site key the sign-up pages render their widget with,
+    /// when the instance runs Turnstile. Public by design.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turnstile_site_key: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1115,6 +1119,7 @@ pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
                 .as_ref()
                 .filter(|runtime| runtime.settings.signup)
                 .map(|_| "/auth/oidc/signup".to_string()),
+            turnstile_site_key: state.turnstile.as_ref().map(|t| t.site_key.clone()),
         },
     })
 }

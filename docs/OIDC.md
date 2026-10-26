@@ -217,6 +217,9 @@ settings are:
 | `MAIDAN_SIGNUP` | no | `1` enables the waitlist and invited sign-up at `/auth/oidc/signup`; default off, and the whole surface 404s while off. Boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. |
 | `MAIDAN_SIGNUP_EMAIL_DOMAINS` | no | Comma-separated email domains that may sign up without an invite when sign-up is on. |
 | `MAIDAN_SIGNUP_OPEN` | no | `1` lets any verified email sign up without an invite, still behind the sign-up rate limits. Needs `MAIDAN_SIGNUP=1`; boot refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`. |
+| `MAIDAN_TURNSTILE_SECRET` | no | Cloudflare Turnstile secret, or `MAIDAN_TURNSTILE_SECRET_FILE` naming a file that holds it. When set, the waitlist POST and the sign-up start need a Turnstile token, which the server checks against Cloudflare's siteverify through the egress guard. A missing or rejected token gets a 403, and an unreachable siteverify gets a 502, so the check fails closed. A browser opening `/auth/oidc/signup` without a token goes to the console check first. Unset turns all of this off. |
+| `MAIDAN_TURNSTILE_SITE_KEY` | with secret | Public widget key, published as `turnstile_site_key` in `/.well-known/maidan.json`. Boot refuses a secret without it, or it without a secret. While Turnstile is on, the console and landing CSP add `https://challenges.cloudflare.com` to `script-src` and `frame-src`. |
+| `MAIDAN_TURNSTILE_HOSTNAME` | no | Hostname the token must have been solved on; defaults to the host of `MAIDAN_PUBLIC_ORIGIN`. Tokens must also carry the matching action (`waitlist` or `signup`). |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered redirect used when the provider exposes `end_session_endpoint`. |
 | `MAIDAN_SESSION_SECRET` | OIDC | HMAC key for signed `maidan_session` cookies and resume tokens. |
 | `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours). |

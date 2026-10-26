@@ -12,6 +12,41 @@ const submit = document.getElementById("wl-submit");
 const status = document.getElementById("wl-status");
 const done = document.getElementById("wl-done");
 
+const slot = document.getElementById("wl-turnstile");
+
+// Turnstile, when the instance runs it: discovery names the site key, and
+// the widget script loads from Cloudflare's challenge origin, which this
+// page's CSP allows only then. A token is good for one join, so the widget
+// resets after every submit.
+let widget = null;
+let token = "";
+
+async function startTurnstile() {
+  let siteKey = null;
+  try {
+    const res = await fetch("/.well-known/maidan.json", { credentials: "omit" });
+    if (res.ok) siteKey = ((await res.json()).auth || {}).turnstile_site_key || null;
+  } catch {
+    siteKey = null;
+  }
+  if (!siteKey) return;
+  const script = document.createElement("script");
+  script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+  script.async = true;
+  script.onload = () => {
+    slot.hidden = false;
+    widget = window.turnstile.render(slot, {
+      sitekey: siteKey,
+      action: "waitlist",
+      callback: (t) => { token = t; },
+      "expired-callback": () => { token = ""; },
+    });
+  };
+  document.head.appendChild(script);
+}
+
+startTurnstile();
+
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function setError(input, message) {
@@ -68,10 +103,15 @@ form.addEventListener("submit", async (event) => {
         use_case: useCase.value.trim(),
         consent: true,
         website: website.value,
+        ...(widget !== null ? { turnstile_token: token } : {}),
       }),
     });
   } catch {
     res = null;
+  }
+  if (widget !== null) {
+    token = "";
+    window.turnstile.reset(widget);
   }
   submit.removeAttribute("aria-busy");
   submit.disabled = false;
@@ -83,6 +123,8 @@ form.addEventListener("submit", async (event) => {
   }
   if (res && res.status === 429) {
     say("Too many tries from this network. Wait a little and try again.", true);
+  } else if (res && res.status === 403) {
+    say("Complete the check above, then try again.", true);
   } else if (res && res.status === 400) {
     say("That didn't look right. Check your email and note, then try again.", true);
   } else {

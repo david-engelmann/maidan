@@ -106,6 +106,7 @@ pub mod suspension;
 pub mod thread_context;
 pub mod trace_context;
 pub mod trace_redaction;
+pub mod turnstile;
 pub mod upload_budget;
 pub mod usage_meters;
 pub mod wait_sweeper;

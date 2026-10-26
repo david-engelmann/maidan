@@ -160,8 +160,15 @@
               <label>Email <input id="waitlist-email" type="email" autocomplete="email" /></label>
               <label>What would you use Maidan for <input id="waitlist-use" autocomplete="off" /></label>
               <label class="waitlist-consent"><input id="waitlist-consent" type="checkbox" /> You may email me about my place on the list</label>
+              <div class="turnstile-slot" id="waitlist-turnstile" hidden></div>
               <button id="waitlist-join" type="button" class="ghost">Join the waitlist</button>
               <p class="first-run-note" id="waitlist-state" role="status" hidden></p>
+            </div>
+            <div class="waitlist" id="signup-check" hidden>
+              <h4>One quick check before you sign up</h4>
+              <p class="first-run-note">Solve the check below and your sign-up continues with your identity provider.</p>
+              <div class="turnstile-slot" id="signup-turnstile"></div>
+              <p class="first-run-note" id="signup-check-state" role="status" hidden></p>
             </div>
           </section>
           <div id="board-head">

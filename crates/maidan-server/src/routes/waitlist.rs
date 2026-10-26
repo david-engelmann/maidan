@@ -164,6 +164,17 @@ pub async fn join_waitlist(
             "say briefly what you would use Maidan for".into(),
         ));
     }
+    // Checked once the form is well-formed, so a typo does not spend the
+    // visitor's token, and before the honeypot, so a bot that solved
+    // nothing learns nothing from either answer.
+    if let Some(turnstile) = state.turnstile.as_deref() {
+        crate::turnstile::verify(
+            turnstile,
+            body.turnstile_token.as_deref(),
+            crate::turnstile::Action::Waitlist,
+        )
+        .await?;
+    }
     if body
         .website
         .as_deref()
