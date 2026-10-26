@@ -168,8 +168,14 @@ pub(crate) async fn transition_in_tx(
     // Separation of duties: on an owner-governed thread the claimer cannot land
     // its own work — a terminal transition (the "merge") must be performed by
     // the owner or another member. Un-owned threads are unrestricted, so this
-    // is inert until an owner is set.
-    if thread.owner_id.is_some() && to_state.is_terminal() && thread.assignee_id == Some(actor_id) {
+    // is inert until an owner is set. The claimer is anyone who ever held the
+    // thread, not only the live holder: a release or a reaped claim clears
+    // `assignee_id`, and the work is still theirs (#1569).
+    if thread.owner_id.is_some()
+        && to_state.is_terminal()
+        && (thread.assignee_id == Some(actor_id)
+            || super::thread_workers::has_worked_in_tx(tx, thread_id, actor_id).await?)
+    {
         return Err(StoreError::Conflict(
             "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
         ));
