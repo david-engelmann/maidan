@@ -563,13 +563,14 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
         )
         .with_usage_meters(state.usage_meters.clone());
         if let Some(repair) = maidan_server::embed_repair::config_from_env() {
-            let (search, provider, metrics) = (
+            let (search, provider, metrics, meters) = (
                 state.search.clone(),
                 state.embedding_provider.clone(),
                 metrics.clone(),
+                state.usage_meters.clone(),
             );
             tokio::spawn(async move {
-                maidan_server::embed_repair::run(search, provider, metrics, repair).await;
+                maidan_server::embed_repair::run(search, provider, metrics, meters, repair).await;
             });
         }
         (Arc::new(handler), metrics)
