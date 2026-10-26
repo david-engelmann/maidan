@@ -575,7 +575,7 @@ pub async fn callback(
         email.as_deref(),
         email_verified,
         oidc.settings.auto_provision && !front_door,
-        oidc.settings.link_email && !front_door,
+        (oidc.settings.link_email && !front_door).then_some(oidc.settings.issuer.as_str()),
     )
     .await?;
     // The provider still answers for a member it deactivated through SCIM,

@@ -63,7 +63,7 @@ async fn login(
         Some(email),
         verified,
         true,
-        false,
+        None,
     )
     .await
     .unwrap_or_else(|_| panic!("login {subject} refused"))
@@ -212,6 +212,77 @@ async fn legitimate_auto_provision_still_creates_and_reuses_a_member_postgres() 
         return;
     };
     legitimate_auto_provision_creates_a_member_and_reuses_it_on_the_next_login(Arc::new(
+        PostgresStore::for_tests(pool),
+    ))
+    .await;
+}
+
+async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member(
+    store: Arc<dyn Store>,
+) {
+    let (ws_a, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let (ws_b, _) = workspace_with_admin(store.as_ref(), "b").await;
+    let mut linked = Vec::new();
+    for ws in [ws_a, ws_b] {
+        let admin = store
+            .create_member(NewMember {
+                workspace_id: ws,
+                handle: "admin@corp.example".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap()
+            .id;
+        linked.push(admin);
+        let untrusted = resolve_member_for_login(
+            store.as_ref(),
+            ws,
+            "https://weak-idp.example",
+            "sub-weak",
+            Some("admin@corp.example"),
+            true,
+            false,
+            Some(ISSUER),
+        )
+        .await;
+        assert!(untrusted.is_err());
+        assert!(store
+            .get_oidc_identity(ws, "https://weak-idp.example", "sub-weak")
+            .await
+            .is_err());
+        let trusted = resolve_member_for_login(
+            store.as_ref(),
+            ws,
+            ISSUER,
+            "sub-admin",
+            Some("admin@corp.example"),
+            true,
+            false,
+            Some(ISSUER),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("the configured issuer's login was refused"));
+        assert_eq!(trusted, (admin, LoginMember::Linked));
+    }
+    assert!(store
+        .get_oidc_identity(ws_b, ISSUER, "sub-admin")
+        .await
+        .map(|identity| identity.member_id == linked[1])
+        .unwrap_or(false));
+}
+
+#[tokio::test]
+async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member_sqlite() {
+    an_email_verified_by_another_issuer_does_not_link_to_an_existing_member(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    an_email_verified_by_another_issuer_does_not_link_to_an_existing_member(Arc::new(
         PostgresStore::for_tests(pool),
     ))
     .await;

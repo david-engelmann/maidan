@@ -164,7 +164,9 @@ Migration 0012 creates these tables in Postgres and SQLite:
 
 1. First login with `(iss, sub)` in workspace → attach to a pre-provisioned
    member if `MAIDAN_OIDC_LINK_EMAIL` is on and the member's handle equals the
-   whole verified `email`; otherwise, when auto-provisioning is enabled, create
+   whole verified `email` and the login's issuer is the configured
+   `MAIDAN_OIDC_ISSUER` (an email from any other issuer never links);
+   otherwise, when auto-provisioning is enabled, create
    a new `Member { kind: human }`; otherwise reject an unprovisioned identity.
    Auto-provisioning never attaches a login to an existing member. Its handle
    comes from the email's local part, and when that handle is taken the new
@@ -296,7 +298,9 @@ curl -sS -X POST "$MAIDAN_URL/scim/v2/Users" \
 
 With `MAIDAN_OIDC_LINK_EMAIL=1`, the person's first sign-in links their
 Keycloak identity to that member, and only when Keycloak says the email is
-verified. A user with no member is refused ("OIDC user is not provisioned in
+verified. Only an email asserted by the configured issuer links. With
+`MAIDAN_OIDC_EMAILS_VERIFIED=1` as well, the link trusts every login method at
+that issuer to prove the address. A user with no member is refused ("OIDC user is not provisioned in
 this workspace"). Leave `MAIDAN_OIDC_AUTO_PROVISION` off. With it on, every
 enabled user in the realm gets a member in the workspace on first sign-in.
 
