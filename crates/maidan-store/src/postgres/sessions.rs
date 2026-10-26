@@ -19,6 +19,33 @@ pub(crate) async fn create_on(
     conn: &mut sqlx::PgConnection,
     new: NewMaidanSession,
 ) -> Result<MaidanSession, StoreError> {
+    // A session belongs to a live member: not tombstoned (SCIM delete) and not
+    // SCIM-deactivated. Locking both rows FOR SHARE makes a concurrent SCIM
+    // delete or deactivation wait for this transaction, and a committed one
+    // visible to it, so a sign-in that resolved its member earlier cannot
+    // mint a session after the member is gone.
+    let live = sqlx::query(
+        "SELECT 1 FROM maidan_members
+         WHERE id = $1 AND workspace_id = $2 AND tombstoned_at IS NULL
+         FOR SHARE",
+    )
+    .bind(new.member_id.0)
+    .bind(new.workspace_id.0)
+    .fetch_optional(&mut *conn)
+    .await?
+    .is_some();
+    let deactivated = sqlx::query(
+        "SELECT 1 FROM maidan_scim_users WHERE member_id = $1 AND NOT active FOR SHARE",
+    )
+    .bind(new.member_id.0)
+    .fetch_optional(&mut *conn)
+    .await?
+    .is_some();
+    if !live || deactivated {
+        return Err(StoreError::Conflict(
+            "member is deleted or deactivated".into(),
+        ));
+    }
     // A session id is a credential (the cookie carries it), so it stays v4.
     let id = Uuid::new_v4();
     let row = sqlx::query(&format!(
@@ -54,8 +81,12 @@ pub async fn create_audited(
 pub async fn get(pool: &PgPool, id: SessionId) -> Result<MaidanSession, StoreError> {
     let row = sqlx::query(&format!(
         "SELECT {SESSION_COLUMNS}
-         FROM maidan_sessions
-         WHERE id = $1 AND expires_at > NOW()"
+         FROM maidan_sessions s
+         WHERE s.id = $1 AND s.expires_at > NOW()
+           AND EXISTS (SELECT 1 FROM maidan_members m
+                WHERE m.id = s.member_id AND m.tombstoned_at IS NULL)
+           AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
+                WHERE u.member_id = s.member_id AND NOT u.active)"
     ))
     .bind(id.0)
     .fetch_optional(pool)

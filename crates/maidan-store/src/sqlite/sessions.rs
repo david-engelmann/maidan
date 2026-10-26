@@ -10,6 +10,19 @@ use crate::error::StoreError;
 const SESSION_COLUMNS: &str =
     "id, workspace_id, member_id, api_token_id, oidc_identity_id, created_at, expires_at";
 
+/// A session belongs to a live member: not tombstoned (SCIM delete) and not
+/// SCIM-deactivated. The insert checks this in its own statement, so a sign-in
+/// that resolved its member before a SCIM delete or deactivation committed
+/// cannot mint a session after it. Binds: member id, workspace id, member id.
+const MEMBER_CAN_SIGN_IN: &str = "EXISTS (SELECT 1 FROM maidan_members m
+              WHERE m.id = ? AND m.workspace_id = ? AND m.tombstoned_at IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
+              WHERE u.member_id = ? AND NOT u.active)";
+
+fn member_cannot_sign_in() -> StoreError {
+    StoreError::Conflict("member is deleted or deactivated".into())
+}
+
 pub async fn create(pool: &SqlitePool, new: NewMaidanSession) -> Result<MaidanSession, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -25,7 +38,8 @@ pub(crate) async fn create_on(
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_sessions
             (id, workspace_id, member_id, api_token_id, oidc_identity_id, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+         WHERE {MEMBER_CAN_SIGN_IN}
          RETURNING {SESSION_COLUMNS}"
     ))
     .bind(id)
@@ -35,8 +49,12 @@ pub(crate) async fn create_on(
     .bind(new.oidc_identity_id.map(|i| i.0))
     .bind(now)
     .bind(new.expires_at)
-    .fetch_one(conn)
-    .await?;
+    .bind(new.member_id.0)
+    .bind(new.workspace_id.0)
+    .bind(new.member_id.0)
+    .fetch_optional(conn)
+    .await?
+    .ok_or_else(member_cannot_sign_in)?;
     row_to_session(&row)
 }
 
@@ -57,8 +75,12 @@ pub async fn get(pool: &SqlitePool, id: SessionId) -> Result<MaidanSession, Stor
     let now = Utc::now();
     let row = sqlx::query(&format!(
         "SELECT {SESSION_COLUMNS}
-         FROM maidan_sessions
-         WHERE id = ? AND expires_at > ?"
+         FROM maidan_sessions s
+         WHERE s.id = ? AND s.expires_at > ?
+           AND EXISTS (SELECT 1 FROM maidan_members m
+                WHERE m.id = s.member_id AND m.tombstoned_at IS NULL)
+           AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
+                WHERE u.member_id = s.member_id AND NOT u.active)"
     ))
     .bind(id.0)
     .bind(now)
