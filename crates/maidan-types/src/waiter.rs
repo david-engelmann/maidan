@@ -572,19 +572,28 @@ pub fn is_change_branch(branch: &str) -> bool {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// Whether `name` spells a ref rather than a branch: `HEAD` (any case), or a
-/// `refs/`, `heads/`, `tags/`, `remotes/` or `origin/` prefix (any case). Each
-/// either names the same branch as its short name, so the checks that compare
-/// against short names would miss it, or is never a correct base. Bases take
-/// the short branch name only.
-fn is_ref_spelling(name: &str) -> bool {
+/// Whether `name` spells a ref rather than a branch: `HEAD` or a pseudo-ref
+/// such as `FETCH_HEAD` or `ORIG_HEAD` (anything ending `_HEAD`), or a
+/// `refs/`, `heads/`, `tags/`, `remotes/` or `origin/` prefix, all in any
+/// case. Each either names the same branch as its short name, so the checks
+/// that compare against short names would miss it, or is never a correct
+/// base. Bases take the short branch name only.
+pub(crate) fn is_ref_spelling(name: &str) -> bool {
+    let has_prefix = |p: &str| {
+        name.get(..p.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(p))
+    };
+    let has_suffix = |p: &str| {
+        name.len()
+            .checked_sub(p.len())
+            .and_then(|at| name.get(at..))
+            .is_some_and(|tail| tail.eq_ignore_ascii_case(p))
+    };
     name.eq_ignore_ascii_case("HEAD")
+        || has_suffix("_HEAD")
         || ["refs/", "heads/", "tags/", "remotes/", "origin/"]
             .iter()
-            .any(|p| {
-                name.get(..p.len())
-                    .is_some_and(|head| head.eq_ignore_ascii_case(p))
-            })
+            .any(|p| has_prefix(p))
 }
 
 /// The hard-coded rules for a `github_branch` target, checked before the
@@ -1932,6 +1941,9 @@ mod tests {
             ("feature/agent-y", "origin/prod", "names a ref"),
             ("feature/agent-y", "remotes/origin/prod", "names a ref"),
             ("feature/agent-y", "tags/prod", "names a ref"),
+            ("feature/agent-y", "FETCH_HEAD", "names a ref"),
+            ("feature/agent-y", "orig_head", "names a ref"),
+            ("feature/agent-y", "MERGE_HEAD", "names a ref"),
             ("feature/agent-y", "pr\u{43e}d", "not a branch name"),
             ("feature/agent-y", "prod\u{200b}", "not a branch name"),
         ] {

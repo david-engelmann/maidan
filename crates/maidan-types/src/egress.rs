@@ -472,6 +472,11 @@ pub fn validate_allowlist_selector(
             if !is_branch_name(base) {
                 return Err("github_branch selector must end with a base branch name");
             }
+            if crate::waiter::is_ref_spelling(base) {
+                return Err(
+                    "github_branch selector names a ref; end it with the branch name alone",
+                );
+            }
             if base.eq_ignore_ascii_case(crate::FORBIDDEN_CHANGE_BASE) {
                 return Err("`prod` is never an allowed base for change pull requests");
             }
@@ -625,6 +630,23 @@ mod tests {
             );
         }
         assert_eq!(EgressTarget::parse(EgressSurface::Slack, ""), None);
+    }
+
+    #[test]
+    fn a_stored_branch_target_with_a_non_ascii_name_no_longer_decodes() {
+        // Rows written before names were ASCII-only are refused, not migrated:
+        // such a target stops decoding and nothing is delivered to it.
+        for selector in [
+            "example-org/example-repo@d\u{e9}v",
+            "example-org/example-repo@pr\u{43e}d",
+            "example-org/example-repo@dev\u{200b}",
+        ] {
+            assert_eq!(
+                EgressTarget::parse(EgressSurface::GithubBranch, selector),
+                None,
+                "expected {selector:?} to be refused"
+            );
+        }
     }
 
     #[test]
@@ -858,6 +880,14 @@ mod tests {
             "example-org/example-repo@feature/agent-x",
             "example-org/example-repo#1@dev",
             "example-repo@dev",
+            "example-org/example-repo@heads/dev",
+            "example-org/example-repo@refs/heads/dev",
+            "example-org/example-repo@origin/dev",
+            "example-org/example-repo@HEAD",
+            "example-org/example-repo@FETCH_HEAD",
+            "example-org/example-repo@ORIG_HEAD",
+            "example-org/example-repo@d\u{e9}v",
+            "example-org/example-repo@dev\u{200b}",
             "",
         ] {
             assert!(
