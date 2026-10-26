@@ -185,6 +185,7 @@ pub enum EventKind {
     ProjectorMisconfigured,
     MemberFrozen,
     MemberUnfrozen,
+    MemberDisplayNameChanged,
     UsageOverAllowance,
     MessagePosted,
     MessageEdited,
@@ -232,6 +233,7 @@ impl EventKind {
             Self::ProjectorMisconfigured => "projector_misconfigured",
             Self::MemberFrozen => "member_frozen",
             Self::MemberUnfrozen => "member_unfrozen",
+            Self::MemberDisplayNameChanged => "member_display_name_changed",
             Self::UsageOverAllowance => "usage_over_allowance",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
@@ -279,6 +281,7 @@ impl EventKind {
             "projector_misconfigured" => Some(Self::ProjectorMisconfigured),
             "member_frozen" => Some(Self::MemberFrozen),
             "member_unfrozen" => Some(Self::MemberUnfrozen),
+            "member_display_name_changed" => Some(Self::MemberDisplayNameChanged),
             "usage_over_allowance" => Some(Self::UsageOverAllowance),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
@@ -351,6 +354,7 @@ impl EventKind {
         Self::ProjectorMisconfigured,
         Self::MemberFrozen,
         Self::MemberUnfrozen,
+        Self::MemberDisplayNameChanged,
         Self::UsageOverAllowance,
         Self::MessagePosted,
         Self::MessageEdited,
@@ -461,6 +465,9 @@ impl EventKind {
             // A freeze is *this* deployment's kill-switch over its own
             // members; a peer has no standing to freeze or unfreeze one.
             Self::MemberFrozen | Self::MemberUnfrozen => false,
+            // A display name is this deployment's member record, set by the
+            // member themself; a peer has no standing to rename one.
+            Self::MemberDisplayNameChanged => false,
             // An allowance crossing reads this deployment's meters against its
             // own allowance; a peer has no standing to report one.
             Self::UsageOverAllowance => false,
@@ -899,6 +906,18 @@ pub enum Event {
         member_id: MemberId,
         unfrozen_by: MemberId,
     },
+    /// A member set or cleared their display name. Appended in the same
+    /// transaction as the change, so every surface that shows the name can
+    /// refresh it. Workspace-scoped and locally derived: not federatable.
+    MemberDisplayNameChanged {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        /// The member whose display name changed.
+        member_id: MemberId,
+        /// The new name; absent when it was cleared.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display_name: Option<String>,
+    },
     /// A workspace went past the instance's free allowance on a meter for a
     /// UTC month. Appended once per workspace, meter and month, in the same
     /// transaction as the mark and its admins' notifications. Workspace-scoped
@@ -1056,6 +1075,7 @@ impl Event {
             Self::ProjectorMisconfigured { .. } => EventKind::ProjectorMisconfigured,
             Self::MemberFrozen { .. } => EventKind::MemberFrozen,
             Self::MemberUnfrozen { .. } => EventKind::MemberUnfrozen,
+            Self::MemberDisplayNameChanged { .. } => EventKind::MemberDisplayNameChanged,
             Self::UsageOverAllowance { .. } => EventKind::UsageOverAllowance,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
@@ -1103,6 +1123,7 @@ impl Event {
             | Self::ProjectorMisconfigured { occurred_at, .. }
             | Self::MemberFrozen { occurred_at, .. }
             | Self::MemberUnfrozen { occurred_at, .. }
+            | Self::MemberDisplayNameChanged { occurred_at, .. }
             | Self::UsageOverAllowance { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
@@ -1150,6 +1171,7 @@ impl Event {
             | Self::ProjectorMisconfigured { workspace_id, .. }
             | Self::MemberFrozen { workspace_id, .. }
             | Self::MemberUnfrozen { workspace_id, .. }
+            | Self::MemberDisplayNameChanged { workspace_id, .. }
             | Self::UsageOverAllowance { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
@@ -1265,9 +1287,9 @@ impl Event {
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimUnacknowledged { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
-            Self::MemberFrozen { member_id, .. } | Self::MemberUnfrozen { member_id, .. } => {
-                Some(*member_id)
-            }
+            Self::MemberFrozen { member_id, .. }
+            | Self::MemberUnfrozen { member_id, .. }
+            | Self::MemberDisplayNameChanged { member_id, .. } => Some(*member_id),
             Self::ReviewSubmitted { reviewer_id, .. } => Some(*reviewer_id),
             Self::UsageReported { stamp, .. } => Some(stamp.reporter),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
@@ -1651,6 +1673,7 @@ mod kind_tests {
                 | EventKind::ProjectorMisconfigured
                 | EventKind::MemberFrozen
                 | EventKind::MemberUnfrozen
+                | EventKind::MemberDisplayNameChanged
                 | EventKind::UsageOverAllowance
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
@@ -1740,6 +1763,7 @@ mod kind_tests {
             EventKind::ProjectorMisconfigured,
             EventKind::MemberFrozen,
             EventKind::MemberUnfrozen,
+            EventKind::MemberDisplayNameChanged,
             EventKind::UsageOverAllowance,
             EventKind::MemoryBlockUpdated,
             EventKind::UsageReported,
