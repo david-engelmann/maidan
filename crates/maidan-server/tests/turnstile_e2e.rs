@@ -426,3 +426,38 @@ async fn an_oversized_token_is_refused_without_calling_siteverify() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(seen.lock().unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn an_unknown_invite_without_a_token_gets_the_turnstile_refusal_before_any_invite_lookup() {
+    let (url, seen) = spawn_siteverify().await;
+    let base = spawn(Some(settings(url))).await;
+    let mut answers = Vec::new();
+    for path in [
+        "/auth/oidc/signup",
+        "/auth/oidc/signup?invite=no-such-invite",
+    ] {
+        let res = client()
+            .get(format!("{base}{path}"))
+            .header("accept", "application/json")
+            .send()
+            .await
+            .unwrap();
+        answers.push((res.status(), res.text().await.unwrap()));
+    }
+    assert_eq!(answers[0].0, StatusCode::FORBIDDEN);
+    assert_eq!(answers[0], answers[1]);
+    assert!(!answers[1].1.contains("invite"), "{}", answers[1].1);
+
+    let res = client()
+        .get(format!("{base}/auth/oidc/signup?invite=no-such-invite"))
+        .header("accept", "text/html")
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_redirection(), "{}", res.status());
+    assert_eq!(
+        res.headers()["location"].to_str().unwrap(),
+        "/ui/?signup_check=1&invite=no-such-invite"
+    );
+    assert!(seen.lock().unwrap().is_empty());
+}

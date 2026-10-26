@@ -1053,6 +1053,10 @@
                 "maxLength": 512,
                 "type": "string"
               },
+              "effort": {
+                "maxLength": 32,
+                "type": "string"
+              },
               "harness": {
                 "maxLength": 64,
                 "type": "string"

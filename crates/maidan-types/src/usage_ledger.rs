@@ -160,6 +160,11 @@ pub struct UsageEvidence {
     pub harness: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub harness_version: Option<String>,
+    /// The reasoning effort the call asked for (`low`, `medium`, `high`, or
+    /// the provider's own word), so the ledger can price model and effort
+    /// by task class.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
     /// Provider cache key or session id. Never shared across workspaces; Maidan
     /// stores what the reporter sent and does not mint one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -189,6 +194,7 @@ impl UsageEvidence {
         check_len("service_tier", self.service_tier.as_deref(), 64)?;
         check_len("harness", self.harness.as_deref(), 64)?;
         check_len("harness_version", self.harness_version.as_deref(), 64)?;
+        check_len("effort", self.effort.as_deref(), 32)?;
         check_len("cache_key", self.cache_key.as_deref(), 256)?;
         check_len("cache_miss_reason", self.cache_miss_reason.as_deref(), 512)?;
         if self.pack_sha256.len() > 32 {
@@ -238,6 +244,9 @@ impl UsageEvidence {
         }
         if explicit.harness_version.is_some() {
             self.harness_version.clone_from(&explicit.harness_version);
+        }
+        if explicit.effort.is_some() {
+            self.effort.clone_from(&explicit.effort);
         }
         if explicit.cache_key.is_some() {
             self.cache_key.clone_from(&explicit.cache_key);
@@ -858,6 +867,17 @@ pub fn token_usage_from_genai(
         harness_version: tidy(
             attr_string(attrs, &["gen_ai.agent.version", "harness_version"])?,
             64,
+        )?,
+        effort: tidy(
+            attr_string(
+                attrs,
+                &[
+                    "gen_ai.request.reasoning_effort",
+                    "reasoning_effort",
+                    "effort",
+                ],
+            )?,
+            32,
         )?,
         cache_key: tidy(
             attr_string(
