@@ -227,6 +227,10 @@ ledger as `POST /threads/{id}/usage`. It puts the unchanged REST body
 - The reporter is the authenticated member; the payer is the thread's
   workspace. Neither is accepted from the body.
 - A retry with the same `usage_report_id` returns the same entry.
+- The spend is recorded before the message is posted. A report on a missing
+  or unknown `contextId` is `-32602` and creates no thread and no binding. If
+  the post fails after the spend is recorded, the spend stays, and a retry
+  with the same `usage_report_id` is idempotent: it returns that entry.
 - The task's `metadata[<URI>]` echoes the accepted ledger entry, including its
   `stamp`. The report is not copied into the stored message metadata.
 

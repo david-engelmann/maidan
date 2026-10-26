@@ -315,19 +315,37 @@ pub(crate) async fn send_message(
     if let Some(task_id) = message.task_id.as_deref().filter(|t| !t.is_empty()) {
         return Err(continue_task(state, auth, task_id, message.context_id.as_deref()).await);
     }
+    // A spend report needs a thread that already exists: resolving its context
+    // never creates or binds one, so a refused report leaves nothing behind.
     let (scope, context_id) = match message.context_id.as_deref().filter(|c| !c.is_empty()) {
+        Some(context_id) if usage.is_some() => (
+            existing_context(state, auth, context_id)
+                .await?
+                .ok_or_else(|| {
+                    A2aError::invalid_params(
+                        "a usage report needs the contextId of an existing thread",
+                    )
+                })?,
+            context_id.to_string(),
+        ),
         Some(context_id) => (
             client_context(state, auth, context_id).await?,
             context_id.to_string(),
         ),
+        None if usage.is_some() => {
+            return Err(A2aError::invalid_params(
+                "a usage report needs the contextId of an existing thread",
+            ));
+        }
         None => {
             let scope = new_thread(state, auth).await?;
             (scope, scope.thread_id.0.to_string())
         }
     };
 
-    // Spend first: a refused report posts nothing, and a retried one is the
-    // same ledger row (the report id is idempotent).
+    // Spend before the post: a refused report posts nothing (and, above,
+    // creates no thread). If the post below fails after the spend is recorded,
+    // the spend stays, and a retry with the same report id returns that row.
     let accepted = match usage {
         Some(report) => Some(payer_stamp::record(state, auth, scope, report).await?),
         None => None,
@@ -547,6 +565,29 @@ async fn client_context(
     auth: &AuthContext,
     context_id: &str,
 ) -> Result<ThreadScope, A2aError> {
+    if let Some(scope) = existing_context(state, auth, context_id).await? {
+        return Ok(scope);
+    }
+    let workspace_id = auth.workspace_id;
+    let created = new_thread(state, auth).await?;
+    let bound = state
+        .store
+        .bind_a2a_context(workspace_id, context_id, created.thread_id)
+        .await
+        .map_err(store)?;
+    if bound == created.thread_id {
+        return Ok(created);
+    }
+    authorize(state, auth, bound).await
+}
+
+/// The thread a client's `contextId` already names, by binding or as a thread
+/// id in this workspace. Creates and binds nothing.
+async fn existing_context(
+    state: &AppState,
+    auth: &AuthContext,
+    context_id: &str,
+) -> Result<Option<ThreadScope>, A2aError> {
     let workspace_id = auth.workspace_id;
     if let Some(thread_id) = state
         .store
@@ -554,7 +595,7 @@ async fn client_context(
         .await
         .map_err(store)?
     {
-        return authorize(state, auth, thread_id).await;
+        return authorize(state, auth, thread_id).await.map(Some);
     }
     if let Ok(id) = Uuid::parse_str(context_id) {
         match state.store.get_thread(ThreadId(id)).await {
@@ -567,23 +608,14 @@ async fn client_context(
                 // Another workspace's thread id is just an unknown context
                 // here: nothing reveals that it exists.
                 if channel.workspace_id == workspace_id {
-                    return authorize(state, auth, thread.id).await;
+                    return authorize(state, auth, thread.id).await.map(Some);
                 }
             }
             Err(StoreError::NotFound) => {}
             Err(err) => return Err(store(err)),
         }
     }
-    let created = new_thread(state, auth).await?;
-    let bound = state
-        .store
-        .bind_a2a_context(workspace_id, context_id, created.thread_id)
-        .await
-        .map_err(store)?;
-    if bound == created.thread_id {
-        return Ok(created);
-    }
-    authorize(state, auth, bound).await
+    Ok(None)
 }
 
 async fn authorize(

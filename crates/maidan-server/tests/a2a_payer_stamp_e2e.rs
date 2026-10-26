@@ -382,3 +382,88 @@ async fn a_peers_spend_lands_in_the_ledger_and_never_in_another_workspace_on_pos
         a_peers_spend_lands_in_the_ledger_and_never_in_another_workspace(h).await;
     }
 }
+
+/// Red-team, two tenants: a report id A already used can neither be replayed
+/// nor suppressed by B, B's context naming A's child never reveals A's parent
+/// as an affinity key, and a refused stamp on an unknown context leaves no
+/// thread behind in B's workspace.
+async fn report_ids_and_affinity_keys_stay_inside_their_workspace(h: H) {
+    let a = h.peer("a", CAPS).await;
+    let b = h.peer("b", CAPS).await;
+    let parent = h.thread(a.ws, None).await;
+    let child = h.thread(a.ws, Some(parent)).await;
+    let a_lease = h.claim(child, a.member).await;
+    let id = uuid::Uuid::now_v7();
+    let ok = h.send(&a, child, Some(report(id, a_lease, 50))).await;
+    assert!(ok.get("error").is_none(), "{ok}");
+
+    // B reuses A's report id, with identical content, on its own claimed thread.
+    let b_thread = h.thread(b.ws, None).await;
+    let b_lease = h.claim(b_thread, b.member).await;
+    let reuse = h.send(&b, b_thread, Some(report(id, b_lease, 50))).await;
+    assert_eq!(code(&reuse), -32602, "{reuse}");
+    let text = reuse.to_string();
+    assert!(
+        !text.contains(&a.ws.0.to_string()),
+        "leaks A's workspace: {text}"
+    );
+    assert!(
+        !text.contains(&child.0.to_string()),
+        "leaks A's thread: {text}"
+    );
+    assert_eq!(h.ledger(b.ws).await, 0);
+
+    // B replays A's exact report against A's child id as its context.
+    let replay = h.send(&b, child, Some(report(id, a_lease, 50))).await;
+    assert_eq!(code(&replay), -32602, "{replay}");
+    assert!(
+        !replay.to_string().contains(&a.member.0.to_string()),
+        "{replay}"
+    );
+    assert_eq!(h.ledger(b.ws).await, 0);
+
+    // A's own retry is still its row: B's attempts suppressed nothing.
+    let again = h.send(&a, child, Some(report(id, a_lease, 50))).await;
+    assert!(again.get("error").is_none(), "{again}");
+    assert_eq!(h.ledger(a.ws).await, 1);
+
+    // B's plain message on A's child id binds B's own thread; its affinity
+    // key is never A's parent or child.
+    let plain = h.send(&b, child, None).await;
+    assert!(plain.get("error").is_none(), "{plain}");
+    let key = plain["result"]["task"]["metadata"]["maidan"]["affinityKey"].clone();
+    assert_ne!(key, json!(parent.0.to_string()), "{plain}");
+    assert_ne!(key, json!(child.0.to_string()), "{plain}");
+
+    // A refused stamp on a fresh, unknown context leaves no thread behind.
+    let before = h
+        .store
+        .list_threads_for_workspace(b.ws)
+        .await
+        .unwrap()
+        .len();
+    let fresh = ThreadId(uuid::Uuid::now_v7());
+    let refused = h
+        .send(&b, fresh, Some(report(uuid::Uuid::now_v7(), b_lease, 1)))
+        .await;
+    assert_eq!(code(&refused), -32602, "{refused}");
+    let after = h
+        .store
+        .list_threads_for_workspace(b.ws)
+        .await
+        .unwrap()
+        .len();
+    assert_eq!(before, after, "a refused stamp created a thread");
+}
+
+#[tokio::test]
+async fn report_ids_and_affinity_keys_stay_inside_their_workspace_on_sqlite() {
+    report_ids_and_affinity_keys_stay_inside_their_workspace(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn report_ids_and_affinity_keys_stay_inside_their_workspace_on_postgres() {
+    if let Some(h) = postgres().await {
+        report_ids_and_affinity_keys_stay_inside_their_workspace(h).await;
+    }
+}
