@@ -467,3 +467,120 @@ async fn report_ids_and_affinity_keys_stay_inside_their_workspace_on_postgres() 
         report_ids_and_affinity_keys_stay_inside_their_workspace(h).await;
     }
 }
+
+/// Red-team, round two: a report with no `contextId` at all is refused before
+/// any thread exists, and a bound context in a private channel can't be
+/// stamped by a same-workspace member outside it, even holding the lease.
+async fn a_report_needs_an_existing_context_its_caller_may_see(h: H) {
+    let a = h.peer("a", CAPS).await;
+    let thread = h.thread(a.ws, None).await;
+    let lease = h.claim(thread, a.member).await;
+    let threads = |ws| {
+        let store = h.store.clone();
+        async move { store.list_threads_for_workspace(ws).await.unwrap().len() }
+    };
+
+    // No contextId: refused, no thread, no spend.
+    let before = threads(a.ws).await;
+    let resp: Value = h
+        .http
+        .post(format!("{}/a2a/v1/rpc", h.base))
+        .bearer_auth(&a.token)
+        .header("A2A-Version", "1.0")
+        .header("A2A-Extensions", EXT)
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
+            "params": { "message": {
+                "messageId": uuid::Uuid::now_v7().to_string(),
+                "role": "ROLE_USER",
+                "parts": [{ "text": "progress" }],
+                "metadata": report(uuid::Uuid::now_v7(), lease, 1),
+                "extensions": [EXT],
+            } } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(code(&resp), -32602, "{resp}");
+    assert_eq!(
+        threads(a.ws).await,
+        before,
+        "a contextless report created a thread"
+    );
+    assert_eq!(h.ledger(a.ws).await, 0);
+
+    // A private channel's thread, claimed by a member who isn't in it.
+    let private = h
+        .store
+        .create_channel(NewChannel {
+            workspace_id: a.ws,
+            name: format!("p-{}", uuid::Uuid::now_v7().simple()),
+            topic: None,
+            private: true,
+        })
+        .await
+        .unwrap()
+        .id;
+    let hidden = h
+        .store
+        .create_thread(NewThread {
+            channel_id: private,
+            parent_thread_id: None,
+            title: Some("private".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap()
+        .id;
+    let outsider_lease = h.claim(hidden, a.member).await;
+    let before = threads(a.ws).await;
+    let refused = h
+        .send(
+            &a,
+            hidden,
+            Some(report(uuid::Uuid::now_v7(), outsider_lease, 5)),
+        )
+        .await;
+    assert_eq!(code(&refused), -32000, "{refused}");
+    assert_eq!(
+        h.ledger(a.ws).await,
+        0,
+        "a non-member stamped a private thread"
+    );
+    assert_eq!(threads(a.ws).await, before);
+
+    // The plain path is unchanged: no contextId still opens a thread.
+    let plain: Value = h
+        .http
+        .post(format!("{}/a2a/v1/rpc", h.base))
+        .bearer_auth(&a.token)
+        .header("A2A-Version", "1.0")
+        .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
+            "params": { "message": {
+                "messageId": uuid::Uuid::now_v7().to_string(),
+                "role": "ROLE_USER",
+                "parts": [{ "text": "hello" }],
+            } } }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(plain.get("error").is_none(), "{plain}");
+    assert_eq!(threads(a.ws).await, before + 1);
+}
+
+#[tokio::test]
+async fn a_report_needs_an_existing_context_its_caller_may_see_on_sqlite() {
+    a_report_needs_an_existing_context_its_caller_may_see(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn a_report_needs_an_existing_context_its_caller_may_see_on_postgres() {
+    if let Some(h) = postgres().await {
+        a_report_needs_an_existing_context_its_caller_may_see(h).await;
+    }
+}
