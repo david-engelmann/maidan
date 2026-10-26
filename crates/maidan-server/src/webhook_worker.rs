@@ -234,7 +234,9 @@ async fn run_delivery_poller(state: AppState, mut shutdown: watch::Receiver<()>)
 }
 
 /// One pass over the due deliveries: send each, reschedule or quarantine a
-/// failure, and defer a retry the host's retry budget refuses. The spawned
+/// failure, and defer a retry the host's retry budget refuses. A workspace
+/// cut off on `deliveries` sends nothing and its deliveries are deferred;
+/// every attempt that goes out counts one `deliveries` unit. The spawned
 /// poller calls this every poll interval.
 pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), String> {
     let pending = state
@@ -260,6 +262,27 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
             );
             continue;
         };
+        let workspace_id = sub.subscription.workspace_id;
+        // The hard allowance cutoff: an open sign-up workspace past its
+        // deliveries allowance sends nothing. The delivery is deferred, not
+        // failed, so it keeps its attempt count and goes out once the cutoff
+        // lifts.
+        if state
+            .usage_meters
+            .is_cut_off(workspace_id, maidan_types::UsageMeter::Deliveries)
+        {
+            let until = chrono::Utc::now() + crate::usage_meters::CUT_OFF_DEFER;
+            if let Err(err) = state.store.defer_webhook_delivery(delivery.id, until).await {
+                warn!(delivery_id = delivery.id, error = %err, "webhook deferral failed");
+            }
+            tracing::info!(
+                delivery_id = delivery.id,
+                workspace_id = %workspace_id.0,
+                reason = "over_allowance",
+                "webhook delivery parked; workspace past its free allowance for deliveries"
+            );
+            continue;
+        }
         if let Some(host) = crate::retry_budget::host_of(&sub.subscription.url) {
             let attempt = Attempt::after(i64::from(delivery.attempts));
             if let Some(until) = deferred_until(&state.retry_budget, "webhook", &host, attempt) {
@@ -284,7 +307,7 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
         let room_lsn =
             crate::room_lsn::current_for_room(state.store.as_ref(), sub.subscription.workspace_id)
                 .await;
-        match maidan_store::trace::maybe_scope(
+        let sent = maidan_store::trace::maybe_scope(
             delivery.trace.clone(),
             deliver_http(
                 &sub.subscription.url,
@@ -295,8 +318,13 @@ pub async fn poll_deliveries(state: &AppState, max_attempts: u32) -> Result<(), 
                 room_lsn,
             ),
         )
-        .await
-        {
+        .await;
+        // Every attempt is outbound HTTP the workspace made the server send,
+        // so a failed one counts too.
+        state
+            .usage_meters
+            .record(workspace_id, maidan_types::UsageMeter::Deliveries, 1);
+        match sent {
             Ok(()) => {
                 let _ = state
                     .store
