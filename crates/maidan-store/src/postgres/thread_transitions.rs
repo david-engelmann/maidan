@@ -149,7 +149,8 @@ async fn outside_approval_in_tx(
                             WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id)
             AND (r.actor_id IS NULL OR (
               EXISTS (SELECT 1 FROM maidan_members ma
-                      WHERE ma.id = r.actor_id AND ma.tombstoned_at IS NULL)
+                      WHERE ma.id = r.actor_id AND ma.tombstoned_at IS NULL
+                        AND ma.workspace_id = c.workspace_id)
               AND (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
               AND NOT EXISTS (SELECT 1 FROM maidan_thread_workers wa
                               WHERE wa.thread_id = r.thread_id AND wa.member_id = r.actor_id)))
