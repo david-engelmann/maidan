@@ -74,6 +74,35 @@ impl Pool {
             }
         }
     }
+
+    /// Reattributes `reviewer`'s review to `other`, as a row written for a
+    /// member of another workspace would read.
+    async fn set_reviewer(&self, thread: ThreadId, reviewer: MemberId, other: MemberId) {
+        match self {
+            Pool::Sqlite(p) => {
+                sqlx::query(
+                    "UPDATE maidan_thread_reviews SET reviewer_id = ? WHERE thread_id = ? AND reviewer_id = ?",
+                )
+                .bind(other.0)
+                .bind(thread.0)
+                .bind(reviewer.0)
+                .execute(p)
+                .await
+                .expect("reviewer");
+            }
+            Pool::Postgres(p) => {
+                sqlx::query(
+                    "UPDATE maidan_thread_reviews SET reviewer_id = $1 WHERE thread_id = $2 AND reviewer_id = $3",
+                )
+                .bind(other.0)
+                .bind(thread.0)
+                .bind(reviewer.0)
+                .execute(p)
+                .await
+                .expect("reviewer");
+            }
+        }
+    }
 }
 
 async fn sqlite() -> (Pool, SqliteStore) {
@@ -229,64 +258,89 @@ async fn approved_thread(
     (owner, reviewer, t)
 }
 
+fn assert_refused(r: Result<impl std::fmt::Debug, StoreError>, why: &str) {
+    assert!(matches!(r, Err(StoreError::Conflict(_))), "{why}: {r:?}");
+}
+
+/// Tenant B: an approval from, and submitted by, its own live members still
+/// meets its requirement.
+async fn tenant_b_control(pool: &Pool, store: &dyn Store, ws_b: WorkspaceId) {
+    let live = member(store, ws_b, "live").await;
+    let (owner, _, t) = approved_thread(pool, store, ws_b, "b", Some(&live)).await;
+    store
+        .transition_thread(t.id, owner.id, ThreadAction::Close)
+        .await
+        .expect("tenant B's live approval still meets its requirement");
+}
+
 async fn a_removed_reviewers_approval_no_longer_meets_the_requirement(
     pool: &Pool,
     store: &dyn Store,
 ) {
     let ws_a = workspace(store, "a").await;
     let ws_b = workspace(store, "b").await;
-    let (owner_a, reviewer_a, a) = approved_thread(pool, store, ws_a, "a", None).await;
-    let (owner_b, _, b) = approved_thread(pool, store, ws_b, "b", None).await;
-    pool.tombstone(reviewer_a.id).await;
-    let refused = store
-        .transition_thread(a.id, owner_a.id, ThreadAction::Close)
-        .await;
-    assert!(
-        refused.is_err(),
-        "a removed reviewer's approval met tenant A's requirement: {refused:?}"
+    let (owner, reviewer, t) = approved_thread(pool, store, ws_a, "a", None).await;
+    pool.tombstone(reviewer.id).await;
+    assert_refused(
+        store
+            .transition_thread(t.id, owner.id, ThreadAction::Close)
+            .await,
+        "a removed reviewer's approval met tenant A's requirement",
     );
-    store
-        .transition_thread(b.id, owner_b.id, ThreadAction::Close)
-        .await
-        .expect("tenant B's live reviewer still meets its requirement");
+    tenant_b_control(pool, store, ws_b).await;
 }
 
-async fn an_approval_submitted_by_a_removed_or_foreign_member_does_not_meet_the_requirement(
+async fn an_approval_from_another_workspaces_reviewer_does_not_meet_the_requirement(
     pool: &Pool,
     store: &dyn Store,
 ) {
-    // Tenant A runs each case in its own workspace, so the threads do not
-    // collide; tenant B is the control.
     let ws_a = workspace(store, "a").await;
-    let ws_a2 = workspace(store, "a2").await;
+    let ws_b = workspace(store, "b").await;
+    let stranger = member(store, ws_b, "stranger").await;
+    let (owner, reviewer, t) = approved_thread(pool, store, ws_a, "a", None).await;
+    pool.set_reviewer(t.id, reviewer.id, stranger.id).await;
+    assert_refused(
+        store
+            .transition_thread(t.id, owner.id, ThreadAction::Close)
+            .await,
+        "tenant B's reviewer's approval met tenant A's requirement",
+    );
+    tenant_b_control(pool, store, ws_b).await;
+}
+
+async fn an_approval_submitted_by_a_removed_member_does_not_meet_the_requirement(
+    pool: &Pool,
+    store: &dyn Store,
+) {
+    let ws_a = workspace(store, "a").await;
     let ws_b = workspace(store, "b").await;
     let removed = member(store, ws_a, "removed").await;
-    let stranger = member(store, ws_b, "stranger").await;
-    let live = member(store, ws_b, "live").await;
-    let (owner_r, _, by_removed) =
-        approved_thread(pool, store, ws_a, "removed", Some(&removed)).await;
-    let (owner_f, _, by_stranger) =
-        approved_thread(pool, store, ws_a2, "foreign", Some(&stranger)).await;
-    let (owner_b, _, b) = approved_thread(pool, store, ws_b, "b", Some(&live)).await;
+    let (owner, _, t) = approved_thread(pool, store, ws_a, "a", Some(&removed)).await;
     pool.tombstone(removed.id).await;
-    let refused = store
-        .transition_thread(by_removed.id, owner_r.id, ThreadAction::Close)
-        .await;
-    assert!(
-        refused.is_err(),
-        "an approval submitted by a removed member met tenant A's requirement: {refused:?}"
+    assert_refused(
+        store
+            .transition_thread(t.id, owner.id, ThreadAction::Close)
+            .await,
+        "an approval submitted by a removed member met tenant A's requirement",
     );
-    let refused = store
-        .transition_thread(by_stranger.id, owner_f.id, ThreadAction::Close)
-        .await;
-    assert!(
-        refused.is_err(),
-        "an approval submitted by tenant B's member met tenant A's requirement: {refused:?}"
+    tenant_b_control(pool, store, ws_b).await;
+}
+
+async fn an_approval_submitted_by_another_workspaces_member_does_not_meet_the_requirement(
+    pool: &Pool,
+    store: &dyn Store,
+) {
+    let ws_a = workspace(store, "a").await;
+    let ws_b = workspace(store, "b").await;
+    let stranger = member(store, ws_b, "stranger").await;
+    let (owner, _, t) = approved_thread(pool, store, ws_a, "a", Some(&stranger)).await;
+    assert_refused(
+        store
+            .transition_thread(t.id, owner.id, ThreadAction::Close)
+            .await,
+        "an approval submitted by tenant B's member met tenant A's requirement",
     );
-    store
-        .transition_thread(b.id, owner_b.id, ThreadAction::Close)
-        .await
-        .expect("tenant B's approval submitted by its own live member still meets its requirement");
+    tenant_b_control(pool, store, ws_b).await;
 }
 
 macro_rules! both_backends {
@@ -313,7 +367,17 @@ both_backends!(
     a_removed_reviewers_approval_no_longer_meets_the_requirement_postgres
 );
 both_backends!(
-    an_approval_submitted_by_a_removed_or_foreign_member_does_not_meet_the_requirement,
-    an_approval_submitted_by_a_removed_or_foreign_member_does_not_meet_the_requirement_sqlite,
-    an_approval_submitted_by_a_removed_or_foreign_member_does_not_meet_the_requirement_postgres
+    an_approval_from_another_workspaces_reviewer_does_not_meet_the_requirement,
+    an_approval_from_another_workspaces_reviewer_does_not_meet_the_requirement_sqlite,
+    an_approval_from_another_workspaces_reviewer_does_not_meet_the_requirement_postgres
+);
+both_backends!(
+    an_approval_submitted_by_a_removed_member_does_not_meet_the_requirement,
+    an_approval_submitted_by_a_removed_member_does_not_meet_the_requirement_sqlite,
+    an_approval_submitted_by_a_removed_member_does_not_meet_the_requirement_postgres
+);
+both_backends!(
+    an_approval_submitted_by_another_workspaces_member_does_not_meet_the_requirement,
+    an_approval_submitted_by_another_workspaces_member_does_not_meet_the_requirement_sqlite,
+    an_approval_submitted_by_another_workspaces_member_does_not_meet_the_requirement_postgres
 );
