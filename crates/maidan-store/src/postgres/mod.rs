@@ -255,6 +255,7 @@ impl PostgresStore {
     /// Single-pool store: reads and writes both use `pool` (reader aliases it).
     /// `keys` wraps and unwraps message content keys; there is no default.
     pub fn new(pool: PgPool, keys: Arc<ContentKeyring>) -> Self {
+        keys.set_wrap_journal(Arc::new(content_keys::PgWrapJournal::new(pool.clone())));
         Self {
             reader: pool.clone(),
             pool,
@@ -278,6 +279,7 @@ impl PostgresStore {
     /// keeps the replica's replay LSN cached for cheap per-read routing
     /// decisions.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool, keys: Arc<ContentKeyring>) -> Self {
+        keys.set_wrap_journal(Arc::new(content_keys::PgWrapJournal::new(pool.clone())));
         let replica_replay = Arc::new(AtomicU64::new(0));
         let read_routing = Arc::new(ReadRoutingMetrics::default());
         let replica_health = Arc::new(ReplicaHealth::default());

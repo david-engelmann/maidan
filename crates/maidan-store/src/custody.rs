@@ -98,13 +98,14 @@ impl AwsKmsCustody {
         let Some(workspace_key_id) = tag(CONTEXT_KEY).and_then(|v| v.parse::<Uuid>().ok()) else {
             return Ok(None);
         };
-        let described = self
-            .client
-            .describe_key()
-            .key_id(key_id)
-            .send()
-            .await
-            .map_err(|err| Self::kms_error("DescribeKey", err))?;
+        let described = self.client.describe_key().key_id(key_id).send().await;
+        // A key this role may not describe is someone else's: skipped, like
+        // one whose tags it may not read, so one key never stops the sweep.
+        let described = match described {
+            Ok(out) => out,
+            Err(err) if kms_error_kind(err.code()) == SealError::Refused => return Ok(None),
+            Err(err) => return Err(Self::kms_error("DescribeKey", err)),
+        };
         let Some(meta) = described.key_metadata else {
             return Ok(None);
         };
@@ -165,6 +166,10 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
 
     fn current_wrapping_like(&self) -> String {
         format!("{AWS_KMS_PREFIX}%")
+    }
+
+    fn creates_keys(&self) -> bool {
+        true
     }
 
     fn owns(&self, wrapping_key_id: &str) -> bool {
@@ -507,6 +512,10 @@ impl WorkspaceKeyCustody for FakeKmsCustody {
         format!("{FAKE_KMS_PREFIX}{}:%", self.name)
     }
 
+    fn creates_keys(&self) -> bool {
+        true
+    }
+
     fn owns(&self, wrapping_key_id: &str) -> bool {
         wrapping_key_id
             .strip_prefix(FAKE_KMS_PREFIX)
@@ -632,6 +641,173 @@ mod tests {
         );
         let earlier = Utc::now() - chrono::Duration::hours(1);
         assert!(kms.held_keys(earlier).await.unwrap().is_empty());
+    }
+
+    type Reply = dyn Fn(
+            http::Request<aws_smithy_types::body::SdkBody>,
+        ) -> http::Response<aws_smithy_types::body::SdkBody>
+        + Send
+        + Sync;
+
+    /// An HTTP client that answers every request from a closure.
+    #[derive(Clone)]
+    struct FnClient(std::sync::Arc<Reply>);
+
+    impl std::fmt::Debug for FnClient {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("FnClient")
+        }
+    }
+
+    impl FnClient {
+        fn shared(
+            f: impl Fn(
+                    http::Request<aws_smithy_types::body::SdkBody>,
+                ) -> http::Response<aws_smithy_types::body::SdkBody>
+                + Send
+                + Sync
+                + 'static,
+        ) -> aws_smithy_runtime_api::client::http::SharedHttpClient {
+            aws_smithy_runtime_api::client::http::SharedHttpClient::new(FnClient(
+                std::sync::Arc::new(f),
+            ))
+        }
+    }
+
+    impl aws_smithy_runtime_api::client::http::HttpConnector for FnClient {
+        fn call(
+            &self,
+            request: aws_smithy_runtime_api::client::orchestrator::HttpRequest,
+        ) -> aws_smithy_runtime_api::client::http::HttpConnectorFuture {
+            let response = (self.0)(request.try_into_http1x().unwrap());
+            aws_smithy_runtime_api::client::http::HttpConnectorFuture::ready(Ok(
+                aws_smithy_runtime_api::client::orchestrator::HttpResponse::try_from(response)
+                    .unwrap(),
+            ))
+        }
+    }
+
+    impl aws_smithy_runtime_api::client::http::HttpClient for FnClient {
+        fn http_connector(
+            &self,
+            _: &aws_smithy_runtime_api::client::http::HttpConnectorSettings,
+            _: &aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+        ) -> aws_smithy_runtime_api::client::http::SharedHttpConnector {
+            aws_smithy_runtime_api::client::http::SharedHttpConnector::new(self.clone())
+        }
+    }
+
+    /// A KMS account shared by three deployments: `prod`, `staging`, and one
+    /// that set no instance name. Answers ListKeys, ListResourceTags and
+    /// DescribeKey from the table below.
+    fn shared_account_kms(instance: Option<&str>) -> AwsKmsCustody {
+        use aws_smithy_types::body::SdkBody;
+        let client = FnClient::shared(|req: http::Request<SdkBody>| {
+            let target = req
+                .headers()
+                .get("x-amz-target")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            let body = String::from_utf8_lossy(req.body().bytes().unwrap_or_default()).to_string();
+            let wk = |n: u8| format!("0190a000-0000-7000-8000-00000000000{n}");
+            let tags = |key: &str| match key {
+                "k-prod" => format!(
+                    r#"[{{"TagKey":"maidan_instance","TagValue":"prod"}},{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(1)
+                ),
+                "k-staging" => format!(
+                    r#"[{{"TagKey":"maidan_instance","TagValue":"staging"}},{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(2)
+                ),
+                "k-denied" => format!(
+                    r#"[{{"TagKey":"maidan_instance","TagValue":"prod"}},{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(4)
+                ),
+                "k-untagged" => format!(
+                    r#"[{{"TagKey":"maidan_workspace_key","TagValue":"{}"}}]"#,
+                    wk(3)
+                ),
+                _ => "[]".to_string(),
+            };
+            let key = ["k-prod", "k-staging", "k-denied", "k-untagged", "k-other"]
+                .into_iter()
+                .find(|k| body.contains(&format!("\"{k}\"")))
+                .unwrap_or("k-other");
+            let json = match target.as_str() {
+                    "TrentService.ListKeys" => r#"{"Keys":[{"KeyId":"k-prod"},{"KeyId":"k-staging"},{"KeyId":"k-denied"},{"KeyId":"k-untagged"},{"KeyId":"k-other"}],"Truncated":false}"#.to_string(),
+                    "TrentService.ListResourceTags" => format!(r#"{{"Tags":{},"Truncated":false}}"#, tags(key)),
+                    "TrentService.DescribeKey" => format!(
+                        r#"{{"KeyMetadata":{{"KeyId":"{key}","Arn":"arn:aws:kms:us-east-1:1:key/{key}","KeyState":"Enabled","CreationDate":1600000000}}}}"#
+                    ),
+                    _ => "{}".to_string(),
+                };
+            // The role may read k-denied's tags but not describe it.
+            let (status, json) = if target == "TrentService.DescribeKey" && key == "k-denied" {
+                (
+                    400,
+                    r#"{"__type":"AccessDeniedException","message":"denied"}"#.to_string(),
+                )
+            } else {
+                (200, json)
+            };
+            http::Response::builder()
+                .status(status)
+                .header("content-type", "application/x-amz-json-1.1")
+                .body(SdkBody::from(json))
+                .unwrap()
+        });
+        let config = aws_sdk_kms::Config::builder()
+            .behavior_version(aws_sdk_kms::config::BehaviorVersion::latest())
+            .region(aws_sdk_kms::config::Region::new("us-east-1"))
+            .credentials_provider(aws_sdk_kms::config::Credentials::new(
+                "a", "b", None, None, "test",
+            ))
+            .http_client(client)
+            .build();
+        AwsKmsCustody::new(
+            aws_sdk_kms::Client::from_conf(config),
+            instance.map(str::to_string),
+        )
+    }
+
+    #[tokio::test]
+    async fn the_sweep_lists_only_keys_tagged_with_its_own_instance_in_a_shared_account() {
+        let held = shared_account_kms(Some("prod"))
+            .held_keys(Utc::now())
+            .await
+            .unwrap();
+        assert_eq!(
+            held,
+            vec![CustodyKey {
+                workspace_key_id: "0190a000-0000-7000-8000-000000000001".parse().unwrap(),
+                wrapping_key_id: format!("{AWS_KMS_PREFIX}arn:aws:kms:us-east-1:1:key/k-prod"),
+            }],
+            "staging's, undescribable, untagged and foreign keys are never listed"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_instance_with_no_name_lists_no_keys_at_all() {
+        assert!(shared_account_kms(None)
+            .held_keys(Utc::now())
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_instance_name_that_differs_only_by_case_or_prefix_lists_nothing() {
+        for name in ["Prod", "pro", "prod ", "stag"] {
+            assert!(
+                shared_account_kms(Some(name))
+                    .held_keys(Utc::now())
+                    .await
+                    .unwrap()
+                    .is_empty(),
+                "{name:?}"
+            );
+        }
     }
 
     #[test]

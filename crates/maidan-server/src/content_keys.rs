@@ -144,7 +144,11 @@ fn record_stray_sweep(sweep: Result<StraySweep, StoreError>) {
                 );
             }
         }
-        Err(err) => tracing::warn!(error = %err, "content keys: stray custody key sweep failed"),
+        Err(err) => {
+            // A failing sweep must never read as a healthy one.
+            metrics::gauge!("maidan_custody_stray_keys_failed").increment(1.0);
+            tracing::warn!(error = %err, "content keys: stray custody key sweep failed");
+        }
     }
 }
 

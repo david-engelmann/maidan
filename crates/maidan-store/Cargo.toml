@@ -46,6 +46,9 @@ anyhow.workspace = true
 tempfile = "3"
 criterion = "0.5"
 proptest = "1"
+aws-smithy-runtime-api = { version = "1", features = ["client", "http-1x"] }
+aws-smithy-types = "1"
+http = "1"
 
 [[bench]]
 name = "store_hot"
