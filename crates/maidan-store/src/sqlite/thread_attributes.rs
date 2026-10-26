@@ -188,13 +188,26 @@ pub async fn set(
     thread_id: ThreadId,
     attributes: TaskAttributes,
 ) -> Result<TaskAttributes, StoreError> {
-    let exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_threads WHERE id = ?)")
-            .bind(thread_id.0)
-            .fetch_one(pool)
-            .await?;
-    if !exists {
-        return Err(StoreError::NotFound);
+    let place = sqlx::query(
+        "SELECT t.parent_thread_id IS NOT NULL AS has_parent, a.kind AS kind
+         FROM maidan_threads t LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id
+         WHERE t.id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let has_parent: bool = place.try_get("has_parent")?;
+    let stored_kind: Option<String> = place.try_get("kind")?;
+    // A review child is exempt from its parent's ordering hold, so a child
+    // becomes a review only when it is created as one (#1556).
+    if attributes.kind == TaskKind::Review
+        && has_parent
+        && stored_kind.as_deref() != Some(TaskKind::Review.as_str())
+    {
+        return Err(StoreError::Conflict(
+            "a child thread becomes a review only when it is created as one".into(),
+        ));
     }
     sqlx::query(
         "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)

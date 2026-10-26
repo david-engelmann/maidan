@@ -860,6 +860,71 @@ async fn a_review_child_closes_ahead_of_its_open_change(store: Arc<dyn Store>) {
     );
 }
 
+/// An ordinary child cannot be turned into a review after creation, so it
+/// stays behind its parent; a child created as a review keeps its kind.
+async fn an_ordinary_child_turned_into_a_review_stays_held(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "relabel", 1).await;
+    let actor = room.agents[0];
+    let (change, _event) = store
+        .create_thread_with_footprint(new_thread(room.channel, "change"), None, None, None)
+        .await
+        .unwrap();
+    let child = |title: &str| NewThread {
+        parent_thread_id: Some(change.id),
+        ..new_thread(room.channel, title)
+    };
+    let (ordinary, _event) = store
+        .create_thread_with_footprint(child("ordinary"), None, None, None)
+        .await
+        .unwrap();
+    let relabel = store
+        .set_thread_attributes(ordinary.id, attrs(TaskKind::Review, None, false))
+        .await;
+    assert!(
+        matches!(relabel, Err(maidan_store::StoreError::Conflict(_))),
+        "an ordinary child cannot become a review, got {relabel:?}"
+    );
+    assert_eq!(
+        store.get_thread_attributes(ordinary.id).await.unwrap().kind,
+        TaskKind::default()
+    );
+    let held = store
+        .transition_thread(ordinary.id, actor, ThreadAction::StartReview)
+        .await;
+    assert!(
+        matches!(held, Err(maidan_store::StoreError::Conflict(_))),
+        "the relabel attempt leaves the child held, got {held:?}"
+    );
+
+    let (review, _event) = store
+        .create_thread_with_footprint(
+            child("review"),
+            None,
+            Some(attrs(TaskKind::Review, None, false)),
+            None,
+        )
+        .await
+        .unwrap();
+    let restated = store
+        .set_thread_attributes(
+            review.id,
+            attrs(TaskKind::Review, Some(TaskEngine::Pi), false),
+        )
+        .await
+        .expect("a review child restates its attributes");
+    assert_eq!(restated.kind, TaskKind::Review);
+
+    let (top, _event) = store
+        .create_thread_with_footprint(new_thread(room.channel, "top level"), None, None, None)
+        .await
+        .unwrap();
+    let top_review = store
+        .set_thread_attributes(top.id, attrs(TaskKind::Review, None, false))
+        .await
+        .expect("a thread without a parent may become a review");
+    assert_eq!(top_review.kind, TaskKind::Review);
+}
+
 on_both_backends!(
     attributes_set_at_creation_are_read_back,
     attributes_set_later_replace_the_whole_set,
@@ -873,4 +938,5 @@ on_both_backends!(
     a_tier_is_stored_restated_and_left_unset,
     a_lane_is_stored_restated_and_left_unset,
     a_review_child_closes_ahead_of_its_open_change,
+    an_ordinary_child_turned_into_a_review_stays_held,
 );
