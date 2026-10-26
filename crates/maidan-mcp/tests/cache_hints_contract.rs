@@ -385,6 +385,10 @@ fn the_documented_cache_hints_are_the_servers() {
             "`resources/read` of `maidan://threads/{id}`",
             caching::resource_read("maidan://threads/x"),
         ),
+        (
+            "`resources/read` of `maidan://digests/{thread_id}`",
+            caching::resource_read("maidan://digests/x"),
+        ),
     ];
     for (result, hint) in rows {
         let row = format!("| {result} | {} | `{}` |", hint.ttl_ms, hint.scope.as_str());

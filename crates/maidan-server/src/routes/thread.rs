@@ -1253,6 +1253,24 @@ pub async fn list_thread_artifacts(
     Ok(Json(state.store.list_thread_artifacts(thread_id).await?))
 }
 
+/// `GET /threads/:id/digest`: the thread's current digest (C10, summarize
+/// once), the newest linked artifact of kind `digest`, with its sha256 so a
+/// reader fetches the bytes once and caches them by hash. `404` when none is
+/// linked. `workspace:read` + thread access.
+pub async fn get_thread_digest(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ThreadDigest>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    maidan_store::thread_digest::current(state.store.as_ref(), auth.workspace_id, thread_id)
+        .await?
+        .map(Json)
+        .ok_or(ApiError::NotFound)
+}
+
 /// `GET /threads/:id/review-packet`: what the thread's current review was
 /// handed (its version, result hash and linked artifacts) and the root of that
 /// manifest, recorded at `start_review`. `404` before any review.

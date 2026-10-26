@@ -4,6 +4,7 @@
 //! - `maidan://channels/{id}` — channel metadata.
 //! - `maidan://boots/{channel_id}` — the workspace boot for a channel.
 //! - `maidan://threads/{id}` — full thread transcript (up to 100 messages).
+//! - `maidan://digests/{thread_id}` — the thread's current digest (C10).
 
 use std::sync::Arc;
 
@@ -39,6 +40,11 @@ pub fn templates() -> Vec<Value> {
             "thread",
             "maidan://threads/{id}",
             "Full thread transcript (up to 100 messages).",
+        ),
+        (
+            "digest",
+            "maidan://digests/{thread_id}",
+            "A thread's current digest: the sha256 and maidan://artifacts URI of the newest linked artifact of kind digest. Read the bytes once by hash and cache them; a digest is written once and read by many.",
         ),
         (
             "artifact",
@@ -101,6 +107,23 @@ pub async fn read(
                 "artifact": meta,
                 "byte_length": meta.size_bytes,
             })
+        }
+        "digests" => {
+            let id = uuid::Uuid::parse_str(id_str)
+                .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
+            let thread_id = ThreadId(id);
+            let workspace_id = match viewer {
+                Some(ws) => ws,
+                None => {
+                    let thread = store.get_thread(thread_id).await?;
+                    store.get_channel(thread.channel_id).await?.workspace_id
+                }
+            };
+            let digest =
+                maidan_store::thread_digest::current(store.as_ref(), workspace_id, thread_id)
+                    .await?
+                    .ok_or(McpError::NotFound)?;
+            serde_json::to_value(&digest)?
         }
         "boots" => {
             let id = uuid::Uuid::parse_str(id_str)
@@ -178,7 +201,7 @@ pub fn validate_uri(uri: &str) -> Result<(), McpError> {
             }
             let _ = Sha256::from_hex(id_str).map_err(|e| McpError::InvalidParams(e.to_string()))?;
         }
-        "boots" | "workspaces" | "channels" | "threads" => {
+        "boots" | "workspaces" | "channels" | "threads" | "digests" => {
             let _ = uuid::Uuid::parse_str(id_str)
                 .map_err(|_| McpError::InvalidParams(format!("invalid uuid in uri: {id_str}")))?;
         }

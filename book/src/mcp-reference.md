@@ -8125,6 +8125,10 @@ Workspace boot for a channel: the bytes a thread pack prefix starts with.
 
 Full thread transcript (up to 100 messages).
 
+### `digest` — `maidan://digests/{thread_id}`
+
+A thread's current digest: the sha256 and maidan://artifacts URI of the newest linked artifact of kind digest. Read the bytes once by hash and cache them; a digest is written once and read by many.
+
 ### `artifact` — `maidan://artifacts/{sha256}`
 
 Artifact metadata and byte length (body omitted).

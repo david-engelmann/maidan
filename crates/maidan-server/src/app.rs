@@ -796,6 +796,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/artifacts",
             get(routes::list_thread_artifacts),
         )
+        .route("/threads/{id}/digest", get(routes::get_thread_digest))
         .route(
             "/threads/{id}/artifacts/{sha256}",
             put(routes::link_thread_artifact).merge(delete(routes::unlink_thread_artifact)),

@@ -187,6 +187,7 @@ mod tests {
             ArtifactKind::CodeDump,
             ArtifactKind::Attachment,
             ArtifactKind::ContextSnapshot,
+            ArtifactKind::Digest,
         ] {
             assert_eq!(
                 MEDIA_KINDS_SQL.contains(&format!("'{}'", kind.as_str())),

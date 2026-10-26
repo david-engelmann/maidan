@@ -797,7 +797,8 @@
           "transcript",
           "code_dump",
           "attachment",
-          "context_snapshot"
+          "context_snapshot",
+          "digest"
         ],
         "type": "string"
       },
@@ -10514,6 +10515,47 @@
           "thread_id",
           "depends_on_thread_id",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "ThreadDigest": {
+        "description": "A thread's current digest: the newest artifact of kind `digest` linked to\nit, as the caller's workspace holds it. The bytes are fetched once by\nsha256 (`GET /artifacts/{sha256}` or `maidan://artifacts/{sha256}`) and\nnever change, so every reader may cache them by hash.",
+        "properties": {
+          "linked_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "linked_by": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "uri": {
+            "description": "`maidan://artifacts/{sha256}`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "sha256",
+          "uri",
+          "size_bytes",
+          "linked_by",
+          "linked_at"
         ],
         "type": "object"
       },
@@ -25001,6 +25043,72 @@
           }
         ],
         "summary": "List a thread's dependents",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/digest": {
+      "get": {
+        "operationId": "get_thread_digest",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDigest"
+                }
+              }
+            },
+            "description": "The newest linked artifact of kind `digest`: its sha256, `maidan://artifacts/{sha256}` URI, size and who linked it. Fetch the bytes once by hash; they never change."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No such thread, or no digest linked to it"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "A thread's current digest",
         "tags": [
           "threads"
         ]
