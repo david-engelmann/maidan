@@ -1,4 +1,0 @@
-### Embedding repair honours the allowance cutoff
-
-- **Fixed:** the embedding repair sweep no longer embeds messages in an open sign-up workspace that is past its `embedding_calls` allowance, and every message it does embed now counts toward that workspace's `embedding_calls`, the same as the live indexer. Before, the sweep embedded unvectored messages in every workspace on its five-minute timer without checking the cutoff or metering the work.
-- **Fixed:** a workspace's own embedding reindex now checks the cutoff before every batch and counts each batch toward `embedding_calls` before sending it to the provider, so a workspace that crosses its allowance mid-job stops there, and a failed job is still metered for what it sent. A second reindex request for a workspace whose job is still running is refused with `409 Conflict`.
