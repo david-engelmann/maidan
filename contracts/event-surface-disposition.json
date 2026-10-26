@@ -67,6 +67,12 @@
     "note": "Only an unfreeze that lifts a freeze appends it; a no-op unfreeze records nothing on either surface."
   },
   {
+    "kind": "member_display_name_changed",
+    "disposition": "rest_only",
+    "rest_evidence": "crates/maidan-server/tests/member_display_name_rest_e2e.rs#a_display_name_change_is_announced_to_its_own_workspace_only",
+    "note": "Appended with the PATCH /members/{id} change and its audit row in one transaction."
+  },
+  {
     "kind": "memory_block_updated",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/memory_block_rest_e2e.rs#memory_blocks_over_http",

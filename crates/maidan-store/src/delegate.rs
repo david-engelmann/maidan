@@ -297,8 +297,15 @@ macro_rules! store_delegations {
                 &self,
                 id: MemberId,
                 display_name: Option<String>,
-            ) -> Result<Member, StoreError> {
-                members::set_display_name(self.pool(), id, display_name.as_deref()).await
+                audit: NewAuditEvent,
+            ) -> Result<(Member, StoredEvent), StoreError> {
+                governance_audited::set_member_display_name(
+                    self.pool(),
+                    id,
+                    display_name.as_deref(),
+                    audit,
+                )
+                .await
             }
 
             async fn get_member_in(

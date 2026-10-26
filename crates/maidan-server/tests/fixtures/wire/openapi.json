@@ -2964,6 +2964,7 @@
           "projector_misconfigured",
           "member_frozen",
           "member_unfrozen",
+          "member_display_name_changed",
           "usage_over_allowance",
           "message_posted",
           "message_edited",
