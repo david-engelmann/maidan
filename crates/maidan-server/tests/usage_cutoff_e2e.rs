@@ -691,3 +691,83 @@ async fn a_refused_upload_leaves_no_bytes_behind_over_rest_or_mcp() {
     assert!(refused.is_err());
     assert!(state.artifacts.exists(&shared_sha).await.unwrap());
 }
+
+#[tokio::test]
+async fn a_workspace_past_its_embedding_allowance_cannot_reindex_itself_while_another_can_and_is_metered(
+) {
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| {
+        state = Some(s.clone());
+    })
+    .await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let (cut, cut_admin) = signed_up(store, "ada", true).await;
+    let (open, open_admin) = signed_up(store, "bea", true).await;
+    let caps = vec![
+        capability::WORKSPACE_READ.to_string(),
+        capability::WORKSPACE_WRITE.to_string(),
+    ];
+    let cut_bearer = token(store, cut, cut_admin, caps.clone()).await;
+    let open_bearer = token(store, open, open_admin, caps).await;
+    state
+        .usage_meters
+        .set_cut_off([(cut, UsageMeter::EmbeddingCalls)]);
+    let _ = state.usage_meters.take();
+
+    let res = h
+        .send(
+            Method::POST,
+            "/operator/reindex-embeddings",
+            &cut_bearer,
+            Some(serde_json::json!({ "workspace_id": cut.0 })),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let res = h
+        .send(
+            Method::POST,
+            "/operator/reindex-embeddings",
+            &open_bearer,
+            Some(serde_json::json!({ "workspace_id": open.0 })),
+        )
+        .await;
+    assert_eq!(
+        res.status(),
+        StatusCode::ACCEPTED,
+        "another workspace still reindexes"
+    );
+    let job: Value = res.json().await.unwrap_or(Value::Null);
+    let job_id = job["job_id"].as_str().unwrap_or_default().to_string();
+    let mut processed = None;
+    for _ in 0..100 {
+        let (_, body) = status(
+            &h,
+            &open_bearer,
+            &format!("/operator/reindex-embeddings/{job_id}"),
+        )
+        .await;
+        if body["status"] != "running" {
+            processed = Some(
+                body["processed"].as_u64().unwrap_or(0) + body["failed"].as_u64().unwrap_or(0),
+            );
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let processed = processed.expect("the reindex job finishes");
+    let counts = state.usage_meters.take();
+    let open_calls: i64 = counts
+        .iter()
+        .filter(|r| r.workspace_id == open && r.meter == UsageMeter::EmbeddingCalls)
+        .map(|r| r.quantity)
+        .sum();
+    assert_eq!(open_calls as u64, processed, "the reindex is metered");
+    assert!(
+        counts
+            .iter()
+            .all(|r| r.workspace_id != cut || r.meter != UsageMeter::EmbeddingCalls),
+        "the refused workspace is metered no embedding calls"
+    );
+}

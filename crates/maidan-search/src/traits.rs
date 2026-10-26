@@ -67,13 +67,15 @@ pub trait Search: Send + Sync {
     /// provider's model — newest first — and return what was done. This is
     /// how a message the live indexer failed to embed, or never saw because the
     /// process stopped, is recovered without a full reindex. Backends without
-    /// vectors are `Unsupported`.
+    /// vectors are `Unsupported`. With `meters`, workspaces cut off on
+    /// `embedding_calls` are skipped and what is embedded is counted.
     async fn embed_missing(
         &self,
         provider: &Arc<dyn EmbeddingProvider>,
         limit: i64,
+        meters: Option<&maidan_store::usage_meters::UsageMeterBuffer>,
     ) -> Result<ReindexReport, SearchError> {
-        let _ = (provider, limit);
+        let _ = (provider, limit, meters);
         Err(SearchError::Unsupported("embed_missing"))
     }
 

@@ -87,6 +87,18 @@ impl UsageMeterBuffer {
             .any(|(_, m)| *m == meter)
     }
 
+    /// Every workspace cut off on `meter`, for a background job that filters
+    /// them out of its query.
+    pub fn cut_off_workspaces(&self, meter: UsageMeter) -> Vec<WorkspaceId> {
+        self.cut_off
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|(_, m)| *m == meter)
+            .map(|(w, _)| *w)
+            .collect()
+    }
+
     /// A meter `workspace_id` is cut off on, if any.
     pub fn cut_off_meter(&self, workspace_id: WorkspaceId) -> Option<UsageMeter> {
         self.cut_off

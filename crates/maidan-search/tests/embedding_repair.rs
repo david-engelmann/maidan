@@ -9,14 +9,15 @@ use std::{sync::Arc, time::Duration};
 use maidan_bus::{EventBus, InMemoryBus};
 use maidan_search::{
     BatchConfig, BatchingEmbeddingHandler, EmbeddingProvider, EmbeddingProviderError,
-    HashV1Provider, IndexerMetrics, PostgresSearch, RetryPolicy, Search,
+    HashV1Provider, IndexerMetrics, PostgresSearch, RetryPolicy, Search, SqliteSearch,
 };
-use maidan_store::{prelude::*, run_postgres_migrations};
+use maidan_store::usage_meters::UsageMeterBuffer;
+use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::{
     BusEnvelope, Event, MemberKind, Message, NewChannel, NewMember, NewMessage, NewThread,
-    NewWorkspace,
+    NewWorkspace, UsageMeter, WorkspaceId,
 };
-use sqlx::postgres::PgPoolOptions;
+use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -238,7 +239,7 @@ async fn what_retries_cannot_save_the_repair_sweep_embeds_once() {
         .await
         .unwrap();
     assert!(held);
-    let skipped = fx.search.embed_missing(&hash, 100).await.unwrap();
+    let skipped = fx.search.embed_missing(&hash, 100, None).await.unwrap();
     assert_eq!(
         skipped.processed, 0,
         "a held lock means another replica is repairing"
@@ -249,8 +250,111 @@ async fn what_retries_cannot_save_the_repair_sweep_embeds_once() {
         .await
         .unwrap();
 
-    let repaired = fx.search.embed_missing(&hash, 100).await.unwrap();
+    let repaired = fx.search.embed_missing(&hash, 100, None).await.unwrap();
     assert_eq!((repaired.processed, repaired.failed), (3, 0));
-    let again = fx.search.embed_missing(&hash, 100).await.unwrap();
+    let again = fx.search.embed_missing(&hash, 100, None).await.unwrap();
     assert_eq!(again.processed, 0, "nothing left missing");
+}
+
+fn workspace_of(events: &[(Message, Event)]) -> WorkspaceId {
+    match &events[0].1 {
+        Event::MessagePosted { workspace_id, .. } => *workspace_id,
+        other => panic!("unexpected event {other:?}"),
+    }
+}
+
+/// The embedding_calls counted per workspace in `meters`.
+fn embedding_calls(meters: &UsageMeterBuffer, workspace: WorkspaceId) -> i64 {
+    meters
+        .take()
+        .into_iter()
+        .filter(|r| r.workspace_id == workspace && r.meter == UsageMeter::EmbeddingCalls)
+        .map(|r| r.quantity)
+        .sum()
+}
+
+#[tokio::test]
+async fn the_repair_sweep_skips_a_cut_off_workspace_and_meters_the_other_postgres() {
+    let Some(fx) = fixture().await else { return };
+    let cut = post(fx.store.as_ref(), 3).await;
+    let open = post(fx.store.as_ref(), 2).await;
+    let (cut_ws, open_ws) = (workspace_of(&cut), workspace_of(&open));
+    let meters = UsageMeterBuffer::new();
+    meters.set_cut_off([(cut_ws, UsageMeter::EmbeddingCalls)]);
+    let hash: Arc<dyn EmbeddingProvider> = Arc::new(HashV1Provider);
+
+    let swept = fx
+        .search
+        .embed_missing(&hash, 100, Some(&meters))
+        .await
+        .unwrap();
+    assert_eq!(
+        (swept.processed, swept.failed),
+        (2, 0),
+        "only the open workspace's messages are embedded"
+    );
+    let counts = meters.take();
+    let open_calls: i64 = counts
+        .iter()
+        .filter(|r| r.workspace_id == open_ws && r.meter == UsageMeter::EmbeddingCalls)
+        .map(|r| r.quantity)
+        .sum();
+    assert_eq!(open_calls, 2, "each repaired message is metered");
+    assert!(
+        counts.iter().all(|r| r.workspace_id != cut_ws),
+        "nothing is metered to the cut-off workspace"
+    );
+
+    // A second sweep under the cutoff still leaves the cut-off workspace alone.
+    let again = fx
+        .search
+        .embed_missing(&hash, 100, Some(&meters))
+        .await
+        .unwrap();
+    assert_eq!(again.processed, 0);
+    assert_eq!(embedding_calls(&meters, cut_ws), 0);
+
+    // Its three messages are still missing: lifting the cutoff repairs them.
+    meters.set_cut_off([]);
+    let lifted = fx
+        .search
+        .embed_missing(&hash, 100, Some(&meters))
+        .await
+        .unwrap();
+    assert_eq!(
+        lifted.processed, 3,
+        "the cut-off workspace was never embedded"
+    );
+    assert_eq!(embedding_calls(&meters, cut_ws), 3);
+}
+
+#[tokio::test]
+async fn the_repair_sweep_embeds_and_meters_nothing_on_sqlite_where_it_does_not_run() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let search = SqliteSearch::new(pool);
+    let cut = post(store.as_ref(), 3).await;
+    let open = post(store.as_ref(), 2).await;
+    let (cut_ws, open_ws) = (workspace_of(&cut), workspace_of(&open));
+    let meters = UsageMeterBuffer::new();
+    meters.set_cut_off([(cut_ws, UsageMeter::EmbeddingCalls)]);
+    let hash: Arc<dyn EmbeddingProvider> = Arc::new(HashV1Provider);
+
+    let swept = search.embed_missing(&hash, 100, Some(&meters)).await;
+    assert!(
+        matches!(swept, Err(maidan_search::SearchError::Unsupported(_))),
+        "SQLite has no repair sweep, so it can embed nothing of either workspace"
+    );
+    let counts = meters.take();
+    assert!(
+        counts
+            .iter()
+            .all(|r| r.workspace_id != cut_ws && r.workspace_id != open_ws),
+        "nothing is metered when nothing is embedded"
+    );
 }

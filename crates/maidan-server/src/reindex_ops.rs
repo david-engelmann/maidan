@@ -44,6 +44,13 @@ pub async fn start_reindex_embeddings(
             cap(&auth, WORKSPACE_WRITE)?;
             ensure_workspace(&auth, wid)?;
             state.store.get_workspace(wid).await?;
+            // A workspace past its embedding allowance cannot re-embed
+            // itself: that is the same provider work the indexer refuses it.
+            if !auth.bypass {
+                state
+                    .usage_meters
+                    .refuse(wid, maidan_types::UsageMeter::EmbeddingCalls)?;
+            }
         }
         // Every workspace's embeddings: an instance operator's call, not
         // one workspace admin's (`token:admin` is scoped to its workspace).
@@ -71,6 +78,7 @@ pub async fn start_reindex_embeddings(
     let search = state.search.clone();
     let provider = state.embedding_provider.clone();
     let store = state.store.clone();
+    let meters = state.usage_meters.clone();
     let actor_id = if auth.bypass {
         None
     } else {
@@ -86,6 +94,16 @@ pub async fn start_reindex_embeddings(
                 job_clone.status = ReindexJobStatus::Completed;
                 job_clone.processed = Some(report.processed);
                 job_clone.failed = Some(report.failed);
+                // Every message sent to the provider counts toward the
+                // workspace's embedding_calls, as the live indexer counts it.
+                if let Some(wid) = workspace_id {
+                    let calls = report.processed.saturating_add(report.failed);
+                    meters.record(
+                        wid,
+                        maidan_types::UsageMeter::EmbeddingCalls,
+                        i64::try_from(calls).unwrap_or(i64::MAX),
+                    );
+                }
             }
             Err(err) => {
                 job_clone.status = ReindexJobStatus::Failed;
