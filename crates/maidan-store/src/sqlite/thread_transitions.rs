@@ -27,6 +27,11 @@ async fn review_gate_in_tx(
              AS required_count,
            (SELECT COUNT(*) FROM maidan_thread_reviews r
               JOIN maidan_threads t ON t.id = r.thread_id
+              JOIN maidan_channels c ON c.id = t.channel_id
+              -- A removed member's approval no longer counts, nor one from
+              -- another workspace.
+              JOIN maidan_members m ON m.id = r.reviewer_id
+                AND m.workspace_id = c.workspace_id AND m.tombstoned_at IS NULL
               WHERE r.thread_id = ? AND r.decision = 'approve' AND r.dismissed_at IS NULL
                 -- Bound to what the current review was handed.
                 -- A thread never handed over has no packet to bind to; once it has
@@ -51,7 +56,10 @@ async fn review_gate_in_tx(
                 -- Nor may whoever actually submitted it: a delegate that owns or
                 -- worked the thread cannot approve it with a reviewer's borrowed token.
                 AND (r.actor_id IS NULL OR (
-                  (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
+                  EXISTS (SELECT 1 FROM maidan_members ma
+                          WHERE ma.id = r.actor_id AND ma.tombstoned_at IS NULL
+                            AND ma.workspace_id = c.workspace_id)
+                  AND (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
                   AND (t.assignee_id IS NULL OR r.actor_id <> t.assignee_id)
                   AND NOT EXISTS (
                     SELECT 1 FROM maidan_thread_workers wa
