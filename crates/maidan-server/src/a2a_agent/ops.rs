@@ -26,6 +26,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
 use super::error::{denied, hidden, internal, store};
+use super::payer_stamp::{self, PAYER_STAMP_EXTENSION};
 use super::push;
 use crate::state::AppState;
 
@@ -305,6 +306,7 @@ pub(crate) async fn send_message(
     let history_length = history_length(config.history_length)?;
     let message = req.message;
     validate_message(&message)?;
+    let usage = payer_stamp::report(&message)?;
     let citations = citations(&message)?;
     let push = match config.task_push_notification_config {
         Some(config) => Some(push::prepare(state, auth, config)?),
@@ -323,6 +325,14 @@ pub(crate) async fn send_message(
             (scope, scope.thread_id.0.to_string())
         }
     };
+
+    // Spend first: a refused report posts nothing, and a retried one is the
+    // same ledger row (the report id is idempotent).
+    let accepted = match usage {
+        Some(report) => Some(payer_stamp::record(state, auth, scope, report).await?),
+        None => None,
+    };
+    let affinity_key = payer_stamp::affinity_key(state, scope.thread_id).await?;
 
     let content = message_content(&message);
     let body = message_text(&message).unwrap_or_else(|| maidan_types::derive_body(&content));
@@ -365,9 +375,16 @@ pub(crate) async fn send_message(
         },
         artifacts: None,
         history: None,
-        metadata: Some(json!({
-            "maidan": { "messageId": posted.id.0, "threadId": scope.thread_id.0 }
-        })),
+        metadata: Some(task_metadata(
+            json!({
+                "maidan": {
+                    "messageId": posted.id.0,
+                    "threadId": scope.thread_id.0,
+                    "affinityKey": affinity_key,
+                }
+            }),
+            accepted.as_ref(),
+        )?),
     };
     save(
         state,
@@ -469,10 +486,22 @@ fn citations(message: &A2aMessage) -> Result<Option<Value>, A2aError> {
 
 /// The A2A envelope fields kept with the Maidan message, so history renders
 /// what the client sent.
+/// A delivery task's metadata, with the accepted PayerStamp under the
+/// extension's key when the message carried a usage report.
+fn task_metadata(
+    mut metadata: Value,
+    accepted: Option<&maidan_types::UsageLedgerEntry>,
+) -> Result<Value, A2aError> {
+    if let Some(entry) = accepted {
+        metadata[PAYER_STAMP_EXTENSION] = payer_stamp::stamp(entry)?;
+    }
+    Ok(metadata)
+}
+
 fn a2a_metadata(message: &A2aMessage) -> Value {
     let mut out = json!({ "messageId": message.message_id });
     if let Some(metadata) = &message.metadata {
-        out["metadata"] = metadata.clone();
+        out["metadata"] = payer_stamp::without_report(metadata);
     }
     if !message.extensions.is_empty() {
         out["extensions"] = json!(message.extensions);

@@ -34,6 +34,17 @@ pub struct AgentCapabilities {
     pub streaming: bool,
     pub push_notifications: bool,
     pub extended_agent_card: bool,
+    /// Optional protocol extensions (§4.6) a client may activate.
+    pub extensions: Vec<AgentExtension>,
+}
+
+/// One extension the agent supports (§4.4.4).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExtension {
+    pub uri: String,
+    pub description: String,
+    pub required: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -143,6 +154,15 @@ impl A2aCardConfig {
                 streaming: true,
                 push_notifications: true,
                 extended_agent_card: true,
+                extensions: vec![AgentExtension {
+                    uri: super::payer_stamp::PAYER_STAMP_EXTENSION.into(),
+                    description: "Usage accounting: a message's metadata may carry one usage \
+                                  report (the POST /threads/{id}/usage body) under this URI; \
+                                  it is recorded in the workspace's claim-fenced ledger and the \
+                                  accepted PayerStamp is returned in the task's metadata."
+                        .into(),
+                    required: false,
+                }],
             },
             security_schemes: json!({
                 "bearer": { "httpAuthSecurityScheme": {
