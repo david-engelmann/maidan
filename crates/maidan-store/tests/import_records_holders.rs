@@ -184,10 +184,9 @@ async fn a_crafted_import_cannot_record_a_holder_it_did_not_import_in_full() {
     crafted(&sqlite_store().await).await;
 }
 
-/// Today a bundle whose thread names another workspace's member as holder
-/// imports, and that member is recorded as having worked the thread.
+/// A bundle whose thread names another workspace's member as holder is
+/// refused, and nothing of it is kept.
 #[tokio::test]
-#[ignore = "fails until import refuses a holder from outside the bundle"]
 async fn an_import_naming_another_workspaces_member_as_holder_is_refused() {
     let store = sqlite_store().await;
     let a = bundle("a");

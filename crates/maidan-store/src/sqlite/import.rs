@@ -109,6 +109,23 @@ pub(crate) async fn import_on(
         .await?;
     }
 
+    // A holder must be one of the bundle's own members. The foreign key
+    // alone would accept any member of any workspace, and import records the
+    // holder as having worked the thread.
+    for t in &b.threads {
+        if let Some(holder) = t.assignee_id
+            && !b
+                .members
+                .iter()
+                .any(|m| m.id == holder && m.workspace_id == w.id)
+        {
+            return Err(StoreError::InvalidInput(format!(
+                "thread {} is held by member {}, who is not a member of the imported workspace",
+                t.id.0, holder.0
+            )));
+        }
+    }
+
     for t in &b.threads {
         sqlx::query(
             "INSERT INTO maidan_threads
