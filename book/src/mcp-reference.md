@@ -610,6 +610,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           "maxLength": 4000,
           "type": "string"
         },
+        "author_family": {
+          "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it",
+          "enum": [
+            "anthropic",
+            "openai",
+            "google",
+            "xai"
+          ],
+          "type": "string"
+        },
         "engine": {
           "enum": [
             "pi",
@@ -2506,6 +2516,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     "acceptance": {
       "description": "how a reviewer verifies the task; the worker must satisfy it",
       "maxLength": 4000,
+      "type": "string"
+    },
+    "author_family": {
+      "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it",
+      "enum": [
+        "anthropic",
+        "openai",
+        "google",
+        "xai"
+      ],
       "type": "string"
     },
     "engine": {

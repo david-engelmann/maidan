@@ -253,6 +253,96 @@ where
             "with review children off no review task is spawned"
         );
     }
+
+    // A review a producer files for a change written elsewhere names the
+    // author's family itself, and claim_next refuses it to that family.
+    let (filed, _) = store
+        .create_thread_with_footprint(
+            new("filed review"),
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("openai".into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("filed review");
+    assert!(
+        store
+            .claim_next_thread(channel, other, None, None)
+            .await
+            .expect("claim next")
+            .is_none(),
+        "an openai seat never gets a review of an openai change"
+    );
+    // Whoever may set attributes cannot lift it: a set that omits the
+    // family, or names another, leaves the stored one.
+    for restate in [None, Some("anthropic".to_string())] {
+        let kept = store
+            .set_thread_attributes(
+                filed.id,
+                TaskAttributes {
+                    kind: TaskKind::Review,
+                    author_family: restate,
+                    ..TaskAttributes::default()
+                },
+            )
+            .await
+            .expect("set");
+        assert_eq!(kept.author_family.as_deref(), Some("openai"));
+    }
+    assert!(
+        store
+            .claim_next_thread(channel, other, None, None)
+            .await
+            .expect("claim next")
+            .is_none(),
+        "still refused after the sets"
+    );
+    let taken = store
+        .claim_next_thread(channel, same, None, None)
+        .await
+        .expect("claim next")
+        .expect("an anthropic seat takes it");
+    assert_eq!(taken.id, filed.id);
+
+    // A set may name the family of a review filed without one.
+    let (unnamed, _) = store
+        .create_thread_with_footprint(
+            new("unnamed review"),
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("unnamed review");
+    let named = store
+        .set_thread_attributes(
+            unnamed.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("anthropic".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await
+        .expect("set");
+    assert_eq!(named.author_family.as_deref(), Some("anthropic"));
+    for seat in [author, same] {
+        assert!(
+            store
+                .claim_next_thread(channel, seat, None, None)
+                .await
+                .expect("claim next")
+                .is_none(),
+            "an anthropic seat never gets it once named"
+        );
+    }
 }
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger

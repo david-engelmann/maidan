@@ -20,8 +20,8 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -32,6 +32,7 @@ pub(crate) async fn insert_on(
     .bind(attributes.linear_issue.as_deref())
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
+    .bind(attributes.author_family.as_deref())
     .bind(Utc::now().to_rfc3339())
     .execute(&mut *conn)
     .await?;
@@ -152,7 +153,7 @@ pub(crate) async fn is_review_in_tx(
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family FROM maidan_thread_attributes WHERE thread_id = ?",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family, author_family FROM maidan_thread_attributes WHERE thread_id = ?",
     )
     .bind(thread_id.0)
     .fetch_optional(pool)
@@ -179,6 +180,7 @@ pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttribute
             .try_get::<Option<String>, _>("lane")?
             .and_then(|lane| TaskLane::parse(&lane)),
         review_family: row.try_get("review_family")?,
+        author_family: row.try_get("author_family")?,
     })
 }
 
@@ -197,8 +199,8 @@ pub async fn set(
         return Err(StoreError::NotFound);
     }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
@@ -208,6 +210,7 @@ pub async fn set(
              linear_issue = excluded.linear_issue,
              tier = excluded.tier,
              lane = excluded.lane,
+             author_family = COALESCE(maidan_thread_attributes.author_family, excluded.author_family),
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -219,9 +222,11 @@ pub async fn set(
     .bind(attributes.linear_issue.as_deref())
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
+    .bind(attributes.author_family.as_deref())
     .bind(Utc::now().to_rfc3339())
     .execute(pool)
     .await?;
-    // The server-set review routing is left as stored and read back.
+    // The server-set review routing is left as stored and read back, and
+    // an author family once stored is kept (see `TaskAttributes`).
     get(pool, thread_id).await
 }

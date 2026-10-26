@@ -141,6 +141,7 @@ async fn an_untagged_thread_gets_the_default_on_every_create_path(store: Arc<dyn
         tier: Some(TaskTier::B),
         lane: Some(TaskLane::Flex),
         review_family: None,
+        author_family: None,
     };
     let (thread, _) = store
         .create_thread_with_footprint(

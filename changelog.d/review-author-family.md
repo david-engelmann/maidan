@@ -1,0 +1,3 @@
+### A review can name the family that wrote its change
+
+- **Added:** A thread's task attributes take `author_family` (`anthropic`, `openai`, `google` or `xai`), set at intake on REST and MCP `create_thread` or by `PUT /threads/{id}/attributes` and `set_thread_attributes`. `claim_next` never hands such a thread to a claimer whose usage names that family. Before, only the review children Maidan spawns carried it, so a producer filing a review of an outside or Codex-written change had to route it by hand. Once stored the family is kept: a later set that omits it or names another leaves it, so the change's author cannot lift it.

@@ -384,6 +384,27 @@ it whole, and the metrics read for the workspace
 (`GET /workspaces/{id}/swarm-metrics?engine=pi`) counts only the work
 that was routed to Pi.
 
+### A review's author family
+
+A review must come from another model family than the change it reviews.
+When a change Maidan tracks enters review, Maidan files the review child
+itself and records the author's family. A producer filing a review of a
+change written elsewhere (an outside pull request, a Codex-written branch)
+names it in the attributes:
+
+```json
+{ "kind": "review", "engine": "session", "author_family": "openai" }
+```
+
+`author_family` is `anthropic`, `openai`, `google` or `xai` (any case;
+anything else is refused). `claim_next` never hands the thread to a claimer
+whose usage reports name that family, so a Codex seat is never handed a
+review of Codex's own work. Once stored, the family is kept: a later
+`PUT /threads/{id}/attributes` or `set_thread_attributes` that omits it or
+names another leaves it as it was, so nobody who may set attributes, the
+change's author included, can lift it. A claimer that has reported no usage
+in the workspace has no known family and is not refused.
+
 ### Claim and release comments on Linear
 
 A task's attributes may name the Linear issue it is for

@@ -293,6 +293,15 @@ pub struct TaskAttributes {
     /// Set by the server only; setting attributes leaves it as it was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_family: Option<String>,
+    /// The provider family that wrote the change this task reviews
+    /// (`anthropic`, `openai`, `google`, `xai`): `claim_next` never hands
+    /// the thread to a claimer whose usage names that family. Set by the
+    /// producer filing a review, or by the server for a review child. Once
+    /// stored it is kept: a later set neither clears nor changes it, so
+    /// nobody who may set attributes, the change's author included, can
+    /// lift it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_family: Option<String>,
 }
 
 impl TaskAttributes {
@@ -307,6 +316,21 @@ impl TaskAttributes {
         {
             return Err(format!(
                 "linear_issue `{key}` is not an issue key such as ENG-123"
+            ));
+        }
+        self.author_family = self
+            .author_family
+            .map(|family| family.trim().to_ascii_lowercase())
+            .filter(|family| !family.is_empty());
+        if let Some(family) = &self.author_family
+            && !PROVIDER_FAMILIES
+                .iter()
+                .any(|(known, _, _)| known == family)
+        {
+            let known: Vec<&str> = PROVIDER_FAMILIES.iter().map(|(name, _, _)| *name).collect();
+            return Err(format!(
+                "author_family `{family}` is not a provider family; use one of {}",
+                known.join(", ")
             ));
         }
         self.acceptance = self
@@ -377,6 +401,38 @@ mod review_family_tests {
         assert_eq!(review_family_for(Some("anthropic")), Some("openai"));
         assert_eq!(review_family_for(Some("openai")), Some("anthropic"));
         assert_eq!(review_family_for(None), None);
+    }
+
+    #[test]
+    fn an_author_family_is_a_known_family_with_its_case_folded() {
+        let named = TaskAttributes {
+            author_family: Some(" OpenAI ".into()),
+            ..TaskAttributes::default()
+        }
+        .validated()
+        .unwrap();
+        assert_eq!(named.author_family.as_deref(), Some("openai"));
+        let blank = TaskAttributes {
+            author_family: Some("  ".into()),
+            ..TaskAttributes::default()
+        }
+        .validated()
+        .unwrap();
+        assert_eq!(blank.author_family, None);
+        let err = TaskAttributes {
+            author_family: Some("gpt".into()),
+            ..TaskAttributes::default()
+        }
+        .validated()
+        .unwrap_err();
+        assert!(err.contains("author_family `gpt`"), "{err}");
+        assert!(err.contains("anthropic, openai, google, xai"), "{err}");
+        let parsed: TaskAttributes =
+            serde_json::from_str(r#"{"kind":"review","author_family":"xai"}"#).unwrap();
+        assert_eq!(parsed.author_family.as_deref(), Some("xai"));
+        assert!(!serde_json::to_string(&TaskAttributes::default())
+            .unwrap()
+            .contains("author_family"));
     }
 
     #[test]

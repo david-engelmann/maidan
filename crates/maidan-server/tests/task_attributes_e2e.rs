@@ -1005,3 +1005,74 @@ async fn another_workspace_cannot_read_or_set_review_children() {
     let (_, read) = review_children(&base, &victim_admin, victim.ws, None).await;
     assert_eq!(read, off, "the victim's setting holds");
 }
+
+#[tokio::test]
+async fn a_reviews_author_family_is_set_at_intake_and_kept_by_every_later_set() {
+    let (base, store) = spawn().await;
+    let room = room(store.as_ref(), "author-family").await;
+
+    let (status, created) = create_thread(
+        &base,
+        &room,
+        json!({
+            "title": "red-team a codex change",
+            "attributes": { "kind": "review", "engine": "session", "author_family": "OpenAI" }
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["attributes"]["author_family"], "openai");
+    let thread_id = created["id"].as_str().unwrap().to_string();
+
+    // A PUT that omits it, or names another family, leaves it.
+    let http = reqwest::Client::new();
+    for body in [
+        json!({ "kind": "review", "engine": "session" }),
+        json!({ "kind": "review", "author_family": "anthropic" }),
+    ] {
+        let response = http
+            .put(format!("{base}/threads/{thread_id}/attributes"))
+            .bearer_auth(&room.token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let kept: Value = response.json().await.unwrap();
+        assert_eq!(kept["author_family"], "openai", "{kept}");
+    }
+    // So does the MCP twin.
+    let set = tool_result(
+        &tool(
+            &base,
+            &room.token,
+            "set_thread_attributes",
+            json!({ "thread_id": thread_id, "kind": "review", "author_family": "xai" }),
+        )
+        .await,
+    );
+    assert_eq!(set["author_family"], "openai");
+    let (_, read) = get_thread(&base, &room.token, &thread_id).await;
+    assert_eq!(read["attributes"]["author_family"], "openai");
+
+    // A name that is not a provider family is refused on both surfaces.
+    let (status, _) = create_thread(
+        &base,
+        &room,
+        json!({ "title": "bad family", "attributes": { "kind": "review", "author_family": "gpt" } }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let refused = tool(
+        &base,
+        &room.token,
+        "create_thread",
+        json!({
+            "channel_id": room.channel.0,
+            "title": "bad family",
+            "attributes": { "kind": "review", "author_family": "codex" }
+        }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
+}

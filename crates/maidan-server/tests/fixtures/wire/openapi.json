@@ -9425,6 +9425,13 @@
               "null"
             ]
           },
+          "author_family": {
+            "description": "The provider family that wrote the change this task reviews\n(`anthropic`, `openai`, `google`, `xai`): `claim_next` never hands\nthe thread to a claimer whose usage names that family. Set by the\nproducer filing a review, or by the server for a review child. Once\nstored it is kept: a later set neither clears nor changes it, so\nnobody who may set attributes, the change's author included, can\nlift it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "engine": {
             "oneOf": [
               {
