@@ -15,7 +15,7 @@ use serde_json::json;
 
 use super::{
     cap, clamp_context_transition_limit, ensure_workspace, observe_spawn_denial, publish_stored,
-    requested_member, ApiResult,
+    refuse_stored_bytes, requested_member, upsert_uploaded_artifact, ApiResult,
 };
 use crate::dto::*;
 use crate::error::ApiError;
@@ -347,26 +347,26 @@ pub async fn snapshot_thread_context(
         .map_err(|e| ApiError::Internal(format!("serialize context snapshot: {e}")))?
         .into();
     let size_bytes = body.len() as i64;
+    // Refused before the bytes are written, so a refusal stores nothing.
+    refuse_stored_bytes(&state, &auth)?;
     let sha = state.artifacts.put(body.clone()).await?;
     // Same atomic upsert + per-workspace ref + `ArtifactUpserted` event as a
     // normal upload; the ref/uploader are recorded only for a non-bypass
     // caller.
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let uploaded_by = (!auth.bypass).then_some(auth.member_id);
-    let (artifact, stored) = state
-        .store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes,
-                mime_type: Some("application/json".to_string()),
-                filename: None,
-                kind: ArtifactKind::ContextSnapshot,
-                uploaded_by,
-            },
-            ref_workspace,
-        )
-        .await?;
+    let (artifact, stored) = upsert_uploaded_artifact(
+        &state,
+        &auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes,
+            mime_type: Some("application/json".to_string()),
+            filename: None,
+            kind: ArtifactKind::ContextSnapshot,
+            uploaded_by,
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, body).await?;
     publish_stored(&state, stored).await;
@@ -1251,6 +1251,24 @@ pub async fn list_thread_artifacts(
     cap(&auth, WORKSPACE_READ)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
     Ok(Json(state.store.list_thread_artifacts(thread_id).await?))
+}
+
+/// `GET /threads/:id/digest`: the thread's current digest (C10, summarize
+/// once), the newest linked artifact of kind `digest`, with its sha256 so a
+/// reader fetches the bytes once and caches them by hash. `404` when none is
+/// linked. `workspace:read` + thread access.
+pub async fn get_thread_digest(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ThreadDigest>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    maidan_store::thread_digest::current(state.store.as_ref(), auth.workspace_id, thread_id)
+        .await?
+        .map(Json)
+        .ok_or(ApiError::NotFound)
 }
 
 /// `GET /threads/:id/review-packet`: what the thread's current review was

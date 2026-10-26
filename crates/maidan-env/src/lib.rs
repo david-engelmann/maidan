@@ -185,6 +185,10 @@ pub const SERVER_ENV: &[&str] = &[
     "MAIDAN_SUBSCRIBE_RESUME_SECRET_FILE",
     "MAIDAN_SUBSCRIBE_RESUME_TTL_SECS",
     "MAIDAN_TRUSTED_PROXY_HOPS",
+    "MAIDAN_TURNSTILE_HOSTNAME",
+    "MAIDAN_TURNSTILE_SECRET",
+    "MAIDAN_TURNSTILE_SECRET_FILE",
+    "MAIDAN_TURNSTILE_SITE_KEY",
     "MAIDAN_USAGE_METER_FLUSH_SECS",
     "MAIDAN_VAPID_PRIVATE_KEY",
     "MAIDAN_VAPID_PRIVATE_KEY_FILE",
@@ -453,6 +457,7 @@ mod tests {
         ("MAIDAN_SECRET_EGRESS_ALLOWLIST", "a list of hosts"),
         ("MAIDAN_SIGNUP_PRIVACY_URL", "a public page's address"),
         ("MAIDAN_SIGNUP_TERMS_URL", "a public page's address"),
+        ("MAIDAN_TURNSTILE_SITE_KEY", "a public key the page renders"),
         ("MAIDAN_VAPID_PUBLIC_KEY", "a public key"),
         (
             "MAIDAN_WORKSPACE_KEY_CUSTODY",

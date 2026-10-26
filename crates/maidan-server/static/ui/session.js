@@ -177,6 +177,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
         let loginPath = null;
         let sessions = null;
         let signupPath = null;
+        let siteKey = null;
         try {
           const res = await api(`${base()}/.well-known/maidan.json`, {
             signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
@@ -186,6 +187,7 @@ import { tokenKey, wsResumeKey } from "./state.js";
             if (auth && auth.oidc && auth.oidc_login) loginPath = auth.oidc_login;
             if (auth && typeof auth.sessions === "boolean") sessions = auth.sessions;
             if (auth && auth.oidc_signup) signupPath = auth.oidc_signup;
+            if (auth && typeof auth.turnstile_site_key === "string") siteKey = auth.turnstile_site_key;
             answered = true;
           } else if (res.status < 500 && res.status !== 429) {
             // No discovery document: a token is the only path offered.
@@ -201,6 +203,11 @@ import { tokenKey, wsResumeKey } from "./state.js";
         // The waitlist form shows only where the instance runs sign-up;
         // elsewhere the surface does not exist at all.
         document.getElementById("waitlist-block").hidden = !signupPath;
+        turnstileSiteKey = signupPath ? siteKey : null;
+        if (turnstileSiteKey) {
+          renderWaitlistCheck();
+          startSignupCheck(signupPath);
+        }
         if (!answered && attempt < DISCOVERY_RETRY_MS.length) {
           discoveryRetry = setTimeout(() => discoverServerAuth(attempt + 1), DISCOVERY_RETRY_MS[attempt]);
         }
@@ -379,6 +386,83 @@ import { tokenKey, wsResumeKey } from "./state.js";
         signInWithToken();
       });
 
+      // Turnstile, when discovery names a site key. The widget script comes
+      // from Cloudflare's challenge origin, which the page's CSP allows only
+      // on an instance that runs Turnstile. A token is good for one check,
+      // so the widget is reset after every submit.
+      const TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      let turnstileSiteKey = null;
+      let turnstileScript = null;
+      let waitlistWidget = null;
+      let waitlistToken = "";
+
+      function loadTurnstile() {
+        if (!turnstileScript) {
+          turnstileScript = new Promise((resolve, reject) => {
+            const script = document.createElement("script");
+            script.src = TURNSTILE_SRC;
+            script.async = true;
+            script.onload = () => resolve(/** @type {any} */ (window).turnstile);
+            script.onerror = () => {
+              turnstileScript = null;
+              reject(new Error("the human check could not load"));
+            };
+            document.head.appendChild(script);
+          });
+        }
+        return turnstileScript;
+      }
+
+      async function renderWaitlistCheck() {
+        const slot = document.getElementById("waitlist-turnstile");
+        if (waitlistWidget !== null || !turnstileSiteKey) return;
+        try {
+          const turnstile = await loadTurnstile();
+          slot.hidden = false;
+          waitlistWidget = turnstile.render(slot, {
+            sitekey: turnstileSiteKey,
+            action: "waitlist",
+            callback: (/** @type {string} */ t) => { waitlistToken = t; },
+            "expired-callback": () => { waitlistToken = ""; },
+          });
+        } catch (_e) {
+          /* the join answers with the server's words if no token comes */
+        }
+      }
+
+      // An invite link sends a browser that has not solved the check to
+      // `/ui/?signup_check=1`; solving it starts the sign-up again with the
+      // token. The invite leaves the address bar as soon as it is read.
+      let signupCheckStarted = false;
+      async function startSignupCheck(signupPath) {
+        const params = new URLSearchParams(location.search);
+        if (signupCheckStarted || params.get("signup_check") !== "1") return;
+        signupCheckStarted = true;
+        const invite = params.get("invite");
+        const returnTo = params.get("return_to");
+        history.replaceState(null, "", location.pathname);
+        const block = document.getElementById("signup-check");
+        const state = document.getElementById("signup-check-state");
+        block.hidden = false;
+        try {
+          const turnstile = await loadTurnstile();
+          turnstile.render(document.getElementById("signup-turnstile"), {
+            sitekey: turnstileSiteKey,
+            action: "signup",
+            callback: (/** @type {string} */ t) => {
+              const next = new URLSearchParams();
+              if (invite) next.set("invite", invite);
+              if (returnTo) next.set("return_to", returnTo);
+              next.set("turnstile", t);
+              location.assign(`${signupPath}?${next.toString()}`);
+            },
+          });
+        } catch (_e) {
+          state.hidden = false;
+          state.textContent = "The human check could not load. Reload the page to try again.";
+        }
+      }
+
       // The waitlist is the signed-out door: no credential, just an address,
       // what the visitor would use Maidan for, and their consent to be
       // emailed. The server answers the same for an address already waiting.
@@ -401,11 +485,20 @@ import { tokenKey, wsResumeKey } from "./state.js";
           res = await writeApi("waitlist-join", `${base()}/waitlist`, {
             method: "POST",
             headers: headers(true),
-            body: JSON.stringify({ email, use_case: useCase, consent: true }),
+            body: JSON.stringify(
+              turnstileSiteKey
+                ? { email, use_case: useCase, consent: true, turnstile_token: waitlistToken }
+                : { email, use_case: useCase, consent: true },
+            ),
           });
         } catch (e) {
           state.textContent = unreachable(e);
           return;
+        } finally {
+          if (waitlistWidget !== null) {
+            waitlistToken = "";
+            /** @type {any} */ (window).turnstile?.reset(waitlistWidget);
+          }
         }
         if (!res.ok) {
           state.textContent = await responseError(res, "Could not join the waitlist");

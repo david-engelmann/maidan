@@ -171,6 +171,8 @@ pub struct PostgresStore {
     replica_health: Arc<ReplicaHealth>,
     /// Wraps the per-message content keys (crypto-shredding).
     keys: Arc<ContentKeyring>,
+    /// The hard allowance cutoff, shared with the server's meter buffer.
+    usage_meters: Arc<crate::usage_meters::UsageMeterBuffer>,
 }
 
 /// Cumulative read-routing outcomes. The server snapshots this into
@@ -261,6 +263,7 @@ impl PostgresStore {
             read_routing: Arc::new(ReadRoutingMetrics::default()),
             replica_health: Arc::new(ReplicaHealth::default()),
             keys,
+            usage_meters: Arc::default(),
         }
     }
 
@@ -293,6 +296,7 @@ impl PostgresStore {
             read_routing,
             replica_health,
             keys,
+            usage_meters: Arc::default(),
         }
     }
 

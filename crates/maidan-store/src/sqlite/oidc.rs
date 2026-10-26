@@ -404,14 +404,15 @@ pub async fn complete_signup(
 
     let workspace_id = Uuid::now_v7();
     let row = sqlx::query(
-        "INSERT INTO maidan_workspaces (id, name, created_at, updated_at)
-         VALUES (?, ?, ?, ?)
+        "INSERT INTO maidan_workspaces (id, name, created_at, updated_at, origin)
+         VALUES (?, ?, ?, ?, ?)
          RETURNING id, name, created_at, updated_at, tombstoned_at",
     )
     .bind(workspace_id)
     .bind(&new.workspace_name)
     .bind(now)
     .bind(now)
+    .bind(if new.open { "open" } else { "signup" })
     .fetch_one(&mut *tx)
     .await?;
     let workspace = Workspace {

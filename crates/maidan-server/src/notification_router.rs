@@ -1093,6 +1093,14 @@ pub async fn deliver_notification_web_push(
         crate::metrics::record_web_push_delivered("skipped_suspended");
         return;
     }
+    // The hard allowance cutoff: an open sign-up workspace past its
+    // deliveries allowance gets no pushes. The notification itself is kept.
+    if crate::usage_meters::member_cut_off(state, member_id, maidan_types::UsageMeter::Deliveries)
+        .await
+    {
+        crate::metrics::record_web_push_delivered("skipped_over_allowance");
+        return;
+    }
     // Presence gate: skip when the member is currently connected (seen within the
     // live window). Fail-open (a read error → send): a duplicate push to an online
     // member is harmless; dropping one to an offline member defeats the feature.

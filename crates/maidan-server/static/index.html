@@ -6,6 +6,24 @@
     <title>Maidan</title>
     <link id="favicon" rel="icon" href="data:," />
     <link rel="stylesheet" href="/ui/static/board.css" />
+    <!-- modulepreload:begin (generated; make regen) -->
+    <link rel="modulepreload" href="/ui/static/api.js" />
+    <link rel="modulepreload" href="/ui/static/artifacts.js" />
+    <link rel="modulepreload" href="/ui/static/board.js" />
+    <link rel="modulepreload" href="/ui/static/client.js" />
+    <link rel="modulepreload" href="/ui/static/dm.js" />
+    <link rel="modulepreload" href="/ui/static/feedback.js" />
+    <link rel="modulepreload" href="/ui/static/needs.js" />
+    <link rel="modulepreload" href="/ui/static/palette.js" />
+    <link rel="modulepreload" href="/ui/static/people.js" />
+    <link rel="modulepreload" href="/ui/static/push.js" />
+    <link rel="modulepreload" href="/ui/static/realtime.js" />
+    <link rel="modulepreload" href="/ui/static/session.js" />
+    <link rel="modulepreload" href="/ui/static/state.js" />
+    <link rel="modulepreload" href="/ui/static/swarm.js" />
+    <link rel="modulepreload" href="/ui/static/thread.js" />
+    <link rel="modulepreload" href="/ui/static/tools.js" />
+    <!-- modulepreload:end -->
   </head>
   <body>
     <div id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
@@ -160,8 +178,15 @@
               <label>Email <input id="waitlist-email" type="email" autocomplete="email" /></label>
               <label>What would you use Maidan for <input id="waitlist-use" autocomplete="off" /></label>
               <label class="waitlist-consent"><input id="waitlist-consent" type="checkbox" /> You may email me about my place on the list</label>
+              <div class="turnstile-slot" id="waitlist-turnstile" hidden></div>
               <button id="waitlist-join" type="button" class="ghost">Join the waitlist</button>
               <p class="first-run-note" id="waitlist-state" role="status" hidden></p>
+            </div>
+            <div class="waitlist" id="signup-check" hidden>
+              <h4>One quick check before you sign up</h4>
+              <p class="first-run-note">Solve the check below and your sign-up continues with your identity provider.</p>
+              <div class="turnstile-slot" id="signup-turnstile"></div>
+              <p class="first-run-note" id="signup-check-state" role="status" hidden></p>
             </div>
           </section>
           <div id="board-head">

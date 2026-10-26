@@ -703,6 +703,12 @@
   },
   {
     "method": "GET",
+    "path": "/threads/{id}/digest",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/threads/{id}/review-packet",
     "capability": "workspace:read",
     "surface": "http"
@@ -1280,6 +1286,12 @@
   {
     "method": "GET",
     "path": "/workspaces/{id}/usage-rollup",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
+    "path": "/workspaces/{id}/usage-conformance",
     "capability": "workspace:read",
     "surface": "http"
   },

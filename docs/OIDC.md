@@ -162,10 +162,14 @@ Migration 0012 creates these tables in Postgres and SQLite:
 
 **Member linking rules:**
 
-1. First login with `(iss, sub)` in workspace → when auto-provisioning is enabled,
-   create `Member { kind: human }`, or attach to a pre-provisioned member if
-   `MAIDAN_OIDC_LINK_EMAIL` matches a verified `email` claim; otherwise reject
-   an unprovisioned identity.
+1. First login with `(iss, sub)` in workspace → attach to a pre-provisioned
+   member if `MAIDAN_OIDC_LINK_EMAIL` is on and the member's handle equals the
+   whole verified `email`; otherwise, when auto-provisioning is enabled, create
+   a new `Member { kind: human }`; otherwise reject an unprovisioned identity.
+   Auto-provisioning never attaches a login to an existing member. Its handle
+   comes from the email's local part, and when that handle is taken the new
+   member gets the handle, a dash and the start of the subject instead, so
+   `admin@attacker.com` never becomes the existing `admin`.
 2. Subsequent logins → same `member_id`.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
    A person who is a member of several workspaces has one identity row and one
@@ -215,6 +219,9 @@ settings are:
 | `MAIDAN_SIGNUP_OPEN` | no | `1` lets any verified email sign up without an invite, still behind the sign-up rate limits. Needs `MAIDAN_SIGNUP=1`; boot refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`. |
 | `MAIDAN_SIGNUP_PRIVACY_URL` | no | Where the instance's privacy policy lives: a path on this origin (`/privacy`) or an `https://` URL. The waitlist page links it in its footer, since it asks for an email address. Boot refuses any other shape. |
 | `MAIDAN_SIGNUP_TERMS_URL` | no | The same for the terms of service. |
+| `MAIDAN_TURNSTILE_SECRET` | no | Cloudflare Turnstile secret, or `MAIDAN_TURNSTILE_SECRET_FILE` naming a file that holds it. When set, the waitlist POST and the sign-up start need a Turnstile token, which the server checks against Cloudflare's siteverify through the egress guard. A missing or rejected token gets a 403, and an unreachable siteverify gets a 502, so the check fails closed. A browser opening `/auth/oidc/signup` without a token goes to the console check first. Unset turns all of this off. |
+| `MAIDAN_TURNSTILE_SITE_KEY` | with secret | Public widget key, published as `turnstile_site_key` in `/.well-known/maidan.json`. Boot refuses a secret without it, or it without a secret. While Turnstile is on, the console and landing CSP add `https://challenges.cloudflare.com` to `script-src` and `frame-src`. |
+| `MAIDAN_TURNSTILE_HOSTNAME` | no | Hostname the token must have been solved on; defaults to the host of `MAIDAN_PUBLIC_ORIGIN`. Tokens must also carry the matching action (`waitlist` or `signup`). |
 | `MAIDAN_OIDC_POST_LOGOUT_REDIRECT_URI` | no | Registered redirect used when the provider exposes `end_session_endpoint`. |
 | `MAIDAN_SESSION_SECRET` | OIDC | HMAC key for signed `maidan_session` cookies and resume tokens. |
 | `MAIDAN_SESSION_TTL_SECS` | no | Browser session lifetime (default `28800`, 8 hours). |

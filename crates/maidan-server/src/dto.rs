@@ -529,6 +529,22 @@ pub struct UsageMonthQuery {
     pub month: Option<String>,
 }
 
+/// Query params for a fleet conformance check: the published harness profile
+/// to check against, each field optional (an unset or blank one is not
+/// checked), and how many of the newest completed reports to read.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FleetConformanceQuery {
+    pub harness: Option<String>,
+    pub harness_version: Option<String>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    /// sha256, hex, of the boot pack every call must list.
+    pub boot_pack_sha256: Option<String>,
+    /// Newest completed reports to read, 1 to 1000; omitted, 200.
+    pub limit: Option<i64>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -1843,6 +1859,8 @@ pub struct OidcSignupQuery {
     /// address in the instance's sign-up domain list needs none.
     pub invite: Option<String>,
     pub return_to: Option<String>,
+    /// The Turnstile widget's token, when the instance runs Turnstile.
+    pub turnstile: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1857,6 +1875,10 @@ pub struct JoinWaitlistRequest {
     /// fills it, and its join is answered like any other and not stored.
     #[serde(default)]
     pub website: Option<String>,
+    /// The Turnstile widget's token. Required when the instance runs
+    /// Turnstile, ignored otherwise.
+    #[serde(default)]
+    pub turnstile_token: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

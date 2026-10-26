@@ -1139,6 +1139,16 @@ fn assert_refused(what: &str, (status, body): &(StatusCode, Value), secrets: &[S
 
 /// Report `input` tokens on a thread the tenant's agent claims for it.
 async fn report_usage(h: &Harness, t: &Tenant, thread: maidan_types::ThreadId, input: i64) {
+    report_usage_with(h, t, thread, input, json!({})).await;
+}
+
+async fn report_usage_with(
+    h: &Harness,
+    t: &Tenant,
+    thread: maidan_types::ThreadId,
+    input: i64,
+    evidence: Value,
+) {
     let claimed = h.store.assign_thread(thread, t.agent).await.unwrap();
     let lease = claimed.claim_lease_id.unwrap();
     let resp = h
@@ -1164,7 +1174,8 @@ async fn report_usage(h: &Harness, t: &Tenant, thread: maidan_types::ThreadId, i
                 "cache_write_5m_usd_micros_per_million": 0,
                 "cache_write_1h_usd_micros_per_million": 0
             },
-            "turns": 1
+            "turns": 1,
+            "evidence": evidence
         }))
         .send()
         .await
@@ -1223,6 +1234,66 @@ async fn usage_rollups_sum_the_callers_workspace_and_refuse_another() {
     .await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(own["input_tokens"], 7, "{own}");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn fleet_conformance_reads_the_callers_workspace_against_the_profile_and_refuses_another() {
+    const PACK: &str = "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12";
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    report_usage_with(
+        &h,
+        &a,
+        a.thread,
+        10,
+        json!({"harness": "claude-code", "harness_version": "2.0.9", "pack_sha256": [PACK]}),
+    )
+    .await;
+    // B runs the published build; none of it may show up in A's report.
+    report_usage_with(
+        &h,
+        &b,
+        b.thread,
+        10,
+        json!({"harness": "claude-code", "harness_version": "2.1.0", "pack_sha256": [PACK]}),
+    )
+    .await;
+
+    let query = format!(
+        "harness=claude-code&harness_version=2.1.0&boot_pack_sha256={}",
+        PACK.to_ascii_uppercase()
+    );
+    let path = format!("/workspaces/{}/usage-conformance?{query}", a.workspace.0);
+    let (s, report) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{report}");
+    assert_eq!(report["workspace_id"], json!(a.workspace.0));
+    assert_eq!(report["reports"], 1, "B's report stays out: {report}");
+    assert_eq!(report["conforming"], 0);
+    assert_eq!(report["conforms"], false);
+    assert_eq!(report["members"][0]["member_id"], json!(a.agent.0));
+    assert_eq!(
+        report["members"][0]["divergences"],
+        json!([{"field": "harness_version", "seen": "2.0.9", "reports": 1}])
+    );
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[a.workspace.0.to_string()]);
+
+    let own = format!("/workspaces/{}/usage-conformance?{query}", b.workspace.0);
+    let (s, report) = read(&h, &own, &b.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{report}");
+    assert_eq!(report["conforms"], true, "{report}");
+    assert_eq!(report["reports"], 1);
+
+    let (s, _) = read(
+        &h,
+        &format!("/workspaces/{}/usage-conformance?limit=0", b.workspace.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
     h.shutdown().await;
 }
 

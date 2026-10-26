@@ -30,26 +30,27 @@ pub(super) async fn snapshot_thread_context(
     let raw = rendered.canonical;
     let size_bytes = raw.len() as i64;
     let bytes = Bytes::from(raw);
+    // Refused before the bytes are written, so a refusal stores nothing.
+    super::artifact::refuse_stored_bytes(server, auth)?;
     let sha = server
         .artifacts
         .put(bytes.clone())
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let uploaded_by = (!auth.bypass).then_some(auth.member_id);
-    let (artifact, stored) = store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes,
-                mime_type: Some("application/json".to_string()),
-                filename: None,
-                kind: ArtifactKind::ContextSnapshot,
-                uploaded_by,
-            },
-            ref_workspace,
-        )
-        .await?;
+    let (artifact, stored) = super::artifact::upsert_uploaded_artifact(
+        server,
+        auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes,
+            mime_type: Some("application/json".to_string()),
+            filename: None,
+            kind: ArtifactKind::ContextSnapshot,
+            uploaded_by,
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(server.artifacts.as_ref(), &sha, bytes)
         .await

@@ -1366,6 +1366,27 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             stats.deferred += 1;
             continue;
         }
+        // The hard allowance cutoff: an open sign-up workspace past its
+        // deliveries allowance sends nothing. The entry is parked, not
+        // failed, and comes back after the cutoff is lifted.
+        if state
+            .usage_meters
+            .is_cut_off(entry.workspace_id, maidan_types::UsageMeter::Deliveries)
+        {
+            let until = chrono::Utc::now() + crate::usage_meters::CUT_OFF_DEFER;
+            if let Err(err) = state.store.defer_egress(entry.id, until).await {
+                tracing::warn!(error = %err, id = %entry.id, "egress worker: deferral failed");
+            }
+            tracing::info!(
+                id = %entry.id,
+                workspace_id = %entry.workspace_id.0,
+                reason = "over_allowance",
+                "egress worker: parked; workspace past its free allowance for deliveries"
+            );
+            crate::metrics::record_egress_delivery(surface, "over_allowance");
+            stats.deferred += 1;
+            continue;
+        }
         let attempt = Attempt::after(entry.attempts - 1);
         if let Some(until) = deferred_until(
             &state.retry_budget,

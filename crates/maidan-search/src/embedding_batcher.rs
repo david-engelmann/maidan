@@ -29,7 +29,7 @@ use async_trait::async_trait;
 use maidan_store::Store;
 use maidan_types::{Event, MessageId, ThreadState};
 use tokio::sync::{mpsc, RwLock};
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::embedding_provider::EmbeddingProvider;
 use crate::indexer::EventHandler;
@@ -238,6 +238,15 @@ impl EventHandler for BatchingEmbeddingHandler {
             return;
         }
 
+        // The hard allowance cutoff: an open sign-up workspace past its
+        // embedding allowance is not embedded. The message is still stored
+        // and found by keyword search; only its vector is skipped.
+        if let (Some(meters), Some(workspace_id)) = (&self.usage_meters, event.workspace_id())
+            && meters.is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+        {
+            debug!(message_id = %message.id.0, "batch indexer: workspace past its embedding allowance; not embedded");
+            return;
+        }
         // Backpressure: a full queue makes this `send` await, slowing bus
         // consumption rather than growing memory. queue_depth is incremented
         // before the send and decremented by the worker as it drains a batch.

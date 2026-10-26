@@ -71,13 +71,44 @@ pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src
 /// inline script or style, no images beyond the inline SVG mark, no frames.
 pub const LANDING_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+/// [`BOARD_UI_CSP`] on an instance that runs Turnstile: the widget's script
+/// and its frame may load from Cloudflare's challenge origin, and nothing
+/// else changes.
+pub const BOARD_UI_CSP_TURNSTILE: &str = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/// [`LANDING_CSP`] on an instance that runs Turnstile, widened the same
+/// narrow way as [`BOARD_UI_CSP_TURNSTILE`].
+pub const LANDING_CSP_TURNSTILE: &str = "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+/// The board's CSP for this instance: Cloudflare's challenge origin appears
+/// only when Turnstile is on.
+pub fn board_ui_csp(state: &AppState) -> &'static str {
+    if state.turnstile.is_some() {
+        BOARD_UI_CSP_TURNSTILE
+    } else {
+        BOARD_UI_CSP
+    }
+}
+
+/// The waitlist page's CSP for this instance, as [`board_ui_csp`] chooses.
+pub fn landing_csp(state: &AppState) -> &'static str {
+    if state.turnstile.is_some() {
+        LANDING_CSP_TURNSTILE
+    } else {
+        LANDING_CSP
+    }
+}
+
 /// The headers every waitlist page answer carries, besides its CSP: the page
 /// is never framed, never sniffed, and leaks no referrer to the links on it.
-fn landing_headers(content_type: &'static str) -> [(axum::http::HeaderName, &'static str); 5] {
+fn landing_headers(
+    content_type: &'static str,
+    csp: &'static str,
+) -> [(axum::http::HeaderName, &'static str); 5] {
     use axum::http::header;
     [
         (header::CONTENT_TYPE, content_type),
-        (header::CONTENT_SECURITY_POLICY, LANDING_CSP),
+        (header::CONTENT_SECURITY_POLICY, csp),
         (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         (header::X_FRAME_OPTIONS, "DENY"),
         (header::REFERRER_POLICY, "no-referrer"),
@@ -240,6 +271,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/workspaces/{id}/usage-rollup",
             get(routes::get_workspace_usage_rollup),
+        )
+        .route(
+            "/workspaces/{id}/usage-conformance",
+            get(routes::get_workspace_usage_conformance),
         )
         .route(
             "/workspaces/{id}/tombstones",
@@ -761,6 +796,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/artifacts",
             get(routes::list_thread_artifacts),
         )
+        .route("/threads/{id}/digest", get(routes::get_thread_digest))
         .route(
             "/threads/{id}/artifacts/{sha256}",
             put(routes::link_thread_artifact).merge(delete(routes::unlink_thread_artifact)),
@@ -1195,7 +1231,12 @@ pub fn router(state: AppState) -> Router {
             "<!-- policy-links -->",
             &crate::routes::policy_links_html(&state),
         );
-        landing_body(&headers, "text/html; charset=utf-8", &page)
+        landing_body(
+            &headers,
+            landing_csp(&state),
+            "text/html; charset=utf-8",
+            &page,
+        )
     }
 
     async fn landing_asset(
@@ -1217,11 +1258,17 @@ pub fn router(state: AppState) -> Router {
             ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
-        Ok(landing_body(&headers, content_type, body))
+        Ok(landing_body(
+            &headers,
+            landing_csp(&state),
+            content_type,
+            body,
+        ))
     }
 
     fn landing_body(
         headers: &axum::http::HeaderMap,
+        csp: &'static str,
         content_type: &'static str,
         body: &str,
     ) -> axum::response::Response {
@@ -1230,20 +1277,24 @@ pub fn router(state: AppState) -> Router {
         if if_none_match_fresh(headers, &etag) {
             return (
                 axum::http::StatusCode::NOT_MODIFIED,
-                landing_headers(content_type),
+                landing_headers(content_type, csp),
                 ui_cache_headers(&etag),
             )
                 .into_response();
         }
         (
-            landing_headers(content_type),
+            landing_headers(content_type, csp),
             ui_cache_headers(&etag),
             body.to_owned(),
         )
             .into_response()
     }
 
-    async fn ui_index(headers: axum::http::HeaderMap) -> axum::response::Response {
+    async fn ui_index(
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> axum::response::Response {
+        let csp = board_ui_csp(&state);
         use axum::response::IntoResponse as _;
         const BODY: &str = include_str!("../static/index.html");
         // The body is a compile-time constant a few dozen kilobytes long;
@@ -1252,13 +1303,13 @@ pub fn router(state: AppState) -> Router {
         if if_none_match_fresh(&headers, &etag) {
             return (
                 axum::http::StatusCode::NOT_MODIFIED,
-                [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+                [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
                 ui_cache_headers(&etag),
             )
                 .into_response();
         }
         (
-            [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+            [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
             ui_cache_headers(&etag),
             axum::response::Html(BODY),
         )
@@ -1269,8 +1320,10 @@ pub fn router(state: AppState) -> Router {
     // Anything else is a 404. cargo build does not run a bundler.
     async fn ui_asset(
         crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
+        axum::extract::State(state): axum::extract::State<AppState>,
         headers: axum::http::HeaderMap,
     ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        let csp = board_ui_csp(&state);
         use axum::response::IntoResponse as _;
         let (content_type, body) = match name.as_str() {
             "board.css" => (
@@ -1355,7 +1408,7 @@ pub fn router(state: AppState) -> Router {
         if if_none_match_fresh(&headers, &etag) {
             return Ok((
                 axum::http::StatusCode::NOT_MODIFIED,
-                [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+                [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
                 ui_cache_headers(&etag),
             )
                 .into_response());
@@ -1363,7 +1416,7 @@ pub fn router(state: AppState) -> Router {
         Ok((
             [
                 (axum::http::header::CONTENT_TYPE, content_type),
-                (axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP),
+                (axum::http::header::CONTENT_SECURITY_POLICY, csp),
             ],
             ui_cache_headers(&etag),
             body,

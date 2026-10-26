@@ -135,6 +135,8 @@ pub struct AppState {
     pub outbox_backend: Option<OutboxBackend>,
     /// OIDC client + settings when `MAIDAN_OIDC_ENABLED=1`.
     pub oidc: Option<Arc<OidcRuntime>>,
+    /// Turnstile on the sign-up surface when `MAIDAN_TURNSTILE_SECRET` is set.
+    pub turnstile: Option<Arc<crate::turnstile::TurnstileSettings>>,
     /// Browser-session keys when `MAIDAN_SESSION_SECRET` is set, for the token
     /// exchange on a server without OIDC. Read through
     /// [`Self::browser_sessions`], which prefers OIDC's.
@@ -315,7 +317,9 @@ impl AppState {
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         let presence = Arc::new(PresenceHub::default());
-        let usage_meters = Arc::new(maidan_store::usage_meters::UsageMeterBuffer::new());
+        // The store's buffer: the cutoff set the server refreshes is the one
+        // the store's message and artifact writes enforce.
+        let usage_meters = store.usage_meters();
         let mcp = Arc::new(mcp_server(
             &store,
             &artifacts,
@@ -365,6 +369,7 @@ impl AppState {
             outbox_nudge: None,
             outbox_backend: None,
             oidc: None,
+            turnstile: None,
             sessions: None,
             subscribe_resume_secret: None,
             subscribe_resume_ttl_secs: subscribe_resume::ttl_secs_from_env(),
