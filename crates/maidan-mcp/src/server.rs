@@ -1076,7 +1076,7 @@ impl McpServer {
                         return Err(McpError::NotFound);
                     }
                 }
-                (Some("threads"), Some(id)) => {
+                (Some("threads") | Some("digests"), Some(id)) => {
                     if let Ok(u) = id.parse() {
                         maidan_auth::ensure_thread_access(
                             self.store.as_ref(),

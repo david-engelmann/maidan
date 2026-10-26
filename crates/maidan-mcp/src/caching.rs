@@ -105,7 +105,9 @@ pub fn resource_read(uri: &str) -> CacheHint {
         .unwrap_or("");
     let ttl_ms = match kind {
         "artifacts" | "workspaces" | "channels" | "boots" => RECORD_TTL_MS,
-        // A thread's transcript changes with every post, claim and transition.
+        // A thread's transcript changes with every post, claim and transition,
+        // and its digest pointer with every link; the digest's bytes are the
+        // artifact URI it names, cached for a record's TTL.
         _ => 0,
     };
     CacheHint {

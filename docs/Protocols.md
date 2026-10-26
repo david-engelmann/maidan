@@ -132,6 +132,7 @@ against it.
 | `resources/read` of `maidan://workspaces/{id}`, `maidan://channels/{id}` | 60000 | `private` | Changes on a rename, a topic edit or an archive. A subscriber hears `notifications/resources/updated` and drops its copy at once. |
 | `resources/read` of `maidan://boots/{channel_id}` | 60000 | `private` | The workspace boot for a channel. It changes when the glossary or an accepted decision changes, not when a thread is claimed. Private because access is per caller. |
 | `resources/read` of `maidan://threads/{id}` | 0 | `private` | Changes with every post, claim and transition. |
+| `resources/read` of `maidan://digests/{thread_id}` | 0 | `private` | The pointer to a thread's current digest. It moves when a newer digest is linked; the bytes it names are `maidan://artifacts/{sha256}`, cached by hash. |
 
 ---
 

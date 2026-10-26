@@ -1508,6 +1508,19 @@ hash another workspace uploaded is not found. `list_thread_artifacts` (REST
 `GET /threads/:id/artifacts`) reads the links, and `unlink_thread_artifact`
 (REST `DELETE`) removes one.
 
+### Summarize once: thread digests
+
+Write a thread's summary once and let every later reader fetch it by hash.
+Upload the summary with `kind=digest&mime_type=text/markdown`, then link
+it to the thread with `PUT /threads/:id/artifacts/:sha256`. `GET
+/threads/:id/digest` (`workspace:read`, thread access) returns the newest
+linked digest: its `sha256`, its `maidan://artifacts/{sha256}` URI, its size,
+MIME type and who linked it, or `404` when none is linked. Over MCP, read
+`maidan://digests/{thread_id}` for the same JSON. The bytes never change for a
+hash, so read them once from `GET /artifacts/:sha256` or the artifact resource
+and cache them by sha256. To replace a digest, link a newer one; unlinking it
+falls back to the one before.
+
 A thread's version counts the writes to what a reviewer reads of it, which are
 its messages, its result, its title and description, and its links. Read it
 with `get_thread_version` (REST `GET /threads/:id/version`). The database moves

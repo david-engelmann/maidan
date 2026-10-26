@@ -142,6 +142,7 @@ pub mod context_pack;
 pub mod custody;
 mod delegation_grants;
 mod footprints;
+pub mod thread_digest;
 #[macro_use]
 mod delegate;
 mod claimability;
