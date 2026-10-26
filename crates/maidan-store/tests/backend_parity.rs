@@ -24,6 +24,11 @@ use std::path::{Path, PathBuf};
 /// - `partition_audit_log` (Postgres only): the same for `maidan_audit` (0165).
 /// - `partition_delivery_tables` (Postgres only): the same for the delivery,
 ///   outbox, mail and dead-letter tables (0166).
+/// - `pending_custody_keys` (Postgres only): the KMS pending-wrap journal
+///   (0212) that lets the stray-key sweep destroy only keys this database
+///   minted. SQLite runs single-process, so its journal is in memory on the
+///   keyring; a restart forgets entries and can only leak a stray, never
+///   destroy a live key.
 /// - `share_ticket_expiry_precision` (SQLite only): rebuilds the share-ticket
 ///   table so its expiry CHECK compares `julianday()` instead of whole-second
 ///   `datetime()`. Postgres compares `timestamptz` values at full precision
@@ -33,6 +38,7 @@ const POSTGRES_ONLY_MIGRATIONS: &[&str] = &[
     "partition_audit_log",
     "partition_delivery_tables",
     "partition_event_log",
+    "pending_custody_keys",
 ];
 const SQLITE_ONLY_MIGRATIONS: &[&str] = &["share_ticket_expiry_precision"];
 

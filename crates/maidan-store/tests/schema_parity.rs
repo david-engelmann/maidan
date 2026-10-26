@@ -29,6 +29,14 @@ fn sqlite_internal(table: &str) -> bool {
 /// same spelling the test reports, so a new difference names the line to add.
 const ALLOWED: &[(&str, &str)] = &[
     (
+        "table pg_only maidan_pending_custody_keys",
+        "the KMS pending-wrap journal (0212); SQLite keeps it in memory on the keyring, so a restart only leaks a stray key",
+    ),
+    (
+        "unique pg_only maidan_pending_custody_keys(workspace_key_id)",
+        "the primary key of the table above",
+    ),
+    (
         "column pg_only maidan_messages.search_vec",
         "Postgres full-text search; SQLite's is the maidan_messages_fts table",
     ),
