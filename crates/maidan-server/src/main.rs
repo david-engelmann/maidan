@@ -365,6 +365,12 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
 
     // Finish a KEK rotation: rewrap keys still under a previous KEK.
     maidan_server::content_keys::spawn_rewrap(store.clone(), std::time::Duration::from_secs(30));
+    // Destroy custody keys whose wrap never reached a stored row.
+    maidan_server::content_keys::spawn_stray_sweep(
+        store.clone(),
+        maidan_server::content_keys::STRAY_SWEEP_EVERY,
+        maidan_server::content_keys::STRAY_GRACE,
+    );
 
     let artifacts: Arc<dyn maidan_artifacts::ArtifactStore> = match &config.artifact_backend {
         ArtifactBackend::LocalFs { root } => {

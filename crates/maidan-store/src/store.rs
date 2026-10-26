@@ -18,6 +18,18 @@ pub struct RewrapPass {
     pub changed: u64,
     /// Rows the custody refused; they stay for a later pass.
     pub skipped: u64,
+    /// Of `skipped`, retired workspace keys whose custody key would not be
+    /// destroyed (for example a KMS key someone disabled by hand).
+    pub undestroyed: u64,
+}
+
+/// What one [`EventStore::sweep_stray_custody_keys`] pass did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StraySweep {
+    /// Custody keys no workspace key row refers to, now destroyed.
+    pub destroyed: u64,
+    /// Stray keys the custody would not destroy; tried again next sweep.
+    pub failed: u64,
 }
 
 #[async_trait]
@@ -3470,6 +3482,15 @@ pub trait EventStore: Send + Sync {
     async fn rewrap_content_keys(&self, limit: i64) -> Result<RewrapPass, StoreError>;
     /// Rows [`Self::rewrap_content_keys`] has still to change.
     async fn content_keys_needing_rewrap(&self) -> Result<u64, StoreError>;
+    /// Destroy every custody key older than `grace` that no workspace key row,
+    /// in any workspace, refers to. A key is created before the transaction
+    /// that stores its row, so a rollback or a lost race leaves one behind.
+    /// The cutoff is this server's clock minus `grace`, taken here and never
+    /// from the caller, so a wrap still in flight stays out of the sweep.
+    async fn sweep_stray_custody_keys(
+        &self,
+        grace: std::time::Duration,
+    ) -> Result<StraySweep, StoreError>;
     /// Retire the workspace's key and make a new one. The workspace's data keys
     /// move to it on the next [`Self::rewrap_content_keys`] passes, which then
     /// destroy the retired key; no sealed message is rewritten. Returns the

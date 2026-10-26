@@ -19,6 +19,10 @@ pub const ALLOW_DEV_KEK_ENV: &str = "MAIDAN_ALLOW_INSECURE_DEV_KEK";
 /// Who wraps workspace keys: `local` (the instance KEK, the default) or
 /// `aws-kms` (a KMS key per workspace key).
 pub const CUSTODY_ENV: &str = "MAIDAN_WORKSPACE_KEY_CUSTODY";
+/// The name `aws-kms` tags each KMS key with, unique per instance sharing an
+/// AWS account. Unset, keys carry no instance tag and the stray-key sweep
+/// lists nothing.
+pub const KMS_INSTANCE_ENV: &str = "MAIDAN_KMS_INSTANCE";
 
 /// The workspace key custody the configuration selects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +63,17 @@ pub async fn from_env(production: bool) -> Result<ContentKeyring, String> {
     match custody_from_config(custody.as_deref())? {
         CustodyChoice::Local => Ok(keyring),
         CustodyChoice::AwsKms => {
-            Ok(keyring.with_custody(Arc::new(AwsKmsCustody::from_default_config().await)))
+            let instance = std::env::var(KMS_INSTANCE_ENV)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+            if instance.is_none() {
+                tracing::warn!(
+                    "{KMS_INSTANCE_ENV} is not set: KMS keys whose wrap never reached a stored row \
+                     are not swept and keep billing"
+                );
+            }
+            Ok(keyring.with_custody(Arc::new(AwsKmsCustody::from_default_config(instance).await)))
         }
     }
 }

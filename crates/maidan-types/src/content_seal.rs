@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -429,6 +429,121 @@ pub trait WorkspaceKeyCustody: Send + Sync {
         workspace_key_id: uuid::Uuid,
         wrapped: &'a WrappedKey,
     ) -> CustodyFuture<'a, ()>;
+    /// Keys this custody created for this instance before `created_before`
+    /// and has not destroyed, for the stray-key sweep: a key whose wrap never
+    /// reached a stored row protects nothing and only bills. A custody that
+    /// creates no keys of its own (the instance KEK) lists none.
+    fn held_keys<'a>(
+        &'a self,
+        _created_before: chrono::DateTime<chrono::Utc>,
+    ) -> CustodyFuture<'a, Vec<CustodyKey>> {
+        Box::pin(std::future::ready(Ok(Vec::new())))
+    }
+    /// Whether [`Self::wrap`] creates a key of its own in the custody, one a
+    /// rolled-back wrap leaves behind. Such wraps go through the keyring's
+    /// [`WrapJournal`] first, and only a journalled key is ever swept.
+    fn creates_keys(&self) -> bool {
+        false
+    }
+}
+
+/// A wrap the keyring journalled before asking the custody for a new key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingWrap {
+    /// The workspace key the wrap is for.
+    pub workspace_key_id: uuid::Uuid,
+    /// The wrapping key id the custody returned, once it returned.
+    pub wrapping_key_id: Option<String>,
+    /// When the keyring journalled the wrap, by this server's clock.
+    pub intended_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Where the keyring records, durably and outside any open transaction, that
+/// it is about to create a custody key and then which key it got. The
+/// stray-key sweep destroys only keys this journal holds and no row refers
+/// to: a key missing from *this* database's rows is never proof enough on
+/// its own, since another deployment may share the custody account.
+pub trait WrapJournal: Send + Sync {
+    /// Record that a key for `workspace_key_id` is about to be created.
+    fn intend<'a>(&'a self, workspace_key_id: uuid::Uuid) -> CustodyFuture<'a, ()>;
+    /// Record the wrapping key id the custody returned for the wrap.
+    fn record<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        wrapping_key_id: &'a str,
+    ) -> CustodyFuture<'a, ()>;
+}
+
+/// A [`WrapJournal`] in memory, for a store that cannot commit outside its
+/// open writer (SQLite). A restart forgets it, so a key whose wrap was
+/// rolled back before the restart is left alone, never destroyed.
+#[derive(Debug, Default)]
+pub struct MemoryWrapJournal {
+    pending: Mutex<HashMap<uuid::Uuid, PendingWrap>>,
+}
+
+impl MemoryWrapJournal {
+    /// Every journalled wrap.
+    pub fn pending(&self) -> Vec<PendingWrap> {
+        self.pending
+            .lock()
+            .map(|p| p.values().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Forget a journalled wrap: its row committed or its key is destroyed.
+    pub fn clear(&self, workspace_key_id: uuid::Uuid) {
+        if let Ok(mut p) = self.pending.lock() {
+            p.remove(&workspace_key_id);
+        }
+    }
+}
+
+impl WrapJournal for MemoryWrapJournal {
+    fn intend<'a>(&'a self, workspace_key_id: uuid::Uuid) -> CustodyFuture<'a, ()> {
+        let done = match self.pending.lock() {
+            Ok(mut p) => {
+                p.insert(
+                    workspace_key_id,
+                    PendingWrap {
+                        workspace_key_id,
+                        wrapping_key_id: None,
+                        intended_at: chrono::Utc::now(),
+                    },
+                );
+                Ok(())
+            }
+            Err(_) => Err(SealError::Unavailable),
+        };
+        Box::pin(std::future::ready(done))
+    }
+
+    fn record<'a>(
+        &'a self,
+        workspace_key_id: uuid::Uuid,
+        wrapping_key_id: &'a str,
+    ) -> CustodyFuture<'a, ()> {
+        let done = match self.pending.lock() {
+            Ok(mut p) => match p.get_mut(&workspace_key_id) {
+                Some(entry) => {
+                    entry.wrapping_key_id = Some(wrapping_key_id.to_string());
+                    Ok(())
+                }
+                None => Err(SealError::Unavailable),
+            },
+            Err(_) => Err(SealError::Unavailable),
+        };
+        Box::pin(std::future::ready(done))
+    }
+}
+
+/// A key a custody holds, as [`WorkspaceKeyCustody::held_keys`] lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CustodyKey {
+    /// The workspace key the custody created it for.
+    pub workspace_key_id: uuid::Uuid,
+    /// The wrapping key id a row wrapped by it would record.
+    pub wrapping_key_id: String,
 }
 
 /// Workspace keys wrapped by the instance KEKs: the primary wraps, the
@@ -588,6 +703,10 @@ pub struct ContentKeyring {
     custody: Arc<dyn WorkspaceKeyCustody>,
     insecure_dev: bool,
     workspace: RwLock<HashMap<uuid::Uuid, OpenWorkspaceKey>>,
+    /// The store's durable wrap journal, once a store sets one.
+    journal: OnceLock<Arc<dyn WrapJournal>>,
+    /// The journal used until a store sets a durable one.
+    memory_journal: MemoryWrapJournal,
 }
 
 impl ContentKeyring {
@@ -599,6 +718,8 @@ impl ContentKeyring {
             local,
             insecure_dev: false,
             workspace: RwLock::default(),
+            journal: OnceLock::new(),
+            memory_journal: MemoryWrapJournal::default(),
         }
     }
 
@@ -729,7 +850,7 @@ impl ContentKeyring {
         workspace_key_id: uuid::Uuid,
     ) -> Result<WrappedKey, SealError> {
         let key = ContentKey::generate();
-        let wrapped = self.custody.wrap(workspace_key_id, &key).await?;
+        let wrapped = self.journalled_wrap(workspace_key_id, &key).await?;
         self.install(workspace_key_id, *key.as_bytes(), wrapped.clone());
         Ok(wrapped)
     }
@@ -779,7 +900,50 @@ impl ContentKeyring {
             .owner(&wrapped.kek_id)?
             .unwrap(workspace_key_id, wrapped)
             .await?;
-        self.custody.wrap(workspace_key_id, &key).await
+        self.journalled_wrap(workspace_key_id, &key).await
+    }
+
+    /// Have the store journal its wraps durably; see [`WrapJournal`]. The
+    /// first store to set one keeps it.
+    pub fn set_wrap_journal(&self, journal: Arc<dyn WrapJournal>) {
+        let _ = self.journal.set(journal);
+    }
+
+    /// The in-memory journal, which holds every wrap when no store set a
+    /// durable one.
+    pub fn memory_wrap_journal(&self) -> &MemoryWrapJournal {
+        &self.memory_journal
+    }
+
+    fn wrap_journal(&self) -> &dyn WrapJournal {
+        match self.journal.get() {
+            Some(journal) => journal.as_ref(),
+            None => &self.memory_journal,
+        }
+    }
+
+    /// Wrap with the custody. When the custody creates a key per wrap, the
+    /// wrap is journalled before the key exists and its wrapping key id right
+    /// after, both before the caller's transaction can store or lose the row.
+    async fn journalled_wrap(
+        &self,
+        workspace_key_id: uuid::Uuid,
+        key: &ContentKey,
+    ) -> Result<WrappedKey, SealError> {
+        if !self.custody.creates_keys() {
+            return self.custody.wrap(workspace_key_id, key).await;
+        }
+        let journal = self.wrap_journal();
+        journal.intend(workspace_key_id).await?;
+        let wrapped = self.custody.wrap(workspace_key_id, key).await?;
+        if let Err(err) = journal.record(workspace_key_id, &wrapped.kek_id).await {
+            // Nothing holds the wrapped key yet: destroy it now rather than
+            // leave a key the sweep can never prove its own. The caller sees
+            // the journal's error either way.
+            let _ = self.custody.destroy(workspace_key_id, &wrapped).await;
+            return Err(err);
+        }
+        Ok(wrapped)
     }
 
     /// Destroy a stored workspace key in the custody that wrapped it, and
@@ -795,6 +959,28 @@ impl ContentKeyring {
             .await?;
         self.forget_workspace_key(workspace_key_id);
         Ok(())
+    }
+
+    /// Keys the configured custody created before `created_before` and still
+    /// holds; see [`WorkspaceKeyCustody::held_keys`].
+    pub async fn custody_keys_before(
+        &self,
+        created_before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<CustodyKey>, SealError> {
+        self.custody.held_keys(created_before).await
+    }
+
+    /// Destroy a custody key no stored row refers to. The custody that owns
+    /// its wrapping key id destroys it; nothing in memory changes, since no
+    /// row ever opened it.
+    pub async fn destroy_stray_custody_key(&self, key: &CustodyKey) -> Result<(), SealError> {
+        let wrapped = WrappedKey {
+            kek_id: key.wrapping_key_id.clone(),
+            blob: Vec::new(),
+        };
+        self.owner(&wrapped.kek_id)?
+            .destroy(key.workspace_key_id, &wrapped)
+            .await
     }
 
     /// Drop an open workspace key from memory: its row was destroyed.
