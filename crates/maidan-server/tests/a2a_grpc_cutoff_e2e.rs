@@ -342,3 +342,53 @@ async fn past_its_request_allowance_a_workspace_is_refused_every_grpc_call_on_po
     let Some(h) = postgres().await else { return };
     past_its_request_allowance_a_workspace_is_refused_every_grpc_call_while_another_is_not(h).await;
 }
+
+async fn a_cut_off_tenant_cannot_spend_through_another_tenants_work_and_a_bytes_cutoff_does_not_stop_requests(
+    h: H,
+) {
+    let a = h.tenant("cyd").await;
+    let b = h.tenant("dov").await;
+    let (b_thread, _) = h.claimed(&b).await;
+    h.cut_off(a.ws, UsageMeter::Requests).await;
+    // The other tenant is past a different meter only: its requests still run.
+    h.cut_off(b.ws, UsageMeter::StoredBytes).await;
+    let mut client = grpc(&h).await;
+    let _ = h.state.usage_meters.take();
+
+    // The cut-off tenant aims at the other tenant's thread: refused before
+    // anything runs, nothing posted there, and nobody's meter moves.
+    let aimed = client.send_message(signed(&a, message(b_thread))).await;
+    assert_eq!(
+        aimed.expect_err("a cut-off tenant is refused").code(),
+        tonic::Code::ResourceExhausted
+    );
+    assert!(
+        h.store
+            .list_messages(b_thread, 50)
+            .await
+            .unwrap()
+            .is_empty(),
+        "nothing lands in the other tenant's thread"
+    );
+    let drained = h.state.usage_meters.take();
+    assert!(
+        drained.iter().all(|d| d.meter != UsageMeter::Requests
+            || (d.workspace_id != a.ws && d.workspace_id != b.ws)),
+        "a refusal is counted against neither tenant: {drained:?}"
+    );
+
+    client
+        .list_tasks(signed(&b, ListTasksRequest::default()))
+        .await
+        .expect("a stored-bytes cutoff does not refuse requests");
+    assert_eq!(counted(&h, b.ws), 1, "the other tenant's call is its own");
+    assert_eq!(counted(&h, a.ws), 0);
+}
+
+#[tokio::test]
+async fn a_cut_off_tenant_cannot_spend_through_another_tenants_work_on_sqlite() {
+    a_cut_off_tenant_cannot_spend_through_another_tenants_work_and_a_bytes_cutoff_does_not_stop_requests(
+        sqlite().await,
+    )
+    .await;
+}
