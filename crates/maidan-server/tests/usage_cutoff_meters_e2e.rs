@@ -222,11 +222,10 @@ impl GithubSender for MockGithub {
 }
 
 async fn linked_message(
-    state: &AppState,
     store: &dyn Store,
     (ws, member): (WorkspaceId, MemberId),
     issue: i64,
-) {
+) -> (ThreadId, Message) {
     let channel = store
         .create_channel(NewChannel {
             workspace_id: ws,
@@ -270,7 +269,7 @@ async fn linked_message(
         )
         .await
         .unwrap();
-    route_message_to_github(state, issue, thread.id, &m).await;
+    (thread.id, m)
 }
 
 #[tokio::test]
@@ -280,10 +279,24 @@ async fn egress_for_a_cut_off_workspace_is_parked_while_other_tenants_are_delive
         sent: Mutex::new(Vec::new()),
     });
     state.attach_github_sender(github.clone());
-    let t = three_past_it(&state, store.as_ref()).await;
-    linked_message(&state, store.as_ref(), t.open, 1).await;
-    linked_message(&state, store.as_ref(), t.invited, 2).await;
-    linked_message(&state, store.as_ref(), t.ops, 3).await;
+    let t = Tenants {
+        open: signed_up(store.as_ref(), "ada", true).await,
+        invited: signed_up(store.as_ref(), "cy", false).await,
+        ops: operator_workspace(store.as_ref()).await,
+    };
+    // Posted before the cutoff: once cut off, the store refuses new messages
+    // in the open workspace, so its queued egress is what gets parked.
+    let mut posted = Vec::new();
+    for (issue, tenant) in [(1, t.open), (2, t.invited), (3, t.ops)] {
+        posted.push((issue, linked_message(store.as_ref(), tenant, issue).await));
+    }
+    for (ws, _) in [t.open, t.invited, t.ops] {
+        past_every_allowance(store.as_ref(), ws).await;
+    }
+    maidan_server::usage_meters::refresh_cut_off(&state).await;
+    for (issue, (thread, m)) in &posted {
+        route_message_to_github(&state, *issue, *thread, m).await;
+    }
 
     let stats = egress_worker::sweep_once(&state).await;
     assert_eq!(stats.sent, 2, "{stats:?}");

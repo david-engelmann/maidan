@@ -323,21 +323,8 @@ async fn run_authorized(
             return crate::usage_meters::cut_off_error(maidan_types::UsageMeter::Requests)
                 .into_response();
         }
-        // Past the stored-bytes allowance, the writes that add bytes are
-        // refused the same way; everything else still runs.
-        if state
-            .usage_meters
-            .is_cut_off(workspace_id, maidan_types::UsageMeter::StoredBytes)
-            && crate::usage_meters::adds_stored_bytes(
-                &method,
-                req.extensions()
-                    .get::<MatchedPath>()
-                    .map(MatchedPath::as_str),
-            )
-        {
-            return crate::usage_meters::cut_off_error(maidan_types::UsageMeter::StoredBytes)
-                .into_response();
-        }
+        // Past the stored-bytes allowance, the store refuses the writes
+        // that add bytes (messages, artifacts) whatever route they came by.
         state
             .usage_meters
             .record(workspace_id, maidan_types::UsageMeter::Requests, 1);

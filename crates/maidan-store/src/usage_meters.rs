@@ -10,6 +10,8 @@ use std::sync::Mutex;
 use chrono::{NaiveDate, Utc};
 use maidan_types::{UsageMeter, UsageMeterDay, WorkspaceId};
 
+use crate::error::StoreError;
+
 type Key = (WorkspaceId, NaiveDate, UsageMeter);
 
 /// Counts not yet flushed, per workspace, UTC day and meter.
@@ -74,6 +76,36 @@ impl UsageMeterBuffer {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
     }
 
+    /// Whether any workspace is cut off on `meter`. The store checks this
+    /// first, so a write pays for a workspace lookup only while some
+    /// workspace is actually past its allowance.
+    pub fn any_cut_off(&self, meter: UsageMeter) -> bool {
+        self.cut_off
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .any(|(_, m)| *m == meter)
+    }
+
+    /// A meter `workspace_id` is cut off on, if any.
+    pub fn cut_off_meter(&self, workspace_id: WorkspaceId) -> Option<UsageMeter> {
+        self.cut_off
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|(w, _)| *w == workspace_id)
+            .map(|(_, m)| *m)
+            .min_by_key(|m| m.as_str())
+    }
+
+    /// `Err(OverAllowance(meter))` when `workspace_id` is cut off on `meter`.
+    pub fn refuse(&self, workspace_id: WorkspaceId, meter: UsageMeter) -> Result<(), StoreError> {
+        if self.is_cut_off(workspace_id, meter) {
+            return Err(StoreError::OverAllowance(meter));
+        }
+        Ok(())
+    }
+
     fn add(&self, key: Key, quantity: i64) {
         *self.lock().entry(key).or_insert(0) += quantity;
     }
@@ -84,6 +116,37 @@ impl UsageMeterBuffer {
         self.counts
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// The origin an import gets, or `OverAllowance` when it must be refused.
+///
+/// An import is refused while the caller's workspace, or the workspace a
+/// restore overwrites, is cut off on any meter: importing is how a cut-off
+/// workspace would otherwise start over. The new workspace takes the
+/// caller's origin, so only an operator caller (`bypass`) makes an operator
+/// workspace; a caller whose workspace cannot be found counts as open. A
+/// restore over an existing workspace keeps that workspace's origin, which
+/// the store reads in the import transaction.
+pub async fn import_origin<S: crate::Store + ?Sized>(
+    store: &S,
+    bypass: bool,
+    caller: WorkspaceId,
+    restore_target: Option<WorkspaceId>,
+) -> Result<maidan_types::WorkspaceOrigin, StoreError> {
+    let meters = store.usage_meters();
+    for workspace_id in std::iter::once(caller).chain(restore_target) {
+        if let Some(meter) = meters.cut_off_meter(workspace_id) {
+            return Err(StoreError::OverAllowance(meter));
+        }
+    }
+    if bypass {
+        return Ok(maidan_types::WorkspaceOrigin::Operator);
+    }
+    match store.workspace_origin(caller).await {
+        Ok(origin) => Ok(origin),
+        Err(StoreError::NotFound) => Ok(maidan_types::WorkspaceOrigin::Open),
+        Err(e) => Err(e),
     }
 }
 

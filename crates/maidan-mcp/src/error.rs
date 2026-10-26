@@ -157,6 +157,7 @@ impl From<maidan_store::StoreError> for McpError {
             } => Self::InvalidParams(format!(
                 "cursor too old: after_id {after_id} is behind oldest retained event {oldest_id}; must refetch"
             )),
+            maidan_store::StoreError::OverAllowance(meter) => Self::OverAllowance(meter),
             other => Self::Internal(other.to_string()),
         }
     }
@@ -289,5 +290,26 @@ mod tests {
             McpError::from(serde_err),
             McpError::InvalidParams(_)
         ));
+    }
+}
+
+#[cfg(test)]
+mod over_allowance_tests {
+    use super::*;
+
+    /// The store's refusal past an allowance reaches an MCP caller as
+    /// `OverAllowance` on the same meter, whichever tool wrote.
+    #[test]
+    fn a_store_refusal_past_the_allowance_is_over_allowance_to_an_mcp_caller() {
+        let err = McpError::from(maidan_store::StoreError::OverAllowance(
+            maidan_types::UsageMeter::StoredBytes,
+        ));
+        assert!(
+            matches!(
+                err,
+                McpError::OverAllowance(maidan_types::UsageMeter::StoredBytes)
+            ),
+            "{err:?}"
+        );
     }
 }

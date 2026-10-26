@@ -169,9 +169,18 @@ turns or the allowance is raised or removed:
 | `requests` | every authenticated request except `GET /workspaces/{id}/usage-meters` and `GET /members/{id}/notifications[/grouped]`, so its admin can see why | `429 Too Many Requests`, problem type `rate-limited`, naming the meter |
 | `mcp_calls` | MCP tool calls | JSON-RPC error `-32030`, `data.meter` |
 | `embedding_calls` | semantic and hybrid search (REST and MCP), and embedding new messages (they are stored and found by keyword search, with no vector) | `429` / `-32030` |
-| `deliveries` | egress to Slack, GitHub and Linear, mail, and web push | queued egress and mail are parked for 15 minutes at a time (`over_allowance` in `maidan_egress_delivered_total` / `maidan_email_delivered_total`), not failed or retried; web push is skipped (`skipped_over_allowance`) |
+| `deliveries` | egress to Slack, GitHub and Linear, mail, and web push | queued egress and mail are parked for 15 minutes at a time (`over_allowance` in `maidan_egress_delivered_total` / `maidan_email_delivered_total`), not failed or retried; web push is dropped, not delayed (`skipped_over_allowance`): a push skipped during the cutoff is never sent later, though the in-app notification it was for is kept |
 | `wasi_ms` | WASI slash handlers | the handler does not run; the slash response is `ok: false`, `error_kind: "over_allowance"` |
-| `stored_bytes` | writes that add bytes: posting a message (thread, DM, group DM) and uploading an artifact (single or multipart), on REST and MCP | `429` / `-32030`; reading, editing and deleting stay open so the workspace can make room |
+| `stored_bytes` | every message write and every scoped artifact upload, refused by the store itself whatever reached it: thread, DM and group-DM posts, seeding a thread from a message, A2A `message:send`, GitHub and Slack inbound, and artifact uploads (single, multipart, snapshots), on REST, MCP and A2A; an edit that makes a message longer | `429` / `-32030` / A2A `PermissionDenied`, naming the meter; reading, deleting and edits that do not grow a message stay open so the workspace can make room |
+| any meter | importing a workspace (`POST /workspaces/import`, MCP `import_workspace`) while the caller's workspace, or the workspace a restore overwrites, is cut off | `429` / `-32030` |
+
+Exempt from the `stored_bytes` cutoff: the store's own system notices
+(cancellation and plan notices on a thread), which keep a cut-off
+workspace's threads truthful, and federation ingest, which appends
+federated events and writes no message rows. An import carries an origin:
+`mode=new` takes the caller's (only an operator caller makes an `operator`
+workspace) and a forced restore keeps the replaced workspace's origin,
+usage and allowance crossings, so a restore never lifts a cutoff.
 
 The
 refusal is `429` rather than `403` because the workspace may do the same

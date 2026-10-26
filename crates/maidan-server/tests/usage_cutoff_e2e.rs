@@ -285,3 +285,113 @@ async fn past_its_stored_bytes_an_open_workspace_cannot_add_messages_while_other
         assert!(res.status().is_success(), "{}", res.status());
     }
 }
+
+/// Past its stored-bytes allowance an open workspace is refused at the
+/// store's write, so every way of adding a message is refused alike: seeding
+/// a thread from a message and an A2A `message:send`, not only the routes
+/// that once listed it. And it cannot import its way to a fresh workspace,
+/// as a new one or over itself.
+#[tokio::test]
+async fn past_its_stored_bytes_an_open_workspace_cannot_seed_send_over_a2a_or_import() {
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| {
+        s.usage_allowance = std::sync::Arc::new(UsageAllowance::parse("stored_bytes=10").unwrap());
+        s.attach_export_signing(maidan_auth::ExportSigningKey::from_seed([0x22; 32]));
+        state = Some(s.clone());
+    })
+    .await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let (open, admin) = signed_up(store, "ada", true).await;
+    let thread = a_thread(store, open).await;
+    let source = store
+        .post_message(NewMessage {
+            thread_id: thread,
+            author_id: admin,
+            body: "before the cutoff".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    let bearer = token(
+        store,
+        open,
+        admin,
+        vec![
+            capability::WORKSPACE_READ.to_string(),
+            capability::WORKSPACE_WRITE.to_string(),
+            capability::MESSAGE_POST.to_string(),
+            capability::TOKEN_ADMIN.to_string(),
+        ],
+    )
+    .await;
+    let bundle: Value = h
+        .send(
+            Method::GET,
+            &format!("/workspaces/{}/export", open.0),
+            &bearer,
+            None,
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+
+    let month = UsageMonth::of(Utc::now().date_naive()).label();
+    let mark = OverAllowance {
+        workspace_id: open,
+        meter: UsageMeter::StoredBytes,
+        month,
+        quantity: 11,
+        allowance: 10,
+        marked_at: Utc::now(),
+    };
+    store.mark_over_allowance(&mark, &[]).await.unwrap();
+    maidan_server::usage_meters::refresh_cut_off(&state).await;
+
+    let res = h
+        .send(
+            Method::POST,
+            &format!("/messages/{}/seed", source.id.0),
+            &bearer,
+            Some(serde_json::json!({ "title": "branch", "inclusion": "quote" })),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "seed");
+
+    let res = h
+        .client
+        .post(h.url("/a2a/v1/message:send"))
+        .bearer_auth(&bearer)
+        .header("A2A-Version", "1.0")
+        .json(&serde_json::json!({ "message": {
+            "messageId": "m-1", "role": "ROLE_USER", "parts": [{ "text": "hello" }],
+        } }))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    let body: Value = res.json().await.unwrap_or(Value::Null);
+    assert!(!status.is_success(), "a2a send: {status} {body}");
+    assert!(
+        body.to_string().contains("free allowance for stored_bytes"),
+        "a2a send: {body}"
+    );
+
+    for mode in ["new", "restore&force=true"] {
+        let res = h
+            .send(
+                Method::POST,
+                &format!("/workspaces/import?mode={mode}"),
+                &bearer,
+                Some(bundle.clone()),
+            )
+            .await;
+        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS, "import {mode}");
+    }
+    assert_eq!(
+        store.workspace_origin(open).await.unwrap(),
+        WorkspaceOrigin::Open
+    );
+}

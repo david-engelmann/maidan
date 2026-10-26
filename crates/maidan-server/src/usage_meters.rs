@@ -54,26 +54,6 @@ pub fn readable_past_cutoff(method: &axum::http::Method, matched: Option<&str>) 
         )
 }
 
-/// Write routes that add stored bytes: posting a message and uploading an
-/// artifact. An open sign-up workspace past its `stored_bytes` allowance is
-/// refused these; reads, edits and deletes stay open, so it can make room.
-pub fn adds_stored_bytes(method: &axum::http::Method, matched: Option<&str>) -> bool {
-    method == axum::http::Method::POST
-        && matches!(
-            matched,
-            Some("/threads/{tid}/messages")
-                | Some("/dm/{id}/messages")
-                | Some("/group-dms/{id}/messages")
-                | Some("/artifacts")
-                | Some("/artifacts/multipart")
-                | Some("/artifacts/multipart/{upload_id}/complete")
-                | Some("/ui/api/threads/{tid}/messages")
-                | Some("/ui/api/dm/{id}/messages")
-                | Some("/ui/api/group-dms/{id}/messages")
-                | Some("/ui/api/artifacts")
-        )
-}
-
 /// How long background work for a cut-off workspace (an egress delivery, a
 /// web push) is parked before it is looked at again. Long enough not to spin
 /// on it; the cutoff set itself is refreshed every tick, so work resumes

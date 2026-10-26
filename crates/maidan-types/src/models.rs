@@ -3621,6 +3621,37 @@ pub struct NewOidcSignup {
     pub open: bool,
 }
 
+/// How a workspace came to be (`maidan_workspaces.origin`). Only `Open`
+/// workspaces are held to the hard allowance cutoff; the others are only
+/// marked. An import carries one, so importing a bundle can never turn an
+/// open workspace into an operator one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceOrigin {
+    Operator,
+    Signup,
+    Open,
+}
+
+impl WorkspaceOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Operator => "operator",
+            Self::Signup => "signup",
+            Self::Open => "open",
+        }
+    }
+
+    /// The stored text back to an origin. Unknown text reads as `Open`, the
+    /// strictest, so a bad row is never let off the cutoff.
+    pub fn from_stored(s: &str) -> Self {
+        match s {
+            "operator" => Self::Operator,
+            "signup" => Self::Signup,
+            _ => Self::Open,
+        }
+    }
+}
+
 /// What a completed sign-up made, before the session: the audit closure for
 /// `workspace.signup` reads it.
 #[derive(Debug, Clone)]
