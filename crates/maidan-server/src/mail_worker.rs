@@ -112,6 +112,26 @@ pub async fn sweep_once(state: &AppState) -> MailSweepStats {
             stats.deferred += 1;
             continue;
         }
+        // The hard allowance cutoff: an open sign-up workspace past its
+        // deliveries allowance sends no mail. Parked, not failed.
+        if let Some(workspace_id) = entry.workspace_id
+            && state
+                .usage_meters
+                .is_cut_off(workspace_id, maidan_types::UsageMeter::Deliveries)
+        {
+            let until = chrono::Utc::now() + crate::usage_meters::CUT_OFF_DEFER;
+            if let Err(err) = state.store.defer_mail(entry.id, until).await {
+                tracing::warn!(error = %err, id = %entry.id, "mail worker: deferral failed");
+            }
+            tracing::info!(
+                id = %entry.id,
+                reason = "over_allowance",
+                "mail worker: parked; workspace past its free allowance for deliveries"
+            );
+            crate::metrics::record_email_delivered("over_allowance");
+            stats.deferred += 1;
+            continue;
+        }
         // The claim counted this try, so a first send has `attempts == 1`.
         let attempt = Attempt::after(entry.attempts - 1);
         if let Some(until) =

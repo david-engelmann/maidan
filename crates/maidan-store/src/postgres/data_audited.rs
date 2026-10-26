@@ -45,13 +45,26 @@ pub async fn import_workspace(
     keys: &ContentKeyring,
     bundle: &WorkspaceImport,
     replace_existing: bool,
+    origin: maidan_types::WorkspaceOrigin,
     event: NewAuditEvent,
 ) -> Result<(), StoreError> {
     let mut tx = pool.begin().await?;
-    if replace_existing {
+    // A replaced workspace keeps its own origin, read before the erase: a
+    // forced restore of an open workspace is still open.
+    // So do its metered usage and allowance crossings, which the erase
+    // would otherwise cascade away: a restore is not a new month.
+    let (origin, kept_usage) = if replace_existing {
+        let kept = import::origin_on(&mut tx, bundle.workspace.id).await?;
+        let usage = import::keep_usage_on(&mut tx, bundle.workspace.id).await?;
         erase_workspace::erase_on(&mut tx, keys, bundle.workspace.id).await?;
+        (kept.unwrap_or(origin), Some(usage))
+    } else {
+        (origin, None)
+    };
+    import::import_on(&mut tx, bundle, origin).await?;
+    if let Some(usage) = kept_usage {
+        import::restore_usage_on(&mut tx, bundle.workspace.id, usage).await?;
     }
-    import::import_on(&mut tx, bundle).await?;
     audit::append_scoped(&mut tx, bundle.workspace.id, event).await?;
     tx.commit().await?;
     Ok(())

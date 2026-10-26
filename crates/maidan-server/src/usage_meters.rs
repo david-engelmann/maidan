@@ -41,6 +41,75 @@ pub fn unmetered(path: &str) -> bool {
     path == "/metrics" || path == "/health" || path.starts_with("/health/")
 }
 
+/// Paths an open sign-up workspace past its request allowance may still
+/// read, so its admin can see why it was cut off: its usage, and its
+/// members' notifications (where the crossing notice lands). Reads only.
+pub fn readable_past_cutoff(method: &axum::http::Method, matched: Option<&str>) -> bool {
+    method == axum::http::Method::GET
+        && matches!(
+            matched,
+            Some("/workspaces/{id}/usage-meters")
+                | Some("/members/{id}/notifications")
+                | Some("/members/{id}/notifications/grouped")
+        )
+}
+
+/// How long background work for a cut-off workspace (an egress delivery, a
+/// web push) is parked before it is looked at again. Long enough not to spin
+/// on it; the cutoff set itself is refreshed every tick, so work resumes
+/// within this once the allowance is raised or a new month starts.
+pub const CUT_OFF_DEFER: chrono::Duration = chrono::Duration::minutes(15);
+
+/// Whether the workspace of `member_id` is cut off on `meter`. A failed
+/// member lookup is not a cutoff.
+pub async fn member_cut_off(
+    state: &AppState,
+    member_id: maidan_types::MemberId,
+    meter: maidan_types::UsageMeter,
+) -> bool {
+    match state.store.get_member(member_id).await {
+        Ok(member) => state.usage_meters.is_cut_off(member.workspace_id, meter),
+        Err(_) => false,
+    }
+}
+
+/// The refusal for metered work past the free allowance: `429 Too Many
+/// Requests`, naming the meter. Only an open sign-up workspace is refused.
+pub fn cut_off_error(meter: maidan_types::UsageMeter) -> crate::error::ApiError {
+    crate::error::ApiError::TooManyRequests(format!(
+        "this workspace is past its free allowance for {} this month",
+        meter.as_str()
+    ))
+}
+
+/// Reload the hard allowance cutoff from the store: the current month's
+/// crossings of open sign-up workspaces, on meters the allowance still
+/// limits. Run each tick on every replica, so a crossing one replica marks
+/// cuts the workspace off everywhere within an interval. A failed read keeps
+/// the set as it was.
+pub async fn refresh_cut_off(state: &AppState) -> usize {
+    if state.usage_allowance.limits.is_empty() {
+        state.usage_meters.set_cut_off(std::iter::empty());
+        return 0;
+    }
+    let label = maidan_types::UsageMonth::of(chrono::Utc::now().date_naive()).label();
+    match state.store.list_usage_cut_off(&label).await {
+        Ok(pairs) => {
+            let pairs: Vec<_> = pairs
+                .into_iter()
+                .filter(|(_, meter)| state.usage_allowance.limit(*meter).is_some())
+                .collect();
+            let n = pairs.len();
+            state.usage_meters.set_cut_off(pairs);
+            n
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "usage meters: allowance cutoff not refreshed");
+            0
+        }
+    }
+}
+
 /// Count for the workspace of `member_id`, for work known by its member
 /// (a web push). A failed member lookup counts nothing.
 pub async fn record_for_member(
@@ -251,6 +320,7 @@ pub async fn tick(state: &AppState) -> (usize, usize, usize) {
     let measured_count = distinct(&measured);
     touched.extend(measured);
     let marked = check_allowance(state, touched).await;
+    refresh_cut_off(state).await;
     (flushed, measured_count, marked)
 }
 
@@ -269,6 +339,9 @@ pub async fn run(state: AppState, interval: Duration) {
         "usage meter flush started"
     );
     let _watched = crate::ops_alert::start_loop("usage_meters", interval);
+    // A restarted replica refuses what the store already says is cut off,
+    // rather than waiting out its first interval.
+    refresh_cut_off(&state).await;
     loop {
         tokio::time::sleep(interval).await;
         if let Some((flushed, measured, marked)) =

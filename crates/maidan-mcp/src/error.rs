@@ -28,6 +28,11 @@ pub enum McpError {
     #[error("rate limited; retry after {retry_after_ms}ms")]
     RateLimited { retry_after_ms: u64 },
 
+    /// An open sign-up workspace is past its free allowance on this meter
+    /// this month; the call was refused before it ran and not counted.
+    #[error("this workspace is past its free allowance for {} this month", .0.as_str())]
+    OverAllowance(maidan_types::UsageMeter),
+
     /// A footprint set on a claimed thread overlaps other live claims; nothing
     /// was stored. `data.conflicts` names each overlapped claim and its lease.
     #[error("footprint conflict with {} live claim item(s)", .0.len())]
@@ -51,6 +56,11 @@ pub const PLAN_CONFLICT_CODE: i32 = -32010;
 /// (-32000..=-32099); a client that recognizes it should back off for
 /// `data.retry_after_ms` before retrying.
 pub const RATE_LIMITED_CODE: i32 = -32029;
+
+/// JSON-RPC error code for the hard allowance cutoff. Retrying does not help
+/// until the month turns or an operator raises the allowance; `data.meter`
+/// names the meter.
+pub const OVER_ALLOWANCE_CODE: i32 = -32030;
 
 impl McpError {
     pub fn to_jsonrpc(&self) -> JsonRpcError {
@@ -94,6 +104,11 @@ impl McpError {
                 code: PLAN_CONFLICT_CODE,
                 message: self.to_string(),
                 data: Some(serde_json::json!({ "children": children })),
+            },
+            Self::OverAllowance(meter) => JsonRpcError {
+                code: OVER_ALLOWANCE_CODE,
+                message: self.to_string(),
+                data: Some(serde_json::json!({ "meter": meter.as_str() })),
             },
             Self::RateLimited { retry_after_ms } => JsonRpcError {
                 code: RATE_LIMITED_CODE,
@@ -142,6 +157,7 @@ impl From<maidan_store::StoreError> for McpError {
             } => Self::InvalidParams(format!(
                 "cursor too old: after_id {after_id} is behind oldest retained event {oldest_id}; must refetch"
             )),
+            maidan_store::StoreError::OverAllowance(meter) => Self::OverAllowance(meter),
             other => Self::Internal(other.to_string()),
         }
     }
@@ -274,5 +290,26 @@ mod tests {
             McpError::from(serde_err),
             McpError::InvalidParams(_)
         ));
+    }
+}
+
+#[cfg(test)]
+mod over_allowance_tests {
+    use super::*;
+
+    /// The store's refusal past an allowance reaches an MCP caller as
+    /// `OverAllowance` on the same meter, whichever tool wrote.
+    #[test]
+    fn a_store_refusal_past_the_allowance_is_over_allowance_to_an_mcp_caller() {
+        let err = McpError::from(maidan_store::StoreError::OverAllowance(
+            maidan_types::UsageMeter::StoredBytes,
+        ));
+        assert!(
+            matches!(
+                err,
+                McpError::OverAllowance(maidan_types::UsageMeter::StoredBytes)
+            ),
+            "{err:?}"
+        );
     }
 }

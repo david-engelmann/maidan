@@ -142,7 +142,12 @@ where
     };
     assert!(is_hold_refusal(
         store
-            .import_workspace_audited(&bundle, true, event(held.workspace, "import", None))
+            .import_workspace_audited(
+                &bundle,
+                true,
+                maidan_types::WorkspaceOrigin::Operator,
+                event(held.workspace, "import", None)
+            )
             .await
     ));
     assert!(store.get_message(held.tombstoned).await.is_ok());
@@ -155,7 +160,12 @@ where
         &target.member,
     );
     assert!(store
-        .import_workspace_audited(&bundle, true, event(target.workspace, "import", None))
+        .import_workspace_audited(
+            &bundle,
+            true,
+            maidan_types::WorkspaceOrigin::Operator,
+            event(target.workspace, "import", None)
+        )
         .await
         .is_err());
     assert!(
@@ -262,7 +272,12 @@ where
     };
     let workspaces = store.count_workspaces().await.unwrap();
     assert!(store
-        .import_workspace_audited(&fresh, false, event(fresh.workspace.id, "import", None))
+        .import_workspace_audited(
+            &fresh,
+            false,
+            maidan_types::WorkspaceOrigin::Operator,
+            event(fresh.workspace.id, "import", None)
+        )
         .await
         .is_err());
     assert_eq!(store.count_workspaces().await.unwrap(), workspaces);

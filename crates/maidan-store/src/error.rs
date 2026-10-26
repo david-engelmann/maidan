@@ -50,6 +50,13 @@ pub enum StoreError {
     /// as a shredded key.
     #[error("content key error: {0}")]
     ContentKey(#[from] maidan_types::SealError),
+
+    /// A write refused because its workspace is an open sign-up workspace
+    /// past its free allowance on this meter this month. REST 429, MCP
+    /// `OverAllowance`. Raised at the store's message and artifact writes,
+    /// so every writer is held to it, not only the routes that list it.
+    #[error("this workspace is past its free allowance for {} this month", .0.as_str())]
+    OverAllowance(maidan_types::UsageMeter),
 }
 
 impl StoreError {

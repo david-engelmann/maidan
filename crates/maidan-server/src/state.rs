@@ -317,7 +317,9 @@ impl AppState {
         bus_listener_health: Option<Arc<ListenerHealth>>,
     ) -> Self {
         let presence = Arc::new(PresenceHub::default());
-        let usage_meters = Arc::new(maidan_store::usage_meters::UsageMeterBuffer::new());
+        // The store's buffer: the cutoff set the server refreshes is the one
+        // the store's message and artifact writes enforce.
+        let usage_meters = store.usage_meters();
         let mcp = Arc::new(mcp_server(
             &store,
             &artifacts,
