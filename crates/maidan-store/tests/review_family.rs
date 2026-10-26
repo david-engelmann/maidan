@@ -278,21 +278,65 @@ where
         "an openai seat never gets a review of an openai change"
     );
     // Whoever may set attributes cannot lift it: a set that omits the
-    // family, or names another, leaves the stored one.
-    for restate in [None, Some("anthropic".to_string())] {
-        let kept = store
-            .set_thread_attributes(
-                filed.id,
-                TaskAttributes {
-                    kind: TaskKind::Review,
-                    author_family: restate,
-                    ..TaskAttributes::default()
-                },
-            )
+    // family keeps it, and one that names another is refused.
+    let kept = store
+        .set_thread_attributes(
+            filed.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                ..TaskAttributes::default()
+            },
+        )
+        .await
+        .expect("set");
+    assert_eq!(kept.author_family.as_deref(), Some("openai"));
+    let renamed = store
+        .set_thread_attributes(
+            filed.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("anthropic".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await;
+    assert!(
+        matches!(&renamed, Err(StoreError::Conflict(m)) if m.contains("stays openai")),
+        "{renamed:?}"
+    );
+    assert_eq!(
+        store
+            .get_thread_attributes(filed.id)
             .await
-            .expect("set");
-        assert_eq!(kept.author_family.as_deref(), Some("openai"));
-    }
+            .expect("attrs")
+            .author_family
+            .as_deref(),
+        Some("openai")
+    );
+    // A direct claim or an assign by a seat of the author's family is
+    // refused too, naming the family, not answered with a quiet miss.
+    let direct = store.claim_thread(filed.id, other).await;
+    assert!(
+        matches!(&direct, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{direct:?}"
+    );
+    let assigned = store.assign_thread(filed.id, other).await;
+    assert!(
+        matches!(&assigned, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{assigned:?}"
+    );
+    let direct = store.claim_thread_with_event(filed.id, other).await;
+    assert!(
+        matches!(&direct, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{direct:?}"
+    );
+    let assigned = store
+        .assign_thread_with_event(filed.id, other, author, None)
+        .await;
+    assert!(
+        matches!(&assigned, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{assigned:?}"
+    );
     assert!(
         store
             .claim_next_thread(channel, other, None, None)
@@ -307,6 +351,12 @@ where
         .expect("claim next")
         .expect("an anthropic seat takes it");
     assert_eq!(taken.id, filed.id);
+    // A member of another family may still be handed it directly.
+    let handed = store
+        .assign_thread(filed.id, author)
+        .await
+        .expect("assign to an anthropic member");
+    assert_eq!(handed.assignee_id, Some(author));
 
     // A set may name the family of a review filed without one.
     let (unnamed, _) = store
@@ -343,6 +393,11 @@ where
             "an anthropic seat never gets it once named"
         );
     }
+    let direct = store
+        .claim_thread(unnamed.id, other)
+        .await
+        .expect("an openai member claims an anthropic change's review");
+    assert!(direct.claimed);
 }
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger

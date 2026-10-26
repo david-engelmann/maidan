@@ -397,13 +397,16 @@ names it in the attributes:
 ```
 
 `author_family` is `anthropic`, `openai`, `google` or `xai` (any case;
-anything else is refused). `claim_next` never hands the thread to a claimer
-whose usage reports name that family, so a Codex seat is never handed a
-review of Codex's own work. Once stored, the family is kept: a later
-`PUT /threads/{id}/attributes` or `set_thread_attributes` that omits it or
-names another leaves it as it was, so nobody who may set attributes, the
-change's author included, can lift it. A claimer that has reported no usage
-in the workspace has no known family and is not refused.
+anything else is refused). The rule holds on every path a thread takes to a
+member: `claim_next` skips the thread for a member whose usage reports name
+that family, and a direct claim or an assign to one (REST and MCP) is
+refused with a 409 naming the family. So a Codex seat is never handed a
+review of Codex's own work. One family is stored per change: a later
+`PUT /threads/{id}/attributes` or `set_thread_attributes` that omits it
+keeps it, and one that names another is refused with a 409, so nobody who
+may set attributes, the change's author included, can lift or move it. A
+member that has reported no usage in the workspace has no known family and
+is not refused.
 
 ### Claim and release comments on Linear
 

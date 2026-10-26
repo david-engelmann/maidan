@@ -1024,34 +1024,43 @@ async fn a_reviews_author_family_is_set_at_intake_and_kept_by_every_later_set() 
     assert_eq!(created["attributes"]["author_family"], "openai");
     let thread_id = created["id"].as_str().unwrap().to_string();
 
-    // A PUT that omits it, or names another family, leaves it.
+    // A PUT that omits it keeps it; one that names another family is a 409
+    // naming the stored one, and so is the MCP twin.
     let http = reqwest::Client::new();
-    for body in [
-        json!({ "kind": "review", "engine": "session" }),
-        json!({ "kind": "review", "author_family": "anthropic" }),
-    ] {
-        let response = http
-            .put(format!("{base}/threads/{thread_id}/attributes"))
-            .bearer_auth(&room.token)
-            .json(&body)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let kept: Value = response.json().await.unwrap();
-        assert_eq!(kept["author_family"], "openai", "{kept}");
-    }
-    // So does the MCP twin.
-    let set = tool_result(
-        &tool(
-            &base,
-            &room.token,
-            "set_thread_attributes",
-            json!({ "thread_id": thread_id, "kind": "review", "author_family": "xai" }),
-        )
-        .await,
+    let response = http
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&room.token)
+        .json(&json!({ "kind": "review", "engine": "session" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let kept: Value = response.json().await.unwrap();
+    assert_eq!(kept["author_family"], "openai", "{kept}");
+    let response = http
+        .put(format!("{base}/threads/{thread_id}/attributes"))
+        .bearer_auth(&room.token)
+        .json(&json!({ "kind": "review", "author_family": "anthropic" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let problem: Value = response.json().await.unwrap();
+    assert!(
+        problem["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("stays openai"),
+        "{problem}"
     );
-    assert_eq!(set["author_family"], "openai");
+    let refused = tool(
+        &base,
+        &room.token,
+        "set_thread_attributes",
+        json!({ "thread_id": thread_id, "kind": "review", "author_family": "xai" }),
+    )
+    .await;
+    assert_eq!(refused["error"]["code"], -32602, "{refused}");
     let (_, read) = get_thread(&base, &room.token, &thread_id).await;
     assert_eq!(read["attributes"]["author_family"], "openai");
 

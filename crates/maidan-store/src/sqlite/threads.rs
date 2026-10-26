@@ -294,19 +294,22 @@ pub async fn assign(
     // This variant emits no event, so it does not pass through
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
     // A reassignment ends the claim it replaces. Charge it before the write
     // clears the working clock; a free thread charges nothing.
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
-         WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id)
+         WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id) {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("?"),
+    ))
     .bind(assignee_id.0)
     .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
+    .bind(assignee_id.0)
     .bind(assignee_id.0)
     .fetch_optional(&mut *tx)
     .await?
@@ -425,6 +428,7 @@ pub async fn assign_with_event(
     note: Option<String>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
     let previous = sqlx::query(
         "SELECT assignee_id FROM maidan_threads WHERE id = ? AND tombstoned_at IS NULL",
     )
@@ -436,16 +440,18 @@ pub async fn assign_with_event(
     .map(MemberId);
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
-         WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id)
+         WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id) {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("?"),
+    ))
     .bind(assignee_id.0)
     .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
+    .bind(assignee_id.0)
     .bind(assignee_id.0)
     .fetch_optional(&mut *tx)
     .await?
@@ -665,17 +671,20 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
-         WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
+         WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("?"),
+    ))
     .bind(member_id.0)
     .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
+    .bind(member_id.0)
     .fetch_optional(&mut *tx)
     .await?;
     match row {
@@ -708,18 +717,21 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
-         WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
+         WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("?"),
+    ))
     .bind(member_id.0)
     .bind(lease.0)
     .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(thread_id.0)
+    .bind(member_id.0)
     .fetch_optional(&mut *tx)
     .await?;
     match row {

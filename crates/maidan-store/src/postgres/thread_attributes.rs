@@ -202,6 +202,23 @@ pub async fn set(
     if !exists {
         return Err(StoreError::NotFound);
     }
+    // One author family per change: restating it is fine, naming another is
+    // refused, and the upsert's COALESCE keeps it even if this read raced.
+    if let Some(named) = attributes.author_family.as_deref() {
+        let stored: Option<Option<String>> = sqlx::query_scalar(
+            "SELECT author_family FROM maidan_thread_attributes WHERE thread_id = $1",
+        )
+        .bind(thread_id.0)
+        .fetch_optional(pool)
+        .await?;
+        if let Some(Some(stored)) = stored
+            && stored != named
+        {
+            return Err(StoreError::Conflict(format!(
+                "author_family is {stored} and stays {stored}: a review's author family is set once"
+            )));
+        }
+    }
     sqlx::query(
         "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $8, $9, $10, $11, $7)
