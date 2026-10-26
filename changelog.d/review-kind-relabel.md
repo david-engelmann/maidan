@@ -1,3 +1,3 @@
-### A child becomes a review only at creation
+### Only a review the server opened skips the parent's hold
 
-- **Fixed:** Setting `kind = review` on an existing child thread is refused with 409, so relabelling an ordinary child no longer frees it from its parent's ordering hold. A child created as a review, and a thread without a parent, can still be set to `review` (#1556).
+- **Fixed:** A child thread is exempt from its parent's ordering hold only when the review family opened it (`review_family` is set). A `kind = review` label, set at create or later, no longer frees an ordinary child from the hold (#1556).

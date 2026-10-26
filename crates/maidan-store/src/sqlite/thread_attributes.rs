@@ -135,13 +135,16 @@ pub async fn set_review_children(
     Ok(())
 }
 
-/// Whether `thread_id` is a review task, read in the caller's transaction.
+/// Whether `thread_id` is a review child opened through the review family,
+/// read in the caller's transaction. Only the server sets `review_family`, so
+/// a `kind = review` label alone, set at create or later, exempts nothing
+/// from the parent's ordering hold (#1556).
 pub(crate) async fn is_review_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
 ) -> Result<bool, StoreError> {
     Ok(sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = ? AND kind = 'review'",
+        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = ? AND kind = 'review' AND review_family IS NOT NULL",
     )
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
@@ -188,26 +191,13 @@ pub async fn set(
     thread_id: ThreadId,
     attributes: TaskAttributes,
 ) -> Result<TaskAttributes, StoreError> {
-    let place = sqlx::query(
-        "SELECT t.parent_thread_id IS NOT NULL AS has_parent, a.kind AS kind
-         FROM maidan_threads t LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id
-         WHERE t.id = ?",
-    )
-    .bind(thread_id.0)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    let has_parent: bool = place.try_get("has_parent")?;
-    let stored_kind: Option<String> = place.try_get("kind")?;
-    // A review child is exempt from its parent's ordering hold, so a child
-    // becomes a review only when it is created as one (#1556).
-    if attributes.kind == TaskKind::Review
-        && has_parent
-        && stored_kind.as_deref() != Some(TaskKind::Review.as_str())
-    {
-        return Err(StoreError::Conflict(
-            "a child thread becomes a review only when it is created as one".into(),
-        ));
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_threads WHERE id = ?)")
+            .bind(thread_id.0)
+            .fetch_one(pool)
+            .await?;
+    if !exists {
+        return Err(StoreError::NotFound);
     }
     sqlx::query(
         "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)

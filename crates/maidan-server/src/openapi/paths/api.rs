@@ -2660,7 +2660,6 @@ pub fn set_thread_footprint() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
-        (status = 409, response = Conflict),
     ))]
 pub fn set_thread_attributes() {}
 
