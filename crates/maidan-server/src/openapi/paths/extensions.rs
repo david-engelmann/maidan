@@ -142,6 +142,22 @@ pub fn get_workspace_usage_rollup() {}
 )]
 pub fn get_workspace_usage_conformance() {}
 
+/// Model and effort by task class, learned from the usage ledger
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/usage-routing",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id"), UsageRoutingQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = TaskClassRouting),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn get_workspace_usage_routing() {}
+
 /// List a workspace's withdrawn messages
 #[utoipa::path(
     get,

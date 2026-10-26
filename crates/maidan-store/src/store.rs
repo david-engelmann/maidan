@@ -639,6 +639,13 @@ pub trait UsageLedgerStore: Send + Sync {
         workspace_id: WorkspaceId,
         limit: i64,
     ) -> Result<Vec<UsageLedgerEntry>, StoreError>;
+    /// Completed reports grouped by thread, model and effort, with each
+    /// thread's kind, size and completion: the input to model and effort by
+    /// task class (C12). The workspace's threads only.
+    async fn task_class_usage(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<TaskClassUsageRow>, StoreError>;
     /// Spend, cache shape, and cost per completed task. A thread or member
     /// outside the named workspace is `NotFound`.
     async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;

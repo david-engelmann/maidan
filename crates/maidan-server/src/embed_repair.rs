@@ -14,6 +14,7 @@ use std::sync::{atomic::Ordering, Arc};
 use std::time::Duration;
 
 use maidan_search::{EmbeddingProvider, IndexerMetrics, Search, SearchError};
+use maidan_store::usage_meters::UsageMeterBuffer;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RepairConfig {
@@ -45,9 +46,12 @@ pub async fn repair_once(
     search: &dyn Search,
     provider: &Arc<dyn EmbeddingProvider>,
     metrics: &IndexerMetrics,
+    meters: &UsageMeterBuffer,
     batch: i64,
 ) -> bool {
-    match search.embed_missing(provider, batch).await {
+    // Workspaces cut off on embedding_calls are skipped, and what is
+    // embedded counts toward each workspace's allowance.
+    match search.embed_missing(provider, batch, Some(meters)).await {
         Ok(report) => {
             metrics
                 .repaired_total
@@ -73,6 +77,7 @@ pub async fn run(
     search: Arc<dyn Search>,
     provider: Arc<dyn EmbeddingProvider>,
     metrics: Arc<IndexerMetrics>,
+    meters: Arc<UsageMeterBuffer>,
     config: RepairConfig,
 ) {
     let mut ticker = tokio::time::interval(config.interval);
@@ -82,7 +87,7 @@ pub async fn run(
     let _watched = crate::ops_alert::start_loop("embed_repair", config.interval);
     loop {
         ticker.tick().await;
-        let tick = repair_once(search.as_ref(), &provider, &metrics, config.batch);
+        let tick = repair_once(search.as_ref(), &provider, &metrics, &meters, config.batch);
         if crate::ops_alert::guarded_tick("embed_repair", tick).await == Some(false) {
             tracing::info!("embed repair: backend has no embeddings; stopping");
             // Ended on purpose: its silence is not a stall.

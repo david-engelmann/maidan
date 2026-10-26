@@ -216,3 +216,67 @@ async fn legitimate_auto_provision_still_creates_and_reuses_a_member_postgres() 
     ))
     .await;
 }
+
+async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision(
+    store: Arc<dyn Store>,
+    remove: impl AsyncFnOnce(MemberId),
+) {
+    let (ws_a, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let (ws_b, _) = workspace_with_admin(store.as_ref(), "b").await;
+    let (gone, how) = login(store.as_ref(), ws_a, "sub-dana", "dana@corp.example", true).await;
+    assert_eq!(how, LoginMember::Provisioned);
+    let (kept, _) = login(store.as_ref(), ws_b, "sub-dana", "dana@corp.example", true).await;
+    remove(gone).await;
+    let again = resolve_member_for_login(
+        store.as_ref(),
+        ws_a,
+        ISSUER,
+        "sub-dana",
+        Some("dana@corp.example"),
+        true,
+        true,
+        false,
+    )
+    .await;
+    assert!(matches!(
+        again,
+        Err(maidan_server::error::ApiError::Forbidden(ref why)) if why == maidan_server::oidc::NOT_PROVISIONED
+    ));
+    let other = login(store.as_ref(), ws_b, "sub-dana", "dana@corp.example", true).await;
+    assert_eq!(other, (kept, LoginMember::Existing));
+}
+
+#[tokio::test]
+async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision(store, async |id| {
+        sqlx::query("UPDATE maidan_members SET tombstoned_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(id.0)
+            .execute(&pool)
+            .await
+            .unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision(store, async |id| {
+        sqlx::query("UPDATE maidan_members SET tombstoned_at = NOW() WHERE id = $1")
+            .bind(id.0)
+            .execute(&pool)
+            .await
+            .unwrap();
+    })
+    .await;
+}

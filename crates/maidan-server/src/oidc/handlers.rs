@@ -159,6 +159,19 @@ pub async fn signup(
         return Err(ApiError::NotFound);
     }
 
+    // The check runs before the invite is looked up, so a caller who has
+    // not passed it learns nothing about which invites exist (#1631).
+    if let Some(turnstile) = state.turnstile.as_deref() {
+        let token = q.turnstile.as_deref().map(str::trim).unwrap_or_default();
+        // A browser that followed an invite link straight here has not
+        // solved anything yet: send it to the console's check, which comes
+        // back with a token. Any other caller is refused outright.
+        if token.is_empty() && accepts_html(&headers) {
+            return Ok(Redirect::to(&signup_check_path(&q)).into_response());
+        }
+        crate::turnstile::verify(turnstile, Some(token), crate::turnstile::Action::Signup).await?;
+    }
+
     let invite_entry_id = match q.invite.as_deref() {
         Some(token) => {
             let hash = hex::encode(sha2::Sha256::digest(token.as_bytes()));
@@ -192,17 +205,6 @@ pub async fn signup(
             None
         }
     };
-
-    if let Some(turnstile) = state.turnstile.as_deref() {
-        let token = q.turnstile.as_deref().map(str::trim).unwrap_or_default();
-        // A browser that followed an invite link straight here has not
-        // solved anything yet: send it to the console's check, which comes
-        // back with a token. Any other caller is refused outright.
-        if token.is_empty() && accepts_html(&headers) {
-            return Ok(Redirect::to(&signup_check_path(&q)).into_response());
-        }
-        crate::turnstile::verify(turnstile, Some(token), crate::turnstile::Action::Signup).await?;
-    }
 
     let state_token = random_token();
     let nonce = random_token();

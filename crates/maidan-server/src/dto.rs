@@ -545,6 +545,15 @@ pub struct FleetConformanceQuery {
     pub limit: Option<i64>,
 }
 
+/// Query params for model and effort by task class.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct UsageRoutingQuery {
+    /// Completed tasks a model and effort needs in a class before it can be
+    /// suggested, 1 to 1000; omitted, 3.
+    pub min_completed: Option<i64>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

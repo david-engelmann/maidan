@@ -1,0 +1,3 @@
+### Red-team reports separate proven from unproven findings; a review result names its kind
+
+- **Changed:** The red-team runbook keeps `BLOCKING` for findings proven at the head (a failing test, or file:line evidence) and adds an `UNPROVEN` section, `unproven: missing <fact>` with no severity, so a speculative finding never blocks a merge. The seat runner's review prompt now asks for `result_kind`: without it Maidan stores the result but arms no delivery (#1649), which lost two wax verdicts on 2026-10-26. The seat runner README says a thread needs a footprint with at least one item, since an empty list clears it.

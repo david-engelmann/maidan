@@ -1356,6 +1356,18 @@ it, so a fleet can find the member whose build splits the shared system and
 tools prefix. A report that sent no value for a checked field diverges with no
 `seen` value.
 
+`GET /workspaces/{id}/usage-routing` is model and effort by task class
+(`workspace:read`, the caller's workspace only). A task class is a thread's
+`kind` and `size` from its task attributes. Each thread counts once, for the
+one `model` and `evidence.effort` its completed reports named; a thread that
+named more than one is counted in `switched_tasks` and left out, because a
+switch inside a task forfeits the prompt cache. For each combination the
+answer gives tasks, completed tasks (closed or archived), spend on all of its
+tasks, and cost per completed task, cheapest first. `suggested` is the
+cheapest combination with at least `min_completed` completed tasks (1 to
+1000, default 3); a harness reads it when it starts a task in that class and
+keeps it for the whole task.
+
 #### Normalizing provider usage
 
 Providers disagree on what "input tokens" means, so each SDK has a pure
