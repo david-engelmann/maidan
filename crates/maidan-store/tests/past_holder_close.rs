@@ -238,3 +238,100 @@ async fn an_approval_from_another_tenant_does_not_let_a_past_holder_close_postgr
     };
     an_approval_from_another_tenant_does_not_let_a_past_holder_close(&store).await;
 }
+
+/// Two holders take turns on one owned thread, then it goes to review: each
+/// is a past holder, so neither stands as the other's outside reviewer.
+async fn two_holders_cannot_approve_each_other_and_another_tenants_approval_does_not_carry(
+    store: &dyn Store,
+) {
+    let ws_a = workspace(store, "a").await;
+    let ws_b = workspace(store, "b").await;
+    let owner = member(store, ws_a, "owner").await;
+    let first = member(store, ws_a, "first").await;
+    let second = member(store, ws_a, "second").await;
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws_a,
+            name: "pair".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let t = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_owner(t.id, Some(owner.id))
+        .await
+        .expect("owner");
+    for holder in [&first, &second] {
+        store
+            .set_thread_result_claiming(t.id, holder.id, &serde_json::json!({"status": "done"}))
+            .await
+            .expect("result");
+        store.unassign_thread(t.id).await.expect("release");
+    }
+    store
+        .transition_thread(t.id, owner.id, ThreadAction::StartReview)
+        .await
+        .expect("start review");
+
+    // Each past holder approves; neither approval is outside.
+    approve(store, &t, &second).await;
+    approve(store, &t, &first).await;
+    for holder in [&first, &second] {
+        let refused = store
+            .transition_thread(t.id, holder.id, ThreadAction::Close)
+            .await;
+        assert!(
+            matches!(refused, Err(StoreError::Conflict(_))),
+            "a fellow past holder's approval let {} close: {refused:?}",
+            holder.handle
+        );
+    }
+
+    // Tenant B has its own owned thread with a genuine outside approval;
+    // it does not carry over to tenant A's thread.
+    let b_owner = member(store, ws_b, "owner").await;
+    let b_worker = member(store, ws_b, "worker").await;
+    let b_reviewer = member(store, ws_b, "reviewer").await;
+    let b_thread = released_thread(store, ws_b, &b_owner, &b_worker).await;
+    approve(store, &b_thread, &b_reviewer).await;
+    let refused = store
+        .transition_thread(t.id, first.id, ThreadAction::Close)
+        .await;
+    assert!(
+        matches!(refused, Err(StoreError::Conflict(_))),
+        "tenant B's approval on its own thread let tenant A's past holder close: {refused:?}"
+    );
+    store
+        .transition_thread(b_thread.id, b_worker.id, ThreadAction::Close)
+        .await
+        .expect("tenant B's past holder closes after its own outside approval");
+}
+
+#[tokio::test]
+async fn two_past_holders_cannot_approve_each_other_and_another_tenants_approval_does_not_carry_sqlite(
+) {
+    two_holders_cannot_approve_each_other_and_another_tenants_approval_does_not_carry(
+        &sqlite().await,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn two_past_holders_cannot_approve_each_other_and_another_tenants_approval_does_not_carry_postgres(
+) {
+    let Some((_c, store)) = postgres().await else {
+        return;
+    };
+    two_holders_cannot_approve_each_other_and_another_tenants_approval_does_not_carry(&store).await;
+}
