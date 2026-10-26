@@ -258,3 +258,129 @@ async fn a_linked_digest_is_read_once_by_hash_and_stays_in_its_workspace() {
         "another workspace reads no digest: {read}"
     );
 }
+
+/// Red-team: workspace A links workspace B's digest sha into A's own thread.
+/// The link names bytes A does not hold, so A's digest stays empty over REST
+/// and MCP, and A's token still cannot reach B's thread digest.
+#[tokio::test]
+async fn a_digest_from_another_workspace_linked_into_a_thread_is_not_served() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (_, _, a_token, a_thread) = tenant(store.as_ref(), "a").await;
+    let (_, _, b_token, b_thread) = tenant(store.as_ref(), "b").await;
+    let (a, b) = (a_thread.0, b_thread.0);
+
+    let secret = "# B only\n\nworkspace B's private summary";
+    let b_sha = upload(&client, &base, &b_token, "digest", secret).await;
+    let (status, body) = call(
+        &client,
+        Method::PUT,
+        format!("{base}/threads/{b}/artifacts/{b_sha}"),
+        &b_token,
+    )
+    .await;
+    assert!(status.is_success(), "B links its digest: {status} {body}");
+
+    // A links B's sha into A's thread; whatever the link answers, nothing of
+    // B's may come back.
+    let _ = call(
+        &client,
+        Method::PUT,
+        format!("{base}/threads/{a}/artifacts/{b_sha}"),
+        &a_token,
+    )
+    .await;
+    let (status, body) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{a}/digest"),
+        &a_token,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "B's digest served to A: {body}"
+    );
+    let read = mcp_read(&client, &base, &a_token, &format!("maidan://digests/{a}")).await;
+    assert!(
+        read["error"].is_object(),
+        "B's digest served to A over MCP: {read}"
+    );
+    assert!(!read.to_string().contains(&b_sha), "{read}");
+
+    // A's token on B's thread directly.
+    let (status, body) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{b}/digest"),
+        &a_token,
+    )
+    .await;
+    assert!(
+        status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND,
+        "A read B's digest: {status} {body}"
+    );
+    let read = mcp_read(&client, &base, &a_token, &format!("maidan://digests/{b}")).await;
+    assert!(
+        read["error"].is_object(),
+        "A read B's digest over MCP: {read}"
+    );
+    assert!(!read.to_string().contains(&b_sha), "{read}");
+
+    // B still reads its own.
+    let (status, digest) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{b}/digest"),
+        &b_token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{digest}");
+    assert_eq!(digest["sha256"], b_sha.as_str());
+}
+
+/// Red-team: a token in the thread's own workspace without workspace:read
+/// reads no digest over REST or MCP.
+#[tokio::test]
+async fn a_token_without_workspace_read_reads_no_digest() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (ws, member, token, thread) = tenant(store.as_ref(), "a").await;
+    let t = thread.0;
+    let sha = upload(&client, &base, &token, "digest", "# s").await;
+    let (status, _) = call(
+        &client,
+        Method::PUT,
+        format!("{base}/threads/{t}/artifacts/{sha}"),
+        &token,
+    )
+    .await;
+    assert!(status.is_success());
+
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws,
+            member_id: member,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![capability::ARTIFACT_UPLOAD.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let narrow = format!("Bearer {}", secret.as_str());
+    let (status, body) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/digest"),
+        &narrow,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    let read = mcp_read(&client, &base, &narrow, &format!("maidan://digests/{t}")).await;
+    assert!(read["error"].is_object(), "{read}");
+    assert!(!read.to_string().contains(&sha), "{read}");
+}
