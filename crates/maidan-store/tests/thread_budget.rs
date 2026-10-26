@@ -768,6 +768,7 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
     let at_standard = standard.charge_usd_micros(tokens).expect("standard");
     let sha = "ab".repeat(32);
     let evidence = UsageEvidence {
+        effort: None,
         provider: Some("anthropic".into()),
         service_tier: Some("standard".into()),
         batch: true,

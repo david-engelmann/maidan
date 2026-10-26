@@ -633,6 +633,13 @@ macro_rules! store_delegations {
                 usage_ledger::list_for_workspace(self.read_pool(), workspace_id, limit).await
             }
 
+            async fn task_class_usage(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<TaskClassUsageRow>, StoreError> {
+                usage_ledger::task_class_usage(self.read_pool(), workspace_id).await
+            }
+
             async fn usage_rollup(
                 &self,
                 query: UsageRollupQuery,

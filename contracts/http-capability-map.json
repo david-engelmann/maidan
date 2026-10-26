@@ -1291,6 +1291,12 @@
   },
   {
     "method": "GET",
+    "path": "/workspaces/{id}/usage-routing",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/workspaces/{id}/tombstones",
     "capability": "workspace:read",
     "surface": "http"

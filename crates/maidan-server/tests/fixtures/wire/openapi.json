@@ -5512,6 +5512,73 @@
         ],
         "type": "object"
       },
+      "ModelEffortOutcome": {
+        "description": "One model and effort inside a task class.",
+        "properties": {
+          "completed_tasks": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "effort": {
+            "description": "Absent when the reports did not name an effort.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "tasks": {
+            "description": "Threads that ran on only this model and effort.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "usd_micros": {
+            "description": "Spend on every one of those threads, completed or not.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "usd_micros_per_completed_task": {
+            "description": "`usd_micros` over `completed_tasks`, rounded up; absent with none.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "model",
+          "tasks",
+          "completed_tasks",
+          "usd_micros"
+        ],
+        "type": "object"
+      },
+      "ModelEffortSuggestion": {
+        "description": "The suggestion for one class.",
+        "properties": {
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": "string"
+          },
+          "usd_micros_per_completed_task": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "usd_micros_per_completed_task"
+        ],
+        "type": "object"
+      },
       "ModelRequestView": {
         "description": "Who a model asked through, and whose confirmation it is waiting for. The\nlink itself is never listed: only the person it was issued to has it.",
         "properties": {
@@ -9638,6 +9705,74 @@
         },
         "type": "object"
       },
+      "TaskClassOutcomes": {
+        "description": "One task class: a thread kind and size.",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "outcomes": {
+            "description": "Cheapest first by cost per completed task; combinations with no\ncompleted task last.",
+            "items": {
+              "$ref": "#/components/schemas/ModelEffortOutcome"
+            },
+            "type": "array"
+          },
+          "size": {
+            "description": "Absent for threads with no size set.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suggested": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelEffortSuggestion",
+                "description": "Absent until some combination has `min_completed` completed tasks."
+              }
+            ]
+          },
+          "switched_tasks": {
+            "description": "Threads whose reports named more than one model or effort. Left out\nof `outcomes`.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "switched_tasks",
+          "outcomes"
+        ],
+        "type": "object"
+      },
+      "TaskClassRouting": {
+        "description": "Every task class in a workspace with ledger evidence.",
+        "properties": {
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/TaskClassOutcomes"
+            },
+            "type": "array"
+          },
+          "min_completed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "min_completed",
+          "classes"
+        ],
+        "type": "object"
+      },
       "TaskEngine": {
         "description": "Who or what a task is meant for. `None` on a thread means nobody has\nrouted it yet; an engine-filtered claim never takes a thread routed to\nanother engine, nor one not routed at all. A workspace's default engine\nroutes the threads created there without one.",
         "enum": [
@@ -11321,6 +11456,13 @@
             ]
           },
           "cache_miss_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effort": {
+            "description": "The reasoning effort the call asked for (`low`, `medium`, `high`, or\nthe provider's own word), so the ledger can price model and effort\nby task class.",
             "type": [
               "string",
               "null"
@@ -35198,6 +35340,75 @@
           }
         ],
         "summary": "Usage rollup for one workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/usage-routing": {
+      "get": {
+        "operationId": "get_workspace_usage_routing",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Completed tasks a model and effort needs in a class before it can be\nsuggested, 1 to 1000; omitted, 3.",
+            "in": "query",
+            "name": "min_completed",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskClassRouting"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Model and effort by task class, learned from the usage ledger",
         "tags": [
           "workspaces"
         ]

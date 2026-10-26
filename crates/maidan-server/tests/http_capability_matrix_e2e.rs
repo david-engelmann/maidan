@@ -1298,6 +1298,74 @@ async fn fleet_conformance_reads_the_callers_workspace_against_the_profile_and_r
 }
 
 #[tokio::test]
+async fn usage_routing_suggests_a_model_and_effort_from_the_callers_workspace_and_refuses_another()
+{
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    report_usage_with(&h, &a, a.thread, 10, json!({"effort": "high"})).await;
+    for action in [
+        maidan_fsm::ThreadAction::StartReview,
+        maidan_fsm::ThreadAction::Close,
+    ] {
+        h.store
+            .transition_thread(a.thread, a.agent, action)
+            .await
+            .unwrap();
+    }
+    // B's report names another effort; none of it may show up in A's answer.
+    report_usage_with(&h, &b, b.thread, 10, json!({"effort": "low"})).await;
+
+    let path = format!(
+        "/workspaces/{}/usage-routing?min_completed=1",
+        a.workspace.0
+    );
+    let (s, routing) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{routing}");
+    assert_eq!(routing["workspace_id"], json!(a.workspace.0));
+    assert_eq!(
+        routing["classes"].as_array().map(Vec::len),
+        Some(1),
+        "{routing}"
+    );
+    let class = &routing["classes"][0];
+    assert_eq!(class["kind"], "change");
+    assert_eq!(class["outcomes"][0]["effort"], "high");
+    assert_eq!(class["outcomes"][0]["completed_tasks"], 1);
+    assert_eq!(
+        class["suggested"],
+        json!({"model": "test/model", "effort": "high", "usd_micros_per_completed_task": 0})
+    );
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[a.workspace.0.to_string()]);
+
+    let own = format!("/workspaces/{}/usage-routing", b.workspace.0);
+    let (s, routing) = read(&h, &own, &b.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{routing}");
+    assert_eq!(routing["min_completed"], 3);
+    let class = &routing["classes"][0];
+    assert_eq!(class["outcomes"][0]["effort"], "low", "{routing}");
+    assert_eq!(class["outcomes"][0]["completed_tasks"], 0);
+    assert!(
+        class.get("suggested").is_none(),
+        "an open task suggests nothing: {routing}"
+    );
+
+    let (s, _) = read(
+        &h,
+        &format!(
+            "/workspaces/{}/usage-routing?min_completed=0",
+            b.workspace.0
+        ),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    h.shutdown().await;
+}
+
+#[tokio::test]
 async fn deferred_threads_list_the_overlap_and_refuse_another_workspace() {
     let h = spawn().await;
     let a = tenant(h.store.as_ref(), "a").await;

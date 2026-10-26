@@ -1092,6 +1092,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           "maxLength": 512,
           "type": "string"
         },
+        "effort": {
+          "maxLength": 32,
+          "type": "string"
+        },
         "harness": {
           "maxLength": 64,
           "type": "string"
