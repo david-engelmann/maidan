@@ -1236,6 +1236,11 @@ auto-provisioning): the waitlist form is public, an operator invites from
 `/operator/waitlist`, and only an invited address finishes sign-up. The Zero
 Trust free plan counts each person who signs in as a seat.
 
+The front page is the server's own waitlist page. The Worker serves only the
+site's policy pages (`/privacy`, `/terms`, `/support`) from its static assets
+(`deploy/cloudflare/site/`), and `MAIDAN_SIGNUP_PRIVACY_URL` and
+`MAIDAN_SIGNUP_TERMS_URL` link the first two from the waitlist page's footer.
+
 Its Worker secrets are `DATABASE_URL`, `MAIDAN_CONTENT_KEK`,
 `MAIDAN_SESSION_SECRET`, `MAIDAN_OIDC_CLIENT_SECRET`, `S3_ENDPOINT`,
 `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, set with

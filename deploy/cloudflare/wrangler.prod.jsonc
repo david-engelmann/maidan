@@ -21,7 +21,7 @@
       "max_instances": 1
     }
   ],
-  // The hosted site's pages (landing, privacy, terms, support); the Worker
+  // The hosted site's policy pages (privacy, terms, support); the Worker
   // decides which requests they answer (src/edge.js, SITE_PATHS).
   "assets": { "directory": "./site", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": {
@@ -45,7 +45,10 @@
     "MAIDAN_OIDC_EMAILS_VERIFIED": "1",
     // Sign-up by waitlist invite only (docs/Hosted Console.md); never
     // auto-provisioning, which boot refuses beside it.
-    "MAIDAN_SIGNUP": "1"
+    "MAIDAN_SIGNUP": "1",
+    // The site's policy pages, linked from the waitlist page's footer.
+    "MAIDAN_SIGNUP_PRIVACY_URL": "/privacy",
+    "MAIDAN_SIGNUP_TERMS_URL": "/terms"
   },
   "triggers": { "crons": ["0 * * * *"] },
   "observability": { "enabled": true }

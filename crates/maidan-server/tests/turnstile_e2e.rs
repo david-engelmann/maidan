@@ -114,6 +114,8 @@ async fn spawn(turnstile: Option<TurnstileSettings>) -> String {
             signup_email_domains: Vec::new(),
             signup_open: true,
             emails_verified: false,
+            privacy_url: None,
+            terms_url: None,
         },
         session_secret: b"turnstile-e2e-session-secret-32b".as_slice().into(),
         client: None,

@@ -1227,11 +1227,15 @@ pub fn router(state: AppState) -> Router {
         if crate::routes::require_signup(&state).is_err() {
             return crate::error::ApiError::NotFound.into_response();
         }
+        let page = include_str!("../static/landing/index.html").replace(
+            "<!-- policy-links -->",
+            &crate::routes::policy_links_html(&state),
+        );
         landing_body(
             &headers,
             landing_csp(&state),
             "text/html; charset=utf-8",
-            include_str!("../static/landing/index.html"),
+            &page,
         )
     }
 
@@ -1266,7 +1270,7 @@ pub fn router(state: AppState) -> Router {
         headers: &axum::http::HeaderMap,
         csp: &'static str,
         content_type: &'static str,
-        body: &'static str,
+        body: &str,
     ) -> axum::response::Response {
         use axum::response::IntoResponse as _;
         let etag = strong_etag(body.as_bytes());
@@ -1281,7 +1285,7 @@ pub fn router(state: AppState) -> Router {
         (
             landing_headers(content_type, csp),
             ui_cache_headers(&etag),
-            body,
+            body.to_owned(),
         )
             .into_response()
     }

@@ -79,6 +79,8 @@ async fn spawn() -> String {
             signup_email_domains: Vec::new(),
             signup_open: false,
             emails_verified: false,
+            privacy_url: None,
+            terms_url: None,
         },
         session_secret: b"signup-rate-limit-e2e-secret-32b".as_slice().into(),
         client: None,

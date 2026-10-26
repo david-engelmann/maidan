@@ -39,7 +39,7 @@ async fn spawn(signup: bool, domains: Vec<String>) -> Env {
 }
 
 async fn spawn_with(signup: bool, domains: Vec<String>, public_origin: Option<&str>) -> Env {
-    spawn_full(signup, domains, public_origin, false).await
+    spawn_full(signup, domains, public_origin, false, [None, None]).await
 }
 
 async fn spawn_full(
@@ -47,6 +47,7 @@ async fn spawn_full(
     domains: Vec<String>,
     public_origin: Option<&str>,
     signup_open: bool,
+    [privacy_url, terms_url]: [Option<&str>; 2],
 ) -> Env {
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(4)
@@ -94,6 +95,8 @@ async fn spawn_full(
             signup_email_domains: domains,
             signup_open,
             emails_verified: false,
+            privacy_url: privacy_url.map(str::to_string),
+            terms_url: terms_url.map(str::to_string),
         },
         session_secret: Arc::from(SECRET),
         client: None,
@@ -519,7 +522,7 @@ async fn a_listed_domain_signs_up_without_an_invite() {
 
 #[tokio::test]
 async fn open_signup_gives_each_verified_address_its_own_workspace_without_an_invite() {
-    let env = spawn_full(true, vec![], None, true).await;
+    let env = spawn_full(true, vec![], None, true, [None, None]).await;
     // Two people on unrelated domains, neither invited nor listed.
     let ada = env
         .signup_roundtrip(
@@ -796,6 +799,50 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_waitlist_page_links_the_privacy_policy_and_terms_where_the_instance_names_them() {
+    let env = spawn_full(
+        true,
+        vec![],
+        None,
+        false,
+        [
+            Some("/privacy"),
+            Some("https://example.com/terms?v=2&lang=en"),
+        ],
+    )
+    .await;
+    let html = env
+        .client
+        .get(format!("{}/", env.base))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(html.contains("<a href=\"/privacy\">Privacy</a>"), "{html}");
+    assert!(
+        html.contains("<a href=\"https://example.com/terms?v=2&amp;lang=en\">Terms</a>"),
+        "{html}"
+    );
+    assert!(!html.contains("policy-links"), "the slot is filled");
+
+    // Without them the footer has neither link, and no leftover slot.
+    let plain = spawn(true, vec![]).await;
+    let html = plain
+        .client
+        .get(format!("{}/", plain.base))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(!html.contains(">Privacy<") && !html.contains(">Terms<"));
+    assert!(html.contains("Source on GitHub"));
 }
 
 fn has_inline_handler(html: &str) -> bool {

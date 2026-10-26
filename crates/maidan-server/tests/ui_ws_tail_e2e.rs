@@ -93,6 +93,8 @@ async fn spawn_oidc() -> Harness {
             signup_email_domains: Vec::new(),
             signup_open: false,
             emails_verified: false,
+            privacy_url: None,
+            terms_url: None,
         },
         session_secret: Arc::from(TEST_SESSION_SECRET),
         client: None,
