@@ -456,6 +456,31 @@ mod open_signup_tests {
     }
 
     #[test]
+    fn the_same_open_signup_config_is_refused_in_production_and_only_warned_outside_it() {
+        // Two deployments share one sign-up config, open with no bot check;
+        // only the environment differs. Production must not inherit the
+        // development allowance.
+        let production = check_open_signup_bot_check(true, true, false);
+        let development = check_open_signup_bot_check(true, false, false);
+        assert!(
+            matches!(
+                production,
+                Err(ConfigError::Invalid("MAIDAN_SIGNUP_OPEN", _))
+            ),
+            "{production:?}"
+        );
+        assert!(matches!(development, Ok(true)), "{development:?}");
+    }
+
+    #[test]
+    fn a_bot_check_in_one_config_does_not_excuse_open_signup_without_one_in_another() {
+        let with_check = check_open_signup_bot_check(true, true, true);
+        let without_check = check_open_signup_bot_check(true, true, false);
+        assert!(matches!(with_check, Ok(false)), "{with_check:?}");
+        assert!(without_check.is_err(), "{without_check:?}");
+    }
+
+    #[test]
     fn closed_signup_needs_no_bot_check_in_either_config() {
         for production in [true, false] {
             assert!(matches!(
