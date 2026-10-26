@@ -88,7 +88,48 @@ fn bundle(name: &str) -> WorkspaceImport {
     }
 }
 
+/// Run on both backends: a holder from another workspace is refused whether
+/// the bundle names that member directly or carries its own member row that
+/// claims to belong to the other workspace.
+async fn foreign_holders(store: &dyn Store) {
+    let a = bundle("a2");
+    store
+        .import_workspace(&a, WorkspaceOrigin::Operator)
+        .await
+        .unwrap();
+
+    let mut named = bundle("named");
+    named.threads[0].assignee_id = Some(a.members[0].id);
+    assert!(store
+        .import_workspace(&named, WorkspaceOrigin::Operator)
+        .await
+        .is_err());
+
+    let mut smuggled = bundle("smuggled");
+    let planted = member(a.workspace.id, "planted");
+    smuggled.threads[0].assignee_id = Some(planted.id);
+    smuggled.members.push(planted.clone());
+    assert!(store
+        .import_workspace(&smuggled, WorkspaceOrigin::Operator)
+        .await
+        .is_err());
+
+    for w in [&named, &smuggled] {
+        assert!(store
+            .list_thread_workers(w.threads[0].id)
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(store.get_workspace(w.workspace.id).await.is_err());
+    }
+    assert!(!store
+        .has_worked_thread(smuggled.threads[0].id, planted.id)
+        .await
+        .unwrap());
+}
+
 async fn suite(store: &dyn Store) {
+    foreign_holders(store).await;
     let a = bundle("a");
     let b = bundle("b");
     for w in [&a, &b] {
