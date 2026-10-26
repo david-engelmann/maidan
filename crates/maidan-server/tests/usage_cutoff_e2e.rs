@@ -548,3 +548,146 @@ async fn a_cut_off_tenant_cannot_import_into_or_restore_over_another_that_still_
         WorkspaceOrigin::Open
     );
 }
+
+/// Past its stored-bytes allowance an open workspace's upload is refused
+/// before the bytes are written, over REST, a thread context snapshot and
+/// MCP alike. And when the cutoff lands between the put and the row, the
+/// refused bytes are reaped, unless another workspace already holds them.
+#[tokio::test]
+async fn a_refused_upload_leaves_no_bytes_behind_over_rest_or_mcp() {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use bytes::Bytes;
+    use maidan_artifacts::Sha256;
+
+    let mut state: Option<AppState> = None;
+    let h = spawn_with(|s| {
+        s.usage_allowance = std::sync::Arc::new(UsageAllowance::parse("stored_bytes=10").unwrap());
+        state = Some(s.clone());
+    })
+    .await;
+    let state = state.unwrap();
+    let store = h.store.as_ref();
+    let (open, open_admin) = signed_up(store, "ada", true).await;
+    let (other, other_admin) = signed_up(store, "bea", true).await;
+    let caps = vec![
+        capability::WORKSPACE_READ.to_string(),
+        capability::ARTIFACT_UPLOAD.to_string(),
+    ];
+    let bearer = token(store, open, open_admin, caps.clone()).await;
+    let other_bearer = token(store, other, other_admin, caps).await;
+    let thread = a_thread(store, open).await;
+    state
+        .usage_meters
+        .set_cut_off([(open, UsageMeter::StoredBytes)]);
+
+    // Pre-check: REST upload, thread snapshot, MCP upload.
+    let rest_bytes: &'static [u8] = b"rest bytes past the cutoff";
+    let res = h
+        .client
+        .post(h.url("/artifacts?kind=attachment"))
+        .bearer_auth(&bearer)
+        .body(rest_bytes)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(!state
+        .artifacts
+        .exists(&Sha256::compute(rest_bytes))
+        .await
+        .unwrap());
+
+    let res = h
+        .send(
+            Method::POST,
+            &format!("/threads/{}/context/snapshot", thread.0),
+            &bearer,
+            Some(serde_json::json!({})),
+        )
+        .await;
+    assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM maidan_artifacts")
+        .fetch_one(&h.pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0, "nothing was stored for the refused uploads");
+
+    let mcp_bytes = b"mcp bytes past the cutoff";
+    let said: Value = h
+        .client
+        .post(h.url("/mcp"))
+        .bearer_auth(&bearer)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "upload_artifact",
+                "arguments": {"kind": "attachment", "content_base64": STANDARD.encode(mcp_bytes)}
+            }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        said.to_string().contains("free allowance for stored_bytes"),
+        "{said}"
+    );
+    assert!(!state
+        .artifacts
+        .exists(&Sha256::compute(mcp_bytes))
+        .await
+        .unwrap());
+
+    // Race: the bytes were put, then the cutoff landed before the row.
+    let auth = |ws, m| maidan_auth::AuthContext::from_session(m, ws, vec![]);
+    let new = |sha: &Sha256, m| NewArtifact {
+        sha256: sha.to_string(),
+        size_bytes: 8,
+        mime_type: None,
+        filename: None,
+        kind: ArtifactKind::Attachment,
+        uploaded_by: Some(m),
+    };
+    let raced = state
+        .artifacts
+        .put(Bytes::from_static(b"raced in"))
+        .await
+        .unwrap();
+    let refused = maidan_server::routes::upsert_uploaded_artifact(
+        &state,
+        &auth(open, open_admin),
+        new(&raced, open_admin),
+    )
+    .await;
+    assert!(refused.is_err());
+    assert!(!state.artifacts.exists(&raced).await.unwrap());
+
+    // Same race, but another workspace already holds these bytes: they stay.
+    let shared: &'static [u8] = b"held by bea";
+    let res = h
+        .client
+        .post(h.url("/artifacts?kind=attachment"))
+        .bearer_auth(&other_bearer)
+        .body(shared)
+        .send()
+        .await
+        .unwrap();
+    assert!(res.status().is_success(), "{}", res.status());
+    let shared_sha = state
+        .artifacts
+        .put(Bytes::from_static(shared))
+        .await
+        .unwrap();
+    let refused = maidan_server::routes::upsert_uploaded_artifact(
+        &state,
+        &auth(open, open_admin),
+        new(&shared_sha, open_admin),
+    )
+    .await;
+    assert!(refused.is_err());
+    assert!(state.artifacts.exists(&shared_sha).await.unwrap());
+}

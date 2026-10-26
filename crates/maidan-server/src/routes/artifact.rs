@@ -43,6 +43,7 @@ pub async fn begin_multipart_artifact(
     Extension(auth): Extension<AuthContext>,
 ) -> ApiResult<(StatusCode, Json<MultipartUploadResponse>)> {
     cap(&auth, ARTIFACT_UPLOAD)?;
+    super::refuse_stored_bytes(&state, &auth)?;
     let upload = s3_artifacts(&state.artifacts)?
         .begin_multipart_upload()
         .await?;
@@ -66,6 +67,7 @@ pub async fn upload_multipart_artifact_part(
     if body.is_empty() {
         return Err(ApiError::BadRequest("empty part body".into()));
     }
+    super::refuse_stored_bytes(&state, &auth)?;
     let upload = multipart_upload(&upload_id, &q.object_key);
     let etag = s3_artifacts(&state.artifacts)?
         .upload_part(&upload, part_number, body)
@@ -90,6 +92,16 @@ pub async fn complete_multipart_artifact(
             etag: p.etag,
         })
         .collect();
+    // Cut off before completing: drop the parts, so a refusal stores nothing.
+    if let Err(refused) = super::refuse_stored_bytes(&state, &auth) {
+        if let Err(err) = s3_artifacts(&state.artifacts)?
+            .abort_multipart_upload(&upload)
+            .await
+        {
+            tracing::warn!(error = %err, "artifact.refused_parts_not_aborted");
+        }
+        return Err(refused);
+    }
     let sha = s3_artifacts(&state.artifacts)?
         .complete_multipart_upload(&upload, &parts)
         .await?;
@@ -109,22 +121,21 @@ pub async fn complete_multipart_artifact(
         return Err(refused);
     }
     // Upsert + the per-workspace ref + the ArtifactUpserted event commit
-    // atomically (ref only for a non-bypass caller, as before).
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
-    let (artifact, stored) = state
-        .store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes: bytes.len() as i64,
-                mime_type: body.mime_type,
-                filename,
-                kind: body.kind,
-                uploaded_by: (!auth.bypass).then_some(auth.member_id),
-            },
-            ref_workspace,
-        )
-        .await?;
+    // atomically (ref only for a non-bypass caller). A cutoff that lands
+    // after the pre-check is refused here and the bytes are reaped.
+    let (artifact, stored) = super::upsert_uploaded_artifact(
+        &state,
+        &auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: bytes.len() as i64,
+            mime_type: body.mime_type,
+            filename,
+            kind: body.kind,
+            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, bytes).await?;
     super::publish_stored(&state, stored).await;
@@ -155,7 +166,9 @@ pub async fn upload_artifact(
         return Err(ApiError::BadRequest("empty artifact body".into()));
     }
     let filename = upload_filename(q.filename)?;
-    // Refused before the bytes are written, so a refusal stores nothing.
+    // Refused before the bytes are written, so a refusal stores nothing: the
+    // stored-bytes cutoff and the media quota are both checked first.
+    super::refuse_stored_bytes(&state, &auth)?;
     let upload_sha = Sha256::compute(&body);
     ensure_media_quota(
         &state,
@@ -166,24 +179,22 @@ pub async fn upload_artifact(
     )
     .await?;
     let sha = state.artifacts.put(body.clone()).await?;
-    // Upsert + the per-workspace ref (so only the uploader's workspace can
-    // fetch the deduped blob) + the ArtifactUpserted event commit atomically;
-    // the ref is recorded only for a non-bypass caller.
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
-    let (artifact, stored) = state
-        .store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes: body.len() as i64,
-                mime_type: q.mime_type,
-                filename,
-                kind: q.kind,
-                uploaded_by: (!auth.bypass).then_some(auth.member_id),
-            },
-            ref_workspace,
-        )
-        .await?;
+    // Upsert + the per-workspace ref + the ArtifactUpserted event commit
+    // atomically (ref only for a non-bypass caller). A cutoff that lands
+    // after the pre-check is refused here and the bytes are reaped.
+    let (artifact, stored) = super::upsert_uploaded_artifact(
+        &state,
+        &auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: body.len() as i64,
+            mime_type: q.mime_type,
+            filename,
+            kind: q.kind,
+            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, body).await?;
     super::publish_stored(&state, stored).await;

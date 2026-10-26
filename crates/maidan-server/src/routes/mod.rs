@@ -122,6 +122,49 @@ pub(crate) async fn reap_orphaned_blobs(
     }
 }
 
+/// 429 `over_allowance` when the caller's workspace is cut off on
+/// `stored_bytes`. Upload paths call this before any bytes are written, so a
+/// refused upload stores nothing. An unscoped (bypass) upload is not metered.
+pub(crate) fn refuse_stored_bytes(state: &AppState, auth: &AuthContext) -> ApiResult<()> {
+    if auth.bypass {
+        return Ok(());
+    }
+    state
+        .usage_meters
+        .refuse(auth.workspace_id, UsageMeter::StoredBytes)
+        .map_err(ApiError::from)
+}
+
+/// The artifact upsert every upload path ends in. When the store refuses it
+/// with `OverAllowance` (the workspace was cut off after the pre-check, before
+/// the row), the bytes just put go too, unless an artifact row, in any
+/// workspace, already holds that sha.
+pub async fn upsert_uploaded_artifact(
+    state: &AppState,
+    auth: &AuthContext,
+    new: NewArtifact,
+) -> ApiResult<(Artifact, StoredEvent)> {
+    let sha_hex = new.sha256.clone();
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    match state
+        .store
+        .upsert_artifact_with_event(new, ref_workspace)
+        .await
+    {
+        Err(refused @ maidan_store::StoreError::OverAllowance(_)) => {
+            reap_orphaned_blobs(
+                state.store.as_ref(),
+                &state.artifacts,
+                auth.workspace_id,
+                &[sha_hex],
+            )
+            .await;
+            Err(refused.into())
+        }
+        other => Ok(other?),
+    }
+}
+
 /// The delete a reap runs for `sha_hex`'s bytes; `None` for a string that is
 /// not a sha. Bytes already gone count as deleted.
 pub(crate) fn blob_delete(

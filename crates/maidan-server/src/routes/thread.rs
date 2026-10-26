@@ -15,7 +15,7 @@ use serde_json::json;
 
 use super::{
     cap, clamp_context_transition_limit, ensure_workspace, observe_spawn_denial, publish_stored,
-    requested_member, ApiResult,
+    refuse_stored_bytes, requested_member, upsert_uploaded_artifact, ApiResult,
 };
 use crate::dto::*;
 use crate::error::ApiError;
@@ -347,26 +347,26 @@ pub async fn snapshot_thread_context(
         .map_err(|e| ApiError::Internal(format!("serialize context snapshot: {e}")))?
         .into();
     let size_bytes = body.len() as i64;
+    // Refused before the bytes are written, so a refusal stores nothing.
+    refuse_stored_bytes(&state, &auth)?;
     let sha = state.artifacts.put(body.clone()).await?;
     // Same atomic upsert + per-workspace ref + `ArtifactUpserted` event as a
     // normal upload; the ref/uploader are recorded only for a non-bypass
     // caller.
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
     let uploaded_by = (!auth.bypass).then_some(auth.member_id);
-    let (artifact, stored) = state
-        .store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes,
-                mime_type: Some("application/json".to_string()),
-                filename: None,
-                kind: ArtifactKind::ContextSnapshot,
-                uploaded_by,
-            },
-            ref_workspace,
-        )
-        .await?;
+    let (artifact, stored) = upsert_uploaded_artifact(
+        &state,
+        &auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes,
+            mime_type: Some("application/json".to_string()),
+            filename: None,
+            kind: ArtifactKind::ContextSnapshot,
+            uploaded_by,
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(state.artifacts.as_ref(), &sha, body).await?;
     publish_stored(&state, stored).await;
