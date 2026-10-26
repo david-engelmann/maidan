@@ -269,3 +269,78 @@ async fn another_workspace_cannot_revoke_a_subscription_and_its_owner_still_can_
     };
     another_workspace_cannot_revoke_a_subscription_and_its_owner_still_can(&h).await;
 }
+
+/// Status and body for `resp`, so two answers can be compared whole.
+async fn answer(resp: reqwest::Response) -> (reqwest::StatusCode, String) {
+    let status = resp.status();
+    (status, resp.text().await.unwrap_or_default())
+}
+
+async fn another_workspaces_ids_answer_exactly_like_ids_that_do_not_exist(h: &Harness) {
+    let store = h.store.as_ref();
+    let (a, _) = tenant(store, "alpha").await;
+    let (b, b_token) = tenant(store, "bravo").await;
+    let a_sub = subscription(store, a).await;
+    let a_delivery = dead_delivery(store, a_sub).await;
+    let unknown_delivery = a_delivery + 10_000;
+    let unknown_sub = WebhookSubscriptionId(uuid::Uuid::new_v4());
+
+    assert_eq!(
+        answer(h.replay(&b_token, b, a_delivery).await).await,
+        answer(h.replay(&b_token, b, unknown_delivery).await).await,
+        "replaying another workspace's delivery reads like a missing one"
+    );
+    assert_eq!(
+        answer(h.revoke(&b_token, b, a_sub).await).await,
+        answer(h.revoke(&b_token, b, unknown_sub).await).await,
+        "revoking another workspace's webhook reads like a missing one"
+    );
+    let get = |id: i64| {
+        h.client
+            .get(format!("{}/workspaces/{}/deliveries/{id}", h.base, b.0))
+            .query(&[("kind", "webhook")])
+            .bearer_auth(&b_token)
+            .send()
+    };
+    let theirs = answer(get(a_delivery).await.unwrap()).await;
+    let missing = answer(get(unknown_delivery).await.unwrap()).await;
+    assert_eq!(
+        theirs, missing,
+        "reading another workspace's delivery reads like a missing one"
+    );
+    assert!(!theirs.0.is_success());
+
+    // B's token on A's path is refused before any store lookup.
+    let resp = h.replay(&b_token, a, a_delivery).await;
+    assert!(
+        resp.status() == reqwest::StatusCode::FORBIDDEN
+            || resp.status() == reqwest::StatusCode::NOT_FOUND
+    );
+    let resp = h.revoke(&b_token, a, a_sub).await;
+    assert!(
+        resp.status() == reqwest::StatusCode::FORBIDDEN
+            || resp.status() == reqwest::StatusCode::NOT_FOUND
+    );
+
+    let row = store.get_webhook_delivery(a_delivery, a).await.unwrap();
+    assert!(row.quarantined_at.is_some(), "A's delivery is untouched");
+    assert_eq!(row.attempts, 2);
+    let live = store.list_webhook_subscriptions(a).await.unwrap();
+    assert!(
+        live.iter().any(|s| s.id == a_sub && s.enabled),
+        "A's webhook is untouched"
+    );
+}
+
+#[tokio::test]
+async fn another_workspaces_ids_answer_exactly_like_ids_that_do_not_exist_on_sqlite() {
+    another_workspaces_ids_answer_exactly_like_ids_that_do_not_exist(&sqlite_harness().await).await;
+}
+
+#[tokio::test]
+async fn another_workspaces_ids_answer_exactly_like_ids_that_do_not_exist_on_postgres() {
+    let Some((_pg, h)) = postgres_harness().await else {
+        return;
+    };
+    another_workspaces_ids_answer_exactly_like_ids_that_do_not_exist(&h).await;
+}
