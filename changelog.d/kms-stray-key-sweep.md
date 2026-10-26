@@ -1,0 +1,3 @@
+### Stray KMS keys are swept, and undestroyable retired keys are counted
+
+- **Fixed:** a KMS key created for a wrap whose transaction rolled back, failed to commit or lost a race no longer bills forever (#1545). With `MAIDAN_KMS_INSTANCE` set, `aws-kms` tags each new key with the instance as well as the workspace key id, and an hourly sweep schedules deletion of this instance's enabled keys older than a day that no workspace key row refers to. Keys without the instance tag, and every key when the variable is unset, are left alone. `maidan_custody_stray_keys_destroyed_total` and `maidan_custody_stray_keys_failed` report the sweep, and `maidan_workspace_keys_undestroyed` counts retired workspace keys whose KMS key keeps refusing to be destroyed.

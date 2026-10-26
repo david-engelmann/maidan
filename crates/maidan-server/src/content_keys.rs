@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use std::future::Future;
 
-use maidan_store::{RewrapPass, Store, StoreError};
+use maidan_store::{RewrapPass, Store, StoreError, StraySweep};
 
 /// Rows per transaction in each [`spawn_rewrap`] pass.
 const REWRAP_BATCH: i64 = 500;
@@ -78,6 +78,8 @@ where
                 Ok(pass) => {
                     total += pass.changed;
                     metrics::gauge!("maidan_content_keys_refused").set(pass.skipped as f64);
+                    metrics::gauge!("maidan_workspace_keys_undestroyed")
+                        .set(pass.undestroyed as f64);
                     if pass.changed > 0 {
                         delay = retry;
                         continue;
@@ -105,6 +107,44 @@ where
             delay = back_off(delay);
         }
         tracing::info!(total, "content keys: rewrap complete");
+    }
+}
+
+/// How often [`spawn_stray_sweep`] looks for stray custody keys.
+pub const STRAY_SWEEP_EVERY: Duration = Duration::from_secs(3600);
+/// How old a custody key must be before the sweep may destroy it: far longer
+/// than any transaction that stores the row a wrap was made for.
+pub const STRAY_GRACE: Duration = Duration::from_secs(24 * 3600);
+
+/// Destroy, every `every`, custody keys older than `grace` that no workspace
+/// key row refers to (see [`Store::sweep_stray_custody_keys`]).
+pub fn spawn_stray_sweep(
+    store: Arc<dyn Store>,
+    every: Duration,
+    grace: Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(every).await;
+            record_stray_sweep(store.sweep_stray_custody_keys(grace).await);
+        }
+    })
+}
+
+fn record_stray_sweep(sweep: Result<StraySweep, StoreError>) {
+    match sweep {
+        Ok(sweep) => {
+            metrics::counter!("maidan_custody_stray_keys_destroyed_total")
+                .increment(sweep.destroyed);
+            metrics::gauge!("maidan_custody_stray_keys_failed").set(sweep.failed as f64);
+            if sweep.destroyed > 0 {
+                tracing::info!(
+                    destroyed = sweep.destroyed,
+                    "content keys: destroyed custody keys no row refers to"
+                );
+            }
+        }
+        Err(err) => tracing::warn!(error = %err, "content keys: stray custody key sweep failed"),
     }
 }
 
@@ -170,7 +210,11 @@ mod tests {
     }
 
     fn pass(changed: u64, skipped: u64) -> Result<RewrapPass, ()> {
-        Ok(RewrapPass { changed, skipped })
+        Ok(RewrapPass {
+            changed,
+            skipped,
+            undestroyed: 0,
+        })
     }
 
     #[test]

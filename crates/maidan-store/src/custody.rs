@@ -15,8 +15,9 @@ use std::sync::RwLock;
 use aws_sdk_kms::error::ProvideErrorMetadata;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::Tag;
+use chrono::{DateTime, Utc};
 use maidan_types::{
-    ContentKey, CustodyFuture, LocalCustody, SealError, WorkspaceKeyCustody, WrappedKey,
+    ContentKey, CustodyFuture, CustodyKey, LocalCustody, SealError, WorkspaceKeyCustody, WrappedKey,
 };
 use uuid::Uuid;
 
@@ -32,23 +33,33 @@ const CONTEXT_KEY: &str = "maidan_workspace_key";
 /// The shortest waiting period AWS KMS allows before it deletes a key. The
 /// key is disabled at once, so nothing decrypts with it in the meantime.
 const DELETION_WINDOW_DAYS: i32 = 7;
+/// The KMS key tag naming the Maidan instance that created a key, so the
+/// stray-key sweep only ever lists its own instance's keys in a shared
+/// account.
+const INSTANCE_TAG: &str = "maidan_instance";
 
 /// Workspace keys each wrapped by a KMS key of their own, created on first
 /// wrap with `CreateKey` and tagged with the workspace key id, then used
 /// through `Encrypt`/`Decrypt` with that id as encryption context.
 /// Destroying one disables its KMS key and schedules its deletion.
+///
+/// With an instance name, each key is also tagged with it, and
+/// [`WorkspaceKeyCustody::held_keys`] lists the keys carrying both tags.
+/// Without one, keys are not tagged with an instance and nothing is listed,
+/// so the stray-key sweep never touches a key it cannot prove is its own.
 pub struct AwsKmsCustody {
     client: aws_sdk_kms::Client,
+    instance: Option<String>,
 }
 
 impl AwsKmsCustody {
-    pub fn new(client: aws_sdk_kms::Client) -> Self {
-        Self { client }
+    pub fn new(client: aws_sdk_kms::Client, instance: Option<String>) -> Self {
+        Self { client, instance }
     }
 
     /// A client from the default AWS configuration chain (region,
     /// credentials, endpoint override).
-    pub async fn from_default_config() -> Self {
+    pub async fn from_default_config(instance: Option<String>) -> Self {
         use aws_smithy_http_client::tls;
         let https = aws_smithy_http_client::Builder::new()
             .tls_provider(tls::Provider::Rustls(
@@ -59,7 +70,56 @@ impl AwsKmsCustody {
             .http_client(https)
             .load()
             .await;
-        Self::new(aws_sdk_kms::Client::new(&shared))
+        Self::new(aws_sdk_kms::Client::new(&shared), instance)
+    }
+
+    /// The listed key, when it is one of this instance's enabled workspace
+    /// keys created before `created_before`. A key this role may not read
+    /// the tags of belongs to someone else: skipped, not an error.
+    async fn own_key(
+        &self,
+        instance: &str,
+        key_id: &str,
+        created_before: DateTime<Utc>,
+    ) -> Result<Option<CustodyKey>, SealError> {
+        let tags = match self.client.list_resource_tags().key_id(key_id).send().await {
+            Ok(out) => out.tags.unwrap_or_default(),
+            Err(err) if kms_error_kind(err.code()) == SealError::Refused => return Ok(None),
+            Err(err) => return Err(Self::kms_error("ListResourceTags", err)),
+        };
+        let tag = |name: &str| {
+            tags.iter()
+                .find(|t| t.tag_key() == name)
+                .map(|t| t.tag_value().to_string())
+        };
+        if tag(INSTANCE_TAG).as_deref() != Some(instance) {
+            return Ok(None);
+        }
+        let Some(workspace_key_id) = tag(CONTEXT_KEY).and_then(|v| v.parse::<Uuid>().ok()) else {
+            return Ok(None);
+        };
+        let described = self
+            .client
+            .describe_key()
+            .key_id(key_id)
+            .send()
+            .await
+            .map_err(|err| Self::kms_error("DescribeKey", err))?;
+        let Some(meta) = described.key_metadata else {
+            return Ok(None);
+        };
+        let enabled = meta.key_state == Some(aws_sdk_kms::types::KeyState::Enabled);
+        let old_enough = meta
+            .creation_date
+            .is_some_and(|created| created.secs() < created_before.timestamp());
+        if !(enabled && old_enough) {
+            return Ok(None);
+        }
+        let arn = meta.arn.unwrap_or(meta.key_id);
+        Ok(Some(CustodyKey {
+            workspace_key_id,
+            wrapping_key_id: format!("{AWS_KMS_PREFIX}{arn}"),
+        }))
     }
 
     fn kms_error(op: &str, err: impl fmt::Display + ProvideErrorMetadata) -> SealError {
@@ -122,11 +182,21 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
                 .tag_value(workspace_key_id.to_string())
                 .build()
                 .map_err(|_| SealError::Malformed)?;
-            let created = self
+            let mut create = self
                 .client
                 .create_key()
                 .description(format!("Maidan workspace key {workspace_key_id}"))
-                .tags(tag)
+                .tags(tag);
+            if let Some(instance) = &self.instance {
+                create = create.tags(
+                    Tag::builder()
+                        .tag_key(INSTANCE_TAG)
+                        .tag_value(instance)
+                        .build()
+                        .map_err(|_| SealError::Malformed)?,
+                );
+            }
+            let created = create
                 .send()
                 .await
                 .map_err(|err| Self::kms_error("CreateKey", err))?;
@@ -238,6 +308,41 @@ impl WorkspaceKeyCustody for AwsKmsCustody {
             Ok(())
         })
     }
+
+    fn held_keys<'a>(
+        &'a self,
+        created_before: DateTime<Utc>,
+    ) -> CustodyFuture<'a, Vec<CustodyKey>> {
+        Box::pin(async move {
+            let Some(instance) = self.instance.as_deref() else {
+                return Ok(Vec::new());
+            };
+            let mut held = Vec::new();
+            let mut marker: Option<String> = None;
+            loop {
+                let page = self
+                    .client
+                    .list_keys()
+                    .set_marker(marker.take())
+                    .send()
+                    .await
+                    .map_err(|err| Self::kms_error("ListKeys", err))?;
+                for entry in page.keys() {
+                    let Some(key_id) = entry.key_id() else {
+                        continue;
+                    };
+                    if let Some(key) = self.own_key(instance, key_id, created_before).await? {
+                        held.push(key);
+                    }
+                }
+                match (page.truncated, page.next_marker) {
+                    (true, Some(next)) => marker = Some(next),
+                    _ => break,
+                }
+            }
+            Ok(held)
+        })
+    }
 }
 
 impl fmt::Debug for AwsKmsCustody {
@@ -253,6 +358,7 @@ impl fmt::Debug for AwsKmsCustody {
 pub struct FakeKmsCustody {
     name: String,
     keys: RwLock<HashMap<Uuid, LocalCustody>>,
+    created: RwLock<HashMap<Uuid, DateTime<Utc>>>,
     refused: RwLock<HashSet<Uuid>>,
     unavailable: RwLock<HashMap<Uuid, usize>>,
     unwraps: std::sync::atomic::AtomicUsize,
@@ -263,6 +369,7 @@ impl FakeKmsCustody {
         Self {
             name: name.to_string(),
             keys: RwLock::default(),
+            created: RwLock::default(),
             refused: RwLock::default(),
             unavailable: RwLock::default(),
             unwraps: std::sync::atomic::AtomicUsize::new(0),
@@ -331,6 +438,10 @@ impl FakeKmsCustody {
             .write()
             .map_err(|_| SealError::Authentication)?
             .insert(workspace_key_id, own);
+        self.created
+            .write()
+            .map_err(|_| SealError::Authentication)?
+            .insert(workspace_key_id, Utc::now());
         Ok(WrappedKey {
             kek_id: self.wrapping_id(workspace_key_id),
             blob: sealed.blob,
@@ -367,7 +478,23 @@ impl FakeKmsCustody {
             .write()
             .map_err(|_| SealError::Authentication)?
             .remove(&workspace_key_id);
+        self.created
+            .write()
+            .map_err(|_| SealError::Authentication)?
+            .remove(&workspace_key_id);
         Ok(())
+    }
+
+    fn held_now(&self, created_before: DateTime<Utc>) -> Result<Vec<CustodyKey>, SealError> {
+        let created = self.created.read().map_err(|_| SealError::Unavailable)?;
+        Ok(created
+            .iter()
+            .filter(|(_, at)| **at < created_before)
+            .map(|(id, _)| CustodyKey {
+                workspace_key_id: *id,
+                wrapping_key_id: self.wrapping_id(*id),
+            })
+            .collect())
     }
 }
 
@@ -424,6 +551,17 @@ impl WorkspaceKeyCustody for FakeKmsCustody {
             result
         })
     }
+
+    fn held_keys<'a>(
+        &'a self,
+        created_before: DateTime<Utc>,
+    ) -> CustodyFuture<'a, Vec<CustodyKey>> {
+        let result = self.held_now(created_before);
+        Box::pin(async move {
+            tokio::task::yield_now().await;
+            result
+        })
+    }
 }
 
 impl fmt::Debug for FakeKmsCustody {
@@ -475,6 +613,25 @@ mod tests {
             Err(SealError::Unavailable)
         );
         assert!(kms.unwrap(mine, &wrapped).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_fake_custody_lists_the_keys_it_holds_created_before_the_cutoff() {
+        let kms = FakeKmsCustody::new("t");
+        let (kept, gone) = (Uuid::now_v7(), Uuid::now_v7());
+        kms.wrap(kept, &ContentKey::generate()).await.unwrap();
+        let wrapped = kms.wrap(gone, &ContentKey::generate()).await.unwrap();
+        kms.destroy(gone, &wrapped).await.unwrap();
+        let later = Utc::now() + chrono::Duration::seconds(1);
+        assert_eq!(
+            kms.held_keys(later).await.unwrap(),
+            vec![CustodyKey {
+                workspace_key_id: kept,
+                wrapping_key_id: format!("fake-kms:t:{kept}"),
+            }]
+        );
+        let earlier = Utc::now() - chrono::Duration::hours(1);
+        assert!(kms.held_keys(earlier).await.unwrap().is_empty());
     }
 
     #[test]

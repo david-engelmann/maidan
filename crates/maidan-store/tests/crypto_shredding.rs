@@ -1750,6 +1750,165 @@ async fn a_queued_sha_another_workspace_now_holds_is_dropped_not_deleted(db: Db)
     ));
 }
 
+/// A grace period of nothing, after a tick, so every key the test wrapped is
+/// older than the cutoff the store takes from its own clock.
+async fn no_grace() -> std::time::Duration {
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    std::time::Duration::ZERO
+}
+
+/// A KMS key whose wrap never reached a stored row (a rolled-back
+/// transaction) is destroyed by the sweep once past the grace period, while
+/// every key a row refers to, live or retired, stays.
+async fn the_sweep_destroys_only_custody_keys_no_row_refers_to(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray"));
+    let store = db.store(kms_keys(1, &kms));
+    let room = room(store.as_ref(), "stray").await;
+    let (_, posted) = post(store.as_ref(), &room, WORDS).await;
+    let (retired, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    store.rotate_workspace_key(room.ws.id).await.unwrap();
+    let (live, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    let stray = Uuid::now_v7();
+    kms.wrap(stray, &ContentKey::generate()).await.unwrap();
+
+    let in_grace = std::time::Duration::from_secs(3600);
+    assert_eq!(
+        store.sweep_stray_custody_keys(in_grace).await.unwrap(),
+        StraySweep::default(),
+        "a key younger than the grace period may still be mid-wrap"
+    );
+    assert!(kms.holds(stray));
+
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(
+        swept,
+        StraySweep {
+            destroyed: 1,
+            failed: 0
+        }
+    );
+    assert!(!kms.holds(stray), "the stray key is destroyed");
+    assert!(kms.holds(live) && kms.holds(retired), "row keys stay");
+    assert_eq!(body_of(store.as_ref(), posted.id).await, WORDS);
+}
+
+/// A stray key the KMS refuses to destroy is counted, not fatal, and goes on
+/// the next sweep once the KMS allows it.
+async fn a_refused_stray_destroy_is_counted_and_retried(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray-refused"));
+    let store = db.store(kms_keys(1, &kms));
+    let (first, second) = (Uuid::now_v7(), Uuid::now_v7());
+    kms.wrap(first, &ContentKey::generate()).await.unwrap();
+    kms.wrap(second, &ContentKey::generate()).await.unwrap();
+    kms.refuse(first);
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(
+        swept,
+        StraySweep {
+            destroyed: 1,
+            failed: 1
+        }
+    );
+    assert!(kms.holds(first) && !kms.holds(second));
+    kms.allow(first);
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(
+        swept,
+        StraySweep {
+            destroyed: 1,
+            failed: 0
+        }
+    );
+    assert!(!kms.holds(first));
+}
+
+/// Every workspace's keys, live and retired, survive a sweep with no grace
+/// at all: a row in any workspace keeps its custody key.
+async fn the_sweep_spares_keys_rows_in_any_workspace_refer_to(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray-tenants"));
+    let store = db.store(kms_keys(1, &kms));
+    let mut held = Vec::new();
+    for name in ["stray-a", "stray-b", "stray-c"] {
+        let room = room(store.as_ref(), name).await;
+        post(store.as_ref(), &room, WORDS).await;
+        let (retired, _, _, _) = db.active_workspace_key(room.ws.id).await;
+        store.rotate_workspace_key(room.ws.id).await.unwrap();
+        let (live, _, _, _) = db.active_workspace_key(room.ws.id).await;
+        held.extend([retired, live]);
+    }
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(swept, StraySweep::default());
+    assert!(
+        held.iter().all(|key| kms.holds(*key)),
+        "no row key is swept"
+    );
+}
+
+/// The cutoff is the server's clock minus the grace period: a stray key one
+/// second old is kept under a one-minute grace, and an absurd grace that
+/// would run the cutoff off the calendar sweeps nothing.
+async fn the_grace_period_is_measured_on_the_servers_clock(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray-clock"));
+    let store = db.store(kms_keys(1, &kms));
+    let stray = Uuid::now_v7();
+    kms.wrap(stray, &ContentKey::generate()).await.unwrap();
+    let minute = std::time::Duration::from_secs(60);
+    assert_eq!(
+        store.sweep_stray_custody_keys(minute).await.unwrap(),
+        StraySweep::default()
+    );
+    assert_eq!(
+        store
+            .sweep_stray_custody_keys(std::time::Duration::MAX)
+            .await
+            .unwrap(),
+        StraySweep::default()
+    );
+    assert!(kms.holds(stray));
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(swept.destroyed, 1);
+    assert!(!kms.holds(stray));
+}
+
+/// A retired workspace key whose KMS key will not be destroyed is reported
+/// as undestroyed by every pass until the KMS lets it go.
+async fn a_retired_key_that_will_not_destroy_is_counted_as_undestroyed(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("undestroyed"));
+    let store = db.store(kms_keys(1, &kms));
+    let room = room(store.as_ref(), "undestroyed").await;
+    post(store.as_ref(), &room, WORDS).await;
+    let (old, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    store.rotate_workspace_key(room.ws.id).await.unwrap();
+    kms.refuse(old);
+    let mut last = RewrapPass::default();
+    for _ in 0..5 {
+        last = store.rewrap_content_keys(100).await.unwrap();
+    }
+    assert_eq!(last.undestroyed, 1);
+    kms.allow(old);
+    let mut last = RewrapPass::default();
+    for _ in 0..5 {
+        last = store.rewrap_content_keys(100).await.unwrap();
+    }
+    assert_eq!(last.undestroyed, 0);
+    assert!(!kms.holds(old));
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -1775,6 +1934,11 @@ macro_rules! on_both_backends {
 }
 
 on_both_backends!(
+    the_sweep_destroys_only_custody_keys_no_row_refers_to,
+    a_refused_stray_destroy_is_counted_and_retried,
+    a_retired_key_that_will_not_destroy_is_counted_as_undestroyed,
+    the_sweep_spares_keys_rows_in_any_workspace_refer_to,
+    the_grace_period_is_measured_on_the_servers_clock,
     each_workspace_seals_under_its_own_key,
     a_kms_refusing_one_tenant_blocks_only_that_tenant,
     moving_to_a_kms_rewraps_every_workspace_key,

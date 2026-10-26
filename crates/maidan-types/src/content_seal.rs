@@ -429,6 +429,25 @@ pub trait WorkspaceKeyCustody: Send + Sync {
         workspace_key_id: uuid::Uuid,
         wrapped: &'a WrappedKey,
     ) -> CustodyFuture<'a, ()>;
+    /// Keys this custody created for this instance before `created_before`
+    /// and has not destroyed, for the stray-key sweep: a key whose wrap never
+    /// reached a stored row protects nothing and only bills. A custody that
+    /// creates no keys of its own (the instance KEK) lists none.
+    fn held_keys<'a>(
+        &'a self,
+        _created_before: chrono::DateTime<chrono::Utc>,
+    ) -> CustodyFuture<'a, Vec<CustodyKey>> {
+        Box::pin(std::future::ready(Ok(Vec::new())))
+    }
+}
+
+/// A key a custody holds, as [`WorkspaceKeyCustody::held_keys`] lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CustodyKey {
+    /// The workspace key the custody created it for.
+    pub workspace_key_id: uuid::Uuid,
+    /// The wrapping key id a row wrapped by it would record.
+    pub wrapping_key_id: String,
 }
 
 /// Workspace keys wrapped by the instance KEKs: the primary wraps, the
@@ -795,6 +814,28 @@ impl ContentKeyring {
             .await?;
         self.forget_workspace_key(workspace_key_id);
         Ok(())
+    }
+
+    /// Keys the configured custody created before `created_before` and still
+    /// holds; see [`WorkspaceKeyCustody::held_keys`].
+    pub async fn custody_keys_before(
+        &self,
+        created_before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<CustodyKey>, SealError> {
+        self.custody.held_keys(created_before).await
+    }
+
+    /// Destroy a custody key no stored row refers to. The custody that owns
+    /// its wrapping key id destroys it; nothing in memory changes, since no
+    /// row ever opened it.
+    pub async fn destroy_stray_custody_key(&self, key: &CustodyKey) -> Result<(), SealError> {
+        let wrapped = WrappedKey {
+            kek_id: key.wrapping_key_id.clone(),
+            blob: Vec::new(),
+        };
+        self.owner(&wrapped.kek_id)?
+            .destroy(key.workspace_key_id, &wrapped)
+            .await
     }
 
     /// Drop an open workspace key from memory: its row was destroyed.

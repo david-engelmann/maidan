@@ -4031,6 +4031,13 @@ macro_rules! store_delegations {
                 content_keys::count_needing_rewrap(self.pool(), &self.keys).await
             }
 
+            async fn sweep_stray_custody_keys(
+                &self,
+                grace: std::time::Duration,
+            ) -> Result<crate::store::StraySweep, StoreError> {
+                content_keys::sweep_stray(self.pool(), &self.keys, grace).await
+            }
+
             async fn rotate_workspace_key(
                 &self,
                 workspace_id: WorkspaceId,

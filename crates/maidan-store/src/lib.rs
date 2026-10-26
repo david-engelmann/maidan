@@ -233,9 +233,9 @@ pub use store::{
     GlossaryStore, IdempotencyStore, IntegrityStore, MailStore, McpSubscriptionStore, MemberStore,
     MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore,
     PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
-    SessionStore, ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, TaskScheduleStore,
-    ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore, TokenStore,
-    UsageLedgerStore, WebhookStore, WorkspaceStore,
+    SessionStore, ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, StraySweep,
+    TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore,
+    TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
 };
 
 /// Everything a store caller usually wants in one import.

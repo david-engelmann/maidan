@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::content_keys::{open_joined, JoinedWorkspaceKey, KeyState, Sealing};
 use crate::error::StoreError;
-use crate::store::RewrapPass;
+use crate::store::{RewrapPass, StraySweep};
 
 /// The key row for `subject`, with the workspace key that wraps it. SQLite
 /// serializes writers, so the append's transaction already excludes a
@@ -417,6 +417,7 @@ pub async fn rewrap(
             {
                 tracing::warn!(workspace_key = %id, error = %err, "custody refused to destroy a retired workspace key; skipped");
                 pass.skipped += 1;
+                pass.undestroyed += 1;
                 continue;
             }
             let marked = sqlx::query(
@@ -461,4 +462,41 @@ pub async fn count_needing_rewrap(
     .fetch_one(pool)
     .await?;
     Ok(count as u64)
+}
+
+/// Destroy custody keys older than `grace` (by this server's clock) that no
+/// workspace key row in any workspace refers to; see [`crate::EventStore::sweep_stray_custody_keys`]. Each is
+/// checked and destroyed on its own, with no transaction held across the
+/// custody call, and a refusal is logged and counted, never fatal.
+pub async fn sweep_stray(
+    pool: &SqlitePool,
+    keys: &ContentKeyring,
+    grace: std::time::Duration,
+) -> Result<StraySweep, StoreError> {
+    let mut sweep = StraySweep::default();
+    let Some(created_before) = chrono::Duration::from_std(grace)
+        .ok()
+        .and_then(|grace| Utc::now().checked_sub_signed(grace))
+    else {
+        return Ok(sweep);
+    };
+    for key in keys.custody_keys_before(created_before).await? {
+        let referenced: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM maidan_workspace_keys WHERE wrapping_key_id = ?)",
+        )
+        .bind(&key.wrapping_key_id)
+        .fetch_one(pool)
+        .await?;
+        if referenced {
+            continue;
+        }
+        match keys.destroy_stray_custody_key(&key).await {
+            Ok(()) => sweep.destroyed += 1,
+            Err(err) => {
+                tracing::warn!(workspace_key = %key.workspace_key_id, error = %err, "custody refused to destroy a stray key; retrying next sweep");
+                sweep.failed += 1;
+            }
+        }
+    }
+    Ok(sweep)
 }
