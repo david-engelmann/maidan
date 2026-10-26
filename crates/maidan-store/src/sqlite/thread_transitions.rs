@@ -133,6 +133,66 @@ async fn result_gate_in_tx(
     Ok(())
 }
 
+/// Whether the thread holds an approval from an outside reviewer: a member of
+/// the thread's own workspace who is not the owner, never held the thread, and
+/// was not acting for anyone who did, bound to the current review packet; or a
+/// qualifying green land-gate pass from such a member. Only such an approval
+/// lets a past holder land owned work (#1569).
+async fn outside_approval_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+) -> Result<bool, StoreError> {
+    let row = sqlx::query(
+        "SELECT 1 AS hit FROM maidan_thread_reviews r
+           JOIN maidan_threads t ON t.id = r.thread_id
+           JOIN maidan_channels c ON c.id = t.channel_id
+           JOIN maidan_members m ON m.id = r.reviewer_id
+          WHERE r.thread_id = ? AND r.decision = 'approve' AND r.dismissed_at IS NULL
+            AND m.workspace_id = c.workspace_id
+            AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
+            AND NOT EXISTS (SELECT 1 FROM maidan_thread_workers w
+                            WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id)
+            AND (r.actor_id IS NULL OR (
+              (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
+              AND NOT EXISTS (SELECT 1 FROM maidan_thread_workers wa
+                              WHERE wa.thread_id = r.thread_id AND wa.member_id = r.actor_id)))
+            AND (
+              NOT EXISTS (SELECT 1 FROM maidan_review_packets p WHERE p.thread_id = r.thread_id)
+              OR r.evidence_root = (
+                SELECT p.evidence_root FROM maidan_review_packets p
+                WHERE p.thread_id = r.thread_id
+                ORDER BY p.created_at DESC, p.id DESC LIMIT 1))
+          LIMIT 1",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if row.is_some() {
+        return Ok(true);
+    }
+    // A qualifying green land-gate pass is the same outside verification:
+    // recorded by a skilled member who is neither the owner nor ever a holder.
+    let crate::attestation::GateReading::Recorded(pass) =
+        super::land_gate::read_in_tx(tx, thread_id).await?
+    else {
+        return Ok(false);
+    };
+    if !pass.qualifies() {
+        return Ok(false);
+    }
+    let same_workspace = sqlx::query(
+        "SELECT 1 AS hit FROM maidan_threads t
+           JOIN maidan_channels c ON c.id = t.channel_id
+           JOIN maidan_members m ON m.workspace_id = c.workspace_id
+          WHERE t.id = ? AND m.id = ?",
+    )
+    .bind(thread_id.0)
+    .bind(pass.recorded_by.0)
+    .fetch_optional(&mut **tx)
+    .await?;
+    Ok(same_workspace.is_some())
+}
+
 /// The FSM transition on a caller-supplied tx, without committing. Shared by
 /// `transition` (commit only) and `transition_with_event` (append the
 /// `ThreadStateChanged` event in the same tx, then commit).
@@ -170,11 +230,14 @@ pub(crate) async fn transition_in_tx(
     // the owner or another member. Un-owned threads are unrestricted, so this
     // is inert until an owner is set. The claimer is anyone who ever held the
     // thread, not only the live holder: a release or a reaped claim clears
-    // `assignee_id`, and the work is still theirs (#1569).
+    // `assignee_id`, and the work is still theirs (#1569). A past holder may
+    // still land it once an outside reviewer has approved: the rule stops a
+    // holder standing in for an independent review, not landing after one.
     if thread.owner_id.is_some()
         && to_state.is_terminal()
         && (thread.assignee_id == Some(actor_id)
-            || super::thread_workers::has_worked_in_tx(tx, thread_id, actor_id).await?)
+            || (super::thread_workers::has_worked_in_tx(tx, thread_id, actor_id).await?
+                && !outside_approval_in_tx(tx, thread_id).await?))
     {
         return Err(StoreError::Conflict(
             "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
