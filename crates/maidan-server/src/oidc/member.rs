@@ -63,7 +63,18 @@ pub async fn resolve_member_for_login(
     link_email: bool,
 ) -> Result<(MemberId, LoginMember), ApiError> {
     if let Ok(identity) = store.get_oidc_identity(workspace_id, issuer, subject).await {
-        return Ok((identity.member_id, LoginMember::Existing));
+        // The identity row outlives a removed member, so the member is checked
+        // again on every sign-in: a tombstoned or missing member is refused,
+        // never resolved and never replaced (#1626).
+        return match store.get_member(identity.member_id).await {
+            Ok(member) if member.workspace_id == workspace_id && member.tombstoned_at.is_none() => {
+                Ok((member.id, LoginMember::Existing))
+            }
+            Ok(_) | Err(maidan_store::StoreError::NotFound) => {
+                Err(ApiError::Forbidden(NOT_PROVISIONED.into()))
+            }
+            Err(err) => Err(err.into()),
+        };
     }
 
     if link_email
