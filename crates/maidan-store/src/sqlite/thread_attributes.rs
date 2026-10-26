@@ -135,13 +135,16 @@ pub async fn set_review_children(
     Ok(())
 }
 
-/// Whether `thread_id` is a review task, read in the caller's transaction.
+/// Whether `thread_id` is a review child opened through the review family,
+/// read in the caller's transaction. Only the server sets `review_family`, so
+/// a `kind = review` label alone, set at create or later, exempts nothing
+/// from the parent's ordering hold (#1556).
 pub(crate) async fn is_review_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     thread_id: ThreadId,
 ) -> Result<bool, StoreError> {
     Ok(sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = ? AND kind = 'review'",
+        "SELECT COUNT(*) FROM maidan_thread_attributes WHERE thread_id = ? AND kind = 'review' AND review_family IS NOT NULL",
     )
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
