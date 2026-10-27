@@ -202,8 +202,17 @@ pub async fn set_mention_webhook(
     ensure_workspace(&auth, workspace_id)?;
     let webhook_id = body.webhook_id.map(WebhookSubscriptionId);
     if let Some(id) = webhook_id {
-        let sub = state.store.get_webhook_subscription(id).await?;
-        if sub.subscription.workspace_id != workspace_id || sub.subscription.revoked_at.is_some() {
+        // A missing id, another workspace's id and a revoked id all get the
+        // same answer, so the reply can't tell whether an id exists elsewhere.
+        let usable = match state.store.get_webhook_subscription(id).await {
+            Ok(sub) => {
+                sub.subscription.workspace_id == workspace_id
+                    && sub.subscription.revoked_at.is_none()
+            }
+            Err(maidan_store::StoreError::NotFound) => false,
+            Err(e) => return Err(e.into()),
+        };
+        if !usable {
             return Err(ApiError::BadRequest(
                 "webhook must be an active subscription in this workspace".into(),
             ));
