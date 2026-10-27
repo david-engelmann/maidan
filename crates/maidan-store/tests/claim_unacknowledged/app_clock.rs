@@ -64,6 +64,27 @@ async fn run(store: Arc<dyn Store>) {
     );
 }
 
+/// Sets a thread's `assignment_expires_at` (per-backend raw SQL).
+type SetExpiry = Box<
+    dyn Fn(
+        maidan_types::ThreadId,
+        DateTime<Utc>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+>;
+
+/// The WIP gate's live-claim count reads the lease on the app clock, the
+/// complement of claim_next: a lease that lapsed a second ago is not live,
+/// one a minute out is (#1605, red-team on #1727).
+async fn run_live_claims(store: Arc<dyn Store>, set_expiry: SetExpiry) {
+    let (channel, holder) = super::setup(store.as_ref(), 1).await;
+    let thread = store.list_threads(channel).await.unwrap()[0].id;
+    assert!(store.claim_thread(thread, holder).await.unwrap().claimed);
+    set_expiry(thread, Utc::now() + TimeDelta::seconds(60)).await;
+    assert_eq!(store.count_live_claims(holder).await.unwrap(), 1);
+    set_expiry(thread, Utc::now() - TimeDelta::seconds(1)).await;
+    assert_eq!(store.count_live_claims(holder).await.unwrap(), 0);
+}
+
 #[tokio::test]
 async fn claim_writes_stamp_the_app_clock_on_sqlite() {
     let pool = SqlitePoolOptions::new()
@@ -72,7 +93,22 @@ async fn claim_writes_stamp_the_app_clock_on_sqlite() {
         .await
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
-    run(Arc::new(SqliteStore::for_tests(pool))).await;
+    run(Arc::new(SqliteStore::for_tests(pool.clone()))).await;
+    run_live_claims(
+        Arc::new(SqliteStore::for_tests(pool.clone())),
+        Box::new(move |thread, at| {
+            let pool = pool.clone();
+            Box::pin(async move {
+                sqlx::query("UPDATE maidan_threads SET assignment_expires_at = ? WHERE id = ?")
+                    .bind(at.to_rfc3339())
+                    .bind(thread.0)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            })
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -98,5 +134,20 @@ async fn claim_writes_stamp_the_app_clock_on_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    run(Arc::new(PostgresStore::for_tests(pool))).await;
+    run(Arc::new(PostgresStore::for_tests(pool.clone()))).await;
+    run_live_claims(
+        Arc::new(PostgresStore::for_tests(pool.clone())),
+        Box::new(move |thread, at| {
+            let pool = pool.clone();
+            Box::pin(async move {
+                sqlx::query("UPDATE maidan_threads SET assignment_expires_at = $1 WHERE id = $2")
+                    .bind(at)
+                    .bind(thread.0)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            })
+        }),
+    )
+    .await;
 }
