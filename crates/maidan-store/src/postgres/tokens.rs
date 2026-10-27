@@ -178,6 +178,11 @@ pub async fn get_active_by_hash(pool: &PgPool, token_hash: &str) -> Result<ApiTo
                SELECT 1 FROM maidan_delegation_grants g
                WHERE g.id = maidan_api_tokens.delegation_grant_id
                  AND g.revoked_at IS NULL AND g.expires_at > NOW()
+                 AND EXISTS (
+                   SELECT 1 FROM maidan_members d
+                   WHERE d.id = g.delegate_id AND d.workspace_id = g.workspace_id
+                     AND d.tombstoned_at IS NULL
+                 )
              )
            )
            AND (
