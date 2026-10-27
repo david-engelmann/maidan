@@ -8285,6 +8285,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_thread_result_refuses_a_waiter_envelope_with_no_result_kind_and_stores_nothing() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::{NewThread, WAITER_RESULT_SCHEMA};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let worker = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "worker".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+                description: None,
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, worker.id).await.unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            worker.id,
+            ws.id,
+            vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let lease = store.claim_lease_for(thread.id, worker.id).await.unwrap();
+        let args = |result: Value| json!({ "thread_id": thread.id.0, "claim_lease_id": lease.0, "result": result });
+
+        let err = server
+            .call_tool(
+                &auth,
+                "set_thread_result",
+                &args(
+                    json!({ "schema": WAITER_RESULT_SCHEMA, "status": "reviewed",
+                              "deliver_to": [{ "surface": "github", "repo": "o/r", "pr": 1 }] }),
+                ),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, McpError::InvalidParams(m) if m.contains("`result_kind`")),
+            "{err:?}"
+        );
+        assert!(
+            store.get_thread_result(thread.id).await.unwrap().is_none(),
+            "nothing stored"
+        );
+
+        server
+            .call_tool(
+                &auth,
+                "set_thread_result",
+                &args(json!({ "schema": WAITER_RESULT_SCHEMA, "result_kind": "k", "status": "reviewed" })),
+            )
+            .await
+            .unwrap();
+        assert!(store.get_thread_result(thread.id).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
     async fn critical_result_tool_blocks_close_until_a_human_approves() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::{
