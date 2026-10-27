@@ -164,7 +164,9 @@ Migration 0012 creates these tables in Postgres and SQLite:
 
 1. First login with `(iss, sub)` in workspace → attach to a pre-provisioned
    member if `MAIDAN_OIDC_LINK_EMAIL` is on and the member's handle equals the
-   whole verified `email`; otherwise, when auto-provisioning is enabled, create
+   whole verified `email` and the login's issuer is the configured
+   `MAIDAN_OIDC_ISSUER` (an email from any other issuer never links);
+   otherwise, when auto-provisioning is enabled, create
    a new `Member { kind: human }`; otherwise reject an unprovisioned identity.
    Auto-provisioning never attaches a login to an existing member. Its handle
    comes from the email's local part, and when that handle is taken the new
@@ -216,7 +218,7 @@ settings are:
 | `MAIDAN_OIDC_PENDING_TTL_SECS` | no | Pending login lifetime (default `600`). |
 | `MAIDAN_SIGNUP` | no | `1` enables the waitlist and invited sign-up at `/auth/oidc/signup`; default off, and the whole surface 404s while off. Boot refuses it beside `MAIDAN_OIDC_AUTO_PROVISION`. |
 | `MAIDAN_SIGNUP_EMAIL_DOMAINS` | no | Comma-separated email domains that may sign up without an invite when sign-up is on. |
-| `MAIDAN_SIGNUP_OPEN` | no | `1` lets any verified email sign up without an invite, still behind the sign-up rate limits. Needs `MAIDAN_SIGNUP=1`; boot refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`. |
+| `MAIDAN_SIGNUP_OPEN` | no | `1` lets any verified email sign up without an invite, still behind the sign-up rate limits. Needs `MAIDAN_SIGNUP=1`; boot refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`. With `MAIDAN_ENV=production` it also needs `MAIDAN_TURNSTILE_SECRET`, or boot is refused; outside production it boots with a warning. |
 | `MAIDAN_SIGNUP_PRIVACY_URL` | no | Where the instance's privacy policy lives: a path on this origin (`/privacy`) or an `https://` URL. The waitlist page links it in its footer, since it asks for an email address. Boot refuses any other shape. |
 | `MAIDAN_SIGNUP_TERMS_URL` | no | The same for the terms of service. |
 | `MAIDAN_TURNSTILE_SECRET` | no | Cloudflare Turnstile secret, or `MAIDAN_TURNSTILE_SECRET_FILE` naming a file that holds it. When set, the waitlist POST and the sign-up start need a Turnstile token, which the server checks against Cloudflare's siteverify through the egress guard. A missing or rejected token gets a 403, and an unreachable siteverify gets a 502, so the check fails closed. The server itself calls `https://challenges.cloudflare.com/turnstile/v0/siteverify`, so the deployment's outbound network (firewall, proxy or egress policy) must allow HTTPS to `challenges.cloudflare.com`, and that name must resolve to a public address, because the egress guard refuses private ones. Otherwise every waitlist join and sign-up start gets the 502, and the server logs `turnstile siteverify failed` with the reason. A browser opening `/auth/oidc/signup` without a token goes to the console check first. Unset turns all of this off. |
@@ -296,7 +298,9 @@ curl -sS -X POST "$MAIDAN_URL/scim/v2/Users" \
 
 With `MAIDAN_OIDC_LINK_EMAIL=1`, the person's first sign-in links their
 Keycloak identity to that member, and only when Keycloak says the email is
-verified. A user with no member is refused ("OIDC user is not provisioned in
+verified. Only an email asserted by the configured issuer links. With
+`MAIDAN_OIDC_EMAILS_VERIFIED=1` as well, the link trusts every login method at
+that issuer to prove the address. A user with no member is refused ("OIDC user is not provisioned in
 this workspace"). Leave `MAIDAN_OIDC_AUTO_PROVISION` off. With it on, every
 enabled user in the realm gets a member in the workspace on first sign-in.
 

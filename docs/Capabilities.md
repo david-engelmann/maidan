@@ -42,6 +42,21 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v418.0.0](https://github.com/david-engelmann/maidan/releases/tag/v418.0.0) — open sign-up, a front door, and the rest of context economics C
+
+The first release since `v417.0.0`. It ships every PR merged after that tag, through #1637. `CHANGELOG.md` under `[418.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Sign-up** | `MAIDAN_SIGNUP_OPEN` lets a verified email sign up without an invite, behind a Cloudflare Turnstile check on the waitlist POST and the sign-up start (checked before any invite lookup, siteverify through the egress guard, fail-closed) and a hard allowance cutoff for workspaces open sign-up created (migration 0209): past a meter's free allowance the metered action is refused, embedding repair and reindex included, and a refused upload writes no bytes. Operator and invited workspaces stay mark-only | `crates/maidan-server/src/routes/waitlist.rs`, `crates/maidan-server/src/turnstile.rs`, `crates/maidan-store/` |
+| **Front door** | The server's waitlist page serves `/` on maidan.world and links the instance's privacy policy and terms (`MAIDAN_SIGNUP_PRIVACY_URL`, `MAIDAN_SIGNUP_TERMS_URL`, checked at boot); the Worker keeps only the policy pages | `crates/maidan-server/static/landing/`, `deploy/cloudflare/` |
+| **Logins** | Auto-provisioning never attaches a login to an existing member by handle; a sign-in linked to a removed member is refused; one workspace per identity under concurrent callbacks | `crates/maidan-server/src/oidc/` |
+| **Seats and review** | The seat runner keeps session seats claiming, one capped harness run per task, with a prompt per task kind (review threads run the red-team runbook); queue depth takes claim-next's repo and engine filters; a workspace can turn second-family review children off; results carry the pull request they delivered to | `examples/seat-runner/`, `crates/maidan-store/src/claim_next.rs` |
+| **Context economics** | Fleet harness profiles with a conformance check (C9), thread digests summarized once and read by hash (C10, migration 0210), model and effort by task class learned from the ledger (C12, migration 0211), A2A contextId affinity and the PayerStamp usage extension (C13), SDK routing hints (C11), and the batch and flex saving on the ledger | `crates/maidan-server/src/`, `crates/maidan-store/`, `sdk/` |
+| **Operations** | KMS keys are tagged with their instance and stray ones swept; the board modulepreloads its module graph; SQLite semantic search runs on one connection | `crates/maidan-server/src/`, `crates/maidan-search/` |
+
+The deploy pins move to `v418.0.0` in the PR that follows the tag.
+
 ## [v417.0.0](https://github.com/david-engelmann/maidan/releases/tag/v417.0.0) — maidan.world, second-family review, and cache-aware claims
 
 The first release since `v416.0.0`. It ships every PR merged after that tag, through #1598. `CHANGELOG.md` under `[417.0.0]` has every entry.

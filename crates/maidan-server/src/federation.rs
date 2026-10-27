@@ -698,6 +698,17 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             member_id,
             unfrozen_by,
         },
+        MemberDisplayNameChanged {
+            occurred_at,
+            workspace_id: _,
+            member_id,
+            display_name,
+        } => MemberDisplayNameChanged {
+            occurred_at,
+            workspace_id,
+            member_id,
+            display_name,
+        },
         // Non-federatable (this deployment's allowance), classified like the
         // freeze above.
         UsageOverAllowance {

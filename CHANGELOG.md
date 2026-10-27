@@ -7,6 +7,153 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [418.0.0] — 2026-10-26
+
+The first release since 417.0.0. It ships every PR merged after the 417.0.0
+tag, through #1637. Open sign-up is ready on maidan.world: a Turnstile check
+on the waitlist and sign-up start, a hard allowance cutoff for workspaces that
+open sign-up created, and the server's own waitlist page at the front door
+linking the privacy policy and terms. Logins can no longer attach to another
+member by handle, a removed member's sign-in is refused, the seat runner takes
+review threads, and claims, usage and A2A gain the rest of context economics
+C (fleet profiles, digests, task-class routing, PayerStamp).
+
+### Semantic search test names its 500
+
+- **Changed:** `a_semantic_search_counts_one_embedding_for_the_searchers_workspace` now prints the response body and the server log when search does not answer 200, so its CI-only 500 on #1604 shows a cause.
+
+### Waitlist page
+
+- **Added:** a public waitlist page at `/` wherever sign-up is on: one line on what Maidan is, an accessible form (labels, inline errors, a live status), light and dark themes, and motion only when the visitor allows it. It loads one stylesheet and one module from the server itself, under a CSP stricter than the board's (`default-src 'none'`, no inline script or style, `frame-ancestors 'none'`), with `nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. An instance without sign-up still answers 404 at `/`.
+- **Changed:** `POST /waitlist` refuses a browser join posted from another site (`Origin` or `Sec-Fetch-Site`), checks addresses more strictly (local part of at most 64 characters, real domain labels, no control characters or display-name punctuation), and takes an optional `website` honeypot: a join that fills it gets the same `201` answer as any other and is not stored, and it still spends the address's rate-limit budget.
+
+### Every deploy path pins v417.0.0
+
+- **Changed:** every deploy pin and install command moves from `v416.0.0` to `v417.0.0`, with the quickstart Dockerfile's tarball SHA-256s, and the stack's bundled chart is repackaged.
+
+### Workspace queue depth takes the claim filters
+
+- **Added:** `GET /workspaces/{wid}/queue-depth` and the `get_workspace_queue_depth` tool take the `repo` and `engine` filters `claim_next_workspace_thread` takes, so a pool of workers serving one repository or engine is sized by the work it can actually claim.
+
+### SQLite semantic search no longer 500s on an older pooled connection
+
+- **Fixed:** SQLite semantic search now loads and checks sqlite-vec on the connection it runs its query on, so a pooled connection opened before the extension was registered no longer fails with "no such function: vec_distance_cosine" (HTTP 500).
+
+### Bus mutation survivors
+
+- **Fixed:** New tests catch the mutants the nightly bus 1/4 shard missed: the `MAIDAN_BUS_BROADCAST_CAP` positive-only filter, the `ListenerHealth` error count and last-success stamp, and the Postgres log head that seeds the LISTEN high-water mark. The drain mutant that could only ever time out is now listed in `.cargo/mutants.toml`, with the reason.
+
+### Open sign-up
+
+- **Added:** `MAIDAN_SIGNUP_OPEN=1` lets any verified email sign up without an invite. Each sign-up gets its own new workspace, and the per-address and per-domain sign-up limits still apply. The audit row records `via: "open"`. Boot refuses the flag unless `MAIDAN_SIGNUP=1` is set, and refuses it beside `MAIDAN_SIGNUP_EMAIL_DOMAINS`.
+
+### Claims stamp one clock
+
+- **Fixed:** on Postgres, `claim_next` set `claimed_at` from the server clock and `updated_at` from the database clock, so the two drifted by milliseconds and `report_unacknowledged_claims_postgres` failed intermittently (#1603). Both now come from the same reading.
+
+### Seat runner for session claimants
+
+- **Added:** `examples/seat-runner/` keeps N session seats claiming, one task per harness run. Before each run it checks the host's load and free disk, polls the queue depth for its engine and repository, and runs the repository's preflight without the seat token or any other listed secret in its environment. All of that happens outside the harness sandbox. It then claims and acknowledges, and it starts no harness if the acknowledge fails or a stop arrives first. It runs the whole harness under `capped` and always releases the claim: on SIGTERM too, only after SIGTERM and then SIGKILL have ended every process the run started (signalled by its own process groups, and only while a fresh process table still ties a pid to the run; a reaped harness pid is never signalled again), and with retries if the server does not answer. The models a runner may start come from `[harness] models` in its config. A seat logs a network error or an unexpected error and carries on, and every run writes one JSON log line.
+
+### Sign-up: one workspace per identity under concurrent callbacks
+
+- **Fixed:** two sign-up callbacks for the same identity at the same time could each create a workspace. The sign-up transaction now runs the existing-identity check again under a lock (a Postgres advisory lock on the issuer and subject; `BEGIN IMMEDIATE` on SQLite), so the second callback is told to sign in instead.
+
+### The ledger shows the batch and flex saving
+
+- **Added:** The usage ledger shows the batch and flex saving (Context Economics C7c). A usage report for a call in a cheaper lane (`evidence.batch`, or a `batch` or `flex` `service_tier`) may carry `evidence.standard_price`, the model's standard-tier price snapshot. It is reporter evidence like the charged price, and Maidan keeps no discount table. A standard price on any other call is refused, as is one whose charge for the reported tokens overflows or comes in below the charged amount, so the saving is never negative. The usage rollup adds `lane_reports`, `lane_usd_micros`, `lane_standard_usd_micros`, `lane_saved_usd_micros` (as reported: the standard cost less the charge, over the lane reports that carried a standard price) and `lane_unpriced_reports`. The counter `maidan_usage_lane_saved_usd_micros_total` tracks the same saving, as reported. Migration 0206 adds five nullable standard-price columns to the ledger, with no backfill: older rows count as unpriced.
+
+### SDK routing hints for self-hosted routers
+
+- **Added:** every SDK gets `routing_hints` (`routingHints`, `RoutingHints`), which turns a thread and its parent into affinity headers for Dynamo (`X-Dynamo-Session-ID`), llm-d (`x-session-id`), AIBrix (`x-aibrix-session-key` with `routing-strategy: session-affinity`) and the SGLang router (`X-SMG-Routing-Key`). A child thread is keyed by its parent so it lands where the parent's prefix is warm on every router, Dynamo included (its docs say affinity uses `X-Dynamo-Session-ID` alone; the parent header is trace metadata and is not sent). A routing key over 128 bytes (SGLang) or 256 bytes (AIBrix) is an error. Every SDK also gets `cache_salt(workspace_id, salt_key)`, a vLLM salt per workspace: `HMAC-SHA256(salt_key, "cache_salt\n" + workspace_id)` as unpadded base64url, with a server-side key of at least 32 bytes, so the salt cannot be computed from the workspace id. Set it from a trusted server-side component, never an end client; it is a cache partition, not an auth token. Both are hints, and the shared fixtures keep the four SDKs in step.
+
+### A second change thread for an issue in review is held as a likely duplicate
+
+- **Added:** `claim_next` withholds a change thread whose `linear_issue` already has another live change thread in review in the same workspace, whatever engine either runs on (C8 follow-up). It counts as unclaimable in queue depth. Closing it, the other thread leaving review, or `DELETE /threads/{id}/fingerprint/duplicate-of` lifts the hold. Two open change threads for one issue now get the advisory `duplicate_of` link even when their titles differ, so the newer is held as C8b holds an identical brief. Review threads and other workspaces' threads never count. Migration 0207 adds `cleared_at` to `maidan_task_fingerprints` and an index on `maidan_thread_attributes.linear_issue`.
+
+### Workspace review-children setting
+
+- **Added:** a per-workspace `review_children` setting (migration 0208). `GET` and `PUT /workspaces/{id}/review-children` read and set it: `spawn` (the default, today's behaviour) or `off`. Setting it takes `token:admin` and is audited as `workspace.review_children.set`. With `off`, a change entering review spawns no second-family `kind: review` child, and review stays with the pull request's own reviewers.
+
+### A red-team runbook, and failed attempts left on the thread
+
+- **Added:** `examples/claude-code/maidan-claimant/red-team.md`, a harness-agnostic runbook for review threads: check out the exact head, scope a delta or merge delta, probe adversarially, make the minimal wrong change to show a test pins its behaviour, and deliver a VERDICT, HEAD, BLOCKING, NON-BLOCKING and TESTS RUN report as a pull-request comment.
+- **Changed:** the claimant runbook asks a seat to post each failed attempt on the thread as `FAIL: <hypothesis> | <evidence>` before it delivers or releases, so the next claimant does not repeat it.
+
+### A change delivery names the pull request it landed as
+
+- **Added:** `pr_number`, `head_sha` and `pr_url` on result deliveries, decoded from the stored `<commit_sha>#<pull_number>` handle of a `github_branch` delivery and carried on every read of the row (`GET /threads/{id}/deliveries`, the MCP `list_result_deliveries` and `replay_result_delivery` answers, the replay answer over REST). A producer can now show where its change landed without re-parsing the handle. The fields are derived at read time, never stored; deliveries to any other surface, and branch rows whose handle does not decode, read them as null. `external_ref` is unchanged.
+
+### The seat runner runs review threads through the red-team prompt
+
+- **Added:** `harness.prompts` maps a task kind to its own prompt, so one seat takes changes and reviews alike: a claimed thread whose `attributes.kind` is `review` runs `examples/seat-runner/review-prompt.md`, which follows the red-team runbook and posts the verdict on the pull request. A missing prompt file is refused at startup.
+
+### Auto-provisioning no longer attaches a login to an existing member by handle
+
+- **Fixed:** with `MAIDAN_OIDC_AUTO_PROVISION=1`, a first login whose email local part matched an existing member's handle was linked to that member with no verified-email check, so `admin@attacker.com` signed in as `admin`. Auto-provisioning now only creates members; a taken handle gets a subject suffix. Linking an existing member still needs `MAIDAN_OIDC_LINK_EMAIL` and the whole verified address.
+
+### Fleet harness profiles get a conformance check
+
+- **Added:** `GET /workspaces/{id}/usage-conformance` reads a workspace's newest completed usage reports against a published harness profile (`harness`, `harness_version`, `provider`, `model`, `boot_pack_sha256`, each optional) and reports per member how many conform and which values diverge (C9). `workspace:read`, the caller's workspace only. The store gains `list_workspace_usage_ledger` on both backends. No migration.
+
+### Cloudflare Turnstile on the waitlist and sign-up
+
+- **Added:** Setting `MAIDAN_TURNSTILE_SECRET` and `MAIDAN_TURNSTILE_SITE_KEY` puts a Turnstile check on the waitlist form and on the sign-up start. The server verifies each token through the egress guard and checks the hostname and action. A missing or rejected token gets a 403, and a verification outage gets a 502, so nothing gets through when the check can't run. The console and landing page CSP allow `challenges.cloudflare.com` only while Turnstile is on. With the variables unset, nothing changes.
+
+### A thread's summary is written once and read by hash
+
+- **Added:** artifact kind `digest` and `GET /threads/{id}/digest`, which returns the newest digest linked to a thread (its sha256, `maidan://artifacts/{sha256}` URI, size, MIME type and linker), or 404 (C10). MCP serves the same pointer as `maidan://digests/{thread_id}`. Readers fetch the bytes once by hash. Migration 0210 widens the artifact-kind check to allow `digest`.
+
+### Open sign-up workspaces are cut off past their free allowance
+
+- **Added:** a workspace records its origin (`operator`, `signup` or `open`; migration 0209). A workspace created by open sign-up (`MAIDAN_SIGNUP_OPEN`) that is marked past its free allowance is refused that meter's work for the rest of the month: requests answer `429 Too Many Requests` (its usage and notifications stay readable), MCP tool calls answer JSON-RPC `-32030`, semantic and hybrid search and the embedding of new messages stop on `embedding_calls`, egress (Slack, GitHub, Linear), mail and web push stop on `deliveries` (queued work is parked, not failed), WASI slash handlers do not run on `wasi_ms`, and posting messages and uploading artifacts are refused on `stored_bytes`. The existing crossing notice tells its admins. Operator-created and invited workspaces stay mark-only. The cutoff is reloaded on every replica each flush tick, so it can trail the crossing by 1–2 intervals. The `stored_bytes` cutoff is enforced at the store's message and artifact writes, so seeding, A2A sends and GitHub/Slack inbound are refused as well as posts, and an edit that grows a message is refused. Importing a workspace is refused while the caller's workspace or the restore target is cut off; an import records an origin (a restore keeps the replaced workspace's origin, usage and crossings; `mode=new` takes the caller's), so it can no longer turn an open workspace into an operator one. A refused artifact upload no longer leaves its bytes in storage: every upload path checks the cutoff before writing, a cut-off multipart completion aborts its parts, and bytes written just before a cutoff are deleted unless another artifact holds them.
+
+### Board modules preload
+
+- **Changed:** The board page (`/ui/`) preloads every module `main.js` reaches with `<link rel="modulepreload">`, so the browser requests them in parallel instead of finding them one import level at a time. The list is generated from the import graph (`make regen`), and a contract test fails if it drifts or names a module the server doesn't serve.
+
+### A2A spend and cache affinity
+
+- **Added:** An A2A peer can report its usage on `SendMessage` through the PayerStamp extension (listed on the agent card). The report goes through the same claim fence and ledger as `POST /threads/{id}/usage`, and the task echoes the accepted stamp. Every delivery task names its cache-affinity key: the parent thread if there is one, otherwise the thread. A report on a missing or unknown `contextId` is refused before any thread is created.
+
+### Stray KMS keys are swept, and undestroyable retired keys are counted
+
+- **Fixed:** a KMS key created for a wrap whose transaction rolled back, failed to commit or lost a race no longer bills forever (#1545). With `MAIDAN_KMS_INSTANCE` set, `aws-kms` tags each new key with the instance as well as the workspace key id, and an hourly sweep schedules deletion of this instance's enabled keys older than a day that this database journalled a wrap for before creating them and no workspace key row refers to. A key this database never journalled is never destroyed, so a second deployment sharing the instance name cannot destroy the first one's keys. Keys without the instance tag, and every key when the variable is unset, are left alone. `maidan_custody_stray_keys_destroyed_total` and `maidan_custody_stray_keys_failed` report the sweep, and `maidan_workspace_keys_undestroyed` counts retired workspace keys whose KMS key keeps refusing to be destroyed.
+
+### Only a review the server opened skips the parent's hold
+
+- **Fixed:** A child thread is exempt from its parent's ordering hold only when the review family opened it (`review_family` is set). A `kind = review` label, set at create or later, no longer frees an ordinary child from the hold (#1556).
+
+### The waitlist page links the instance's privacy policy and terms
+
+- **Added:** `MAIDAN_SIGNUP_PRIVACY_URL` and `MAIDAN_SIGNUP_TERMS_URL` name where an instance's privacy policy and terms live, as a path on its origin or an `https://` URL. The waitlist page at `/` links each one that is set in its footer, since it asks visitors for an email address. Boot refuses any other shape, and any value with a quote, angle bracket, space or control character.
+- **Changed:** maidan.world's Worker no longer answers `/`. The server's waitlist page serves it, and the Worker keeps only `/privacy`, `/terms` and `/support`, which `wrangler.prod.jsonc` now links from that page.
+
+### Red-team reports separate proven from unproven findings; a review result names its kind
+
+- **Changed:** The red-team runbook keeps `BLOCKING` for findings proven at the head (a failing test, or file:line evidence) and adds an `UNPROVEN` section, `unproven: missing <fact>` with no severity, so a speculative finding never blocks a merge. The seat runner's review prompt now asks for `result_kind`: without it Maidan stores the result but arms no delivery (#1649), which lost two wax verdicts on 2026-10-26. The seat runner README says a thread needs a footprint with at least one item, since an empty list clears it.
+
+### Turnstile docs name the siteverify egress it needs
+
+- **Fixed:** docs/OIDC.md now says the server calls Cloudflare's siteverify at `challenges.cloudflare.com` through the egress guard, so outbound HTTPS to that host must be allowed and it must resolve to a public address. Otherwise every waitlist join and sign-up start gets a 502, and the log line to look for is named (#1633).
+
+### Sign-in re-checks the linked member
+
+- **Fixed:** a sign-in whose OIDC identity is linked to a member that has since been removed (tombstoned or missing), or that belongs to another workspace, is now refused as not provisioned. Before, it resolved to the removed member. Auto-provisioning does not replace that member either (#1626).
+
+### Embedding repair honours the allowance cutoff
+
+- **Fixed:** the embedding repair sweep no longer embeds messages in an open sign-up workspace that is past its `embedding_calls` allowance, and every message it does embed now counts toward that workspace's `embedding_calls`, the same as the live indexer. Before, the sweep embedded unvectored messages in every workspace on its five-minute timer without checking the cutoff or metering the work.
+- **Fixed:** a workspace's own embedding reindex now checks the cutoff before every batch and counts each batch toward `embedding_calls` before sending it to the provider, so a workspace that crosses its allowance mid-job stops there, and a failed job is still metered for what it sent. A second reindex request for a workspace whose job is still running is refused with `409 Conflict`.
+
+### Sign-up start checks Turnstile before the invite
+
+- **Fixed:** `GET /auth/oidc/signup` now runs the Turnstile check before it looks up the invite. A caller without a valid token gets the same refusal for an unknown, expired or valid invite, and a browser is still sent to the console check (#1631).
+
+### Model and effort by task class, learned from the ledger
+
+- **Added:** Usage reports take an optional `evidence.effort` (the reasoning effort the call asked for, up to 32 bytes; from OpenTelemetry it is read from `gen_ai.request.reasoning_effort`), stored in a new ledger column (migration 0211). `GET /workspaces/{id}/usage-routing` groups a workspace's completed reports by task class (thread kind and size) and by model and effort, and reports each combination's tasks, completed tasks, spend and cost per completed task, with the cheapest combination that has at least `min_completed` completed tasks (1 to 1000, default 3) as the class's suggestion (C12). A thread whose reports name more than one model or effort is counted as switched and left out, so the suggestion is per task, never per turn. `workspace:read`, the caller's workspace only.
+
 ## [417.0.0] — 2026-10-24
 
 The first release since 416.0.0. It ships every PR merged after the 416.0.0
