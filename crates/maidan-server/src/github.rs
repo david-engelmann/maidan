@@ -433,6 +433,14 @@ pub trait GithubSender: Send + Sync {
     async fn create_check_run(&self, repo: &str, check: &GithubCheckRun)
         -> Result<(), GithubError>;
 
+    /// Whether [`Self::create_check_run`] can ever succeed. GitHub lets only
+    /// GitHub Apps create check runs, so a sender authenticated with a
+    /// personal access token answers `false` and the caller skips the call
+    /// instead of collecting a 403 per result.
+    fn posts_check_runs(&self) -> bool {
+        true
+    }
+
     /// The host this sender posts to: its key in the shared retry budget.
     fn host(&self) -> String {
         "api.github.com".to_string()
@@ -1108,6 +1116,10 @@ impl GithubSender for GithubApiClient {
             status: resp.status().as_u16(),
             rate_limited: is_rate_limited(resp.headers()),
         })
+    }
+
+    fn posts_check_runs(&self) -> bool {
+        matches!(self.auth, GithubAuth::App(_))
     }
 
     async fn create_check_run(
@@ -2539,6 +2551,10 @@ mod tests {
             "{shown}"
         );
         let client = GithubApiClient::new("ghp_secretvalue".into());
+        assert!(
+            !client.posts_check_runs(),
+            "a token-authenticated sender never posts check runs"
+        );
         let err = client.http_error("request to https://x/?t=ghp_secretvalue failed");
         assert!(!err.to_string().contains("ghp_secretvalue"), "{err}");
     }
