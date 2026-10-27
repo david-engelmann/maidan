@@ -472,7 +472,7 @@ jobs:
           tool: cargo-cyclonedx@0.5.9
       - name: SBOMs of the server and CLI binaries
         # cargo-cyclonedx writes one SBOM beside each member's Cargo.toml. The
-        # server image builds `--no-default-features` (crates/maidan-server/
+        # server image builds `--no-default-features --features otel` (crates/maidan-server/
         # Dockerfile) and the CLI image carries the default-feature binary from
         # `build`, so each comes from the run that matches it. The linux x86_64
         # target is a superset of the arm64 one (raw-cpuid and
@@ -483,7 +483,7 @@ jobs:
           mkdir -p sbom
           cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --override-filename sbom -q
           mv crates/maidan-cli/sbom.json sbom/maidan-cli.cdx.json
-          cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --no-default-features --override-filename sbom -q
+          cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --no-default-features --features maidan-server/otel --override-filename sbom -q
           mv crates/maidan-server/sbom.json sbom/maidan-server.cdx.json
       - name: set up buildx
         uses: docker/setup-buildx-action@v3
