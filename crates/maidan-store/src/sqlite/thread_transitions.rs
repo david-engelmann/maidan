@@ -148,12 +148,14 @@ async fn outside_approval_in_tx(
            JOIN maidan_channels c ON c.id = t.channel_id
            JOIN maidan_members m ON m.id = r.reviewer_id
           WHERE r.thread_id = ? AND r.decision = 'approve' AND r.dismissed_at IS NULL
-            AND m.workspace_id = c.workspace_id
+            AND m.workspace_id = c.workspace_id AND m.tombstoned_at IS NULL
             AND (t.owner_id IS NULL OR r.reviewer_id <> t.owner_id)
             AND NOT EXISTS (SELECT 1 FROM maidan_thread_workers w
                             WHERE w.thread_id = r.thread_id AND w.member_id = r.reviewer_id)
             AND (r.actor_id IS NULL OR (
-              (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
+              EXISTS (SELECT 1 FROM maidan_members ma
+                      WHERE ma.id = r.actor_id AND ma.tombstoned_at IS NULL)
+              AND (t.owner_id IS NULL OR r.actor_id <> t.owner_id)
               AND NOT EXISTS (SELECT 1 FROM maidan_thread_workers wa
                               WHERE wa.thread_id = r.thread_id AND wa.member_id = r.actor_id)))
             AND (
@@ -171,7 +173,8 @@ async fn outside_approval_in_tx(
         return Ok(true);
     }
     // A qualifying green land-gate pass is the same outside verification:
-    // recorded by a skilled member who is neither the owner nor ever a holder.
+    // recorded by a skilled member who is neither the owner nor ever a holder,
+    // and who is still a member: a removed recorder's pass no longer counts.
     let crate::attestation::GateReading::Recorded(pass) =
         super::land_gate::read_in_tx(tx, thread_id).await?
     else {
@@ -184,7 +187,7 @@ async fn outside_approval_in_tx(
         "SELECT 1 AS hit FROM maidan_threads t
            JOIN maidan_channels c ON c.id = t.channel_id
            JOIN maidan_members m ON m.workspace_id = c.workspace_id
-          WHERE t.id = ? AND m.id = ?",
+          WHERE m.tombstoned_at IS NULL AND t.id = ? AND m.id = ?",
     )
     .bind(thread_id.0)
     .bind(pass.recorded_by.0)
