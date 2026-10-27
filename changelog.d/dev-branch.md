@@ -1,0 +1,3 @@
+### Work lands on `dev`; `main` is prod
+
+- **Changed:** `dev` is the default branch. Every pull request targets it, with the same eight required checks, and CI and the docs build run on pushes to both `main` and `dev`. dev.maidan.world deploys `dev` (images are tagged `dev-<sha>`). `main` moves only when a tested `dev` commit is fast-forwarded into it, and is then tagged and deployed to maidan.world.
