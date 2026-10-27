@@ -140,6 +140,13 @@ pub(crate) async fn refuse_same_family_in_tx(
     thread_id: ThreadId,
     member_id: MemberId,
 ) -> Result<(), StoreError> {
+    // The thread row lock comes first so this read, in its own later snapshot,
+    // sees an author family whose `thread_attributes::set` held the lock
+    // before us; that set then sees our assignee when it runs after us.
+    sqlx::query("SELECT 1 FROM maidan_threads WHERE id = $1 FOR UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?;
     let family: Option<String> = sqlx::query_scalar(&format!(
         "SELECT {}",
         crate::review_family::shared_family("$1", "$2")

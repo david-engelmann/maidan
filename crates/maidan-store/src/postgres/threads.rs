@@ -833,8 +833,14 @@ async fn claim_next_in_tx(
     .bind(now)
     .fetch_optional(&mut **tx)
     .await?;
-    row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
-        .transpose()
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let claimed = (row_to_thread(&row)?, lapsed_claim(&row));
+    // The candidate read ran in a snapshot taken before the row lock, so an
+    // author family committed in between went unseen; read it again now.
+    super::review_family::refuse_same_family_in_tx(tx, claimed.0.id, member_id).await?;
+    Ok(Some(claimed))
 }
 
 /// Atomically claim the oldest unassigned live thread in `channel_id` for

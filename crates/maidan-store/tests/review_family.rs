@@ -444,6 +444,49 @@ where
         None,
         "the refused set stored nothing"
     );
+
+    // A claim racing the label: whichever commits second sees the first, so
+    // an openai seat never ends up holding an openai-labelled review.
+    for round in 0..100 {
+        let (race, _) = store
+            .create_thread_with_footprint(
+                new(&format!("review raced {round}")),
+                None,
+                Some(TaskAttributes {
+                    kind: TaskKind::Review,
+                    ..TaskAttributes::default()
+                }),
+                None,
+            )
+            .await
+            .expect("raced review");
+        let (claim, label) = tokio::join!(
+            store.claim_thread(race.id, other),
+            store.set_thread_attributes(
+                race.id,
+                TaskAttributes {
+                    kind: TaskKind::Review,
+                    author_family: Some("openai".into()),
+                    ..TaskAttributes::default()
+                },
+            )
+        );
+        let claimed = matches!(&claim, Ok(c) if c.claimed);
+        assert!(
+            !(claimed && label.is_ok()),
+            "round {round}: both the claim and the label committed"
+        );
+        let held = store.get_thread(race.id).await.expect("thread").assignee_id;
+        let family = store
+            .get_thread_attributes(race.id)
+            .await
+            .expect("attrs")
+            .author_family;
+        assert!(
+            !(held == Some(other) && family.as_deref() == Some("openai")),
+            "round {round}: an openai seat holds an openai review"
+        );
+    }
 }
 
 const INSERT_SQLITE: &str = "INSERT INTO maidan_usage_ledger

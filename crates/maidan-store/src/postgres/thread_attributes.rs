@@ -197,17 +197,18 @@ pub async fn set(
     thread_id: ThreadId,
     attributes: TaskAttributes,
 ) -> Result<TaskAttributes, StoreError> {
-    let exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM maidan_threads WHERE id = $1)")
-            .bind(thread_id.0)
-            .fetch_one(pool)
-            .await?;
-    if !exists {
-        return Err(StoreError::NotFound);
-    }
+    // Under READ COMMITTED a claim's family check and this set's assignee
+    // check could each miss the other's uncommitted write. Both take the
+    // thread row lock first (see `review_family::refuse_same_family_in_tx`),
+    // so whichever runs second sees the first.
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT 1 FROM maidan_threads WHERE id = $1 FOR UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
     // One author family per change: restating it is fine, naming another is
     // refused, and the upsert's COALESCE keeps it even if this read raced.
-    let mut tx = pool.begin().await?;
     if let Some(named) = attributes.author_family.as_deref() {
         let stored: Option<Option<String>> = sqlx::query_scalar(
             "SELECT author_family FROM maidan_thread_attributes WHERE thread_id = $1",
