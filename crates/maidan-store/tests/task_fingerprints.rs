@@ -608,6 +608,31 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
     Some((container, Arc::new(PostgresStore::for_tests(pool))))
 }
 
+/// An already-assigned live duplicate answers a claim the usual way
+/// (`claimed: false`), for its holder and for anyone else, rather than with
+/// the duplicate refusal; an unassigned one is still refused (#1580).
+async fn an_assigned_duplicate_answers_a_claim_as_assigned(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "dupe-assigned", 2).await;
+    let (holder, other) = (room.agents[0], room.agents[1]);
+    let _original = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    let duplicate = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    assert!(matches!(
+        store.claim_thread(duplicate, holder).await,
+        Err(StoreError::Conflict(_))
+    ));
+    store.assign_thread(duplicate, holder).await.unwrap();
+    for member in [holder, other] {
+        let result = store.claim_thread(duplicate, member).await.unwrap();
+        assert!(!result.claimed);
+        assert_eq!(result.thread.assignee_id, Some(holder));
+        let (result, event) = store
+            .claim_thread_with_event(duplicate, member)
+            .await
+            .unwrap();
+        assert!(!result.claimed && event.is_none());
+    }
+}
+
 on_both_backends!(
     an_identical_open_task_is_linked_to_the_first,
     a_different_brief_or_input_is_not_linked,
@@ -620,4 +645,5 @@ on_both_backends!(
     the_same_issue_under_another_title_is_linked,
     a_change_whose_issue_is_in_review_is_withheld,
     the_issue_hold_lifts_when_review_ends,
+    an_assigned_duplicate_answers_a_claim_as_assigned,
 );
