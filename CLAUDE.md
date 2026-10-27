@@ -75,16 +75,15 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-26)
+## Current state (2026-10-27)
 
-- **Releases:** latest **`v418.0.0`** (2026-10-26), open sign-up,
-  the front door and the rest of context economics C. Tags are cut whenever the swarm stack needs
+- **Releases:** latest **`v419.0.0`** (2026-10-27), removed members lose
+  access and the cutoff covers every metered surface. Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
-  v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but its release
-  run failed a Trivy scan and nothing was published; the maintainer said on
-  2026-10-26 to wait for more fixes before cutting again.
+  v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but was never
+  published (a Trivy scan failure); `v419.0.0` carries its contents.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
   41): finding and closing threads by attribute (Muse is on it), and the M13
   alert proof. Then the launch path (Next 23,
@@ -97,9 +96,8 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `main`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Every deploy path pins `v417.0.0`.** `v418.0.0` is tagged but was never
-  published (its release run failed a Trivy scan, #1682), so the `deploy pins`
-  job reports the gap until a release carries it. `scripts/check-deploy-pins.sh`
+- **Deploy pins move to `v419.0.0`** in the PR that follows its tag.
+  `scripts/check-deploy-pins.sh`
   keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
   to change after the next one. The `:dev`
   images in `compose.yaml` and the charts' default values are built from

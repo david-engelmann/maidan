@@ -1,2 +1,0 @@
-### Webhook deliveries under the allowance cutoff
-- **Fixed:** Outbound webhook deliveries and retries now respect the hard `deliveries` cutoff and are metered. A workspace cut off on `deliveries` sends nothing; its deliveries are deferred with their attempt counts unchanged and go out once the cutoff lifts. Each attempt that goes out, failed or not, counts one `deliveries` unit. Before this, an open sign-up workspace past its allowance could keep the server sending outbound HTTP through webhook subscriptions.
