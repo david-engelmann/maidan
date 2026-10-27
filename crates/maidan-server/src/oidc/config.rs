@@ -155,6 +155,13 @@ impl OidcSettings {
             .unwrap_or_default();
         let signup_open = env_flag("MAIDAN_SIGNUP_OPEN");
         check_open_signup(signup, signup_open, !signup_email_domains.is_empty())?;
+        let turnstile =
+            std::env::var("MAIDAN_TURNSTILE_SECRET").is_ok_and(|secret| !secret.trim().is_empty());
+        if check_open_signup_bot_check(signup_open, crate::config::is_production(), turnstile)? {
+            tracing::warn!(
+                "MAIDAN_SIGNUP_OPEN is on without MAIDAN_TURNSTILE_SECRET: anyone can start a sign-up with no bot check; production refuses this"
+            );
+        }
 
         // An operator's word stands in for the provider's: say so at boot, so
         // a login method added at the provider later is checked against it.
@@ -319,6 +326,26 @@ fn check_open_signup(signup: bool, open: bool, has_domains: bool) -> Result<(), 
     Ok(())
 }
 
+/// An open door needs a bot check: with `MAIDAN_ENV=production`, open
+/// sign-up without `MAIDAN_TURNSTILE_SECRET` refuses boot. Outside
+/// production it boots, and `Ok(true)` asks the caller to warn.
+fn check_open_signup_bot_check(
+    open: bool,
+    production: bool,
+    turnstile: bool,
+) -> Result<bool, ConfigError> {
+    if !open || turnstile {
+        return Ok(false);
+    }
+    if production {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_SIGNUP_OPEN",
+            "needs MAIDAN_TURNSTILE_SECRET when MAIDAN_ENV=production; open sign-up without a bot check is refused".into(),
+        ));
+    }
+    Ok(true)
+}
+
 #[cfg(test)]
 mod policy_url_tests {
     use super::*;
@@ -399,6 +426,68 @@ mod open_signup_tests {
             refused_var(check_open_signup(true, true, true)),
             Some("MAIDAN_SIGNUP_OPEN")
         );
+    }
+
+    #[test]
+    fn in_production_open_signup_without_turnstile_refuses_boot_naming_the_variable() {
+        match check_open_signup_bot_check(true, true, false) {
+            Err(ConfigError::Invalid(var, why)) => {
+                assert_eq!(var, "MAIDAN_SIGNUP_OPEN");
+                assert!(why.contains("MAIDAN_TURNSTILE_SECRET"), "{why}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_production_open_signup_with_turnstile_boots_without_a_warning() {
+        assert!(matches!(
+            check_open_signup_bot_check(true, true, true),
+            Ok(false)
+        ));
+    }
+
+    #[test]
+    fn outside_production_open_signup_without_turnstile_boots_with_a_warning() {
+        assert!(matches!(
+            check_open_signup_bot_check(true, false, false),
+            Ok(true)
+        ));
+    }
+
+    #[test]
+    fn the_same_open_signup_config_is_refused_in_production_and_only_warned_outside_it() {
+        // Two deployments share one sign-up config, open with no bot check;
+        // only the environment differs. Production must not inherit the
+        // development allowance.
+        let production = check_open_signup_bot_check(true, true, false);
+        let development = check_open_signup_bot_check(true, false, false);
+        assert!(
+            matches!(
+                production,
+                Err(ConfigError::Invalid("MAIDAN_SIGNUP_OPEN", _))
+            ),
+            "{production:?}"
+        );
+        assert!(matches!(development, Ok(true)), "{development:?}");
+    }
+
+    #[test]
+    fn a_bot_check_in_one_config_does_not_excuse_open_signup_without_one_in_another() {
+        let with_check = check_open_signup_bot_check(true, true, true);
+        let without_check = check_open_signup_bot_check(true, true, false);
+        assert!(matches!(with_check, Ok(false)), "{with_check:?}");
+        assert!(without_check.is_err(), "{without_check:?}");
+    }
+
+    #[test]
+    fn closed_signup_needs_no_bot_check_in_either_config() {
+        for production in [true, false] {
+            assert!(matches!(
+                check_open_signup_bot_check(false, production, false),
+                Ok(false)
+            ));
+        }
     }
 
     #[test]

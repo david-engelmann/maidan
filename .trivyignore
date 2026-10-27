@@ -1,0 +1,8 @@
+# Release-scan exceptions. Each names a CVE, why it can't reach Maidan, and an
+# expiry (exp:), after which the scan fails again until it is re-justified.
+
+# libssl3 3.0.20-1~deb12u2 in gcr.io/distroless/cc-debian12, the server and CLI
+# runtime base. Neither binary links OpenSSL: Cargo.lock has no openssl-sys and
+# TLS is rustls. Debian shipped the fix (3.0.22-1~deb12u2) on 2026-10-26 after
+# withdrawing deb12u1; distroless has not rebuilt yet. Remove once it has.
+CVE-2026-84782 exp:2026-11-02

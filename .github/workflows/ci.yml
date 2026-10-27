@@ -2,14 +2,14 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
 
 # No job here writes to the repository, so the token is read-only whatever the
 # repository's default is.
@@ -74,7 +74,9 @@ jobs:
   lint:
     name: lint (fmt + clippy + deny)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A cold run takes about 11 minutes and a slow runner a third longer
+    # (#1680); the shared cache below keeps most runs warm.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,6 +90,12 @@ jobs:
           components: rustfmt, clippy
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # One key for every lint run, saved only from main and dev, so a
+          # pull request restores a warm cache instead of compiling from
+          # scratch (#1680), and PR runs don't evict it.
+          shared-key: lint
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
@@ -918,8 +926,11 @@ jobs:
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: build images
         run: |
+          # The production build args (no bootstrap), so the smoke proves
+          # the image that ships exports OTLP; it only needs /health and
+          # /metrics, not the seed routes.
           docker build \
-            --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
+            --build-arg MAIDAN_ENABLE_BOOTSTRAP=0 \
             -t maidan-server:dev \
             -f crates/maidan-server/Dockerfile .
           docker build -t maidan-postgres:dev -f docker/Dockerfile.db .

@@ -399,7 +399,10 @@ pub async fn import_workspace(
 
     let flat = crate::import::flatten(bundle);
     let (to_write, replace_existing) = match q.mode {
-        ImportMode::New => (crate::import::remap(flat, uuid::Uuid::new_v4), false),
+        ImportMode::New => (
+            crate::import::remap(flat, uuid::Uuid::new_v4).map_err(ApiError::BadRequest)?,
+            false,
+        ),
         ImportMode::Restore => {
             // A restore writes to the id inside the bundle, so that id is the
             // authorization subject — not the token's own workspace by assumption.

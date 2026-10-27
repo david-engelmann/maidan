@@ -292,3 +292,74 @@ async fn mention_webhook_config_roundtrip_and_delivers_mention_recorded() {
 
     h.shutdown().await;
 }
+
+async fn create_workspace(h: &Harness, name: &str) -> String {
+    let ws: serde_json::Value = h
+        .client
+        .post(format!("{}/workspaces", h.base))
+        .json(&json!({ "name": name }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    ws["id"].as_str().unwrap().to_string()
+}
+
+async fn put_mention_webhook(h: &Harness, wid: &str, webhook_id: &str) -> (StatusCode, String) {
+    let res = h
+        .client
+        .put(format!("{}/workspaces/{wid}/mention-webhook", h.base))
+        .json(&json!({ "webhook_id": webhook_id }))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    (status, res.text().await.unwrap())
+}
+
+#[tokio::test]
+async fn another_workspaces_subscription_id_gets_the_same_answer_as_a_missing_one() {
+    let h = spawn().await;
+    let ada = create_workspace(&h, "ada").await;
+    let bob = create_workspace(&h, "bob").await;
+    let mint: serde_json::Value = h
+        .client
+        .post(format!("{}/workspaces/{bob}/webhooks", h.base))
+        .json(&json!({
+            "url": format!("http://{}/hook", h.receiver_addr),
+            "label": "bob-hook",
+            "event_kinds": ["vote_cast"]
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let bobs_id = mint["webhook"]["id"].as_str().unwrap().to_string();
+
+    let foreign = put_mention_webhook(&h, &ada, &bobs_id).await;
+    let missing = put_mention_webhook(&h, &ada, &uuid::Uuid::new_v4().to_string()).await;
+    assert_eq!(foreign.0, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        foreign, missing,
+        "a foreign id must be indistinguishable from a missing one"
+    );
+
+    // Bob's own workspace can still use it; Ada's setting stayed unset.
+    let own = put_mention_webhook(&h, &bob, &bobs_id).await;
+    assert_eq!(own.0, StatusCode::OK);
+    let ada_cfg: serde_json::Value = h
+        .client
+        .get(format!("{}/workspaces/{ada}/mention-webhook", h.base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(ada_cfg["webhook_id"].is_null());
+    h.shutdown().await;
+}

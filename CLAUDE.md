@@ -65,7 +65,12 @@ change.
   Workspace with 15 member crates.
 - **Owner:** `david-engelmann`, solo maintainer. Squash-merge only;
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
-- **CI:** GitHub Actions. Eight checks are required on `main`:
+- **Branches:** `main` is prod and `dev` is the default branch (the
+  maintainer, 2026-10-27). Every PR targets `dev`. Only maidan-ca moves
+  `main`: it fast-forwards `main` to a `dev` commit that is green and has run
+  on the swarm stack for a day, then tags it and deploys it to maidan.world.
+  dev.maidan.world and the swarm stack run `dev`.
+- **CI:** GitHub Actions. Eight checks are required on `main` and `dev`:
   `lint (fmt + clippy + deny)`, `secrets scan`, `unit tests`,
   `integration (testcontainers)`, `docker compose smoke`, `scale-out smoke`,
   `promtool (alert rules)` and `otlp smoke`. A code PR runs all eight; a
@@ -75,30 +80,31 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-26)
+## Current state (2026-10-27)
 
-- **Releases:** latest **`v418.0.0`** (2026-10-26), open sign-up,
-  the front door and the rest of context economics C. Tags are cut whenever the swarm stack needs
+- **Releases:** latest **`v419.0.0`** (2026-10-27), removed members lose
+  access and the cutoff covers every metered surface. Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
-  v350–401, v403, v411).
+  v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but was never
+  published (a Trivy scan failure); `v419.0.0` carries its contents.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
-  41): a seat runner for session work, run caps that work on macOS, finding
-  and closing threads by attribute, the rest of Program C, the nightly
-  mutation shards, and the M13 alert proof. Then the launch path (Next 23,
+  41): finding and closing threads by attribute (MaidanFadin), and the M13
+  alert proof. Then the launch path (Next 23,
   24, 14, 17, 13, 12, 30, 29). The approval rules hold throughout: since
   #1325 a gate is accepted only by a browser session the person signed in to
   or `approval:grant`, nobody accepts their own request, and
   `approval_decide` (#1332) sends a person to confirm in the console unless
   the workspace set a threshold. `AUTH_DISABLED` checks nothing and is never
   a deployment mode.
-- **The swarm stack is local** (decided 2026-10-14) and runs any `main`
+- **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Every deploy path pins `v416.0.0`.** `scripts/check-deploy-pins.sh` (the
-  `deploy pins` job) keeps the pins on the newest tag, `docs/Pi.md`
-  included, and says which lines to change after the next one. The `:dev`
+- **Deploy pins move to `v419.0.0`** in the PR that follows its tag.
+  `scripts/check-deploy-pins.sh`
+  keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
+  to change after the next one. The `:dev`
   images in `compose.yaml` and the charts' default values are built from
   source on purpose. Pointing anyone at a deploy is part of the launch, the
   maintainer's call.
@@ -106,7 +112,7 @@ change.
   one Mac. Cap every local build and test run (time and resident memory),
   run narrow tests only while the 15-minute load is under 130, keep 65 GB of
   disk free, and delete a target directory when its pull request merges.
-  macOS has no `timeout` and ignores `ulimit -v` (Open Work, Next 35).
+  macOS has no `timeout` and ignores `ulimit -v` (`scripts/capped`).
 - **The forward plan is the ranked list in
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).
@@ -213,14 +219,14 @@ to agree on it.
 
 ## PR workflow
 
-1. Branch from `main`: `<kind>/<scope>-<slug>`, where kind is `feat`, `fix`,
+1. Branch from `dev`: `<kind>/<scope>-<slug>`, where kind is `feat`, `fix`,
    `docs`, `test`, `ci`, `build`, `chore`, `refactor` or `perf`
    ([`CONTRIBUTING.md`](CONTRIBUTING.md)).
 2. Before pushing: `cargo fmt --all --check`, both clippy passes, and the tests
    for what you touched (`make ci` covers fmt, both lints, deny and tests).
 3. Commit with a Conventional Commits title (`feat(scope):`, `fix:`, `docs:`,
    `ci:`, `test:`).
-4. `git push -u origin <branch>` and `gh pr create`. The PR body must include
+4. `git push -u origin <branch>` and `gh pr create --base dev`. The PR body must include
    the "Retrospective (PR-level)" section (what was surprising, what got
    deferred, what we learned); the [PR template](.github/pull_request_template.md)
    has it.
@@ -384,8 +390,9 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
 
 - **Don't commit secrets.** `.env`, `*.pem`, `*.key` and `maidan.toml` are
   git-ignored; CI runs `trufflehog`.
-- **Don't push to `main`.** It is policy: branch protection does not apply to
-  admins, so nothing technical stops you.
+- **Don't push to `main` or `dev`.** It is policy: branch protection does not
+  apply to admins, so nothing technical stops you. The one exception is
+  maidan-ca's fast-forward promotion of `main` to a tested `dev` commit.
 - **Don't merge over a red required check** without the maintainer's explicit
   go-ahead for that PR.
 - **Don't add backwards-compatibility shims.** Until the public 1.0 launch gate

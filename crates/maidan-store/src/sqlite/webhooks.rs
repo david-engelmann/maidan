@@ -120,17 +120,19 @@ pub async fn list_enabled(pool: &SqlitePool) -> Result<Vec<WebhookSubscriptionRo
 
 pub async fn revoke(
     pool: &SqlitePool,
+    workspace_id: WorkspaceId,
     id: WebhookSubscriptionId,
 ) -> Result<WebhookSubscription, StoreError> {
     let now = Utc::now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_webhook_subscriptions
          SET enabled = 0, revoked_at = ?
-         WHERE id = ? AND revoked_at IS NULL
+         WHERE id = ? AND workspace_id = ? AND revoked_at IS NULL
          RETURNING {SUB_COLS}"
     ))
     .bind(&now)
     .bind(id.0)
+    .bind(workspace_id.0)
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -325,39 +327,31 @@ pub async fn replay_delivery(
     workspace_id: WorkspaceId,
 ) -> Result<WebhookDelivery, StoreError> {
     let now = Utc::now().to_rfc3339();
-    let row = sqlx::query(
+    // The workspace is part of the WHERE clause, so another workspace's
+    // delivery id matches no row and nothing changes.
+    let updated = sqlx::query(
         "UPDATE maidan_webhook_deliveries
          SET quarantined_at = NULL,
              delivered_at = NULL,
              next_attempt_at = ?,
              attempts = 0,
              last_error = NULL
-         WHERE id = ? AND quarantined_at IS NOT NULL
-         RETURNING id, subscription_id, log_id, attempts, last_error, delivered_at, quarantined_at, next_attempt_at, created_at",
+         WHERE id = ?
+           AND quarantined_at IS NOT NULL
+           AND subscription_id IN (
+               SELECT id FROM maidan_webhook_subscriptions WHERE workspace_id = ?
+           )
+         RETURNING id",
     )
     .bind(&now)
     .bind(delivery_id)
+    .bind(workspace_id.0)
     .fetch_optional(pool)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    let sub_id = WebhookSubscriptionId(row.get::<Uuid, _>("subscription_id"));
-    let sub = get(pool, sub_id).await?;
-    if sub.subscription.workspace_id != workspace_id {
+    .await?;
+    if updated.is_none() {
         return Err(StoreError::NotFound);
     }
-    Ok(WebhookDelivery {
-        id: row.get("id"),
-        workspace_id,
-        subscription_id: sub_id,
-        log_id: row.get("log_id"),
-        target_url: sub.subscription.url,
-        attempts: row.get("attempts"),
-        last_error: row.get("last_error"),
-        delivered_at: row.get("delivered_at"),
-        quarantined_at: row.get("quarantined_at"),
-        next_attempt_at: row.get::<DateTime<Utc>, _>("next_attempt_at"),
-        created_at: row.get::<DateTime<Utc>, _>("created_at"),
-    })
+    get_delivery(pool, delivery_id, workspace_id).await
 }
 
 fn row_to_webhook_delivery(row: &sqlx::sqlite::SqliteRow) -> Result<WebhookDelivery, StoreError> {

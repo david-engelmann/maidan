@@ -156,7 +156,7 @@ mod tests {
     fn remap_assigns_fresh_ids_and_preserves_referential_integrity() {
         let original = sample();
         let orig_ws = original.workspace.id;
-        let remapped = remap(sample(), uuid::Uuid::new_v4);
+        let remapped = remap(sample(), uuid::Uuid::new_v4).unwrap();
 
         // Every top-level id changed.
         assert_ne!(remapped.workspace.id, orig_ws);
@@ -193,6 +193,18 @@ mod tests {
 
         // `child` is distinct from `root` (not collapsed).
         assert_ne!(root, child);
+    }
+
+    #[test]
+    fn remap_refuses_a_bundle_with_a_dangling_reference_instead_of_panicking() {
+        let mut dangling = sample();
+        dangling.messages[0].author_id = MemberId(uuid::Uuid::new_v4());
+        let err = remap(dangling, uuid::Uuid::new_v4).unwrap_err();
+        assert!(err.contains("not in the bundle"), "{err}");
+
+        let mut dangling = sample();
+        dangling.pins[0].message_id = MessageId(uuid::Uuid::new_v4());
+        assert!(remap(dangling, uuid::Uuid::new_v4).is_err());
     }
 
     #[test]

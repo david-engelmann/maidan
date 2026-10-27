@@ -60,7 +60,7 @@ pub async fn resolve_member_for_login(
     email: Option<&str>,
     email_verified: bool,
     auto_provision: bool,
-    link_email: bool,
+    link_email_issuer: Option<&str>,
 ) -> Result<(MemberId, LoginMember), ApiError> {
     if let Ok(identity) = store.get_oidc_identity(workspace_id, issuer, subject).await {
         // The identity row outlives a removed member, so the member is checked
@@ -77,21 +77,31 @@ pub async fn resolve_member_for_login(
         };
     }
 
-    if link_email
+    // Linking by email trusts the issuer that asserted the address, so it is
+    // scoped to the one issuer named for it. An email verified by any other
+    // issuer falls through to provisioning, or is refused (#1625).
+    if link_email_issuer == Some(issuer)
         && email_verified
         && let Some(email) = email
         && let Ok(member) = store.get_member_by_handle(workspace_id, email).await
     {
-        store
-            .upsert_oidc_identity(NewOidcIdentity {
+        let bound = claim_identity(
+            store,
+            NewOidcIdentity {
                 workspace_id,
                 issuer: issuer.to_string(),
                 subject: subject.to_string(),
                 member_id: member.id,
                 email: Some(email.to_string()),
-            })
-            .await?;
-        return Ok((member.id, LoginMember::Linked));
+            },
+        )
+        .await?;
+        let how = if bound == member.id {
+            LoginMember::Linked
+        } else {
+            LoginMember::Existing
+        };
+        return Ok((bound, how));
     }
 
     if !auto_provision {
@@ -102,7 +112,8 @@ pub async fn resolve_member_for_login(
     // to a member that already holds the derived handle: the email's local
     // part proves nothing about who owns that handle, so `admin@attacker.com`
     // must not become `admin`. Linking an existing member is the job of
-    // `MAIDAN_OIDC_LINK_EMAIL`, which needs the whole verified address.
+    // `MAIDAN_OIDC_LINK_EMAIL`, which needs the whole verified address from
+    // the configured issuer.
     let base = handle_from_claims(subject, email);
     let mut created = None;
     for handle in [base.clone(), disambiguated_handle(&base, subject)] {
@@ -131,21 +142,84 @@ pub async fn resolve_member_for_login(
         }
     }
     let Some(member) = created else {
-        return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));
+        // Both handles are taken. A racing first login of this same identity
+        // takes both (the fallback is derived from the subject), so give it a
+        // moment to bind the identity and sign in as that member.
+        return awaited_racing_identity(store, workspace_id, issuer, subject).await;
     };
-    let how = LoginMember::Provisioned;
-
-    store
-        .upsert_oidc_identity(NewOidcIdentity {
+    let bound = claim_identity(
+        store,
+        NewOidcIdentity {
             workspace_id,
             issuer: issuer.to_string(),
             subject: subject.to_string(),
             member_id: member.id,
             email: email.map(str::to_string),
-        })
-        .await?;
+        },
+    )
+    .await?;
+    // A racing first login of the same identity bound it first: sign in as
+    // that member. The member this login created holds no identity.
+    let how = if bound == member.id {
+        LoginMember::Provisioned
+    } else {
+        LoginMember::Existing
+    };
+    Ok((bound, how))
+}
 
-    Ok((member.id, how))
+/// Wait briefly for a racing login to bind `(issuer, subject)`, then resolve
+/// it like any existing identity. Refused when nothing binds it.
+async fn awaited_racing_identity(
+    store: &dyn Store,
+    workspace_id: WorkspaceId,
+    issuer: &str,
+    subject: &str,
+) -> Result<(MemberId, LoginMember), ApiError> {
+    for _ in 0..20 {
+        match store.get_oidc_identity(workspace_id, issuer, subject).await {
+            Ok(identity) => {
+                return match store.get_member(identity.member_id).await {
+                    Ok(member)
+                        if member.workspace_id == workspace_id
+                            && member.tombstoned_at.is_none() =>
+                    {
+                        Ok((member.id, LoginMember::Existing))
+                    }
+                    Ok(_) | Err(maidan_store::StoreError::NotFound) => {
+                        Err(ApiError::Forbidden(NOT_PROVISIONED.into()))
+                    }
+                    Err(err) => Err(err.into()),
+                };
+            }
+            Err(maidan_store::StoreError::NotFound) => {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Err(ApiError::Forbidden(NOT_PROVISIONED.into()))
+}
+
+/// Bind the identity to `new.member_id` unless a racing login already bound
+/// it. The identity row is the arbiter: the member it names is the one signed
+/// in, checked live and in this workspace like any existing identity.
+async fn claim_identity(store: &dyn Store, new: NewOidcIdentity) -> Result<MemberId, ApiError> {
+    let workspace_id = new.workspace_id;
+    let wanted = new.member_id;
+    let identity = store.upsert_oidc_identity(new).await?;
+    if identity.member_id == wanted {
+        return Ok(wanted);
+    }
+    match store.get_member(identity.member_id).await {
+        Ok(member) if member.workspace_id == workspace_id && member.tombstoned_at.is_none() => {
+            Ok(member.id)
+        }
+        Ok(_) | Err(maidan_store::StoreError::NotFound) => {
+            Err(ApiError::Forbidden(NOT_PROVISIONED.into()))
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 /// The handle a provisioned member takes when the one derived from the email
@@ -168,7 +242,7 @@ pub async fn touch_identity(
     member_id: MemberId,
     email: Option<&str>,
 ) -> Result<OidcIdentity, ApiError> {
-    Ok(store
+    let identity = store
         .upsert_oidc_identity(NewOidcIdentity {
             workspace_id,
             issuer: issuer.to_string(),
@@ -176,5 +250,11 @@ pub async fn touch_identity(
             member_id,
             email: email.map(str::to_string),
         })
-        .await?)
+        .await?;
+    // The row keeps its first member, so a session is only ever minted for
+    // the member the identity is bound to.
+    if identity.member_id != member_id {
+        return Err(ApiError::Forbidden(NOT_PROVISIONED.into()));
+    }
+    Ok(identity)
 }

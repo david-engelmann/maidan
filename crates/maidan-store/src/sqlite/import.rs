@@ -46,6 +46,11 @@ pub(crate) async fn import_on(
 ) -> Result<(), StoreError> {
     let mut tx = sqlx::Connection::begin(&mut *conn).await?;
 
+    // Every reference must resolve inside the bundle, to the bundle's own
+    // workspace. The foreign keys alone would accept any tenant's rows, so
+    // nothing is written until it passes.
+    maidan_types::validate_import(b).map_err(StoreError::InvalidInput)?;
+
     let w = &b.workspace;
     sqlx::query(
         "INSERT INTO maidan_workspaces (id, name, created_at, updated_at, tombstoned_at, origin)

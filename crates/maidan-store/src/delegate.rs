@@ -297,8 +297,15 @@ macro_rules! store_delegations {
                 &self,
                 id: MemberId,
                 display_name: Option<String>,
-            ) -> Result<Member, StoreError> {
-                members::set_display_name(self.pool(), id, display_name.as_deref()).await
+                audit: NewAuditEvent,
+            ) -> Result<(Member, StoredEvent), StoreError> {
+                governance_audited::set_member_display_name(
+                    self.pool(),
+                    id,
+                    display_name.as_deref(),
+                    audit,
+                )
+                .await
             }
 
             async fn get_member_in(
@@ -5165,9 +5172,10 @@ macro_rules! store_delegations {
 
             async fn revoke_webhook_subscription(
                 &self,
+                workspace_id: WorkspaceId,
                 id: WebhookSubscriptionId,
             ) -> Result<WebhookSubscription, StoreError> {
-                webhooks::revoke(self.pool(), id).await
+                webhooks::revoke(self.pool(), workspace_id, id).await
             }
 
             async fn list_enabled_webhook_subscriptions(

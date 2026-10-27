@@ -12,6 +12,8 @@
 # Bootstrap seed routes (`POST /workspaces`) are omitted unless
 # `MAIDAN_ENABLE_BOOTSTRAP=1` (CI smoke / local seed). Production deploys
 # should leave the build arg at 0.
+# Leaving it at 0 drops the default features, so the build names `otel`
+# again: without it the release image silently ignores `OTLP_ENDPOINT`.
 
 ARG RUST_VERSION=1.99
 ARG DEBIAN_CODENAME=bookworm
@@ -34,7 +36,7 @@ RUN apt-get update \
 RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
       cargo chef cook --release --recipe-path recipe.json --bin maidan-server; \
     else \
-      cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features; \
+      cargo chef cook --release --recipe-path recipe.json --bin maidan-server --no-default-features --features otel; \
     fi
 
 FROM chef AS builder
@@ -55,7 +57,7 @@ RUN apt-get update \
 RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
       cargo build --release --bin maidan-server; \
     else \
-      cargo build --release --bin maidan-server --no-default-features; \
+      cargo build --release --bin maidan-server --no-default-features --features otel; \
     fi
 
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime

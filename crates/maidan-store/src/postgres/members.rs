@@ -151,24 +151,35 @@ pub async fn get(pool: &PgPool, id: MemberId) -> Result<Member, StoreError> {
     row_to_member(&row)
 }
 
-/// Set a member's display name, or clear it when `None` — see the SQLite
-/// twin. `NotFound` when the id names no member.
-pub async fn set_display_name(
-    pool: &PgPool,
+/// Set a member's display name, or clear it when `None`, and append
+/// `MemberDisplayNameChanged` in the same transaction — see the SQLite twin.
+/// `NotFound` when the id names no member.
+pub(crate) async fn set_display_name_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     id: MemberId,
     display_name: Option<&str>,
-) -> Result<Member, StoreError> {
-    let done = sqlx::query(
-        "UPDATE maidan_members SET display_name = $1, updated_at = NOW() WHERE id = $2",
+) -> Result<(Member, StoredEvent), StoreError> {
+    let row = sqlx::query(
+        "UPDATE maidan_members SET display_name = $1, updated_at = NOW() WHERE id = $2
+         RETURNING id, workspace_id, handle, display_name, kind, created_at, updated_at, tombstoned_at",
     )
     .bind(display_name)
     .bind(id.0)
-    .execute(pool)
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let member = row_to_member(&row)?;
+    let stored = events::append_in_tx(
+        tx,
+        &Event::MemberDisplayNameChanged {
+            occurred_at: Utc::now(),
+            workspace_id: member.workspace_id,
+            member_id: member.id,
+            display_name: member.display_name.clone(),
+        },
+    )
     .await?;
-    if done.rows_affected() == 0 {
-        return Err(StoreError::NotFound);
-    }
-    get(pool, id).await
+    Ok((member, stored))
 }
 
 /// The workspace's member with this handle, ignoring case. `Alice` and

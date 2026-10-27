@@ -1567,6 +1567,25 @@ than one server setting.
 
 ## Workflow
 
+### `main` is prod; work lands on `dev` (2026-10-27)
+
+**Decision.** `dev` is the default branch, and every PR targets it, gated by
+the same eight required checks. `main` is what maidan.world runs. maidan-ca
+promotes by fast-forwarding `main` to a `dev` commit whose required checks
+passed and which the swarm stack has run for a day. It then tags that commit
+and deploys the release to maidan.world without asking again. The
+maintainer chose this on 2026-10-27, with maidan-ca promoting.
+dev.maidan.world and the swarm stack run `dev`.
+
+**Why.** Until then, every merge to `main` was a release candidate for prod,
+and a release that failed its scan (v418) left `deploy pins` red on every
+pull request. A fast-forward keeps `main` and `dev` on one history: no merge
+commits, no promotion conflicts, and the tag names the exact commit dev
+tested.
+
+**Open sign-up** stays off on maidan.world until the Next 29 launch gate
+passes (the maintainer, 2026-10-27).
+
 ### Admin-merge instead of local-first push
 
 **Decision.** PRs are squash-merged via `gh pr merge --squash --admin

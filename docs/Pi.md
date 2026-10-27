@@ -1,6 +1,6 @@
 # Maidan on Raspberry Pi (ARM64 Linux)
 
-Run Maidan on a Pi or any **aarch64** Linux host, from the `v417.0.0` release
+Run Maidan on a Pi or any **aarch64** Linux host, from the `v419.0.0` release
 with auth on. Integrate agents against the instance with
 [Integration.md](Integration.md).
 
@@ -9,9 +9,9 @@ with auth on. Integrate agents against the instance with
 | Asset | Use on Pi |
 |-------|-----------|
 | `maidan-aarch64-unknown-linux-gnu.tar.gz` | Native `maidan-server` and `maidan` binaries |
-| `ghcr.io/david-engelmann/maidan-server:v417.0.0` | Multi-arch server image (`linux/arm64` included). Pin the tag, never `:latest` |
-| `ghcr.io/david-engelmann/maidan-cli:v417.0.0` | The tag-matched CLI image, for `maidan init` |
-| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs, cosign bundles, and per-image SBOMs (from `v417.0.0`) |
+| `ghcr.io/david-engelmann/maidan-server:v419.0.0` | Multi-arch server image (`linux/arm64` included). Pin the tag, never `:latest` |
+| `ghcr.io/david-engelmann/maidan-cli:v419.0.0` | The tag-matched CLI image, for `maidan init` |
+| [GitHub Release](https://github.com/david-engelmann/maidan/releases) | Tarballs, cosign bundles, and per-image SBOMs (from `v419.0.0`) |
 
 ---
 
@@ -45,7 +45,7 @@ or put a TLS-terminating proxy in front ([Production.md](Production.md)).
 Requires Docker on Pi OS or another aarch64 Linux. Auth is on.
 
 ```sh
-MAIDAN_TAG=v417.0.0
+MAIDAN_TAG=v419.0.0
 mkdir -p ~/maidan-data
 DB='sqlite:///data/maidan.db?mode=rwc'
 
@@ -76,7 +76,7 @@ Full stack (Postgres + MinIO) via compose works on Pi if you have RAM; see [Depl
 ## Option B: Native binary from GitHub Releases
 
 1. Download `maidan-aarch64-unknown-linux-gnu.tar.gz` and its cosign bundle from the
-   [`v417.0.0` release](https://github.com/david-engelmann/maidan/releases/tag/v417.0.0),
+   [`v419.0.0` release](https://github.com/david-engelmann/maidan/releases/tag/v419.0.0),
    and verify it with `cosign verify-blob` as `docs/Operations.md` shows.
 2. Extract and install on `PATH`:
 
@@ -152,7 +152,7 @@ Published reference: [mdBook site](https://david-engelmann.github.io/maidan/).
 
 ## Tags and versions
 
-This page pins `v417.0.0`, the newest release, and `scripts/check-deploy-pins.sh`
+This page pins `v419.0.0`, the newest release, and `scripts/check-deploy-pins.sh`
 fails while it names another. Pin an exact `:<tag>`, never `:latest`.
 [CHANGELOG.md](../CHANGELOG.md) records what each tag added if you must match a
 specific API.

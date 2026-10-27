@@ -22,3 +22,29 @@ reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0381"
 reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: webpki-roots 0.26.11 is a shim over webpki-roots 1.x, locked at the fixed 1.0.10 (RustSec lists 0.26.11 as unaffected, so cargo-deny needs no ignore)"
+
+# fuzz/Cargo.lock and sdk/rust/Cargo.lock. block-buffer 0.10.4 is the buffer
+# under the digest 0.10 hashers (sha1 for the SDK's WebSocket handshake, sha2
+# in the fuzz build). The advisory needs the hasher's compress callback to
+# panic, the panic to be caught, and the buffer to be used again; the
+# RustCrypto compress functions do not panic, and neither the fuzz targets nor
+# the SDK catch a panic around a hasher. Only 0.12.1 is fixed, and no 0.10
+# release exists, so the fix arrives when the hashers move to digest 0.11.
+[[IgnoredVulns]]
+id = "GHSA-qwgh-2vcv-g2f7"
+reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: block-buffer 0.10.4 under digest 0.10 hashers whose compress never panics, and nothing catches a hasher panic; no fixed 0.10 release"
+
+# examples/openhands/requirements.txt. litellm requires filelock<4.0, and these
+# three are fixed only in 4.2.1, so no floor satisfies both. Revisit when litellm
+# allows filelock 4.
+[[IgnoredVulns]]
+id = "GHSA-v4x8-3wr5-3wq8"
+reason = "examples/openhands/requirements.txt: filelock < 4.2.1 is forced by litellm (filelock<4.0); exploiting ReadWriteLock's SQLite lock database needs another local user to plant a symlink or journal file beside it, and the OpenHands example runs as the only user in a container it owns"
+
+[[IgnoredVulns]]
+id = "GHSA-9vhv-jxww-xfm5"
+reason = "examples/openhands/requirements.txt: filelock < 4.2.1 is forced by litellm (filelock<4.0); the advisory affects Windows only, and the OpenHands example runs in a Linux container"
+
+[[IgnoredVulns]]
+id = "GHSA-567q-5qvw-pf92"
+reason = "examples/openhands/requirements.txt: filelock < 4.2.1 is forced by litellm (filelock<4.0); the advisory affects Windows only, and the OpenHands example runs in a Linux container"
