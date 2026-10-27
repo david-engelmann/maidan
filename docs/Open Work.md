@@ -53,7 +53,7 @@ CI ran.
 
 | PR | What it does | State (2026-10-27) | Merge after |
 |---|---|---|---|
-| #1634 | The change sweep reads CI from Actions and commit statuses when the token cannot read check runs (#1623) | Open, green, merging | — |
+| #1634 | The change sweep reads CI from Actions and commit statuses when the token cannot read check runs (#1623) | Open, a draft: the red-team FIX (two paths where missing or failed checks read as clear) being answered | — |
 | #1635 | A review names the family that wrote its change, and no seat of that family claims it | Open, a red-team FIX (a claim racing the label on Postgres) being answered | — |
 | #1669 | A session write refuses a member removed over SCIM (#1665) | Open, `integration` red: the backstop's `session.delete` audit row is no longer written | — |
 | #1700 | The Postgres session write locks the SCIM row before the member row (#1670) | Open | #1669 |
