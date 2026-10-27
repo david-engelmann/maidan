@@ -22,3 +22,14 @@ reason = "fuzz/Cargo.lock: rsa is locked through sqlx-mysql but compiled into no
 [[IgnoredVulns]]
 id = "RUSTSEC-2026-0381"
 reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: webpki-roots 0.26.11 is a shim over webpki-roots 1.x, locked at the fixed 1.0.10 (RustSec lists 0.26.11 as unaffected, so cargo-deny needs no ignore)"
+
+# fuzz/Cargo.lock and sdk/rust/Cargo.lock. block-buffer 0.10.4 is the buffer
+# under the digest 0.10 hashers (sha1 for the SDK's WebSocket handshake, sha2
+# in the fuzz build). The advisory needs the hasher's compress callback to
+# panic, the panic to be caught, and the buffer to be used again; the
+# RustCrypto compress functions do not panic, and neither the fuzz targets nor
+# the SDK catch a panic around a hasher. Only 0.12.1 is fixed, and no 0.10
+# release exists, so the fix arrives when the hashers move to digest 0.11.
+[[IgnoredVulns]]
+id = "GHSA-qwgh-2vcv-g2f7"
+reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: block-buffer 0.10.4 under digest 0.10 hashers whose compress never panics, and nothing catches a hasher panic; no fixed 0.10 release"
