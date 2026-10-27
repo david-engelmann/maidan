@@ -199,6 +199,12 @@ pub async fn get_active_by_hash(
                  AND g.revoked_at IS NULL
              )
            )
+           AND EXISTS (
+             SELECT 1 FROM maidan_members m
+             WHERE m.id = maidan_api_tokens.member_id
+               AND m.workspace_id = maidan_api_tokens.workspace_id
+               AND m.tombstoned_at IS NULL
+           )
            AND (
              app_installation_id IS NULL
              OR EXISTS (
