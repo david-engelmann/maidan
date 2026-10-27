@@ -29,9 +29,39 @@ pub(super) fn report(message: &A2aMessage) -> Result<Option<AccountedUsageReques
     else {
         return Ok(None);
     };
-    serde_json::from_value(value.clone())
+    serde_json::from_value(integral(value.clone()))
         .map(Some)
         .map_err(|e| A2aError::invalid_params(format!("{PAYER_STAMP_EXTENSION}: {e}")))
+}
+
+/// The largest magnitude a double holds every integer up to, exactly.
+const EXACT_DOUBLE_INTEGERS: f64 = 9_007_199_254_740_992.0;
+
+/// `value` with every finite whole double within the exact range turned into
+/// an integer. Over gRPC the metadata is a protobuf `Struct`, whose numbers
+/// are all doubles, so a report's `0` arrives as `0.0`; a fractional or
+/// out-of-range number stays a double and the report's integer fields still
+/// refuse it.
+fn integral(value: Value) -> Value {
+    match value {
+        Value::Number(n) => match n.as_f64() {
+            Some(f)
+                if !n.is_i64()
+                    && !n.is_u64()
+                    && f.is_finite()
+                    && f.fract() == 0.0
+                    && f.abs() <= EXACT_DOUBLE_INTEGERS =>
+            {
+                Value::from(f as i64)
+            }
+            _ => Value::Number(n),
+        },
+        Value::Array(items) => Value::Array(items.into_iter().map(integral).collect()),
+        Value::Object(map) => {
+            Value::Object(map.into_iter().map(|(k, v)| (k, integral(v))).collect())
+        }
+        other => other,
+    }
 }
 
 /// Record the report against the context's thread. The reporter is the
@@ -118,6 +148,41 @@ mod tests {
         let bad = message(Some(json!({ (PAYER_STAMP_EXTENSION): {"model": "m"} })));
         let err = report(&bad).unwrap_err();
         assert_eq!(err.kind, A2aErrorKind::InvalidParams);
+    }
+
+    fn stamped(tokens_input: Value) -> A2aMessage {
+        message(Some(json!({ (PAYER_STAMP_EXTENSION): {
+            "usage_report_id": "0190f0f0-0000-7000-8000-000000000001",
+            "claim_lease_id": "0190f0f0-0000-7000-8000-000000000002",
+            "model": "peer/model",
+            "tokens": { "input": tokens_input, "output": 0.0, "cache_read": 0.0,
+                        "cache_write_5m": 0.0, "cache_write_1h": 0.0 },
+            "usd_micros": 0.0,
+            "price_snapshot": {
+                "input_usd_micros_per_million": 0.0,
+                "output_usd_micros_per_million": 0.0,
+                "cache_read_usd_micros_per_million": 0.0,
+                "cache_write_5m_usd_micros_per_million": 0.0,
+                "cache_write_1h_usd_micros_per_million": 0.0
+            },
+            "turns": 1.0,
+            "evidence": {}
+        }})))
+    }
+
+    #[test]
+    fn a_report_whose_whole_numbers_arrive_as_doubles_is_read_as_integers() {
+        let parsed = report(&stamped(json!(120.0))).unwrap().unwrap();
+        assert_eq!(parsed.tokens.input, 120);
+        assert_eq!(parsed.turns, 1);
+    }
+
+    #[test]
+    fn a_fractional_or_out_of_range_double_is_still_refused() {
+        for bad in [json!(1.5), json!(1e300), json!(-1e17)] {
+            let err = report(&stamped(bad.clone())).unwrap_err();
+            assert_eq!(err.kind, A2aErrorKind::InvalidParams, "{bad}");
+        }
     }
 
     #[test]
