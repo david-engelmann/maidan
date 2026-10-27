@@ -49,4 +49,13 @@ for name in minio minio-client; do
   fi
 done
 
+# The release image builds without default features (no bootstrap). It must
+# still name `otel`, or OTLP_ENDPOINT is silently ignored in every deploy.
+for line in $(grep -n -- '--no-default-features' crates/maidan-server/Dockerfile | cut -d: -f1); do
+  if ! sed -n "${line}p" crates/maidan-server/Dockerfile | grep -q -- '--features otel'; then
+    echo "crates/maidan-server/Dockerfile:${line} builds without default features but drops otel" >&2
+    exit 1
+  fi
+done
+
 echo "deployment contract OK"
