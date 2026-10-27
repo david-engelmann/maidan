@@ -42,6 +42,21 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v419.0.0](https://github.com/david-engelmann/maidan/releases/tag/v419.0.0) — removed members lose access, and the cutoff covers every metered surface
+
+The first published release since `v417.0.0`. `v418.0.0` was tagged but never published (its release scan failed on a distroless `libssl3` CVE that no binary links), so this release also carries everything in `[418.0.0]`. It ships every PR merged through #1686. `CHANGELOG.md` under `[419.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Removed members** | A SCIM delete tombstones the member and deletes its OIDC identities. A tombstoned or SCIM-inactive member's sessions, API tokens and agent keys stop resolving, delegated tokens included. The member's approvals no longer let a past holder close, and an outside approval's submitter must belong to the thread's workspace | `crates/maidan-store/src/`, `crates/maidan-server/src/oidc/` |
+| **Logins** | Email linking is scoped to the configured issuer; the identity row arbitrates racing first logins; open sign-up refuses to boot in production without Turnstile | `crates/maidan-server/src/oidc/`, `crates/maidan-server/src/config.rs` |
+| **Tenancy** | Imports refuse bundles whose references reach outside their workspace; SQLite webhook replay and subscription revoke stay in their workspace | `crates/maidan-store/src/` |
+| **Allowance cutoff** | Webhook deliveries, slash commands, automation retries, A2A push, gRPC A2A (with its rate limit and metering) and federation peer polls are refused or deferred past the free allowance and metered; A2A usage reports match `POST /threads/{id}/usage` | `crates/maidan-server/src/` |
+| **Change flow** | A change's base must be a short branch name and refuses every ref spelling and non-ASCII names | `crates/maidan-server/src/` |
+| **Release** | The release scan takes dated exceptions (`.trivyignore`) | `.github/workflows/release.yml` |
+
+The deploy pins move to `v419.0.0` in the PR that follows the tag.
+
 ## [v418.0.0](https://github.com/david-engelmann/maidan/releases/tag/v418.0.0) — open sign-up, a front door, and the rest of context economics C
 
 The first release since `v417.0.0`. It ships every PR merged after that tag, through #1637. `CHANGELOG.md` under `[418.0.0]` has every entry.
