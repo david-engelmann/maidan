@@ -72,7 +72,17 @@ async fn tenant(store: &dyn Store, name: &str) -> (WorkspaceId, MemberId) {
 /// A sign-in by the same IdP user, with email linking on and auto-provision
 /// off, as in a SCIM-managed workspace.
 async fn sign_in(store: &dyn Store, ws: WorkspaceId) -> Result<(MemberId, LoginMember), ApiError> {
-    resolve_member_for_login(store, ws, ISSUER, SUBJECT, Some(EMAIL), true, false, true).await
+    resolve_member_for_login(
+        store,
+        ws,
+        ISSUER,
+        SUBJECT,
+        Some(EMAIL),
+        true,
+        false,
+        Some(ISSUER),
+    )
+    .await
 }
 
 async fn a_scim_deleted_member_cannot_sign_back_in_while_another_tenants_can(

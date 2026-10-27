@@ -189,3 +189,103 @@ async fn a_display_name_change_is_announced_to_its_own_workspace_only() {
         .iter()
         .all(|a| a.action != "member.display_name.set"));
 }
+
+/// A token can rename only its own member: another member of the same
+/// workspace is forbidden, and a member of another workspace is not found.
+/// Neither attempt leaves a rename event or audit row anywhere, and the
+/// other workspace's export carries none of this workspace's renames.
+#[tokio::test]
+async fn renaming_someone_else_is_refused_and_no_export_carries_another_workspaces_rename() {
+    let (addr, http, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let seed = |name: &'static str, handle: &'static str| {
+        let store = store.clone();
+        async move {
+            let ws = store
+                .create_workspace(NewWorkspace { name: name.into() })
+                .await
+                .unwrap();
+            let member = store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Human,
+                })
+                .await
+                .unwrap();
+            (ws.id, member.id)
+        }
+    };
+    let (home, me) = seed("home", "me").await;
+    let neighbour = store
+        .create_member(NewMember {
+            workspace_id: home,
+            handle: "neighbour".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap()
+        .id;
+    let (away, stranger) = seed("away", "stranger").await;
+    let token = mint(
+        store.as_ref(),
+        home,
+        me,
+        vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
+    )
+    .await;
+
+    let rename = |target: MemberId| {
+        http.patch(format!("{base}/members/{}", target.0))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "display_name": "Mallory" }))
+            .send()
+    };
+    assert_eq!(
+        rename(neighbour).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        rename(stranger).await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+    for id in [neighbour, stranger] {
+        assert_eq!(store.get_member(id).await.unwrap().display_name, None);
+    }
+
+    assert_eq!(rename(me).await.unwrap().status(), StatusCode::OK);
+
+    let kind = "member_display_name_changed";
+    let count = |ws: WorkspaceId| {
+        let store = store.clone();
+        async move {
+            let events = store.list_events_after(ws, 0, 500).await.unwrap();
+            let audits = store.list_audit_for_workspace(ws, 500).await.unwrap();
+            (
+                events
+                    .iter()
+                    .filter(|e| e.kind == maidan_types::EventKind::MemberDisplayNameChanged)
+                    .count(),
+                audits
+                    .iter()
+                    .filter(|a| a.action == "member.display_name.set")
+                    .count(),
+            )
+        }
+    };
+    assert_eq!(count(home).await, (1, 1));
+    assert_eq!(count(away).await, (0, 0));
+
+    let away_export =
+        serde_json::to_string(&maidan_server::export::build(&store, away).await.unwrap()).unwrap();
+    assert!(
+        !away_export.contains(kind),
+        "another workspace's rename leaked into an export"
+    );
+    assert!(!away_export.contains("Mallory"));
+}
