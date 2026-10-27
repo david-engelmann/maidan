@@ -6,7 +6,7 @@
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
 use maidan_auth::AuthContext;
-use maidan_types::{TaskFingerprint, ThreadId};
+use maidan_types::{AuditScope, NewAuditEvent, TaskFingerprint, ThreadId};
 
 use crate::error::ApiError;
 use crate::extract::ApiPath;
@@ -41,8 +41,12 @@ pub async fn get_task_fingerprint(
 
 /// Clear a thread's duplicate link (C8b): a live duplicate is withheld from
 /// claims, so this is how a task wrongly linked becomes claimable. `204`;
-/// `404` when the thread has no fingerprint. `thread:transition` + thread
-/// access.
+/// `404` when the thread has no fingerprint, and the same `404` when it is
+/// linked to an original the caller cannot see, so a clear never confirms a
+/// thread the caller may not read (#1580); a thread in another
+/// workspace or a private channel likewise answers `404`, not `403`. Writes a
+/// `thread.duplicate_cleared` audit event with the clear.
+/// `thread:transition` + access to the thread and its original.
 pub async fn clear_task_duplicate(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
@@ -50,7 +54,31 @@ pub async fn clear_task_duplicate(
 ) -> ApiResult<StatusCode> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
-    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    state.store.clear_task_duplicate(thread_id).await?;
+    // A thread the caller cannot see answers as missing, never `403`.
+    let scope = match maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await {
+        Err(maidan_auth::AuthError::Forbidden(_)) => return Err(ApiError::NotFound),
+        other => other?,
+    };
+    let fingerprint = state
+        .store
+        .get_task_fingerprint(thread_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if let Some(original) = fingerprint.duplicate_of
+        && !maidan_auth::can_access_thread(state.store.as_ref(), &auth, original).await?
+    {
+        return Err(ApiError::NotFound);
+    }
+    let audit = NewAuditEvent {
+        scope: AuditScope::Workspace(scope.workspace_id),
+        actor_id: Some(auth.actor_id),
+        action: "thread.duplicate_cleared".into(),
+        target_kind: Some("thread".into()),
+        target_id: Some(thread_id.0),
+        metadata: serde_json::json!({
+            "duplicate_of": fingerprint.duplicate_of.map(|t| t.0),
+        }),
+    };
+    state.store.clear_task_duplicate(thread_id, audit).await?;
     Ok(StatusCode::NO_CONTENT)
 }
