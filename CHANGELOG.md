@@ -7,6 +7,115 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [419.0.0] — 2026-10-27
+
+The first published release since 417.0.0. `v418.0.0` was tagged but never
+published: its release scan failed on a CVE in the distroless base's `libssl3`,
+which no Maidan binary links. This release carries everything in 418.0.0 and
+every PR merged after it, through #1686. The release scan now takes dated
+exceptions, and that CVE's expires on 2026-11-02. The rest is security work.
+A member removed by SCIM or import loses their sessions, API tokens and agent
+keys, and their approvals stop counting. Email linking is scoped to the
+configured issuer, and racing first logins resolve to one member. Imports,
+webhook replay and revoke stay inside their own workspace. The allowance cutoff
+now covers webhooks, slash commands, automation retries, A2A push, gRPC A2A
+and federation polls.
+
+### The owner-close check counts past holders
+
+- **Fixed:** On an owner-governed thread, a member who held the claim earlier can no longer land (close) it after the claim was released or reaped. The separation-of-duties check now reads the thread's durable holder record, not only the live assignee, unless an outside reviewer (not the owner, never a holder, same workspace) has approved it or recorded a qualifying land-gate pass (#1569).
+
+### Imported thread holders count as having worked the thread
+
+- **Fixed:** Importing a workspace kept each thread's holder but did not record that they had worked the thread, so a holder who later released it passed the past-holder checks as someone who never held it. Import now records the holder on both backends, as a claim does.
+
+### A change's base must be a short branch name
+
+- **Fixed:** The change flow now refuses a base written as a qualified ref (`refs/heads/…` or `heads/…`), in both the change target and the mark-ready base map; a qualified ref slipped past the checks that refuse `prod` and another change's branch as a base (#1570).
+
+### Renaming yourself is announced and audited
+
+- **Fixed:** Changing a display name with `PATCH /members/{id}` updated the member silently, so live surfaces kept showing the old name and the audit log had no record of it. The change now appends a `member_display_name_changed` event and a `member.display_name.set` audit row in the same transaction, on both backends, and publishes the event to the member's own workspace only. The event is not federated.
+
+### A change's base refuses every ref spelling and non-ASCII names
+
+- **Fixed:** The change flow and the mark-ready base map now also refuse `HEAD` and bases starting `tags/`, `remotes/` or `origin/`, and a branch name must be ASCII, so a look-alike or zero-width character can't stand in for `prod` (#1690).
+- **Fixed:** Blessing a `github_branch` base (`owner/name@base`) now refuses the same ref spellings, so a row that could never be used, such as `@heads/dev`, can no longer be added. Pseudo-refs such as `FETCH_HEAD` and `ORIG_HEAD`, and any other name ending in `_HEAD`, are refused as bases too.
+- **Changed:** A stored branch target or blessing whose name is not ASCII is now refused rather than migrated. It stops decoding, nothing is delivered to it, and it must be re-added under an ASCII name.
+
+### Email linking is scoped to the configured issuer
+
+- **Fixed:** with `MAIDAN_OIDC_LINK_EMAIL` on, a first sign-in links to an existing member by verified email only when the configured OIDC issuer asserted that email. An email verified by any other issuer no longer links to the member (#1625).
+
+### Webhook deliveries under the allowance cutoff
+- **Fixed:** Outbound webhook deliveries and retries now respect the hard `deliveries` cutoff and are metered. A workspace cut off on `deliveries` sends nothing; its deliveries are deferred with their attempt counts unchanged and go out once the cutoff lifts. Each attempt that goes out, failed or not, counts one `deliveries` unit. Before this, an open sign-up workspace past its allowance could keep the server sending outbound HTTP through webhook subscriptions.
+
+### Deliveries cutoff for slash commands, automation retries and A2A push
+
+- **Fixed:** An open sign-up workspace past its deliveries allowance could still make the server send outbound HTTP through slash commands, queued slash-command and FSM-hook retries, and A2A push notifications. A slash command now answers `over_allowance` and queues no retry, a queued retry is deferred with its attempts unchanged, and a push is not sent. Each attempt on these paths, failed or not, now counts one delivery.
+
+### A2A usage reports under the allowance cutoff
+- **Fixed:** An A2A PayerStamp report is now tested to follow the same cutoff rule as `POST /threads/{id}/usage`, on both backends. Past its request allowance, a workspace's report is refused before anything is recorded. Past its stored-bytes allowance, the spend is still recorded once and the message is refused. Other workspaces are unaffected.
+
+### Open sign-up needs a bot check in production
+- **Fixed:** With `MAIDAN_ENV=production`, boot now refuses `MAIDAN_SIGNUP_OPEN=1` unless `MAIDAN_TURNSTILE_SECRET` is set, and the error names both variables. Outside production, open sign-up without Turnstile still boots but logs a warning.
+
+### gRPC A2A under the request-allowance cutoff
+- **Fixed:** The gRPC A2A binding now applies the same per-bearer rate limit, request-allowance cutoff and request metering as the HTTP bearer middleware, for every operation. Previously an open sign-up workspace past its request allowance could still post over gRPC `SendMessage`, unmetered. Both bindings now share one helper, `usage_meters::admit_request`.
+
+### SCIM delete removes the member
+- **Fixed:** A SCIM delete now tombstones the member and deletes its OIDC identities in the same transaction that revokes its tokens and ends its sessions. Before this, the member stayed live with its identities attached, so a user deleted through SCIM could sign straight back in.
+
+### Webhook replay and revoke stay in their workspace
+
+- **Fixed:** On SQLite, replaying a webhook delivery by id from another workspace un-quarantined and re-sent that workspace's dead delivery before returning not found, charging its allowance. The replay now matches the workspace in the same `UPDATE`, so another workspace's id is not found and changes nothing. Revoking a webhook subscription had the same order on both backends and is scoped the same way.
+
+### Deliveries cutoff for federation peer polling
+
+- **Fixed:** An open sign-up workspace past its deliveries allowance kept polling the federation peers it created, sending outbound HTTP every tick. Its peers are now skipped while it is cut off, with the sync cursor left in place, and each peer poll counts one delivery.
+
+### Imports refuse bundles that reach outside their own workspace
+
+- **Fixed:** A workspace restore trusted every id in the bundle, so a signed bundle could attach its threads, messages, pins and memberships to another tenant's members, channels or threads. Every reference must now resolve to an entity the bundle defines in its own workspace; otherwise the import is refused with a validation error and nothing is written. `mode=new` answers such a bundle with 400 instead of panicking.
+
+### A removed member's approval no longer lets a past holder close
+
+- **Fixed:** The outside approval that lets a past holder close an owned thread now ignores a reviewer, review submitter or land-gate recorder who has since been removed from the workspace, on SQLite and Postgres (#1664).
+
+### Display-name changes are tested on both backends and across workspaces
+
+- **Added:** Tests check that a display-name change commits with its event and audit row in the member's own workspace on SQLite and Postgres, and rolls back when the audit row aims at another workspace.
+- **Added:** Tests check that renaming another member is refused in the same workspace and across workspaces, and that another workspace's export carries no rename.
+
+### Main builds again after the OIDC link-issuer change
+
+- **Fixed:** The SCIM-delete tombstone test now passes the configured issuer as `link_email_issuer`, matching the signature from #1653. It was merged in #1663 with the old boolean and broke the build.
+
+### A removed member's tokens and agent keys stop resolving
+
+- **Security:** an API token or agent key whose member is removed (tombstoned, by import or a SCIM delete) no longer resolves, and neither does a token whose member belongs to another workspace. The check is part of the bearer lookup on both backends, so every surface that resolves a bearer refuses it (#1655).
+- **Security:** a delegated token also stops resolving once its delegate is removed, even when only the delegate was tombstoned outside SCIM.
+
+### OIDC identity row decides racing first logins
+
+- **Fixed:** Two simultaneous first logins of the same OIDC identity could bind it to different members, the later write silently moving the identity. The identity row now keeps its first member, and a login that loses the race signs in as the member that won (#1642).
+
+### The root lockfile takes the fixed block-buffer
+
+- **Security:** the root lockfile moves `block-buffer` from 0.12.0 to 0.12.1, the fixed release for GHSA-qwgh-2vcv-g2f7 (a caught panic in a hasher's compress callback could corrupt the buffer position). The fuzz and Rust SDK lockfiles keep 0.10.4, which has no fixed release; the `osv scan` job accepts it there, with the reason in `.config/osv-scanner.toml`.
+
+### Sessions refuse members removed over SCIM
+
+- **Fixed:** a sign-in that was already in progress when a SCIM delete or deactivation committed could still create a live session for the removed member. Creating a session now checks, in the same write, that the member is neither tombstoned nor SCIM-inactive, and an existing session for such a member no longer resolves.
+
+### An outside approval's submitter must belong to the thread's workspace
+
+- **Fixed:** When a review was submitted on a reviewer's behalf, the outside approval that lets a past holder close now also requires the submitter to be a member of the thread's own workspace, on SQLite and Postgres. Tests now cover a removed submitter and a removed land-gate recorder (#1685).
+
+### The release scan takes dated exceptions
+
+- **Changed:** The release's Trivy scan reads `.trivyignore`, where each entry gives its reason and an expiry. The first entry is CVE-2026-84782, in the distroless base's `libssl3`, until 2026-11-02. No Maidan binary links OpenSSL, and distroless had not rebuilt with Debian's 3.0.22-1~deb12u2 fix when v418.0.0 was cut.
+
 ## [418.0.0] — 2026-10-26
 
 The first release since 417.0.0. It ships every PR merged after the 417.0.0

@@ -36,7 +36,8 @@ rubber stamp.
 1. For outside contributions, open an issue first (bug, benchmark or protocol
    compatibility templates) so the work can be claimed. The maintainer's own
    work starts from a row in [`docs/Open Work.md`](docs/Open%20Work.md).
-2. Branch from `main` per the convention above.
+2. Branch from `dev` per the convention above, and open the PR against `dev`.
+   `main` is prod: it moves only by a promotion from `dev`.
 3. Develop locally; `make ci` green before pushing. For contract changes also run
    `bash scripts/check-agent-contract.sh`.
    A change under `crates/maidan-server/static/` also runs `npm run capture`
@@ -118,7 +119,8 @@ Tagging is the maintainer's call. The full procedure is in
 1. The release record lands: a Capabilities section and a CHANGELOG entry for
    the version, and the README and CLAUDE.md pins moved to it.
    `scripts/check-release-records.sh` fails if they disagree.
-2. The maintainer pushes an annotated tag `vX.0.0` from `main`.
+2. A promotion fast-forwards `main` to a tested `dev` commit, and an annotated
+   tag `vX.0.0` goes on that commit.
 3. `release.yml` builds binaries and multi-arch images, runs the blocking trivy
    scan, signs images and artifacts keylessly with cosign, smoke-tests the
    published image, and publishes the GitHub Release.

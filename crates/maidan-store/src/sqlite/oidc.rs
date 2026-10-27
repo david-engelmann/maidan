@@ -21,8 +21,9 @@ pub async fn upsert_identity(
             (id, workspace_id, issuer, subject, member_id, email, created_at, last_login_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (workspace_id, issuer, subject)
+         -- The first row wins: a later call never moves an identity to
+         -- another member, so two racing first logins agree (#1642).
          DO UPDATE SET
-            member_id = excluded.member_id,
             email = excluded.email,
             last_login_at = excluded.last_login_at
          RETURNING id, workspace_id, issuer, subject, member_id, email, created_at, last_login_at",

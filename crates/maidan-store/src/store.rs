@@ -1452,6 +1452,9 @@ pub trait PresenceDigestStore: Send + Sync {
 
 #[async_trait]
 pub trait SessionStore: Send + Sync {
+    /// Insert the identity, or refresh the existing row's email and
+    /// last-login time. An existing row keeps its `member_id`: the first
+    /// claim wins, and the returned row names the member it is bound to.
     async fn upsert_oidc_identity(&self, new: NewOidcIdentity) -> Result<OidcIdentity, StoreError>;
     async fn get_oidc_identity(
         &self,

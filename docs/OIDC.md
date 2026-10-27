@@ -172,7 +172,15 @@ Migration 0012 creates these tables in Postgres and SQLite:
    comes from the email's local part, and when that handle is taken the new
    member gets the handle, a dash and the start of the subject instead, so
    `admin@attacker.com` never becomes the existing `admin`.
-2. Subsequent logins → same `member_id`.
+2. Subsequent logins → same `member_id`. The identity row is the arbiter:
+   once bound, it never moves to another member. Two simultaneous first
+   logins of the same identity both sign in as the member that bound it
+   first.
+
+Email linking is scoped to whichever issuer is configured now. If you change
+`MAIDAN_OIDC_ISSUER`, the new issuer can email-link members whose identities
+were bound to the old one, so review `MAIDAN_OIDC_LINK_EMAIL` before
+switching issuers.
 3. No automatic cross-workspace identity — workspace remains the tenancy boundary.
    A person who is a member of several workspaces has one identity row and one
    member in each. An OIDC session records the identity row it signed in with
