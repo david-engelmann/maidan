@@ -5172,9 +5172,10 @@ macro_rules! store_delegations {
 
             async fn revoke_webhook_subscription(
                 &self,
+                workspace_id: WorkspaceId,
                 id: WebhookSubscriptionId,
             ) -> Result<WebhookSubscription, StoreError> {
-                webhooks::revoke(self.pool(), id).await
+                webhooks::revoke(self.pool(), workspace_id, id).await
             }
 
             async fn list_enabled_webhook_subscriptions(
