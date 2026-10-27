@@ -65,8 +65,10 @@ pub async fn update_user(
     Ok(Some(scim))
 }
 
-/// Revoke the member's live tokens and remove its SCIM link. The member row
-/// stays, for message authorship. `false` when there was no link.
+/// Revoke the member's live tokens, remove its SCIM link, tombstone the
+/// member and delete its OIDC identities, in one transaction. The member row
+/// stays, tombstoned, for message authorship. `false` when there was no link,
+/// and then nothing is tombstoned.
 pub async fn deprovision(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -77,6 +79,22 @@ pub async fn deprovision(
     end_member_authority(&mut tx, workspace_id, member_id, "scim_deprovision").await?;
     let deleted = scim_users::delete_on(&mut tx, member_id).await?;
     if deleted {
+        // A deleted user is removed, not paused: tombstone the member and
+        // detach its OIDC identities, so no sign-in resolves to it again.
+        sqlx::query(
+            "UPDATE maidan_members SET tombstoned_at = ?
+             WHERE id = ? AND workspace_id = ? AND tombstoned_at IS NULL",
+        )
+        .bind(Utc::now())
+        .bind(member_id.0)
+        .bind(workspace_id.0)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM maidan_oidc_identities WHERE workspace_id = ? AND member_id = ?")
+            .bind(workspace_id.0)
+            .bind(member_id.0)
+            .execute(&mut *tx)
+            .await?;
         audit::append_scoped(&mut tx, workspace_id, event).await?;
     }
     tx.commit().await?;

@@ -171,6 +171,8 @@ pub struct PostgresStore {
     replica_health: Arc<ReplicaHealth>,
     /// Wraps the per-message content keys (crypto-shredding).
     keys: Arc<ContentKeyring>,
+    /// The hard allowance cutoff, shared with the server's meter buffer.
+    usage_meters: Arc<crate::usage_meters::UsageMeterBuffer>,
 }
 
 /// Cumulative read-routing outcomes. The server snapshots this into
@@ -253,6 +255,7 @@ impl PostgresStore {
     /// Single-pool store: reads and writes both use `pool` (reader aliases it).
     /// `keys` wraps and unwraps message content keys; there is no default.
     pub fn new(pool: PgPool, keys: Arc<ContentKeyring>) -> Self {
+        keys.set_wrap_journal(Arc::new(content_keys::PgWrapJournal::new(pool.clone())));
         Self {
             reader: pool.clone(),
             pool,
@@ -261,6 +264,7 @@ impl PostgresStore {
             read_routing: Arc::new(ReadRoutingMetrics::default()),
             replica_health: Arc::new(ReplicaHealth::default()),
             keys,
+            usage_meters: Arc::default(),
         }
     }
 
@@ -275,6 +279,7 @@ impl PostgresStore {
     /// keeps the replica's replay LSN cached for cheap per-read routing
     /// decisions.
     pub fn with_replica_reader(pool: PgPool, reader: PgPool, keys: Arc<ContentKeyring>) -> Self {
+        keys.set_wrap_journal(Arc::new(content_keys::PgWrapJournal::new(pool.clone())));
         let replica_replay = Arc::new(AtomicU64::new(0));
         let read_routing = Arc::new(ReadRoutingMetrics::default());
         let replica_health = Arc::new(ReplicaHealth::default());
@@ -293,6 +298,7 @@ impl PostgresStore {
             read_routing,
             replica_health,
             keys,
+            usage_meters: Arc::default(),
         }
     }
 

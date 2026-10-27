@@ -49,6 +49,15 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Semantic => {
+            if !auth.bypass
+                && state
+                    .usage_meters
+                    .is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+            {
+                return Err(crate::usage_meters::cut_off_error(
+                    maidan_types::UsageMeter::EmbeddingCalls,
+                ));
+            }
             let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
                 .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;
@@ -69,6 +78,15 @@ pub async fn search_messages(
                 .await?
         }
         SearchMode::Hybrid => {
+            if !auth.bypass
+                && state
+                    .usage_meters
+                    .is_cut_off(workspace_id, maidan_types::UsageMeter::EmbeddingCalls)
+            {
+                return Err(crate::usage_meters::cut_off_error(
+                    maidan_types::UsageMeter::EmbeddingCalls,
+                ));
+            }
             let embedding = maidan_search::embed_off_worker(&state.embedding_provider, &q.q)
                 .await
                 .map_err(|e| ApiError::Internal(format!("embedding generation failed: {e}")))?;

@@ -35,6 +35,10 @@ pub(super) fn store(err: StoreError) -> A2aError {
         StoreError::SpawnRejected(denial) => {
             A2aError::new(A2aErrorKind::PermissionDenied, denial.to_string())
         }
+        // Past the free allowance: refused, with the meter named.
+        err @ StoreError::OverAllowance(_) => {
+            A2aError::new(A2aErrorKind::PermissionDenied, err.to_string())
+        }
         err => internal(err),
     }
 }

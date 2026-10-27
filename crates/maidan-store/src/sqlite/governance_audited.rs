@@ -6,15 +6,15 @@
 
 use maidan_types::{
     AllowedEgressTarget, AppId, AppInstallation, AppInstallationId, ChannelId, ChannelMember,
-    ChannelMemberRole, EgressTargetId, MemberFreeze, MemberId, NewAuditEvent, NewEgressTarget,
-    NewSecret, NewSecretEgressHost, Secret, SecretEgressHost, StoredEvent, ThreadId,
-    ThreadReviewRequirement, WorkspaceId,
+    ChannelMemberRole, EgressTargetId, Member, MemberFreeze, MemberId, NewAuditEvent,
+    NewEgressTarget, NewSecret, NewSecretEgressHost, Secret, SecretEgressHost, StoredEvent,
+    ThreadId, ThreadReviewRequirement, WorkspaceId,
 };
 use sqlx::SqlitePool;
 
 use super::{
     apps, audit, channel_members, egress_targets, land_gate, member_freezes, member_skills,
-    reviews, secret_egress_hosts, secrets,
+    members, reviews, secret_egress_hosts, secrets,
 };
 use crate::{error::StoreError, AuditFor, InstalledApp};
 
@@ -63,6 +63,18 @@ pub async fn unfreeze_member(
 ) -> Result<Option<StoredEvent>, StoreError> {
     audited!(pool, crate::audit_scope::AuditOwner::Member(member_id), |tx| member_freezes::unfreeze_on(&mut tx, member_id, unfrozen_by).await?,
         unfrozen => unfrozen.is_some().then_some(event))
+}
+
+/// The display-name change, its audit row and its `MemberDisplayNameChanged`
+/// event commit together.
+pub async fn set_member_display_name(
+    pool: &SqlitePool,
+    member_id: MemberId,
+    display_name: Option<&str>,
+    event: NewAuditEvent,
+) -> Result<(Member, StoredEvent), StoreError> {
+    audited!(pool, crate::audit_scope::AuditOwner::Member(member_id), |tx| members::set_display_name_in_tx(&mut tx, member_id, display_name).await?,
+        changed => Some(event))
 }
 
 pub async fn add_channel_member(

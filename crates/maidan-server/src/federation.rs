@@ -149,6 +149,10 @@ pub(crate) enum IngestOutcome {
     SkippedNotFederatable,
 }
 
+// Exempt from the hard allowance cutoff, deliberately: ingest appends an
+// operator-configured peer's federated events and writes no message rows or
+// artifacts, so it adds none of the cut-off workspace's stored bytes. See
+// docs/Operations.md, "The hard cutoff for open sign-up workspaces".
 pub(crate) async fn ingest_envelope(
     state: &AppState,
     peer: &Peer,
@@ -694,6 +698,17 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             member_id,
             unfrozen_by,
         },
+        MemberDisplayNameChanged {
+            occurred_at,
+            workspace_id: _,
+            member_id,
+            display_name,
+        } => MemberDisplayNameChanged {
+            occurred_at,
+            workspace_id,
+            member_id,
+            display_name,
+        },
         // Non-federatable (this deployment's allowance), classified like the
         // freeze above.
         UsageOverAllowance {
@@ -1076,6 +1091,10 @@ pub struct WellKnownAuth {
     /// board shows its waitlist form only when this is present.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_signup: Option<String>,
+    /// The Turnstile site key the sign-up pages render their widget with,
+    /// when the instance runs Turnstile. Public by design.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turnstile_site_key: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -1115,6 +1134,7 @@ pub async fn well_known(State(state): State<AppState>) -> impl IntoResponse {
                 .as_ref()
                 .filter(|runtime| runtime.settings.signup)
                 .map(|_| "/auth/oidc/signup".to_string()),
+            turnstile_site_key: state.turnstile.as_ref().map(|t| t.site_key.clone()),
         },
     })
 }

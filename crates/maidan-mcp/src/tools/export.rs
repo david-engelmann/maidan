@@ -154,7 +154,10 @@ pub(super) async fn import_workspace(
     let mode = a.mode.as_deref().unwrap_or("new");
     let flat = flatten_export(bundle);
     let (to_write, replace_existing) = match mode {
-        "new" => (remap_import(flat, Uuid::new_v4), false),
+        "new" => (
+            remap_import(flat, Uuid::new_v4).map_err(McpError::InvalidParams)?,
+            false,
+        ),
         "restore" => {
             auth.ensure_workspace(flat.workspace.id)?;
             match server.store.get_workspace(flat.workspace.id).await {
@@ -179,12 +182,20 @@ pub(super) async fn import_workspace(
         }
     };
 
+    let origin = maidan_store::usage_meters::import_origin(
+        server.store.as_ref(),
+        auth.bypass,
+        auth.workspace_id,
+        (mode == "restore").then_some(to_write.workspace.id),
+    )
+    .await?;
     let workspace_id = to_write.workspace.id;
     server
         .store
         .import_workspace_audited(
             &to_write,
             replace_existing,
+            origin,
             maidan_types::NewAuditEvent {
                 scope: maidan_types::AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),

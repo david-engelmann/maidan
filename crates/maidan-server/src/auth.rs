@@ -307,9 +307,15 @@ async fn run_authorized(
     // Counted here, once per authenticated request, into the buffer the
     // usage_meters loop flushes; never a database write of its own.
     if !ctx.bypass && !crate::usage_meters::unmetered(&path) {
-        state
-            .usage_meters
-            .record(workspace_id, maidan_types::UsageMeter::Requests, 1);
+        let readable = crate::usage_meters::readable_past_cutoff(
+            &method,
+            req.extensions()
+                .get::<MatchedPath>()
+                .map(MatchedPath::as_str),
+        );
+        if let Err(err) = crate::usage_meters::admit_request(state, workspace_id, readable) {
+            return err.into_response();
+        }
     }
     req.extensions_mut().insert(ctx.clone());
     let response = run_as(state, req, next).await;

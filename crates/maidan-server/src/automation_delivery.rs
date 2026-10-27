@@ -59,7 +59,14 @@ pub async fn deliver_pending(
     if let Some(lsn) = room_lsn {
         request = request.header(ROOM_LSN_HEADER, lsn.to_string());
     }
-    let response = request.body(body).send().await.map_err(|e| e.to_string())?;
+    let sent = request.body(body).send().await;
+    // Every attempt that goes out counts, a failed one too.
+    state.usage_meters.record(
+        delivery.workspace_id,
+        maidan_types::UsageMeter::Deliveries,
+        1,
+    );
+    let response = sent.map_err(|e| e.to_string())?;
     if response.status().is_success() {
         Ok(())
     } else {

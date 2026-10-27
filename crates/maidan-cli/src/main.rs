@@ -523,7 +523,7 @@ async fn run_reindex_embeddings(
                 .context("migrate sqlite")?;
             let search: Arc<dyn Search> = Arc::new(SqliteSearch::new(pool.clone()));
             let report =
-                maidan_search::reindex_sqlite(&pool, search.as_ref(), &provider, workspace)
+                maidan_search::reindex_sqlite(&pool, search.as_ref(), &provider, workspace, None)
                     .await
                     .context("reindex")?;
             println!(
@@ -542,7 +542,7 @@ async fn run_reindex_embeddings(
                 .context("migrate postgres")?;
             let search: Arc<dyn Search> = Arc::new(PostgresSearch::new(pool.clone()));
             let report =
-                maidan_search::reindex_postgres(&pool, search.as_ref(), &provider, workspace)
+                maidan_search::reindex_postgres(&pool, search.as_ref(), &provider, workspace, None)
                     .await
                     .context("reindex")?;
             println!(

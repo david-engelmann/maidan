@@ -802,11 +802,12 @@ async fn a_lane_is_stored_restated_and_left_unset(store: Arc<dyn Store>) {
     );
 }
 
-/// A review of a change finishes before the change merges, so a review
-/// child moves ahead of its open parent; any other child still may not.
+/// A review child the review family opened finishes before its change
+/// merges, so it moves ahead of its parent; any other child still may not.
 async fn a_review_child_closes_ahead_of_its_open_change(store: Arc<dyn Store>) {
-    let room = room(store.as_ref(), "review-child", 1).await;
-    let actor = room.agents[0];
+    use maidan_store::test_support::SetResultClaiming;
+    let room = room(store.as_ref(), "review-child", 2).await;
+    let (author, reviewer) = (room.agents[0], room.agents[1]);
     let (change, _event) = store
         .create_thread_with_footprint(
             new_thread(room.channel, "change"),
@@ -816,47 +817,148 @@ async fn a_review_child_closes_ahead_of_its_open_change(store: Arc<dyn Store>) {
         )
         .await
         .unwrap();
-    let child = |title: &str| NewThread {
-        parent_thread_id: Some(change.id),
-        ..new_thread(room.channel, title)
-    };
-    let (review, _event) = store
+    let (other, _event) = store
         .create_thread_with_footprint(
-            child("review"),
+            NewThread {
+                parent_thread_id: Some(change.id),
+                ..new_thread(room.channel, "other")
+            },
             None,
-            Some(attrs(TaskKind::Review, Some(TaskEngine::Pi), false)),
+            None,
             None,
         )
         .await
         .unwrap();
-    let (other, _event) = store
-        .create_thread_with_footprint(child("other"), None, None, None)
-        .await
-        .unwrap();
-
-    store
-        .transition_thread(review.id, actor, ThreadAction::StartReview)
-        .await
-        .expect("a review child moves ahead of its open change");
-    store
-        .transition_thread(review.id, actor, ThreadAction::Close)
-        .await
-        .expect("a review child closes while its change is open");
-    assert_eq!(
-        store.get_thread(review.id).await.unwrap().state,
-        ThreadState::Closed
-    );
-    assert_eq!(
-        store.get_thread(change.id).await.unwrap().state,
-        ThreadState::Open
-    );
-
     let held = store
-        .transition_thread(other.id, actor, ThreadAction::StartReview)
+        .transition_thread(other.id, author, ThreadAction::StartReview)
         .await;
     assert!(
         matches!(held, Err(maidan_store::StoreError::Conflict(_))),
         "a child that is not a review stays behind its parent, got {held:?}"
+    );
+
+    let (claimed, _event) = store
+        .claim_thread_with_event(change.id, author)
+        .await
+        .unwrap();
+    store
+        .report_accounted_usage(&NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::new_v4(),
+            thread_id: change.id,
+            reporter: author,
+            claim_lease_id: claimed.thread.claim_lease_id.unwrap(),
+            model: "claude-sonnet-4".into(),
+            tokens: TokenUsage::default(),
+            usd_micros: 0,
+            price_snapshot: PriceSnapshot::default(),
+            turns: 1,
+            evidence: Default::default(),
+        })
+        .await
+        .unwrap();
+    store
+        .set_thread_result_claiming(change.id, author, &serde_json::json!({"status": "done"}))
+        .await
+        .unwrap();
+    store
+        .transition_thread(change.id, author, ThreadAction::StartReview)
+        .await
+        .unwrap();
+    let mut review = None;
+    while let Some(claimed) = store
+        .claim_next_thread(room.channel, reviewer, Some(600), None)
+        .await
+        .unwrap()
+    {
+        let attributes = store.get_thread_attributes(claimed.id).await.unwrap();
+        if attributes.review_family.is_some() {
+            review = Some(claimed);
+            break;
+        }
+    }
+    let review = review.expect("the review family opened a review child");
+    assert_eq!(review.parent_thread_id, Some(change.id));
+    store
+        .transition_thread(review.id, reviewer, ThreadAction::StartReview)
+        .await
+        .expect("a review child moves ahead of its change");
+    store
+        .transition_thread(review.id, reviewer, ThreadAction::Close)
+        .await
+        .expect("a review child closes while its change is in review");
+    assert_eq!(
+        store.get_thread(review.id).await.unwrap().state,
+        ThreadState::Closed
+    );
+    assert_ne!(
+        store.get_thread(change.id).await.unwrap().state,
+        ThreadState::Closed
+    );
+}
+
+/// Relabelling an ordinary child as a review grants nothing: the label is
+/// stored, and the child stays behind its parent.
+async fn an_ordinary_child_relabelled_as_a_review_stays_held(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "relabel", 1).await;
+    let actor = room.agents[0];
+    let (change, _event) = store
+        .create_thread_with_footprint(new_thread(room.channel, "change"), None, None, None)
+        .await
+        .unwrap();
+    let (ordinary, _event) = store
+        .create_thread_with_footprint(
+            NewThread {
+                parent_thread_id: Some(change.id),
+                ..new_thread(room.channel, "ordinary")
+            },
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let relabelled = store
+        .set_thread_attributes(ordinary.id, attrs(TaskKind::Review, None, false))
+        .await
+        .unwrap();
+    assert_eq!(relabelled.kind, TaskKind::Review);
+    let held = store
+        .transition_thread(ordinary.id, actor, ThreadAction::StartReview)
+        .await;
+    assert!(
+        matches!(held, Err(maidan_store::StoreError::Conflict(_))),
+        "a relabelled child is still held by its parent, got {held:?}"
+    );
+}
+
+/// The plain create path cannot hand a child the review exemption: a child
+/// created as a review with no reviewee link stays behind its parent just as
+/// a relabelled one does (#1556 red-team).
+async fn a_child_created_as_a_review_without_a_reviewee_stays_held(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "review-at-create", 1).await;
+    let actor = room.agents[0];
+    let (change, _event) = store
+        .create_thread_with_footprint(new_thread(room.channel, "change"), None, None, None)
+        .await
+        .unwrap();
+    let (review, _event) = store
+        .create_thread_with_footprint(
+            NewThread {
+                parent_thread_id: Some(change.id),
+                ..new_thread(room.channel, "not really a review")
+            },
+            None,
+            Some(attrs(TaskKind::Review, None, false)),
+            None,
+        )
+        .await
+        .unwrap();
+    let held = store
+        .transition_thread(review.id, actor, ThreadAction::StartReview)
+        .await;
+    assert!(
+        matches!(held, Err(maidan_store::StoreError::Conflict(_))),
+        "a self-declared review child is still held by its parent, got {held:?}"
     );
 }
 
@@ -873,4 +975,6 @@ on_both_backends!(
     a_tier_is_stored_restated_and_left_unset,
     a_lane_is_stored_restated_and_left_unset,
     a_review_child_closes_ahead_of_its_open_change,
+    an_ordinary_child_relabelled_as_a_review_stays_held,
+    a_child_created_as_a_review_without_a_reviewee_stays_held,
 );

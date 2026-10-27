@@ -89,6 +89,26 @@ pub async fn sweep_due(state: &AppState, now: DateTime<Utc>) -> WebPushSweepStat
             stats.deferred += 1;
             continue;
         }
+        if crate::usage_meters::member_cut_off(
+            state,
+            entry.member_id,
+            maidan_types::UsageMeter::Deliveries,
+        )
+        .await
+        {
+            let until = Utc::now() + crate::usage_meters::CUT_OFF_DEFER;
+            if let Err(e) = state.store.defer_web_push(entry.id, until).await {
+                tracing::warn!(error = %e, id = %entry.id, "web push worker: deferral failed");
+            }
+            tracing::info!(
+                id = %entry.id,
+                reason = "over_allowance",
+                "web push worker: parked; workspace past its free allowance for deliveries"
+            );
+            crate::metrics::record_web_push_delivered("over_allowance");
+            stats.deferred += 1;
+            continue;
+        }
         let subs = match state.store.list_push_subscriptions(entry.member_id).await {
             Ok(subs) => subs,
             Err(err) => {

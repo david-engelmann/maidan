@@ -399,7 +399,10 @@ pub async fn import_workspace(
 
     let flat = crate::import::flatten(bundle);
     let (to_write, replace_existing) = match q.mode {
-        ImportMode::New => (crate::import::remap(flat, uuid::Uuid::new_v4), false),
+        ImportMode::New => (
+            crate::import::remap(flat, uuid::Uuid::new_v4).map_err(ApiError::BadRequest)?,
+            false,
+        ),
         ImportMode::Restore => {
             // A restore writes to the id inside the bundle, so that id is the
             // authorization subject — not the token's own workspace by assumption.
@@ -421,12 +424,20 @@ pub async fn import_workspace(
         }
     };
 
+    let origin = maidan_store::usage_meters::import_origin(
+        state.store.as_ref(),
+        auth.bypass,
+        auth.workspace_id,
+        matches!(q.mode, ImportMode::Restore).then_some(to_write.workspace.id),
+    )
+    .await?;
     let workspace_id = to_write.workspace.id;
     state
         .store
         .import_workspace_audited(
             &to_write,
             replace_existing,
+            origin,
             NewAuditEvent {
                 scope: AuditScope::Workspace(workspace_id),
                 actor_id: Some(auth.actor_id),

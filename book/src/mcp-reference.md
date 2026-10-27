@@ -1092,6 +1092,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           "maxLength": 512,
           "type": "string"
         },
+        "effort": {
+          "maxLength": 32,
+          "type": "string"
+        },
         "harness": {
           "maxLength": 64,
           "type": "string"
@@ -8124,6 +8128,10 @@ Workspace boot for a channel: the bytes a thread pack prefix starts with.
 ### `thread` — `maidan://threads/{id}`
 
 Full thread transcript (up to 100 messages).
+
+### `digest` — `maidan://digests/{thread_id}`
+
+A thread's current digest: the sha256 and maidan://artifacts URI of the newest linked artifact of kind digest. Read the bytes once by hash and cache them; a digest is written once and read by many.
 
 ### `artifact` — `maidan://artifacts/{sha256}`
 

@@ -135,13 +135,19 @@ pub struct SqliteStore {
     pool: SqlitePool,
     /// Wraps the per-message content keys (crypto-shredding).
     keys: Arc<ContentKeyring>,
+    /// The hard allowance cutoff, shared with the server's meter buffer.
+    usage_meters: Arc<crate::usage_meters::UsageMeterBuffer>,
 }
 
 impl SqliteStore {
     /// Store that wraps and unwraps message content keys with `keys`. There is
     /// no default: a caller that means the public development KEK says so.
     pub fn new(pool: SqlitePool, keys: Arc<ContentKeyring>) -> Self {
-        Self { pool, keys }
+        Self {
+            pool,
+            keys,
+            usage_meters: Arc::default(),
+        }
     }
 
     /// Store under the public development KEK, for tests only.

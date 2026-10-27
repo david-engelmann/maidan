@@ -1750,6 +1750,447 @@ async fn a_queued_sha_another_workspace_now_holds_is_dropped_not_deleted(db: Db)
     ));
 }
 
+/// A grace period of nothing, after a tick, so every key the test wrapped is
+/// older than the cutoff the store takes from its own clock.
+async fn no_grace() -> std::time::Duration {
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    std::time::Duration::ZERO
+}
+
+/// A KMS key whose wrap never reached a stored row (a rolled-back
+/// transaction) is destroyed by the sweep once past the grace period, while
+/// every key a row refers to, live or retired, stays.
+async fn the_sweep_destroys_only_custody_keys_no_row_refers_to(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray"));
+    let keys = kms_keys(1, &kms);
+    let store = db.store(keys.clone());
+    let room = room(store.as_ref(), "stray").await;
+    let (_, posted) = post(store.as_ref(), &room, WORDS).await;
+    let (retired, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    store.rotate_workspace_key(room.ws.id).await.unwrap();
+    let (live, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    // A wrap whose transaction rolled back: journalled, no row.
+    let stray = Uuid::now_v7();
+    keys.create_workspace_key(stray).await.unwrap();
+
+    let in_grace = std::time::Duration::from_secs(3600);
+    assert_eq!(
+        store.sweep_stray_custody_keys(in_grace).await.unwrap(),
+        StraySweep::default(),
+        "a key younger than the grace period may still be mid-wrap"
+    );
+    assert!(kms.holds(stray));
+
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(
+        swept,
+        StraySweep {
+            destroyed: 1,
+            failed: 0
+        }
+    );
+    assert!(!kms.holds(stray), "the stray key is destroyed");
+    assert!(kms.holds(live) && kms.holds(retired), "row keys stay");
+    assert_eq!(body_of(store.as_ref(), posted.id).await, WORDS);
+}
+
+/// A stray key the KMS refuses to destroy is counted, not fatal, and goes on
+/// the next sweep once the KMS allows it.
+async fn a_refused_stray_destroy_is_counted_and_retried(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray-refused"));
+    let keys = kms_keys(1, &kms);
+    let store = db.store(keys.clone());
+    let (first, second) = (Uuid::now_v7(), Uuid::now_v7());
+    keys.create_workspace_key(first).await.unwrap();
+    keys.create_workspace_key(second).await.unwrap();
+    kms.refuse(first);
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(
+        swept,
+        StraySweep {
+            destroyed: 1,
+            failed: 1
+        }
+    );
+    assert!(kms.holds(first) && !kms.holds(second));
+    kms.allow(first);
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(
+        swept,
+        StraySweep {
+            destroyed: 1,
+            failed: 0
+        }
+    );
+    assert!(!kms.holds(first));
+}
+
+/// Every workspace's keys, live and retired, survive a sweep with no grace
+/// at all: a row in any workspace keeps its custody key.
+async fn the_sweep_spares_keys_rows_in_any_workspace_refer_to(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray-tenants"));
+    let store = db.store(kms_keys(1, &kms));
+    let mut held = Vec::new();
+    for name in ["stray-a", "stray-b", "stray-c"] {
+        let room = room(store.as_ref(), name).await;
+        post(store.as_ref(), &room, WORDS).await;
+        let (retired, _, _, _) = db.active_workspace_key(room.ws.id).await;
+        store.rotate_workspace_key(room.ws.id).await.unwrap();
+        let (live, _, _, _) = db.active_workspace_key(room.ws.id).await;
+        held.extend([retired, live]);
+    }
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(swept, StraySweep::default());
+    assert!(
+        held.iter().all(|key| kms.holds(*key)),
+        "no row key is swept"
+    );
+}
+
+/// The cutoff is the server's clock minus the grace period: a stray key one
+/// second old is kept under a one-minute grace, and an absurd grace that
+/// would run the cutoff off the calendar sweeps nothing.
+async fn the_grace_period_is_measured_on_the_servers_clock(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("stray-clock"));
+    let keys = kms_keys(1, &kms);
+    let store = db.store(keys.clone());
+    let stray = Uuid::now_v7();
+    keys.create_workspace_key(stray).await.unwrap();
+    let minute = std::time::Duration::from_secs(60);
+    assert_eq!(
+        store.sweep_stray_custody_keys(minute).await.unwrap(),
+        StraySweep::default()
+    );
+    assert_eq!(
+        store
+            .sweep_stray_custody_keys(std::time::Duration::MAX)
+            .await
+            .unwrap(),
+        StraySweep::default()
+    );
+    assert!(kms.holds(stray));
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(swept.destroyed, 1);
+    assert!(!kms.holds(stray));
+}
+
+/// A key in the custody that this database never journalled a wrap for is
+/// never destroyed, however old and however unreferenced: another
+/// deployment's key, or one someone tagged to look like this instance's.
+async fn a_key_this_database_never_journalled_is_never_swept(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("unjournalled"));
+    let store = db.store(kms_keys(1, &kms));
+    let room = room(store.as_ref(), "unjournalled").await;
+    post(store.as_ref(), &room, WORDS).await;
+    let foreign = Uuid::now_v7();
+    kms.wrap(foreign, &ContentKey::generate()).await.unwrap();
+    let swept = store
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(swept, StraySweep::default());
+    assert!(
+        kms.holds(foreign),
+        "an unjournalled key is not this database's to destroy"
+    );
+}
+
+/// A journalled wrap whose row committed leaves no journal entry behind, so
+/// a later sweep has nothing of it to destroy even after the row is gone
+/// from a copy.
+async fn a_committed_wrap_is_never_swept_later(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("committed"));
+    let store = db.store(kms_keys(1, &kms));
+    let room = room(store.as_ref(), "committed").await;
+    let (_, posted) = post(store.as_ref(), &room, WORDS).await;
+    let (live, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    for _ in 0..2 {
+        assert_eq!(
+            store
+                .sweep_stray_custody_keys(no_grace().await)
+                .await
+                .unwrap(),
+            StraySweep::default()
+        );
+    }
+    assert!(kms.holds(live));
+    assert_eq!(body_of(store.as_ref(), posted.id).await, WORDS);
+}
+
+/// A retired workspace key whose KMS key will not be destroyed is reported
+/// as undestroyed by every pass until the KMS lets it go.
+async fn a_retired_key_that_will_not_destroy_is_counted_as_undestroyed(db: Db) {
+    let kms = Arc::new(FakeKmsCustody::new("undestroyed"));
+    let store = db.store(kms_keys(1, &kms));
+    let room = room(store.as_ref(), "undestroyed").await;
+    post(store.as_ref(), &room, WORDS).await;
+    let (old, _, _, _) = db.active_workspace_key(room.ws.id).await;
+    store.rotate_workspace_key(room.ws.id).await.unwrap();
+    kms.refuse(old);
+    let mut last = RewrapPass::default();
+    for _ in 0..5 {
+        last = store.rewrap_content_keys(100).await.unwrap();
+    }
+    assert_eq!(last.undestroyed, 1);
+    kms.allow(old);
+    let mut last = RewrapPass::default();
+    for _ in 0..5 {
+        last = store.rewrap_content_keys(100).await.unwrap();
+    }
+    assert_eq!(last.undestroyed, 0);
+    assert!(!kms.holds(old));
+}
+
+/// Red-team #1630: a cut-off tenant's refused upload reaps its bytes only
+/// when no row holds the sha, and never takes bytes another tenant holds or
+/// is mid-way through uploading. `blobs` stands in for the blob store; the
+/// reap's delete removes from it and the other tenant's upload puts back
+/// what a reap took (`restore_if_reaped`).
+async fn rt1630_a_refused_upload_never_deletes_another_tenants_bytes(db: Db) {
+    use std::collections::HashSet;
+    use std::sync::Mutex;
+    let store = db.store(kek(1));
+    let a = room(store.as_ref(), "rt-cut").await;
+    let b = room(store.as_ref(), "rt-open").await;
+    store
+        .usage_meters()
+        .set_cut_off([(a.ws.id, UsageMeter::StoredBytes)]);
+    let blobs = Arc::new(Mutex::new(HashSet::<String>::new()));
+    let deleting = |entered: Option<tokio::sync::oneshot::Sender<()>>,
+                    release: Option<tokio::sync::oneshot::Receiver<()>>,
+                    sha: String|
+     -> BlobDelete<'static> {
+        let blobs = blobs.clone();
+        Box::new(move || {
+            Box::pin(async move {
+                if let Some(entered) = entered {
+                    let _ = entered.send(());
+                }
+                if let Some(release) = release {
+                    let _ = release.await;
+                }
+                blobs.lock().unwrap().remove(&sha);
+                Ok(())
+            })
+        })
+    };
+
+    // 1. B already holds the sha: A's late refusal keeps B's bytes.
+    let held = "e1".repeat(32);
+    blobs.lock().unwrap().insert(held.clone());
+    store
+        .upsert_artifact_with_event(upload(&held, b.alice.id), Some(b.ws.id))
+        .await
+        .unwrap();
+    let refused = store
+        .upsert_artifact_with_event(upload(&held, a.alice.id), Some(a.ws.id))
+        .await;
+    assert!(
+        matches!(
+            refused,
+            Err(StoreError::OverAllowance(UsageMeter::StoredBytes))
+        ),
+        "{refused:?}"
+    );
+    let reaped = maidan_store::blob_reap_retry::reap_or_queue(
+        store.as_ref(),
+        &held,
+        a.ws.id,
+        deleting(None, None, held.clone()),
+    )
+    .await;
+    assert_eq!(reaped, BlobReap::Referenced);
+    assert!(blobs.lock().unwrap().contains(&held), "B's bytes survive");
+    assert!(store
+        .get_artifact_for_workspace(b.ws.id, &held)
+        .await
+        .is_ok());
+    assert!(!store.artifact_ref_exists(a.ws.id, &held).await.unwrap());
+
+    // 2. Race: B has put the bytes but not yet its row when A's refused
+    // upload reaps. B's row write waits for the reap's lease, then B
+    // restores the bytes, so B ends with a row and its bytes.
+    let raced = "e2".repeat(32);
+    blobs.lock().unwrap().insert(raced.clone());
+    let refused = store
+        .upsert_artifact_with_event(upload(&raced, a.alice.id), Some(a.ws.id))
+        .await;
+    assert!(matches!(refused, Err(StoreError::OverAllowance(_))));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let reaper = {
+        let (store, sha, ws) = (store.clone(), raced.clone(), a.ws.id);
+        let delete = deleting(Some(entered_tx), Some(release_rx), raced.clone());
+        tokio::spawn(async move {
+            maidan_store::blob_reap_retry::reap_or_queue(store.as_ref(), &sha, ws, delete).await
+        })
+    };
+    entered_rx.await.unwrap();
+    let uploader = {
+        let (store, sha, who, ws, blobs) = (
+            store.clone(),
+            raced.clone(),
+            b.alice.id,
+            b.ws.id,
+            blobs.clone(),
+        );
+        tokio::spawn(async move {
+            let row = store
+                .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                .await;
+            // restore_if_reaped
+            blobs.lock().unwrap().insert(sha);
+            row
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(
+        !uploader.is_finished(),
+        "B's row must wait for A's reap of the same sha"
+    );
+    release_tx.send(()).unwrap();
+    assert_eq!(reaper.await.unwrap(), BlobReap::Deleted);
+    uploader.await.unwrap().unwrap();
+    assert!(blobs.lock().unwrap().contains(&raced), "B's bytes restored");
+    assert!(store
+        .get_artifact_for_workspace(b.ws.id, &raced)
+        .await
+        .is_ok());
+    assert!(!store.artifact_ref_exists(a.ws.id, &raced).await.unwrap());
+    // A retried reap of A's refusal now finds B's row and keeps the bytes.
+    let again = maidan_store::blob_reap_retry::reap_or_queue(
+        store.as_ref(),
+        &raced,
+        a.ws.id,
+        deleting(None, None, raced.clone()),
+    )
+    .await;
+    assert_eq!(again, BlobReap::Referenced);
+    assert!(blobs.lock().unwrap().contains(&raced));
+
+    // 3. Many concurrent rounds: B uploads while A's refusal reaps.
+    for i in 0..20u8 {
+        let sha = format!("{:02x}", 0x30 + i).repeat(32);
+        blobs.lock().unwrap().insert(sha.clone());
+        let a_side = {
+            let (store, sha, who, ws) = (store.clone(), sha.clone(), a.alice.id, a.ws.id);
+            let delete = deleting(None, None, sha.clone());
+            tokio::spawn(async move {
+                let refused = store
+                    .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                    .await;
+                assert!(refused.is_err());
+                maidan_store::blob_reap_retry::reap_or_queue(store.as_ref(), &sha, ws, delete).await
+            })
+        };
+        let b_side = {
+            let (store, sha, who, ws, blobs) = (
+                store.clone(),
+                sha.clone(),
+                b.alice.id,
+                b.ws.id,
+                blobs.clone(),
+            );
+            tokio::spawn(async move {
+                store
+                    .upsert_artifact_with_event(upload(&sha, who), Some(ws))
+                    .await
+                    .unwrap();
+                if !blobs.lock().unwrap().contains(&sha) {
+                    blobs.lock().unwrap().insert(sha);
+                }
+            })
+        };
+        let _ = a_side.await.unwrap();
+        b_side.await.unwrap();
+        assert!(
+            blobs.lock().unwrap().contains(&sha),
+            "round {i}: B's bytes gone"
+        );
+        assert!(store
+            .get_artifact_for_workspace(b.ws.id, &sha)
+            .await
+            .is_ok());
+    }
+}
+
+/// Red-team #1646: two deployments sharing one MAIDAN_KMS_INSTANCE (a
+/// staging restored from a prod snapshot with prod's env, say) share one
+/// KMS view but not one database. The second's sweep must never destroy a
+/// live key only the first's database refers to: absence of a row in *this*
+/// database is not proof the key is stray.
+#[tokio::test]
+async fn a_second_deployment_sharing_the_instance_name_never_destroys_the_first_deployments_live_key(
+) {
+    let kms = Arc::new(FakeKmsCustody::new("shared-instance"));
+    let prod_db = sqlite().await;
+    let prod = prod_db.store(kms_keys(1, &kms));
+    let room = room(prod.as_ref(), "prod-tenant").await;
+    let (_, posted) = post(prod.as_ref(), &room, WORDS).await;
+    let (live, _, _, _) = prod_db.active_workspace_key(room.ws.id).await;
+
+    let staging = sqlite().await.store(kms_keys(1, &kms));
+    staging
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+
+    assert!(
+        kms.holds(live),
+        "staging's sweep destroyed prod's live workspace key"
+    );
+    assert_eq!(body_of(prod.as_ref(), posted.id).await, WORDS);
+}
+
+/// A database cloned from prod's, with prod's instance name and custody but
+/// none of prod's journalled wraps, destroys nothing, not even prod's real
+/// stray; prod's own sweep then takes the stray and keeps the live key.
+#[tokio::test]
+async fn a_cloned_database_with_no_journalled_wraps_destroys_nothing() {
+    let kms = Arc::new(FakeKmsCustody::new("cloned"));
+    let prod_db = sqlite().await;
+    let prod_keys = kms_keys(1, &kms);
+    let prod = prod_db.store(prod_keys.clone());
+    let room = room(prod.as_ref(), "prod-tenant").await;
+    let (_, posted) = post(prod.as_ref(), &room, WORDS).await;
+    let (live, _, _, _) = prod_db.active_workspace_key(room.ws.id).await;
+    let stray = Uuid::now_v7();
+    prod_keys.create_workspace_key(stray).await.unwrap();
+
+    let clone = sqlite().await.store(kms_keys(1, &kms));
+    assert_eq!(
+        clone
+            .sweep_stray_custody_keys(no_grace().await)
+            .await
+            .unwrap(),
+        StraySweep::default()
+    );
+    assert!(kms.holds(live) && kms.holds(stray));
+
+    let swept = prod
+        .sweep_stray_custody_keys(no_grace().await)
+        .await
+        .unwrap();
+    assert_eq!(swept.destroyed, 1);
+    assert!(kms.holds(live) && !kms.holds(stray));
+    assert_eq!(body_of(prod.as_ref(), posted.id).await, WORDS);
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
@@ -1775,6 +2216,13 @@ macro_rules! on_both_backends {
 }
 
 on_both_backends!(
+    the_sweep_destroys_only_custody_keys_no_row_refers_to,
+    a_refused_stray_destroy_is_counted_and_retried,
+    a_retired_key_that_will_not_destroy_is_counted_as_undestroyed,
+    the_sweep_spares_keys_rows_in_any_workspace_refer_to,
+    the_grace_period_is_measured_on_the_servers_clock,
+    a_key_this_database_never_journalled_is_never_swept,
+    a_committed_wrap_is_never_swept_later,
     each_workspace_seals_under_its_own_key,
     a_kms_refusing_one_tenant_blocks_only_that_tenant,
     moving_to_a_kms_rewraps_every_workspace_key,
@@ -1896,6 +2344,20 @@ mod blob_reap {
             eraser.await.unwrap().unwrap();
         }
         writer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn rt1630_refused_upload_reap_sqlite() {
+        let (_dir, db) = sqlite_file().await;
+        super::rt1630_a_refused_upload_never_deletes_another_tenants_bytes(db).await;
+    }
+
+    #[tokio::test]
+    async fn rt1630_refused_upload_reap_postgres() {
+        let Some((_container, db)) = super::postgres().await else {
+            return;
+        };
+        super::rt1630_a_refused_upload_never_deletes_another_tenants_bytes(db).await;
     }
 
     #[tokio::test]

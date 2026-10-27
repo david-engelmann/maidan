@@ -1,4 +1,0 @@
-### Waitlist page
-
-- **Added:** a public waitlist page at `/` wherever sign-up is on: one line on what Maidan is, an accessible form (labels, inline errors, a live status), light and dark themes, and motion only when the visitor allows it. It loads one stylesheet and one module from the server itself, under a CSP stricter than the board's (`default-src 'none'`, no inline script or style, `frame-ancestors 'none'`), with `nosniff`, `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. An instance without sign-up still answers 404 at `/`.
-- **Changed:** `POST /waitlist` refuses a browser join posted from another site (`Origin` or `Sec-Fetch-Site`), checks addresses more strictly (local part of at most 64 characters, real domain labels, no control characters or display-name punctuation), and takes an optional `website` honeypot: a join that fills it gets the same `201` answer as any other and is not stored, and it still spends the address's rate-limit budget.

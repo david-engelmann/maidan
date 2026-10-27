@@ -1139,6 +1139,16 @@ fn assert_refused(what: &str, (status, body): &(StatusCode, Value), secrets: &[S
 
 /// Report `input` tokens on a thread the tenant's agent claims for it.
 async fn report_usage(h: &Harness, t: &Tenant, thread: maidan_types::ThreadId, input: i64) {
+    report_usage_with(h, t, thread, input, json!({})).await;
+}
+
+async fn report_usage_with(
+    h: &Harness,
+    t: &Tenant,
+    thread: maidan_types::ThreadId,
+    input: i64,
+    evidence: Value,
+) {
     let claimed = h.store.assign_thread(thread, t.agent).await.unwrap();
     let lease = claimed.claim_lease_id.unwrap();
     let resp = h
@@ -1164,7 +1174,8 @@ async fn report_usage(h: &Harness, t: &Tenant, thread: maidan_types::ThreadId, i
                 "cache_write_5m_usd_micros_per_million": 0,
                 "cache_write_1h_usd_micros_per_million": 0
             },
-            "turns": 1
+            "turns": 1,
+            "evidence": evidence
         }))
         .send()
         .await
@@ -1223,6 +1234,134 @@ async fn usage_rollups_sum_the_callers_workspace_and_refuse_another() {
     .await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(own["input_tokens"], 7, "{own}");
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn fleet_conformance_reads_the_callers_workspace_against_the_profile_and_refuses_another() {
+    const PACK: &str = "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12";
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    report_usage_with(
+        &h,
+        &a,
+        a.thread,
+        10,
+        json!({"harness": "claude-code", "harness_version": "2.0.9", "pack_sha256": [PACK]}),
+    )
+    .await;
+    // B runs the published build; none of it may show up in A's report.
+    report_usage_with(
+        &h,
+        &b,
+        b.thread,
+        10,
+        json!({"harness": "claude-code", "harness_version": "2.1.0", "pack_sha256": [PACK]}),
+    )
+    .await;
+
+    let query = format!(
+        "harness=claude-code&harness_version=2.1.0&boot_pack_sha256={}",
+        PACK.to_ascii_uppercase()
+    );
+    let path = format!("/workspaces/{}/usage-conformance?{query}", a.workspace.0);
+    let (s, report) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{report}");
+    assert_eq!(report["workspace_id"], json!(a.workspace.0));
+    assert_eq!(report["reports"], 1, "B's report stays out: {report}");
+    assert_eq!(report["conforming"], 0);
+    assert_eq!(report["conforms"], false);
+    assert_eq!(report["members"][0]["member_id"], json!(a.agent.0));
+    assert_eq!(
+        report["members"][0]["divergences"],
+        json!([{"field": "harness_version", "seen": "2.0.9", "reports": 1}])
+    );
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[a.workspace.0.to_string()]);
+
+    let own = format!("/workspaces/{}/usage-conformance?{query}", b.workspace.0);
+    let (s, report) = read(&h, &own, &b.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{report}");
+    assert_eq!(report["conforms"], true, "{report}");
+    assert_eq!(report["reports"], 1);
+
+    let (s, _) = read(
+        &h,
+        &format!("/workspaces/{}/usage-conformance?limit=0", b.workspace.0),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
+    h.shutdown().await;
+}
+
+#[tokio::test]
+async fn usage_routing_suggests_a_model_and_effort_from_the_callers_workspace_and_refuses_another()
+{
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    report_usage_with(&h, &a, a.thread, 10, json!({"effort": "high"})).await;
+    for action in [
+        maidan_fsm::ThreadAction::StartReview,
+        maidan_fsm::ThreadAction::Close,
+    ] {
+        h.store
+            .transition_thread(a.thread, a.agent, action)
+            .await
+            .unwrap();
+    }
+    // B's report names another effort; none of it may show up in A's answer.
+    report_usage_with(&h, &b, b.thread, 10, json!({"effort": "low"})).await;
+
+    let path = format!(
+        "/workspaces/{}/usage-routing?min_completed=1",
+        a.workspace.0
+    );
+    let (s, routing) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{routing}");
+    assert_eq!(routing["workspace_id"], json!(a.workspace.0));
+    assert_eq!(
+        routing["classes"].as_array().map(Vec::len),
+        Some(1),
+        "{routing}"
+    );
+    let class = &routing["classes"][0];
+    assert_eq!(class["kind"], "change");
+    assert_eq!(class["outcomes"][0]["effort"], "high");
+    assert_eq!(class["outcomes"][0]["completed_tasks"], 1);
+    assert_eq!(
+        class["suggested"],
+        json!({"model": "test/model", "effort": "high", "usd_micros_per_completed_task": 0})
+    );
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[a.workspace.0.to_string()]);
+
+    let own = format!("/workspaces/{}/usage-routing", b.workspace.0);
+    let (s, routing) = read(&h, &own, &b.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{routing}");
+    assert_eq!(routing["min_completed"], 3);
+    let class = &routing["classes"][0];
+    assert_eq!(class["outcomes"][0]["effort"], "low", "{routing}");
+    assert_eq!(class["outcomes"][0]["completed_tasks"], 0);
+    assert!(
+        class.get("suggested").is_none(),
+        "an open task suggests nothing: {routing}"
+    );
+
+    let (s, _) = read(
+        &h,
+        &format!(
+            "/workspaces/{}/usage-routing?min_completed=0",
+            b.workspace.0
+        ),
+        &b.admin_token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
     h.shutdown().await;
 }
 

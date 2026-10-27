@@ -42,9 +42,11 @@ fn multipart_upload(upload_id: &str, object_key: &str) -> MultipartUpload {
 }
 
 pub(super) async fn begin_artifact_multipart(
-    artifacts: &Arc<dyn ArtifactStore>,
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
 ) -> Result<Value, McpError> {
-    let upload = s3_artifacts(artifacts)?
+    refuse_stored_bytes(server, auth)?;
+    let upload = s3_artifacts(&server.artifacts)?
         .begin_multipart_upload()
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
@@ -64,15 +66,17 @@ struct UploadMultipartPartArgs {
 }
 
 pub(super) async fn upload_artifact_multipart_part(
-    artifacts: &Arc<dyn ArtifactStore>,
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
     args: &Value,
 ) -> Result<Value, McpError> {
     let a: UploadMultipartPartArgs = crate::tools::parse_args(args)?;
+    refuse_stored_bytes(server, auth)?;
     let raw = STANDARD
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
     let upload = multipart_upload(&a.upload_id, &a.object_key);
-    let etag = s3_artifacts(artifacts)?
+    let etag = s3_artifacts(&server.artifacts)?
         .upload_part(&upload, a.part_number, Bytes::from(raw))
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
@@ -113,6 +117,16 @@ pub(super) async fn complete_artifact_multipart(
             etag: p.etag,
         })
         .collect();
+    // Cut off before completing: drop the parts, so a refusal stores nothing.
+    if let Err(refused) = refuse_stored_bytes(server, auth) {
+        if let Err(err) = s3_artifacts(&server.artifacts)?
+            .abort_multipart_upload(&upload)
+            .await
+        {
+            tracing::warn!(error = %err, "artifact.refused_parts_not_aborted");
+        }
+        return Err(refused);
+    }
     let sha = s3_artifacts(&server.artifacts)?
         .complete_multipart_upload(&upload, &parts)
         .await
@@ -129,21 +143,19 @@ pub(super) async fn complete_artifact_multipart(
         reap_if_orphaned(server, auth.workspace_id, &sha).await;
         return Err(refused);
     }
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
-    let (artifact, stored) = server
-        .store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes: bytes.len() as i64,
-                mime_type: a.mime_type,
-                filename: None,
-                kind: a.kind,
-                uploaded_by: (!auth.bypass).then_some(auth.member_id),
-            },
-            ref_workspace,
-        )
-        .await?;
+    let (artifact, stored) = upsert_uploaded_artifact(
+        server,
+        auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: bytes.len() as i64,
+            mime_type: a.mime_type,
+            filename: None,
+            kind: a.kind,
+            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(server.artifacts.as_ref(), &sha, bytes)
         .await
@@ -182,7 +194,9 @@ pub(super) async fn upload_artifact(
         .decode(&a.content_base64)
         .map_err(|e| McpError::InvalidParams(format!("invalid base64: {e}")))?;
     let bytes = Bytes::from(raw);
-    // Refused before the bytes are written, so a refusal stores nothing.
+    // Refused before the bytes are written, so a refusal stores nothing: the
+    // stored-bytes cutoff and the media quota are both checked first.
+    refuse_stored_bytes(server, auth)?;
     let upload_sha = maidan_artifacts::Sha256::compute(&bytes);
     ensure_media_quota(server, auth, a.kind, &upload_sha.to_hex(), bytes.len()).await?;
     let sha = server
@@ -190,21 +204,19 @@ pub(super) async fn upload_artifact(
         .put(bytes.clone())
         .await
         .map_err(|e| McpError::Internal(e.to_string()))?;
-    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
-    let (artifact, stored) = server
-        .store
-        .upsert_artifact_with_event(
-            NewArtifact {
-                sha256: sha.to_string(),
-                size_bytes: bytes.len() as i64,
-                mime_type: a.mime_type,
-                filename: None,
-                kind: a.kind,
-                uploaded_by: (!auth.bypass).then_some(auth.member_id),
-            },
-            ref_workspace,
-        )
-        .await?;
+    let (artifact, stored) = upsert_uploaded_artifact(
+        server,
+        auth,
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: bytes.len() as i64,
+            mime_type: a.mime_type,
+            filename: None,
+            kind: a.kind,
+            uploaded_by: (!auth.bypass).then_some(auth.member_id),
+        },
+    )
+    .await?;
     // A last-reference erase may have reaped the bytes between the put and the row.
     maidan_artifacts::restore_if_reaped(server.artifacts.as_ref(), &sha, bytes)
         .await
@@ -325,7 +337,50 @@ async fn ensure_media_quota(
     }
 }
 
-/// Delete the bytes of a refused multipart upload unless an artifact row
+/// `OverAllowance` when the caller's workspace is cut off on `stored_bytes`.
+/// Upload tools call this before any bytes are written, so a refused upload
+/// stores nothing. An unscoped (bypass) upload is not metered.
+pub(super) fn refuse_stored_bytes(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+) -> Result<(), McpError> {
+    if auth.bypass {
+        return Ok(());
+    }
+    server
+        .store
+        .usage_meters()
+        .refuse(auth.workspace_id, UsageMeter::StoredBytes)
+        .map_err(McpError::from)
+}
+
+/// The artifact upsert every upload tool ends in. When the store refuses it
+/// with `OverAllowance` (the workspace was cut off after the pre-check, before
+/// the row), the bytes just put go too, unless an artifact row, in any
+/// workspace, already holds that sha.
+pub(super) async fn upsert_uploaded_artifact(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    new: NewArtifact,
+) -> Result<(Artifact, StoredEvent), McpError> {
+    let ref_workspace = (!auth.bypass).then_some(auth.workspace_id);
+    let sha = maidan_artifacts::Sha256::from_hex(&new.sha256).ok();
+    match server
+        .store
+        .upsert_artifact_with_event(new, ref_workspace)
+        .await
+    {
+        Err(refused @ maidan_store::StoreError::OverAllowance(_)) => {
+            if let Some(sha) = sha {
+                reap_if_orphaned(server, auth.workspace_id, &sha).await;
+            }
+            Err(refused.into())
+        }
+        other => Ok(other?),
+    }
+}
+
+/// Delete the bytes of a refused upload unless an artifact row
 /// holds them, under the reap lease every erase uses. A failed delete is
 /// queued for the retention sweep to retry, and logged, not returned: the
 /// bytes are only unreachable.
@@ -353,5 +408,152 @@ async fn reap_if_orphaned(
     .await;
     if let maidan_store::BlobReap::DeleteFailed(err) = reaped {
         tracing::warn!(sha = %sha, error = %err, "artifact.refused_blob_not_deleted");
+    }
+}
+
+#[cfg(test)]
+mod stored_bytes_cutoff_tests {
+    use super::*;
+    use crate::server::McpServer;
+    use maidan_artifacts::{LocalFsStore, Sha256};
+    use maidan_search::HashV1Provider;
+    use maidan_store::{run_sqlite_migrations, SqliteStore};
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    struct Fixture {
+        server: McpServer,
+        _dir: tempfile::TempDir,
+        cut: AuthContext,
+        other: AuthContext,
+    }
+
+    async fn fixture() -> Fixture {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let dir = tempfile::tempdir().unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(dir.path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let mut auths = Vec::new();
+        for name in ["cut", "other"] {
+            let ws = store
+                .create_workspace(NewWorkspace { name: name.into() })
+                .await
+                .unwrap();
+            let m = store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: name.into(),
+                    display_name: None,
+                    kind: MemberKind::Human,
+                })
+                .await
+                .unwrap();
+            auths.push(AuthContext::from_session(m.id, ws.id, vec![]));
+        }
+        let other = auths.remove(1);
+        let cut = auths.remove(0);
+        Fixture {
+            server,
+            _dir: dir,
+            cut,
+            other,
+        }
+    }
+
+    fn cut_off(f: &Fixture) {
+        f.server
+            .store
+            .usage_meters()
+            .set_cut_off([(f.cut.workspace_id, UsageMeter::StoredBytes)]);
+    }
+
+    fn new_artifact(sha: &Sha256, auth: &AuthContext, len: usize) -> NewArtifact {
+        NewArtifact {
+            sha256: sha.to_string(),
+            size_bytes: len as i64,
+            mime_type: None,
+            filename: None,
+            kind: ArtifactKind::Attachment,
+            uploaded_by: Some(auth.member_id),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_cut_off_upload_is_refused_before_any_bytes_are_written() {
+        let f = fixture().await;
+        cut_off(&f);
+        let bytes = b"refused before the put".to_vec();
+        let args = json!({ "kind": "attachment", "content_base64": STANDARD.encode(&bytes) });
+        let refused = upload_artifact(&f.server, &f.cut, &args).await;
+        assert!(
+            matches!(
+                refused,
+                Err(McpError::OverAllowance(UsageMeter::StoredBytes))
+            ),
+            "{refused:?}"
+        );
+        let sha = Sha256::compute(&bytes);
+        assert!(!f.server.artifacts.exists(&sha).await.unwrap());
+        assert!(matches!(
+            begin_artifact_multipart(&f.server, &f.cut).await,
+            Err(McpError::OverAllowance(UsageMeter::StoredBytes))
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_cutoff_landing_after_the_put_reaps_the_bytes_it_refuses() {
+        let f = fixture().await;
+        let bytes = Bytes::from_static(b"put, then cut off before the row");
+        let sha = f.server.artifacts.put(bytes.clone()).await.unwrap();
+        cut_off(&f);
+        let refused =
+            upsert_uploaded_artifact(&f.server, &f.cut, new_artifact(&sha, &f.cut, bytes.len()))
+                .await;
+        assert!(
+            matches!(
+                refused,
+                Err(McpError::OverAllowance(UsageMeter::StoredBytes))
+            ),
+            "{refused:?}"
+        );
+        assert!(!f.server.artifacts.exists(&sha).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_refused_upload_keeps_bytes_another_workspace_already_holds() {
+        let f = fixture().await;
+        let bytes = Bytes::from_static(b"the same bytes in two workspaces");
+        let sha = f.server.artifacts.put(bytes.clone()).await.unwrap();
+        upsert_uploaded_artifact(
+            &f.server,
+            &f.other,
+            new_artifact(&sha, &f.other, bytes.len()),
+        )
+        .await
+        .unwrap();
+        cut_off(&f);
+        let refused =
+            upsert_uploaded_artifact(&f.server, &f.cut, new_artifact(&sha, &f.cut, bytes.len()))
+                .await;
+        assert!(refused.is_err());
+        assert!(f.server.artifacts.exists(&sha).await.unwrap());
+        assert_eq!(
+            f.server.artifacts.get(&sha).await.unwrap(),
+            bytes,
+            "the other workspace's artifact still reads"
+        );
     }
 }

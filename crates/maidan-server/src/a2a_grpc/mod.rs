@@ -43,7 +43,10 @@ pub struct GrpcA2a {
 }
 
 /// Resolve the caller's [`AuthContext`] from the gRPC request metadata, mirroring
-/// the HTTP bearer middleware (bypass when auth is disabled).
+/// the HTTP bearer middleware (bypass when auth is disabled): the same
+/// per-bearer rate limit, then the same request-allowance cutoff and request
+/// metering ([`crate::usage_meters::admit_request`]), for every operation.
+/// The gRPC server has no HTTP request layer, so none of them runs otherwise.
 async fn auth_from_grpc<T>(state: &AppState, request: &Request<T>) -> Result<AuthContext, Status> {
     if state.auth_disabled {
         return Ok(AuthContext::bypass());
@@ -54,9 +57,20 @@ async fn auth_from_grpc<T>(state: &AppState, request: &Request<T>) -> Result<Aut
         .and_then(|v| v.to_str().ok())
         .and_then(crate::auth::parse_bearer)
         .ok_or_else(|| Status::unauthenticated("missing bearer token"))?;
-    resolve_bearer(state.store.as_ref(), secret)
+    let ctx = resolve_bearer(state.store.as_ref(), secret)
         .await
-        .map_err(|_| Status::unauthenticated("invalid token"))
+        .map_err(|_| Status::unauthenticated("invalid token"))?;
+    if crate::rate_limit::enforce_verified_bearer(state, secret, false)
+        .await
+        .is_err()
+    {
+        return Err(Status::resource_exhausted("rate limit exceeded"));
+    }
+    if !ctx.bypass {
+        crate::usage_meters::admit_request(state, ctx.workspace_id, false)
+            .map_err(|err| Status::resource_exhausted(err.detail()))?;
+    }
+    Ok(ctx)
 }
 
 /// `google.rpc.Status`, the payload of `grpc-status-details-bin`.

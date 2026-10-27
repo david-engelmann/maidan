@@ -1,3 +1,0 @@
-### A change delivery names the pull request it landed as
-
-- **Added:** `pr_number`, `head_sha` and `pr_url` on result deliveries, decoded from the stored `<commit_sha>#<pull_number>` handle of a `github_branch` delivery and carried on every read of the row (`GET /threads/{id}/deliveries`, the MCP `list_result_deliveries` and `replay_result_delivery` answers, the replay answer over REST). A producer can now show where its change landed without re-parsing the handle. The fields are derived at read time, never stored; deliveries to any other surface, and branch rows whose handle does not decode, read them as null. `external_ref` is unchanged.

@@ -73,6 +73,12 @@ pub struct OidcSettings {
     /// one-time code; an explicit `email_verified: false` still counts as
     /// unverified.
     pub emails_verified: bool,
+    /// Where the instance's privacy policy and terms live
+    /// (`MAIDAN_SIGNUP_PRIVACY_URL`, `MAIDAN_SIGNUP_TERMS_URL`): a path on
+    /// this origin or an `https://` URL. The waitlist page links each one
+    /// that is set, since it asks visitors for an email address.
+    pub privacy_url: Option<String>,
+    pub terms_url: Option<String>,
 }
 
 impl OidcSettings {
@@ -149,6 +155,13 @@ impl OidcSettings {
             .unwrap_or_default();
         let signup_open = env_flag("MAIDAN_SIGNUP_OPEN");
         check_open_signup(signup, signup_open, !signup_email_domains.is_empty())?;
+        let turnstile =
+            std::env::var("MAIDAN_TURNSTILE_SECRET").is_ok_and(|secret| !secret.trim().is_empty());
+        if check_open_signup_bot_check(signup_open, crate::config::is_production(), turnstile)? {
+            tracing::warn!(
+                "MAIDAN_SIGNUP_OPEN is on without MAIDAN_TURNSTILE_SECRET: anyone can start a sign-up with no bot check; production refuses this"
+            );
+        }
 
         // An operator's word stands in for the provider's: say so at boot, so
         // a login method added at the provider later is checked against it.
@@ -159,6 +172,9 @@ impl OidcSettings {
                 "MAIDAN_OIDC_EMAILS_VERIFIED: a missing email_verified claim counts as verified; every login method at this provider must prove the address"
             );
         }
+
+        let privacy_url = policy_url("MAIDAN_SIGNUP_PRIVACY_URL")?;
+        let terms_url = policy_url("MAIDAN_SIGNUP_TERMS_URL")?;
 
         Ok(Some(Self {
             enabled: true,
@@ -177,6 +193,8 @@ impl OidcSettings {
             signup_email_domains,
             signup_open,
             emails_verified,
+            privacy_url,
+            terms_url,
         }))
     }
 }
@@ -245,6 +263,47 @@ impl OidcRuntime {
     }
 }
 
+/// A policy link from the environment, or `None` where it is unset or
+/// blank. The waitlist page puts it in an `href`, so it is a path on this
+/// origin or an `https://` URL and nothing that could leave the attribute or
+/// run as script; a typo is refused at boot rather than shipped as a dead link.
+fn policy_url(name: &'static str) -> Result<Option<String>, ConfigError> {
+    let Ok(raw) = std::env::var(name) else {
+        return Ok(None);
+    };
+    check_policy_url(name, &raw)
+}
+
+fn check_policy_url(name: &'static str, raw: &str) -> Result<Option<String>, ConfigError> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    let on_origin = value.starts_with('/') && !value.starts_with("//");
+    // The host a visitor reads must be the one the link opens:
+    // `https://maidan.world@evil.example/terms` shows one and opens the
+    // other, so an authority with userinfo is refused.
+    let https = value.strip_prefix("https://").is_some_and(|rest| {
+        let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+        !authority.is_empty() && !authority.contains('@')
+    });
+    if !on_origin && !https {
+        return Err(ConfigError::Invalid(
+            name,
+            "must be a path on this origin (`/privacy`) or an https:// URL".into(),
+        ));
+    }
+    if value.chars().any(|c| {
+        c.is_whitespace() || c.is_control() || matches!(c, '"' | '\'' | '<' | '>' | '\\' | '`')
+    }) {
+        return Err(ConfigError::Invalid(
+            name,
+            "has a space, quote, angle bracket, backslash or control character".into(),
+        ));
+    }
+    Ok(Some(value.to_string()))
+}
+
 /// Open sign-up widens the invited one, so it means nothing without
 /// `MAIDAN_SIGNUP`, and a domain list beside it would be ignored: refuse
 /// both at boot rather than run a door the operator did not describe.
@@ -265,6 +324,81 @@ fn check_open_signup(signup: bool, open: bool, has_domains: bool) -> Result<(), 
         ));
     }
     Ok(())
+}
+
+/// An open door needs a bot check: with `MAIDAN_ENV=production`, open
+/// sign-up without `MAIDAN_TURNSTILE_SECRET` refuses boot. Outside
+/// production it boots, and `Ok(true)` asks the caller to warn.
+fn check_open_signup_bot_check(
+    open: bool,
+    production: bool,
+    turnstile: bool,
+) -> Result<bool, ConfigError> {
+    if !open || turnstile {
+        return Ok(false);
+    }
+    if production {
+        return Err(ConfigError::Invalid(
+            "MAIDAN_SIGNUP_OPEN",
+            "needs MAIDAN_TURNSTILE_SECRET when MAIDAN_ENV=production; open sign-up without a bot check is refused".into(),
+        ));
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+mod policy_url_tests {
+    use super::*;
+
+    #[test]
+    fn a_policy_link_is_a_path_on_this_origin_or_an_https_url() {
+        for ok in [
+            "/privacy",
+            "/legal/terms.html",
+            "https://example.com/privacy?v=2&x=1",
+        ] {
+            assert_eq!(
+                check_policy_url("MAIDAN_SIGNUP_PRIVACY_URL", ok)
+                    .ok()
+                    .flatten()
+                    .as_deref(),
+                Some(ok)
+            );
+        }
+        assert_eq!(
+            check_policy_url("MAIDAN_SIGNUP_PRIVACY_URL", "  ")
+                .ok()
+                .flatten(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_policy_link_that_could_leave_the_attribute_or_the_origin_is_refused() {
+        for bad in [
+            "privacy",
+            "//evil.example/privacy",
+            "http://example.com/privacy",
+            "https:///privacy",
+            "javascript:alert(1)",
+            "/privacy\" onmouseover=\"x",
+            "/privacy><script>",
+            "/pri vacy",
+            "/privacy'",
+            "/a\\b",
+            "https://user:pass@example.com/privacy",
+            "https://maidan.world@evil.example/terms",
+            "https://?x",
+        ] {
+            assert!(
+                matches!(
+                    check_policy_url("MAIDAN_SIGNUP_TERMS_URL", bad),
+                    Err(ConfigError::Invalid("MAIDAN_SIGNUP_TERMS_URL", _))
+                ),
+                "{bad}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -292,6 +426,68 @@ mod open_signup_tests {
             refused_var(check_open_signup(true, true, true)),
             Some("MAIDAN_SIGNUP_OPEN")
         );
+    }
+
+    #[test]
+    fn in_production_open_signup_without_turnstile_refuses_boot_naming_the_variable() {
+        match check_open_signup_bot_check(true, true, false) {
+            Err(ConfigError::Invalid(var, why)) => {
+                assert_eq!(var, "MAIDAN_SIGNUP_OPEN");
+                assert!(why.contains("MAIDAN_TURNSTILE_SECRET"), "{why}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn in_production_open_signup_with_turnstile_boots_without_a_warning() {
+        assert!(matches!(
+            check_open_signup_bot_check(true, true, true),
+            Ok(false)
+        ));
+    }
+
+    #[test]
+    fn outside_production_open_signup_without_turnstile_boots_with_a_warning() {
+        assert!(matches!(
+            check_open_signup_bot_check(true, false, false),
+            Ok(true)
+        ));
+    }
+
+    #[test]
+    fn the_same_open_signup_config_is_refused_in_production_and_only_warned_outside_it() {
+        // Two deployments share one sign-up config, open with no bot check;
+        // only the environment differs. Production must not inherit the
+        // development allowance.
+        let production = check_open_signup_bot_check(true, true, false);
+        let development = check_open_signup_bot_check(true, false, false);
+        assert!(
+            matches!(
+                production,
+                Err(ConfigError::Invalid("MAIDAN_SIGNUP_OPEN", _))
+            ),
+            "{production:?}"
+        );
+        assert!(matches!(development, Ok(true)), "{development:?}");
+    }
+
+    #[test]
+    fn a_bot_check_in_one_config_does_not_excuse_open_signup_without_one_in_another() {
+        let with_check = check_open_signup_bot_check(true, true, true);
+        let without_check = check_open_signup_bot_check(true, true, false);
+        assert!(matches!(with_check, Ok(false)), "{with_check:?}");
+        assert!(without_check.is_err(), "{without_check:?}");
+    }
+
+    #[test]
+    fn closed_signup_needs_no_bot_check_in_either_config() {
+        for production in [true, false] {
+            assert!(matches!(
+                check_open_signup_bot_check(false, production, false),
+                Ok(false)
+            ));
+        }
     }
 
     #[test]
