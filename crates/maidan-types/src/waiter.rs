@@ -572,6 +572,17 @@ pub fn is_change_branch(branch: &str) -> bool {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
+/// Whether `name` is written as a qualified ref (`refs/…` or `heads/…`).
+/// A qualified ref names the same branch as its short name, so the checks
+/// that compare against short names would miss it; bases take the short
+/// name only.
+fn is_qualified_ref(name: &str) -> bool {
+    ["refs/", "heads/"].iter().any(|p| {
+        name.get(..p.len())
+            .is_some_and(|head| head.eq_ignore_ascii_case(p))
+    })
+}
+
 /// The hard-coded rules for a `github_branch` target, checked before the
 /// allowlist and again before any GitHub write. `Err` is the reason recorded
 /// on the delivery.
@@ -589,6 +600,11 @@ pub fn check_change_target(branch: &str, base: &str) -> Result<(), String> {
     if !is_change_branch(branch) {
         return Err(format!(
             "branch `{branch}` does not match `{CHANGE_BRANCH_PREFIX}[a-z0-9][a-z0-9-]*`"
+        ));
+    }
+    if is_qualified_ref(base) {
+        return Err(format!(
+            "base `{base}` is a qualified ref; name the branch alone"
         ));
     }
     if base.eq_ignore_ascii_case(FORBIDDEN_CHANGE_BASE) {
@@ -684,7 +700,7 @@ impl MarkReadyBases {
                     repo: repo.to_string(),
                 });
             }
-            if !is_branch_name(base) {
+            if !is_branch_name(base) || is_qualified_ref(base) {
                 return Err(MarkReadyBasesError::BadBase {
                     repo: repo.to_string(),
                     base: base.to_string(),
@@ -1900,9 +1916,33 @@ mod tests {
                 "Feature/Agent-x",
                 "another change's branch",
             ),
+            (
+                "feature/agent-y",
+                "refs/heads/feature/agent-x",
+                "qualified ref",
+            ),
+            ("feature/agent-y", "heads/feature/agent-x", "qualified ref"),
+            ("feature/agent-y", "Refs/Heads/prod", "qualified ref"),
         ] {
             let err = check_change_target(branch, base).unwrap_err();
             assert!(err.contains(why), "{branch} -> {base}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_mark_ready_base_written_as_a_qualified_ref_is_refused() {
+        for raw in [
+            "o/r=refs/heads/prod",
+            "o/r=heads/main",
+            "o/r=Refs/Heads/dev",
+        ] {
+            assert!(
+                matches!(
+                    MarkReadyBases::parse(raw),
+                    Err(MarkReadyBasesError::BadBase { .. })
+                ),
+                "{raw}"
+            );
         }
     }
 
