@@ -346,6 +346,10 @@ pub(crate) async fn send_message(
     // Spend before the post: a refused report posts nothing (and, above,
     // creates no thread). If the post below fails after the spend is recorded,
     // the spend stays, and a retry with the same report id returns that row.
+    // Under the allowance cutoff this matches `POST /threads/{id}/usage`: past
+    // its request allowance the whole call is refused before it reaches here,
+    // and past its stored-bytes allowance the spend (already incurred by the
+    // peer) is still recorded while the post is refused.
     let accepted = match usage {
         Some(report) => Some(payer_stamp::record(state, auth, scope, report).await?),
         None => None,
