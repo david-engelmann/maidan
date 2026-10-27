@@ -918,8 +918,11 @@ jobs:
           docker info --format '{{.RegistryConfig.Mirrors}}'
       - name: build images
         run: |
+          # The production build args (no bootstrap), so the smoke proves
+          # the image that ships exports OTLP; it only needs /health and
+          # /metrics, not the seed routes.
           docker build \
-            --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
+            --build-arg MAIDAN_ENABLE_BOOTSTRAP=0 \
             -t maidan-server:dev \
             -f crates/maidan-server/Dockerfile .
           docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
