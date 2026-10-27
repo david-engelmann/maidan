@@ -154,7 +154,10 @@ pub(super) async fn import_workspace(
     let mode = a.mode.as_deref().unwrap_or("new");
     let flat = flatten_export(bundle);
     let (to_write, replace_existing) = match mode {
-        "new" => (remap_import(flat, Uuid::new_v4), false),
+        "new" => (
+            remap_import(flat, Uuid::new_v4).map_err(McpError::InvalidParams)?,
+            false,
+        ),
         "restore" => {
             auth.ensure_workspace(flat.workspace.id)?;
             match server.store.get_workspace(flat.workspace.id).await {
