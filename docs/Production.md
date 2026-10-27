@@ -1020,9 +1020,10 @@ fine-grained token: **Contents** and **Pull requests**, read and write), on
 exactly the repositories the change flow may write to. Grant nothing else. The flow stops at
 a draft pull request: it requests no review and needs no approval (a token
 owner cannot approve their own pull request), and the producer marks the pull
-request ready. The comment and check-run paths use the same token; a check run
-needs `checks:write`, which a personal access token does not carry, so the
-check run fails and the comment still posts.
+request ready. The comment path uses the same token. Check runs need the GitHub App
+below: GitHub lets only apps create them, so with a token Maidan skips the
+check run (recorded `skipped`, said once at boot) and the summary comment
+still carries the verdict.
 
 **Authenticating as a GitHub App.** Set `MAIDAN_GITHUB_APP_ID`,
 `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` (or

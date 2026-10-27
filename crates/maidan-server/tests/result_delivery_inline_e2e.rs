@@ -54,6 +54,7 @@ struct RecordingGithub {
     checks: Mutex<Vec<(String, GithubCheckRun)>>,
     fail_review: Mutex<Option<GithubError>>,
     fail_check: Mutex<Option<GithubError>>,
+    token_auth: std::sync::atomic::AtomicBool,
 }
 
 impl RecordingGithub {
@@ -66,6 +67,7 @@ impl RecordingGithub {
             checks: Mutex::new(Vec::new()),
             fail_review: Mutex::new(None),
             fail_check: Mutex::new(None),
+            token_auth: std::sync::atomic::AtomicBool::new(false),
         })
     }
 }
@@ -124,6 +126,10 @@ impl GithubSender for RecordingGithub {
             return Err(err);
         }
         Ok(())
+    }
+
+    fn posts_check_runs(&self) -> bool {
+        !self.token_auth.load(Ordering::SeqCst)
     }
 
     async fn create_check_run(
@@ -1079,4 +1085,25 @@ async fn a_check_run_422_leaves_the_summary_delivered() {
 
     assert_eq!(h.github.posts.lock().unwrap().len(), 1);
     assert_eq!(delivered_row(&h).await.status, status::DELIVERED);
+}
+
+/// With a token-authenticated sender (no GitHub App), no check run is even
+/// attempted, since GitHub answers every one 403, and the summary comment
+/// still delivers (#1648).
+#[tokio::test]
+async fn a_token_sender_posts_the_summary_and_never_tries_a_check_run() {
+    let h = harness("token-no-check-run").await;
+    h.github.token_auth.store(true, Ordering::SeqCst);
+    bless_github(&h).await;
+    set_result(&h, &fixture_github_only()).await;
+    route(&h, 1).await;
+    sweep(&h).await;
+
+    assert_eq!(h.github.posts.lock().unwrap().len(), 1, "the summary posts");
+    assert!(
+        h.github.checks.lock().unwrap().is_empty(),
+        "no check run call is made with a token"
+    );
+    let delivered = delivered_row(&h).await;
+    assert_eq!(delivered.status, status::DELIVERED);
 }
