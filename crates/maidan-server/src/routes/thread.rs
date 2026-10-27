@@ -517,6 +517,9 @@ pub async fn set_thread_result(
     let thread_id = ThreadId(id);
     // One fetch resolves scope + authorizes (was resolve + ws + access).
     let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    if let Some(reason) = maidan_types::unroutable_waiter_result(&body.result) {
+        return Err(ApiError::BadRequest(reason));
+    }
     let result = state
         .store
         .set_thread_result(
