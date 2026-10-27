@@ -33,6 +33,7 @@
   {"method":"GET","path":"/auth/oidc/callback","kind":"changes","reason":"Consumes the one-time pending login, may provision the member and link the identity, and creates the browser session. A GET because the identity provider redirects the browser to it."},
   {"method":"GET","path":"/auth/oidc/login","kind":"changes","reason":"Stores the pending login (state, nonce and PKCE verifier) that the callback consumes. A GET because the browser is redirected to it."},
   {"method":"GET","path":"/auth/oidc/signup","kind":"changes","reason":"Stores the pending sign-up (state, nonce and PKCE verifier, with the invite bound) that the callback consumes. A GET because the browser is redirected to it."},
+  {"method":"POST","path":"/auth/oidc/signup","kind":"changes","reason":"The same sign-up start as the GET, with the Turnstile token in the form body so it stays out of the URL; stores the pending sign-up and answers 303."},
   {"method":"GET","path":"/auth/session","kind":"changes","reason":"Deletes the caller's session row when it has expired, then refuses it."},
   {"method":"POST","path":"/auth/session/from-token","kind":"changes"},
   {"method":"POST","path":"/auth/session/mint","kind":"changes"},
