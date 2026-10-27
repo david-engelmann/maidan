@@ -109,22 +109,20 @@ pub async fn rollup(pool: &SqlitePool, query: UsageRollupQuery) -> Result<UsageR
             CAST(COALESCE(SUM(cache_write_1h_tokens), 0) AS INTEGER) AS cache_write_1h_tokens,
             CAST(COALESCE(SUM(usd_micros), 0) AS INTEGER) AS usd_micros,
             CAST(COALESCE(SUM(
-                ((input_tokens + cache_read_tokens + cache_write_5m_tokens + cache_write_1h_tokens) * input_price
-                 + output_tokens * output_price + 999999) / 1000000
+                {uncached}
             ), 0) AS INTEGER) AS uncached_usd_micros,
             CAST(COALESCE(SUM(CASE WHEN {lane} THEN 1 ELSE 0 END), 0) AS INTEGER) AS lane_reports,
             CAST(COALESCE(SUM(CASE WHEN {lane} THEN usd_micros ELSE 0 END), 0) AS INTEGER) AS lane_usd_micros,
             CAST(COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN 1 ELSE 0 END), 0) AS INTEGER) AS lane_priced_reports,
             CAST(COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN usd_micros ELSE 0 END), 0) AS INTEGER) AS lane_priced_usd_micros,
             CAST(COALESCE(SUM(CASE WHEN {lane} AND standard_input_price IS NOT NULL THEN
-                (input_tokens * standard_input_price + output_tokens * standard_output_price
-                 + cache_read_tokens * standard_cache_read_price
-                 + cache_write_5m_tokens * standard_cache_write_5m_price
-                 + cache_write_1h_tokens * standard_cache_write_1h_price + 999999) / 1000000
+                {standard}
                 ELSE 0 END), 0) AS INTEGER) AS lane_standard_usd_micros
          FROM maidan_usage_ledger
          WHERE budget IS NOT NULL AND {filter}",
-        lane = LANE
+        lane = LANE,
+        uncached = crate::usage_sql::uncached_row(),
+        standard = crate::usage_sql::lane_standard_row(),
     ))
     .bind(query.workspace_id.0)
     .bind(thread)
