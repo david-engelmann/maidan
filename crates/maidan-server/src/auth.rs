@@ -307,27 +307,15 @@ async fn run_authorized(
     // Counted here, once per authenticated request, into the buffer the
     // usage_meters loop flushes; never a database write of its own.
     if !ctx.bypass && !crate::usage_meters::unmetered(&path) {
-        // The hard allowance cutoff: an open sign-up workspace past its
-        // request allowance is refused (429) before the work runs, and the
-        // refusal is not counted. Its usage and notifications stay readable.
-        if state
-            .usage_meters
-            .is_cut_off(workspace_id, maidan_types::UsageMeter::Requests)
-            && !crate::usage_meters::readable_past_cutoff(
-                &method,
-                req.extensions()
-                    .get::<MatchedPath>()
-                    .map(MatchedPath::as_str),
-            )
-        {
-            return crate::usage_meters::cut_off_error(maidan_types::UsageMeter::Requests)
-                .into_response();
+        let readable = crate::usage_meters::readable_past_cutoff(
+            &method,
+            req.extensions()
+                .get::<MatchedPath>()
+                .map(MatchedPath::as_str),
+        );
+        if let Err(err) = crate::usage_meters::admit_request(state, workspace_id, readable) {
+            return err.into_response();
         }
-        // Past the stored-bytes allowance, the store refuses the writes
-        // that add bytes (messages, artifacts) whatever route they came by.
-        state
-            .usage_meters
-            .record(workspace_id, maidan_types::UsageMeter::Requests, 1);
     }
     req.extensions_mut().insert(ctx.clone());
     let response = run_as(state, req, next).await;

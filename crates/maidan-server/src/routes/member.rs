@@ -9,7 +9,9 @@ use maidan_auth::{
 };
 use maidan_types::*;
 
-use super::{cap, ensure_own_personal_state, ensure_workspace, requested_member, ApiResult};
+use super::{
+    cap, ensure_own_personal_state, ensure_workspace, publish_stored, requested_member, ApiResult,
+};
 use crate::dto::*;
 use crate::error::ApiError;
 use crate::extract::{ApiJson, ApiPath, ApiQuery};
@@ -274,12 +276,20 @@ pub async fn set_member_display_name(
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_own_personal_state(&auth, member_id)?;
     let display_name = normalize_display_name(Some(&body.display_name))?;
-    Ok(Json(
-        state
-            .store
-            .set_member_display_name(member.id, display_name)
-            .await?,
-    ))
+    let audit = NewAuditEvent {
+        scope: AuditScope::Workspace(member.workspace_id),
+        actor_id: Some(auth.actor_id),
+        action: "member.display_name.set".into(),
+        target_kind: Some("member".into()),
+        target_id: Some(member.id.0),
+        metadata: serde_json::json!({ "display_name": display_name }),
+    };
+    let (member, stored) = state
+        .store
+        .set_member_display_name(member.id, display_name, audit)
+        .await?;
+    publish_stored(&state, stored).await;
+    Ok(Json(member))
 }
 
 pub async fn list_mentions_for_member(

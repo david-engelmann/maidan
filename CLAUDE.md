@@ -82,11 +82,12 @@ change.
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
-  v350–401, v403, v411).
+  v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but its release
+  run failed a Trivy scan and nothing was published; the maintainer said on
+  2026-10-26 to wait for more fixes before cutting again.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
-  41): a seat runner for session work, run caps that work on macOS, finding
-  and closing threads by attribute, the rest of Program C, the nightly
-  mutation shards, and the M13 alert proof. Then the launch path (Next 23,
+  41): finding and closing threads by attribute (Muse is on it), and the M13
+  alert proof. Then the launch path (Next 23,
   24, 14, 17, 13, 12, 30, 29). The approval rules hold throughout: since
   #1325 a gate is accepted only by a browser session the person signed in to
   or `approval:grant`, nobody accepts their own request, and
@@ -96,9 +97,11 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `main`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Every deploy path pins `v416.0.0`.** `scripts/check-deploy-pins.sh` (the
-  `deploy pins` job) keeps the pins on the newest tag, `docs/Pi.md`
-  included, and says which lines to change after the next one. The `:dev`
+- **Every deploy path pins `v417.0.0`.** `v418.0.0` is tagged but was never
+  published (its release run failed a Trivy scan, #1682), so the `deploy pins`
+  job reports the gap until a release carries it. `scripts/check-deploy-pins.sh`
+  keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
+  to change after the next one. The `:dev`
   images in `compose.yaml` and the charts' default values are built from
   source on purpose. Pointing anyone at a deploy is part of the launch, the
   maintainer's call.
@@ -106,7 +109,7 @@ change.
   one Mac. Cap every local build and test run (time and resident memory),
   run narrow tests only while the 15-minute load is under 130, keep 65 GB of
   disk free, and delete a target directory when its pull request merges.
-  macOS has no `timeout` and ignores `ulimit -v` (Open Work, Next 35).
+  macOS has no `timeout` and ignores `ulimit -v` (`scripts/capped`).
 - **The forward plan is the ranked list in
   [`docs/Open Work.md`](docs/Open%20Work.md).** What shipped is in
   [`docs/Capabilities.md`](docs/Capabilities.md) and [`CHANGELOG.md`](CHANGELOG.md).

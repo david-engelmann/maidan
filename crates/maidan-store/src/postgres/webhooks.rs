@@ -121,15 +121,17 @@ pub async fn list_enabled(pool: &PgPool) -> Result<Vec<WebhookSubscriptionRow>, 
 
 pub async fn revoke(
     pool: &PgPool,
+    workspace_id: WorkspaceId,
     id: WebhookSubscriptionId,
 ) -> Result<WebhookSubscription, StoreError> {
     let row = sqlx::query(&format!(
         "UPDATE maidan_webhook_subscriptions
          SET enabled = FALSE, revoked_at = NOW()
-         WHERE id = $1 AND revoked_at IS NULL
+         WHERE id = $1 AND workspace_id = $2 AND revoked_at IS NULL
          RETURNING {SUB_COLS}"
     ))
     .bind(id.0)
+    .bind(workspace_id.0)
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;

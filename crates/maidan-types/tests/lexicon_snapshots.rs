@@ -418,6 +418,12 @@ fn sample_event(kind: EventKind) -> Event {
             member_id,
             unfrozen_by: maidan_types::MemberId(id(13)),
         },
+        EventKind::MemberDisplayNameChanged => Event::MemberDisplayNameChanged {
+            occurred_at,
+            workspace_id,
+            member_id,
+            display_name: Some("Ada Lovelace".into()),
+        },
         EventKind::UsageOverAllowance => Event::UsageOverAllowance {
             occurred_at,
             workspace_id,
@@ -580,6 +586,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ProjectorMisconfigured
             | EventKind::MemberFrozen
             | EventKind::MemberUnfrozen
+            | EventKind::MemberDisplayNameChanged
             | EventKind::UsageOverAllowance
             | EventKind::MessagePosted
             | EventKind::MessageEdited

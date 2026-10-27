@@ -297,7 +297,13 @@ pub(super) fn notify(state: &AppState, workspace_id: WorkspaceId, task: &Task) {
                 .await;
                 maidan_store::trace::maybe_scope(
                     trace,
-                    deliver_a2a_push(&config.url, &body, &task_id, &headers),
+                    deliver_a2a_push(
+                        &config.url,
+                        &body,
+                        &task_id,
+                        &headers,
+                        Some((state.usage_meters.as_ref(), workspace_id)),
+                    ),
                 )
                 .await;
             });
@@ -351,7 +357,16 @@ impl PushHeaders {
 
 /// POST one notification with bounded retry and backoff. Best-effort (not a
 /// durable outbox); every outcome is counted in `maidan_a2a_push_total`.
-async fn deliver_a2a_push(url: &str, payload: &str, task_id: &str, headers: &PushHeaders) {
+/// With `meter`, each attempt counts one `deliveries` unit to the workspace,
+/// and a workspace cut off on `deliveries` sends nothing: a push is not
+/// queued, so it is dropped rather than deferred.
+async fn deliver_a2a_push(
+    url: &str,
+    payload: &str,
+    task_id: &str,
+    headers: &PushHeaders,
+    meter: Option<(&maidan_store::usage_meters::UsageMeterBuffer, WorkspaceId)>,
+) {
     let (client, target) = match crate::egress_http::client_for(url).await {
         Ok(target) => target,
         Err(err) => {
@@ -362,6 +377,18 @@ async fn deliver_a2a_push(url: &str, payload: &str, task_id: &str, headers: &Pus
     };
     let mut backoff = Duration::from_millis(200);
     for attempt in 1..=MAX_ATTEMPTS {
+        if let Some((meters, workspace_id)) = meter
+            && meters.is_cut_off(workspace_id, maidan_types::UsageMeter::Deliveries)
+        {
+            metrics::counter!("maidan_a2a_push_total", "result" => "over_allowance").increment(1);
+            tracing::info!(
+                task_id,
+                workspace_id = %workspace_id.0,
+                reason = "over_allowance",
+                "a2a push not sent; workspace past its free allowance for deliveries"
+            );
+            return;
+        }
         let mut request = crate::trace_context::stamp(client.post(target.clone()))
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .body(payload.to_owned())
@@ -372,7 +399,11 @@ async fn deliver_a2a_push(url: &str, payload: &str, task_id: &str, headers: &Pus
         if let Some(token) = &headers.token {
             request = request.header(NOTIFICATION_TOKEN_HEADER, token);
         }
-        match request.send().await {
+        let sent = request.send().await;
+        if let Some((meters, workspace_id)) = meter {
+            meters.record(workspace_id, maidan_types::UsageMeter::Deliveries, 1);
+        }
+        match sent {
             Ok(resp) if resp.status().is_success() => {
                 metrics::counter!("maidan_a2a_push_total", "result" => "ok").increment(1);
                 return;
@@ -461,7 +492,7 @@ mod tests {
             token: Some("tok".into()),
         };
         let payload = serde_json::json!({ "task": { "id": "t1" } });
-        deliver_a2a_push(&url, &payload.to_string(), "t1", &headers).await;
+        deliver_a2a_push(&url, &payload.to_string(), "t1", &headers, None).await;
         assert_eq!(hits.load(Ordering::SeqCst), 3, "should retry up to success");
         let seen = seen.lock().unwrap();
         let (headers, body) = seen.last().unwrap();
@@ -482,6 +513,7 @@ mod tests {
             &serde_json::json!({ "task": { "id": "t2" } }).to_string(),
             "t2",
             &PushHeaders::default(),
+            None,
         )
         .await;
         assert_eq!(hits.load(Ordering::SeqCst), MAX_ATTEMPTS);

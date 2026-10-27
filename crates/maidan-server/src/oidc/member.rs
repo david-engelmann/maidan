@@ -60,7 +60,7 @@ pub async fn resolve_member_for_login(
     email: Option<&str>,
     email_verified: bool,
     auto_provision: bool,
-    link_email: bool,
+    link_email_issuer: Option<&str>,
 ) -> Result<(MemberId, LoginMember), ApiError> {
     if let Ok(identity) = store.get_oidc_identity(workspace_id, issuer, subject).await {
         // The identity row outlives a removed member, so the member is checked
@@ -77,7 +77,10 @@ pub async fn resolve_member_for_login(
         };
     }
 
-    if link_email
+    // Linking by email trusts the issuer that asserted the address, so it is
+    // scoped to the one issuer named for it. An email verified by any other
+    // issuer falls through to provisioning, or is refused (#1625).
+    if link_email_issuer == Some(issuer)
         && email_verified
         && let Some(email) = email
         && let Ok(member) = store.get_member_by_handle(workspace_id, email).await
@@ -102,7 +105,8 @@ pub async fn resolve_member_for_login(
     // to a member that already holds the derived handle: the email's local
     // part proves nothing about who owns that handle, so `admin@attacker.com`
     // must not become `admin`. Linking an existing member is the job of
-    // `MAIDAN_OIDC_LINK_EMAIL`, which needs the whole verified address.
+    // `MAIDAN_OIDC_LINK_EMAIL`, which needs the whole verified address from
+    // the configured issuer.
     let base = handle_from_claims(subject, email);
     let mut created = None;
     for handle in [base.clone(), disambiguated_handle(&base, subject)] {
