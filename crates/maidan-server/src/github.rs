@@ -1226,10 +1226,10 @@ impl GithubApiClient {
 
     /// The checks on `head_sha` read from the Actions and commit-status
     /// APIs (Actions and Commit statuses read), for a token GitHub will not
-    /// show check runs. Each workflow run is one check named for its
-    /// workflow, except that a failed run is opened to its jobs, so a
-    /// failure names the job and its log tail can be fetched. Check runs
-    /// from apps other than Actions are not seen this way.
+    /// show check runs. Every workflow run is opened to its jobs, so each
+    /// check carries the job name a required context names and a failure's
+    /// log tail can be fetched. Check runs from apps other than Actions are
+    /// not seen this way. A list longer than this reads stays pending.
     async fn actions_checks(
         &self,
         repo: &str,
@@ -1240,41 +1240,74 @@ impl GithubApiClient {
                 "`{head_sha}` is not a commit"
             )));
         }
-        let runs = self
-            .send_json(
-                self.request(
-                    reqwest::Method::GET,
-                    repo,
-                    &format!("/actions/runs?head_sha={head_sha}&per_page=100"),
-                )
-                .await?,
+        let (runs, mut complete) = self
+            .paged(
+                repo,
+                &format!("/actions/runs?head_sha={head_sha}"),
+                "workflow_runs",
             )
             .await?;
         let mut jobs = std::collections::HashMap::new();
-        for run_id in failed_run_ids(&runs) {
+        for run_id in runs
+            .iter()
+            .filter_map(|run| run.get("id").and_then(serde_json::Value::as_i64))
+        {
+            let (run_jobs, all) = self
+                .paged(repo, &format!("/actions/runs/{run_id}/jobs"), "jobs")
+                .await?;
+            complete &= all;
+            jobs.insert(run_id, run_jobs);
+        }
+        let (statuses, all) = self
+            .paged(repo, &format!("/commits/{head_sha}/status"), "statuses")
+            .await?;
+        complete &= all;
+        let mut checks = actions_checks_from(&runs, &jobs, &statuses);
+        if !complete {
+            checks.push(GithubCheck {
+                name: "checks beyond the pages read".into(),
+                state: GithubCheckState::Pending,
+                job_id: None,
+            });
+        }
+        Ok(checks)
+    }
+
+    /// The items under `key` of a paged REST list, up to
+    /// [`ACTIONS_MAX_PAGES`] pages of 100, and whether that was all of them.
+    async fn paged(
+        &self,
+        repo: &str,
+        path: &str,
+        key: &str,
+    ) -> Result<(Vec<serde_json::Value>, bool), GithubError> {
+        let joiner = if path.contains('?') { '&' } else { '?' };
+        let mut items = Vec::new();
+        for page in 1..=ACTIONS_MAX_PAGES {
             let answer = self
                 .send_json(
                     self.request(
                         reqwest::Method::GET,
                         repo,
-                        &format!("/actions/runs/{run_id}/jobs?per_page=100"),
+                        &format!("{path}{joiner}per_page=100&page={page}"),
                     )
                     .await?,
                 )
                 .await?;
-            jobs.insert(run_id, answer);
+            let batch: Vec<serde_json::Value> =
+                list(answer.get(key).unwrap_or(&serde_json::Value::Null))
+                    .cloned()
+                    .collect();
+            let short = batch.len() < 100;
+            items.extend(batch);
+            let total = answer
+                .get("total_count")
+                .and_then(serde_json::Value::as_u64);
+            if short || total.is_some_and(|total| items.len() as u64 >= total) {
+                return Ok((items, true));
+            }
         }
-        let statuses = self
-            .send_json(
-                self.request(
-                    reqwest::Method::GET,
-                    repo,
-                    &format!("/commits/{head_sha}/status"),
-                )
-                .await?,
-            )
-            .await?;
-        Ok(actions_checks_from(&runs, &jobs, &statuses))
+        Ok((items, false))
     }
 
     async fn send_json(
@@ -1705,15 +1738,11 @@ impl GithubGit for GithubApiClient {
             // from those. Still refused, the snapshot stays denied and the
             // sweep says what the token lacks.
             let head = snapshot.brief.head_sha.clone();
+            // Every run is read down to its jobs, so the required contexts
+            // stay in force: one not yet reported holds the gate.
             if let Ok(checks) = self.actions_checks(repo, &head).await {
                 snapshot.checks = Some(checks);
                 snapshot.checks_denied = false;
-                // Required contexts name jobs, and a passing run is read
-                // whole under its workflow's name, so a required check
-                // would read as never reported.
-                if let Some(gate) = snapshot.gate.as_mut() {
-                    gate.required_checks = None;
-                }
             }
         }
         Ok(snapshot)
@@ -2451,18 +2480,9 @@ fn upper(node: &serde_json::Value, key: &str) -> serde_json::Value {
         })
 }
 
-/// The ids of the workflow runs in an `actions/runs` answer that failed.
-fn failed_run_ids(runs: &serde_json::Value) -> Vec<i64> {
-    list(
-        runs.get("workflow_runs")
-            .unwrap_or(&serde_json::Value::Null),
-    )
-    .filter(|run| {
-        check_from(&run_node(run)).is_some_and(|check| check.state == GithubCheckState::Failed)
-    })
-    .filter_map(|run| run.get("id").and_then(serde_json::Value::as_i64))
-    .collect()
-}
+/// The most pages of 100 the Actions fallback reads from one list; a head
+/// with more runs, jobs or statuses than that stays pending.
+const ACTIONS_MAX_PAGES: u32 = 5;
 
 /// A workflow run as a rollup `CheckRun` node, named for its workflow.
 fn run_node(run: &serde_json::Value) -> serde_json::Value {
@@ -2474,26 +2494,26 @@ fn run_node(run: &serde_json::Value) -> serde_json::Value {
     })
 }
 
-/// The checks the Actions and commit-status answers describe: one per run,
-/// or one per job for a failed run whose jobs were read, then one per
-/// commit status. Read through [`check_from`], so a state means here what it
-/// means in the rollup.
+/// The checks the Actions and commit-status answers describe: one per job
+/// of each run, then one per commit status. A run with no jobs read, or
+/// whose own failed or pending state no job carries (a startup failure, a
+/// run still creating its jobs), is also read whole under its workflow's
+/// name, so its state is never lost. Read through [`check_from`], so a state
+/// means here what it means in the rollup.
 fn actions_checks_from(
-    runs: &serde_json::Value,
-    jobs: &std::collections::HashMap<i64, serde_json::Value>,
-    statuses: &serde_json::Value,
+    runs: &[serde_json::Value],
+    jobs: &std::collections::HashMap<i64, Vec<serde_json::Value>>,
+    statuses: &[serde_json::Value],
 ) -> Vec<GithubCheck> {
     let mut checks = Vec::new();
-    for run in list(
-        runs.get("workflow_runs")
-            .unwrap_or(&serde_json::Value::Null),
-    ) {
+    for run in runs {
         let run_jobs: Vec<GithubCheck> = run
             .get("id")
             .and_then(serde_json::Value::as_i64)
             .and_then(|id| jobs.get(&id))
             .map(|answer| {
-                list(answer.get("jobs").unwrap_or(&serde_json::Value::Null))
+                answer
+                    .iter()
                     .filter_map(|job| {
                         check_from(&serde_json::json!({
                             "__typename": "CheckRun",
@@ -2507,21 +2527,24 @@ fn actions_checks_from(
                     .collect()
             })
             .unwrap_or_default();
-        if run_jobs.is_empty() {
-            checks.extend(check_from(&run_node(run)));
-        } else {
-            checks.extend(run_jobs);
+        let whole = check_from(&run_node(run));
+        let carried = whole.as_ref().is_none_or(|whole| {
+            whole.state == GithubCheckState::Passed
+                || run_jobs.iter().any(|job| job.state == whole.state)
+        });
+        let unopened = run_jobs.is_empty();
+        checks.extend(run_jobs);
+        if unopened || !carried {
+            checks.extend(whole);
         }
     }
-    checks.extend(
-        list(statuses.get("statuses").unwrap_or(&serde_json::Value::Null)).filter_map(|status| {
-            check_from(&serde_json::json!({
-                "__typename": "StatusContext",
-                "context": status.get("context").cloned().unwrap_or(serde_json::Value::Null),
-                "state": upper(status, "state"),
-            }))
-        }),
-    );
+    checks.extend(statuses.iter().filter_map(|status| {
+        check_from(&serde_json::json!({
+            "__typename": "StatusContext",
+            "context": status.get("context").cloned().unwrap_or(serde_json::Value::Null),
+            "state": upper(status, "state"),
+        }))
+    }));
     checks
 }
 
@@ -2881,26 +2904,32 @@ mod tests {
     }
 
     #[test]
-    fn the_actions_fallback_reads_runs_opens_failed_ones_to_jobs_and_adds_statuses() {
-        let runs = serde_json::json!({"workflow_runs": [
-            {"id": 1, "name": "CI", "status": "completed", "conclusion": "failure"},
-            {"id": 2, "name": "Docs", "status": "completed", "conclusion": "success"},
-            {"id": 3, "name": "E2E", "status": "in_progress", "conclusion": null},
-            {"id": 4, "name": "Lint", "status": "completed", "conclusion": "cancelled"},
-        ]});
-        assert_eq!(failed_run_ids(&runs), vec![1, 4]);
-        // Run 4's jobs went unread: it stays one failed check, by workflow.
-        let jobs = std::collections::HashMap::from([(
-            1,
-            serde_json::json!({"jobs": [
-                {"id": 11, "name": "unit tests", "status": "completed", "conclusion": "failure"},
-                {"id": 12, "name": "clippy", "status": "completed", "conclusion": "success"},
-            ]}),
-        )]);
-        let statuses = serde_json::json!({"statuses": [
-            {"context": "ci/legacy", "state": "error"},
-            {"context": "deploy/preview", "state": "pending"},
-        ]});
+    fn the_actions_fallback_reads_every_run_to_its_jobs_and_adds_statuses() {
+        let runs = vec![
+            serde_json::json!({"id": 1, "name": "CI", "status": "completed", "conclusion": "failure"}),
+            serde_json::json!({"id": 2, "name": "Docs", "status": "completed", "conclusion": "success"}),
+            serde_json::json!({"id": 3, "name": "E2E", "status": "in_progress", "conclusion": null}),
+            serde_json::json!({"id": 4, "name": "Lint", "status": "completed", "conclusion": "startup_failure"}),
+        ];
+        let job = |id: i64, name: &str, status: &str, conclusion: Option<&str>| serde_json::json!({"id": id, "name": name, "status": status, "conclusion": conclusion});
+        let jobs = std::collections::HashMap::from([
+            (
+                1,
+                vec![
+                    job(11, "unit tests", "completed", Some("failure")),
+                    job(12, "clippy", "completed", Some("success")),
+                ],
+            ),
+            (2, vec![job(21, "mdbook", "completed", Some("success"))]),
+            // E2E has created no jobs yet, and Lint failed before running any
+            // job: each is read whole, so neither reads as passed.
+            (3, vec![]),
+            (4, vec![job(41, "fmt", "completed", Some("skipped"))]),
+        ]);
+        let statuses = vec![
+            serde_json::json!({"context": "ci/legacy", "state": "error"}),
+            serde_json::json!({"context": "deploy/preview", "state": "pending"}),
+        ];
         let read: Vec<(String, GithubCheckState, Option<i64>)> =
             actions_checks_from(&runs, &jobs, &statuses)
                 .into_iter()
@@ -2911,8 +2940,9 @@ mod tests {
             vec![
                 ("unit tests".into(), GithubCheckState::Failed, Some(11)),
                 ("clippy".into(), GithubCheckState::Passed, Some(12)),
-                ("Docs".into(), GithubCheckState::Passed, None),
+                ("mdbook".into(), GithubCheckState::Passed, Some(21)),
                 ("E2E".into(), GithubCheckState::Pending, None),
+                ("fmt".into(), GithubCheckState::Passed, Some(41)),
                 ("Lint".into(), GithubCheckState::Failed, None),
                 ("ci/legacy".into(), GithubCheckState::Failed, None),
                 ("deploy/preview".into(), GithubCheckState::Pending, None),
@@ -2923,6 +2953,30 @@ mod tests {
             summary.first_failing_job,
             Some(11),
             "the failed job's log is the one fetched"
+        );
+    }
+
+    #[test]
+    fn a_required_job_that_has_not_reported_holds_the_fallback_gate() {
+        // Only Docs has run: its job passes, but the required `unit tests`
+        // context never reported, which the gate must not read as clear.
+        let runs = vec![serde_json::json!(
+            {"id": 2, "name": "Docs", "status": "completed", "conclusion": "success"}
+        )];
+        let jobs = std::collections::HashMap::from([(
+            2,
+            vec![serde_json::json!(
+                {"id": 21, "name": "mdbook", "status": "completed", "conclusion": "success"}
+            )],
+        )]);
+        let checks = actions_checks_from(&runs, &jobs, &[]);
+        let read = GithubGate {
+            required_checks: Some(vec!["unit tests".into()]),
+            ..GithubGate::default()
+        };
+        assert_eq!(
+            crate::ci_watch::gate(&read, &checks).missing_checks,
+            vec!["unit tests".to_string()]
         );
     }
 
