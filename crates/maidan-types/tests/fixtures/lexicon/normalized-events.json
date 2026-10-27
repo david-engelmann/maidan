@@ -348,6 +348,21 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.thread_attributes_set/1": {
+    "$type": "maidan.event.thread_attributes_set/1",
+    "actor_id": "00000000-0000-0000-0000-000000000002",
+    "attributes": {
+      "kind": "review",
+      "review_family": "openai",
+      "threat_model": false
+    },
+    "author_family": "anthropic",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "thread_attributes_set",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.thread_blocked/1": {
     "$type": "maidan.event.thread_blocked/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",
