@@ -83,6 +83,18 @@ pub async fn create_thread(
             }
         },
     });
+    // A task withheld as a duplicate at creation says so in the answer, so
+    // the producer is not left wondering why nobody claims it. The thread is
+    // committed, so a failed read is logged, not returned.
+    t.withheld = match crate::routes::task_fingerprint::withheld_as_duplicate(&state, &auth, &t)
+        .await
+    {
+        Ok(withheld) => withheld,
+        Err(err) => {
+            tracing::warn!(error = ?err, thread = %t.id.0, "reading a new thread's duplicate link failed");
+            None
+        }
+    };
     publish_stored(&state, stored).await;
     Ok((StatusCode::CREATED, Json(t)))
 }
@@ -207,6 +219,8 @@ pub async fn get_thread(
         .await?;
     thread.ci = state.store.list_thread_pull_ci(ThreadId(id)).await?;
     thread.plan_state = state.store.get_plan_state(ThreadId(id)).await?;
+    thread.withheld =
+        crate::routes::task_fingerprint::withheld_as_duplicate(&state, &auth, &thread).await?;
     crate::stall::mark(std::iter::once(&mut thread), state.stall_threshold);
     crate::human_wait::mark(std::iter::once(&mut thread));
     Ok(Json(thread))

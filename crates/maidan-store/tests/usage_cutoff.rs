@@ -129,6 +129,7 @@ fn bundle(ws: WorkspaceId) -> WorkspaceImport {
             human_wait: None,
             notices: Vec::new(),
             plan_state: None,
+            withheld: None,
             ci: Vec::new(),
             created_by: None,
         }],

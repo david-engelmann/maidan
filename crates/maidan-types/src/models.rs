@@ -2063,6 +2063,11 @@ pub struct Thread {
     /// plans with children.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_state: Option<crate::plan::PlanState>,
+    /// Why an open thread is kept off the queue, when it is a live duplicate
+    /// of another task (the task-fingerprint rule). Read by a single-thread
+    /// read and the create answer only; absent everywhere else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub withheld: Option<ThreadWithheld>,
     /// When the holder of a live, acknowledged lease last showed progress:
     /// the latest of its acknowledgement, its last message on the thread and
     /// its active status declaration. A lease renewal is not progress, since
@@ -4678,4 +4683,18 @@ mod human_wait_tests {
             ]
         );
     }
+}
+
+/// Why a thread is withheld from claims, shown on the thread itself so a
+/// claimer that sees an open, ready-looking thread can tell why it is never
+/// handed out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ThreadWithheld {
+    /// `duplicate_of`: created with the same task fingerprint as a task that
+    /// is still open or in review, so the work goes to that one.
+    pub reason: String,
+    /// The original task, when the caller may read it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread: Option<ThreadId>,
 }
