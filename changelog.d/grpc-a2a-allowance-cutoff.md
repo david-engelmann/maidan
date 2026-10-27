@@ -1,2 +1,0 @@
-### gRPC A2A under the request-allowance cutoff
-- **Fixed:** The gRPC A2A binding now applies the same per-bearer rate limit, request-allowance cutoff and request metering as the HTTP bearer middleware, for every operation. Previously an open sign-up workspace past its request allowance could still post over gRPC `SendMessage`, unmetered. Both bindings now share one helper, `usage_meters::admit_request`.
