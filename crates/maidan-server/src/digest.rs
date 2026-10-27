@@ -154,6 +154,28 @@ pub async fn sweep_once(state: &AppState) -> u32 {
     let epoch = chrono::DateTime::from_timestamp(0, 0).unwrap_or(now);
     let mut sent = 0u32;
     for member in due {
+        // The hard allowance cutoff: a workspace past its deliveries allowance
+        // gets no digest. The watermark stays put, so the digest goes out once
+        // the cutoff lifts.
+        let workspace_id = match state.store.get_member(member.member_id).await {
+            Ok(m) => m.workspace_id,
+            Err(err) => {
+                tracing::warn!(error = %err, member = %member.member_id, "digest sweeper: member lookup failed");
+                continue;
+            }
+        };
+        if state
+            .usage_meters
+            .is_cut_off(workspace_id, maidan_types::UsageMeter::Deliveries)
+        {
+            tracing::info!(
+                member = %member.member_id,
+                reason = "over_allowance",
+                "digest sweeper: skipped; workspace past its free allowance for deliveries"
+            );
+            crate::metrics::record_email_delivered("over_allowance");
+            continue;
+        }
         // Buried decisions: the digest leads with the decisions the member
         // missed since their last digest, falling back to the bare unread-count
         // line when there are none.
@@ -197,6 +219,9 @@ pub async fn sweep_once(state: &AppState) -> u32 {
                     continue;
                 }
                 crate::metrics::record_email_delivered("digest");
+                state
+                    .usage_meters
+                    .record(workspace_id, maidan_types::UsageMeter::Deliveries, 1);
                 sent += 1;
             }
             Err(err) => {
