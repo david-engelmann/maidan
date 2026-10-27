@@ -1868,7 +1868,16 @@ pub struct OidcSignupQuery {
     /// address in the instance's sign-up domain list needs none.
     pub invite: Option<String>,
     pub return_to: Option<String>,
-    /// The Turnstile widget's token, when the instance runs Turnstile.
+}
+
+/// The console's sign-up start after its Turnstile check, as a form POST.
+/// The token rides in the body rather than the URL, so it stays out of
+/// proxy and access logs and the browser's history (#1632).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct OidcSignupForm {
+    pub invite: Option<String>,
+    pub return_to: Option<String>,
+    /// The Turnstile widget's token.
     pub turnstile: Option<String>,
 }
 
