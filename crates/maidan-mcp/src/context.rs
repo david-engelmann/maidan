@@ -191,13 +191,12 @@ mod tests {
     use maidan_store::test_support::SetResultClaiming;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use serde_json::json;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::sync::Arc;
 
     /// Store with a single message that has been edited once, so
     /// `get_thread_context` has exactly one `MessageEdit` to render.
     async fn store_with_one_edit() -> (Arc<dyn Store>, ThreadId) {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -301,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn context_carries_the_glossary_and_dedups_in_workspace_pack() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -383,7 +382,7 @@ mod tests {
 
     #[tokio::test]
     async fn as_of_replay_shows_the_message_body_at_that_point() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -490,7 +489,7 @@ mod tests {
 
     #[tokio::test]
     async fn context_pack_includes_artifacts() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -568,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn token_budget_folds_the_pack_and_surfaces_elision() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -661,7 +660,7 @@ mod tests {
 
     #[tokio::test]
     async fn child_thread_pack_carries_parent_grounding() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -767,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn thread_pack_lists_in_channel_accepted_decisions() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

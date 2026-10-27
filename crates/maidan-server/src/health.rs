@@ -245,7 +245,6 @@ mod tests {
     use maidan_search::SqliteSearch;
     use maidan_store::{prelude::*, run_sqlite_migrations, SqliteStore};
     use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use super::*;
 
@@ -262,7 +261,7 @@ mod tests {
     }
 
     async fn harness() -> Harness {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .connect("sqlite::memory:")
             .await
             .expect("connect");
