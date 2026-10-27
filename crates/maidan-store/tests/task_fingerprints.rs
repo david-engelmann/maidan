@@ -633,6 +633,39 @@ async fn an_assigned_duplicate_answers_a_claim_as_assigned(store: Arc<dyn Store>
     }
 }
 
+/// A release racing a claim of a duplicate never lets the duplicate be
+/// claimed: the refusal runs under the claim's own row lock, and a refused
+/// claim rolls back, leaving the thread unassigned (#1580).
+async fn a_release_during_a_claim_never_lets_a_duplicate_be_claimed(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "dupe-race", 2).await;
+    let (holder, other) = (room.agents[0], room.agents[1]);
+    let _original = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    let duplicate = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    for round in 0..20 {
+        store.assign_thread(duplicate, holder).await.unwrap();
+        let releaser = store.clone();
+        let release = tokio::spawn(async move { releaser.unassign_thread(duplicate).await });
+        let claim = if round % 2 == 0 {
+            store
+                .claim_thread(duplicate, other)
+                .await
+                .map(|r| r.claimed)
+        } else {
+            store
+                .claim_thread_with_event(duplicate, other)
+                .await
+                .map(|(r, _)| r.claimed)
+        };
+        release.await.unwrap().unwrap();
+        assert!(
+            matches!(claim, Ok(false) | Err(StoreError::Conflict(_))),
+            "{claim:?}"
+        );
+        let after = store.get_thread(duplicate).await.unwrap();
+        assert_eq!(after.assignee_id, None);
+    }
+}
+
 on_both_backends!(
     an_identical_open_task_is_linked_to_the_first,
     a_different_brief_or_input_is_not_linked,
@@ -646,4 +679,5 @@ on_both_backends!(
     a_change_whose_issue_is_in_review_is_withheld,
     the_issue_hold_lifts_when_review_ends,
     an_assigned_duplicate_answers_a_claim_as_assigned,
+    a_release_during_a_claim_never_lets_a_duplicate_be_claimed,
 );

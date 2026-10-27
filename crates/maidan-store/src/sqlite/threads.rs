@@ -665,7 +665,6 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
-    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL
@@ -680,6 +679,10 @@ pub async fn claim(
     .await?;
     match row {
         Some(row) => {
+            // The claim would win: refuse it as a duplicate under the row
+            // lock it holds, so a concurrent release cannot open a gap (#1580).
+            // Returning drops `tx`, rolling the claim back.
+            super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
             thread_workers::record_in_tx(&mut tx, thread_id, member_id).await?;
             tx.commit().await?;
             Ok(ThreadClaimResult {
@@ -708,7 +711,6 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
@@ -724,6 +726,10 @@ pub async fn claim_with_event(
     .await?;
     match row {
         Some(row) => {
+            // The claim would win: refuse it as a duplicate under the row
+            // lock it holds, so a concurrent release cannot open a gap (#1580).
+            // Returning drops `tx`, rolling the claim back.
+            super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
             let thread = row_to_thread(&row)?;
             let stored = append_assignment_event(&mut tx, &thread, member_id, None, None).await?;
             tx.commit().await?;

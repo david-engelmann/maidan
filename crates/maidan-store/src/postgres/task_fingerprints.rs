@@ -151,17 +151,6 @@ pub(crate) async fn refuse_duplicate_claim_on(
     conn: &mut sqlx::PgConnection,
     thread_id: ThreadId,
 ) -> Result<(), StoreError> {
-    // An already-assigned thread answers as one (`claimed: false` from the
-    // claim's compare-and-set), so a re-claim by the holder gets the usual
-    // answer, not a duplicate refusal (#1580).
-    let assigned: Option<bool> =
-        sqlx::query_scalar("SELECT assignee_id IS NOT NULL FROM maidan_threads WHERE id = $1")
-            .bind(thread_id.0)
-            .fetch_optional(&mut *conn)
-            .await?;
-    if assigned == Some(true) {
-        return Ok(());
-    }
     if live_original_on(conn, thread_id).await?.is_some() {
         return Err(StoreError::Conflict(
             "this task duplicates an open task: reuse that one (GET /threads/{id}/fingerprint names it), or clear the link to claim this one".into(),
