@@ -54,6 +54,31 @@ pub fn readable_past_cutoff(method: &axum::http::Method, matched: Option<&str>) 
         )
 }
 
+/// One authenticated request, on any binding (the HTTP bearer middleware,
+/// the gRPC A2A service): an open sign-up workspace past its request
+/// allowance is refused (429) before the work runs, and the refusal is not
+/// counted; otherwise the request is counted. `readable` is a read the
+/// cutoff still lets through (its usage, its notifications). Past the
+/// stored-bytes allowance, the store refuses the writes that add bytes
+/// whatever binding they came by.
+pub fn admit_request(
+    state: &AppState,
+    workspace_id: maidan_types::WorkspaceId,
+    readable: bool,
+) -> Result<(), crate::error::ApiError> {
+    if state
+        .usage_meters
+        .is_cut_off(workspace_id, maidan_types::UsageMeter::Requests)
+        && !readable
+    {
+        return Err(cut_off_error(maidan_types::UsageMeter::Requests));
+    }
+    state
+        .usage_meters
+        .record(workspace_id, maidan_types::UsageMeter::Requests, 1);
+    Ok(())
+}
+
 /// How long background work for a cut-off workspace (an egress delivery, a
 /// web push) is parked before it is looked at again. Long enough not to spin
 /// on it; the cutoff set itself is refreshed every tick, so work resumes
