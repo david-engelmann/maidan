@@ -74,7 +74,9 @@ jobs:
   lint:
     name: lint (fmt + clippy + deny)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A cold run takes about 11 minutes and a slow runner a third longer
+    # (#1680); the shared cache below keeps most runs warm.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,6 +90,12 @@ jobs:
           components: rustfmt, clippy
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # One key for every lint run, saved only from main and dev, so a
+          # pull request restores a warm cache instead of compiling from
+          # scratch (#1680), and PR runs don't evict it.
+          shared-key: lint
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
