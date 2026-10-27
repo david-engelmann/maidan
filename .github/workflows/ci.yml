@@ -74,7 +74,9 @@ jobs:
   lint:
     name: lint (fmt + clippy + deny)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # PR runs often start with no cache: a cold run is ~11 min and ~35%
+    # slower on a slow runner, so 15 min got cancelled (#1680).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
