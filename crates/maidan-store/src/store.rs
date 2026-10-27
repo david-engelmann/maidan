@@ -1430,7 +1430,14 @@ pub trait PresenceDigestStore: Send + Sync {
         member_id: MemberId,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
-    async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError>;
+    /// Members of `skip_workspaces` are left out of the page, so a large
+    /// workspace past its deliveries allowance cannot fill every page and
+    /// starve the rest.
+    async fn members_due_for_digest(
+        &self,
+        limit: i64,
+        skip_workspaces: &[WorkspaceId],
+    ) -> Result<Vec<DigestDue>, StoreError>;
     /// Task results ("decisions") produced by someone else after `since`, in a
     /// channel or thread the member follows — the "buried decisions" the digest
     /// surfaces, and a queryable read. Newest first.

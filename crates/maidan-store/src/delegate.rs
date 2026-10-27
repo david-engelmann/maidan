@@ -1650,8 +1650,9 @@ macro_rules! store_delegations {
             async fn members_due_for_digest(
                 &self,
                 limit: i64,
+                skip_workspaces: &[WorkspaceId],
             ) -> Result<Vec<DigestDue>, StoreError> {
-                email_digest::members_due_for_digest(self.pool(), limit).await
+                email_digest::members_due_for_digest(self.pool(), limit, skip_workspaces).await
             }
 
             async fn buried_decisions_for_member(

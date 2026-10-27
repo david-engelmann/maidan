@@ -136,14 +136,22 @@ fn manager_body(
 /// successful send. Returns the number of digests sent (for tests / logging).
 /// No-op when no mail transport is configured.
 pub async fn sweep_once(state: &AppState) -> u32 {
+    sweep_once_with_batch(state, MAX_DIGESTS_PER_TICK).await
+}
+
+/// [`sweep_once`] with the page size given, so a test can make a cut-off
+/// workspace hold more due members than one page.
+pub async fn sweep_once_with_batch(state: &AppState, batch: i64) -> u32 {
     let Some(mail) = state.mail.clone() else {
         return 0;
     };
-    let due = match state
-        .store
-        .members_due_for_digest(MAX_DIGESTS_PER_TICK)
-        .await
-    {
+    // Cut-off workspaces are left out of the page itself: skipped members
+    // stay due, so in the page they would fill it tick after tick and
+    // starve every workspace ordered after them.
+    let cut_off = state
+        .usage_meters
+        .cut_off_workspaces(maidan_types::UsageMeter::Deliveries);
+    let due = match state.store.members_due_for_digest(batch, &cut_off).await {
         Ok(d) => d,
         Err(err) => {
             tracing::warn!(error = %err, "digest sweeper: enumeration failed");
