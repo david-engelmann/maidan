@@ -65,7 +65,9 @@ pub async fn set_last_digest_at(
 pub async fn members_due_for_digest(
     pool: &PgPool,
     limit: i64,
+    skip_workspaces: &[WorkspaceId],
 ) -> Result<Vec<DigestDue>, crate::error::StoreError> {
+    let skip: Vec<Uuid> = skip_workspaces.iter().map(|w| w.0).collect();
     let rows = sqlx::query(
         "SELECT n.member_id AS member_id, e.email AS email, COUNT(*) AS unread,
                 MAX(d.last_digest_at) AS last_digest_at
@@ -74,14 +76,17 @@ pub async fn members_due_for_digest(
          JOIN maidan_member_delivery_prefs p
              ON p.member_id = n.member_id AND p.mode = 'digest'
          LEFT JOIN maidan_member_digest_state d ON d.member_id = n.member_id
+         JOIN maidan_members m ON m.id = n.member_id
          WHERE n.read_at IS NULL
            AND n.created_at > COALESCE(d.last_digest_at, 'epoch'::timestamptz)
+           AND NOT (m.workspace_id = ANY($2))
          GROUP BY n.member_id, e.email
          HAVING COUNT(*) > 0
          ORDER BY n.member_id
          LIMIT $1",
     )
     .bind(limit)
+    .bind(&skip)
     .fetch_all(pool)
     .await?;
     Ok(rows

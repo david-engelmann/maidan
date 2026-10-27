@@ -73,8 +73,17 @@ pub async fn set_last_digest_at(
 pub async fn members_due_for_digest(
     pool: &SqlitePool,
     limit: i64,
+    skip_workspaces: &[WorkspaceId],
 ) -> Result<Vec<DigestDue>, crate::error::StoreError> {
-    let rows = sqlx::query(
+    let skip = if skip_workspaces.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "AND m.workspace_id NOT IN ({})",
+            vec!["?"; skip_workspaces.len()].join(", ")
+        )
+    };
+    let sql = format!(
         "SELECT n.member_id AS member_id, e.email AS email, COUNT(*) AS unread,
                 MAX(d.last_digest_at) AS last_digest_at
          FROM maidan_notifications n
@@ -82,16 +91,20 @@ pub async fn members_due_for_digest(
          JOIN maidan_member_delivery_prefs p
              ON p.member_id = n.member_id AND p.mode = 'digest'
          LEFT JOIN maidan_member_digest_state d ON d.member_id = n.member_id
+         JOIN maidan_members m ON m.id = n.member_id
          WHERE n.read_at IS NULL
            AND datetime(n.created_at) > datetime(COALESCE(d.last_digest_at, '1970-01-01 00:00:00'))
+           {skip}
          GROUP BY n.member_id, e.email
          HAVING COUNT(*) > 0
          ORDER BY n.member_id
-         LIMIT ?",
-    )
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+         LIMIT ?"
+    );
+    let mut query = sqlx::query(&sql);
+    for workspace in skip_workspaces {
+        query = query.bind(workspace.0);
+    }
+    let rows = query.bind(limit).fetch_all(pool).await?;
     Ok(rows
         .into_iter()
         .map(|r| DigestDue {
