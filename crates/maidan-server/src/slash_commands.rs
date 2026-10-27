@@ -316,6 +316,19 @@ async fn dispatch_http(
     author_id: MemberId,
     message_id: MessageId,
 ) -> Value {
+    // The hard allowance cutoff: refused outright, with nothing queued for a
+    // retry, so the caller sees why.
+    if state
+        .usage_meters
+        .is_cut_off(workspace_id, maidan_types::UsageMeter::Deliveries)
+    {
+        return json!({
+            "ok": false,
+            "error": "over_allowance",
+            "meter": "deliveries",
+            "message": "this workspace is past its free allowance for deliveries this month",
+        });
+    }
     let Some(secret) = resolve_slash_secret(
         &state.slash,
         registration.command.id,
@@ -352,15 +365,19 @@ async fn dispatch_http(
             Ok(target) => target,
             Err(err) => return json!({ "ok": false, "error": err }),
         };
-    let response = match client
+    let attempt = client
         .post(target)
         .header("Content-Type", "application/json")
         .header("X-Maidan-Signature", signature)
         .header("X-Maidan-Command", &parsed.name)
         .body(sent)
         .send()
-        .await
-    {
+        .await;
+    // Every attempt that goes out counts, a failed one too.
+    state
+        .usage_meters
+        .record(workspace_id, maidan_types::UsageMeter::Deliveries, 1);
+    let response = match attempt {
         Ok(r) => r,
         Err(err) => {
             let delivery_id = crate::automation_delivery::enqueue_slash_http(
