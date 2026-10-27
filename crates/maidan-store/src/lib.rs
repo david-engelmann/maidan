@@ -177,6 +177,7 @@ mod thread_results;
 pub mod trace;
 pub mod usage_meters;
 mod usage_metrics;
+mod usage_sql;
 pub mod workspace_export;
 
 pub use a2a::{A2aPushConfigRow, A2aTaskQuery, A2aTaskRow, A2aTaskWrite, PendingGateQuery};
