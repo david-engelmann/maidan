@@ -159,6 +159,16 @@ pub(crate) fn record(
     latency: Duration,
     result: &Result<Value, McpError>,
 ) {
+    // A tool call that names a thread puts it on the request's span (the
+    // server's `inbound` span declares the field), so one thread's trace can
+    // find every request made for it. The id is a UUID or nothing.
+    if let Some(thread) = params
+        .pointer("/arguments/thread_id")
+        .and_then(Value::as_str)
+        .and_then(|id| uuid::Uuid::parse_str(id).ok())
+    {
+        tracing::Span::current().record("maidan.thread_id", tracing::field::display(thread));
+    }
     if !tracing::enabled!(target: TARGET, tracing::Level::INFO) {
         return;
     }
