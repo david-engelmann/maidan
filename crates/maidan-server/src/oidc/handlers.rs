@@ -151,6 +151,36 @@ pub async fn signup(
     headers: HeaderMap,
     ApiQuery(q): ApiQuery<crate::dto::OidcSignupQuery>,
 ) -> Result<Response, ApiError> {
+    start_signup(&state, &headers, q, None).await
+}
+
+/// `POST /auth/oidc/signup` — the same start, with the Turnstile token in a
+/// form body so it never sits in a URL (#1632). Answers 303 so the browser
+/// follows the provider redirect with a GET.
+pub async fn signup_form(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    crate::extract::ApiForm(form): crate::extract::ApiForm<crate::dto::OidcSignupForm>,
+) -> Result<Response, ApiError> {
+    let q = crate::dto::OidcSignupQuery {
+        invite: form.invite,
+        return_to: form.return_to,
+    };
+    let mut res = start_signup(&state, &headers, q, form.turnstile.as_deref()).await?;
+    if res.status().is_redirection() {
+        *res.status_mut() = axum::http::StatusCode::SEE_OTHER;
+    }
+    Ok(res)
+}
+
+/// Start a sign-up. Only the form POST carries a Turnstile token; a token
+/// in the GET query is not read.
+async fn start_signup(
+    state: &AppState,
+    headers: &HeaderMap,
+    q: crate::dto::OidcSignupQuery,
+    turnstile_token: Option<&str>,
+) -> Result<Response, ApiError> {
     let oidc = state
         .oidc
         .as_ref()
@@ -162,11 +192,11 @@ pub async fn signup(
     // The check runs before the invite is looked up, so a caller who has
     // not passed it learns nothing about which invites exist (#1631).
     if let Some(turnstile) = state.turnstile.as_deref() {
-        let token = q.turnstile.as_deref().map(str::trim).unwrap_or_default();
+        let token = turnstile_token.map(str::trim).unwrap_or_default();
         // A browser that followed an invite link straight here has not
         // solved anything yet: send it to the console's check, which comes
         // back with a token. Any other caller is refused outright.
-        if token.is_empty() && accepts_html(&headers) {
+        if token.is_empty() && accepts_html(headers) {
             return Ok(Redirect::to(&signup_check_path(&q)).into_response());
         }
         crate::turnstile::verify(turnstile, Some(token), crate::turnstile::Action::Signup).await?;

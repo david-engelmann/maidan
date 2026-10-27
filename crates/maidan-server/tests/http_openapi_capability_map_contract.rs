@@ -201,6 +201,8 @@ const PUBLIC_OPERATIONS: &[(&str, &str)] = &[
     // sign-up is switched on.
     ("POST", "/waitlist"),
     ("GET", "/auth/oidc/signup"),
+    // The Turnstile-gated sign-up form posts back to the same path.
+    ("POST", "/auth/oidc/signup"),
     ("POST", "/auth/logout"),
     // The OAuth 2.1 token and revocation endpoints: public by design, like
     // the OIDC callback. The client authenticates with HTTP Basic, its secret
