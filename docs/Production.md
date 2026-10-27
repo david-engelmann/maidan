@@ -240,7 +240,7 @@ distroless server image. Put it on a network that can reach the database and
 pin it to the server's exact tag:
 
 ```sh
-MAIDAN_TAG=v417.0.0
+MAIDAN_TAG=v419.0.0
 MAIDAN_NETWORK=your_database_network
 docker run --rm --network "$MAIDAN_NETWORK" \
   -e DATABASE_URL=postgres://maidan:…@postgres/maidan \
@@ -1194,7 +1194,7 @@ remains for shell/CI. A job runs in-process on the replica that started it; its 
 
 ## Hosted on Cloudflare
 
-`maidan.world` runs the newest release and `dev.maidan.world` runs `main`,
+`maidan.world` runs the newest release and `dev.maidan.world` runs `dev`,
 both on Cloudflare Containers, each with its own Worker, Neon project, R2
 bucket and secrets. A Worker
 (`deploy/cloudflare/`) takes every request and hands it to one Maidan
@@ -1215,7 +1215,7 @@ which clients reconnect.
 | Instance | Worker and config | Runs | Postgres | Artifacts |
 |----------|-------------------|------|----------|-----------|
 | `maidan.world` | `maidan-prod`, `wrangler.prod.jsonc` | The release a GitHub Release publishes (`deploy prod`) | Neon project `maidan` (prod) | `maidan-artifacts-prod` |
-| `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `main`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
+| `dev.maidan.world` | `maidan-dev`, `wrangler.jsonc` | `dev`, on every server change (`deploy dev`) | Neon project `maidan-dev` | `maidan-artifacts-dev` |
 
 ### maidan.world
 

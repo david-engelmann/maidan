@@ -373,6 +373,13 @@ jobs:
             TAG="${{ inputs.tag }}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      # The scan's exceptions: each has a reason and an expiry, so an
+      # exception lapses on its own rather than outliving its cause.
+      - name: checkout scan exceptions
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .trivyignore
+          sparse-checkout-cone-mode: false
       # Blocking: a fixable HIGH/CRITICAL in a published image stops the
       # release — `sign-images` and `release` need this job — so a known-bad
       # image is never signed or announced. The images are already pushed by
@@ -390,6 +397,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: "os,library"
           skip-files: ${{ matrix.skip-files }}
+          trivyignores: .trivyignore
           exit-code: "1"
 
   docker-postgres:

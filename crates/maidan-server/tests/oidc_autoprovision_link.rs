@@ -246,7 +246,10 @@ async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member
             Some(ISSUER),
         )
         .await;
-        assert!(untrusted.is_err());
+        assert!(
+            matches!(&untrusted, Err(maidan_server::error::ApiError::Forbidden(m)) if m == maidan_server::oidc::NOT_PROVISIONED),
+            "{untrusted:?}"
+        );
         assert!(store
             .get_oidc_identity(ws, "https://weak-idp.example", "sub-weak")
             .await
@@ -435,4 +438,140 @@ async fn a_link_by_email_stays_in_its_tenant_skips_a_removed_member_and_needs_a_
         .await
         .unwrap_or_else(|_| panic!("tenant A's identity stopped resolving"));
     assert_eq!(again, (erin[0], LoginMember::Existing));
+}
+
+/// Two first logins of the same identity at once: the identity row decides,
+/// so every login signs in as one member, the one the row is bound to.
+async fn simultaneous_first_logins_of_one_identity_agree_on_one_member(store: Arc<dyn Store>) {
+    let (ws, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let logins: Vec<_> = (0..8)
+        .map(|_| {
+            let store = store.clone();
+            tokio::spawn(async move {
+                login(store.as_ref(), ws, "sub-dana", "dana@corp.example", true).await
+            })
+        })
+        .collect();
+    let mut got = Vec::new();
+    for l in logins {
+        got.push(l.await.unwrap().0);
+    }
+    let bound = store
+        .get_oidc_identity(ws, ISSUER, "sub-dana")
+        .await
+        .unwrap()
+        .member_id;
+    assert!(got.iter().all(|m| *m == bound), "{got:?} vs {bound:?}");
+}
+
+/// The identity row keeps its first member: a later bind of the same identity
+/// to another member returns the original binding.
+async fn an_identity_once_bound_never_moves_to_another_member(store: Arc<dyn Store>) {
+    let (ws, admin) = workspace_with_admin(store.as_ref(), "a").await;
+    let (first, _) = login(store.as_ref(), ws, "sub-erin", "erin@corp.example", true).await;
+    let again = store
+        .upsert_oidc_identity(maidan_types::NewOidcIdentity {
+            workspace_id: ws,
+            issuer: ISSUER.into(),
+            subject: "sub-erin".into(),
+            member_id: admin,
+            email: Some("erin@corp.example".into()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(again.member_id, first);
+    let next = login(store.as_ref(), ws, "sub-erin", "erin@corp.example", true).await;
+    assert_eq!(next, (first, LoginMember::Existing));
+}
+
+/// The login path survives losing a handle at insert time. A removed member
+/// still holds `frank`, so the lookup finds no live `frank` but the insert
+/// conflicts; the login takes the fallback handle instead of failing.
+async fn a_handle_taken_at_insert_time_falls_back_to_the_subject_handle(
+    store: Arc<dyn Store>,
+    remove: impl AsyncFnOnce(MemberId),
+) {
+    let (ws, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let gone = store
+        .create_member(NewMember {
+            workspace_id: ws,
+            handle: "frank".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    remove(gone.id).await;
+    let (got, how) = login(store.as_ref(), ws, "sub-frank", "frank@corp.example", true).await;
+    assert_eq!(how, LoginMember::Provisioned);
+    assert_ne!(got, gone.id);
+    assert_eq!(
+        store.get_member(got).await.unwrap().handle,
+        "frank-sub-frank"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn simultaneous_first_logins_of_one_identity_agree_on_one_member_sqlite() {
+    simultaneous_first_logins_of_one_identity_agree_on_one_member(sqlite().await).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn simultaneous_first_logins_of_one_identity_agree_on_one_member_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    simultaneous_first_logins_of_one_identity_agree_on_one_member(Arc::new(
+        PostgresStore::for_tests(pool),
+    ))
+    .await;
+}
+
+#[tokio::test]
+async fn an_identity_once_bound_never_moves_to_another_member_sqlite() {
+    an_identity_once_bound_never_moves_to_another_member(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn an_identity_once_bound_never_moves_to_another_member_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    an_identity_once_bound_never_moves_to_another_member(Arc::new(PostgresStore::for_tests(pool)))
+        .await;
+}
+
+#[tokio::test]
+async fn a_handle_taken_at_insert_time_falls_back_to_the_subject_handle_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    a_handle_taken_at_insert_time_falls_back_to_the_subject_handle(store, async |id| {
+        sqlx::query("UPDATE maidan_members SET tombstoned_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(id.0)
+            .execute(&pool)
+            .await
+            .unwrap();
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_handle_taken_at_insert_time_falls_back_to_the_subject_handle_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    a_handle_taken_at_insert_time_falls_back_to_the_subject_handle(store, async |id| {
+        sqlx::query("UPDATE maidan_members SET tombstoned_at = NOW() WHERE id = $1")
+            .bind(id.0)
+            .execute(&pool)
+            .await
+            .unwrap();
+    })
+    .await;
 }

@@ -71,6 +71,9 @@ pub async fn create_audited(
     Ok(session)
 }
 
+/// A tombstoned member's session is not found. A SCIM-deactivated member's
+/// session is still returned so the server's per-request check can end it with
+/// an audited `member_deactivated` reason.
 pub async fn get(pool: &SqlitePool, id: SessionId) -> Result<MaidanSession, StoreError> {
     let now = Utc::now();
     let row = sqlx::query(&format!(
@@ -78,9 +81,7 @@ pub async fn get(pool: &SqlitePool, id: SessionId) -> Result<MaidanSession, Stor
          FROM maidan_sessions s
          WHERE s.id = ? AND s.expires_at > ?
            AND EXISTS (SELECT 1 FROM maidan_members m
-                WHERE m.id = s.member_id AND m.tombstoned_at IS NULL)
-           AND NOT EXISTS (SELECT 1 FROM maidan_scim_users u
-                WHERE u.member_id = s.member_id AND NOT u.active)"
+                WHERE m.id = s.member_id AND m.tombstoned_at IS NULL)"
     ))
     .bind(id.0)
     .bind(now)
