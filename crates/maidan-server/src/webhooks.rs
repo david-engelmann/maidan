@@ -225,10 +225,10 @@ pub async fn revoke_webhook(
     let webhook_id = WebhookSubscriptionId(webhook_id);
     cap(&auth, WORKSPACE_WRITE)?;
     ensure_workspace(&auth, workspace_id)?;
-    let sub = state.store.revoke_webhook_subscription(webhook_id).await?;
-    if sub.workspace_id != workspace_id {
-        return Err(ApiError::NotFound);
-    }
+    state
+        .store
+        .revoke_webhook_subscription(workspace_id, webhook_id)
+        .await?;
     forget_webhook_secret(&state.webhooks.secrets, webhook_id);
     Ok(StatusCode::NO_CONTENT)
 }

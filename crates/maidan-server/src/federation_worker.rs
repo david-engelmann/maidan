@@ -56,7 +56,23 @@ pub async fn poll_once(state: &AppState) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     for peer in peers {
-        let outcome = poll_peer(state, &peer).await;
+        // A workspace past its deliveries allowance polls none of its peers
+        // until the cutoff lifts. Its cursor stays where it is, so the next
+        // poll after that picks up from the same place.
+        let outcome = if state
+            .usage_meters
+            .is_cut_off(peer.workspace_id, maidan_types::UsageMeter::Deliveries)
+        {
+            tracing::info!(
+                peer = %peer.id,
+                workspace_id = %peer.workspace_id.0,
+                reason = "over_allowance",
+                "federation poll skipped; workspace past its free allowance for deliveries"
+            );
+            PollOutcome::OverAllowance
+        } else {
+            poll_peer(state, &peer).await
+        };
         // No peer or workspace label: /metrics is instance-wide, and the
         // per-peer detail is already in the logs.
         metrics::counter!(
@@ -74,6 +90,7 @@ enum PollOutcome {
     Refused,
     NoSecret,
     Failed,
+    OverAllowance,
 }
 
 impl PollOutcome {
@@ -83,6 +100,7 @@ impl PollOutcome {
             Self::Refused => "refused",
             Self::NoSecret => "no_secret",
             Self::Failed => "failed",
+            Self::OverAllowance => "over_allowance",
         }
     }
 }
@@ -103,10 +121,14 @@ async fn poll_peer(state: &AppState, peer: &Peer) -> PollOutcome {
         );
         return PollOutcome::NoSecret;
     };
-    let events = match outbound
+    let listed = outbound
         .list_events(peer, &secret, peer.last_synced_event_id, 100)
-        .await
-    {
+        .await;
+    // Each poll is one outbound request, counted whether or not it succeeds.
+    state
+        .usage_meters
+        .record(peer.workspace_id, maidan_types::UsageMeter::Deliveries, 1);
+    let events = match listed {
         Ok(events) => events,
         Err(err) => {
             warn!(peer = %peer.id, error = %err, "federation poll failed; trying again next tick");

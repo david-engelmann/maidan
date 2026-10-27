@@ -63,7 +63,7 @@ async fn login(
         Some(email),
         verified,
         true,
-        false,
+        None,
     )
     .await
     .unwrap_or_else(|_| panic!("login {subject} refused"))
@@ -217,6 +217,77 @@ async fn legitimate_auto_provision_still_creates_and_reuses_a_member_postgres() 
     .await;
 }
 
+async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member(
+    store: Arc<dyn Store>,
+) {
+    let (ws_a, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let (ws_b, _) = workspace_with_admin(store.as_ref(), "b").await;
+    let mut linked = Vec::new();
+    for ws in [ws_a, ws_b] {
+        let admin = store
+            .create_member(NewMember {
+                workspace_id: ws,
+                handle: "admin@corp.example".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap()
+            .id;
+        linked.push(admin);
+        let untrusted = resolve_member_for_login(
+            store.as_ref(),
+            ws,
+            "https://weak-idp.example",
+            "sub-weak",
+            Some("admin@corp.example"),
+            true,
+            false,
+            Some(ISSUER),
+        )
+        .await;
+        assert!(untrusted.is_err());
+        assert!(store
+            .get_oidc_identity(ws, "https://weak-idp.example", "sub-weak")
+            .await
+            .is_err());
+        let trusted = resolve_member_for_login(
+            store.as_ref(),
+            ws,
+            ISSUER,
+            "sub-admin",
+            Some("admin@corp.example"),
+            true,
+            false,
+            Some(ISSUER),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("the configured issuer's login was refused"));
+        assert_eq!(trusted, (admin, LoginMember::Linked));
+    }
+    assert!(store
+        .get_oidc_identity(ws_b, ISSUER, "sub-admin")
+        .await
+        .map(|identity| identity.member_id == linked[1])
+        .unwrap_or(false));
+}
+
+#[tokio::test]
+async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member_sqlite() {
+    an_email_verified_by_another_issuer_does_not_link_to_an_existing_member(sqlite().await).await;
+}
+
+#[tokio::test]
+async fn an_email_verified_by_another_issuer_does_not_link_to_an_existing_member_postgres() {
+    let Some((_c, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    an_email_verified_by_another_issuer_does_not_link_to_an_existing_member(Arc::new(
+        PostgresStore::for_tests(pool),
+    ))
+    .await;
+}
+
 async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision(
     store: Arc<dyn Store>,
     remove: impl AsyncFnOnce(MemberId),
@@ -235,7 +306,7 @@ async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision(
         Some("dana@corp.example"),
         true,
         true,
-        false,
+        None,
     )
     .await;
     assert!(matches!(
@@ -279,4 +350,89 @@ async fn a_login_linked_to_a_removed_member_is_refused_even_with_auto_provision_
             .unwrap();
     })
     .await;
+}
+
+async fn link_once(
+    store: &dyn Store,
+    ws: WorkspaceId,
+    issuer: &str,
+    link_issuer: Option<&str>,
+) -> Result<(MemberId, LoginMember), maidan_server::error::ApiError> {
+    resolve_member_for_login(
+        store,
+        ws,
+        issuer,
+        "sub-erin",
+        Some("erin@corp.example"),
+        true,
+        false,
+        link_issuer,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_link_by_email_stays_in_its_tenant_skips_a_removed_member_and_needs_a_named_issuer() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+    let (ws_a, _) = workspace_with_admin(store.as_ref(), "a").await;
+    let (ws_b, _) = workspace_with_admin(store.as_ref(), "b").await;
+    let mut erin = Vec::new();
+    for ws in [ws_a, ws_b] {
+        erin.push(
+            store
+                .create_member(NewMember {
+                    workspace_id: ws,
+                    handle: "erin@corp.example".into(),
+                    display_name: None,
+                    kind: MemberKind::Human,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+
+    // No named issuer, or an empty one, never links.
+    for (issuer, link) in [(ISSUER, None), ("", Some(ISSUER)), (ISSUER, Some(""))] {
+        assert!(
+            link_once(store.as_ref(), ws_a, issuer, link).await.is_err(),
+            "issuer={issuer:?} link={link:?} linked"
+        );
+    }
+
+    // The same issuer, sub and email in tenant A links A's member only.
+    let a = link_once(store.as_ref(), ws_a, ISSUER, Some(ISSUER))
+        .await
+        .unwrap_or_else(|_| panic!("tenant A's link was refused"));
+    assert_eq!(a, (erin[0], LoginMember::Linked));
+
+    // Tenant B's member is removed: the same login there neither links to
+    // it nor reaches tenant A's member, from the named issuer or any other.
+    sqlx::query("UPDATE maidan_members SET tombstoned_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(erin[1].0)
+        .execute(&pool)
+        .await
+        .unwrap();
+    for issuer in [ISSUER, "https://other-idp.example"] {
+        assert!(
+            link_once(store.as_ref(), ws_b, issuer, Some(issuer))
+                .await
+                .is_err(),
+            "a removed member in tenant B was linked from {issuer}"
+        );
+        assert!(store
+            .get_oidc_identity(ws_b, issuer, "sub-erin")
+            .await
+            .is_err());
+    }
+    let again = link_once(store.as_ref(), ws_a, ISSUER, Some(ISSUER))
+        .await
+        .unwrap_or_else(|_| panic!("tenant A's identity stopped resolving"));
+    assert_eq!(again, (erin[0], LoginMember::Existing));
 }

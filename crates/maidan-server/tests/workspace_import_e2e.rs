@@ -199,3 +199,103 @@ async fn import_remaps_in_new_mode_and_restores_ids_with_conflict_and_force() {
 
     server.abort();
 }
+
+/// A signed bundle whose message names an author the bundle does not define
+/// is answered with 400 in both modes. Before, `mode=new` panicked on the
+/// missing id and `restore` reached the store.
+#[tokio::test]
+async fn an_import_naming_an_author_outside_the_bundle_is_a_bad_request_in_both_modes() {
+    let (addr, client, store, server) = spawn().await;
+    let base = format!("http://{addr}");
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "orig".into(),
+        })
+        .await
+        .unwrap();
+    let alice = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "alice".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "general".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .unwrap();
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("t".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    store
+        .post_message(NewMessage {
+            thread_id: thread.id,
+            author_id: alice.id,
+            body: "hello".into(),
+            metadata: serde_json::json!({}),
+            content: None,
+        })
+        .await
+        .unwrap();
+    let secret = TokenSecret::generate();
+    store
+        .create_api_token(NewApiToken {
+            workspace_id: ws.id,
+            member_id: alice.id,
+            app_installation_id: None,
+            token_hash: hash_secret(secret.as_str()),
+            label: None,
+            capabilities: vec![capability::TOKEN_ADMIN.into()],
+            expires_at: None,
+        })
+        .await
+        .unwrap();
+    let auth = format!("Bearer {}", secret.as_str());
+
+    let envelope: maidan_types::SignedExport = client
+        .get(format!("{base}/workspaces/{}/export", ws.id.0))
+        .header("authorization", &auth)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let mut payload = envelope.payload;
+    payload["messages"][0]["author_id"] = serde_json::json!(uuid::Uuid::new_v4());
+    let dangling =
+        maidan_auth::sign_export(&ExportSigningKey::from_seed([0x11; 32]), payload).unwrap();
+
+    for mode in ["new", "restore&force=true"] {
+        let resp = client
+            .post(format!("{base}/workspaces/import?mode={mode}"))
+            .header("authorization", &auth)
+            .json(&dangling)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "mode={mode}");
+    }
+    let kept = store.list_messages(thread.id, 10).await.unwrap();
+    assert_eq!(
+        kept.len(),
+        1,
+        "the refused restore left the workspace as it was"
+    );
+    assert_eq!(kept[0].author_id, alice.id);
+    server.abort();
+}
