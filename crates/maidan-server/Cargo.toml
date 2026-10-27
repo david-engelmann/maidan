@@ -83,7 +83,7 @@ hex = "0.4"
 ring = "0.17"
 # Web Push: VAPID ES256 (p256/ecdsa) + RFC 8291 payload
 # encryption (p256/ecdh + HKDF-SHA256 + AES-128-GCM). RustCrypto — no openssl.
-p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
+p256 = { version = "0.14", features = ["ecdsa", "ecdh"] }
 hkdf = "0.12"
 aes-gcm = "0.10"
 
