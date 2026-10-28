@@ -61,6 +61,11 @@ RUN if [ "$MAIDAN_ENABLE_BOOTSTRAP" = "1" ]; then \
     fi
 
 FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+# The official MCP registry accepts an OCI package only when the image names
+# the server it belongs to; it must match listings/registry/server.json.
+LABEL io.modelcontextprotocol.server.name="io.github.david-engelmann/maidan" \
+      org.opencontainers.image.source="https://github.com/david-engelmann/maidan" \
+      org.opencontainers.image.licenses="MIT"
 WORKDIR /
 COPY --from=builder /app/target/release/maidan-server /usr/local/bin/maidan-server
 USER nonroot:nonroot
