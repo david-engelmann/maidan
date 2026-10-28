@@ -8,12 +8,13 @@ use crate::dto::{
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm, OidcSignupQuery,
     PeerResponse, RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
+    ThreadTransitionsQuery,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
     ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, ThreadArtifact,
-    ThreadReview, Workspace,
+    ThreadReview, ThreadTransition, Workspace,
 };
 
 /// Start an OIDC login
@@ -497,6 +498,27 @@ pub fn ui_list_reviews() {}
     )
 )]
 pub fn ui_list_thread_artifacts() {}
+
+/// List a thread's state transitions (console)
+///
+/// The bearer tree's `GET /threads/{id}/transitions` for the console: who
+/// moved the task into review, so the approval card can name them.
+#[utoipa::path(
+    get,
+    path = "/ui/api/threads/{tid}/transitions",
+    tag = "auth",
+    params(("tid" = Uuid, Path, description = "Thread id"), ThreadTransitionsQuery),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Vec<ThreadTransition>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_list_thread_transitions() {}
 
 /// Search a workspace's messages (console)
 #[utoipa::path(

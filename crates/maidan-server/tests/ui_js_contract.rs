@@ -5889,3 +5889,27 @@ fn ui_js_links_an_uploaded_file_to_the_open_task() {
         "the open task lists the files linked as evidence"
     );
 }
+
+/// A review row names who moved the task into review. The result's producer
+/// is not that person: a hand-off can start with no result, and a later
+/// producer is not the requester.
+#[test]
+fn ui_js_names_who_requested_the_review() {
+    let needs = include_str!("../static/ui/needs.js");
+    assert!(
+        needs.contains("/threads/${tid}/transitions"),
+        "the review row must read the transition history"
+    );
+    assert!(
+        needs.contains("row.to_state === \"in_review\""),
+        "the requester is whoever last moved the task into review"
+    );
+    assert!(
+        needs.contains("requested by "),
+        "the row must say who requested the review"
+    );
+    assert!(
+        needs.contains("requester !== r.produced_by"),
+        "the result's producer is already named, so the requester is added only when they differ"
+    );
+}

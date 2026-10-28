@@ -31136,6 +31136,82 @@
         ]
       }
     },
+    "/ui/api/threads/{tid}/transitions": {
+      "get": {
+        "description": "The bearer tree's `GET /threads/{id}/transitions` for the console: who\nmoved the task into review, so the approval card can name them.",
+        "operationId": "ui_list_thread_transitions",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return, oldest first (default 100, at most 500).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ThreadTransition"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List a thread's state transitions (console)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/ui/api/workspaces/{wid}": {
       "patch": {
         "operationId": "ui_rename_workspace",
