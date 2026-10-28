@@ -945,6 +945,10 @@
           "authorization_endpoint": {
             "type": "string"
           },
+          "client_id_metadata_document_supported": {
+            "description": "A client may name itself by the HTTPS URL of its metadata document\n(draft-ietf-oauth-client-id-metadata-document), which `registry`\nresolves through the workspace's egress allowlist. Without this flag\na client such as claude.ai assumes it must register dynamically,\nwhich this server never offers, and stops.",
+            "type": "boolean"
+          },
           "code_challenge_methods_supported": {
             "items": {
               "type": "string"
@@ -1004,7 +1008,8 @@
           "grant_types_supported",
           "token_endpoint_auth_methods_supported",
           "revocation_endpoint_auth_methods_supported",
-          "code_challenge_methods_supported"
+          "code_challenge_methods_supported",
+          "client_id_metadata_document_supported"
         ],
         "type": "object"
       },
@@ -2959,6 +2964,7 @@
           "thread_handoff",
           "result_delivery_failed",
           "review_submitted",
+          "approval_dismissed",
           "wait_timed_out",
           "schedule_skipped",
           "thread_spawn_denied",
@@ -9663,6 +9669,13 @@
         "properties": {
           "acceptance": {
             "description": "How a reviewer verifies the task: what the change must satisfy. Shown\nto the worker in the thread context.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "author_family": {
+            "description": "The provider family that wrote the change this task reviews\n(`anthropic`, `openai`, `google`, `xai`): `claim_next` never hands\nthe thread to a claimer whose usage names that family. Set by the\nproducer filing a review, or by the server for a review child. Once\nstored it is kept: a later set neither clears nor changes it, so\nnobody who may set attributes, the change's author included, can\nlift it.",
             "type": [
               "string",
               "null"

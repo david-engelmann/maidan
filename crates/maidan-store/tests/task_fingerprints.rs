@@ -627,6 +627,64 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
     Some((container, Arc::new(PostgresStore::for_tests(pool))))
 }
 
+/// An already-assigned live duplicate answers a claim the usual way
+/// (`claimed: false`), for its holder and for anyone else, rather than with
+/// the duplicate refusal; an unassigned one is still refused (#1580).
+async fn an_assigned_duplicate_answers_a_claim_as_assigned(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "dupe-assigned", 2).await;
+    let (holder, other) = (room.agents[0], room.agents[1]);
+    let _original = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    let duplicate = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    assert!(matches!(
+        store.claim_thread(duplicate, holder).await,
+        Err(StoreError::Conflict(_))
+    ));
+    store.assign_thread(duplicate, holder).await.unwrap();
+    for member in [holder, other] {
+        let result = store.claim_thread(duplicate, member).await.unwrap();
+        assert!(!result.claimed);
+        assert_eq!(result.thread.assignee_id, Some(holder));
+        let (result, event) = store
+            .claim_thread_with_event(duplicate, member)
+            .await
+            .unwrap();
+        assert!(!result.claimed && event.is_none());
+    }
+}
+
+/// A release racing a claim of a duplicate never lets the duplicate be
+/// claimed: the refusal runs under the claim's own row lock, and a refused
+/// claim rolls back, leaving the thread unassigned (#1580).
+async fn a_release_during_a_claim_never_lets_a_duplicate_be_claimed(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "dupe-race", 2).await;
+    let (holder, other) = (room.agents[0], room.agents[1]);
+    let _original = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    let duplicate = create(store.as_ref(), room.channel, "Fix the sweep", None).await;
+    for round in 0..20 {
+        store.assign_thread(duplicate, holder).await.unwrap();
+        let releaser = store.clone();
+        let release = tokio::spawn(async move { releaser.unassign_thread(duplicate).await });
+        let claim = if round % 2 == 0 {
+            store
+                .claim_thread(duplicate, other)
+                .await
+                .map(|r| r.claimed)
+        } else {
+            store
+                .claim_thread_with_event(duplicate, other)
+                .await
+                .map(|(r, _)| r.claimed)
+        };
+        release.await.unwrap().unwrap();
+        assert!(
+            matches!(claim, Ok(false) | Err(StoreError::Conflict(_))),
+            "{claim:?}"
+        );
+        let after = store.get_thread(duplicate).await.unwrap();
+        assert_eq!(after.assignee_id, None);
+    }
+}
+
 /// Clearing a duplicate link writes a `thread.duplicate_cleared` audit row
 /// in the thread's workspace, committed with the clear; an event scoped to
 /// another workspace is refused and the link stays (#1580).
@@ -681,5 +739,7 @@ on_both_backends!(
     the_same_issue_under_another_title_is_linked,
     a_change_whose_issue_is_in_review_is_withheld,
     the_issue_hold_lifts_when_review_ends,
+    an_assigned_duplicate_answers_a_claim_as_assigned,
+    a_release_during_a_claim_never_lets_a_duplicate_be_claimed,
     clearing_a_duplicate_is_audited_in_its_own_workspace,
 );

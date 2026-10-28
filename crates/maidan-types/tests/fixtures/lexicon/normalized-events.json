@@ -1,4 +1,15 @@
 {
+  "maidan.event.approval_dismissed/1": {
+    "$type": "maidan.event.approval_dismissed/1",
+    "approved_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "kind": "approval_dismissed",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reviewer_id": "00000000-0000-0000-0000-000000000002",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.approval_requested/1": {
     "$type": "maidan.event.approval_requested/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

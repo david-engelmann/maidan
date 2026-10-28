@@ -148,3 +148,25 @@ pub(crate) async fn spawn_in_tx(
     .await?;
     Ok(vec![created, routed])
 }
+
+/// Refuse handing review `thread_id` to `member_id` when the member's family
+/// wrote the change it reviews (see [`crate::review_family::shared_family`]),
+/// with an error naming the family rather than a silent miss.
+pub(crate) async fn refuse_same_family_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<(), StoreError> {
+    let family: Option<String> = sqlx::query_scalar(&format!(
+        "SELECT {}",
+        crate::review_family::shared_family("?1", "?2")
+    ))
+    .bind(member_id.0)
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    match family {
+        Some(family) => Err(crate::review_family::same_family_refusal(&family)),
+        None => Ok(()),
+    }
+}

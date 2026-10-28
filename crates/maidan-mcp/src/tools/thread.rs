@@ -1450,6 +1450,8 @@ struct SetThreadAttributesArgs {
     tier: Option<maidan_types::TaskTier>,
     #[serde(default)]
     lane: Option<maidan_types::TaskLane>,
+    #[serde(default)]
+    author_family: Option<String>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1474,6 +1476,7 @@ pub(super) async fn set_thread_attributes(
                 tier: a.tier,
                 lane: a.lane,
                 review_family: None,
+                author_family: a.author_family,
             }
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,

@@ -401,6 +401,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             author_family,
             actor_id,
         },
+        ApprovalDismissed {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            reviewer_id,
+            approved_head,
+            head_sha,
+        } => ApprovalDismissed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id,
+            approved_head,
+            head_sha,
+        },
         // Non-federatable local human-control state.
         ApprovalRequested {
             occurred_at,

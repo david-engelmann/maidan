@@ -291,5 +291,11 @@
     "disposition": "internal_only",
     "internal_evidence": "crates/maidan-store/tests/review_family.rs#a_review_is_routed_away_from_its_authors_family_on_sqlite",
     "note": "Appended when StartReview spawns a second-family review child, carrying its routing; returned by transition_thread_with_event so the transition route publishes it. No REST or MCP call sets it directly."
+  },
+  {
+    "kind": "approval_dismissed",
+    "disposition": "internal_only",
+    "internal_evidence": "crates/maidan-store/tests/pull_ci.rs#a_push_says_each_dismissed_approval_on_sqlite",
+    "note": "Appended by the CI watch's pull_ci read when a moved head dismisses a standing approval; ci_watch publishes it. No REST or MCP call dismisses approvals directly."
   }
 ]

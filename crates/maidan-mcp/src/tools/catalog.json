@@ -615,6 +615,16 @@
                 "flex"
               ],
               "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates"
+            },
+            "author_family": {
+              "type": "string",
+              "enum": [
+                "anthropic",
+                "openai",
+                "google",
+                "xai"
+              ],
+              "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it"
             }
           },
           "required": [
@@ -2522,6 +2532,16 @@
             "flex"
           ],
           "description": "the service lane it may run in: batch (async, cheapest) or flex; omitted runs at standard rates"
+        },
+        "author_family": {
+          "type": "string",
+          "enum": [
+            "anthropic",
+            "openai",
+            "google",
+            "xai"
+          ],
+          "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it"
         }
       },
       "required": [
