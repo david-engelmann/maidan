@@ -12,7 +12,7 @@ import { initWorkspaceSwitcher, loadServerAuth, oidcLoginPath, saveWorkspaceName
 import { WORKER_PRESET, baseInput, onMac } from "./state.js";
 import { initSwarm, loadSwarm } from "./swarm.js";
 import { loadEvidenceTimeline, loadMessages } from "./thread.js";
-import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
+import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, openConfirmation, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadSession, saveOwnDisplayName, loadSlashCommands, loadWaiting, loadWork, loadWorkDepth, loadWorkThreads, markAllNotificationsRead, myCapabilities, parseCaps, pollReindex, registerSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, startReindex } from "./tools.js";
 
 
       setInterval(refreshTeamSoon, 30000);
@@ -356,6 +356,8 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
 
       document.getElementById("session-refresh").onclick = () => loadSession();
+
+      document.getElementById("member-display-name-save").onclick = () => saveOwnDisplayName();
 
       document.getElementById("notif-read-all").onclick = () =>
         markAllNotificationsRead();

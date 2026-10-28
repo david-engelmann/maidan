@@ -686,6 +686,86 @@ async fn every_ui_api_read_answers_as_its_bearer_twin_and_refuses_another_worksp
     }
 }
 
+/// A signed-in member sets and clears their own display name. Another member,
+/// including one in another workspace, cannot.
+#[tokio::test]
+async fn a_signed_in_member_sets_and_clears_their_own_display_name() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let a = tenant(store.as_ref(), "a").await;
+    let b = tenant(store.as_ref(), "b").await;
+    let mine = format!("{base}/ui/api/members/{}", a.operator_id.0);
+
+    let set = client
+        .patch(&mine)
+        .header("Cookie", &a.operator)
+        .header("Idempotency-Key", "set-name")
+        .header("Content-Type", "application/json")
+        .body(r#"{"display_name":"Ada Operator"}"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        set.status(),
+        StatusCode::OK,
+        "{}",
+        set.text().await.unwrap()
+    );
+
+    let (s, member, _) = get(&client, mine.clone(), &a.operator).await;
+    assert_eq!(s, StatusCode::OK, "{member}");
+    assert_eq!(member["display_name"], json!("Ada Operator"));
+
+    let foreign = client
+        .patch(&mine)
+        .header("Cookie", &b.operator)
+        .header("Idempotency-Key", "other-workspace-name")
+        .header("Content-Type", "application/json")
+        .body(r#"{"display_name":"Stolen"}"#)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            foreign.status(),
+            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND
+        ),
+        "another workspace renamed A's member: {}",
+        foreign.status()
+    );
+
+    let someone_else = format!("{base}/ui/api/members/{}", a.worker.0);
+    let not_yours = client
+        .patch(&someone_else)
+        .header("Cookie", &a.operator)
+        .header("Idempotency-Key", "not-yours")
+        .header("Content-Type", "application/json")
+        .body(r#"{"display_name":"Not yours"}"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(not_yours.status(), StatusCode::FORBIDDEN);
+
+    let cleared = client
+        .patch(&mine)
+        .header("Cookie", &a.operator)
+        .header("Idempotency-Key", "clear-name")
+        .header("Content-Type", "application/json")
+        .body(r#"{"display_name":"  "}"#)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        cleared.status(),
+        StatusCode::OK,
+        "{}",
+        cleared.text().await.unwrap()
+    );
+    let (s, member, _) = get(&client, mine, &a.operator).await;
+    assert_eq!(s, StatusCode::OK, "{member}");
+    assert!(member["display_name"].is_null(), "{member}");
+}
+
 /// `base` with a unique suffix, so fixture tasks created alike in one
 /// workspace never share a fingerprint: a live duplicate is not claimable
 /// (Context Economics C8b), and these tests are not about duplicates.

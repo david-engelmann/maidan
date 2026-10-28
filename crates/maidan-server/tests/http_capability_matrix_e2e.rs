@@ -236,6 +236,15 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
     if template.starts_with("/ui/api/messages/") {
         return template.replace("{mid}", &f.message);
     }
+    if template.starts_with("/ui/api/members/") {
+        return template
+            .replace("{id}", &f.member)
+            .replace("{nid}", &f.member)
+            .replace("{cid}", &f.channel)
+            .replace("{tid}", &f.thread)
+            .replace("{sub_id}", &f.member)
+            .replace("{followed_id}", &f.member);
+    }
     if template.starts_with("/members/") {
         return template
             .replace("{id}", &f.member)
@@ -403,6 +412,9 @@ fn apply_route_defaults(
     }
     if path.ends_with("/member-follows") && method == "POST" {
         return b.json(&json!({ "followed_member_id": f.member }));
+    }
+    if path == "/ui/api/members/{id}" && method == "PATCH" {
+        return b.json(&json!({ "display_name": "Ada" }));
     }
     if path.ends_with("/email") && method == "PUT" {
         return b.json(&json!({ "email": "user@example.com" }));
