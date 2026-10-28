@@ -21,9 +21,8 @@
   font-weight: 700;
 }
 
-/* The public waitlist and policy pages use this same palette, and a serif
-   for their titles. Docs titles follow, so the book does not look like a
-   third brand. */
+/* Docs keep their own themes. Titles take a serif so a long page still
+   has a display face. */
 .content h1 {
   font-family: Palatino, "Palatino Linotype", Georgia, "Noto Serif", "Liberation Serif", serif;
   letter-spacing: -0.02em;

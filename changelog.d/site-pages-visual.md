@@ -1,3 +1,3 @@
-### Privacy, terms and support share the public page
+### Privacy, terms and support use the dark public language
 
-- **Changed:** The hosted privacy, terms and support pages use the same marble ground, pine mark, serif titles and focus ring as the waitlist. The words of each policy are unchanged. Docs titles use that serif too, on the palette they already shared.
+- **Changed:** The hosted privacy, terms and support pages use the landing's dark ground, mint links, glass tables and blurred header. The words of each policy are unchanged. Docs titles use a serif; the book keeps its own themes.
