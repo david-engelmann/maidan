@@ -278,7 +278,8 @@ pub(crate) async fn transition_in_spawning(
         super::land_gate::gate_in_tx(tx, thread_id).await?;
     }
 
-    land_in_tx(tx, &thread, actor_id, to_state).await
+    let result = land_in_tx(tx, &thread, actor_id, to_state).await?;
+    Ok((result, spawned))
 }
 
 /// The separation-of-duties rule described at its call in [`transition_in_tx`].
@@ -382,14 +383,11 @@ async fn land_in_tx(
     .await?;
 
     let thread = row_to_thread(&row)?;
-    Ok((
-        ThreadTransitionResult {
-            thread,
-            from_state,
-            to_state,
-        },
-        spawned,
-    ))
+    Ok(ThreadTransitionResult {
+        thread,
+        from_state,
+        to_state,
+    })
 }
 
 /// Close a thread that will not land (`close-abandoned`), in one transaction.
