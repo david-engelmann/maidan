@@ -159,11 +159,20 @@ pub(crate) async fn is_review_in_tx(
 
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &PgPool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
+    let mut conn = pool.acquire().await?;
+    get_on(&mut conn, thread_id).await
+}
+
+/// [`get`] on a connection, so a transaction reads its own writes.
+pub(crate) async fn get_on(
+    conn: &mut sqlx::PgConnection,
+    thread_id: ThreadId,
+) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
         "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family, author_family FROM maidan_thread_attributes WHERE thread_id = $1",
     )
     .bind(thread_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
     let Some(row) = row else {
         return Ok(TaskAttributes::default());
