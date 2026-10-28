@@ -384,6 +384,23 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             reason,
             cancelled_by,
         },
+        ThreadAttributesSet {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            attributes,
+            author_family,
+            actor_id,
+        } => ThreadAttributesSet {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            attributes,
+            author_family,
+            actor_id,
+        },
         // Non-federatable local human-control state.
         ApprovalRequested {
             occurred_at,

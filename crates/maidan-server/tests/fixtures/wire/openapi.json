@@ -2945,6 +2945,7 @@
           "thread_ready",
           "thread_result_set",
           "thread_cancelled",
+          "thread_attributes_set",
           "approval_requested",
           "thread_blocked",
           "blocked_resolved",
@@ -25490,7 +25491,7 @@
     },
     "/threads/{id}/fingerprint/duplicate-of": {
       "delete": {
-        "description": "A task linked as a duplicate of an open or in-review task is withheld\nfrom claims; clearing the link makes it claimable. `404` when the thread\nhas no fingerprint.",
+        "description": "A task linked as a duplicate of an open or in-review task is withheld\nfrom claims; clearing the link makes it claimable. `404` when the thread\nhas no fingerprint, or when the caller cannot see the thread or the\noriginal it is linked to. Each clear is audited\n(`thread.duplicate_cleared`).",
         "operationId": "clear_task_duplicate",
         "parameters": [
           {

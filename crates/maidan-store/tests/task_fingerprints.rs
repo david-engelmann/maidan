@@ -55,6 +55,25 @@ async fn room(store: &dyn Store, name: &str, agents: usize) -> Room {
     }
 }
 
+/// Clear `thread`'s duplicate link with an audit event in its workspace.
+async fn clear(store: &dyn Store, thread: ThreadId) -> Result<(), StoreError> {
+    let channel = store.get_thread(thread).await?.channel_id;
+    let ws = store.get_channel(channel).await?.workspace_id;
+    store
+        .clear_task_duplicate(
+            thread,
+            maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(ws),
+                actor_id: None,
+                action: "thread.duplicate_cleared".into(),
+                target_kind: Some("thread".into()),
+                target_id: Some(thread.0),
+                metadata: serde_json::json!({}),
+            },
+        )
+        .await
+}
+
 fn new_thread(channel: ChannelId, title: &str) -> NewThread {
     NewThread {
         channel_id: channel,
@@ -278,7 +297,7 @@ async fn a_cleared_or_orphaned_duplicate_is_claimable(store: Arc<dyn Store>) {
     let original = create(store.as_ref(), room.channel, "Ship the index", None).await;
     let cleared = create(store.as_ref(), room.channel, "Ship the index", None).await;
     let orphaned = create(store.as_ref(), room.channel, "Ship the index", None).await;
-    store.clear_task_duplicate(cleared).await.unwrap();
+    clear(store.as_ref(), cleared).await.unwrap();
     assert_eq!(
         store
             .get_task_fingerprint(cleared)
@@ -330,7 +349,7 @@ async fn a_cleared_or_orphaned_duplicate_is_claimable(store: Arc<dyn Store>) {
         .await
         .unwrap();
     assert!(matches!(
-        store.clear_task_duplicate(blank.id).await,
+        clear(store.as_ref(), blank.id).await,
         Err(StoreError::NotFound)
     ));
 }
@@ -457,7 +476,7 @@ async fn a_change_whose_issue_is_in_review_is_withheld(store: Arc<dyn Store>) {
         issue("ENG-6001"),
     )
     .await;
-    store.clear_task_duplicate(fresh).await.unwrap();
+    clear(store.as_ref(), fresh).await.unwrap();
     store
         .transition_thread(
             theirs,
@@ -477,7 +496,7 @@ async fn a_change_whose_issue_is_in_review_is_withheld(store: Arc<dyn Store>) {
     );
 
     // Clearing the stale thread's hold makes it claimable here.
-    store.clear_task_duplicate(stale).await.unwrap();
+    clear(store.as_ref(), stale).await.unwrap();
     assert_eq!(
         store
             .claim_next_thread(home.channel, agent, Some(600), None)
@@ -522,7 +541,7 @@ async fn the_issue_hold_lifts_when_review_ends(store: Arc<dyn Store>) {
         issue("ENG-7001"),
     )
     .await;
-    store.clear_task_duplicate(delivered).await.unwrap();
+    clear(store.as_ref(), delivered).await.unwrap();
     store
         .transition_thread(delivered, agent, maidan_fsm::ThreadAction::StartReview)
         .await
@@ -608,6 +627,48 @@ async fn postgres() -> Option<(testcontainers::ContainerAsync<Postgres>, Arc<dyn
     Some((container, Arc::new(PostgresStore::for_tests(pool))))
 }
 
+/// Clearing a duplicate link writes a `thread.duplicate_cleared` audit row
+/// in the thread's workspace, committed with the clear; an event scoped to
+/// another workspace is refused and the link stays (#1580).
+async fn clearing_a_duplicate_is_audited_in_its_own_workspace(store: Arc<dyn Store>) {
+    let home = room(store.as_ref(), "clear-audit-home", 1).await;
+    let away = room(store.as_ref(), "clear-audit-away", 1).await;
+    let _original = create(store.as_ref(), home.channel, "Fix the sweep", None).await;
+    let duplicate = create(store.as_ref(), home.channel, "Fix the sweep", None).await;
+    let home_ws = store.get_channel(home.channel).await.unwrap().workspace_id;
+    let away_ws = store.get_channel(away.channel).await.unwrap().workspace_id;
+
+    let wrong = NewAuditEvent {
+        scope: AuditScope::Workspace(away_ws),
+        actor_id: None,
+        action: "thread.duplicate_cleared".into(),
+        target_kind: Some("thread".into()),
+        target_id: Some(duplicate.0),
+        metadata: serde_json::json!({}),
+    };
+    assert!(store.clear_task_duplicate(duplicate, wrong).await.is_err());
+    assert!(store
+        .get_task_fingerprint(duplicate)
+        .await
+        .unwrap()
+        .unwrap()
+        .duplicate_of
+        .is_some());
+
+    clear(store.as_ref(), duplicate).await.unwrap();
+    let rows = store.list_audit_for_workspace(home_ws, 50).await.unwrap();
+    assert!(
+        rows.iter()
+            .any(|r| r.action == "thread.duplicate_cleared" && r.target_id == Some(duplicate.0)),
+        "{rows:?}"
+    );
+    let rows = store.list_audit_for_workspace(away_ws, 50).await.unwrap();
+    assert!(
+        !rows.iter().any(|r| r.action == "thread.duplicate_cleared"),
+        "{rows:?}"
+    );
+}
+
 on_both_backends!(
     an_identical_open_task_is_linked_to_the_first,
     a_different_brief_or_input_is_not_linked,
@@ -620,4 +681,5 @@ on_both_backends!(
     the_same_issue_under_another_title_is_linked,
     a_change_whose_issue_is_in_review_is_withheld,
     the_issue_hold_lifts_when_review_ends,
+    clearing_a_duplicate_is_audited_in_its_own_workspace,
 );
