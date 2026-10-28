@@ -156,7 +156,6 @@ mod tests {
     use maidan_search::HashV1Provider;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use serde_json::json;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::error::McpError;
     use crate::server::McpServer;
@@ -167,7 +166,7 @@ mod tests {
 
     #[tokio::test]
     async fn result_delivery_tools_list_and_replay() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(4)
             .connect("sqlite::memory:")
             .await
@@ -337,7 +336,7 @@ mod tests {
     #[tokio::test]
     async fn list_result_deliveries_decodes_a_branch_handle() {
         const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(4)
             .connect("sqlite::memory:")
             .await

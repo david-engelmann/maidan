@@ -463,7 +463,12 @@ sudo chown 65532:65532 secrets/* && sudo chmod 600 secrets/*
 repository permissions, `contents:write` and `pull_requests:write`
 (fine-grained: Contents and Pull requests, read and write), on exactly the
 repositories the change flow may write to; [Result delivery to GitHub and
-Slack](#result-delivery-to-github-and-slack) says why nothing else. Postgres's
+Slack](#result-delivery-to-github-and-slack) says why nothing else. To get CI
+notices (`ci_failed`, `checks_done`), a fine-grained token also needs **Actions**
+and **Commit statuses**, read-only: GitHub cannot give a fine-grained token check
+runs, so the change sweep reads a pull request's CI from its Actions runs and
+commit statuses (check runs from other apps are then not seen). A classic token
+or a GitHub App reads check runs directly. Postgres's
 own password goes through the Postgres image's `POSTGRES_PASSWORD_FILE`.
 
 The token belongs to the instance, while egress allowlists belong to
@@ -1020,9 +1025,10 @@ fine-grained token: **Contents** and **Pull requests**, read and write), on
 exactly the repositories the change flow may write to. Grant nothing else. The flow stops at
 a draft pull request: it requests no review and needs no approval (a token
 owner cannot approve their own pull request), and the producer marks the pull
-request ready. The comment and check-run paths use the same token; a check run
-needs `checks:write`, which a personal access token does not carry, so the
-check run fails and the comment still posts.
+request ready. The comment path uses the same token. Check runs need the GitHub App
+below: GitHub lets only apps create them, so with a token Maidan skips the
+check run (recorded `skipped`, said once at boot) and the summary comment
+still carries the verdict.
 
 **Authenticating as a GitHub App.** Set `MAIDAN_GITHUB_APP_ID`,
 `MAIDAN_GITHUB_APP_INSTALLATION_ID` and `MAIDAN_GITHUB_APP_PRIVATE_KEY` (or

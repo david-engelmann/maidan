@@ -85,6 +85,7 @@ fn thread() -> Thread {
         human_wait: None,
         notices: Vec::new(),
         plan_state: None,
+        withheld: None,
         ci: Vec::new(),
         created_by: None,
     }
@@ -201,6 +202,19 @@ fn sample_event(kind: EventKind) -> Event {
             thread_id,
             reason: "superseded".into(),
             cancelled_by: member_id,
+        },
+        EventKind::ThreadAttributesSet => Event::ThreadAttributesSet {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            attributes: maidan_types::TaskAttributes {
+                kind: maidan_types::TaskKind::Review,
+                review_family: Some("openai".into()),
+                ..Default::default()
+            },
+            author_family: Some("anthropic".into()),
+            actor_id: member_id,
         },
         EventKind::ApprovalRequested => Event::ApprovalRequested {
             occurred_at,
@@ -567,6 +581,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadReady
             | EventKind::ThreadResultSet
             | EventKind::ThreadCancelled
+            | EventKind::ThreadAttributesSet
             | EventKind::ApprovalRequested
             | EventKind::ThreadBlocked
             | EventKind::BlockedResolved

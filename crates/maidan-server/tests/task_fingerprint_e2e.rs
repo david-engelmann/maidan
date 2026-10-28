@@ -241,6 +241,33 @@ async fn duplicate_of_is_hidden_unless_the_caller_can_see_the_original() {
     let (status, body) = get_fingerprint(&base, &alice_token, duplicate).await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["duplicate_of"], json!(original));
+
+    // Bob cannot clear a link to an original he cannot see: he gets the
+    // same 404 a missing thread gives, and the link stays (#1580).
+    let http = reqwest::Client::new();
+    let clear = |thread: String, token: String| {
+        let http = http.clone();
+        let base = base.clone();
+        async move {
+            let r = http
+                .delete(format!("{base}/threads/{thread}/fingerprint/duplicate-of"))
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap();
+            (r.status(), r.text().await.unwrap())
+        }
+    };
+    let (status, body) = clear(duplicate.clone(), bob_token.clone()).await;
+    let (missing_status, _) = clear(uuid::Uuid::new_v4().to_string(), bob_token.clone()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(status, missing_status);
+    let (status, body) = get_fingerprint(&base, &alice_token, duplicate).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["duplicate_of"], json!(original));
+    // Alice can see both, so she can clear it.
+    let (status, body) = clear(duplicate.clone(), alice_token.clone()).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
 }
 
 async fn claim_next_text(base: &str, room: &Room) -> String {
@@ -278,28 +305,108 @@ async fn claim_next_skips_a_live_duplicate_until_its_link_is_cleared() {
 
     let http = reqwest::Client::new();
     let url = format!("{base}/threads/{duplicate}/fingerprint/duplicate-of");
-    let status = http
-        .delete(&url)
+    // Another tenant cannot clear it, and gets exactly what a missing thread
+    // gets. Checked before the real clear, so it is a refusal, not a no-op.
+    let away = room(store.as_ref(), "dupe-away").await;
+    let delete = |url: String, token: String| {
+        let http = http.clone();
+        async move {
+            let r = http.delete(url).bearer_auth(token).send().await.unwrap();
+            (r.status(), r.text().await.unwrap())
+        }
+    };
+    let missing = format!(
+        "{base}/threads/{}/fingerprint/duplicate-of",
+        uuid::Uuid::new_v4()
+    );
+    let (away_status, _) = delete(url.clone(), away.token.clone()).await;
+    let (missing_status, _) = delete(missing, away.token.clone()).await;
+    assert_eq!(away_status, StatusCode::NOT_FOUND);
+    assert_eq!(away_status, missing_status);
+    let still = claim_next_text(&base, &home).await;
+    assert!(!still.contains(&duplicate), "{still}");
+
+    let (status, body) = delete(url.clone(), home.token.clone()).await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+    let third = claim_next_text(&base, &home).await;
+    assert!(third.contains(&duplicate), "{third}");
+
+    // The clear is audited in the home workspace.
+    let ws = store.get_channel(home.channel).await.unwrap().workspace_id;
+    let rows = store.list_audit_for_workspace(ws, 50).await.unwrap();
+    assert!(
+        rows.iter().any(|r| r.action == "thread.duplicate_cleared"
+            && r.target_id.map(|t| t.to_string()) == Some(duplicate.clone())),
+        "{rows:?}"
+    );
+}
+
+async fn get_json(base: &str, token: &str, path: &str) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .get(format!("{base}{path}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+/// A task withheld as a duplicate says why in its create answer, on its own
+/// read and in queue depth, so a claimer is not left with an open thread
+/// that never comes; clearing the link clears the reason, and another tenant
+/// learns nothing (#1681).
+#[tokio::test]
+async fn a_withheld_duplicate_names_why_in_the_create_answer_the_thread_read_and_queue_depth() {
+    let (base, store) = spawn().await;
+    let home = room(store.as_ref(), "withheld-home").await;
+    let away = room(store.as_ref(), "withheld-away").await;
+    let brief = json!({ "title": "Replay review 1" });
+    let (_, original) = create_thread(&base, &home, brief.clone()).await;
+    let (status, duplicate) = create_thread(&base, &home, brief).await;
+    assert_eq!(status, StatusCode::CREATED, "{duplicate}");
+    let original_id = original["id"].as_str().unwrap().to_string();
+    let duplicate_id = duplicate["id"].as_str().unwrap().to_string();
+
+    assert!(original.get("withheld").is_none(), "{original}");
+    assert_eq!(
+        duplicate["withheld"],
+        json!({ "reason": "duplicate_of", "thread": original_id })
+    );
+
+    let (status, read) = get_json(&base, &home.token, &format!("/threads/{duplicate_id}")).await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert_eq!(read["withheld"]["reason"], json!("duplicate_of"));
+    assert_eq!(read["withheld"]["thread"], json!(original_id));
+    let (_, read) = get_json(&base, &home.token, &format!("/threads/{original_id}")).await;
+    assert!(read.get("withheld").is_none(), "{read}");
+
+    let (status, depth) = get_json(
+        &base,
+        &home.token,
+        &format!("/channels/{}/queue-depth", home.channel.0),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{depth}");
+    assert_eq!(depth["unclaimable"], json!(1), "{depth}");
+
+    let (status, body) = get_json(&base, &away.token, &format!("/threads/{duplicate_id}")).await;
+    assert!(
+        status == StatusCode::NOT_FOUND || status == StatusCode::FORBIDDEN,
+        "{status} {body}"
+    );
+    assert!(body.get("withheld").is_none(), "{body}");
+
+    let status = reqwest::Client::new()
+        .delete(format!(
+            "{base}/threads/{duplicate_id}/fingerprint/duplicate-of"
+        ))
         .bearer_auth(&home.token)
         .send()
         .await
         .unwrap()
         .status();
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let third = claim_next_text(&base, &home).await;
-    assert!(third.contains(&duplicate), "{third}");
-
-    // Another tenant cannot clear it.
-    let away = room(store.as_ref(), "dupe-away").await;
-    let status = http
-        .delete(&url)
-        .bearer_auth(&away.token)
-        .send()
-        .await
-        .unwrap()
-        .status();
-    assert!(
-        status == StatusCode::NOT_FOUND || status == StatusCode::FORBIDDEN,
-        "{status}"
-    );
+    let (_, read) = get_json(&base, &home.token, &format!("/threads/{duplicate_id}")).await;
+    assert!(read.get("withheld").is_none(), "{read}");
 }

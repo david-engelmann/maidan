@@ -1446,7 +1446,10 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/oidc/login", get(oidc::login))
         // Invited sign-up through the same front door; the handler 404s
         // unless the instance turned sign-up on.
-        .route("/auth/oidc/signup", get(oidc::signup))
+        .route(
+            "/auth/oidc/signup",
+            get(oidc::signup).merge(post(oidc::signup_form)),
+        )
         .route("/auth/oidc/callback", get(oidc::callback))
         // The public waitlist form's POST: signed-out by design, charged
         // per address and per email domain by the rate-limit middleware.

@@ -160,15 +160,27 @@ pub(crate) async fn refuse_duplicate_claim_on(
 
 /// Clear `thread_id`'s duplicate link, so it is claimable again. `NotFound`
 /// when the thread has no fingerprint. Idempotent.
-pub async fn clear_duplicate(pool: &SqlitePool, thread_id: ThreadId) -> Result<(), StoreError> {
+pub async fn clear_duplicate(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    audit: maidan_types::NewAuditEvent,
+) -> Result<(), StoreError> {
+    let mut tx = pool.begin().await?;
     let done =
         sqlx::query("UPDATE maidan_task_fingerprints SET duplicate_of = NULL, cleared_at = ?2 WHERE thread_id = ?1")
             .bind(thread_id.0)
             .bind(Utc::now().to_rfc3339())
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
     if done.rows_affected() == 0 {
         return Err(StoreError::NotFound);
     }
+    super::audit::append_scoped(
+        &mut tx,
+        crate::audit_scope::AuditOwner::Thread(thread_id),
+        audit,
+    )
+    .await?;
+    tx.commit().await?;
     Ok(())
 }
