@@ -58,7 +58,25 @@ fn span_for(headers: &axum::http::HeaderMap) -> (Option<TraceContext>, TraceCont
 /// `traceresponse`.
 pub async fn middleware(req: Request, next: Next) -> Response {
     let (incoming, fallback) = span_for(req.headers());
-    let span = tracing::info_span!("inbound");
+    // The route template, never the path: ids in the path stay out of a
+    // field a dashboard groups by. The thread a request names is its own
+    // field, so a caller's per-thread trace can find the requests it made.
+    let route = req
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|matched| matched.as_str().to_string());
+    let thread = route
+        .as_deref()
+        .and_then(|route| thread_in_path(route, req.uri().path()));
+    let span = tracing::info_span!(
+        "inbound",
+        http.route = route.as_deref().unwrap_or("-"),
+        http.request.method = %req.method(),
+        maidan.thread_id = tracing::field::Empty,
+    );
+    if let Some(thread) = thread {
+        span.record("maidan.thread_id", tracing::field::display(thread));
+    }
     if let Some(parent) = &incoming {
         maidan_observability::adopt_remote_parent(&span, parent);
     }
@@ -80,6 +98,19 @@ pub async fn middleware(req: Request, next: Next) -> Response {
             .insert(axum::http::HeaderName::from_static(TRACERESPONSE), value);
     }
     response
+}
+
+/// The thread id in `path` where its route template names one
+/// (`/threads/{id}/…`, `/ui/api/threads/{tid}`), as a UUID.
+fn thread_in_path(route: &str, path: &str) -> Option<uuid::Uuid> {
+    let mut previous = "";
+    for (template, actual) in route.split('/').zip(path.split('/')) {
+        if previous == "threads" && template.starts_with('{') {
+            return uuid::Uuid::parse_str(actual).ok();
+        }
+        previous = template;
+    }
+    None
 }
 
 /// Add `traceparent` (and `tracestate`, when there is one) from the task's
@@ -163,6 +194,120 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::{Context, SubscriberExt};
+
+    /// Every field recorded on an `inbound` span, as `name=value`.
+    #[derive(Clone, Default)]
+    struct InboundFields(Arc<Mutex<Vec<String>>>);
+
+    struct Visit<'a>(&'a mut Vec<String>);
+
+    impl tracing::field::Visit for Visit<'_> {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push(format!("{}={:?}", field.name(), value));
+        }
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push(format!("{}={value}", field.name()));
+        }
+    }
+
+    impl<S> tracing_subscriber::Layer<S> for InboundFields
+    where
+        S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+    {
+        fn on_new_span(
+            &self,
+            attrs: &tracing::span::Attributes<'_>,
+            _: &tracing::span::Id,
+            _: Context<'_, S>,
+        ) {
+            if attrs.metadata().name() == "inbound"
+                && let Ok(mut fields) = self.0.lock()
+            {
+                attrs.record(&mut Visit(&mut fields));
+            }
+        }
+        fn on_record(
+            &self,
+            id: &tracing::span::Id,
+            values: &tracing::span::Record<'_>,
+            ctx: Context<'_, S>,
+        ) {
+            if ctx.span(id).is_some_and(|span| span.name() == "inbound")
+                && let Ok(mut fields) = self.0.lock()
+            {
+                values.record(&mut Visit(&mut fields));
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[allow(clippy::disallowed_methods)] // a bare route, not the API
+    async fn the_inbound_span_names_the_route_template_and_the_thread() {
+        let fields = InboundFields::default();
+        let subscriber = tracing_subscriber::registry().with(fields.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let app = axum::Router::new()
+            .route(
+                "/threads/{id}/result",
+                axum::routing::get(|| async { "ok" }),
+            )
+            .layer(axum::middleware::from_fn(super::middleware));
+        let id = "01a17dc9-bb2f-73b1-87ad-41c77759c767";
+        let response = app
+            .oneshot(
+                axum::http::Request::get(format!("/threads/{id}/result"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        let fields = fields.0.lock().unwrap().clone();
+        assert!(
+            fields.contains(&"http.route=/threads/{id}/result".to_string()),
+            "{fields:?}"
+        );
+        assert!(
+            fields.contains(&"http.request.method=GET".to_string()),
+            "{fields:?}"
+        );
+        assert!(
+            fields.contains(&format!("maidan.thread_id={id}")),
+            "{fields:?}"
+        );
+        // The template, not the path: no id reaches the route field.
+        assert!(!fields
+            .iter()
+            .any(|f| f.starts_with("http.route=") && f.contains(id)));
+    }
+
+    #[test]
+    fn the_thread_id_comes_from_a_threads_route_and_nothing_else() {
+        let id = "01a17dc9-bb2f-73b1-87ad-41c77759c767";
+        let thread = uuid::Uuid::parse_str(id).ok();
+        assert_eq!(
+            super::thread_in_path("/threads/{id}/result", &format!("/threads/{id}/result")),
+            thread
+        );
+        assert_eq!(
+            super::thread_in_path("/ui/api/threads/{tid}", &format!("/ui/api/threads/{id}")),
+            thread
+        );
+        assert_eq!(
+            super::thread_in_path(
+                "/workspaces/{id}/threads",
+                &format!("/workspaces/{id}/threads")
+            ),
+            None
+        );
+        assert_eq!(
+            super::thread_in_path("/threads/{id}", "/threads/not-a-uuid"),
+            None
+        );
+    }
+
     use crate::routing::get;
     use axum::{body::Body, Router};
     use maidan_types::TraceContext;

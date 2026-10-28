@@ -4,8 +4,8 @@
 
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    CiStatus, MergeQueue, MergeQueueState, NewPullCi, PostedNotice, PreviousRead, PullCi, ThreadId,
-    WorkspaceId,
+    ChannelId, CiStatus, Event, MemberId, MergeQueue, MergeQueueState, NewPullCi, PostedNotice,
+    PreviousRead, PullCi, StoredEvent, ThreadId, WorkspaceId,
 };
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
@@ -110,6 +110,15 @@ pub async fn list_for_thread(
 /// second replica's read of the same head records nothing new. Nothing when
 /// the pull request is not tracked in `new.workspace_id`.
 pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, StoreError> {
+    Ok(record_with_events(pool, new).await?.0)
+}
+
+/// [`record`], also returning the `approval_dismissed` events a moved head
+/// appended (#1572), for the caller to publish live.
+pub async fn record_with_events(
+    pool: &PgPool,
+    new: NewPullCi,
+) -> Result<(Vec<PostedNotice>, Vec<StoredEvent>), StoreError> {
     let repo = new.repo.to_ascii_lowercase();
     let mut tx = pool.begin().await?;
     let thread: Option<Uuid> = sqlx::query_scalar(
@@ -125,7 +134,7 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
     .fetch_optional(&mut *tx)
     .await?;
     let Some(thread) = thread else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     };
     let previous = sqlx::query(
         "SELECT gate_reasons, gate_said, merge_queue, merge_queue_reason FROM maidan_pull_ci
@@ -191,12 +200,32 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
     .execute(&mut *tx)
     .await?;
     // A push that moved the head dismisses approvals given to an earlier one.
-    sqlx::query(&crate::review_head::dismiss_stale("$1", "$2", "$3"))
+    let head = new.head_sha.to_ascii_lowercase();
+    let dismissed_rows = sqlx::query(&crate::review_head::dismiss_stale("$1", "$2", "$3"))
         .bind(thread)
-        .bind(new.head_sha.to_ascii_lowercase())
+        .bind(&head)
         .bind(now)
-        .execute(&mut *tx)
+        .fetch_all(&mut *tx)
         .await?;
+    let mut dismissed = Vec::with_capacity(dismissed_rows.len());
+    for row in &dismissed_rows {
+        let thread_id: Uuid = row.get("thread_id");
+        let channel_id: Uuid =
+            sqlx::query_scalar("SELECT channel_id FROM maidan_threads WHERE id = $1")
+                .bind(thread_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        let event = Event::ApprovalDismissed {
+            occurred_at: now,
+            workspace_id: new.workspace_id,
+            channel_id: ChannelId(channel_id),
+            thread_id: ThreadId(thread_id),
+            reviewer_id: MemberId(row.get("reviewer_id")),
+            approved_head: row.get("head_sha"),
+            head_sha: head.clone(),
+        };
+        dismissed.push(super::events::append_in_tx(&mut tx, &event).await?);
+    }
     let mut posted = Vec::new();
     let change = Uuid::now_v7().to_string();
     for (notice, key) in maidan_types::ci_notices(&new, &previous, &change, now) {
@@ -205,7 +234,7 @@ pub async fn record(pool: &PgPool, new: NewPullCi) -> Result<Vec<PostedNotice>, 
         }
     }
     tx.commit().await?;
-    Ok(posted)
+    Ok((posted, dismissed))
 }
 
 fn ci_from(row: &sqlx::postgres::PgRow) -> Result<PullCi, StoreError> {

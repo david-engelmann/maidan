@@ -971,6 +971,25 @@
         "reason": "confined to Maidan's store; matches recorded Slack and GitHub references without calling either"
       }
     },
+    "find_threads": {
+      "title": "Find threads",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "SELECTs via store.find_threads_for_workspace over the caller's own workspace; writes nothing"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool; no state change"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only; repeating returns current state with no effect"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's store; matches recorded task attributes without calling any external system"
+      }
+    },
     "follow_channel": {
       "title": "Follow channel",
       "readOnlyHint": {

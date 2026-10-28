@@ -145,6 +145,107 @@ pub(super) async fn list_threads(store: &Arc<dyn Store>, args: &Value) -> Result
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct FindThreadsArgs {
+    /// Omitted, the caller's own workspace; never every workspace.
+    #[serde(default)]
+    workspace_id: Option<uuid::Uuid>,
+    /// Attribute equality filters by field name: kind, engine,
+    /// threat_model, size, linear_issue, tier, lane and review_family.
+    /// Values are the fields' wire forms (`"pi"`, `"A"`, `"true"`).
+    #[serde(default)]
+    attr: Option<std::collections::BTreeMap<String, Value>>,
+    /// Reference filters by relation wire name (`twin_of`, `duplicates`,
+    /// `supersedes`, ...): keeps the threads holding that reference to the
+    /// given thread id.
+    #[serde(default, rename = "ref")]
+    references: Option<std::collections::BTreeMap<String, String>>,
+    /// Only threads routed to this engine; shorthand for `attr.engine`.
+    #[serde(default)]
+    engine: Option<String>,
+    /// Only threads carrying this review tier; shorthand for `attr.tier`.
+    #[serde(default)]
+    tier: Option<String>,
+    /// Only threads in this service lane; shorthand for `attr.lane`.
+    #[serde(default)]
+    lane: Option<String>,
+    /// Max threads to return (default 100, clamped 1..=500).
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Exclusive keyset cursor: the prior page's last thread id.
+    #[serde(default)]
+    cursor: Option<uuid::Uuid>,
+    /// "oldest" (default) or "newest": the direction of the keyset walk.
+    #[serde(default)]
+    order: Option<String>,
+}
+
+/// Find a workspace's threads by their task attributes. The twin of
+/// `GET /workspaces/{id}/threads`: the workspace is the caller's own (a
+/// foreign `workspace_id` is refused, an omitted one never widens the
+/// search), and only threads the caller may read come back, carrying
+/// their attributes.
+pub(super) async fn find_threads(
+    store: &Arc<dyn Store>,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: FindThreadsArgs = crate::tools::parse_args(args)?;
+    let workspace_id = a.workspace_id.map_or(auth.workspace_id, WorkspaceId);
+    auth.ensure_workspace(workspace_id)?;
+    // The bare shorthands feed the same filter as their `attr` spellings;
+    // the `attr` pairs come later, so on a repeat the `attr` value wins.
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for (key, value) in [("engine", a.engine), ("tier", a.tier), ("lane", a.lane)] {
+        if let Some(value) = value {
+            pairs.push((key.to_string(), value));
+        }
+    }
+    if let Some(attr) = a.attr {
+        for (key, value) in attr {
+            let value = match value {
+                Value::String(s) => s,
+                Value::Bool(b) => b.to_string(),
+                other => {
+                    return Err(McpError::InvalidParams(format!(
+                        "attr.{key} must be a string, not {other}"
+                    )));
+                }
+            };
+            pairs.push((key, value));
+        }
+    }
+    for (relation, dst) in a.references.unwrap_or_default() {
+        pairs.push((format!("ref.{relation}"), dst));
+    }
+    let filter = maidan_store::store::ThreadAttributeFilter::from_pairs(pairs)
+        .map_err(McpError::InvalidParams)?;
+    let limit = a.limit.unwrap_or(100).clamp(1, 500);
+    let newest_first = match a.order.as_deref() {
+        None | Some("oldest") => false,
+        Some("newest") => true,
+        Some(other) => {
+            return Err(McpError::InvalidParams(format!(
+                "order must be \"oldest\" or \"newest\", not {other:?}"
+            )));
+        }
+    };
+    let threads = store
+        .find_threads_for_workspace(
+            workspace_id,
+            maidan_store::store::WorkspaceThreadSearch {
+                filter,
+                after: a.cursor.map(ThreadId),
+                limit,
+                newest_first,
+                reader_id: (!auth.bypass).then_some(auth.member_id),
+            },
+        )
+        .await?;
+    Ok(content_json(&threads))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CreateThreadArgs {
     channel_id: uuid::Uuid,
     #[serde(default)]
@@ -1420,6 +1521,8 @@ struct SetThreadAttributesArgs {
     tier: Option<maidan_types::TaskTier>,
     #[serde(default)]
     lane: Option<maidan_types::TaskLane>,
+    #[serde(default)]
+    author_family: Option<String>,
 }
 
 /// Replace a thread's task attributes whole: what kind of work it is, who
@@ -1444,6 +1547,7 @@ pub(super) async fn set_thread_attributes(
                 tier: a.tier,
                 lane: a.lane,
                 review_family: None,
+                author_family: a.author_family,
             }
             .validated()
             .map_err(|e| McpError::InvalidParams(format!("attributes: {e}")))?,

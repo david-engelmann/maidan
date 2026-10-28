@@ -363,6 +363,10 @@ pub struct SubmitReview {
     /// (`GET /threads/{id}/review-packet`). Required to approve.
     #[serde(default)]
     pub evidence_root: Option<String>,
+    /// The full commit SHA of the change head you reviewed. When given and
+    /// the change's tracked head has moved, the verdict is refused with 409.
+    #[serde(default)]
+    pub head_sha: Option<String>,
 }
 
 /// Record a LandGate pointer. `land` is optional — a fail is always red; a pass
@@ -451,6 +455,27 @@ pub struct SetThreadLineage {
 pub struct ActiveClaimsQuery {
     /// `owner/name` (or a GitHub clone URL); omitted lists every repository.
     pub repo: Option<String>,
+}
+
+/// Query params for finding a workspace's threads by task attribute. The
+/// attribute filters themselves arrive as `attr.<field>` parameters (see
+/// the route's OpenAPI entry); `engine`, `tier` and `lane` are accepted
+/// bare as shorthand for `attr.engine`, `attr.tier` and `attr.lane`.
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FindThreadsQuery {
+    /// Max threads to return (default 100, clamped 1..=500).
+    pub limit: Option<i64>,
+    /// Exclusive keyset cursor: the prior page's last thread id.
+    pub cursor: Option<uuid::Uuid>,
+    /// `"oldest"` (default) or `"newest"`: the direction of the keyset walk.
+    pub order: Option<String>,
+    /// Only threads routed to this engine (`pi`, `session` or `human`).
+    pub engine: Option<String>,
+    /// Only threads carrying this review tier (`A` or `B`).
+    pub tier: Option<String>,
+    /// Only threads in this service lane (`batch` or `flex`).
+    pub lane: Option<String>,
 }
 
 /// Query params for a workspace's queue depth: the filters

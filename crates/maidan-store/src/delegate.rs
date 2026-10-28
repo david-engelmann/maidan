@@ -475,7 +475,11 @@ macro_rules! store_delegations {
                 lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                thread_results::set(self.pool(), thread_id, produced_by, lease_id, result).await
+                let stored =
+                    thread_results::set(self.pool(), thread_id, produced_by, lease_id, result)
+                        .await?;
+                $crate::result_metrics::record(result);
+                Ok(stored)
             }
 
             async fn get_thread_result(
@@ -2010,6 +2014,14 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn find_threads_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                search: crate::store::WorkspaceThreadSearch,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::find_for_workspace(self.pool(), workspace_id, search).await
+            }
+
             async fn page_threads_for_channel(
                 &self,
                 channel_id: ChannelId,
@@ -2450,6 +2462,27 @@ macro_rules! store_delegations {
                     decision,
                     note,
                     evidence_root,
+                )
+                .await
+            }
+
+            async fn submit_review_at_head(
+                &self,
+                thread_id: ThreadId,
+                reviewer_id: MemberId,
+                decision: ReviewDecision,
+                note: Option<&str>,
+                evidence_root: Option<&str>,
+                head_sha: Option<&str>,
+            ) -> Result<maidan_types::ReviewSubmission, StoreError> {
+                reviews::submit_review_at_head(
+                    self.pool(),
+                    thread_id,
+                    reviewer_id,
+                    decision,
+                    note,
+                    evidence_root,
+                    head_sha,
                 )
                 .await
             }
@@ -3181,6 +3214,13 @@ macro_rules! store_delegations {
                 new: maidan_types::NewPullCi,
             ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
                 pull_ci::record(self.pool(), new).await
+            }
+
+            async fn record_pull_ci_with_events(
+                &self,
+                new: maidan_types::NewPullCi,
+            ) -> Result<(Vec<maidan_types::PostedNotice>, Vec<StoredEvent>), StoreError> {
+                pull_ci::record_with_events(self.pool(), new).await
             }
 
             async fn pull_head_was_ahead(

@@ -210,14 +210,16 @@ pub async fn submit_review(
         .map_err(ApiError::BadRequest)?;
     let root = maidan_types::review_evidence(body.decision, body.evidence_root.as_deref())
         .map_err(ApiError::BadRequest)?;
+    let head = maidan_types::review_head(body.head_sha.as_deref()).map_err(ApiError::BadRequest)?;
     let submission = state
         .store
-        .submit_review(
+        .submit_review_at_head(
             thread_id,
             auth.member_id,
             body.decision,
             note.as_deref(),
             root.as_deref(),
+            head.as_deref(),
         )
         .await?;
     for stored in submission.events() {

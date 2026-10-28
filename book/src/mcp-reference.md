@@ -610,6 +610,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
           "maxLength": 4000,
           "type": "string"
         },
+        "author_family": {
+          "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it",
+          "enum": [
+            "anthropic",
+            "openai",
+            "google",
+            "xai"
+          ],
+          "type": "string"
+        },
         "engine": {
           "enum": [
             "pi",
@@ -2550,6 +2560,16 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "maxLength": 4000,
       "type": "string"
     },
+    "author_family": {
+      "description": "for a review: the provider family that wrote the change under review; claim_next never hands the thread to a claimer of that family. Once set it is kept: a later set neither clears nor changes it",
+      "enum": [
+        "anthropic",
+        "openai",
+        "google",
+        "xai"
+      ],
+      "type": "string"
+    },
     "engine": {
       "description": "omit to leave the work unrouted",
       "enum": [
@@ -3288,6 +3308,68 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "slack_ts": {
       "description": "a Slack message ts such as 1700000000.000100; needs slack_channel",
+      "type": "string"
+    },
+    "workspace_id": {
+      "description": "your own workspace (whoami's workspace_id); omitted, the same",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+### `find_threads`
+
+**Find threads.** Find a workspace's threads by their task attributes: equality filters over kind, engine, threat_model, size, linear_issue, tier, lane and review_family, given as attr (attr.linear_issue=ENG-123 style pairs), plus engine, tier and lane as bare shorthand, and ref (ref.twin_of=<thread id> style: relation wire name to thread id) for threads holding that reference to that thread; a thread outside your workspace matches nothing (an unused relation is an empty result too). Combined with AND. A thread with no stored attributes matches the defaults it reads with (kind=change, threat_model=false); the other fields match only a stored value. Scoped to your own workspace (workspace_id omitted, the same; a foreign one is refused) and to threads you may read. Keyset-paginated like list_threads (limit, cursor, order; a cursor that is not a thread you can read in your workspace is refused); returned threads carry their attributes. The twin of GET /workspaces/{id}/threads.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "attr": {
+      "description": "Attribute equality filters by field name: kind, engine, threat_model, size, linear_issue, tier, lane, review_family. Values are the fields' wire forms.",
+      "type": "object"
+    },
+    "cursor": {
+      "description": "Exclusive keyset cursor: the prior page's last thread id.",
+      "format": "uuid",
+      "type": "string"
+    },
+    "engine": {
+      "description": "Only threads routed to this engine (pi, session or human); shorthand for attr.engine.",
+      "type": "string"
+    },
+    "lane": {
+      "description": "Only threads in this service lane (batch or flex); shorthand for attr.lane.",
+      "type": "string"
+    },
+    "limit": {
+      "default": 100,
+      "description": "Max threads to return (clamped 1..=500).",
+      "type": "integer"
+    },
+    "order": {
+      "description": "Direction of the keyset walk (default oldest).",
+      "enum": [
+        "oldest",
+        "newest"
+      ],
+      "type": "string"
+    },
+    "ref": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Reference filters by relation wire name (twin_of, duplicates, supersedes, ...): keeps the threads holding that reference to the given thread id.",
+      "type": "object"
+    },
+    "tier": {
+      "description": "Only threads carrying this review tier (A or B); shorthand for attr.tier.",
       "type": "string"
     },
     "workspace_id": {
@@ -4686,6 +4768,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
     },
     "evidence_root": {
       "description": "the evidence_root from get_review_packet you are deciding on, required on approve",
+      "type": "string"
+    },
+    "head_sha": {
+      "description": "optional full commit SHA of the change head you reviewed; refused as a conflict when the change has moved since",
       "type": "string"
     },
     "note": {

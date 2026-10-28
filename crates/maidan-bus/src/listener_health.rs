@@ -23,6 +23,10 @@ impl ListenerHealth {
         self.errors_total.fetch_add(1, Ordering::Relaxed);
     }
 
+    pub fn is_degraded(&self) -> bool {
+        self.degraded.load(Ordering::Acquire)
+    }
+
     pub fn errors_total(&self) -> u64 {
         self.errors_total.load(Ordering::Relaxed)
     }

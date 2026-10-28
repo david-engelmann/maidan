@@ -152,6 +152,12 @@ pub struct AuthorizationServerMetadata {
     /// token endpoint.
     revocation_endpoint_auth_methods_supported: Vec<String>,
     code_challenge_methods_supported: Vec<String>,
+    /// A client may name itself by the HTTPS URL of its metadata document
+    /// (draft-ietf-oauth-client-id-metadata-document), which `registry`
+    /// resolves through the workspace's egress allowlist. Without this flag
+    /// a client such as claude.ai assumes it must register dynamically,
+    /// which this server never offers, and stops.
+    client_id_metadata_document_supported: bool,
 }
 
 fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
@@ -166,6 +172,7 @@ fn authorization_server_document(origin: &str) -> AuthorizationServerMetadata {
         token_endpoint_auth_methods_supported: CLIENT_AUTH_METHODS.map(String::from).to_vec(),
         revocation_endpoint_auth_methods_supported: CLIENT_AUTH_METHODS.map(String::from).to_vec(),
         code_challenge_methods_supported: vec!["S256".into()],
+        client_id_metadata_document_supported: true,
     }
 }
 
@@ -296,6 +303,14 @@ mod tests {
         let json =
             serde_json::to_value(authorization_server_document("https://maidan.example.com"))
                 .expect("json");
+        assert_eq!(
+            json["client_id_metadata_document_supported"], true,
+            "a metadata-document client must learn it may use one"
+        );
+        assert!(
+            json.get("registration_endpoint").is_none(),
+            "no dynamic registration is advertised"
+        );
         assert_eq!(json["issuer"], "https://maidan.example.com");
         assert_eq!(
             json["authorization_endpoint"],

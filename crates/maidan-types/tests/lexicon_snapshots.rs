@@ -383,6 +383,15 @@ fn sample_event(kind: EventKind) -> Event {
             sent_back: true,
             worker_id: Some(maidan_types::MemberId(id(13))),
         },
+        EventKind::ApprovalDismissed => Event::ApprovalDismissed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id: member_id,
+            approved_head: "a".repeat(40),
+            head_sha: "b".repeat(40),
+        },
         EventKind::WaitTimedOut => Event::WaitTimedOut {
             occurred_at,
             workspace_id,
@@ -595,6 +604,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadHandoff
             | EventKind::ResultDeliveryFailed
             | EventKind::ReviewSubmitted
+            | EventKind::ApprovalDismissed
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped
             | EventKind::ThreadSpawnDenied

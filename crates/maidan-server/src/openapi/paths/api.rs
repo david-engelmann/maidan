@@ -1350,6 +1350,7 @@ pub fn close_abandoned_thread() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     ))]
 pub fn assign_thread() {}
 
@@ -2681,6 +2682,7 @@ pub fn set_thread_footprint() {}
         (status = 400, response = BadRequest),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
     ))]
 pub fn set_thread_attributes() {}
 
@@ -2749,6 +2751,40 @@ pub fn get_task_fingerprint() {}
         (status = 404, response = NotFound),
     ))]
 pub fn clear_task_duplicate() {}
+
+/// Find a workspace's threads by task attribute
+///
+/// Equality filters over the threads' task attributes, combined with AND:
+/// `attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,
+/// `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and
+/// `ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to
+/// that thread. `engine`, `tier` and `lane` are also accepted bare. A
+/// thread with no stored attributes matches the defaults it reads with
+/// (`attr.kind=change`, `attr.threat_model=false`); the other fields match
+/// only a stored value. Scoped to the caller's own workspace and to the
+/// threads the caller may read. Keyset-paginated like the channel thread
+/// list (`limit`, `cursor`, `order`); returned threads carry their
+/// attributes. A `cursor` that is not a live thread the caller can read
+/// in the workspace is a 400; a foreign, unreadable, deleted or made-up
+/// id read the same. An unused `ref.<relation>` is an empty page.
+#[utoipa::path(get, path = "/workspaces/{id}/threads", tag = "threads",
+    params(("id" = Uuid, Path, description = "Workspace id"), FindThreadsQuery,
+        ("attr.kind" = Option<String>, Query, description = "Task kind: change, plan or review"),
+        ("attr.engine" = Option<String>, Query, description = "Routed engine: pi, session or human"),
+        ("attr.threat_model" = Option<bool>, Query, description = "Whether the task needs a threat model"),
+        ("attr.size" = Option<String>, Query, description = "Task size: S, M or L"),
+        ("attr.linear_issue" = Option<String>, Query, description = "The Linear issue key, e.g. ENG-123"),
+        ("attr.tier" = Option<String>, Query, description = "Review tier: A or B"),
+        ("attr.lane" = Option<String>, Query, description = "Service lane: batch or flex"),
+        ("attr.review_family" = Option<String>, Query, description = "The provider family a review child is routed to"),
+        ("ref.twin_of" = Option<Uuid>, Query, description = "Threads holding a twin_of reference to this thread; any relation wire name works as ref.<relation> (duplicates, supersedes, ...)")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = [Thread]),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_workspace_threads() {}
 
 /// List a workspace's live claims and their footprints
 #[utoipa::path(get, path = "/workspaces/{id}/claims", tag = "threads",

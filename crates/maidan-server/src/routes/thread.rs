@@ -175,6 +175,76 @@ pub async fn list_threads(
     Ok(Json(threads))
 }
 
+/// Find a workspace's threads by their task attributes: `attr.linear_issue`,
+/// `attr.engine` and the rest of the attribute fields as equality filters,
+/// with `engine`, `tier` and `lane` also accepted bare, and
+/// `ref.<relation>=<thread id>` for the threads holding that reference to
+/// the named thread. The workspace is
+/// the caller's own — `ensure_workspace` refuses any other, so a foreign
+/// id narrows nothing and widens nothing — and the store filters to the
+/// threads the caller may read. Returned threads carry their attributes.
+/// `workspace:read`.
+pub async fn list_workspace_threads(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(q): ApiQuery<FindThreadsQuery>,
+    ApiQuery(params): ApiQuery<std::collections::BTreeMap<String, String>>,
+) -> ApiResult<Json<Vec<Thread>>> {
+    cap(&auth, WORKSPACE_READ)?;
+    let workspace_id = WorkspaceId(id);
+    ensure_workspace(&auth, workspace_id)?;
+    // The bare shorthands feed the same filter as their `attr.` spellings;
+    // the `attr.` pairs come later, so on a repeat the `attr.` value wins.
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for (key, value) in [("engine", q.engine), ("tier", q.tier), ("lane", q.lane)] {
+        if let Some(value) = value {
+            pairs.push((key.to_string(), value));
+        }
+    }
+    for (key, value) in &params {
+        if let Some(field) = key.strip_prefix("attr.") {
+            pairs.push((field.to_string(), value.clone()));
+        } else if key.starts_with("ref.") {
+            pairs.push((key.clone(), value.clone()));
+        } else if !matches!(
+            key.as_str(),
+            "limit" | "cursor" | "order" | "engine" | "tier" | "lane"
+        ) {
+            return Err(ApiError::BadRequest(format!(
+                "unknown query parameter {key:?}"
+            )));
+        }
+    }
+    let filter = maidan_store::store::ThreadAttributeFilter::from_pairs(pairs)
+        .map_err(ApiError::BadRequest)?;
+    // Keyset-paginated like the channel list. Default 100, clamp 1..=500.
+    let limit = q.limit.unwrap_or(100).clamp(1, 500);
+    let newest_first = match q.order.as_deref() {
+        None | Some("oldest") => false,
+        Some("newest") => true,
+        Some(other) => {
+            return Err(ApiError::BadRequest(format!(
+                "order must be \"oldest\" or \"newest\", not {other:?}"
+            )));
+        }
+    };
+    let threads = state
+        .store
+        .find_threads_for_workspace(
+            workspace_id,
+            maidan_store::store::WorkspaceThreadSearch {
+                filter,
+                after: q.cursor.map(ThreadId),
+                limit,
+                newest_first,
+                reader_id: (!auth.bypass).then_some(auth.member_id),
+            },
+        )
+        .await?;
+    Ok(Json(threads))
+}
+
 /// A channel's threads ordered by last activity — most-recently bumped first. A
 /// post bumps its thread's `updated_at`, floating it here. Not keyset-paginated
 /// (the sort key is mutable); a `limit` caps it.

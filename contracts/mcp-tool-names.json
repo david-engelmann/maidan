@@ -49,6 +49,7 @@
   "edit_message",
   "export_workspace",
   "find_thread",
+  "find_threads",
   "follow_channel",
   "follow_member",
   "follow_thread",

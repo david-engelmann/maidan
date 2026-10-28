@@ -133,6 +133,20 @@ pub fn review_evidence(
     Ok(root)
 }
 
+/// A verdict's client-named head (#1574): `None` when the client named
+/// none, else a full 40- or 64-hex commit SHA, lowercased.
+pub fn review_head(head_sha: Option<&str>) -> Result<Option<String>, String> {
+    let Some(head) = head_sha.map(str::trim).filter(|h| !h.is_empty()) else {
+        return Ok(None);
+    };
+    if !matches!(head.len(), 40 | 64) || !head.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(
+            "head_sha must be the full 40- or 64-hex-character commit SHA you reviewed".into(),
+        );
+    }
+    Ok(Some(head.to_ascii_lowercase()))
+}
+
 pub fn status_note(note: &str) -> Result<String, String> {
     let note = note.trim();
     if note.is_empty() {
