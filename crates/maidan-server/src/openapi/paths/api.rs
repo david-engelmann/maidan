@@ -2737,7 +2737,9 @@ pub fn get_task_fingerprint() {}
 ///
 /// A task linked as a duplicate of an open or in-review task is withheld
 /// from claims; clearing the link makes it claimable. `404` when the thread
-/// has no fingerprint.
+/// has no fingerprint, or when the caller cannot see the thread or the
+/// original it is linked to. Each clear is audited
+/// (`thread.duplicate_cleared`).
 #[utoipa::path(delete, path = "/threads/{id}/fingerprint/duplicate-of", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
