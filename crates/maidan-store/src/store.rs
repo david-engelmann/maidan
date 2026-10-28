@@ -114,6 +114,132 @@ impl ThreadPageQuery {
     }
 }
 
+/// An equality filter over a thread's task attributes, for
+/// [`ThreadStore::find_threads_for_workspace`]. Every field is optional; a
+/// set field keeps only threads whose attributes match it, and the fields
+/// combine with AND. Matching follows how the attributes read: a thread
+/// with no attributes row reads as the defaults, so `kind` matches the
+/// default `change` and `threat_model` matches `false` for such a thread,
+/// while the optional fields (`engine`, `size`, `linear_issue`, `tier`,
+/// `lane`, `review_family`) match only a stored value — an unset tier is
+/// not `B` here, whatever the metrics count it as, because the stored
+/// value is what was said. `ref.<relation>` keeps the threads that hold a
+/// reference with that relation (its wire name: `twin_of`, `duplicates`,
+/// `supersedes`, ...) to the named thread; a named thread outside the
+/// workspace matches nothing, since only the workspace's own threads are
+/// searched. A cursor that is not a live thread the reader can read in the
+/// workspace is refused, the same for every such id, so it cannot tell a
+/// foreign, unreadable or deleted thread from a made-up one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ThreadAttributeFilter {
+    pub kind: Option<TaskKind>,
+    pub engine: Option<TaskEngine>,
+    pub threat_model: Option<bool>,
+    pub size: Option<TaskSize>,
+    pub linear_issue: Option<String>,
+    pub tier: Option<TaskTier>,
+    pub lane: Option<TaskLane>,
+    pub review_family: Option<String>,
+    /// `(relation wire name, destination thread)` from `ref.<relation>`.
+    pub reference: Option<(String, ThreadId)>,
+}
+
+impl ThreadAttributeFilter {
+    /// Build a filter from `(key, value)` pairs, as a query string or a
+    /// tool argument names them: the attribute fields by name, plus
+    /// `ref.<relation>`. An unknown key or a value the field cannot hold is an
+    /// error naming the key, so a typo'd filter refuses rather than
+    /// silently matching everything or nothing. A repeated key keeps the
+    /// last value.
+    pub fn from_pairs(pairs: impl IntoIterator<Item = (String, String)>) -> Result<Self, String> {
+        let mut filter = Self::default();
+        for (key, value) in pairs {
+            let bad = |what: &str| format!("{key} {value:?} is not {what}");
+            match key.as_str() {
+                "kind" => {
+                    filter.kind = Some(
+                        TaskKind::parse(&value)
+                            .ok_or_else(|| bad("a task kind (change, plan or review)"))?,
+                    );
+                }
+                "engine" => {
+                    filter.engine = Some(
+                        TaskEngine::parse(&value)
+                            .ok_or_else(|| bad("a task engine (pi, session or human)"))?,
+                    );
+                }
+                "threat_model" => {
+                    filter.threat_model = Some(match value.as_str() {
+                        "true" => true,
+                        "false" => false,
+                        _ => return Err(bad("a boolean (true or false)")),
+                    });
+                }
+                "size" => {
+                    filter.size = Some(
+                        TaskSize::parse(&value).ok_or_else(|| bad("a task size (S, M or L)"))?,
+                    );
+                }
+                "linear_issue" => {
+                    if !maidan_types::is_issue_key(&value) {
+                        return Err(bad("an issue key such as ENG-123"));
+                    }
+                    filter.linear_issue = Some(value);
+                }
+                "tier" => {
+                    filter.tier =
+                        Some(TaskTier::parse(&value).ok_or_else(|| bad("a task tier (A or B)"))?);
+                }
+                "lane" => {
+                    filter.lane = Some(
+                        TaskLane::parse(&value)
+                            .ok_or_else(|| bad("a task lane (batch or flex)"))?,
+                    );
+                }
+                "review_family" => {
+                    filter.review_family = Some(value);
+                }
+                other if other.starts_with("ref.") => {
+                    let relation = &other["ref.".len()..];
+                    if relation.is_empty()
+                        || !relation
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b == b'_')
+                    {
+                        return Err(format!(
+                            "{key:?} is not ref.<relation>, a relation's wire name such as ref.twin_of"
+                        ));
+                    }
+                    let dst = uuid::Uuid::parse_str(&value).map_err(|_| bad("a thread id"))?;
+                    filter.reference = Some((relation.to_string(), ThreadId(dst)));
+                }
+                _ => {
+                    return Err(format!(
+                        "unknown attribute filter {key:?}: filter on kind, engine, \
+                         threat_model, size, linear_issue, tier, lane, review_family or ref.<relation>"
+                    ));
+                }
+            }
+        }
+        Ok(filter)
+    }
+}
+
+/// How one page of a workspace's threads is selected by
+/// [`ThreadStore::find_threads_for_workspace`]: the `(created_at, id)`
+/// keyset order of the other workspace pages, `after` an exclusive cursor
+/// in that order, `reader_id` filtering in the query to the threads the
+/// reader may read (`None` is the unrestricted view), and `filter`
+/// applied before the limit so a page is a full page of matches.
+#[derive(Clone, Debug, Default)]
+pub struct WorkspaceThreadSearch {
+    pub filter: ThreadAttributeFilter,
+    pub after: Option<ThreadId>,
+    pub limit: i64,
+    pub newest_first: bool,
+    pub reader_id: Option<MemberId>,
+}
+
 #[async_trait]
 pub trait WorkspaceStore: Send + Sync {
     /// Insert a whole workspace content graph — members, channels, threads,
@@ -1737,6 +1863,19 @@ pub trait ThreadStore: Send + Sync {
         after: Option<ThreadId>,
         limit: i64,
         reader_id: Option<MemberId>,
+    ) -> Result<Vec<Thread>, StoreError>;
+
+    /// One keyset page of a workspace's **live** threads whose task
+    /// attributes match `search.filter`, selected by
+    /// [`WorkspaceThreadSearch`]. The find-by-attribute read behind
+    /// `GET /workspaces/{id}/threads`: coordinators locate a ticket's
+    /// thread by its Linear issue (or its engine, tier or lane) instead of
+    /// searching message text. Returned threads carry their attributes,
+    /// read with the defaults a thread with no attributes row reads with.
+    async fn find_threads_for_workspace(
+        &self,
+        workspace_id: WorkspaceId,
+        search: WorkspaceThreadSearch,
     ) -> Result<Vec<Thread>, StoreError>;
 
     /// One keyset page of a channel's **live** threads, selected by

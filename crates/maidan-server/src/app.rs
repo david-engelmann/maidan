@@ -294,6 +294,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/workspaces/{id}/claims", get(routes::list_active_claims))
         .route(
+            "/workspaces/{id}/threads",
+            get(routes::list_workspace_threads),
+        )
+        .route(
             "/workspaces/{id}/deferred",
             get(routes::list_deferred_threads),
         )

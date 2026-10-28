@@ -412,6 +412,7 @@
   {"method":"PUT","path":"/workspaces/{id}/spawn-budget","kind":"changes"},
   {"method":"GET","path":"/workspaces/{id}/swarm-metrics","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/thread-lookup","kind":"reads"},
+  {"method":"GET","path":"/workspaces/{id}/threads","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/tombstones","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/usage","kind":"reads"},
   {"method":"GET","path":"/workspaces/{id}/usage-conformance","kind":"reads"},

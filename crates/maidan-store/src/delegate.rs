@@ -2010,6 +2010,14 @@ macro_rules! store_delegations {
                     .await
             }
 
+            async fn find_threads_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                search: crate::store::WorkspaceThreadSearch,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::find_for_workspace(self.pool(), workspace_id, search).await
+            }
+
             async fn page_threads_for_channel(
                 &self,
                 channel_id: ChannelId,

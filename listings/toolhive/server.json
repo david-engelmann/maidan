@@ -96,6 +96,7 @@
     "get_swarm_metrics",
     "wait_for_event",
     "find_thread",
+    "find_threads",
     "set_thread_lineage",
     "get_thread_lineage",
     "list_run_threads",

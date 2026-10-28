@@ -194,6 +194,43 @@ pub(crate) async fn get_on(
     })
 }
 
+/// The attributes a find-by-attribute row carries. The search select
+/// left-joins `maidan_thread_attributes` and aliases its columns to their
+/// plain names, with `attr_thread_id` marking whether a row exists at all;
+/// a thread with no row reads as the defaults, exactly as [`get`] reads it.
+pub(crate) fn search_row_attributes(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<TaskAttributes, StoreError> {
+    let present: Option<uuid::Uuid> = row.try_get("attr_thread_id")?;
+    if present.is_none() {
+        return Ok(TaskAttributes::default());
+    }
+    Ok(TaskAttributes {
+        kind: row
+            .try_get::<Option<String>, _>("kind")?
+            .and_then(|kind| TaskKind::parse(&kind))
+            .unwrap_or_default(),
+        engine: row
+            .try_get::<Option<String>, _>("engine")?
+            .and_then(|engine| TaskEngine::parse(&engine)),
+        threat_model: row
+            .try_get::<Option<bool>, _>("threat_model")?
+            .unwrap_or(false),
+        size: row
+            .try_get::<Option<String>, _>("size")?
+            .and_then(|size| TaskSize::parse(&size)),
+        acceptance: row.try_get("acceptance")?,
+        linear_issue: row.try_get("linear_issue")?,
+        tier: row
+            .try_get::<Option<String>, _>("tier")?
+            .and_then(|tier| TaskTier::parse(&tier)),
+        lane: row
+            .try_get::<Option<String>, _>("lane")?
+            .and_then(|lane| TaskLane::parse(&lane)),
+        review_family: row.try_get("review_family")?,
+    })
+}
+
 /// Replace the thread's attributes whole. The thread must exist.
 pub async fn set(
     pool: &SqlitePool,

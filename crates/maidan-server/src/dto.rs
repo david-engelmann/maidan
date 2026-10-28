@@ -440,6 +440,27 @@ pub struct ActiveClaimsQuery {
     pub repo: Option<String>,
 }
 
+/// Query params for finding a workspace's threads by task attribute. The
+/// attribute filters themselves arrive as `attr.<field>` parameters (see
+/// the route's OpenAPI entry); `engine`, `tier` and `lane` are accepted
+/// bare as shorthand for `attr.engine`, `attr.tier` and `attr.lane`.
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct FindThreadsQuery {
+    /// Max threads to return (default 100, clamped 1..=500).
+    pub limit: Option<i64>,
+    /// Exclusive keyset cursor: the prior page's last thread id.
+    pub cursor: Option<uuid::Uuid>,
+    /// `"oldest"` (default) or `"newest"`: the direction of the keyset walk.
+    pub order: Option<String>,
+    /// Only threads routed to this engine (`pi`, `session` or `human`).
+    pub engine: Option<String>,
+    /// Only threads carrying this review tier (`A` or `B`).
+    pub tier: Option<String>,
+    /// Only threads in this service lane (`batch` or `flex`).
+    pub lane: Option<String>,
+}
+
 /// Query params for a workspace's queue depth: the filters
 /// `POST /workspaces/:wid/threads/claim-next` takes, so the depth sizes a pool
 /// of workers that claim with them.
