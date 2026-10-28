@@ -1284,7 +1284,10 @@ pub fn router(state: AppState) -> Router {
                 "text/css; charset=utf-8",
                 include_bytes!("../static/landing/dist/style.css"),
             ),
-            "geist.woff2" => ("font/woff2", include_bytes!("../static/landing/dist/geist.woff2")),
+            "geist.woff2" => (
+                "font/woff2",
+                include_bytes!("../static/landing/dist/geist.woff2"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(
