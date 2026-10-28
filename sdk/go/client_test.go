@@ -344,7 +344,7 @@ func TestEveryDocumentedOperationReturnsItsDeclaredModel(t *testing.T) {
 	claim := must(c.ClaimNextThread(channel.ID, &ClaimOptions{LeaseSecs: 60}))
 	must(c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 120))
 
-	res := must(c.Threads.SetResult(thread.ID, M{"ok": true}))
+	res := must(c.Threads.SetResult(thread.ID, M{"ok": true}, *claim.ClaimLeaseID))
 	var payload struct{ OK bool }
 	if err := json.Unmarshal(res.Result, &payload); err != nil || !payload.OK || res.ProducedBy != memberID {
 		t.Fatalf("result %+v %v", res, err)

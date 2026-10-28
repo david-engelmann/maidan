@@ -271,8 +271,10 @@ class _Threads:
         """POST /threads/{id}. ``body["action"]``: ``start_review``, ``close`` or ``archive``."""
         return Thread.from_dict(self._c._req("POST", f"/threads/{thread_id}", body))
 
-    def set_result(self, thread_id: str, result: Any) -> ThreadResult:
-        return ThreadResult.from_dict(self._c._req("PUT", f"/threads/{thread_id}/result", {"result": result}))
+    def set_result(self, thread_id: str, result: Any, claim_lease_id: str) -> ThreadResult:
+        """PUT /threads/{id}/result, under your live claim: pass the claim's ``claim_lease_id``."""
+        body = {"result": result, "claim_lease_id": claim_lease_id}
+        return ThreadResult.from_dict(self._c._req("PUT", f"/threads/{thread_id}/result", body))
 
     def get_result(self, thread_id: str) -> ThreadResult:
         return ThreadResult.from_dict(self._c._req("GET", f"/threads/{thread_id}/result"))

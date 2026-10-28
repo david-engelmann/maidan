@@ -248,7 +248,8 @@ export class Client {
       get: (id) => this._req("GET", `/threads/${id}`),
       context: (id, query) => this._req("GET", `/threads/${id}/context${qs(query)}`),
       transition: (id, body) => this._req("POST", `/threads/${id}`, body),
-      setResult: (id, result) => this._req("PUT", `/threads/${id}/result`, { result }),
+      setResult: (id, result, claimLeaseId) =>
+        this._req("PUT", `/threads/${id}/result`, { result, claim_lease_id: claimLeaseId }),
       getResult: (id) => this._req("GET", `/threads/${id}/result`),
     };
     this.messages = {

@@ -393,7 +393,7 @@ fn every_documented_operation_returns_its_declared_model() {
 
     let result = assert_modeled!(c
         .threads()
-        .set_result(&thread.id, json!({"ok": true}))
+        .set_result(&thread.id, json!({"ok": true}), &lease)
         .unwrap());
     assert_eq!(result.result, json!({"ok": true}));
     assert_eq!(result.produced_by, member);

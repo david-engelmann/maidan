@@ -261,7 +261,7 @@ test("every documented operation returns its declared model", async () => {
   assertShape(claim.pin, "StrongRef");
   assertShape(await client.renewClaim(claim.id, claim.claim_lease_id, 120), "Thread");
 
-  const result = assertShape(await client.threads.setResult(thread.id, { ok: true }), "ThreadResult");
+  const result = assertShape(await client.threads.setResult(thread.id, { ok: true }, claim.claim_lease_id), "ThreadResult");
   assert.deepEqual(result.result, { ok: true });
   assert.equal(result.produced_by, me.member_id);
   assertShape(await client.threads.getResult(thread.id), "ThreadResult");

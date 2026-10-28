@@ -262,7 +262,7 @@ def test_every_documented_operation_returns_its_declared_model():
     claim = assert_modeled(c.claim_next_thread(channel.id, {"lease_secs": 60}), ClaimedThread)
     assert_modeled(c.renew_claim(claim.id, claim.claim_lease_id, 120), Thread)
 
-    result = assert_modeled(c.threads.set_result(thread.id, {"ok": True}), ThreadResult)
+    result = assert_modeled(c.threads.set_result(thread.id, {"ok": True}, claim.claim_lease_id), ThreadResult)
     assert result.result == {"ok": True}
     assert result.produced_by == member["id"]
     assert_modeled(c.threads.get_result(thread.id), ThreadResult)

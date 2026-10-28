@@ -26,7 +26,8 @@ fn main() -> Result<(), MaidanError> {
     // content-addressed `pin`), or None when nothing is ready.
     if let Some(claim) = client.claim_next_thread(channel_id, None)? {
         client.messages().post(&claim.id, "on it")?;
-        client.threads().set_result(&claim.id, json!({ "ok": true }))?;
+        let lease = claim.claim_lease_id.clone().unwrap_or_default();
+        client.threads().set_result(&claim.id, json!({ "ok": true }), &lease)?;
         // Long job? Heartbeat the lease with the fencing token the claim returned.
         if let Some(lease) = &claim.claim_lease_id {
             client.renew_claim(&claim.id, lease, 300)?;
