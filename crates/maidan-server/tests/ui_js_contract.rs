@@ -201,6 +201,8 @@ const ALLOWED: &[&str] = &[
     "WebSocket",
     "URL",
     "URLSearchParams",
+    "Event",
+    "CustomEvent",
     "Blob",
     "FormData",
     "TextEncoder",
