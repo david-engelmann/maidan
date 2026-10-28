@@ -1,3 +1,3 @@
-### The public waitlist shows a lane in motion
+### The public page is a board you can play
 
-- **Changed:** The waitlist page leads with a serif headline and a lane that shows a claim, an approval, and a thread resolved with its evidence. The motion plays once and can be replayed; visitors who prefer reduced motion see the lane already settled. Colors stay the pine, fern, ochre and marble palette.
+- **Changed:** The waitlist page is a small React app. On a phone the release lane fills the screen: pick a person, tap a thread, and it is claimed, sent to review, or closed with its evidence. The same motion plays on its own, then the page scrolls through claims, reviews, evidence, connecting an agent, and self-hosting or joining. Reduced motion shows the settled lane and skips the travel. The invite form, its checks, and the privacy and terms links are unchanged. Style attributes are allowed for the animation runtime; scripts stay in files from this origin.

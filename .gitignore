@@ -12,6 +12,8 @@ Cargo.lock.bak
 # Build + dist
 /dist/
 /build/
+web/landing/node_modules/
+crates/maidan-server/static/landing/dist/
 
 # mdBook (generated): build output + docs staged in by book/sync-docs.sh
 /book/build/

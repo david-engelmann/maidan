@@ -19,6 +19,16 @@ ARG RUST_VERSION=1.99
 ARG DEBIAN_CODENAME=bookworm
 ARG MAIDAN_ENABLE_BOOTSTRAP=0
 
+# The public landing is a Vite app. Build it before the Rust compile so the
+# binary can embed the bundle. The Rust builder skips its own npm build.
+FROM node:22-bookworm-slim AS landing
+WORKDIR /web
+COPY web/landing/package.json web/landing/package-lock.json ./
+RUN npm ci
+COPY web/landing/ ./
+ENV LANDING_OUT=/landing-dist
+RUN npm run build
+
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_CODENAME} AS chef
 WORKDIR /app
 RUN cargo install cargo-chef --version 0.1.71 --locked
@@ -51,6 +61,8 @@ ENV MAIDAN_VERSION=$MAIDAN_VERSION
 COPY --from=cacher /app/target target
 COPY --from=cacher $CARGO_HOME $CARGO_HOME
 COPY . .
+COPY --from=landing /landing-dist crates/maidan-server/static/landing/dist
+ENV MAIDAN_SKIP_LANDING_BUILD=1
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
  && rm -rf /var/lib/apt/lists/*
