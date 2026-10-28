@@ -172,6 +172,17 @@ pub async fn record_checks(
     pull_number: i64,
     snapshot: &GithubPullSnapshot,
 ) -> usize {
+    if snapshot.checks_denied {
+        // GitHub refused every read of the checks (the rollup reads as no
+        // checks at all), but the head still moved: record it, unreadable,
+        // not pending, so a push dismisses the approvals given to the old
+        // head and nobody waits on checks that can never be read.
+        return post_read(
+            state,
+            unreadable_read(workspace_id, repo, pull_number, snapshot),
+        )
+        .await;
+    }
     let Some(checks) = snapshot.checks.as_deref() else {
         return 0;
     };
@@ -187,33 +198,64 @@ pub async fn record_checks(
     let unresolved = read_gate
         .map(|read| read.unresolved_threads.clone())
         .unwrap_or_default();
-    let posted = match state
-        .store
-        .record_pull_ci(NewPullCi {
-            workspace_id,
-            repo: repo.to_string(),
-            pull_number,
-            head_sha: head,
-            status: summary.status,
-            failing_jobs: summary.failing_jobs,
-            log_tail,
-            finished: summary.finished,
-            merge_state: read_gate.and_then(|read| read.merge_state.clone()),
-            unresolved_threads: unresolved.len() as i64,
-            unresolved_thread_links: unresolved
-                .into_iter()
-                .take(REVIEW_THREAD_LINK_LIMIT)
-                .collect(),
-            missing_checks: held
-                .as_ref()
-                .map(|held| held.missing_checks.clone())
-                .unwrap_or_default(),
-            gate_reasons: held.map(|held| held.reasons),
-            merge_queue: read_gate.and_then(|read| merge_queue(read, &snapshot.brief.labels)),
-            head_ahead: snapshot.ahead.unwrap_or(false),
-        })
-        .await
-    {
+    let read = NewPullCi {
+        workspace_id,
+        repo: repo.to_string(),
+        pull_number,
+        head_sha: head,
+        status: summary.status,
+        failing_jobs: summary.failing_jobs,
+        log_tail,
+        finished: summary.finished,
+        merge_state: read_gate.and_then(|read| read.merge_state.clone()),
+        unresolved_threads: unresolved.len() as i64,
+        unresolved_thread_links: unresolved
+            .into_iter()
+            .take(REVIEW_THREAD_LINK_LIMIT)
+            .collect(),
+        missing_checks: held
+            .as_ref()
+            .map(|held| held.missing_checks.clone())
+            .unwrap_or_default(),
+        gate_reasons: held.map(|held| held.reasons),
+        merge_queue: read_gate.and_then(|read| merge_queue(read, &snapshot.brief.labels)),
+        head_ahead: snapshot.ahead.unwrap_or(false),
+    };
+    post_read(state, read).await
+}
+
+/// A read GitHub refused the checks of: the head and its merge state, with
+/// the checks unreadable rather than pending or passing.
+fn unreadable_read(
+    workspace_id: WorkspaceId,
+    repo: &str,
+    pull_number: i64,
+    snapshot: &GithubPullSnapshot,
+) -> NewPullCi {
+    let read_gate = snapshot.gate.as_ref();
+    NewPullCi {
+        workspace_id,
+        repo: repo.to_string(),
+        pull_number,
+        head_sha: snapshot.brief.head_sha.to_ascii_lowercase(),
+        status: CiStatus::Unreadable,
+        failing_jobs: Vec::new(),
+        log_tail: None,
+        finished: false,
+        merge_state: read_gate.and_then(|read| read.merge_state.clone()),
+        unresolved_threads: 0,
+        unresolved_thread_links: Vec::new(),
+        missing_checks: Vec::new(),
+        gate_reasons: None,
+        merge_queue: read_gate.and_then(|read| merge_queue(read, &snapshot.brief.labels)),
+        head_ahead: snapshot.ahead.unwrap_or(false),
+    }
+}
+
+/// Record a read and post the notices it owes. Returns how many were posted.
+async fn post_read(state: &AppState, read: NewPullCi) -> usize {
+    let (repo, pull_number) = (read.repo.clone(), read.pull_number);
+    let posted = match state.store.record_pull_ci(read).await {
         Ok(posted) => posted,
         Err(err) => {
             tracing::warn!(repo, pull_number, error = %err, "ci watch: checks not recorded");

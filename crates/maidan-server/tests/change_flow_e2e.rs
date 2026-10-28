@@ -12,7 +12,7 @@
 
 use maidan_store::test_support::SetResultClaiming;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     net::SocketAddr,
     sync::{atomic::AtomicI64, Arc, Mutex},
 };
@@ -118,6 +118,9 @@ struct Fake {
     /// sets them. A pull request without any answers the snapshot query with
     /// no commit, so the sweep records no checks for it.
     checks: HashMap<i64, Vec<Value>>,
+    /// Pull requests whose `statusCheckRollup` GitHub refuses (FORBIDDEN), as
+    /// for a fine-grained token; the Actions and status reads 404 here too.
+    denied_checks: HashSet<i64>,
     /// GitHub Actions job logs, served behind the redirect GitHub answers
     /// `actions/jobs/{id}/logs` with.
     job_logs: HashMap<i64, String>,
@@ -572,6 +575,34 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
         })
         .into_iter()
         .collect();
+    if fake.denied_checks.contains(&number) {
+        let mut answer = pull_answer(
+            fake,
+            p,
+            number,
+            &head,
+            state,
+            vec![json!({"commit": {"oid": head, "statusCheckRollup": null}})],
+        );
+        answer["errors"] = json!([{
+            "type": "FORBIDDEN",
+            "path": ["repository", "pullRequest", "commits", "nodes", 0, "commit", "statusCheckRollup"],
+            "message": "Resource not accessible by personal access token",
+        }]);
+        return answer;
+    }
+    pull_answer(fake, p, number, &head, state, commits)
+}
+
+/// The snapshot answer for one pull request, with the given head commits.
+fn pull_answer(
+    fake: &Fake,
+    p: &FakePull,
+    number: i64,
+    head: &str,
+    state: &str,
+    commits: Vec<Value>,
+) -> Value {
     json!({"data": {"repository": {"pullRequest": {
         "id": format!("PR_{number}"),
         "number": number,
@@ -586,7 +617,7 @@ fn pull_snapshot(fake: &Fake, body: &Value) -> Value {
         "mergeCommit": fake.merge_shas.get(&number).map(|oid| json!({"oid": oid})),
         "labels": {"nodes": p.labels.iter().map(|l| json!({"name": l})).collect::<Vec<_>>()},
         "commits": {"nodes": commits},
-        "ahead": {"totalCount": if fake.on_base.contains(&head) { 0 } else { 1 }},
+        "ahead": {"totalCount": if fake.on_base.iter().any(|sha| sha == head) { 0 } else { 1 }},
         "mergeStateStatus": fake.merge_states.get(&number).cloned().unwrap_or_else(|| "CLEAN".into()),
         "reviewThreads": {"nodes": fake.review_threads.get(&number).into_iter().flatten().enumerate().map(|(n, (resolved, author))| json!({
             "isResolved": resolved,
@@ -4811,4 +4842,79 @@ async fn a_seat_minted_for_a_session_claims_session_work_and_registers_the_pull_
         .await
         .unwrap();
     assert!(other.is_empty(), "{other:?}");
+}
+
+/// GitHub refusing every read of a watched pull request's checks still moves
+/// its head: the approval given to the old head is dismissed, and the checks
+/// read as unreadable.
+#[tokio::test]
+async fn a_refused_checks_read_at_a_new_head_dismisses_the_old_heads_approval() {
+    let h = harness().await;
+    h.allow(h.a.workspace_id, EgressSurface::Github, REPO).await;
+    open_someone_elses_pull(&h, 91, "feature/refused");
+    h.fake
+        .lock()
+        .unwrap()
+        .checks
+        .insert(91, vec![check_run("lint", Some("SUCCESS"), Some(601))]);
+    let token = write_token(&h, h.a.workspace_id, h.a.member_id).await;
+    let (status, watched) = post_json(
+        &h,
+        &token,
+        &format!("/workspaces/{}/pull-watches", h.a.workspace_id.0),
+        json!({"repo": REPO, "pull_number": 91}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{watched}");
+    let thread = ThreadId(watched["thread_id"].as_str().unwrap().parse().unwrap());
+    change_sweep::sweep_once(&h.state).await;
+    let reviewer = h
+        .state
+        .store
+        .create_member(NewMember {
+            workspace_id: h.a.workspace_id,
+            handle: "reviewer".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .unwrap()
+        .id;
+    h.state
+        .store
+        .submit_review(
+            thread,
+            reviewer,
+            maidan_types::ReviewDecision::Approve,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    let approval = |reviews: Vec<maidan_types::ThreadReview>| {
+        reviews
+            .into_iter()
+            .find(|r| r.reviewer_id == reviewer)
+            .unwrap()
+    };
+    assert!(approval(h.state.store.list_reviews(thread).await.unwrap())
+        .dismissed_at
+        .is_none());
+
+    {
+        let mut f = h.fake.lock().unwrap();
+        let base = f.refs["feature/refused"].clone();
+        let pushed = f.commit_files(&[("README.md", "pushed")], vec![base]);
+        f.refs.insert("feature/refused".into(), pushed);
+        f.denied_checks.insert(91);
+    }
+    change_sweep::sweep_once(&h.state).await;
+    assert!(
+        approval(h.state.store.list_reviews(thread).await.unwrap())
+            .dismissed_at
+            .is_some(),
+        "the approval of the old head no longer stands"
+    );
+    let view = thread_view(&h, &token, thread.0).await;
+    assert_eq!(view["ci"][0]["status"], "unreadable", "{view}");
 }

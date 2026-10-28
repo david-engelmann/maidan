@@ -44,6 +44,9 @@ pub enum CiStatus {
     Success,
     /// A check failed, whether or not the others have finished.
     Failure,
+    /// GitHub refused the token the head's checks, so how they stand is
+    /// unknown. Never finished, so it owes no `checks_done` (#1623).
+    Unreadable,
 }
 
 impl CiStatus {
@@ -52,6 +55,7 @@ impl CiStatus {
             Self::Pending => "pending",
             Self::Success => "success",
             Self::Failure => "failure",
+            Self::Unreadable => "unreadable",
         }
     }
 
@@ -60,6 +64,7 @@ impl CiStatus {
             "pending" => Some(Self::Pending),
             "success" => Some(Self::Success),
             "failure" => Some(Self::Failure),
+            "unreadable" => Some(Self::Unreadable),
             _ => None,
         }
     }
