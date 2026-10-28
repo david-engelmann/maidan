@@ -43,6 +43,15 @@ jobs:
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # main is prod: a release tag deploys only when its commit is on main,
+      # which only a promotion from dev moves.
+      - name: the tag is on main
+        run: |
+          git fetch -q origin main
+          git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main \
+            || { echo "$TAG is not on main; promote it from dev first" >&2; exit 1; }
       - uses: sigstore/cosign-installer@v3
       # The release workflow signs each image keylessly; refuse an image it
       # did not sign, so a re-pointed tag cannot reach production.
@@ -65,7 +74,9 @@ jobs:
             | jq -r '.manifests[] | select(.platform.os=="linux" and .platform.architecture=="amd64") | .digest')
           docker pull "$IMAGE@$digest"
           docker tag "$IMAGE@$digest" "maidan-server:$TAG"
-          npx wrangler containers push "maidan-server:$TAG"
+          # The push reads a Wrangler config, and the dev one names a
+          # Dockerfile build; read the prod one.
+          npx wrangler containers push -c wrangler.prod.jsonc "maidan-server:$TAG"
       - name: deploy
         run: |
           image="registry.cloudflare.com/$CLOUDFLARE_ACCOUNT_ID/maidan-server:$TAG"
