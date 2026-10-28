@@ -12,7 +12,10 @@ fn main() {
     // whose source is otherwise unchanged (our releases are often docs-only).
     println!("cargo:rerun-if-env-changed=MAIDAN_VERSION");
     println!("cargo:rerun-if-env-changed=MAIDAN_SKIP_LANDING_BUILD");
-    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let manifest = match std::env::var("CARGO_MANIFEST_DIR") {
+        Ok(dir) => PathBuf::from(dir),
+        Err(err) => panic!("CARGO_MANIFEST_DIR is not set: {err}"),
+    };
     let web = manifest.join("../../web/landing");
     let dist = manifest.join("static/landing/dist");
     println!("cargo:rerun-if-changed={}", web.join("src").display());
@@ -64,7 +67,9 @@ fn main() {
     if !status.success() {
         panic!("the landing build failed");
     }
-    std::fs::write(&stamp, hash).expect("write landing source hash");
+    if let Err(err) = std::fs::write(&stamp, hash) {
+        panic!("could not write the landing source hash: {err}");
+    }
 }
 
 fn source_hash(web: &Path) -> String {
