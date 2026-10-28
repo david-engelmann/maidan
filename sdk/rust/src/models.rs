@@ -450,6 +450,8 @@ model! {
         owner_id: Option<String>,
         #[serde(default)]
         required_skills: Vec<String>,
+        /// Its task attributes. Absent from an as-of pack.
+        attributes: Option<TaskAttributes>,
         created_at: String,
     }
 }

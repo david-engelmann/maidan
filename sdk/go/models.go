@@ -280,11 +280,13 @@ type ThreadTransition struct {
 
 // ThreadBrief is the stable thread fields. State and the lease are not here.
 type ThreadBrief struct {
-	Title          *string   `json:"title,omitempty"`
-	ParentThreadID *string   `json:"parent_thread_id,omitempty"`
-	OwnerID        *string   `json:"owner_id,omitempty"`
-	RequiredSkills []string  `json:"required_skills,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	Title          *string  `json:"title,omitempty"`
+	ParentThreadID *string  `json:"parent_thread_id,omitempty"`
+	OwnerID        *string  `json:"owner_id,omitempty"`
+	RequiredSkills []string `json:"required_skills,omitempty"`
+	// Attributes are its task attributes. Absent from an as-of pack.
+	Attributes *TaskAttributes `json:"attributes,omitempty"`
+	CreatedAt  time.Time       `json:"created_at"`
 }
 
 type AcceptedDecision struct {

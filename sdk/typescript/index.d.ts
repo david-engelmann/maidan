@@ -346,6 +346,8 @@ export interface ThreadBrief {
   parent_thread_id?: ThreadId | null;
   owner_id?: MemberId | null;
   required_skills?: string[];
+  /** Its task attributes. Absent from an as-of pack. */
+  attributes?: TaskAttributes | null;
   created_at: string;
 }
 

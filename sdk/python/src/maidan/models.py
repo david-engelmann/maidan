@@ -310,6 +310,8 @@ class ThreadBrief(Model):
     parent_thread_id: Optional[str] = None
     owner_id: Optional[str] = None
     required_skills: List[str] = field(default_factory=list)
+    #: Its task attributes. Absent from an as-of pack.
+    attributes: Optional[TaskAttributes] = None
 
 
 @dataclass(kw_only=True)
