@@ -51,13 +51,10 @@ head commit, `--match-head-commit`, and every CodeRabbit comment answered) and,
 before merging, builds the PR on current `main` if another PR merged since its
 CI ran.
 
-| PR | What it does | State (2026-10-28) | Merge after |
-|---|---|---|---|
-| #1757 | SDK interop: unique seed titles, so claim-next finds the seeded thread | Open (MaidanFadin) | — |
-| #1756 | A withheld duplicate says so on its thread read and in MCP | Open (MaidanFadin) | — |
-| #1753 | Close a thread that will not land (Next 37) | Open (MaidanFadin) | — |
-| #1750 | CI watch: a refused checks read records the new head as unread | Open (MaidanFadin) | — |
-| #1698 | Dead egress allowlist entries are marked; non-ASCII outbox rows dead-letter | Open, parked | — |
+Open pull requests are not listed here: the list went stale at every merge
+and failed the `open work` check that deploys wait on. They are on GitHub,
+`gh pr list -R david-engelmann/maidan --base dev`, and what each one fixes is
+in its body and its Next row.
 
 ## Next: ranked
 
