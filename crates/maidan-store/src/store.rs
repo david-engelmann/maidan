@@ -127,9 +127,9 @@ impl ThreadPageQuery {
 /// reference with that relation (its wire name: `twin_of`, `duplicates`,
 /// `supersedes`, ...) to the named thread; a named thread outside the
 /// workspace matches nothing, since only the workspace's own threads are
-/// searched. A relation no reference in the workspace uses is refused, as
-/// is a cursor that is not one of its threads: an empty page there would
-/// hide a typo or answer whether a foreign thread exists.
+/// searched. A cursor that is not a live thread the reader can read in the
+/// workspace is refused, the same for every such id, so it cannot tell a
+/// foreign, unreadable or deleted thread from a made-up one.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ThreadAttributeFilter {
     pub kind: Option<TaskKind>,

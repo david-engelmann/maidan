@@ -309,21 +309,18 @@ async fn assert_attribute_search(store: &dyn Store) {
         Some("ENG-100")
     );
 
-    // A relation nobody in the workspace uses is refused, not answered
-    // with an empty page that hides the typo.
-    let unknown = store
-        .find_threads_for_workspace(
-            ws_a,
-            search(ThreadAttributeFilter {
-                reference: Some(("twinof".into(), t_pi)),
-                ..Default::default()
-            }),
-        )
-        .await;
-    assert!(
-        matches!(unknown, Err(StoreError::InvalidInput(ref m)) if m.contains("twinof")),
-        "an unknown relation is refused: {unknown:?}"
-    );
+    // A relation nobody uses is an empty page, not a refusal: whether a
+    // relation is in use would otherwise leak references the caller can't read.
+    let unused = ids(
+        store,
+        ws_a,
+        search(ThreadAttributeFilter {
+            reference: Some(("twinof".into(), t_pi)),
+            ..Default::default()
+        }),
+    )
+    .await;
+    assert!(unused.is_empty(), "an unused relation is an empty page");
 
     // A cursor naming another workspace's thread, or no thread, is
     // refused alike, so the cursor cannot probe whether a thread exists.
@@ -398,6 +395,31 @@ async fn assert_attribute_search(store: &dyn Store) {
     assert!(
         !found.contains(&dm.thread_id),
         "a reader never finds another pair's DM"
+    );
+    // Nor can alice page from a thread she can't read: another pair's DM
+    // and a private channel she isn't in get the same refusal as a made-up id.
+    let random = ThreadId(uuid::Uuid::now_v7());
+    let mut refusals = Vec::new();
+    for cursor in [dm.thread_id, t_private, random] {
+        let refused = store
+            .find_threads_for_workspace(
+                ws_a,
+                WorkspaceThreadSearch {
+                    after: Some(cursor),
+                    limit: 2,
+                    reader_id: Some(alice),
+                    ..WorkspaceThreadSearch::default()
+                },
+            )
+            .await;
+        match refused {
+            Err(StoreError::InvalidInput(m)) => refusals.push(m),
+            other => panic!("an unreadable cursor is refused: {other:?}"),
+        }
+    }
+    assert!(
+        refusals.iter().all(|m| m == &refusals[2]),
+        "unreadable and made-up cursors read the same: {refusals:?}"
     );
 
     // The filter parser the surfaces share: a typo'd field or value is an

@@ -220,10 +220,9 @@ async fn find_threads_by_attribute_over_the_wire() {
     let (status, found) = find(&base, &a.token, a.ws, &twins).await;
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(ids(&found), vec![session["id"].as_str().unwrap()]);
-    // A relation nobody in the workspace uses is a 400 naming it, not an
-    // empty page that hides the typo. B uses no `twin_of` reference, so its
-    // search for twins of A's thread is refused the same way and learns
-    // nothing about A.
+    // A relation nobody uses is an empty page, not a 400: a refusal would
+    // say whether some reference uses it. B's search for twins of A's thread
+    // is empty too and learns nothing about A.
     let (status, body) = find(
         &base,
         &a.token,
@@ -231,10 +230,11 @@ async fn find_threads_by_attribute_over_the_wire() {
         &format!("ref.duplicates={}", id(&pi)),
     )
     .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(body.to_string().contains("duplicates"), "{body}");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(ids(&body).is_empty(), "{body}");
     let (status, body) = find(&base, &b.token, b.ws, &twins).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(ids(&body).is_empty(), "{body}");
 
     // A cursor naming another workspace's thread is a 400, the same as a
     // cursor naming no thread, so it cannot test whether a thread exists.
