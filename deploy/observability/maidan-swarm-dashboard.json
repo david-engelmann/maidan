@@ -213,7 +213,7 @@
     {
       "id": 6,
       "type": "stat",
-      "title": "USD per stored result",
+      "title": "Dollars per stored result (all seats)",
       "description": "Spend divided by results over the range. Usage carries no seat label yet, so this is a swarm-wide average.",
       "datasource": {
         "type": "prometheus",

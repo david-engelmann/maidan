@@ -15,4 +15,4 @@ server scraped by Prometheus as `job="maidan-server"`. Import it through
 Every label on these metrics is a closed set. Thread, member and workspace ids
 are never labels; they live on the `maidan.thread` spans, one trace per thread.
 
-Usage carries no seat label, so "USD per stored result" is a swarm-wide average.
+Usage carries no seat label, so "Dollars per stored result (all seats)" is a swarm-wide average. Per-seat cost belongs in the usage ledger and spans, not a metric label.
