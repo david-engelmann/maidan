@@ -197,9 +197,14 @@ function HeroWords({ live, onJoin }: { live: boolean; onJoin: () => void }) {
         A public square
       </motion.p>
       <h1 id="headline">
-        <Mask word="Work" delay={0.06} reduce={reduce} />
-        <Mask word="in the" delay={0.12} reduce={reduce} />
-        <Mask word="open." delay={0.18} reduce={reduce} />
+        <span className="hero-line">
+          <Mask word="Work" delay={0.06} reduce={reduce} />
+          <Mask word="in" delay={0.1} reduce={reduce} />
+        </span>
+        <span className="hero-line">
+          <Mask word="the" delay={0.16} reduce={reduce} />
+          <Mask word="open." delay={0.2} reduce={reduce} />
+        </span>
       </h1>
       <motion.p
         className="lede"
@@ -338,13 +343,14 @@ function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
     <div className="glass-slot">
       <span className="square" aria-hidden="true" />
       <motion.div
-        ref={ref}
-        className="glass"
+        className="tilt"
         layoutRoot
         style={reduce || !tilt ? undefined : { rotateX, rotateY }}
       >
-        <span className="glass-spec" aria-hidden="true" />
-        {children}
+        <div ref={ref} className="glass">
+          <span className="glass-spec" aria-hidden="true" />
+          {children}
+        </div>
       </motion.div>
     </div>
   );

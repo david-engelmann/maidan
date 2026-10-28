@@ -178,15 +178,32 @@ function HoldVisual({ progress }: { progress: MotionValue<number> }) {
 
 function ReviewVisual({ progress }: { progress: MotionValue<number> }) {
   const local = useTransform(progress, [0.24, 0.36], [0, 1]);
-  const glide = useTransform(local, [0, 1], [36, 0]);
-  const reviewer = useTransform(local, [0.2, 0.55], [0, 1]);
+  const glide = useTransform(local, [0, 1], [28, 0]);
+  const fromLane = useTransform(local, [0, 0.45], [1, 0.35]);
+  const toLane = useTransform(local, [0.2, 0.7], [0.35, 1]);
+  const cardIn = useTransform(local, [0.35, 0.75], [24, 0]);
+  const cardOpacity = useTransform(local, [0.35, 0.6], [0, 1]);
   const sweep = useTransform(local, [0.62, 0.95], ["-140%", "180%"]);
   return (
     <div className="review-scene">
-      <motion.article className="ticket static is-block" style={{ x: glide }}>
-        <motion.span className="sheen" style={{ x: sweep }} aria-hidden="true" />
+      <div className="ghost-lanes" aria-hidden="true">
+        <motion.span style={{ opacity: fromLane }}>In progress</motion.span>
+        <motion.span style={{ opacity: toLane }}>Review</motion.span>
+      </div>
+      <motion.article className="ticket static" style={{ x: glide }}>
         <span className="ticket-face">
           <span className="ticket-title">Question on the lease</span>
+          <span className="meta">
+            <span className="avatar agent north">N</span>
+            <span className="who-name">North</span>
+            <span className="kind">Agent</span>
+          </span>
+        </span>
+      </motion.article>
+      <motion.article className="ticket static is-block" style={{ x: cardIn, opacity: cardOpacity }}>
+        <motion.span className="sheen" style={{ x: sweep }} aria-hidden="true" />
+        <span className="ticket-face">
+          <span className="ticket-title">Approve the migration</span>
           <span className="meta">
             <span className="avatar human ada">A</span>
             <span className="who-name">Ada</span>
@@ -195,10 +212,6 @@ function ReviewVisual({ progress }: { progress: MotionValue<number> }) {
           </span>
         </span>
       </motion.article>
-      <motion.p className="reviewer" style={{ opacity: reviewer }}>
-        <span className="avatar human ada">A</span>
-        Ada is looking
-      </motion.p>
     </div>
   );
 }
@@ -237,18 +250,23 @@ function Receipt({
 }
 
 const codeLines = [
+  { text: "MCP  tools/call", kind: "kicker-line" },
+  { text: "{", kind: "fn" },
+  { text: '  "name": "claim_next_thread",', kind: "str" },
+  { text: '  "arguments": { "channel_id": "release" }', kind: "str" },
+  { text: "}", kind: "fn" },
+  { text: "Python", kind: "kicker-line" },
   { text: "claim = client.claim_next_thread(channel_id)", kind: "fn" },
   { text: "if claim:", kind: "kw" },
   { text: '    client.messages.post(claim.id, "on it")', kind: "str" },
+  { text: "claimed: Rotate session keys", kind: "result" },
 ];
 
 function CodeVisual({ progress }: { progress: MotionValue<number> }) {
-  const local = useTransform(progress, [0.52, 0.64], [0, 1]);
+  const local = useTransform(progress, [0.52, 0.66], [0, 1]);
   return (
-    <figure className="snippet">
-      <figcaption>
-        Python SDK. MCP exposes <span className="mono">claim_next_thread</span> the same way.
-      </figcaption>
+    <figure className="snippet hero-code">
+      <figcaption>The same claim, two ways.</figcaption>
       <pre tabIndex={0}>
         <code>
           {codeLines.map((line, index) => (
