@@ -1,0 +1,22 @@
+{
+  "$id": "maidan.event.approval_dismissed/1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Wire envelope for `approval_dismissed`. `$type` is the contract: new fields optional, no renames, unknown ignored, breaking = new type.",
+  "properties": {
+    "$type": {
+      "const": "maidan.event.approval_dismissed/1",
+      "type": "string"
+    },
+    "kind": {
+      "const": "approval_dismissed",
+      "type": "string"
+    }
+  },
+  "required": [
+    "$type",
+    "kind"
+  ],
+  "title": "maidan.event.approval_dismissed/1",
+  "type": "object"
+}

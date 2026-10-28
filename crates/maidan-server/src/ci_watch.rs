@@ -189,7 +189,7 @@ pub async fn record_checks(
         .unwrap_or_default();
     let posted = match state
         .store
-        .record_pull_ci(NewPullCi {
+        .record_pull_ci_with_events(NewPullCi {
             workspace_id,
             repo: repo.to_string(),
             pull_number,
@@ -214,7 +214,12 @@ pub async fn record_checks(
         })
         .await
     {
-        Ok(posted) => posted,
+        Ok((posted, dismissed)) => {
+            for event in dismissed {
+                crate::routes::publish_stored(state, event).await;
+            }
+            posted
+        }
         Err(err) => {
             tracing::warn!(repo, pull_number, error = %err, "ci watch: checks not recorded");
             return 0;

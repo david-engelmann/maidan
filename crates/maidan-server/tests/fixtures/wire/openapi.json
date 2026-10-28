@@ -2959,6 +2959,7 @@
           "thread_handoff",
           "result_delivery_failed",
           "review_submitted",
+          "approval_dismissed",
           "wait_timed_out",
           "schedule_skipped",
           "thread_spawn_denied",
