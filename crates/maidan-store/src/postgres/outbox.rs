@@ -56,13 +56,13 @@ pub async fn claim_pending(
              FROM maidan_outbox o
              WHERE {RELAYABLE}
                AND (o.claimed_at IS NULL
-                    OR o.claimed_at < NOW() - make_interval(secs => $2::double precision))
+                    OR o.claimed_at < $3 - make_interval(secs => $2::double precision))
              ORDER BY o.id ASC
              LIMIT $1
              FOR UPDATE SKIP LOCKED
          ), claimed AS (
              UPDATE maidan_outbox o
-             SET claimed_at = NOW()
+             SET claimed_at = $3
              FROM candidate c
              WHERE o.id = c.id
              RETURNING o.id, o.log_id, o.attempts
@@ -76,6 +76,7 @@ pub async fn claim_pending(
     ))
     .bind(limit)
     .bind(lease_secs as f64)
+    .bind(chrono::Utc::now())
     .fetch_all(pool)
     .await?;
     crate::postgres::events::open_rows(Some(keys), &rows).await?;
