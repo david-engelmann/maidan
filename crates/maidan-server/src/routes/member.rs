@@ -111,6 +111,81 @@ fn is_blank_or_separator(c: char) -> bool {
     )
 }
 
+const ZWNJ: char = '\u{200C}';
+const ZWJ: char = '\u{200D}';
+const VS16: char = '\u{FE0F}';
+
+/// The Unicode block of a letter in a script whose names need ZWNJ/ZWJ
+/// between letters (Arabic-script, Hebrew, Syriac, the Indic and
+/// South-East Asian abugidas), as the block's first code point. Latin and
+/// other scripts are `None`: a joiner there is only a way to hide text.
+fn joining_script(c: char) -> Option<u32> {
+    let cp = c as u32;
+    match cp {
+        0x0590..=0x05FF => Some(0x0590),
+        0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFE => {
+            Some(0x0600)
+        }
+        0x0700..=0x074F => Some(0x0700),
+        0x0900..=0x0DFF => Some(cp & !0x7F),
+        0x1000..=0x109F => Some(0x1000),
+        0x1780..=0x17FF => Some(0x1780),
+        _ => None,
+    }
+    // Format characters inside those blocks (e.g. U+0600, U+061C) are not
+    // letters a joiner may sit beside.
+    .filter(|_| !is_format_char(c))
+}
+
+/// An emoji base that VS16 may follow and ZWJ may join.
+fn is_emoji_base(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00A9}'
+            | '\u{00AE}'
+            | '\u{203C}'
+            | '\u{2049}'
+            | '\u{2122}'
+            | '\u{2139}'
+            | '\u{2194}'..='\u{21FF}'
+            | '\u{2300}'..='\u{23FF}'
+            | '\u{25A0}'..='\u{27BF}'
+            | '\u{2B00}'..='\u{2BFF}'
+            | '\u{3030}'
+            | '\u{303D}'
+            | '\u{3297}'
+            | '\u{3299}'
+            | '\u{1F000}'..='\u{1FAFF}'
+    )
+}
+
+/// Whether the joiner or VS16 at `at` is a legitimate one (#1576): ZWNJ/ZWJ
+/// between two characters of the same joining script, ZWJ between emoji
+/// (the left one optionally carrying VS16), VS16 right after an emoji base.
+/// Never leading, trailing or doubled, since each neighbour must be a base.
+fn is_allowed_joiner(chars: &[char], at: usize) -> bool {
+    let prev = at.checked_sub(1).and_then(|i| chars.get(i)).copied();
+    let next = chars.get(at + 1).copied();
+    match chars.get(at).copied() {
+        Some(VS16) => prev.is_some_and(is_emoji_base),
+        Some(joiner @ (ZWNJ | ZWJ)) => {
+            let (Some(prev), Some(next)) = (prev, next) else {
+                return false;
+            };
+            let same_script = joining_script(prev).is_some_and(|s| joining_script(next) == Some(s));
+            let emoji_left = is_emoji_base(prev)
+                || (prev == VS16
+                    && at
+                        .checked_sub(2)
+                        .and_then(|i| chars.get(i))
+                        .copied()
+                        .is_some_and(is_emoji_base));
+            same_script || (joiner == ZWJ && emoji_left && is_emoji_base(next))
+        }
+        _ => false,
+    }
+}
+
 /// A caller-supplied display name, checked the same way on every path that
 /// sets one: trimmed; blank means no name; over
 /// [`DISPLAY_NAME_MAX_CHARS`] characters, or carrying a control character
@@ -126,10 +201,12 @@ pub(crate) fn normalize_display_name(raw: Option<&str>) -> Result<Option<String>
             "display_name must be at most {DISPLAY_NAME_MAX_CHARS} characters"
         )));
     }
-    if name
-        .chars()
-        .any(|c| c.is_control() || is_format_char(c) || is_blank_or_separator(c))
-    {
+    let chars: Vec<char> = name.chars().collect();
+    let refused = chars.iter().enumerate().any(|(at, &c)| {
+        (c.is_control() || is_format_char(c) || is_blank_or_separator(c))
+            && !is_allowed_joiner(&chars, at)
+    });
+    if refused {
         return Err(ApiError::BadRequest(
             "display_name may not contain control, format, blank-rendering or line-separator characters".into(),
         ));
@@ -1081,6 +1158,43 @@ mod tests {
             assert!(normalize_display_name(Some(bad)).is_err(), "{bad:?}");
         }
         assert!(normalize_display_name(Some(&"x".repeat(101))).is_err());
+        for bad in [
+            "a\u{200D}b",
+            "a\u{200C}b",
+            "\u{200C}\u{0645}",
+            "\u{0645}\u{200C}",
+            "\u{0645}\u{200C}\u{200C}\u{06CC}",
+            "\u{0645}\u{200C}a",
+            "\u{0915}\u{200D}\u{0645}",
+            "\u{FE0F}",
+            "\u{1F600}\u{FE0F}\u{FE0F}",
+            "\u{1F468}\u{200D}",
+            "\u{1F468}\u{200C}\u{1F469}",
+            "\u{0600}\u{200C}\u{0645}",
+        ] {
+            assert!(normalize_display_name(Some(bad)).is_err(), "{bad:?}");
+        }
         assert!(normalize_display_name(Some(&"x".repeat(100))).is_ok());
+    }
+
+    #[test]
+    fn joiners_inside_same_script_words_and_emoji_sequences_are_kept() {
+        for good in [
+            // Persian "می‌خواهم": ZWNJ between two Arabic-script letters.
+            "\u{0645}\u{06CC}\u{200C}\u{062E}\u{0648}\u{0627}\u{0647}\u{0645}",
+            // Devanagari half-form: KA, VIRAMA, ZWJ, SSA.
+            "\u{0915}\u{094D}\u{200D}\u{0937}",
+            // Family emoji: man ZWJ woman ZWJ girl.
+            "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}",
+            // Heart on fire: heart VS16 ZWJ fire.
+            "\u{2764}\u{FE0F}\u{200D}\u{1F525}",
+            "Sam \u{2764}\u{FE0F}",
+        ] {
+            assert_eq!(
+                normalize_display_name(Some(good)).unwrap().as_deref(),
+                Some(good),
+                "{good:?}"
+            );
+        }
     }
 }
