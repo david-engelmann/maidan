@@ -410,3 +410,80 @@ async fn a_withheld_duplicate_names_why_in_the_create_answer_the_thread_read_and
     let (_, read) = get_json(&base, &home.token, &format!("/threads/{duplicate_id}")).await;
     assert!(read.get("withheld").is_none(), "{read}");
 }
+
+async fn mcp_thread(base: &str, token: &str, thread: &str) -> Value {
+    let read: Value = reqwest::Client::new()
+        .post(format!("{base}/mcp"))
+        .bearer_auth(token)
+        .json(&json!({
+            "jsonrpc": "2.0", "id": 1, "method": "resources/read",
+            "params": { "uri": format!("maidan://threads/{thread}") }
+        }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let text = read["result"]["contents"][0]["text"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{read}"));
+    serde_json::from_str(text).unwrap()
+}
+
+/// A duplicate withheld at creation carries a notice on its own thread, and
+/// the MCP thread read names why it is withheld just as the REST read does,
+/// while the original gets neither (#1681).
+#[tokio::test]
+async fn a_withheld_duplicate_posts_a_thread_notice_and_says_why_on_the_mcp_read() {
+    let (base, store) = spawn().await;
+    let home = room(store.as_ref(), "notice-home").await;
+    let brief = json!({ "title": "Replay review 2" });
+    let (_, original) = create_thread(&base, &home, brief.clone()).await;
+    let (status, duplicate) = create_thread(&base, &home, brief).await;
+    assert_eq!(status, StatusCode::CREATED, "{duplicate}");
+    let original_id = original["id"].as_str().unwrap().to_string();
+    let duplicate_id = duplicate["id"].as_str().unwrap().to_string();
+
+    let (status, messages) = get_json(
+        &base,
+        &home.token,
+        &format!("/threads/{duplicate_id}/messages"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{messages}");
+    let notices: Vec<&Value> = messages
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|m| m["metadata"]["notice"] == json!("withheld"))
+        .collect();
+    assert_eq!(notices.len(), 1, "{messages}");
+    assert_eq!(notices[0]["metadata"]["duplicate_of"], json!(original_id));
+    assert!(
+        notices[0]["body"].as_str().unwrap().contains(&original_id),
+        "{messages}"
+    );
+    let (_, messages) = get_json(
+        &base,
+        &home.token,
+        &format!("/threads/{original_id}/messages"),
+    )
+    .await;
+    assert!(
+        !messages
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["metadata"]["notice"] == json!("withheld")),
+        "{messages}"
+    );
+
+    let via_mcp = mcp_thread(&base, &home.token, &duplicate_id).await;
+    assert_eq!(
+        via_mcp["thread"]["withheld"],
+        json!({ "reason": "duplicate_of", "thread": original_id })
+    );
+    let via_mcp = mcp_thread(&base, &home.token, &original_id).await;
+    assert!(via_mcp["thread"].get("withheld").is_none(), "{via_mcp}");
+}
