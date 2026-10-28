@@ -3,12 +3,12 @@
    public landing: warm ink, luminous mint, glass panels. */
 :root {
   color-scheme: dark;
-  --bg: #07080b;
-  --ink: #f4f1ea;
-  --muted: #b1ab9f;
-  --faint: #8d877c;
-  --line: rgba(244, 241, 234, 0.14);
-  --mint: #b6ffd6;
+  --bg: #05060a;
+  --ink: #f6f7f8;
+  --muted: rgba(246, 247, 248, 0.74);
+  --faint: rgba(246, 247, 248, 0.5);
+  --line: rgba(255, 255, 255, 0.14);
+  --mint: #b9ffe4;
   --danger: #ffb4b4;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --safe-top: max(0.7rem, env(safe-area-inset-top));
@@ -27,7 +27,9 @@ body {
   line-height: 1.65;
   color: var(--ink);
   background:
-    radial-gradient(80% 40% at 100% -10%, rgba(182, 255, 214, 0.12), transparent 50%),
+    radial-gradient(70% 45% at 0% -10%, rgba(120, 255, 214, 0.22), transparent 55%),
+    radial-gradient(60% 40% at 100% 0%, rgba(90, 170, 255, 0.2), transparent 50%),
+    radial-gradient(50% 40% at 70% 100%, rgba(160, 120, 255, 0.16), transparent 55%),
     var(--bg);
   -webkit-font-smoothing: antialiased;
 }
@@ -64,9 +66,10 @@ body {
   max-width: none;
   padding-top: calc(var(--safe-top) + 0.35rem);
   padding-bottom: 0.75rem;
-  background: rgba(7, 8, 11, 0.62);
-  backdrop-filter: blur(18px) saturate(1.5);
-  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(8, 10, 16, 0.55));
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.16);
 }
 .brand {
   display: inline-flex;
@@ -93,7 +96,7 @@ h1 {
   margin: 0;
   font-size: clamp(2.3rem, 8vw, 3.3rem);
   line-height: 1.02;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.055em;
   font-weight: 560;
 }
 h2 {
@@ -112,8 +115,9 @@ table {
   border-collapse: collapse;
   margin: 1rem 0 0.4rem;
   font-size: 0.95rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
   border: 1px solid var(--line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
   border-radius: 18px;
   overflow: hidden;
 }
@@ -151,7 +155,7 @@ th {
   thead { display: none; }
   table { background: transparent; border: 0; border-radius: 0; }
   tr {
-    background: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
     border: 1px solid var(--line);
     border-radius: 16px;
     padding: 0.75rem 0.9rem;
