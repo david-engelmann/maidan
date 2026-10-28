@@ -294,8 +294,9 @@ pub(super) async fn reserve_in_tx(
             provider, service_tier, batch, harness, harness_version,
             cache_key, cache_miss_reason, pack_sha256,
             standard_input_price, standard_output_price, standard_cache_read_price,
-            standard_cache_write_5m_price, standard_cache_write_1h_price, effort
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+            standard_cache_write_5m_price, standard_cache_write_1h_price, effort,
+            accepted_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
          ON CONFLICT (usage_report_id) DO NOTHING",
     )
     .bind(new.usage_report_id)
@@ -330,6 +331,10 @@ pub(super) async fn reserve_in_tx(
     .bind(standard.map(|p| p.cache_write_5m_usd_micros_per_million))
     .bind(standard.map(|p| p.cache_write_1h_usd_micros_per_million))
     .bind(new.evidence.effort.as_deref())
+    // The app clock, not the column's `now()` default: claim-next's warm TTL
+    // compares this against an app-computed cutoff, so a database clock that
+    // drifts from the app's would shift the window (#1586).
+    .bind(chrono::Utc::now())
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() == 1)

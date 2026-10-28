@@ -101,11 +101,14 @@ pub async fn is_allowed(
 }
 
 fn row_to_target(row: &sqlx::sqlite::SqliteRow) -> AllowedEgressTarget {
+    let surface: String = row.get("surface");
+    let selector: String = row.get("selector");
     AllowedEgressTarget {
         id: EgressTargetId(row.get("id")),
         workspace_id: WorkspaceId(row.get("workspace_id")),
-        surface: row.get("surface"),
-        selector: row.get("selector"),
+        dead: AllowedEgressTarget::dead_reason(&surface, &selector),
+        surface,
+        selector,
         created_at: row.get("created_at"),
     }
 }

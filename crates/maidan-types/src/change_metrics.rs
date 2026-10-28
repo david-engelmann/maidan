@@ -1098,7 +1098,12 @@ fn numbers(tasks: &[&TaskMetrics], round_limit: i64, as_of: DateTime<Utc>) -> Sl
             let finished: Vec<crate::pull_ci::CiStatus> = tasks
                 .iter()
                 .filter_map(|t| t.first_delivery_ci)
-                .filter(|status| *status != crate::pull_ci::CiStatus::Pending)
+                .filter(|status| {
+                    !matches!(
+                        status,
+                        crate::pull_ci::CiStatus::Pending | crate::pull_ci::CiStatus::Unreadable
+                    )
+                })
                 .collect();
             let passed = finished
                 .iter()
@@ -1347,9 +1352,17 @@ mod tests {
         pending.pull_number = 9;
         pending.thread_id = ThreadId(uuid::Uuid::from_u128(3));
         pending.first_delivery_ci = Some(crate::pull_ci::CiStatus::Pending);
+        let mut unread = pull(vec![round(1, "ddd", 10, Some(0))]);
+        unread.pull_number = 10;
+        unread.thread_id = ThreadId(uuid::Uuid::from_u128(4));
+        unread.first_delivery_ci = Some(crate::pull_ci::CiStatus::Unreadable);
         let delivered = quick.rounds[0].delivered_at;
 
-        let m = swarm_metrics(vec![quick, red, pending], FlagLimits::default(), at(2_000));
+        let m = swarm_metrics(
+            vec![quick, red, pending, unread],
+            FlagLimits::default(),
+            at(2_000),
+        );
         let first = &m.tasks[0];
         assert_eq!(
             first.claim_to_first_delivery_secs,
@@ -1370,9 +1383,9 @@ mod tests {
         assert_eq!(
             totals.first_ci_pass_rate,
             Some(0.5),
-            "pending heads are left out"
+            "pending and unreadable heads are left out"
         );
-        assert_eq!(totals.mean_sent_back, 1.0 / 3.0);
+        assert_eq!(totals.mean_sent_back, 1.0 / 4.0);
         assert_eq!(totals.claim_lapses, 1);
         assert_eq!(totals.deliveries_skipped, 2);
         assert_eq!(totals.median_review_wait_secs, Some(600));

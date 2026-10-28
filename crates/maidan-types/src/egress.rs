@@ -422,6 +422,25 @@ pub struct AllowedEgressTarget {
     pub surface: String,
     pub selector: String,
     pub created_at: DateTime<Utc>,
+    /// Why this entry can no longer authorize anything, when it can't: a row
+    /// written before a rule tightened (a non-ASCII branch, a ref spelling) or
+    /// by a newer build stays listable so the operator can revoke it, and this
+    /// says it is dead. Absent on a live entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dead: Option<String>,
+}
+
+impl AllowedEgressTarget {
+    /// Why a stored `(surface, selector)` pair can never match a delivery,
+    /// judged by the rules a new blessing must pass. `None` when it is live.
+    pub fn dead_reason(surface: &str, selector: &str) -> Option<String> {
+        let Some(surface) = EgressSurface::parse(surface) else {
+            return Some("this build cannot deliver to this surface".into());
+        };
+        validate_allowlist_selector(surface, selector)
+            .err()
+            .map(str::to_owned)
+    }
 }
 
 /// A destination to bless. Typed on the way in — see [`AllowedEgressTarget`].

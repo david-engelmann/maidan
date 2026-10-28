@@ -51,13 +51,10 @@ head commit, `--match-head-commit`, and every CodeRabbit comment answered) and,
 before merging, builds the PR on current `main` if another PR merged since its
 CI ran.
 
-| PR | What it does | State (2026-10-27) | Merge after |
-|---|---|---|---|
-| #1634 | The change sweep reads CI from Actions and commit statuses when the token cannot read check runs (#1623) | Open, a draft: the red-team FIX is answered, re-pass due | — |
-| #1635 | A review names the family that wrote its change, and no seat of that family claims it | Open: the red-team FIX is answered, re-pass due | — |
-| #1700 | The Postgres session write locks the SCIM row before the member row (#1670) | Open | — |
-| #1705 | Sign-up start takes the Turnstile token in a POST body (#1632) | Draft, `lint` and `integration` red | — |
-| #1698 | Dead egress allowlist entries are marked; non-ASCII outbox rows dead-letter | Open, green, parked | — |
+Open pull requests are not listed here: the list went stale at every merge
+and failed the `open work` check that deploys wait on. They are on GitHub,
+`gh pr list -R david-engelmann/maidan --base dev`, and what each one fixes is
+in its body and its Next row.
 
 ## Next: ranked
 

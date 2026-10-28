@@ -98,7 +98,57 @@ pub async fn create_thread(
         }
     };
     publish_stored(&state, stored).await;
+    if let (Some(withheld), Some(author_id)) = (t.withheld.as_ref(), actor) {
+        record_withheld_notice(&state, author_id, t.id, withheld).await;
+    }
     Ok((StatusCode::CREATED, Json(t)))
+}
+
+/// A task withheld as a duplicate at creation says so on the thread too, so
+/// whoever opens it later reads why it is never handed out (#1681). Every
+/// reader of the thread sees this message, so it never names the original:
+/// that is judged per viewer, and an allowed viewer reads it from
+/// `withheld.thread` on the thread itself. Posted as the producer, after the
+/// creation event. Best-effort: the thread is committed and the create answer
+/// already carries the reason.
+async fn record_withheld_notice(
+    state: &AppState,
+    author_id: MemberId,
+    thread_id: ThreadId,
+    withheld: &ThreadWithheld,
+) {
+    let body = format!(
+        "Withheld from claims: this task has the same fingerprint as an earlier task that is still open or in review, so the work goes there. Clear the link (DELETE /threads/{}/fingerprint/duplicate-of) if this one is meant to repeat.",
+        thread_id.0
+    );
+    match state
+        .store
+        .post_message_with_event(
+            NewMessage {
+                thread_id,
+                author_id,
+                body,
+                metadata: json!({
+                    "notice": "withheld",
+                    "reason": withheld.reason,
+                }),
+                content: None,
+            },
+            None,
+        )
+        .await
+    {
+        Ok((message, stored)) => {
+            publish_stored(state, stored).await;
+            let uris =
+                maidan_mcp::resource_updates::uris_for_message(state.store.as_ref(), message.id)
+                    .await;
+            state.mcp.publish_resource_uris(uris).await;
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, %thread_id, "withheld notice was not posted on the thread");
+        }
+    }
 }
 
 pub async fn list_threads(

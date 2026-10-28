@@ -377,6 +377,13 @@
             "format": "date-time",
             "type": "string"
           },
+          "dead": {
+            "description": "Why this entry can no longer authorize anything, when it can't: a row\nwritten before a rule tightened (a non-ASCII branch, a ref spelling) or\nby a newer build stays listable so the operator can revoke it, and this\nsays it is dead. Absent on a live entry.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "$ref": "#/components/schemas/EgressTargetId"
           },
@@ -1513,7 +1520,8 @@
         "enum": [
           "pending",
           "success",
-          "failure"
+          "failure",
+          "unreadable"
         ],
         "type": "string"
       },

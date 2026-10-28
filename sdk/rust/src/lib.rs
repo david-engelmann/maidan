@@ -19,7 +19,8 @@
 //! let client = Client::new("http://127.0.0.1:8080", "");
 //! if let Some(claim) = client.claim_next_thread("channel-id", None)? {
 //!     client.messages().post(&claim.id, "on it")?;
-//!     client.threads().set_result(&claim.id, json!({"ok": true}))?;
+//!     let lease = claim.claim_lease_id.clone().unwrap_or_default();
+//!     client.threads().set_result(&claim.id, json!({"ok": true}), &lease)?;
 //! }
 //! match client.threads().get("no-such-thread") {
 //!     Err(MaidanError::NotFound(problem)) => eprintln!("gone: {:?}", problem.detail),
@@ -726,11 +727,17 @@ impl Threads<'_> {
             Some(&json!({ "action": action })),
         )
     }
-    pub fn set_result(&self, id: &str, result: Value) -> Result<ThreadResult> {
+    /// Write the result under your live claim: pass the claim's `claim_lease_id`.
+    pub fn set_result(
+        &self,
+        id: &str,
+        result: Value,
+        claim_lease_id: &str,
+    ) -> Result<ThreadResult> {
         self.c.send_as(
             "PUT",
             &format!("/threads/{id}/result"),
-            Some(&json!({ "result": result })),
+            Some(&json!({ "result": result, "claim_lease_id": claim_lease_id })),
         )
     }
     pub fn get_result(&self, id: &str) -> Result<ThreadResult> {
