@@ -17,7 +17,7 @@ reason = "tokio-tar via testcontainers build context upload; trusted CI path onl
 
 [[advisories.ignore]]
 id = "RUSTSEC-2026-0387"
-reason = "crypto-bigint 0.5.5, which has no fixed release, via p256/p384 0.13: openidconnect verifies ID-token signatures with public keys (no secret to leak), and web_push's VAPID signing and ECDH run server-side with no caller-observable timing; web_push moves to p256 0.14 (crypto-bigint 0.7.7, fixed) when openidconnect does (Open Work, small fixes)"
+reason = "crypto-bigint 0.5.5 (no fixed 0.5.x release; first fix is 0.7.6) via p256/p384 0.13, now reached only through openidconnect, which verifies ID-token signatures with public keys (no secret to leak). web_push moved to p256 0.14 (crypto-bigint 0.7.x, fixed) on its own, since its VAPID signing uses a long-lived server key where a timing leak would matter. Drop this ignore when openidconnect moves off p256/p384 0.13."
 
 [[advisories.ignore]]
 id = "RUSTSEC-2023-0071"
