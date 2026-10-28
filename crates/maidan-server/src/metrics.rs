@@ -307,11 +307,11 @@ pub fn init() {
         );
         describe_counter!(
             "maidan_usage_tokens_total",
-            "Accepted usage tokens by tier (input, output, cache_read, cache_write_5m, cache_write_1h)"
+            "Accepted usage tokens by tier (input, output, cache_read, cache_write_5m, cache_write_1h) and provider family (anthropic, openai, google, xai, other)"
         );
         describe_counter!(
             "maidan_usage_usd_micros_total",
-            "Accepted usage charges in micro-USD"
+            "Accepted usage charges in micro-USD, by provider family (anthropic, openai, google, xai, other)"
         );
         describe_counter!(
             "maidan_usage_uncached_usd_micros_total",
