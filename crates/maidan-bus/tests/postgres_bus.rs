@@ -363,3 +363,72 @@ async fn events_already_in_the_log_at_connect_are_not_replayed_by_the_first_noti
         "no back-fill ran"
     );
 }
+
+#[tokio::test]
+async fn a_quiet_listener_recovers_its_health_after_its_connection_drops() {
+    let Some((container, admin)) = postgres_pool().await else {
+        return;
+    };
+    // The bus logs in as its own role, so the test can refuse its reconnect:
+    // sqlx reconnects a dropped LISTEN transparently, and the listener only
+    // errors (and reads as degraded) when that reconnect fails, as it does
+    // while a hosted database is briefly unreachable.
+    for statement in [
+        "CREATE ROLE bus_probe LOGIN PASSWORD 'bus_probe'",
+        "GRANT SELECT ON ALL TABLES IN SCHEMA public TO bus_probe",
+    ] {
+        sqlx::query(statement).execute(&admin).await.expect("role");
+    }
+    let host = container.get_host().await.expect("container host");
+    let port = container
+        .get_host_port_ipv4(5432)
+        .await
+        .expect("container port");
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_secs(2))
+        .connect(&format!(
+            "postgres://bus_probe:bus_probe@{host}:{port}/postgres"
+        ))
+        .await
+        .expect("connect as the bus role");
+    let bus = PostgresBus::connect(pool, maidan_store::test_support::dev_keys())
+        .await
+        .expect("bus");
+    let health = bus.listener_health();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    sqlx::query("ALTER ROLE bus_probe NOLOGIN")
+        .execute(&admin)
+        .await
+        .expect("refuse logins");
+    sqlx::query(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = 'bus_probe'",
+    )
+    .execute(&admin)
+    .await
+    .expect("terminate");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    while !health.is_degraded() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the failed reconnect was noticed"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // The database is back, and nothing is published: only the listener's
+    // own probe can show that it reconnected.
+    sqlx::query("ALTER ROLE bus_probe LOGIN")
+        .execute(&admin)
+        .await
+        .expect("allow logins");
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    while health.check().is_err() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "a quiet listener stayed degraded after the database came back"
+        );
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}

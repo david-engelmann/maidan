@@ -35,6 +35,15 @@ use crate::stream::EventStream;
 use crate::traits::EventBus;
 
 const CHANNEL: &str = "maidan_events";
+
+/// The payload of the listener's own probe NOTIFY. A listener only learns it
+/// is reconnected when a notification arrives, so on a quiet instance a
+/// dropped connection would read as degraded until the next publish; while
+/// degraded it notifies itself this payload to prove the path end to end.
+const LISTENER_PROBE: &str = "maidan:listener-probe";
+
+/// How often a degraded listener sends itself a probe.
+const PROBE_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
 const PAYLOAD_LIMIT: usize = 7990;
 const NOTIFY_POINTER_SCHEMA: &str = "log_id_v1";
 
@@ -117,6 +126,8 @@ impl PostgresBus {
             listener.listen(CHANNEL).await?;
 
             let health = listener_health.clone();
+            let probe_health = listener_health.clone();
+            let probe_pool = listener_pool.clone();
             let log = PgEventLog {
                 pool: listener_pool,
                 keys: options.content_keys.clone(),
@@ -135,6 +146,7 @@ impl PostgresBus {
                                     floor.on_pointer(log_id).await
                                 }
                                 Ok(NotifyOutcome::Envelope(envelope)) => floor.publish(*envelope),
+                                Ok(NotifyOutcome::Probe) => {}
                                 Err(err) => {
                                     tracing::warn!(
                                         error = %err,
@@ -152,6 +164,22 @@ impl PostgresBus {
                             // above the high-water before resuming.
                             floor.on_reconnect().await;
                         }
+                    }
+                }
+            });
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(PROBE_EVERY).await;
+                    if !probe_health.is_degraded() {
+                        continue;
+                    }
+                    if let Err(e) = sqlx::query("SELECT pg_notify($1, $2)")
+                        .bind(CHANNEL)
+                        .bind(LISTENER_PROBE)
+                        .execute(&probe_pool)
+                        .await
+                    {
+                        tracing::warn!(error = %e, "pg listener probe failed");
                     }
                 }
             });
@@ -200,9 +228,13 @@ impl PostgresBus {
 enum NotifyOutcome {
     Pointer(i64),
     Envelope(Box<BusEnvelope>),
+    Probe,
 }
 
 fn decode_notify_payload(payload: &str, stats: &HydrateStats) -> Result<NotifyOutcome, BusError> {
+    if payload == LISTENER_PROBE {
+        return Ok(NotifyOutcome::Probe);
+    }
     if let Ok(pointer) = serde_json::from_str::<NotifyPointerPayload>(payload)
         && pointer.is_pointer()
     {
