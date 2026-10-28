@@ -27,6 +27,7 @@ const NO_CLIENT_ERROR: &[(&str, &str)] = &[
 const REDIRECT_ONLY: &[(&str, &str)] = &[
     ("get", "/auth/oidc/login"),
     ("get", "/auth/oidc/signup"),
+    ("post", "/auth/oidc/signup"),
     ("get", "/auth/oidc/callback"),
     ("post", "/auth/logout"),
     ("get", "/oauth/authorize"),

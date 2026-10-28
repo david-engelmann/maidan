@@ -949,6 +949,33 @@ fn waiter_schema_matches(obj: &serde_json::Map<String, Value>) -> bool {
     }
 }
 
+/// Why a result that claims to be a [`WAITER_RESULT_SCHEMA`] envelope can
+/// never be routed, or `None` when it is routable or not such an envelope.
+/// [`parse_waiter_result`] drops an envelope without a string `result_kind`
+/// and `status`, so storing one would leave a result nobody delivers and
+/// nobody is told about; the write paths refuse it with this reason instead.
+pub fn unroutable_waiter_result(value: &Value) -> Option<String> {
+    let obj = value.as_object()?;
+    if !waiter_schema_matches(obj) {
+        return None;
+    }
+    let missing: Vec<&str> = ["result_kind", "status"]
+        .into_iter()
+        .filter(|key| obj.get(*key).and_then(Value::as_str).is_none())
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "a {WAITER_RESULT_SCHEMA} result needs a string {}; without it the result is never delivered",
+        missing
+            .iter()
+            .map(|k| format!("`{k}`"))
+            .collect::<Vec<_>>()
+            .join(" and ")
+    ))
+}
+
 /// Read the routable fields out of a producer's result.
 ///
 /// `None` when this is not an envelope we recognize — a missing or unexpected
@@ -2171,5 +2198,34 @@ mod tests {
         ] {
             assert!(MergeQueueLabels::parse(bad).is_err(), "{bad}");
         }
+    }
+}
+
+#[cfg(test)]
+mod unroutable_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn an_envelope_without_result_kind_or_status_is_unroutable_and_says_which() {
+        let both = unroutable_waiter_result(&json!({ "schema": WAITER_RESULT_SCHEMA })).unwrap();
+        assert!(both.contains("`result_kind` and `status`"), "{both}");
+        let kind =
+            unroutable_waiter_result(&json!({ "schema": WAITER_RESULT_SCHEMA, "status": "done" }))
+                .unwrap();
+        assert!(
+            kind.contains("`result_kind`") && !kind.contains("`status`"),
+            "{kind}"
+        );
+    }
+
+    #[test]
+    fn a_routable_envelope_or_any_other_result_is_not_flagged() {
+        let ok = json!({ "schema": WAITER_RESULT_SCHEMA, "result_kind": "k", "status": "done" });
+        assert!(unroutable_waiter_result(&ok).is_none());
+        assert!(parse_waiter_result(&ok).is_some());
+        assert!(unroutable_waiter_result(&json!({ "anything": 1 })).is_none());
+        assert!(unroutable_waiter_result(&json!("text")).is_none());
+        assert!(unroutable_waiter_result(&json!({ "schema": "maidan.waiter.result/2" })).is_none());
     }
 }

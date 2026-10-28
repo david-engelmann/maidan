@@ -32,6 +32,7 @@ fn thread(state: ThreadState, tombstoned: bool, age_secs: i64) -> Thread {
         human_wait: None,
         notices: Vec::new(),
         plan_state: None,
+        withheld: None,
         ci: Vec::new(),
         created_by: None,
     }

@@ -120,10 +120,138 @@ async fn run_suite(store: &dyn Store) {
     }
 }
 
+/// Sets a thread's `created_at` (per-backend raw SQL) so aging is
+/// deterministic without waiting a real hour.
+type Backdate = Box<
+    dyn Fn(
+        maidan_types::ThreadId,
+        chrono::DateTime<chrono::Utc>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+>;
+
+/// Warm affinity is a tiebreak after aged priority, never above it: a
+/// higher-priority thread and a thread that has waited more whole hours both
+/// beat the claimer's warm thread, and an agent with no history gets the
+/// oldest thread (C6 follow-up, #1584).
+async fn run_ordering_suite(store: &dyn Store, backdate: Backdate) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "warm-order".into(),
+        })
+        .await
+        .expect("ws");
+    let mut members = Vec::new();
+    for handle in ["alice", "carol"] {
+        members.push(
+            store
+                .create_member(NewMember {
+                    workspace_id: ws.id,
+                    handle: handle.into(),
+                    display_name: None,
+                    kind: MemberKind::Agent,
+                })
+                .await
+                .expect("member"),
+        );
+    }
+    let (alice, carol) = (&members[0], &members[1]);
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "warm-order".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("channel");
+    let mk = |title: &'static str| async move {
+        store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: Some(title.into()),
+                description: None,
+                created_by: None,
+            })
+            .await
+            .expect("thread")
+            .id
+    };
+
+    // Alice holds the warm thread once, then lets it go.
+    let warm = mk("warm").await;
+    let held = claim(store, channel.id, alice.id, false)
+        .await
+        .expect("warm");
+    assert_eq!(held.id, warm);
+    store
+        .release_claim(warm, alice.id, held.claim_lease_id.expect("leased"))
+        .await
+        .expect("release");
+
+    // A newer thread with higher priority beats her warm thread.
+    let urgent = mk("urgent").await;
+    store
+        .set_thread_priority(urgent, 1, alice.id)
+        .await
+        .expect("priority");
+    let got = claim(store, channel.id, alice.id, false)
+        .await
+        .expect("urgent");
+    assert_eq!(got.id, urgent, "higher priority outranks warm affinity");
+
+    // A thread that has waited more whole hours beats her warm thread too.
+    let aged = mk("aged").await;
+    backdate(aged, chrono::Utc::now() - chrono::Duration::hours(3)).await;
+    let got = claim(store, channel.id, alice.id, false)
+        .await
+        .expect("aged");
+    assert_eq!(got.id, aged, "more hours waited outranks warm affinity");
+
+    // Only the warm thread is left; it still comes back to alice.
+    let got = claim(store, channel.id, alice.id, false)
+        .await
+        .expect("warm again");
+    assert_eq!(got.id, warm);
+    store
+        .release_claim(warm, alice.id, got.claim_lease_id.expect("leased"))
+        .await
+        .expect("release");
+
+    // Carol has no history: the warm term is 0 for every candidate, so she
+    // gets the oldest thread, which is alice's warm one, over a newer one.
+    let _newer = mk("newer").await;
+    let got = claim(store, channel.id, carol.id, false)
+        .await
+        .expect("oldest");
+    assert_eq!(got.id, warm, "no history falls back to oldest first");
+}
+
 #[tokio::test]
 async fn claim_next_prefers_the_thread_the_claimer_last_held_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+}
+
+#[tokio::test]
+async fn warm_affinity_never_outranks_aged_priority_sqlite() {
+    let store = sqlite().await;
+    let pool = store.pool().clone();
+    run_ordering_suite(
+        &store,
+        Box::new(move |tid, when| {
+            let pool = pool.clone();
+            Box::pin(async move {
+                sqlx::query("UPDATE maidan_threads SET created_at = ? WHERE id = ?")
+                    .bind(when.to_rfc3339())
+                    .bind(tid.0)
+                    .execute(&pool)
+                    .await
+                    .expect("backdate");
+            })
+        }),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -156,6 +284,21 @@ async fn claim_next_prefers_the_thread_the_claimer_last_held_postgres() {
         .await
         .expect("connect");
     run_postgres_migrations(&pool).await.expect("migrate");
-    let store = PostgresStore::for_tests(pool);
+    let store = PostgresStore::for_tests(pool.clone());
     run_suite(&store).await;
+    run_ordering_suite(
+        &store,
+        Box::new(move |tid, when| {
+            let pool = pool.clone();
+            Box::pin(async move {
+                sqlx::query("UPDATE maidan_threads SET created_at = $1 WHERE id = $2")
+                    .bind(when)
+                    .bind(tid.0)
+                    .execute(&pool)
+                    .await
+                    .expect("backdate");
+            })
+        }),
+    )
+    .await;
 }

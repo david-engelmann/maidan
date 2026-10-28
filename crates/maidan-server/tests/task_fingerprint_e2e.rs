@@ -340,3 +340,73 @@ async fn claim_next_skips_a_live_duplicate_until_its_link_is_cleared() {
         "{rows:?}"
     );
 }
+
+async fn get_json(base: &str, token: &str, path: &str) -> (StatusCode, Value) {
+    let response = reqwest::Client::new()
+        .get(format!("{base}{path}"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    (status, response.json().await.unwrap_or(Value::Null))
+}
+
+/// A task withheld as a duplicate says why in its create answer, on its own
+/// read and in queue depth, so a claimer is not left with an open thread
+/// that never comes; clearing the link clears the reason, and another tenant
+/// learns nothing (#1681).
+#[tokio::test]
+async fn a_withheld_duplicate_names_why_in_the_create_answer_the_thread_read_and_queue_depth() {
+    let (base, store) = spawn().await;
+    let home = room(store.as_ref(), "withheld-home").await;
+    let away = room(store.as_ref(), "withheld-away").await;
+    let brief = json!({ "title": "Replay review 1" });
+    let (_, original) = create_thread(&base, &home, brief.clone()).await;
+    let (status, duplicate) = create_thread(&base, &home, brief).await;
+    assert_eq!(status, StatusCode::CREATED, "{duplicate}");
+    let original_id = original["id"].as_str().unwrap().to_string();
+    let duplicate_id = duplicate["id"].as_str().unwrap().to_string();
+
+    assert!(original.get("withheld").is_none(), "{original}");
+    assert_eq!(
+        duplicate["withheld"],
+        json!({ "reason": "duplicate_of", "thread": original_id })
+    );
+
+    let (status, read) = get_json(&base, &home.token, &format!("/threads/{duplicate_id}")).await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert_eq!(read["withheld"]["reason"], json!("duplicate_of"));
+    assert_eq!(read["withheld"]["thread"], json!(original_id));
+    let (_, read) = get_json(&base, &home.token, &format!("/threads/{original_id}")).await;
+    assert!(read.get("withheld").is_none(), "{read}");
+
+    let (status, depth) = get_json(
+        &base,
+        &home.token,
+        &format!("/channels/{}/queue-depth", home.channel.0),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{depth}");
+    assert_eq!(depth["unclaimable"], json!(1), "{depth}");
+
+    let (status, body) = get_json(&base, &away.token, &format!("/threads/{duplicate_id}")).await;
+    assert!(
+        status == StatusCode::NOT_FOUND || status == StatusCode::FORBIDDEN,
+        "{status} {body}"
+    );
+    assert!(body.get("withheld").is_none(), "{body}");
+
+    let status = reqwest::Client::new()
+        .delete(format!(
+            "{base}/threads/{duplicate_id}/fingerprint/duplicate-of"
+        ))
+        .bearer_auth(&home.token)
+        .send()
+        .await
+        .unwrap()
+        .status();
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, read) = get_json(&base, &home.token, &format!("/threads/{duplicate_id}")).await;
+    assert!(read.get("withheld").is_none(), "{read}");
+}

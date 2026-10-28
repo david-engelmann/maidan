@@ -449,12 +449,25 @@ import { tokenKey, wsResumeKey } from "./state.js";
           turnstile.render(document.getElementById("signup-turnstile"), {
             sitekey: turnstileSiteKey,
             action: "signup",
+            // The token goes in a POST body, never the URL, so it stays out
+            // of access logs and the browser's history (#1632).
             callback: (/** @type {string} */ t) => {
-              const next = new URLSearchParams();
-              if (invite) next.set("invite", invite);
-              if (returnTo) next.set("return_to", returnTo);
-              next.set("turnstile", t);
-              location.assign(`${signupPath}?${next.toString()}`);
+              const form = document.createElement("form");
+              form.method = "post";
+              form.action = signupPath;
+              form.hidden = true;
+              /** @type {[string, string | null][]} */
+              const fields = [["invite", invite], ["return_to", returnTo], ["turnstile", t]];
+              for (const [name, value] of fields) {
+                if (value === null) continue;
+                const input = document.createElement("input");
+                input.type = "hidden";
+                input.name = name;
+                input.value = value;
+                form.appendChild(input);
+              }
+              document.body.appendChild(form);
+              form.submit();
             },
           });
         } catch (_e) {

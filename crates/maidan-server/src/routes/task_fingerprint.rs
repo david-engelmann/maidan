@@ -82,3 +82,43 @@ pub async fn clear_task_duplicate(
     state.store.clear_task_duplicate(thread_id, audit).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// Why an open thread is withheld as a live duplicate (#1681), or `None`.
+/// Mirrors the claim rule: its fingerprint links an original that is still
+/// live and open or in review. The original is named only when the caller
+/// may read it; the reason shows either way.
+pub(crate) async fn withheld_as_duplicate(
+    state: &AppState,
+    auth: &AuthContext,
+    thread: &maidan_types::Thread,
+) -> Result<Option<maidan_types::ThreadWithheld>, ApiError> {
+    if thread.state != maidan_types::ThreadState::Open {
+        return Ok(None);
+    }
+    let Some(original) = state
+        .store
+        .get_task_fingerprint(thread.id)
+        .await?
+        .and_then(|fp| fp.duplicate_of)
+    else {
+        return Ok(None);
+    };
+    let live = match state.store.get_thread(original).await {
+        Ok(t) => matches!(
+            t.state,
+            maidan_types::ThreadState::Open | maidan_types::ThreadState::InReview
+        ),
+        Err(maidan_store::StoreError::NotFound) => false,
+        Err(err) => return Err(err.into()),
+    };
+    if !live {
+        return Ok(None);
+    }
+    let visible = maidan_auth::ensure_thread_access(state.store.as_ref(), auth, original)
+        .await
+        .is_ok();
+    Ok(Some(maidan_types::ThreadWithheld {
+        reason: "duplicate_of".into(),
+        thread: visible.then_some(original),
+    }))
+}

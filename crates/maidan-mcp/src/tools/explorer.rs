@@ -143,7 +143,6 @@ mod tests {
         NewThread, NewVote, NewWorkspace, RefSide, RelationKind, VoteKind,
     };
     use serde_json::json;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::server::McpServer;
 
@@ -166,7 +165,7 @@ mod tests {
     }
 
     async fn blank_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

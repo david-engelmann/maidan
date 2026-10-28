@@ -1439,7 +1439,6 @@ mod tests {
     use maidan_search::HashV1Provider;
     use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
     use maidan_types::*;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     /// The evidence root of what the thread was last handed to review with,
     /// which an approval names.
@@ -1453,7 +1452,7 @@ mod tests {
     }
 
     async fn mk_server() -> (McpServer, ThreadId, MemberId) {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(4)
             .connect("sqlite::memory:")
             .await
@@ -1618,7 +1617,7 @@ mod tests {
     #[tokio::test]
     async fn a_member_tool_cannot_mutate_another_members_personal_state() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -1755,7 +1754,7 @@ mod tests {
     #[tokio::test]
     async fn a_delegated_token_acts_as_its_subject_and_no_one_else() {
         use maidan_auth::capability::WORKSPACE_READ;
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -1851,7 +1850,7 @@ mod tests {
     #[tokio::test]
     async fn mcp_delegation_is_bounded_like_rest() {
         use maidan_auth::capability::{TOKEN_ADMIN, WORKSPACE_READ};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -1958,7 +1957,7 @@ mod tests {
     #[tokio::test]
     async fn an_mcp_tool_call_attributes_what_it_writes() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2051,7 +2050,7 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_denies_non_members_in_private_channels() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2189,7 +2188,7 @@ mod tests {
     #[tokio::test]
     async fn mcp_assignment_read_side_claims_lists_and_filters() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2339,7 +2338,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2499,7 +2498,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::{Duration, Instant};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2621,7 +2620,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2765,7 +2764,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -2908,7 +2907,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -3066,7 +3065,7 @@ mod tests {
 
     /// [`wait_fixture`] on a given bus, so a test can make it lag.
     async fn wait_fixture_on(caps: &[&str], bus: maidan_bus::InMemoryBus) -> WaitFixture {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -3554,7 +3553,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -3745,7 +3744,7 @@ mod tests {
         const FIXTURE: &str =
             include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -3946,7 +3945,7 @@ mod tests {
         const REVIEW: &str = "example.review.result/1";
         const PLAN: &str = "example.plan.result/1";
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4100,7 +4099,7 @@ mod tests {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_bus::InMemoryBus;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4250,7 +4249,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_queue_depth_tool_reports_counts() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4314,7 +4313,7 @@ mod tests {
     async fn wait_tools_set_get_cancel() {
         use chrono::{Duration, Utc};
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4432,7 +4431,7 @@ mod tests {
     #[tokio::test]
     async fn priority_tools_set_and_get() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4530,7 +4529,7 @@ mod tests {
     #[tokio::test]
     async fn unclaimable_tools_park_a_thread_from_dispatch() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4661,7 +4660,7 @@ mod tests {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_bus::{BusItem, EventBus, InMemoryBus};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4832,7 +4831,7 @@ mod tests {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::{DeclaredStatus, Event};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -4956,7 +4955,7 @@ mod tests {
         use maidan_auth::capability::{MESSAGE_POST, THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::MemberKind;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5066,7 +5065,7 @@ mod tests {
     #[tokio::test]
     async fn wip_limit_tools_enforce_the_cap() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE};
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5196,7 +5195,7 @@ mod tests {
     #[tokio::test]
     async fn threading_tools_children_recent_and_mute() {
         use maidan_auth::capability::WORKSPACE_READ;
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5340,7 +5339,7 @@ mod tests {
     #[tokio::test]
     async fn channel_mute_tools_mute_and_unmute() {
         use maidan_auth::capability::WORKSPACE_READ;
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5423,7 +5422,7 @@ mod tests {
     /// The budget MCP tools — set, report (stop on exceed), and read the DLQ.
     #[tokio::test]
     async fn budget_tools_set_report_and_dlq() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5635,7 +5634,7 @@ mod tests {
     /// threads + the workspace's pending gates.
     #[tokio::test]
     async fn waiting_inbox_tool_composes_assigned_and_gates() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5728,7 +5727,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5898,7 +5897,7 @@ mod tests {
 
     #[tokio::test]
     async fn notification_pref_tools_set_and_list() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -5975,7 +5974,7 @@ mod tests {
 
     #[tokio::test]
     async fn delivery_mode_tools_get_and_set() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6065,7 +6064,7 @@ mod tests {
         use futures::StreamExt;
         use maidan_bus::{BusItem, EventBus, InMemoryBus};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6221,7 +6220,7 @@ mod tests {
 
     #[tokio::test]
     async fn email_tools_set_get_delete() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6330,7 +6329,7 @@ mod tests {
 
     #[tokio::test]
     async fn follow_tools_channel_thread_and_member() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6517,7 +6516,7 @@ mod tests {
     async fn projector_link_tools_slack_and_github() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6655,7 +6654,7 @@ mod tests {
     async fn task_schedule_tools_create_and_list() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6733,7 +6732,7 @@ mod tests {
     async fn recipe_tools_create_list_and_instantiate() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6844,7 +6843,7 @@ mod tests {
     async fn secret_egress_host_tools_need_admin_and_read_and_are_audited() {
         use maidan_auth::capability::{SECRET_ADMIN, SECRET_READ};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -6971,7 +6970,7 @@ mod tests {
         use maidan_auth::capability::SECRET_READ;
         use maidan_types::NewSecret;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7076,7 +7075,7 @@ mod tests {
         use maidan_types::NewThread;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7223,7 +7222,7 @@ mod tests {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
         use maidan_types::NewThread;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7377,7 +7376,7 @@ mod tests {
         use maidan_bus::InMemoryBus;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7482,7 +7481,7 @@ mod tests {
         use std::collections::HashSet;
         use std::time::Duration;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7611,7 +7610,7 @@ mod tests {
     async fn claim_next_without_a_lease_gets_the_server_default_and_bounds_hold() {
         use maidan_auth::capability::THREAD_TRANSITION;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7753,7 +7752,7 @@ mod tests {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::NewThread;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -7946,7 +7945,7 @@ mod tests {
         use maidan_bus::{BusItem, EventBus, InMemoryBus};
         use maidan_types::{Event, EventFilter, EventKind, NewThread, ReviewDecision};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8130,7 +8129,7 @@ mod tests {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::{NewThread, LAND_GATE_SKILL};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8285,13 +8284,107 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn set_thread_result_refuses_a_waiter_envelope_with_no_result_kind_and_stores_nothing() {
+        use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
+        use maidan_types::{NewThread, WAITER_RESULT_SCHEMA};
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("PRAGMA foreign_keys = ON")
+            .execute(&pool)
+            .await
+            .unwrap();
+        run_sqlite_migrations(&pool).await.unwrap();
+        let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
+        let ws = store
+            .create_workspace(NewWorkspace { name: "w".into() })
+            .await
+            .unwrap();
+        let worker = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "worker".into(),
+                display_name: None,
+                kind: MemberKind::Agent,
+            })
+            .await
+            .unwrap();
+        let channel = store
+            .create_channel(NewChannel {
+                workspace_id: ws.id,
+                name: "c".into(),
+                topic: None,
+                private: false,
+            })
+            .await
+            .unwrap();
+        let thread = store
+            .create_thread(NewThread {
+                channel_id: channel.id,
+                parent_thread_id: None,
+                title: None,
+                description: None,
+                created_by: None,
+            })
+            .await
+            .unwrap();
+        store.assign_thread(thread.id, worker.id).await.unwrap();
+        let server = McpServer::new(
+            store.clone(),
+            Arc::new(LocalFsStore::new(tempfile::tempdir().unwrap().path())),
+            Arc::new(maidan_search::SqliteSearch::new(pool)),
+            Arc::new(HashV1Provider),
+        );
+        let auth = AuthContext::from_session(
+            worker.id,
+            ws.id,
+            vec![THREAD_TRANSITION.to_string(), WORKSPACE_READ.to_string()],
+        );
+        let lease = store.claim_lease_for(thread.id, worker.id).await.unwrap();
+        let args = |result: Value| json!({ "thread_id": thread.id.0, "claim_lease_id": lease.0, "result": result });
+
+        let err = server
+            .call_tool(
+                &auth,
+                "set_thread_result",
+                &args(
+                    json!({ "schema": WAITER_RESULT_SCHEMA, "status": "reviewed",
+                              "deliver_to": [{ "surface": "github", "repo": "o/r", "pr": 1 }] }),
+                ),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, McpError::InvalidParams(m) if m.contains("`result_kind`")),
+            "{err:?}"
+        );
+        assert!(
+            store.get_thread_result(thread.id).await.unwrap().is_none(),
+            "nothing stored"
+        );
+
+        server
+            .call_tool(
+                &auth,
+                "set_thread_result",
+                &args(json!({ "schema": WAITER_RESULT_SCHEMA, "result_kind": "k", "status": "reviewed" })),
+            )
+            .await
+            .unwrap();
+        assert!(store.get_thread_result(thread.id).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
     async fn critical_result_tool_blocks_close_until_a_human_approves() {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::{
             NewThread, EXAMPLE_REVIEW_RESULT_KIND, REVIEW_SKILL, WAITER_RESULT_SCHEMA,
         };
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8470,7 +8563,7 @@ mod tests {
         use futures::StreamExt;
         use maidan_bus::{BusItem, InMemoryBus};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8602,7 +8695,7 @@ mod tests {
         use maidan_fsm::ThreadAction;
         use maidan_types::ReviewDecision;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8757,7 +8850,7 @@ mod tests {
         use maidan_store::StoreError;
         use maidan_types::NewThread;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8890,7 +8983,7 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_edit_message_appends_messageedited_event() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -8990,7 +9083,7 @@ mod tests {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ, WORKSPACE_WRITE};
         use maidan_bus::InMemoryBus;
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9249,7 +9342,7 @@ mod tests {
             }
         }
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9369,7 +9462,7 @@ mod tests {
     async fn whoami_returns_identity_and_initialize_carries_instructions() {
         use maidan_auth::capability::{MESSAGE_POST, WORKSPACE_READ};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9440,7 +9533,7 @@ mod tests {
     async fn glossary_tools_set_get_and_list() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9525,7 +9618,7 @@ mod tests {
     async fn seed_from_message_tool_spawns_a_linked_child() {
         use maidan_auth::capability::{WORKSPACE_READ, WORKSPACE_WRITE};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9630,7 +9723,7 @@ mod tests {
     async fn snapshot_thread_context_tool_freezes_and_refs() {
         use maidan_auth::capability::{ARTIFACT_UPLOAD, WORKSPACE_READ};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9734,7 +9827,7 @@ mod tests {
     async fn mcp_artifact_tools_enforce_tenant_isolation() {
         use maidan_auth::capability::{ARTIFACT_UPLOAD, WORKSPACE_READ};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
@@ -9835,7 +9928,7 @@ mod tests {
 
     #[tokio::test]
     async fn skill_tools_declare_and_list() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

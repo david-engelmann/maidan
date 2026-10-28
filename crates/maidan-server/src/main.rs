@@ -813,7 +813,13 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
             );
             Some(maidan_server::github::GithubApiClient::with_app(app))
         }
-        (None, Some(token)) => Some(maidan_server::github::GithubApiClient::new(token)),
+        (None, Some(token)) => {
+            tracing::info!(
+                "github egress authenticates with MAIDAN_GITHUB_TOKEN: check runs need a \
+                 GitHub App, so results post the summary comment and no check run"
+            );
+            Some(maidan_server::github::GithubApiClient::new(token))
+        }
         (None, None) => None,
     };
     if let Some(client) = github_client {

@@ -275,7 +275,8 @@ async fn a_sign_up_start_with_a_rejected_or_waitlist_token_is_refused() {
     let base = spawn(Some(settings(url))).await;
     for token in ["spent-or-forged", "good-waitlist"] {
         let res = client()
-            .get(format!("{base}/auth/oidc/signup?turnstile={token}"))
+            .post(format!("{base}/auth/oidc/signup"))
+            .form(&[("turnstile", token)])
             .header("accept", "text/html")
             .send()
             .await
@@ -285,20 +286,43 @@ async fn a_sign_up_start_with_a_rejected_or_waitlist_token_is_refused() {
 }
 
 #[tokio::test]
-async fn a_sign_up_start_with_a_valid_token_goes_on_to_the_provider() {
+async fn a_sign_up_start_posting_a_valid_token_goes_on_to_the_provider_with_a_see_other() {
     let (url, _) = spawn_siteverify().await;
     let base = spawn(Some(settings(url))).await;
     let res = client()
-        .get(format!("{base}/auth/oidc/signup?turnstile=good-signup"))
+        .post(format!("{base}/auth/oidc/signup"))
+        .form(&[("turnstile", "good-signup"), ("return_to", "/ui/")])
         .send()
         .await
         .unwrap();
-    assert!(res.status().is_redirection(), "{}", res.status());
+    assert_eq!(res.status(), StatusCode::SEE_OTHER);
     let location = res.headers()["location"].to_str().unwrap();
     assert!(
         location.starts_with("/auth/oidc/callback?state="),
         "{location}"
     );
+}
+
+#[tokio::test]
+async fn a_turnstile_token_in_the_sign_up_query_string_is_not_read() {
+    let (url, seen) = spawn_siteverify().await;
+    let base = spawn(Some(settings(url))).await;
+    let res = client()
+        .get(format!("{base}/auth/oidc/signup?turnstile=good-signup"))
+        .header("accept", "application/json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    // A browser is sent to the console check, which POSTs the token.
+    let res = client()
+        .get(format!("{base}/auth/oidc/signup?turnstile=good-signup"))
+        .header("accept", "text/html")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.headers()["location"], "/ui/?signup_check=1");
+    assert!(seen.lock().unwrap().is_empty(), "siteverify was called");
 }
 
 #[tokio::test]
