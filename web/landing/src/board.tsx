@@ -34,7 +34,7 @@ export function Board() {
     reject: null as string | null,
   });
   const [who, setWho] = useState("north");
-  const [lane, setLane] = useState<Lane>(reduce ? "done" : "open");
+  const [lane, setLane] = useState<Lane>("progress");
   const [run, setRun] = useState(0);
   const stop = useRef(false);
   const { cards, note, reject } = model;
@@ -82,7 +82,7 @@ export function Board() {
   function replay() {
     stop.current = false;
     dispatch({ type: "reset", cards: reduce ? settled() : opening() });
-    setLane(reduce ? "done" : "open");
+    setLane("progress");
     setRun((n) => n + 1);
   }
 

@@ -531,4 +531,10 @@ input:focus-visible, textarea:focus-visible { outline: 3px solid var(--mint); ou
 @media (max-width: 959px) {
   html { scroll-snap-type: y proximity; }
   .hero, .chapter, .close { scroll-snap-align: start; }
+  .hero { min-height: 100dvh; }
+  .hero-stage { flex: 1; display: flex; }
+  .board { flex: 1; }
+  .lanes { flex: 1; }
+  .lane.is-current { flex: 1; }
+  .hint-line { margin-top: auto; }
 }
