@@ -291,7 +291,7 @@ pub fn init() {
         );
         describe_counter!(
             "maidan_thread_results_total",
-            "Stored thread results by harness (codex, claude, grok, gemini, pi, maidan, other), kind (redteam, security, review, plan, build, fix, other), status and verdict (pass, fix, merge, block, reject, other, none); every label a closed set"
+            "Stored thread results by harness (codex, claude, deepseek, grok, gemini, pi, maidan, other), kind (redteam, security, review, plan, build, fix, other), status and verdict (pass, fix, merge, block, reject, other, none); every label a closed set"
         );
         describe_counter!(
             "maidan_result_deliveries_total",

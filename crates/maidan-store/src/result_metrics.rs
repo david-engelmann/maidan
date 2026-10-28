@@ -11,7 +11,7 @@ use serde_json::Value;
 
 /// Harnesses a `result_kind` can name before its first `.`
 /// (`codex.redteam/1` is the codex harness).
-const HARNESSES: &[&str] = &["codex", "claude", "grok", "gemini", "pi", "maidan"];
+const HARNESSES: &[&str] = &["codex", "claude", "deepseek", "grok", "gemini", "pi", "maidan"];
 
 /// What the result is, after the harness (`codex.redteam/1` is a redteam).
 const KINDS: &[&str] = &["redteam", "security", "review", "plan", "build", "fix"];
