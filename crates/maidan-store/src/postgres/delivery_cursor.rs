@@ -31,16 +31,17 @@ pub async fn advance_cursor(
 ) -> Result<i64, StoreError> {
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO maidan_delivery_cursor (consumer_id, workspace_id, last_delivered_log_id, updated_at)
-         VALUES ($1, $2, $3, NOW())
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (consumer_id, workspace_id)
          DO UPDATE SET
            last_delivered_log_id = GREATEST(maidan_delivery_cursor.last_delivered_log_id, EXCLUDED.last_delivered_log_id),
-           updated_at = NOW()
+           updated_at = $4
          RETURNING last_delivered_log_id",
     )
     .bind(consumer_id)
     .bind(workspace_id.0)
     .bind(log_id)
+    .bind(chrono::Utc::now())
     .fetch_one(pool)
     .await?;
     Ok(row.0)
