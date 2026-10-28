@@ -229,7 +229,6 @@ mod tests {
     use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
     use maidan_types::*;
     use serde_json::json;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     const SEED: [u8; 32] = [0x11; 32];
 
@@ -238,7 +237,7 @@ mod tests {
     }
 
     async fn blank_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

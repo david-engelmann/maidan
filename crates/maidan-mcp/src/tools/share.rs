@@ -130,7 +130,6 @@ mod tests {
     use maidan_types::{
         ArtifactKind, MemberKind, NewArtifact, NewChannel, NewMember, NewWorkspace,
     };
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use super::*;
 
@@ -140,7 +139,7 @@ mod tests {
 
     #[tokio::test]
     async fn issuer_tools_disclose_the_secret_once_and_honor_revocation() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .connect("sqlite::memory:")
             .await
             .unwrap();

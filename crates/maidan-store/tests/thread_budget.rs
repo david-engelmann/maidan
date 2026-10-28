@@ -688,6 +688,7 @@ async fn run_patch_suite(store: &dyn Store) {
 /// Cache reads do not spend a token budget. Evidence stays on the row. A
 /// second workspace cannot read the first workspace's rollup.
 async fn run_cache_pricing_suite(store: &dyn Store) {
+    run_rollup_overflow_suite(store).await;
     let ws = store
         .create_workspace(NewWorkspace {
             name: "priced".into(),
@@ -932,4 +933,120 @@ async fn run_cache_pricing_suite(store: &dyn Store) {
         .expect("other workspace");
     assert_eq!(foreign.reports, 0);
     assert_eq!(foreign.usd_micros, 0);
+}
+
+/// A validated report whose tokens × rate products overflow 64 bits (the
+/// charges themselves fit) still rolls up to the exact charges (#1595).
+async fn run_rollup_overflow_suite(store: &dyn Store) {
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "huge".into(),
+        })
+        .await
+        .expect("ws");
+    let member = store
+        .create_member(NewMember {
+            workspace_id: ws.id,
+            handle: "huge-agent".into(),
+            display_name: None,
+            kind: MemberKind::Agent,
+        })
+        .await
+        .expect("member");
+    let channel = store
+        .create_channel(NewChannel {
+            workspace_id: ws.id,
+            name: "huge".into(),
+            topic: None,
+            private: false,
+        })
+        .await
+        .expect("ch");
+    let thread = store
+        .create_thread(NewThread {
+            channel_id: channel.id,
+            parent_thread_id: None,
+            title: Some("huge".into()),
+            description: None,
+            created_by: None,
+        })
+        .await
+        .expect("thread");
+    store
+        .set_thread_budget(thread.id, BudgetLimits::default())
+        .await
+        .expect("budget");
+    let lease = store
+        .claim_thread(thread.id, member.id)
+        .await
+        .expect("claim")
+        .thread
+        .claim_lease_id
+        .expect("lease");
+    let tokens = TokenUsage {
+        input: 4_000_000_000_123,
+        output: 3_000_000_000_457,
+        cache_read: 1_000_000_000_789,
+        cache_write_5m: 12_345,
+        cache_write_1h: 6_789,
+    };
+    let price = PriceSnapshot {
+        input_usd_micros_per_million: 300_000_007,
+        output_usd_micros_per_million: 1_000_000_003,
+        cache_read_usd_micros_per_million: 30_000_011,
+        cache_write_5m_usd_micros_per_million: 375_000_013,
+        cache_write_1h_usd_micros_per_million: 600_000_017,
+    };
+    let standard = PriceSnapshot {
+        input_usd_micros_per_million: 600_000_019,
+        output_usd_micros_per_million: 2_000_000_023,
+        cache_read_usd_micros_per_million: 60_000_029,
+        cache_write_5m_usd_micros_per_million: 750_000_031,
+        cache_write_1h_usd_micros_per_million: 1_200_000_037,
+    };
+    // Each product is over i64::MAX (≈ 9.2e18), each charge is not.
+    assert!(
+        i128::from(tokens.output) * i128::from(standard.output_usd_micros_per_million)
+            > i128::from(i64::MAX)
+    );
+    let usd = price.charge_usd_micros(tokens).expect("charge");
+    let uncached = price.uncached_charge_usd_micros(tokens).expect("uncached");
+    let at_standard = standard.charge_usd_micros(tokens).expect("standard");
+    store
+        .report_accounted_usage(&NewUsageLedgerEntry {
+            usage_report_id: uuid::Uuid::new_v4(),
+            thread_id: thread.id,
+            reporter: member.id,
+            claim_lease_id: lease,
+            model: "provider/model".into(),
+            tokens,
+            usd_micros: usd,
+            price_snapshot: price,
+            turns: 1,
+            evidence: UsageEvidence {
+                batch: true,
+                standard_price: Some(standard),
+                ..Default::default()
+            },
+        })
+        .await
+        .expect("a validated report is accepted");
+    let rollup = store
+        .usage_rollup(UsageRollupQuery {
+            workspace_id: ws.id,
+            thread_id: None,
+            member_id: None,
+        })
+        .await
+        .expect("the rollup reads a row whose products overflow 64 bits");
+    assert_eq!(rollup.reports, 1);
+    assert_eq!(rollup.usd_micros, usd);
+    assert_eq!(
+        rollup.uncached_usd_micros, uncached,
+        "exact uncached charge"
+    );
+    assert_eq!(
+        rollup.lane_standard_usd_micros, at_standard,
+        "exact standard charge"
+    );
 }

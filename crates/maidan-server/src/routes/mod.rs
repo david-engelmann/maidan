@@ -499,7 +499,6 @@ mod publish_tests {
     use maidan_search::SqliteSearch;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use maidan_types::*;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use super::{clamp_context_transition_limit, publish, retry};
     use crate::state::AppState;
@@ -553,7 +552,7 @@ mod publish_tests {
     }
 
     async fn sqlite_state(bus: Arc<dyn maidan_bus::EventBus>) -> AppState {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .connect("sqlite::memory:")
             .await
             .expect("connect");

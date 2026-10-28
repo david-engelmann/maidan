@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::dto::{
     ConfirmApprovalGate, CreateChannel, CreateMessage, CreateThread, ListAuditQuery,
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
-    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupQuery, PeerResponse,
-    RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
+    MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm, OidcSignupQuery,
+    PeerResponse, RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
@@ -61,6 +61,26 @@ pub fn oidc_login() {}
     )
 )]
 pub fn oidc_signup() {}
+
+/// Start a sign-up after the Turnstile check
+///
+/// The console's form POST once its Turnstile widget has a token. Same start
+/// as the GET, with the token in the form body so it never sits in a URL.
+/// Answers 303 to the identity provider.
+#[utoipa::path(
+    post,
+    path = "/auth/oidc/signup",
+    tag = "auth",
+    request_body(content = OidcSignupForm, content_type = "application/x-www-form-urlencoded"),
+    security(()),
+    responses(
+        (status = 303, description = "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"),
+        (status = 400, response = BadRequest),
+        (status = 403, description = "OIDC disabled, the Turnstile check failed, the invite is unknown, spent or expired, or sign-up here is by invite only", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 404, description = "Sign-up is not enabled on this instance", body = ProblemDetails, content_type = "application/problem+json"),
+    )
+)]
+pub fn oidc_signup_form() {}
 
 /// Finish an OIDC login
 #[utoipa::path(

@@ -1690,6 +1690,13 @@ pub trait ThreadStore: Send + Sync {
     /// Clear a thread's duplicate link (Context Economics C8b), so a task
     /// wrongly linked as a duplicate can be claimed. `NotFound` when the
     /// thread has no fingerprint. Idempotent.
+    ///
+    /// Clearing also lifts the same-issue hold (C8 follow-up), and the
+    /// clear is permanent: a later change thread for the issue entering
+    /// review does not hold this thread again. A thread created with no
+    /// title or description has no fingerprint, so it cannot be cleared
+    /// (`NotFound`); if it carries a `linear_issue` and is held, the hold
+    /// lifts only when the other thread leaves review or this one closes.
     async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError>;
 
     /// Replace a thread's task attributes whole. `NotFound` when the

@@ -134,12 +134,11 @@ mod tests {
     use maidan_artifacts::LocalFsStore;
     use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
     use maidan_types::{ChannelMemberRole, MemberKind, NewChannel, NewMember, NewWorkspace};
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::state::FederationRuntime;
 
     async fn state_with_auth() -> (AppState, WorkspaceId, maidan_types::Member, ChannelId) {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .connect("sqlite::memory:")
             .await
             .unwrap();
