@@ -2945,6 +2945,7 @@
           "thread_ready",
           "thread_result_set",
           "thread_cancelled",
+          "thread_attributes_set",
           "approval_requested",
           "thread_blocked",
           "blocked_resolved",
