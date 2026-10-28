@@ -230,6 +230,7 @@ pub(crate) fn search_row_attributes(
             .try_get::<Option<String>, _>("lane")?
             .and_then(|lane| TaskLane::parse(&lane)),
         review_family: row.try_get("review_family")?,
+        author_family: row.try_get("author_family")?,
     })
 }
 

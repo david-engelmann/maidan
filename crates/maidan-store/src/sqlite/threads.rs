@@ -1404,7 +1404,7 @@ pub async fn find_for_workspace(
                 a.thread_id AS attr_thread_id, a.kind AS kind, a.engine AS engine,
                 a.threat_model AS threat_model, a.size AS size, a.acceptance AS acceptance,
                 a.linear_issue AS linear_issue, a.tier AS tier, a.lane AS lane,
-                a.review_family AS review_family
+                a.review_family AS review_family, a.author_family AS author_family
          FROM maidan_threads t
          JOIN maidan_channels c ON c.id = t.channel_id
          LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id

@@ -25,6 +25,15 @@ pub(crate) fn current_head(thread: &str) -> String {
     )
 }
 
+/// Postgres: share-lock the pull rows tracked on the change reviewed on
+/// `thread`, before reading its head. A CI read holds them `FOR UPDATE`
+/// while it moves the head and dismisses stale approvals, so a verdict
+/// either sees the new head or lands before the dismissal runs (#1574).
+pub(crate) fn lock_change_pulls(thread: &str) -> String {
+    let change = reviewed_change(thread);
+    format!("SELECT 1 FROM maidan_change_pulls WHERE thread_id = {change} FOR SHARE")
+}
+
 /// Dismiss, at `now`, every standing approval on change `change` or its
 /// review children that named a head other than `head`, returning each
 /// dismissed approval's thread, reviewer and named head.

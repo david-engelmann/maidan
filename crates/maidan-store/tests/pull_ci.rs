@@ -874,7 +874,102 @@ async fn postgres_pool() -> Option<(testcontainers::ContainerAsync<Postgres>, sq
     Some((container, pool))
 }
 
+/// A reviewer may name the head it read (#1574): the tracked head is
+/// stamped as named, and a head the change has moved past is a conflict
+/// that records nothing.
+async fn a_verdict_naming_a_moved_head_is_refused(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "named").await;
+    let thread = task(s, &room).await;
+    let (r1, r2) = (agent(s, room.ws, "r1").await, agent(s, room.ws, "r2").await);
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let read_head = "a".repeat(40);
+    s.record_pull_ci(read(room.ws, &read_head, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+    let named = read_head.to_ascii_uppercase();
+    let stamped = s
+        .submit_review_at_head(
+            thread,
+            r1,
+            ReviewDecision::Approve,
+            None,
+            None,
+            Some(&named),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stamped.review.head_sha.as_deref(), Some(read_head.as_str()));
+
+    let pushed = "b".repeat(40);
+    s.record_pull_ci(read(room.ws, &pushed, CiStatus::Pending, &[], false))
+        .await
+        .unwrap();
+    let refused = s
+        .submit_review_at_head(
+            thread,
+            r2,
+            ReviewDecision::Approve,
+            None,
+            None,
+            Some(&read_head),
+        )
+        .await;
+    assert!(
+        matches!(refused, Err(StoreError::Conflict(_))),
+        "a head the change moved past is a conflict: {refused:?}"
+    );
+    assert!(
+        s.list_reviews(thread)
+            .await
+            .unwrap()
+            .iter()
+            .all(|review| review.reviewer_id != r2),
+        "a refused verdict records nothing"
+    );
+}
+
+/// A push racing an approval never leaves an approval of the old head
+/// standing: the verdict either sees the pushed head or is dismissed by the
+/// push (#1574).
+async fn a_push_during_an_approval_never_leaves_the_old_head_approved(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "race").await;
+    let thread = task(s, &room).await;
+    let reviewer = agent(s, room.ws, "r1").await;
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let ws = room.ws;
+    for round in 0..20u8 {
+        let old = format!("{round:0>40}");
+        let new = format!("{:0>40}", round + 100);
+        s.record_pull_ci(read(ws, &old, CiStatus::Success, &[], true))
+            .await
+            .unwrap();
+        let pusher = store.clone();
+        let pushed = new.clone();
+        let push = tokio::spawn(async move {
+            pusher
+                .record_pull_ci(read(ws, &pushed, CiStatus::Pending, &[], false))
+                .await
+        });
+        approve(s, thread, reviewer).await;
+        push.await.unwrap().unwrap();
+        let verdict = review(s, thread, reviewer).await;
+        assert!(
+            verdict.dismissed_at.is_some() || verdict.head_sha.as_deref() == Some(new.as_str()),
+            "round {round}: an approval of {:?} stands after the push to {new}",
+            verdict.head_sha
+        );
+    }
+}
+
 on_both_backends!(
+    a_push_during_an_approval_never_leaves_the_old_head_approved,
+    a_verdict_naming_a_moved_head_is_refused,
     a_ci_read_says_each_notice_once_per_head,
     watching_makes_one_thread_and_stays_out_of_the_metrics,
     two_workspaces_track_the_same_pull_request_apart,
