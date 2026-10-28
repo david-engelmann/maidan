@@ -1518,6 +1518,11 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/threads/{tid}/artifacts",
             get(routes::list_thread_artifacts),
         )
+        // Who moved the task into review, so the approval card can name them.
+        .route(
+            "/ui/api/threads/{tid}/transitions",
+            get(routes::list_thread_transitions),
+        )
         .route("/ui/api/workspaces/{wid}", get(routes::get_workspace))
         .route(
             "/ui/api/workspaces/{wid}/search",

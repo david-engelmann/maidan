@@ -68,6 +68,7 @@ export const OPERATIONS = [
   { methods: ["GET"], path: "/threads/${tid}/review-packet" },
   { methods: ["GET"], path: "/threads/${tid}/review-status" },
   { methods: ["GET", "POST"], path: "/threads/${tid}/reviews" },
+  { methods: ["GET"], path: "/threads/${tid}/transitions" },
   { methods: ["DELETE"], path: "/tokens/${id}" },
   { methods: ["GET"], path: "/ui/api/workspaces/${wid()}/events?after_id=0&limit=50" },
   { methods: ["POST"], path: "/waitlist" },

@@ -463,6 +463,28 @@ import { answerGate, modelRequestLine } from "./tools.js";
       // row says so, so nobody approves an empty hand-off without knowing.
       async function fillReviewContext(tid, sub, before) {
         try {
+          const history = await api(uiReadPath(`/threads/${tid}/transitions`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (sub.isConnected && history.ok) {
+            const rows = await history.json();
+            let actor = null;
+            if (Array.isArray(rows)) {
+              for (const row of rows) {
+                if (row && row.to_state === "in_review" && row.actor_id) actor = row.actor_id;
+              }
+            }
+            if (actor && sub.isConnected) {
+              const asked = document.createElement("span");
+              asked.append("requested by ", personEl(actor, { avatar: false }));
+              sub.insertBefore(asked, before);
+            }
+          }
+        } catch (_e) {
+          /* the row still names the task */
+        }
+        try {
           const res = await api(uiReadPath(`/threads/${tid}/result`), {
             headers: headers(),
             credentials: "include",
