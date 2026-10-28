@@ -40,6 +40,7 @@ pub mod streamable_session;
 pub mod subscriptions;
 
 pub mod tools;
+pub mod withheld;
 
 pub use error::McpError;
 pub use land_gate_advice::{LandGateAdviseError, LandGateAdvising};

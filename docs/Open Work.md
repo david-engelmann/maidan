@@ -51,13 +51,13 @@ head commit, `--match-head-commit`, and every CodeRabbit comment answered) and,
 before merging, builds the PR on current `main` if another PR merged since its
 CI ran.
 
-| PR | What it does | State (2026-10-27) | Merge after |
+| PR | What it does | State (2026-10-28) | Merge after |
 |---|---|---|---|
-| #1634 | The change sweep reads CI from Actions and commit statuses when the token cannot read check runs (#1623) | Open, a draft: the red-team FIX is answered, re-pass due | — |
-| #1635 | A review names the family that wrote its change, and no seat of that family claims it | Open: the red-team FIX is answered, re-pass due | — |
-| #1700 | The Postgres session write locks the SCIM row before the member row (#1670) | Open | — |
-| #1705 | Sign-up start takes the Turnstile token in a POST body (#1632) | Draft, `lint` and `integration` red | — |
-| #1698 | Dead egress allowlist entries are marked; non-ASCII outbox rows dead-letter | Open, green, parked | — |
+| #1757 | SDK interop: unique seed titles, so claim-next finds the seeded thread | Open (MaidanFadin) | — |
+| #1756 | A withheld duplicate says so on its thread read and in MCP | Open (MaidanFadin) | — |
+| #1753 | Close a thread that will not land (Next 37) | Open (MaidanFadin) | — |
+| #1750 | CI watch: a refused checks read records the new head as unread | Open (MaidanFadin) | — |
+| #1698 | Dead egress allowlist entries are marked; non-ASCII outbox rows dead-letter | Open, parked | — |
 
 ## Next: ranked
 

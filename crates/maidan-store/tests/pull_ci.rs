@@ -767,6 +767,39 @@ async fn a_push_read_in_one_workspace_leaves_anothers_approvals(store: Arc<dyn S
     );
 }
 
+/// A read GitHub refused the checks of still moves the head: approvals given
+/// to the old head are dismissed, the checks are recorded as unreadable, and
+/// no checks_done is said for them (#1623).
+async fn a_refused_read_at_a_new_head_dismisses_the_old_heads_approval(store: Arc<dyn Store>) {
+    let s = store.as_ref();
+    let room = room(s, "refused").await;
+    let thread = task(s, &room).await;
+    let reviewer = agent(s, room.ws, "reviewer").await;
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let old = "e".repeat(40);
+    s.record_pull_ci(read(room.ws, &old, CiStatus::Success, &[], true))
+        .await
+        .unwrap();
+    approve(s, thread, reviewer).await;
+    assert!(review(s, thread, reviewer).await.dismissed_at.is_none());
+
+    let pushed = "f".repeat(40);
+    let posted = s
+        .record_pull_ci(read(room.ws, &pushed, CiStatus::Unreadable, &[], false))
+        .await
+        .unwrap();
+    assert!(
+        review(s, thread, reviewer).await.dismissed_at.is_some(),
+        "the approval of the old head no longer stands"
+    );
+    assert!(!kinds(&posted).contains(&ThreadNoticeKind::ChecksDone));
+    let ci = s.get_pull_ci(room.ws, REPO, 7).await.unwrap().unwrap();
+    assert_eq!(ci.head_sha, pushed);
+    assert_eq!(ci.status, CiStatus::Unreadable);
+}
+
 /// The event-surface matrix's evidence that a push publishes each
 /// dismissal (#1572); the scenario also runs on both backends below.
 #[tokio::test]
@@ -943,4 +976,5 @@ on_both_backends!(
     a_gate_change_is_said_once,
     a_push_dismisses_approvals_given_to_an_earlier_head,
     a_push_read_in_one_workspace_leaves_anothers_approvals,
+    a_refused_read_at_a_new_head_dismisses_the_old_heads_approval,
 );

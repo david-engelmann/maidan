@@ -450,3 +450,35 @@ async fn a_suspended_workspaces_delivery_is_held_back_and_another_goes_out() {
         "still deferred"
     );
 }
+
+/// A stored branch destination with a non-ASCII name, which no longer
+/// decodes, dead-letters as unroutable instead of being delivered.
+#[tokio::test]
+async fn a_stored_non_ascii_branch_destination_dead_letters_without_a_post() {
+    let sender = slack_sender(None);
+    let (state, store, pool) = state_with(Some(sender.clone())).await;
+    let (ws, thread) = scope(store.as_ref()).await;
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO maidan_egress_outbox
+           (id, workspace_id, thread_id, source_log_id, surface, selector, body,
+            status, attempts, next_attempt_at, created_at, updated_at)
+         VALUES (?, ?, ?, 1, 'github_branch', 'acme/widgets@d\u{e9}v', 'b', 'pending', 0, ?, ?, ?)",
+    )
+    .bind(uuid::Uuid::new_v4())
+    .bind(ws.0)
+    .bind(thread.0)
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stats = egress_worker::sweep_once(&state).await;
+    assert_eq!(stats.dead, 1, "the row dead-letters on sight");
+    assert_eq!(stats.sent, 0);
+    assert_eq!(stats.retried, 0);
+    assert_eq!(sender.attempts.load(Ordering::SeqCst), 0);
+    assert_eq!(store.count_dead_egress().await.unwrap(), 1);
+}
