@@ -2722,7 +2722,7 @@ mod tests {
 
     #[test]
     fn a_forbidden_check_rollup_is_a_failed_read_not_an_empty_one() {
-        // Recorded shape from wax#2015 under a fine-grained PAT (#1623).
+        // A recorded FORBIDDEN checks response under a fine-grained token (#1623).
         let mut answer = snapshot_answer("abc", "abc", serde_json::json!([]));
         answer["data"]["repository"]["pullRequest"]["commits"]["nodes"][0]["commit"]
             ["statusCheckRollup"] = serde_json::Value::Null;
