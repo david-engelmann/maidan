@@ -221,6 +221,9 @@ pub const PROVIDER_FAMILIES: &[(&str, &[&str], &[&str])] = &[
     ("openai", &["openai", "gpt", "codex"], &["o1", "o3", "o4"]),
     ("google", &["google", "gemini", "vertex"], &[]),
     ("xai", &["xai", "grok"], &[]),
+    // A DeepSeek review seat reports `provider: "deepseek"` with models named
+    // `deepseek-chat` and `deepseek-reasoner`.
+    ("deepseek", &["deepseek"], &[]),
 ];
 
 /// The provider family a usage record names, from its provider and model
@@ -365,6 +368,15 @@ mod review_family_tests {
         assert_eq!(provider_family(None, "gemini-2.5-pro"), Some("google"));
         assert_eq!(provider_family(Some("xai"), "m"), Some("xai"));
         assert_eq!(provider_family(None, "grok-4"), Some("xai"));
+        assert_eq!(
+            provider_family(Some("deepseek"), "deepseek-chat"),
+            Some("deepseek")
+        );
+        // Claude Code driving DeepSeek reports DeepSeek: the harness is not the family.
+        assert_eq!(
+            provider_family(Some("deepseek"), "deepseek-reasoner"),
+            Some("deepseek")
+        );
         assert_eq!(provider_family(None, "llama-3"), None);
     }
 
