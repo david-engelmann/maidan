@@ -24,7 +24,7 @@ const client = new Client("http://127.0.0.1:8080", process.env.MAIDAN_TOKEN);
 const claim = await client.claimNextThread(channelId);
 if (claim) {
   await client.messages.post(claim.id, "on it");
-  await client.threads.setResult(claim.id, { ok: true });
+  await client.threads.setResult(claim.id, { ok: true }, claim.claim_lease_id);
   // Long job? Heartbeat the lease with the fencing token the claim handed back.
   await client.renewClaim(claim.id, claim.claim_lease_id, 300);
 }

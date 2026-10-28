@@ -32,7 +32,7 @@ func main() {
 	claim, _ := c.ClaimNextThread(channelID, nil)
 	if claim != nil {
 		c.Messages.Post(claim.ID, "on it")
-		c.Threads.SetResult(claim.ID, maidan.M{"ok": true})
+		c.Threads.SetResult(claim.ID, maidan.M{"ok": true}, *claim.ClaimLeaseID)
 		// Long job? Heartbeat the lease with the fencing token the claim returned.
 		c.RenewClaim(claim.ID, *claim.ClaimLeaseID, 300)
 	}

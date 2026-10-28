@@ -484,8 +484,10 @@ func (s *ThreadsService) Context(id string, query url.Values) (*ThreadContext, e
 func (s *ThreadsService) Transition(id, action string) (*Thread, error) {
 	return call[Thread](s.c, http.MethodPost, "/threads/"+id, M{"action": action})
 }
-func (s *ThreadsService) SetResult(id string, result any) (*ThreadResult, error) {
-	return call[ThreadResult](s.c, http.MethodPut, "/threads/"+id+"/result", M{"result": result})
+
+// SetResult writes the result under your live claim: pass the claim's ClaimLeaseID.
+func (s *ThreadsService) SetResult(id string, result any, claimLeaseID string) (*ThreadResult, error) {
+	return call[ThreadResult](s.c, http.MethodPut, "/threads/"+id+"/result", M{"result": result, "claim_lease_id": claimLeaseID})
 }
 func (s *ThreadsService) GetResult(id string) (*ThreadResult, error) {
 	return call[ThreadResult](s.c, http.MethodGet, "/threads/"+id+"/result", nil)

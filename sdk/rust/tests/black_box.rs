@@ -56,7 +56,12 @@ fn seed(c: &Client, base: &str) -> (String, String, Channel, Thread) {
         .channels()
         .create(&wid, &unique("rust-sdk"), false)
         .unwrap();
-    let thread = c.threads().create(&channel.id, "kickoff").unwrap();
+    // A unique title: an identical open brief in the workspace is linked as a
+    // duplicate (task fingerprints) and withheld from claim-next.
+    let thread = c
+        .threads()
+        .create(&channel.id, &format!("kickoff {}", channel.id))
+        .unwrap();
     (wid, member_id, channel, thread)
 }
 
@@ -388,7 +393,7 @@ fn every_documented_operation_returns_its_declared_model() {
 
     let result = assert_modeled!(c
         .threads()
-        .set_result(&thread.id, json!({"ok": true}))
+        .set_result(&thread.id, json!({"ok": true}), &lease)
         .unwrap());
     assert_eq!(result.result, json!({"ok": true}));
     assert_eq!(result.produced_by, member);

@@ -612,7 +612,8 @@ export declare class Client {
     context(id: ThreadId, query?: Record<string, string | number | boolean>): Promise<ThreadContext>;
     /** `body.action`: `start_review`, `close` or `archive`. */
     transition(id: ThreadId, body: { action: string }): Promise<Thread>;
-    setResult(id: ThreadId, result: unknown): Promise<ThreadResult>;
+    /** Write the result under your live claim: pass the claim's `claim_lease_id`. */
+    setResult(id: ThreadId, result: unknown, claimLeaseId: string): Promise<ThreadResult>;
     getResult(id: ThreadId): Promise<ThreadResult>;
   };
   messages: {

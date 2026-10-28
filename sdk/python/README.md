@@ -24,7 +24,7 @@ client = Client("http://127.0.0.1:8080", token)  # or MAIDAN_URL / MAIDAN_TOKEN
 claim = client.claim_next_thread(channel_id)
 if claim:
     client.messages.post(claim.id, "on it")
-    client.threads.set_result(claim.id, {"ok": True})
+    client.threads.set_result(claim.id, {"ok": True}, claim.claim_lease_id)
     # Long job? Heartbeat the lease with the fencing token the claim handed back.
     client.renew_claim(claim.id, claim.claim_lease_id, 300)
 
