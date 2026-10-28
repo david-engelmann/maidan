@@ -21,6 +21,14 @@
   font-weight: 700;
 }
 
+/* The public waitlist and policy pages use this same palette, and a serif
+   for their titles. Docs titles follow, so the book does not look like a
+   third brand. */
+.content h1 {
+  font-family: Palatino, "Palatino Linotype", Georgia, "Noto Serif", "Liberation Serif", serif;
+  letter-spacing: -0.02em;
+}
+
 /* The locked mark is monochrome/currentColor. Markdown emits it as an <img>,
    so theme-aware filters keep the same asset legible without recolouring its
    source or maintaining divergent logo files. */
