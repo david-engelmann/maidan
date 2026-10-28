@@ -233,7 +233,13 @@ async fn submit_review_on(
         super::review_packets::verify_root_in_tx(tx, thread_id, root).await?;
     }
     let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
-    // The verdict names the head of the change it was given against.
+    // The verdict names the head of the change it was given against; the
+    // pull rows are share-locked first so a push can't commit between this
+    // read and the insert and leave an approval of the old head standing.
+    sqlx::query(&crate::review_head::lock_change_pulls("$1"))
+        .bind(thread_id.0)
+        .fetch_all(&mut **tx)
+        .await?;
     let tracked: Option<String> = sqlx::query_scalar(&format!(
         "SELECT {}",
         crate::review_head::current_head("$1")
