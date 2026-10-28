@@ -220,18 +220,38 @@ async fn find_threads_by_attribute_over_the_wire() {
     let (status, found) = find(&base, &a.token, a.ws, &twins).await;
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(ids(&found), vec![session["id"].as_str().unwrap()]);
-    let (status, found) = find(
+    // A relation nobody in the workspace uses is a 400 naming it, not an
+    // empty page that hides the typo. B uses no `twin_of` reference, so its
+    // search for twins of A's thread is refused the same way and learns
+    // nothing about A.
+    let (status, body) = find(
         &base,
         &a.token,
         a.ws,
         &format!("ref.duplicates={}", id(&pi)),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "{found}");
-    assert!(ids(&found).is_empty(), "{found}");
-    let (status, found) = find(&base, &b.token, b.ws, &twins).await;
-    assert_eq!(status, StatusCode::OK, "{found}");
-    assert!(ids(&found).is_empty(), "{found}");
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(body.to_string().contains("duplicates"), "{body}");
+    let (status, body) = find(&base, &b.token, b.ws, &twins).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // A cursor naming another workspace's thread is a 400, the same as a
+    // cursor naming no thread, so it cannot test whether a thread exists.
+    for cursor in [
+        other["id"].as_str().unwrap().to_string(),
+        uuid::Uuid::now_v7().to_string(),
+    ] {
+        let (status, body) = find(
+            &base,
+            &a.token,
+            a.ws,
+            &format!("attr.kind=change&cursor={cursor}"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{cursor}: {body}");
+        assert!(body.to_string().contains("cursor"), "{body}");
+    }
 
     // A's token searching B's workspace is refused, and no filter value
     // changes that.

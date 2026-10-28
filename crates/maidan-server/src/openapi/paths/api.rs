@@ -2739,7 +2739,9 @@ pub fn clear_task_duplicate() {}
 /// only a stored value. Scoped to the caller's own workspace and to the
 /// threads the caller may read. Keyset-paginated like the channel thread
 /// list (`limit`, `cursor`, `order`); returned threads carry their
-/// attributes.
+/// attributes. A `ref.<relation>` that no reference in the workspace
+/// uses, or a `cursor` that is not one of the workspace's threads, is a
+/// 400 rather than an empty page.
 #[utoipa::path(get, path = "/workspaces/{id}/threads", tag = "threads",
     params(("id" = Uuid, Path, description = "Workspace id"), FindThreadsQuery,
         ("attr.kind" = Option<String>, Query, description = "Task kind: change, plan or review"),
@@ -2750,7 +2752,7 @@ pub fn clear_task_duplicate() {}
         ("attr.tier" = Option<String>, Query, description = "Review tier: A or B"),
         ("attr.lane" = Option<String>, Query, description = "Service lane: batch or flex"),
         ("attr.review_family" = Option<String>, Query, description = "The provider family a review child is routed to"),
-        ("ref.twin_of" = Option<Uuid>, Query, description = "Threads holding a twin_of reference to this thread; any relation wire name works as ref.<relation> (duplicates, supersedes, ...)")),
+        ("ref.twin_of" = Option<Uuid>, Query, description = "Threads holding a twin_of reference to this thread; any relation wire name the workspace uses works as ref.<relation> (duplicates, supersedes, ...); one it does not use is a 400")),
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = [Thread]),

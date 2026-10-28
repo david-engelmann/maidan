@@ -157,6 +157,31 @@ async fn assert_attribute_search(store: &dyn Store) {
         .await
         .unwrap();
 
+    // Workspace A uses `duplicates` too, between other threads, so the
+    // relation is known there and a filter on it narrows rather than refuses.
+    store
+        .add_reference(NewReference {
+            src_kind: RefSide::Thread,
+            src_id: t_session.0,
+            dst_kind: RefSide::Thread,
+            dst_id: t_plain.0,
+            relation: RelationKind::Duplicates,
+        })
+        .await
+        .unwrap();
+    // Workspace B uses `twin_of` within itself.
+    let t_other_twin = task(store, open_b, "other workspace twin", None).await;
+    store
+        .add_reference(NewReference {
+            src_kind: RefSide::Thread,
+            src_id: t_other_twin.0,
+            dst_kind: RefSide::Thread,
+            dst_id: t_other_ws.0,
+            relation: RelationKind::from_wire("twin_of"),
+        })
+        .await
+        .unwrap();
+
     let by_issue = ThreadAttributeFilter {
         linear_issue: Some("ENG-100".into()),
         ..Default::default()
@@ -284,6 +309,41 @@ async fn assert_attribute_search(store: &dyn Store) {
         Some("ENG-100")
     );
 
+    // A relation nobody in the workspace uses is refused, not answered
+    // with an empty page that hides the typo.
+    let unknown = store
+        .find_threads_for_workspace(
+            ws_a,
+            search(ThreadAttributeFilter {
+                reference: Some(("twinof".into(), t_pi)),
+                ..Default::default()
+            }),
+        )
+        .await;
+    assert!(
+        matches!(unknown, Err(StoreError::InvalidInput(ref m)) if m.contains("twinof")),
+        "an unknown relation is refused: {unknown:?}"
+    );
+
+    // A cursor naming another workspace's thread, or no thread, is
+    // refused alike, so the cursor cannot probe whether a thread exists.
+    for cursor in [t_other_ws, ThreadId(uuid::Uuid::now_v7())] {
+        let refused = store
+            .find_threads_for_workspace(
+                ws_a,
+                WorkspaceThreadSearch {
+                    after: Some(cursor),
+                    limit: 2,
+                    ..WorkspaceThreadSearch::default()
+                },
+            )
+            .await;
+        assert!(
+            matches!(refused, Err(StoreError::InvalidInput(ref m)) if m.contains("cursor")),
+            "a foreign or unknown cursor is refused: {refused:?}"
+        );
+    }
+
     // Keyset pagination walks the matches, newest first on request.
     let page1 = store
         .find_threads_for_workspace(
@@ -321,6 +381,24 @@ async fn assert_attribute_search(store: &dyn Store) {
         .await
         .unwrap();
     assert_eq!(page2.iter().map(|t| t.id).collect::<Vec<_>>(), vec![t_pi]);
+
+    // A direct message between two other members is not alice's to find,
+    // whatever its attributes read as.
+    let carol = member(store, ws_a, "carol").await;
+    let dave = member(store, ws_a, "dave").await;
+    let dm = store.open_dm_conversation(ws_a, carol, dave).await.unwrap();
+    let everything = ids(store, ws_a, search(ThreadAttributeFilter::default())).await;
+    assert!(
+        everything.contains(&dm.thread_id),
+        "the unrestricted view has the DM"
+    );
+    let mut as_alice = search(ThreadAttributeFilter::default());
+    as_alice.reader_id = Some(alice);
+    let found = ids(store, ws_a, as_alice).await;
+    assert!(
+        !found.contains(&dm.thread_id),
+        "a reader never finds another pair's DM"
+    );
 
     // The filter parser the surfaces share: a typo'd field or value is an
     // error, never a silent match-everything.

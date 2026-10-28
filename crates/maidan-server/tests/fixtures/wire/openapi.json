@@ -35176,7 +35176,7 @@
     },
     "/workspaces/{id}/threads": {
       "get": {
-        "description": "Equality filters over the threads' task attributes, combined with AND:\n`attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,\n`attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and\n`ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to\nthat thread. `engine`, `tier` and `lane` are also accepted bare. A\nthread with no stored attributes matches the defaults it reads with\n(`attr.kind=change`, `attr.threat_model=false`); the other fields match\nonly a stored value. Scoped to the caller's own workspace and to the\nthreads the caller may read. Keyset-paginated like the channel thread\nlist (`limit`, `cursor`, `order`); returned threads carry their\nattributes.",
+        "description": "Equality filters over the threads' task attributes, combined with AND:\n`attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,\n`attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and\n`ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to\nthat thread. `engine`, `tier` and `lane` are also accepted bare. A\nthread with no stored attributes matches the defaults it reads with\n(`attr.kind=change`, `attr.threat_model=false`); the other fields match\nonly a stored value. Scoped to the caller's own workspace and to the\nthreads the caller may read. Keyset-paginated like the channel thread\nlist (`limit`, `cursor`, `order`); returned threads carry their\nattributes. A `ref.<relation>` that no reference in the workspace\nuses, or a `cursor` that is not one of the workspace's threads, is a\n400 rather than an empty page.",
         "operationId": "list_workspace_threads",
         "parameters": [
           {
@@ -35318,7 +35318,7 @@
             }
           },
           {
-            "description": "Threads holding a twin_of reference to this thread; any relation wire name works as ref.<relation> (duplicates, supersedes, ...)",
+            "description": "Threads holding a twin_of reference to this thread; any relation wire name the workspace uses works as ref.<relation> (duplicates, supersedes, ...); one it does not use is a 400",
             "in": "query",
             "name": "ref.twin_of",
             "required": false,

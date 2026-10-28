@@ -1313,6 +1313,42 @@ pub async fn find_for_workspace(
     workspace_id: WorkspaceId,
     search: crate::store::WorkspaceThreadSearch,
 ) -> Result<Vec<Thread>, StoreError> {
+    // A cursor or a relation outside the caller's workspace is refused, not
+    // read as an empty page: an empty 200 would answer whether a foreign
+    // thread exists, or hide a typo'd relation.
+    if let Some(after) = search.after {
+        let known = sqlx::query(
+            "SELECT 1 FROM maidan_threads t JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE t.id = $1 AND c.workspace_id = $2",
+        )
+        .bind(after.0)
+        .bind(workspace_id.0)
+        .fetch_optional(pool)
+        .await?;
+        if known.is_none() {
+            return Err(StoreError::InvalidInput(
+                "cursor is not a thread in this workspace: pass the last thread id of the prior page".into(),
+            ));
+        }
+    }
+    if let Some((relation, _)) = &search.filter.reference {
+        let used = sqlx::query(
+            "SELECT 1 FROM maidan_references r
+             JOIN maidan_threads t ON t.id = r.src_id
+             JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE r.src_kind = 'thread' AND r.relation = $1 AND c.workspace_id = $2
+             LIMIT 1",
+        )
+        .bind(relation.as_str())
+        .bind(workspace_id.0)
+        .fetch_optional(pool)
+        .await?;
+        if used.is_none() {
+            return Err(StoreError::InvalidInput(format!(
+                "ref.{relation}: no reference in this workspace uses the relation {relation:?}"
+            )));
+        }
+    }
     let cursor = search.after.map(|t| t.0);
     let (direction, beyond) = if search.newest_first {
         ("DESC", "<")
