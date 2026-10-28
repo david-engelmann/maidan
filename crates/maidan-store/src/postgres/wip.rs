@@ -48,15 +48,19 @@ pub async fn get_limit(
 }
 
 /// Count a member's live claims — the complement of the `claim_next` claimability
-/// predicate (an expired lease is claimable, so it is not live).
+/// predicate (an expired lease is claimable, so it is not live), on the app
+/// clock.
 pub async fn count_live_claims(pool: &PgPool, member_id: MemberId) -> Result<i64, StoreError> {
     let row = sqlx::query(
         "SELECT COUNT(*) AS n FROM maidan_threads
          WHERE assignee_id = $1 AND tombstoned_at IS NULL
            AND state NOT IN ('closed', 'archived')
-           AND (assignment_expires_at IS NULL OR assignment_expires_at >= NOW())",
+           AND (assignment_expires_at IS NULL OR assignment_expires_at >= $2)",
     )
     .bind(member_id.0)
+    // The app clock, as `claim_next` uses (#1605): a drifting database clock
+    // must not count a lease live that claim_next treats as expired.
+    .bind(chrono::Utc::now())
     .fetch_one(pool)
     .await?;
     Ok(row.get::<i64, _>("n"))

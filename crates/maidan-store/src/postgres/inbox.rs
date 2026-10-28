@@ -32,15 +32,16 @@ pub async fn advance_last_read_at(
 ) -> Result<DateTime<Utc>, StoreError> {
     let row: (DateTime<Utc>,) = sqlx::query_as(
         "INSERT INTO maidan_inbox_cursor (member_id, last_read_at, updated_at)
-         VALUES ($1, $2, NOW())
+         VALUES ($1, $2, $3)
          ON CONFLICT (member_id)
          DO UPDATE SET
            last_read_at = GREATEST(maidan_inbox_cursor.last_read_at, EXCLUDED.last_read_at),
-           updated_at = NOW()
+           updated_at = $3
          RETURNING last_read_at",
     )
     .bind(member_id.0)
     .bind(read_through)
+    .bind(chrono::Utc::now())
     .fetch_one(pool)
     .await?;
     Ok(row.0)
