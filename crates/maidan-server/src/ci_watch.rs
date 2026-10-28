@@ -255,8 +255,13 @@ fn unreadable_read(
 /// Record a read and post the notices it owes. Returns how many were posted.
 async fn post_read(state: &AppState, read: NewPullCi) -> usize {
     let (repo, pull_number) = (read.repo.clone(), read.pull_number);
-    let posted = match state.store.record_pull_ci(read).await {
-        Ok(posted) => posted,
+    let posted = match state.store.record_pull_ci_with_events(read).await {
+        Ok((posted, dismissed)) => {
+            for event in dismissed {
+                crate::routes::publish_stored(state, event).await;
+            }
+            posted
+        }
         Err(err) => {
             tracing::warn!(repo, pull_number, error = %err, "ci watch: checks not recorded");
             return 0;

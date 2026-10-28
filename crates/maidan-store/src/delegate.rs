@@ -475,7 +475,11 @@ macro_rules! store_delegations {
                 lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                thread_results::set(self.pool(), thread_id, produced_by, lease_id, result).await
+                let stored =
+                    thread_results::set(self.pool(), thread_id, produced_by, lease_id, result)
+                        .await?;
+                $crate::result_metrics::record(result);
+                Ok(stored)
             }
 
             async fn get_thread_result(
@@ -1961,8 +1965,12 @@ macro_rules! store_delegations {
                 task_fingerprints::get(self.read_pool(), thread_id).await
             }
 
-            async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError> {
-                task_fingerprints::clear_duplicate(self.pool(), thread_id).await
+            async fn clear_task_duplicate(
+                &self,
+                thread_id: ThreadId,
+                audit: NewAuditEvent,
+            ) -> Result<(), StoreError> {
+                task_fingerprints::clear_duplicate(self.pool(), thread_id, audit).await
             }
 
             async fn get_thread_attributes(
@@ -2004,6 +2012,14 @@ macro_rules! store_delegations {
             ) -> Result<Vec<Thread>, StoreError> {
                 threads::page_for_workspace(self.pool(), workspace_id, after, limit, reader_id)
                     .await
+            }
+
+            async fn find_threads_for_workspace(
+                &self,
+                workspace_id: WorkspaceId,
+                search: crate::store::WorkspaceThreadSearch,
+            ) -> Result<Vec<Thread>, StoreError> {
+                threads::find_for_workspace(self.pool(), workspace_id, search).await
             }
 
             async fn page_threads_for_channel(
@@ -3157,6 +3173,13 @@ macro_rules! store_delegations {
                 new: maidan_types::NewPullCi,
             ) -> Result<Vec<maidan_types::PostedNotice>, StoreError> {
                 pull_ci::record(self.pool(), new).await
+            }
+
+            async fn record_pull_ci_with_events(
+                &self,
+                new: maidan_types::NewPullCi,
+            ) -> Result<(Vec<maidan_types::PostedNotice>, Vec<StoredEvent>), StoreError> {
+                pull_ci::record_with_events(self.pool(), new).await
             }
 
             async fn pull_head_was_ahead(

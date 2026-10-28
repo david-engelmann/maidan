@@ -28,20 +28,46 @@ pub(crate) fn family_sql(provider: &str, model: &str) -> String {
     format!("(CASE{arms} END)")
 }
 
-/// True when `cand` is a review routed away from its author's family and
-/// `member`'s usage evidence in the review's workspace names that family: such
-/// a seat may not claim it. Any such record counts, however old, so a seat
-/// that ever reported under the author's family is refused that review for
-/// good.
-pub(crate) fn refused_to(member: &str) -> String {
+/// The provider family `member` shares with the author of the change
+/// `thread` reviews, as a scalar SQL subquery: NULL when the thread names no
+/// author family, or `member`'s usage evidence in the thread's workspace
+/// never names it. Any such record counts, however old, so a seat that ever
+/// reported under the author's family is refused that review for good. Every
+/// path that hands a thread to a member applies it: `claim_next` through
+/// [`refused_to`], a direct claim or assign through [`not_same_family`] and
+/// the backends' `refuse_same_family_in_tx`.
+pub(crate) fn shared_family(member: &str, thread: &str) -> String {
     let family = family_sql("ul.provider", "ul.model");
     format!(
-        "EXISTS (SELECT 1 FROM maidan_thread_attributes ra
-                 JOIN maidan_usage_ledger ul ON ul.reporter_id = {member}
-                  AND ul.workspace_id = ch.workspace_id
-                 WHERE ra.thread_id = cand.id AND ra.author_family IS NOT NULL
-                   AND {family} = ra.author_family)"
+        "(SELECT ra.author_family FROM maidan_thread_attributes ra
+          JOIN maidan_threads rt ON rt.id = ra.thread_id
+          JOIN maidan_channels rc ON rc.id = rt.channel_id
+          JOIN maidan_usage_ledger ul ON ul.reporter_id = {member}
+           AND ul.workspace_id = rc.workspace_id
+          WHERE ra.thread_id = {thread} AND ra.author_family IS NOT NULL
+            AND {family} = ra.author_family
+          LIMIT 1)"
     )
+}
+
+/// True when `member` may not claim `cand`: see [`shared_family`].
+pub(crate) fn refused_to(member: &str) -> String {
+    format!("({} IS NOT NULL)", shared_family(member, "cand.id"))
+}
+
+/// The `AND` clause an `UPDATE maidan_threads` that hands the row to
+/// `member` carries, so the write itself refuses a seat of the author's
+/// family even if the read before it raced; see [`shared_family`].
+pub(crate) fn not_same_family(member: &str) -> String {
+    format!("AND {} IS NULL", shared_family(member, "maidan_threads.id"))
+}
+
+/// The refusal a direct claim or assign of a review answers with, naming
+/// the family.
+pub(crate) fn same_family_refusal(family: &str) -> crate::error::StoreError {
+    crate::error::StoreError::Conflict(format!(
+        "this review's change was written by the {family} family, and this member's usage names {family}; a review goes to a member of another family"
+    ))
 }
 
 #[cfg(test)]

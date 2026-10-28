@@ -291,14 +291,16 @@ pub async fn assign(
     // This variant emits no event, so it does not pass through
     // `append_assignment_event` where the other paths record.
     let mut tx = pool.begin().await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
     // A reassignment ends the claim it replaces. Charge that claim before the
     // write clears its working clock; a thread that was free charges nothing.
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
-         WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id)
+         WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id) {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("$1"),
+    ))
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
@@ -321,6 +323,7 @@ pub async fn assign_with_event(
     note: Option<String>,
 ) -> Result<(Thread, StoredEvent), StoreError> {
     let mut tx = pool.begin().await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, assignee_id).await?;
     let previous = sqlx::query(
         "SELECT assignee_id FROM maidan_threads WHERE id = $1 AND tombstoned_at IS NULL",
     )
@@ -332,11 +335,12 @@ pub async fn assign_with_event(
     .map(MemberId);
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
-         WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id)
+         WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id) {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("$1"),
+    ))
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
@@ -585,12 +589,13 @@ pub async fn claim(
     // the claim. Only a *winning* claim records — a losing compare-and-set
     // never held the thread.
     let mut tx = pool.begin().await?;
-    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
-    let row = sqlx::query(
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
-         WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
+         WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("$1"),
+    ))
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
@@ -599,6 +604,10 @@ pub async fn claim(
     .await?;
     match row {
         Some(row) => {
+            // The claim would win: refuse it as a duplicate under the row
+            // lock it holds, so a concurrent release cannot open a gap (#1580).
+            // Returning drops `tx`, rolling the claim back.
+            super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
             thread_workers::record_in_tx(&mut tx, thread_id, member_id).await?;
             tx.commit().await?;
             Ok(ThreadClaimResult {
@@ -625,13 +634,14 @@ pub async fn claim_with_event(
     member_id: MemberId,
 ) -> Result<(ThreadClaimResult, Option<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
+    super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     let lease = ClaimLeaseId::new();
-    let row = sqlx::query(
+    let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
-         WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL
+         WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
-    )
+        same = crate::review_family::not_same_family("$1"),
+    ))
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
@@ -640,6 +650,10 @@ pub async fn claim_with_event(
     .await?;
     match row {
         Some(row) => {
+            // The claim would win: refuse it as a duplicate under the row
+            // lock it holds, so a concurrent release cannot open a gap (#1580).
+            // Returning drops `tx`, rolling the claim back.
+            super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
             let thread = row_to_thread(&row)?;
             let stored = append_assignment_event(&mut tx, &thread, member_id, None, None).await?;
             tx.commit().await?;
@@ -832,8 +846,14 @@ async fn claim_next_in_tx(
     .bind(now)
     .fetch_optional(&mut **tx)
     .await?;
-    row.map(|row| Ok((row_to_thread(&row)?, lapsed_claim(&row))))
-        .transpose()
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let claimed = (row_to_thread(&row)?, lapsed_claim(&row));
+    // The candidate read ran in a snapshot taken before the row lock, so an
+    // author family committed in between went unseen; read it again now.
+    super::review_family::refuse_same_family_in_tx(tx, claimed.0.id, member_id).await?;
+    Ok(Some(claimed))
 }
 
 /// Atomically claim the oldest unassigned live thread in `channel_id` for
@@ -1298,6 +1318,119 @@ pub async fn page_for_workspace(
         .fetch_all(pool)
         .await?;
     rows.iter().map(row_to_thread).collect()
+}
+
+/// One keyset page of a workspace's live threads matching a
+/// [`WorkspaceThreadSearch`]'s attribute filter, in the search's direction.
+/// The filter applies before the limit, so a page is a full page of
+/// matches. The attributes join is a LEFT JOIN because a thread with no
+/// attributes row still matches the fields it reads with by default
+/// (`kind`, `threat_model`); the optional fields match only a stored
+/// value, which the plain equality gives for free, since a NULL column
+/// never equals. Returned threads carry their attributes.
+pub async fn find_for_workspace(
+    pool: &PgPool,
+    workspace_id: WorkspaceId,
+    search: crate::store::WorkspaceThreadSearch,
+) -> Result<Vec<Thread>, StoreError> {
+    // A cursor must be a live thread the caller can read, in this workspace.
+    // A foreign, unreadable, tombstoned or made-up id all get the same refusal,
+    // so the cursor cannot tell one of those from another. The relation in
+    // `ref.<relation>` is checked for syntax only: an unused one is an empty page.
+    if let Some(after) = search.after {
+        let readable = readable_row("t.id", "$1", "$3::uuid", "$4");
+        let sql = format!(
+            "SELECT 1 FROM maidan_threads t JOIN maidan_channels c ON c.id = t.channel_id
+             WHERE t.id = $2 AND c.workspace_id = $1 AND t.tombstoned_at IS NULL
+               AND ({readable})",
+        );
+        let known = sqlx::query(&sql)
+            .bind(workspace_id.0)
+            .bind(after.0)
+            .bind(search.reader_id.map(|id| id.0))
+            .bind(DM_CHANNEL_NAME)
+            .fetch_optional(pool)
+            .await?;
+        if known.is_none() {
+            return Err(StoreError::InvalidInput(
+                "cursor is not a thread you can read in this workspace: pass the last thread id of the prior page".into(),
+            ));
+        }
+    }
+    let cursor = search.after.map(|t| t.0);
+    let (direction, beyond) = if search.newest_first {
+        ("DESC", "<")
+    } else {
+        ("ASC", ">")
+    };
+    // Numbered placeholders throughout, as in `page_for_workspace`: the
+    // readable fragment's member placeholder and each filter value appear
+    // more than once in the SQL but bind once.
+    let readable = readable_row("t.id", "$1", "$3::uuid", "$4");
+    let sql = format!(
+        "SELECT t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state,
+                t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by,
+                a.thread_id AS attr_thread_id, a.kind AS kind, a.engine AS engine,
+                a.threat_model AS threat_model, a.size AS size, a.acceptance AS acceptance,
+                a.linear_issue AS linear_issue, a.tier AS tier, a.lane AS lane,
+                a.review_family AS review_family
+         FROM maidan_threads t
+         JOIN maidan_channels c ON c.id = t.channel_id
+         LEFT JOIN maidan_thread_attributes a ON a.thread_id = t.id
+         WHERE c.workspace_id = $1
+           AND t.tombstoned_at IS NULL
+           AND ($2::uuid IS NULL OR (t.created_at, t.id) {beyond} (
+                 SELECT ct.created_at, ct.id FROM maidan_threads ct WHERE ct.id = $2
+               ))
+           AND ({readable})
+           AND ($5::text IS NULL OR COALESCE(a.kind, 'change') = $5)
+           AND ($6::text IS NULL OR a.engine = $6)
+           AND ($7::boolean IS NULL OR COALESCE(a.threat_model, false) = $7)
+           AND ($8::text IS NULL OR a.size = $8)
+           AND ($9::text IS NULL OR a.linear_issue = $9)
+           AND ($10::text IS NULL OR a.tier = $10)
+           AND ($11::text IS NULL OR a.lane = $11)
+           AND ($12::text IS NULL OR a.review_family = $12)
+           AND ($13::uuid IS NULL OR EXISTS (
+                 SELECT 1 FROM maidan_references r
+                 WHERE r.src_kind = 'thread' AND r.src_id = t.id
+                   AND r.dst_kind = 'thread' AND r.dst_id = $13
+                   AND r.relation = $15
+               ))
+         ORDER BY t.created_at {direction}, t.id {direction}
+         LIMIT $14",
+    );
+    let filter = &search.filter;
+    let rows = sqlx::query(&sql)
+        .bind(workspace_id.0)
+        .bind(cursor)
+        .bind(search.reader_id.map(|id| id.0))
+        .bind(DM_CHANNEL_NAME)
+        .bind(filter.kind.map(|kind| kind.as_str()))
+        .bind(filter.engine.map(|engine| engine.as_str()))
+        .bind(filter.threat_model)
+        .bind(filter.size.map(|size| size.as_str()))
+        .bind(filter.linear_issue.as_deref())
+        .bind(filter.tier.map(|tier| tier.as_str()))
+        .bind(filter.lane.map(|lane| lane.as_str()))
+        .bind(filter.review_family.as_deref())
+        .bind(filter.reference.as_ref().map(|(_, dst)| dst.0))
+        .bind(search.limit.max(0))
+        .bind(
+            filter
+                .reference
+                .as_ref()
+                .map(|(relation, _)| relation.as_str()),
+        )
+        .fetch_all(pool)
+        .await?;
+    rows.iter()
+        .map(|row| {
+            let mut thread = row_to_thread(row)?;
+            thread.attributes = Some(super::thread_attributes::search_row_attributes(row)?);
+            Ok(thread)
+        })
+        .collect()
 }
 
 /// One keyset page of a channel's **live** threads, selected by

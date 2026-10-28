@@ -20,8 +20,8 @@ pub(crate) async fn insert_on(
     attributes: &TaskAttributes,
 ) -> Result<(), StoreError> {
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(thread_id.0)
     .bind(attributes.kind.as_str())
@@ -32,6 +32,7 @@ pub(crate) async fn insert_on(
     .bind(attributes.linear_issue.as_deref())
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
+    .bind(attributes.author_family.as_deref())
     .bind(Utc::now().to_rfc3339())
     .execute(&mut *conn)
     .await?;
@@ -154,11 +155,20 @@ pub(crate) async fn is_review_in_tx(
 
 /// The thread's attributes, or the defaults when it has no row.
 pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttributes, StoreError> {
+    let mut conn = pool.acquire().await?;
+    get_on(&mut conn, thread_id).await
+}
+
+/// [`get`] on a connection, so a transaction reads its own writes.
+pub(crate) async fn get_on(
+    conn: &mut sqlx::SqliteConnection,
+    thread_id: ThreadId,
+) -> Result<TaskAttributes, StoreError> {
     let row = sqlx::query(
-        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family FROM maidan_thread_attributes WHERE thread_id = ?",
+        "SELECT kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, review_family, author_family FROM maidan_thread_attributes WHERE thread_id = ?",
     )
     .bind(thread_id.0)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *conn)
     .await?;
     let Some(row) = row else {
         return Ok(TaskAttributes::default());
@@ -170,6 +180,44 @@ pub async fn get(pool: &SqlitePool, thread_id: ThreadId) -> Result<TaskAttribute
         kind: TaskKind::parse(&kind).unwrap_or_default(),
         engine: engine.and_then(|engine| TaskEngine::parse(&engine)),
         threat_model,
+        size: row
+            .try_get::<Option<String>, _>("size")?
+            .and_then(|size| TaskSize::parse(&size)),
+        acceptance: row.try_get("acceptance")?,
+        linear_issue: row.try_get("linear_issue")?,
+        tier: row
+            .try_get::<Option<String>, _>("tier")?
+            .and_then(|tier| TaskTier::parse(&tier)),
+        lane: row
+            .try_get::<Option<String>, _>("lane")?
+            .and_then(|lane| TaskLane::parse(&lane)),
+        review_family: row.try_get("review_family")?,
+        author_family: row.try_get("author_family")?,
+    })
+}
+
+/// The attributes a find-by-attribute row carries. The search select
+/// left-joins `maidan_thread_attributes` and aliases its columns to their
+/// plain names, with `attr_thread_id` marking whether a row exists at all;
+/// a thread with no row reads as the defaults, exactly as [`get`] reads it.
+pub(crate) fn search_row_attributes(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<TaskAttributes, StoreError> {
+    let present: Option<uuid::Uuid> = row.try_get("attr_thread_id")?;
+    if present.is_none() {
+        return Ok(TaskAttributes::default());
+    }
+    Ok(TaskAttributes {
+        kind: row
+            .try_get::<Option<String>, _>("kind")?
+            .and_then(|kind| TaskKind::parse(&kind))
+            .unwrap_or_default(),
+        engine: row
+            .try_get::<Option<String>, _>("engine")?
+            .and_then(|engine| TaskEngine::parse(&engine)),
+        threat_model: row
+            .try_get::<Option<bool>, _>("threat_model")?
+            .unwrap_or(false),
         size: row
             .try_get::<Option<String>, _>("size")?
             .and_then(|size| TaskSize::parse(&size)),
@@ -199,9 +247,27 @@ pub async fn set(
     if !exists {
         return Err(StoreError::NotFound);
     }
+    // One author family per change: restating it is fine, naming another is
+    // refused, and the upsert's COALESCE keeps it even if this read raced.
+    let mut tx = pool.begin().await?;
+    if let Some(named) = attributes.author_family.as_deref() {
+        let stored: Option<Option<String>> = sqlx::query_scalar(
+            "SELECT author_family FROM maidan_thread_attributes WHERE thread_id = ?",
+        )
+        .bind(thread_id.0)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(Some(stored)) = stored
+            && stored != named
+        {
+            return Err(StoreError::Conflict(format!(
+                "author_family is {stored} and stays {stored}: a review's author family is set once"
+            )));
+        }
+    }
     sqlx::query(
-        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO maidan_thread_attributes (thread_id, kind, engine, threat_model, size, acceptance, linear_issue, tier, lane, author_family, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id) DO UPDATE SET
              kind = excluded.kind,
              engine = excluded.engine,
@@ -211,6 +277,7 @@ pub async fn set(
              linear_issue = excluded.linear_issue,
              tier = excluded.tier,
              lane = excluded.lane,
+             author_family = COALESCE(maidan_thread_attributes.author_family, excluded.author_family),
              updated_at = excluded.updated_at",
     )
     .bind(thread_id.0)
@@ -222,9 +289,26 @@ pub async fn set(
     .bind(attributes.linear_issue.as_deref())
     .bind(attributes.tier.map(TaskTier::as_str))
     .bind(attributes.lane.map(TaskLane::as_str))
+    .bind(attributes.author_family.as_deref())
     .bind(Utc::now().to_rfc3339())
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    // The server-set review routing is left as stored and read back.
+    // Naming the family after a seat of that family already holds the
+    // review would leave it holding work it may not do: every claim-time
+    // check ran while the thread was unlabeled. Refuse, and roll back.
+    let held_by_family: Option<String> = sqlx::query_scalar(&format!(
+        "SELECT {} FROM maidan_threads t WHERE t.id = ?1 AND t.assignee_id IS NOT NULL",
+        crate::review_family::shared_family("t.assignee_id", "?1")
+    ))
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten();
+    if let Some(family) = held_by_family {
+        return Err(crate::review_family::same_family_refusal(&family));
+    }
+    tx.commit().await?;
+    // The server-set review routing is left as stored and read back, and
+    // an author family once stored is kept (see `TaskAttributes`).
     get(pool, thread_id).await
 }

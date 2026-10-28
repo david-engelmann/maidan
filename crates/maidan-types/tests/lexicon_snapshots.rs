@@ -203,6 +203,19 @@ fn sample_event(kind: EventKind) -> Event {
             reason: "superseded".into(),
             cancelled_by: member_id,
         },
+        EventKind::ThreadAttributesSet => Event::ThreadAttributesSet {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            attributes: maidan_types::TaskAttributes {
+                kind: maidan_types::TaskKind::Review,
+                review_family: Some("openai".into()),
+                ..Default::default()
+            },
+            author_family: Some("anthropic".into()),
+            actor_id: member_id,
+        },
         EventKind::ApprovalRequested => Event::ApprovalRequested {
             occurred_at,
             workspace_id,
@@ -369,6 +382,15 @@ fn sample_event(kind: EventKind) -> Event {
             decision: maidan_types::ReviewDecision::RequestChanges,
             sent_back: true,
             worker_id: Some(maidan_types::MemberId(id(13))),
+        },
+        EventKind::ApprovalDismissed => Event::ApprovalDismissed {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            reviewer_id: member_id,
+            approved_head: "a".repeat(40),
+            head_sha: "b".repeat(40),
         },
         EventKind::WaitTimedOut => Event::WaitTimedOut {
             occurred_at,
@@ -568,6 +590,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadReady
             | EventKind::ThreadResultSet
             | EventKind::ThreadCancelled
+            | EventKind::ThreadAttributesSet
             | EventKind::ApprovalRequested
             | EventKind::ThreadBlocked
             | EventKind::BlockedResolved
@@ -581,6 +604,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ThreadHandoff
             | EventKind::ResultDeliveryFailed
             | EventKind::ReviewSubmitted
+            | EventKind::ApprovalDismissed
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped
             | EventKind::ThreadSpawnDenied

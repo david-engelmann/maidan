@@ -88,6 +88,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "advise_land_gate",
     "catch_up_events",
     "find_thread",
+    "find_threads",
     "get_approval_gate",
     "get_artifact",
     "get_artifact_metadata",
@@ -306,6 +307,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_workspace_occupancy"
         | "get_swarm_metrics"
         | "find_thread"
+        | "find_threads"
         | "get_run_occupancy"
         | "get_thread_lineage"
         | "list_run_threads"
@@ -971,6 +973,7 @@ pub async fn dispatch(
         "get_group_dm" => channel::get_group_dm(store, auth, args).await,
         "post_group_dm_message" => message::post_group_dm_message(server, auth, args).await,
         "list_threads" => thread::list_threads(store, args).await,
+        "find_threads" => thread::find_threads(store, auth, args).await,
         "create_thread" => thread::create_thread(server, auth, args).await,
         "list_child_threads" => thread::list_child_threads(store, args).await,
         "list_recently_active_threads" => thread::list_recently_active_threads(store, args).await,

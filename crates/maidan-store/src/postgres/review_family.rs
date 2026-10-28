@@ -2,8 +2,8 @@
 
 use chrono::Utc;
 use maidan_types::{
-    provider_family, review_family_for, Event, MemberId, TaskAttributes, TaskKind, ThreadId,
-    WorkspaceId,
+    provider_family, review_family_for, Event, MemberId, StoredEvent, TaskAttributes, TaskKind,
+    ThreadId, WorkspaceId,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -20,14 +20,14 @@ pub(crate) async fn spawn_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
     actor_id: MemberId,
-) -> Result<(), StoreError> {
+) -> Result<Vec<StoredEvent>, StoreError> {
     let kind: Option<String> =
         sqlx::query_scalar("SELECT kind FROM maidan_thread_attributes WHERE thread_id = $1")
             .bind(thread_id.0)
             .fetch_optional(&mut **tx)
             .await?;
     if kind.is_some_and(|kind| kind != TaskKind::Change.as_str()) {
-        return Ok(());
+        return Ok(Vec::new());
     }
     // A workspace that turned review children off spawns none.
     let setting: String = sqlx::query_scalar(
@@ -40,7 +40,7 @@ pub(crate) async fn spawn_in_tx(
     .fetch_one(&mut **tx)
     .await?;
     if setting == maidan_types::ReviewChildren::Off.as_str() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let live_child: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM maidan_threads t
@@ -52,7 +52,7 @@ pub(crate) async fn spawn_in_tx(
     .fetch_one(&mut **tx)
     .await?;
     if live_child > 0 {
-        return Ok(());
+        return Ok(Vec::new());
     }
     // The author is the change's claimant (else its creator); only that
     // seat's own usage records name its family, latest first, ties broken by
@@ -77,7 +77,7 @@ pub(crate) async fn spawn_in_tx(
     };
     // Routing needs the author's family; with none named nothing is spawned.
     let Some(author) = author else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let review = review_family_for(Some(author));
     let place = sqlx::query(
@@ -119,15 +119,61 @@ pub(crate) async fn spawn_in_tx(
     .execute(&mut **tx)
     .await?;
     thread_attributes::apply_default_engine_on(tx, thread.id).await?;
-    events::append_in_tx(
+    let (child_id, channel) = (thread.id, thread.channel_id);
+    let created = events::append_in_tx(
         tx,
         &Event::ThreadCreated {
             occurred_at: now,
             workspace_id: WorkspaceId(workspace_id),
-            channel_id: thread.channel_id,
+            channel_id: channel,
             thread,
         },
     )
     .await?;
-    Ok(())
+    // The routing lives in the attributes row; say it on the log too, so
+    // replay and projections see it (#1572).
+    let attributes = thread_attributes::get_on(tx, child_id).await?;
+    let routed = events::append_in_tx(
+        tx,
+        &Event::ThreadAttributesSet {
+            occurred_at: now,
+            workspace_id: WorkspaceId(workspace_id),
+            channel_id: channel,
+            thread_id: child_id,
+            attributes,
+            author_family: Some(author.to_owned()),
+            actor_id,
+        },
+    )
+    .await?;
+    Ok(vec![created, routed])
+}
+
+/// Refuse handing review `thread_id` to `member_id` when the member's family
+/// wrote the change it reviews (see [`crate::review_family::shared_family`]),
+/// with an error naming the family rather than a silent miss.
+pub(crate) async fn refuse_same_family_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    member_id: MemberId,
+) -> Result<(), StoreError> {
+    // The thread row lock comes first so this read, in its own later snapshot,
+    // sees an author family whose `thread_attributes::set` held the lock
+    // before us; that set then sees our assignee when it runs after us.
+    sqlx::query("SELECT 1 FROM maidan_threads WHERE id = $1 FOR UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?;
+    let family: Option<String> = sqlx::query_scalar(&format!(
+        "SELECT {}",
+        crate::review_family::shared_family("$1", "$2")
+    ))
+    .bind(member_id.0)
+    .bind(thread_id.0)
+    .fetch_one(&mut **tx)
+    .await?;
+    match family {
+        Some(family) => Err(crate::review_family::same_family_refusal(&family)),
+        None => Ok(()),
+    }
 }

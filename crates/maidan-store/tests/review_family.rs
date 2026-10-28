@@ -155,10 +155,33 @@ where
         .set_thread_result_claiming(change, author, &json!({"status": "done"}))
         .await
         .expect("result");
-    store
-        .transition_thread(change, author, ThreadAction::StartReview)
+    let (_, events) = store
+        .transition_thread_with_event(change, author, ThreadAction::StartReview)
         .await
         .expect("start review");
+    // The spawned review child's routing rides out with the transition so a
+    // live subscriber sees it (#1572).
+    let routed = events
+        .iter()
+        .map(|e| e.opened_event().expect("event"))
+        .find_map(|e| match e {
+            Event::ThreadAttributesSet {
+                attributes,
+                author_family,
+                ..
+            } => Some((attributes, author_family)),
+            _ => None,
+        })
+        .expect("the review child's routing is published");
+    assert_eq!(routed.0.kind, TaskKind::Review);
+    assert_eq!(routed.0.review_family.as_deref(), Some("openai"));
+    assert_eq!(routed.1.as_deref(), Some("anthropic"));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e.opened_event(), Ok(Event::ThreadCreated { .. }))),
+        "the review child's creation is published"
+    );
 
     for seat in [author, same] {
         assert!(
@@ -251,6 +274,240 @@ where
                 .expect("claim next")
                 .is_none(),
             "with review children off no review task is spawned"
+        );
+    }
+
+    // A review a producer files for a change written elsewhere names the
+    // author's family itself, and claim_next refuses it to that family.
+    let (filed, _) = store
+        .create_thread_with_footprint(
+            new("filed review"),
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("openai".into()),
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("filed review");
+    assert!(
+        store
+            .claim_next_thread(channel, other, None, None)
+            .await
+            .expect("claim next")
+            .is_none(),
+        "an openai seat never gets a review of an openai change"
+    );
+    // Whoever may set attributes cannot lift it: a set that omits the
+    // family keeps it, and one that names another is refused.
+    let kept = store
+        .set_thread_attributes(
+            filed.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                ..TaskAttributes::default()
+            },
+        )
+        .await
+        .expect("set");
+    assert_eq!(kept.author_family.as_deref(), Some("openai"));
+    let renamed = store
+        .set_thread_attributes(
+            filed.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("anthropic".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await;
+    assert!(
+        matches!(&renamed, Err(StoreError::Conflict(m)) if m.contains("stays openai")),
+        "{renamed:?}"
+    );
+    assert_eq!(
+        store
+            .get_thread_attributes(filed.id)
+            .await
+            .expect("attrs")
+            .author_family
+            .as_deref(),
+        Some("openai")
+    );
+    // A direct claim or an assign by a seat of the author's family is
+    // refused too, naming the family, not answered with a quiet miss.
+    let direct = store.claim_thread(filed.id, other).await;
+    assert!(
+        matches!(&direct, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{direct:?}"
+    );
+    let assigned = store.assign_thread(filed.id, other).await;
+    assert!(
+        matches!(&assigned, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{assigned:?}"
+    );
+    let direct = store.claim_thread_with_event(filed.id, other).await;
+    assert!(
+        matches!(&direct, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{direct:?}"
+    );
+    let assigned = store
+        .assign_thread_with_event(filed.id, other, author, None)
+        .await;
+    assert!(
+        matches!(&assigned, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{assigned:?}"
+    );
+    assert!(
+        store
+            .claim_next_thread(channel, other, None, None)
+            .await
+            .expect("claim next")
+            .is_none(),
+        "still refused after the sets"
+    );
+    let taken = store
+        .claim_next_thread(channel, same, None, None)
+        .await
+        .expect("claim next")
+        .expect("an anthropic seat takes it");
+    assert_eq!(taken.id, filed.id);
+    // A member of another family may still be handed it directly.
+    let handed = store
+        .assign_thread(filed.id, author)
+        .await
+        .expect("assign to an anthropic member");
+    assert_eq!(handed.assignee_id, Some(author));
+
+    // A set may name the family of a review filed without one.
+    let (unnamed, _) = store
+        .create_thread_with_footprint(
+            new("unnamed review"),
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("unnamed review");
+    let named = store
+        .set_thread_attributes(
+            unnamed.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("anthropic".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await
+        .expect("set");
+    assert_eq!(named.author_family.as_deref(), Some("anthropic"));
+    for seat in [author, same] {
+        assert!(
+            store
+                .claim_next_thread(channel, seat, None, None)
+                .await
+                .expect("claim next")
+                .is_none(),
+            "an anthropic seat never gets it once named"
+        );
+    }
+    let direct = store
+        .claim_thread(unnamed.id, other)
+        .await
+        .expect("an openai member claims an anthropic change's review");
+    assert!(direct.claimed);
+
+    // Naming the family after a seat of that family already holds the
+    // review is refused and changes nothing: every claim-time check ran
+    // while the thread was unlabeled, so the set is the last place to stop it.
+    let (late, _) = store
+        .create_thread_with_footprint(
+            new("review labelled late"),
+            None,
+            Some(TaskAttributes {
+                kind: TaskKind::Review,
+                ..TaskAttributes::default()
+            }),
+            None,
+        )
+        .await
+        .expect("late review");
+    assert!(
+        store
+            .claim_thread(late.id, other)
+            .await
+            .expect("claim")
+            .claimed
+    );
+    let labelled = store
+        .set_thread_attributes(
+            late.id,
+            TaskAttributes {
+                kind: TaskKind::Review,
+                author_family: Some("openai".into()),
+                ..TaskAttributes::default()
+            },
+        )
+        .await;
+    assert!(
+        matches!(&labelled, Err(StoreError::Conflict(m)) if m.contains("openai family")),
+        "{labelled:?}"
+    );
+    assert_eq!(
+        store
+            .get_thread_attributes(late.id)
+            .await
+            .expect("attrs")
+            .author_family,
+        None,
+        "the refused set stored nothing"
+    );
+
+    // A claim racing the label: whichever commits second sees the first, so
+    // an openai seat never ends up holding an openai-labelled review.
+    for round in 0..100 {
+        let (race, _) = store
+            .create_thread_with_footprint(
+                new(&format!("review raced {round}")),
+                None,
+                Some(TaskAttributes {
+                    kind: TaskKind::Review,
+                    ..TaskAttributes::default()
+                }),
+                None,
+            )
+            .await
+            .expect("raced review");
+        let (claim, label) = tokio::join!(
+            store.claim_thread(race.id, other),
+            store.set_thread_attributes(
+                race.id,
+                TaskAttributes {
+                    kind: TaskKind::Review,
+                    author_family: Some("openai".into()),
+                    ..TaskAttributes::default()
+                },
+            )
+        );
+        let claimed = matches!(&claim, Ok(c) if c.claimed);
+        assert!(
+            !(claimed && label.is_ok()),
+            "round {round}: both the claim and the label committed"
+        );
+        let held = store.get_thread(race.id).await.expect("thread").assignee_id;
+        let family = store
+            .get_thread_attributes(race.id)
+            .await
+            .expect("attrs")
+            .author_family;
+        assert!(
+            !(held == Some(other) && family.as_deref() == Some("openai")),
+            "round {round}: an openai seat holds an openai review"
         );
     }
 }

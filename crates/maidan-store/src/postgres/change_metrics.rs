@@ -1360,6 +1360,7 @@ fn pull_from(
                 .flatten()
                 .and_then(|lane| maidan_types::TaskLane::parse(&lane)),
             review_family: None,
+            author_family: None,
         },
     }
 }

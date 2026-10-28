@@ -58,4 +58,9 @@ for line in $(grep -n -- '--no-default-features' crates/maidan-server/Dockerfile
   fi
 done
 
+# The registry manifest and the image label must name the same server.
+name=$(python3 -c 'import json;print(json.load(open("listings/registry/server.json"))["name"])')
+grep -q "io.modelcontextprotocol.server.name=\"$name\"" crates/maidan-server/Dockerfile \
+  || { echo "crates/maidan-server/Dockerfile must label io.modelcontextprotocol.server.name=\"$name\"" >&2; exit 1; }
+
 echo "deployment contract OK"

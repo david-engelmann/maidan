@@ -3,6 +3,7 @@
   "types": [
     "example.plan.result/1",
     "example.review.result/1",
+    "maidan.event.approval_dismissed/1",
     "maidan.event.approval_requested/1",
     "maidan.event.artifact_upserted/1",
     "maidan.event.blocked_resolved/1",
@@ -30,6 +31,7 @@
     "maidan.event.schedule_skipped/1",
     "maidan.event.status_declared/1",
     "maidan.event.thread_assignment_changed/1",
+    "maidan.event.thread_attributes_set/1",
     "maidan.event.thread_blocked/1",
     "maidan.event.thread_cancelled/1",
     "maidan.event.thread_created/1",

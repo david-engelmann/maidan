@@ -668,18 +668,49 @@ async fn a_push_dismisses_approvals_given_to_an_earlier_head(store: Arc<dyn Stor
     assert!(s.review_status(thread).await.unwrap().approvals_met);
 
     // Re-reading the same head leaves every approval standing.
-    s.record_pull_ci(read(room.ws, &head, CiStatus::Success, &[], true))
+    let (_, none) = s
+        .record_pull_ci_with_events(read(room.ws, &head, CiStatus::Success, &[], true))
         .await
         .unwrap();
+    assert!(
+        none.is_empty(),
+        "a re-read of the same head dismisses nothing"
+    );
     assert!(review(s, thread, r1).await.dismissed_at.is_none());
     assert!(review(s, child, r3).await.dismissed_at.is_none());
 
     // A push moves the head: the earlier approvals, on the change and on its
     // review child, no longer stand and no longer count toward close.
     let pushed = "b".repeat(40);
-    s.record_pull_ci(read(room.ws, &pushed, CiStatus::Pending, &[], false))
+    let (_, dismissed) = s
+        .record_pull_ci_with_events(read(room.ws, &pushed, CiStatus::Pending, &[], false))
         .await
         .unwrap();
+    // Each dismissal is an event a waiter can see (#1572).
+    let mut said: Vec<(ThreadId, MemberId, String, String)> = dismissed
+        .iter()
+        .map(|e| match e.opened_event().unwrap() {
+            Event::ApprovalDismissed {
+                thread_id,
+                reviewer_id,
+                approved_head,
+                head_sha,
+                workspace_id,
+                ..
+            } => {
+                assert_eq!(workspace_id, room.ws);
+                (thread_id, reviewer_id, approved_head, head_sha)
+            }
+            other => panic!("not a dismissal: {other:?}"),
+        })
+        .collect();
+    said.sort_by_key(|d| d.0 .0);
+    let mut want = vec![
+        (thread, r1, head.clone(), pushed.clone()),
+        (child, r3, head.clone(), pushed.clone()),
+    ];
+    want.sort_by_key(|d| d.0 .0);
+    assert_eq!(said, want);
     assert!(review(s, thread, r1).await.dismissed_at.is_some());
     assert!(review(s, child, r3).await.dismissed_at.is_some());
     let status = s.review_status(thread).await.unwrap();
@@ -767,6 +798,13 @@ async fn a_refused_read_at_a_new_head_dismisses_the_old_heads_approval(store: Ar
     let ci = s.get_pull_ci(room.ws, REPO, 7).await.unwrap().unwrap();
     assert_eq!(ci.head_sha, pushed);
     assert_eq!(ci.status, CiStatus::Unreadable);
+}
+
+/// The event-surface matrix's evidence that a push publishes each
+/// dismissal (#1572); the scenario also runs on both backends below.
+#[tokio::test]
+async fn a_push_says_each_dismissed_approval_on_sqlite() {
+    a_push_dismisses_approvals_given_to_an_earlier_head(sqlite().await).await;
 }
 
 macro_rules! on_both_backends {

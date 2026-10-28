@@ -129,7 +129,7 @@ async fn discovery(State(state): State<Arc<ProviderState>>) -> Json<Value> {
 
 async fn jwks(State(state): State<Arc<ProviderState>>) -> Json<Value> {
     state.jwks_seen.store(true, Ordering::SeqCst);
-    let point = state.signing_key.verifying_key().to_encoded_point(false);
+    let point = state.signing_key.verifying_key().to_sec1_point(false);
     Json(json!({
         "keys": [{
             "kty": "EC",
