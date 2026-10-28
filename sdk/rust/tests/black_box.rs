@@ -56,7 +56,12 @@ fn seed(c: &Client, base: &str) -> (String, String, Channel, Thread) {
         .channels()
         .create(&wid, &unique("rust-sdk"), false)
         .unwrap();
-    let thread = c.threads().create(&channel.id, "kickoff").unwrap();
+    // A unique title: an identical open brief in the workspace is linked as a
+    // duplicate (task fingerprints) and withheld from claim-next.
+    let thread = c
+        .threads()
+        .create(&channel.id, &format!("kickoff {}", channel.id))
+        .unwrap();
     (wid, member_id, channel, thread)
 }
 

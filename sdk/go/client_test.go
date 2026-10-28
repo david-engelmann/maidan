@@ -95,7 +95,9 @@ func seed(t *testing.T, c *Client) (wid, memberID string, channel *Channel, thre
 	if channel, err = c.Channels.Create(wid, unique("go-sdk"), false); err != nil {
 		t.Fatal(err)
 	}
-	if thread, err = c.Threads.Create(channel.ID, "kickoff"); err != nil {
+	// A unique title: an identical open brief in the workspace is linked as a
+	// duplicate (task fingerprints) and withheld from claim-next.
+	if thread, err = c.Threads.Create(channel.ID, "kickoff "+channel.ID); err != nil {
 		t.Fatal(err)
 	}
 	return

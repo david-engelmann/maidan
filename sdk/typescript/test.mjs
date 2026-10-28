@@ -90,7 +90,9 @@ async function seed() {
   const ws = { id: WORKSPACE };
   const member = { id: me.member_id };
   const channel = await client.channels.create(WORKSPACE, `ts-sdk-${crypto.randomUUID()}`);
-  const thread = await client.threads.create(channel.id, "kickoff");
+  // A unique title: an identical open brief in the workspace is linked as a
+  // duplicate (task fingerprints) and withheld from claim-next.
+  const thread = await client.threads.create(channel.id, `kickoff ${channel.id}`);
   return { ws, member, channel, thread };
 }
 
