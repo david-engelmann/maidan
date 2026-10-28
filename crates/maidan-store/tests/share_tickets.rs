@@ -236,11 +236,17 @@ async fn run_suite(store: &dyn Store) {
         .is_some());
 }
 
-/// A ticket whose expiry is milliseconds away is minted, and resolves until
-/// that exact instant. SQLite used to compare whole seconds against a creation
-/// time the database stamped after validation, so an expiry in the same
-/// second as the insert failed the table's CHECK and minting was a 500.
-async fn a_sub_second_expiry_is_minted_and_honoured(store: &dyn Store) {
+/// A ticket resolves until the instant it expires, and not at that instant.
+///
+/// Create judges the deadline against its own clock, taken when the insert
+/// runs. A deadline computed earlier and only 50 ms ahead is already past
+/// when a slow runner reaches the insert, so minting is refused. The
+/// deadline here is long enough that the runner cannot arrive late. The
+/// check that the ticket is valid one millisecond before expiry, and gone
+/// at expiry, uses the instant passed to resolve, not the wall clock. The
+/// one-millisecond lower bound on an expiry is
+/// `an_expiry_is_accepted_only_past_the_database_resolution`.
+async fn a_ticket_is_valid_until_the_instant_it_expires(store: &dyn Store) {
     let ws = store
         .create_workspace(NewWorkspace {
             name: "short-lived".into(),
@@ -268,7 +274,7 @@ async fn a_sub_second_expiry_is_minted_and_honoured(store: &dyn Store) {
 
     let token_hash = "b".repeat(64);
     let before = Utc::now();
-    let expires_at = before + ChronoDuration::milliseconds(50);
+    let expires_at = before + ChronoDuration::seconds(60);
     let ticket = store
         .create_share_ticket(NewShareTicket {
             workspace_id: ws.id,
@@ -280,7 +286,7 @@ async fn a_sub_second_expiry_is_minted_and_honoured(store: &dyn Store) {
             artifact_shas: Vec::new(),
         })
         .await
-        .expect("a ticket 50 ms from expiry is minted");
+        .expect("a ticket is minted");
     assert!(ticket.created_at >= before && ticket.created_at < ticket.expires_at);
 
     let just_before = ticket.expires_at - ChronoDuration::milliseconds(1);
@@ -301,8 +307,8 @@ async fn a_sub_second_expiry_is_minted_and_honoured(store: &dyn Store) {
 }
 
 #[tokio::test]
-async fn a_sub_second_expiry_is_minted_and_honoured_sqlite() {
-    a_sub_second_expiry_is_minted_and_honoured(&sqlite().await).await;
+async fn a_ticket_is_valid_until_the_instant_it_expires_sqlite() {
+    a_ticket_is_valid_until_the_instant_it_expires(&sqlite().await).await;
 }
 
 #[tokio::test]
@@ -342,5 +348,5 @@ async fn share_ticket_lifecycle_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
-    a_sub_second_expiry_is_minted_and_honoured(&store).await;
+    a_ticket_is_valid_until_the_instant_it_expires(&store).await;
 }
