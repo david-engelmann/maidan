@@ -2100,6 +2100,18 @@ pub trait ReviewStore: Send + Sync {
         note: Option<&str>,
         evidence_root: Option<&str>,
     ) -> Result<ReviewSubmission, StoreError>;
+    /// [`Store::submit_review`] naming the head the reviewer read; a head
+    /// other than the change's tracked head is a `Conflict` (#1574).
+    #[allow(clippy::too_many_arguments)]
+    async fn submit_review_at_head(
+        &self,
+        thread_id: ThreadId,
+        reviewer_id: MemberId,
+        decision: ReviewDecision,
+        note: Option<&str>,
+        evidence_root: Option<&str>,
+        head_sha: Option<&str>,
+    ) -> Result<ReviewSubmission, StoreError>;
     async fn list_reviews(&self, thread_id: ThreadId) -> Result<Vec<ThreadReview>, StoreError>;
     /// Every review verdict on the thread, oldest first. `submit_review`
     /// appends one per submission, in its transaction; the history is never

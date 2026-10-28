@@ -128,6 +128,8 @@ struct SubmitReviewArgs {
     note: Option<String>,
     #[serde(default)]
     evidence_root: Option<String>,
+    #[serde(default)]
+    head_sha: Option<String>,
 }
 
 /// Submit a review decision as the caller. An owner/assignee may submit but it
@@ -144,15 +146,17 @@ pub(super) async fn submit_review(
         .map_err(McpError::InvalidParams)?;
     let root = maidan_types::review_evidence(a.decision, a.evidence_root.as_deref())
         .map_err(McpError::InvalidParams)?;
+    let head = maidan_types::review_head(a.head_sha.as_deref()).map_err(McpError::InvalidParams)?;
     let thread_id = ThreadId(a.thread_id);
     let submission = server
         .store
-        .submit_review(
+        .submit_review_at_head(
             thread_id,
             auth.member_id,
             a.decision,
             note.as_deref(),
             root.as_deref(),
+            head.as_deref(),
         )
         .await?;
     for stored in submission.events() {

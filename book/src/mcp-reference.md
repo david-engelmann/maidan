@@ -4650,6 +4650,10 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
       "description": "the evidence_root from get_review_packet you are deciding on, required on approve",
       "type": "string"
     },
+    "head_sha": {
+      "description": "optional full commit SHA of the change head you reviewed; refused as a conflict when the change has moved since",
+      "type": "string"
+    },
     "note": {
       "description": "what to change, required on request_changes; optional on approve",
       "type": "string"

@@ -177,6 +177,31 @@ pub async fn submit_review(
     note: Option<&str>,
     evidence_root: Option<&str>,
 ) -> Result<ReviewSubmission, StoreError> {
+    submit_review_at_head(
+        pool,
+        thread_id,
+        reviewer_id,
+        decision,
+        note,
+        evidence_root,
+        None,
+    )
+    .await
+}
+
+/// [`submit_review`], naming the head the reviewer read (#1574). A named
+/// head that is not the change's tracked head is a conflict: the change
+/// moved since the reviewer read it. The verdict stores the named head.
+#[allow(clippy::too_many_arguments)]
+pub async fn submit_review_at_head(
+    pool: &PgPool,
+    thread_id: ThreadId,
+    reviewer_id: MemberId,
+    decision: ReviewDecision,
+    note: Option<&str>,
+    evidence_root: Option<&str>,
+    head_sha: Option<&str>,
+) -> Result<ReviewSubmission, StoreError> {
     let mut tx = pool.begin().await?;
     let submission = submit_review_on(
         &mut tx,
@@ -185,6 +210,7 @@ pub async fn submit_review(
         decision,
         note,
         evidence_root,
+        head_sha,
     )
     .await?;
     tx.commit().await?;
@@ -201,19 +227,33 @@ async fn submit_review_on(
     decision: ReviewDecision,
     note: Option<&str>,
     evidence_root: Option<&str>,
+    named_head: Option<&str>,
 ) -> Result<ReviewSubmission, StoreError> {
     if let Some(root) = evidence_root {
         super::review_packets::verify_root_in_tx(tx, thread_id, root).await?;
     }
     let actor_id = crate::attribution::delegate_acting_for(reviewer_id);
     // The verdict names the head of the change it was given against.
-    let head_sha: Option<String> = sqlx::query_scalar(&format!(
+    let tracked: Option<String> = sqlx::query_scalar(&format!(
         "SELECT {}",
         crate::review_head::current_head("$1")
     ))
     .bind(thread_id.0)
     .fetch_one(&mut **tx)
     .await?;
+    let head_sha = match named_head {
+        None => tracked,
+        Some(named) => {
+            if let Some(tracked) = tracked.as_deref()
+                && !tracked.eq_ignore_ascii_case(named)
+            {
+                return Err(StoreError::Conflict(format!(
+                    "stale head: you reviewed {named} but the change's head is now {tracked}; re-read the change and review again"
+                )));
+            }
+            Some(named.to_ascii_lowercase())
+        }
+    };
     let row = sqlx::query(&format!(
         "INSERT INTO maidan_thread_reviews
              (thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, evidence_root, head_sha)
@@ -483,6 +523,7 @@ pub async fn apply_critical_review_decision(
         reviewer_id,
         decision,
         Some(CRITICAL_REVIEW_NOTE),
+        None,
         None,
     )
     .await?;

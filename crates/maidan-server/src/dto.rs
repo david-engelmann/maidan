@@ -350,6 +350,10 @@ pub struct SubmitReview {
     /// (`GET /threads/{id}/review-packet`). Required to approve.
     #[serde(default)]
     pub evidence_root: Option<String>,
+    /// The full commit SHA of the change head you reviewed. When given and
+    /// the change's tracked head has moved, the verdict is refused with 409.
+    #[serde(default)]
+    pub head_sha: Option<String>,
 }
 
 /// Record a LandGate pointer. `land` is optional — a fail is always red; a pass
