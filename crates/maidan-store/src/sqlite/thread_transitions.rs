@@ -514,6 +514,17 @@ pub async fn close_abandoned(
     }
 
     let result = land_in_tx(&mut tx, &thread, actor_id, ThreadState::Closed).await?;
+    // Nothing landed, so the dependents stay waiting: a dependency is met
+    // only when it is closed or archived without a row here.
+    sqlx::query(
+        "INSERT INTO maidan_thread_unlanded_closes (thread_id, reason, closed_by)
+         VALUES (?, ?, ?)",
+    )
+    .bind(thread_id.0)
+    .bind(close.reason.as_str())
+    .bind(actor_id.0)
+    .execute(&mut *tx)
+    .await?;
     let mut metadata = match std::mem::take(&mut audit.metadata) {
         serde_json::Value::Object(map) => map,
         _ => serde_json::Map::new(),

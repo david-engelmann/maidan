@@ -280,6 +280,69 @@ async fn assert_close_abandoned(store: &dyn Store) {
     );
 }
 
+/// A dependent of a thread closed without landing stays waiting, for every
+/// reason, while a dependent of a thread that closed the usual way in the
+/// other workspace becomes ready.
+async fn assert_dependents_stay_waiting(store: &dyn Store) {
+    let ws_a = workspace(store, "waiting-a").await;
+    let ws_b = workspace(store, "waiting-b").await;
+    let alice = member(store, ws_a, "alice").await;
+    let bob = member(store, ws_b, "bob").await;
+    let open_a = channel(store, ws_a, "open-a", false).await;
+    let open_b = channel(store, ws_b, "open-b", false).await;
+
+    let covering = task(store, open_a, alice, "the thread that covers it").await;
+    for reason in [
+        CloseReason::Abandoned,
+        CloseReason::Duplicate,
+        CloseReason::Superseded,
+    ] {
+        let dep = task(store, open_a, alice, "will not land").await;
+        let dependent = task(store, open_a, alice, "waits on it").await;
+        store.add_thread_dependency(dependent, dep).await.unwrap();
+        let duplicate_of = match reason {
+            CloseReason::Abandoned => None,
+            _ => Some(covering),
+        };
+        let (result, _) = store
+            .close_abandoned_thread(
+                dep,
+                alice,
+                false,
+                &close(reason, duplicate_of),
+                audit(ws_a, alice, dep),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.thread.state, ThreadState::Closed);
+        assert!(
+            !store
+                .thread_dependencies_satisfied(dependent)
+                .await
+                .unwrap(),
+            "a dependent of a {} close is not ready",
+            reason.as_str()
+        );
+        assert!(store.newly_ready_dependents(dep).await.unwrap().is_empty());
+    }
+
+    // The usual close in workspace B still frees its dependent.
+    let landed = task(store, open_b, bob, "lands").await;
+    let next = task(store, open_b, bob, "after it").await;
+    store.add_thread_dependency(next, landed).await.unwrap();
+    store
+        .transition_thread(landed, bob, maidan_fsm::ThreadAction::StartReview)
+        .await
+        .unwrap();
+    store
+        .transition_thread(landed, bob, maidan_fsm::ThreadAction::Close)
+        .await
+        .unwrap();
+    assert!(store.thread_dependencies_satisfied(next).await.unwrap());
+    let ready = store.newly_ready_dependents(landed).await.unwrap();
+    assert_eq!(ready.iter().map(|t| t.id).collect::<Vec<_>>(), vec![next]);
+}
+
 #[tokio::test]
 async fn only_its_producer_holder_or_a_maintainer_closes_an_abandoned_thread_on_sqlite() {
     let pool = SqlitePoolOptions::new()
@@ -321,4 +384,47 @@ async fn only_its_producer_holder_or_a_maintainer_closes_an_abandoned_thread_on_
     run_postgres_migrations(&pool).await.unwrap();
     let store = PostgresStore::for_tests(pool);
     assert_close_abandoned(&store).await;
+}
+
+#[tokio::test]
+async fn a_dependent_of_a_thread_closed_without_landing_stays_waiting_on_sqlite() {
+    let pool = SqlitePoolOptions::new()
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    run_sqlite_migrations(&pool).await.unwrap();
+    let store = SqliteStore::for_tests(pool);
+    assert_dependents_stay_waiting(&store).await;
+}
+
+#[tokio::test]
+async fn a_dependent_of_a_thread_closed_without_landing_stays_waiting_on_postgres() {
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(c) => c,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.unwrap();
+    let port = container.get_host_port_ipv4(5432).await.unwrap();
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .unwrap();
+    run_postgres_migrations(&pool).await.unwrap();
+    let store = PostgresStore::for_tests(pool);
+    assert_dependents_stay_waiting(&store).await;
 }

@@ -106,7 +106,9 @@ pub async fn dependencies_satisfied(
          FROM maidan_thread_dependencies d
          JOIN maidan_threads t ON t.id = d.depends_on_thread_id
          WHERE d.thread_id = $1
-           AND t.state NOT IN ('closed', 'archived')",
+           AND (t.state NOT IN ('closed', 'archived')
+                OR EXISTS (SELECT 1 FROM maidan_thread_unlanded_closes u
+                           WHERE u.thread_id = t.id))",
     )
     .bind(thread_id.0)
     .fetch_one(pool)
@@ -129,7 +131,9 @@ pub async fn newly_ready_dependents(
                SELECT 1 FROM maidan_thread_dependencies dd
                JOIN maidan_threads dep ON dep.id = dd.depends_on_thread_id
                WHERE dd.thread_id = t.id
-                 AND dep.state NOT IN ('closed', 'archived')
+                 AND (dep.state NOT IN ('closed', 'archived')
+                      OR EXISTS (SELECT 1 FROM maidan_thread_unlanded_closes u
+                                 WHERE u.thread_id = dep.id))
            )
          ORDER BY t.created_at ASC",
     )
