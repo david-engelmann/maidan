@@ -19,8 +19,10 @@
 //! let client = Client::new("http://127.0.0.1:8080", "");
 //! if let Some(claim) = client.claim_next_thread("channel-id", None)? {
 //!     client.messages().post(&claim.id, "on it")?;
-//!     let lease = claim.claim_lease_id.clone().unwrap_or_default();
-//!     client.threads().set_result(&claim.id, json!({"ok": true}), &lease)?;
+//!     // Write under the claim's lease; never send an empty one.
+//!     if let Some(lease) = claim.claim_lease_id.as_deref() {
+//!         client.threads().set_result(&claim.id, json!({"ok": true}), lease)?;
+//!     }
 //! }
 //! match client.threads().get("no-such-thread") {
 //!     Err(MaidanError::NotFound(problem)) => eprintln!("gone: {:?}", problem.detail),
