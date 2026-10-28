@@ -416,7 +416,9 @@ jobs:
     runs-on: ubuntu-latest
     # Freeing disk costs about two minutes, and the first green run after it
     # took 26m41s; at 30 a slow runner would be cut off and read as cancelled.
-    timeout-minutes: 40
+    # The suite passed 3,300 tests in 2026-10; a full run on a slow runner
+    # took the whole 40 minutes and was cancelled with nothing failed.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
