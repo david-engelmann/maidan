@@ -569,6 +569,10 @@ pub struct GithubPullSnapshot {
     /// The checks on the head commit; `None` when this read did not carry
     /// them, empty when nothing has reported yet.
     pub checks: Option<Vec<GithubCheck>>,
+    /// GitHub refused the checks with `FORBIDDEN` (a fine-grained token
+    /// without Checks: read and Commit statuses: read): `checks` is `None`,
+    /// not an empty list nothing has reported to (#1623).
+    pub checks_forbidden: bool,
     /// What else decides whether it can merge; `None` when this read did not
     /// carry it.
     pub gate: Option<GithubGate>,
@@ -725,6 +729,7 @@ pub trait GithubGit: Send + Sync {
         Ok(GithubPullSnapshot {
             brief: self.pull_brief(repo, pull_number).await?,
             checks: None,
+            checks_forbidden: false,
             gate: None,
             ahead: None,
         })
@@ -2278,9 +2283,14 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
             .map(str::to_ascii_lowercase),
     };
     let commit = pull.pointer("/commits/nodes/0/commit");
+    // A token that may read pull requests but not checks gets the pull with
+    // `statusCheckRollup: null` and a FORBIDDEN error on that path: that is
+    // a failed read, not a head nothing has reported to (#1623).
+    let checks_forbidden = rollup_forbidden(value);
     // Checks only for the head the brief names: a push between GitHub's two
     // reads would otherwise pin one head's checks on another.
     let checks = commit
+        .filter(|_| !checks_forbidden)
         .filter(|commit| {
             commit
                 .get("oid")
@@ -2356,6 +2366,7 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
     Ok(GithubPullSnapshot {
         brief,
         checks,
+        checks_forbidden,
         gate: Some(gate),
         // A pull request lists the commits its head has that its base lacks.
         ahead: pull
@@ -2363,6 +2374,25 @@ pub(crate) fn snapshot_from(value: &serde_json::Value) -> Result<GithubPullSnaps
             .and_then(serde_json::Value::as_i64)
             .map(|commits| commits > 0),
     })
+}
+
+/// Whether a [`PULL_SNAPSHOT_QUERY`] answer carries a `FORBIDDEN` error on
+/// the head commit's `statusCheckRollup`.
+fn rollup_forbidden(value: &serde_json::Value) -> bool {
+    value
+        .get("errors")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|e| e.get("type").and_then(serde_json::Value::as_str) == Some("FORBIDDEN"))
+        .any(|e| {
+            e.get("path")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|path| {
+                    path.iter()
+                        .any(|step| step.as_str() == Some("statusCheckRollup"))
+                })
+        })
 }
 
 /// One `statusCheckRollup` context as a check, or `None` for a node this
@@ -2688,6 +2718,30 @@ mod tests {
             }
         ));
         assert!(!err.is_misconfiguration());
+    }
+
+    #[test]
+    fn a_forbidden_check_rollup_is_a_failed_read_not_an_empty_one() {
+        // Recorded shape from wax#2015 under a fine-grained PAT (#1623).
+        let mut answer = snapshot_answer("abc", "abc", serde_json::json!([]));
+        answer["data"]["repository"]["pullRequest"]["commits"]["nodes"][0]["commit"]
+            ["statusCheckRollup"] = serde_json::Value::Null;
+        answer["errors"] = serde_json::json!([{
+            "type": "FORBIDDEN",
+            "path": ["repository", "pullRequest", "commits", "nodes", 0, "commit", "statusCheckRollup"],
+            "message": "Resource not accessible by personal access token",
+        }]);
+        let snapshot = snapshot_from(&answer).unwrap();
+        assert!(snapshot.checks_forbidden);
+        assert_eq!(snapshot.checks, None);
+        assert_eq!(
+            snapshot.brief.number, 7,
+            "the rest of the read still stands"
+        );
+
+        let allowed = snapshot_from(&snapshot_answer("abc", "abc", serde_json::json!([]))).unwrap();
+        assert!(!allowed.checks_forbidden);
+        assert_eq!(allowed.checks, Some(Vec::new()));
     }
 
     #[test]

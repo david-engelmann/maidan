@@ -161,6 +161,37 @@ pub fn merge_queue(read: &GithubGate, labels: &[String]) -> Option<MergeQueue> {
         })
 }
 
+/// The repos whose checks GitHub refused, warned about once each.
+fn forbidden_repos() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    static REPOS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    REPOS.get_or_init(Default::default)
+}
+
+/// The text an operator sees when GitHub refuses `repo`'s checks.
+fn checks_forbidden_text(repo: &str) -> String {
+    format!(
+        "GitHub refused the checks on {repo} (FORBIDDEN): the token lacks Checks: read and Commit statuses: read, so no checks_done or ci_failed notice can fire there"
+    )
+}
+
+/// Say, once per repo, that GitHub refused its checks: a WARN in the log and
+/// an operator alert. Nothing is recorded, so the read never stands in as a
+/// head nothing has reported to (#1623).
+async fn checks_forbidden(repo: &str) {
+    let repo = repo.to_ascii_lowercase();
+    let first = forbidden_repos()
+        .lock()
+        .map(|mut seen| seen.insert(repo.clone()))
+        .unwrap_or(true);
+    if !first {
+        return;
+    }
+    let text = checks_forbidden_text(&repo);
+    tracing::warn!(repo = %repo, "{text}");
+    crate::ops_alert::alert(&format!("checks_forbidden:{repo}"), &text).await;
+}
+
 /// Record the checks an open pull request's snapshot carried, and post the
 /// notices they owe its thread. Returns how many were posted. Best effort: a
 /// failed write is logged and the next tick reads again.
@@ -173,6 +204,9 @@ pub async fn record_checks(
     snapshot: &GithubPullSnapshot,
 ) -> usize {
     let Some(checks) = snapshot.checks.as_deref() else {
+        if snapshot.checks_forbidden {
+            checks_forbidden(repo).await;
+        }
         return 0;
     };
     let summary = summarize(checks);
