@@ -461,24 +461,28 @@ import { answerGate, modelRequestLine } from "./tools.js";
       // Who handed the work off and what they reported, from the result. A
       // review can start with no result on a thread with no review gate; the
       // row says so, so nobody approves an empty hand-off without knowing.
+      // The result's producer is already a person on the row. Name the
+      // requester only when that is someone else, or when no result was posted.
+      function requestedBy(sub, before, requester) {
+        if (!requester || !sub.isConnected) return;
+        const asked = document.createElement("span");
+        asked.append("requested by ", personEl(requester, { avatar: false }));
+        sub.insertBefore(asked, before);
+      }
+
       async function fillReviewContext(tid, sub, before) {
+        let requester = null;
         try {
           const history = await api(uiReadPath(`/threads/${tid}/transitions`), {
             headers: headers(),
             credentials: "include",
           });
-          if (sub.isConnected && history.ok) {
+          if (history.ok) {
             const rows = await history.json();
-            let actor = null;
             if (Array.isArray(rows)) {
               for (const row of rows) {
-                if (row && row.to_state === "in_review" && row.actor_id) actor = row.actor_id;
+                if (row && row.to_state === "in_review" && row.actor_id) requester = row.actor_id;
               }
-            }
-            if (actor && sub.isConnected) {
-              const asked = document.createElement("span");
-              asked.append("requested by ", personEl(actor, { avatar: false }));
-              sub.insertBefore(asked, before);
             }
           }
         } catch (_e) {
@@ -490,19 +494,24 @@ import { answerGate, modelRequestLine } from "./tools.js";
             credentials: "include",
           });
           if (res.status === 404) {
+            requestedBy(sub, before, requester);
             const warn = document.createElement("span");
             warn.className = "ny-warn";
             warn.textContent = "No result was posted";
             sub.insertBefore(warn, before);
             return;
           }
-          if (!res.ok) return;
+          if (!res.ok) {
+            requestedBy(sub, before, requester);
+            return;
+          }
           const r = await res.json();
+          if (requester !== r.produced_by) requestedBy(sub, before, requester);
           const who = personEl(r.produced_by);
           sub.insertBefore(who, before);
           sub.insertBefore(renderResult(r.result), before);
         } catch (_e) {
-          /* the title alone still identifies the review */
+          requestedBy(sub, before, requester);
         }
       }
 

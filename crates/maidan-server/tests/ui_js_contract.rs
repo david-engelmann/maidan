@@ -5908,4 +5908,8 @@ fn ui_js_names_who_requested_the_review() {
         needs.contains("requested by "),
         "the row must say who requested the review"
     );
+    assert!(
+        needs.contains("requester !== r.produced_by"),
+        "the result's producer is already named, so the requester is added only when they differ"
+    );
 }
