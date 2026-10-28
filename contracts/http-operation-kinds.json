@@ -203,6 +203,7 @@
   {"method":"POST","path":"/threads/{id}/claim/acknowledge","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/claim/release","kind":"changes"},
   {"method":"POST","path":"/threads/{id}/claim/renew","kind":"changes"},
+  {"method":"POST","path":"/threads/{id}/close-abandoned","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/context","kind":"reads"},
   {"method":"POST","path":"/threads/{id}/context/snapshot","kind":"changes"},
   {"method":"GET","path":"/threads/{id}/deliveries","kind":"reads"},
