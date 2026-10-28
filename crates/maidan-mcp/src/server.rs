@@ -8288,7 +8288,7 @@ mod tests {
         use maidan_auth::capability::{THREAD_TRANSITION, WORKSPACE_READ};
         use maidan_types::{NewThread, WAITER_RESULT_SCHEMA};
 
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await
