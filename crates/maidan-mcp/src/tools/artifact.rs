@@ -418,7 +418,6 @@ mod stored_bytes_cutoff_tests {
     use maidan_artifacts::{LocalFsStore, Sha256};
     use maidan_search::HashV1Provider;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
-    use sqlx::sqlite::SqlitePoolOptions;
 
     struct Fixture {
         server: McpServer,
@@ -428,7 +427,7 @@ mod stored_bytes_cutoff_tests {
     }
 
     async fn fixture() -> Fixture {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

@@ -213,11 +213,12 @@ pub(crate) async fn release_member_claims_in_tx(
     let released = sqlx::query(
         "UPDATE maidan_threads
          SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL,
-             claimed_at = NULL, work_started_at = NULL, updated_at = NOW()
+             claimed_at = NULL, work_started_at = NULL, updated_at = $2
          WHERE assignee_id = $1 AND tombstoned_at IS NULL
            AND state NOT IN ('closed', 'archived')",
     )
     .bind(member_id.0)
+    .bind(chrono::Utc::now())
     .execute(&mut **tx)
     .await?
     .rows_affected();
@@ -231,11 +232,12 @@ async fn clear_assignee_in_tx(
 ) -> Result<Thread, StoreError> {
     charge_open_claim_in_tx(tx, thread_id).await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = $2
          WHERE id = $1
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(thread_id.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -263,13 +265,14 @@ async fn release_fenced_in_tx(
     let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
     budget::charge_wall_in_tx(tx, thread_id, worked).await?;
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = $4
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -293,7 +296,7 @@ pub async fn assign(
     // write clears its working clock; a thread that was free charges nothing.
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let row = sqlx::query(&format!(
-        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
          WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id) {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
         same = crate::review_family::not_same_family("$1"),
@@ -301,6 +304,7 @@ pub async fn assign(
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -332,7 +336,7 @@ pub async fn assign_with_event(
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(&format!(
-        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
          WHERE id = $2 AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = $1 AND c.id = maidan_threads.channel_id) {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
         same = crate::review_family::not_same_family("$1"),
@@ -340,6 +344,7 @@ pub async fn assign_with_event(
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -587,7 +592,7 @@ pub async fn claim(
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let row = sqlx::query(&format!(
-        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
         same = crate::review_family::not_same_family("$1"),
@@ -595,6 +600,7 @@ pub async fn claim(
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(&mut *tx)
     .await?;
     match row {
@@ -629,7 +635,7 @@ pub async fn claim_with_event(
     super::task_fingerprints::refuse_duplicate_claim_on(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
     let row = sqlx::query(&format!(
-        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = NOW(), work_started_at = NULL, updated_at = NOW()
+        "UPDATE maidan_threads SET assignee_id = $1, assignment_expires_at = NULL, claim_lease_id = $3, claimed_at = $4, work_started_at = NULL, updated_at = $4
          WHERE id = $2 AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
         same = crate::review_family::not_same_family("$1"),
@@ -637,6 +643,7 @@ pub async fn claim_with_event(
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(&mut *tx)
     .await?;
     match row {
@@ -804,8 +811,8 @@ async fn claim_next_in_tx(
             engine: "$7::text",
             lane: "$8::text",
             requeued_after_result: REQUEUED_AFTER_RESULT,
-            now: "NOW()",
-            hours_waiting: "FLOOR(EXTRACT(EPOCH FROM (NOW() - cand.created_at)) / 3600)",
+            now: "$11::timestamptz",
+            hours_waiting: "FLOOR(EXTRACT(EPOCH FROM ($11::timestamptz - cand.created_at)) / 3600)",
             lapsed_worked_secs: LAPSED_WORKED_SECS,
             warm_hold_since: "$9::timestamptz",
             warm_ttl_since: "$10::timestamptz",
@@ -883,13 +890,13 @@ pub async fn claim_next(
 }
 
 /// The placeholders the queue counts bind on Postgres: `$1` the scope, `$2` the
-/// reader, `$3` the DM channel name. `NOW()` inline, as `claim_next` reads it,
-/// so `ready` matches its claimability predicate exactly.
+/// reader, `$3` the DM channel name, `$6` the app clock, as `claim_next` binds
+/// it, so `ready` matches its claimability predicate exactly (#1605).
 const QUEUE_SQL: QueueSql<'static> = QueueSql {
     scope: "$1",
     reader: "$2::uuid",
     dm_channel: "$3",
-    now: "NOW()",
+    now: "$6::timestamptz",
     repo: "$4::text",
     engine: "$5::text",
     lapsed_worked_secs: LAPSED_WORKED_SECS,
@@ -916,6 +923,7 @@ pub async fn queue_depth(
         .bind(DM_CHANNEL_NAME)
         .bind(repo)
         .bind(engine.map(|engine| engine.as_str()))
+        .bind(chrono::Utc::now())
         .fetch_one(pool)
         .await?;
     Ok(QueueDepth {
@@ -943,6 +951,7 @@ pub async fn occupancy(
         .bind(DM_CHANNEL_NAME)
         .bind(None::<&str>)
         .bind(None::<&str>)
+        .bind(chrono::Utc::now())
         .fetch_one(pool)
         .await?;
     Ok(ChannelOccupancy {
@@ -1009,7 +1018,7 @@ pub async fn reap_expired_claims(
              LIMIT $2
              FOR UPDATE SKIP LOCKED
          )
-         UPDATE maidan_threads t SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = NOW()
+         UPDATE maidan_threads t SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = $1
          FROM lapsed WHERE t.id = lapsed.id
          RETURNING t.id, t.channel_id, t.parent_thread_id, t.title, t.description, t.state, t.created_at, t.updated_at, t.tombstoned_at, t.assignee_id, t.assignment_expires_at, t.claim_lease_id, t.work_started_at, t.owner_id, t.created_by, lapsed.prev_assignee, lapsed.prev_deadline, lapsed.prev_started",
     )
@@ -1171,7 +1180,7 @@ pub async fn renew_claim(
 ) -> Result<Thread, StoreError> {
     let expires = chrono::Utc::now() + chrono::Duration::seconds(lease_secs);
     let row = sqlx::query(
-        "UPDATE maidan_threads SET assignment_expires_at = $1, updated_at = NOW()
+        "UPDATE maidan_threads SET assignment_expires_at = $1, updated_at = $5
          WHERE id = $2 AND assignee_id = $3 AND claim_lease_id = $4 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
@@ -1179,6 +1188,7 @@ pub async fn renew_claim(
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
+    .bind(chrono::Utc::now())
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -1484,6 +1494,7 @@ pub(super) fn row_to_thread(row: &sqlx::postgres::PgRow) -> Result<Thread, Store
         human_wait: None,
         notices: Vec::new(),
         plan_state: None,
+        withheld: None,
         ci: Vec::new(),
         created_by: row.get::<Option<Uuid>, _>("created_by").map(MemberId),
     })

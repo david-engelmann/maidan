@@ -1430,7 +1430,14 @@ pub trait PresenceDigestStore: Send + Sync {
         member_id: MemberId,
         now: chrono::DateTime<chrono::Utc>,
     ) -> Result<(), StoreError>;
-    async fn members_due_for_digest(&self, limit: i64) -> Result<Vec<DigestDue>, StoreError>;
+    /// Members of `skip_workspaces` are left out of the page, so a large
+    /// workspace past its deliveries allowance cannot fill every page and
+    /// starve the rest.
+    async fn members_due_for_digest(
+        &self,
+        limit: i64,
+        skip_workspaces: &[WorkspaceId],
+    ) -> Result<Vec<DigestDue>, StoreError>;
     /// Task results ("decisions") produced by someone else after `since`, in a
     /// channel or thread the member follows — the "buried decisions" the digest
     /// surfaces, and a queryable read. Newest first.
@@ -1683,6 +1690,13 @@ pub trait ThreadStore: Send + Sync {
     /// Clear a thread's duplicate link (Context Economics C8b), so a task
     /// wrongly linked as a duplicate can be claimed. `NotFound` when the
     /// thread has no fingerprint. Idempotent.
+    ///
+    /// Clearing also lifts the same-issue hold (C8 follow-up), and the
+    /// clear is permanent: a later change thread for the issue entering
+    /// review does not hold this thread again. A thread created with no
+    /// title or description has no fingerprint, so it cannot be cleared
+    /// (`NotFound`); if it carries a `linear_issue` and is held, the hold
+    /// lifts only when the other thread leaves review or this one closes.
     async fn clear_task_duplicate(&self, thread_id: ThreadId) -> Result<(), StoreError>;
 
     /// Replace a thread's task attributes whole. `NotFound` when the

@@ -1832,6 +1832,9 @@ pub(super) async fn set_thread_result(
 ) -> Result<Value, McpError> {
     let a: SetThreadResultArgs = crate::tools::parse_args(args)?;
     let thread_id = ThreadId(a.thread_id);
+    if let Some(reason) = maidan_types::unroutable_waiter_result(&a.result) {
+        return Err(McpError::InvalidParams(reason));
+    }
     let result = server
         .store
         .set_thread_result(

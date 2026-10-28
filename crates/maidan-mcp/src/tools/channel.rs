@@ -298,7 +298,6 @@ mod tests {
     use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
     use maidan_types::*;
     use serde_json::json;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::server::McpServer;
 
@@ -336,7 +335,7 @@ mod tests {
     /// or empty tenant B's private channel, nor seat B's members in A's.
     #[tokio::test]
     async fn channel_membership_tools_stay_in_the_callers_workspace() {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

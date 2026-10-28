@@ -102,7 +102,7 @@ async fn run_suite(store: &dyn Store) {
     store.mark_all_notifications_read(d).await.unwrap();
 
     // Only A is due, with both unread notifications counted.
-    let due = store.members_due_for_digest(100).await.unwrap();
+    let due = store.members_due_for_digest(100, &[]).await.unwrap();
     assert_eq!(due.len(), 1, "only A is due");
     assert_eq!(due[0].member_id, a);
     assert_eq!(due[0].email, "a@example.com");
@@ -114,7 +114,11 @@ async fn run_suite(store: &dyn Store) {
         .await
         .unwrap();
     assert!(
-        store.members_due_for_digest(100).await.unwrap().is_empty(),
+        store
+            .members_due_for_digest(100, &[])
+            .await
+            .unwrap()
+            .is_empty(),
         "future watermark clears A"
     );
 
@@ -123,7 +127,7 @@ async fn run_suite(store: &dyn Store) {
         .set_last_digest_at(a, Utc::now() - Duration::hours(1))
         .await
         .unwrap();
-    let due = store.members_due_for_digest(100).await.unwrap();
+    let due = store.members_due_for_digest(100, &[]).await.unwrap();
     assert_eq!(due.len(), 1);
     assert_eq!(due[0].member_id, a);
     assert_eq!(due[0].unread_count, 2);

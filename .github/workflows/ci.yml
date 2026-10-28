@@ -123,6 +123,8 @@ jobs:
         run: ./scripts/check-capped.sh
       - name: no internal project names
         run: ./scripts/check-no-internal-names.sh
+      - name: sqlite pools load sqlite-vec
+        run: ./scripts/check-sqlite-pools.sh
 
   # Installs helm/maidan, then helm/maidan-stack with its own Postgres and
   # MinIO, on the server and maidan-postgres images it builds, and waits for
@@ -537,6 +539,7 @@ jobs:
         run: |
           cargo test -p maidan-search --features sqlite-vec
           cargo test -p maidan-server --features sqlite-vec --test search_semantic_e2e -- sqlite_http_semantic
+          cargo test -p maidan-cli --features sqlite-vec --bin maidan -- sqlite_pool_tests
 
   bootstrap-strip:
     name: bootstrap compile-time strip

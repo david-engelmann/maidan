@@ -494,7 +494,6 @@ mod tests {
     use maidan_search::HashV1Provider;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use maidan_types::{MemberKind, NewMember, NewWorkspace, ROOM_DISCOVERY_TYPE, ROOM_TYPE};
-    use sqlx::sqlite::SqlitePoolOptions;
 
     use crate::server::McpServer;
 
@@ -503,7 +502,7 @@ mod tests {
     }
 
     async fn blank_store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(2)
             .connect("sqlite::memory:")
             .await

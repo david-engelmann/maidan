@@ -6009,6 +6009,31 @@
         ],
         "type": "string"
       },
+      "OidcSignupForm": {
+        "description": "The console's sign-up start after its Turnstile check, as a form POST.\nThe token rides in the body rather than the URL, so it stays out of\nproxy and access logs and the browser's history (#1632).",
+        "properties": {
+          "invite": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "return_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "turnstile": {
+            "description": "The Turnstile widget's token.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "OpenDmBody": {
         "additionalProperties": false,
         "properties": {
@@ -10343,6 +10368,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "withheld": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadWithheld",
+                "description": "Why an open thread is kept off the queue, when it is a live duplicate\nof another task (the task-fingerprint rule). Read by a single-thread\nread and the create answer only; absent everywhere else."
+              }
+            ]
+          },
           "work_started_at": {
             "description": "The working clock. `assignment_expires_at` is the *claim* clock (lease\ndeadline); this is when the current holder acknowledged and began work\n(`acknowledge_claim`). `None` = claimed but not yet started, or\nunassigned. Reset to `None` on every (re)claim/assign/unassign so it\nalways reflects the CURRENT claim epoch — letting occupancy separate a\nclaimed-but-idle agent from one actively working.",
             "format": "date-time",
@@ -11204,6 +11240,30 @@
           "on_timeout",
           "created_by",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "ThreadWithheld": {
+        "description": "Why a thread is withheld from claims, shown on the thread itself so a\nclaimer that sees an open, ready-looking thread can tell why it is never\nhanded out.",
+        "properties": {
+          "reason": {
+            "description": "`duplicate_of`: created with the same task fingerprint as a task that\nis still open or in review, so the work goes to that one.",
+            "type": "string"
+          },
+          "thread": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The original task, when the caller may read it."
+              }
+            ]
+          }
+        },
+        "required": [
+          "reason"
         ],
         "type": "object"
       },
@@ -13939,15 +13999,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "description": "The Turnstile widget's token, when the instance runs Turnstile.",
-            "in": "query",
-            "name": "turnstile",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -13991,6 +14042,67 @@
           {}
         ],
         "summary": "Start an invited sign-up",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "description": "The console's form POST once its Turnstile widget has a token. Same start\nas the GET, with the token in the form body so it never sits in a URL.\nAnswers 303 to the identity provider.",
+        "operationId": "oidc_signup_form",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OidcSignupForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "303": {
+            "description": "Redirect to IdP (or mock callback when MAIDAN_OIDC_MOCK=1)"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "OIDC disabled, the Turnstile check failed, the invite is unknown, spent or expired, or sign-up here is by invite only"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Sign-up is not enabled on this instance"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Start a sign-up after the Turnstile check",
         "tags": [
           "auth"
         ]

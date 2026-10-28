@@ -191,6 +191,7 @@ mod tests {
             stalled: false,
             human_wait: None,
             plan_state: None,
+            withheld: None,
             ci: Vec::new(),
         }
     }

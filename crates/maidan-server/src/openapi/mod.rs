@@ -646,6 +646,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::ingest_events,
         paths::oidc_login,
         paths::oidc_signup,
+        paths::oidc_signup_form,
         paths::oidc_callback,
         paths::oidc_logout,
         paths::get_auth_session,

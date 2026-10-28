@@ -189,11 +189,10 @@ mod tests {
     use super::*;
     use maidan_store::{run_sqlite_migrations, SqliteStore};
     use serde_json::json;
-    use sqlx::sqlite::SqlitePoolOptions;
     use std::sync::Arc;
 
     async fn store() -> Arc<dyn Store> {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .connect("sqlite::memory:")
             .await
             .unwrap();

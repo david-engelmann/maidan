@@ -974,6 +974,14 @@ async fn post_result_check_run(
         crate::github::record_github_check_run("skipped");
         return;
     };
+    // Only a GitHub App may create check runs; with a token the call is a
+    // guaranteed 403. Boot says so once; the summary comment carries the
+    // verdict.
+    if !sender.posts_check_runs() {
+        crate::github::record_github_check_run("skipped");
+        tracing::debug!(%repo, "github check run: skipped; a token cannot post check runs");
+        return;
+    }
     match sender.create_check_run(repo, &check).await {
         Ok(()) => {
             crate::github::record_github_check_run("sent");
