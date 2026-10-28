@@ -9595,6 +9595,13 @@
               "null"
             ]
           },
+          "head_sha": {
+            "description": "The full commit SHA of the change head you reviewed. When given and\nthe change's tracked head has moved, the verdict is refused with 409.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "note": {
             "type": [
               "string",
