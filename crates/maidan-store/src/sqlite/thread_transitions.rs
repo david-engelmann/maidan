@@ -1,8 +1,8 @@
 use chrono::Utc;
 use maidan_fsm::ThreadAction;
 use maidan_types::{
-    ContentKeyring, Event, MemberId, StoredEvent, ThreadId, ThreadState, ThreadTransition,
-    ThreadTransitionResult,
+    CloseAbandoned, CloseReason, ContentKeyring, Event, MemberId, NewAuditEvent, RelationKind,
+    StoredEvent, Thread, ThreadId, ThreadState, ThreadTransition, ThreadTransitionResult,
 };
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -260,16 +260,7 @@ pub(crate) async fn transition_in_spawning(
     // `assignee_id`, and the work is still theirs (#1569). A past holder may
     // still land it once an outside reviewer has approved: the rule stops a
     // holder standing in for an independent review, not landing after one.
-    if thread.owner_id.is_some()
-        && to_state.is_terminal()
-        && (thread.assignee_id == Some(actor_id)
-            || (super::thread_workers::has_worked_in_tx(tx, thread_id, actor_id).await?
-                && !outside_approval_in_tx(tx, thread_id).await?))
-    {
-        return Err(StoreError::Conflict(
-            "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
-        ));
-    }
+    separation_of_duties_in_tx(tx, &thread, actor_id, to_state).await?;
 
     // Required reviewers: a `closed` transition is gated on k qualifying
     // approvals + no unresolved `refutes` edge. LandGate pointer: a `closed`
@@ -287,6 +278,42 @@ pub(crate) async fn transition_in_spawning(
         super::land_gate::gate_in_tx(tx, thread_id).await?;
     }
 
+    let result = land_in_tx(tx, &thread, actor_id, to_state).await?;
+    Ok((result, spawned))
+}
+
+/// The separation-of-duties rule described at its call in [`transition_in_tx`].
+async fn separation_of_duties_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread: &Thread,
+    actor_id: MemberId,
+    to_state: ThreadState,
+) -> Result<(), StoreError> {
+    let thread_id = thread.id;
+    if thread.owner_id.is_some()
+        && to_state.is_terminal()
+        && (thread.assignee_id == Some(actor_id)
+            || (super::thread_workers::has_worked_in_tx(tx, thread_id, actor_id).await?
+                && !outside_approval_in_tx(tx, thread_id).await?))
+    {
+        return Err(StoreError::Conflict(
+            "separation of duties: the claimer cannot land its own work on an owned thread; the owner or another member must perform this transition".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Move `thread` to `to_state` once every gate has passed: the parent's
+/// state check, the transition row, and on a terminal state the claim
+/// charged and cleared.
+async fn land_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    thread: &Thread,
+    actor_id: MemberId,
+    to_state: ThreadState,
+) -> Result<ThreadTransitionResult, StoreError> {
+    let thread_id = thread.id;
+    let from_state = thread.state;
     if let Some(parent_id) = thread.parent_thread_id {
         let parent_row = sqlx::query(
             "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by
@@ -356,14 +383,188 @@ pub(crate) async fn transition_in_spawning(
     .await?;
 
     let thread = row_to_thread(&row)?;
-    Ok((
-        ThreadTransitionResult {
-            thread,
-            from_state,
-            to_state,
-        },
-        spawned,
-    ))
+    Ok(ThreadTransitionResult {
+        thread,
+        from_state,
+        to_state,
+    })
+}
+
+/// Close a thread that will not land (`close-abandoned`), in one transaction.
+///
+/// The thread must be `open` or `in_review`; it moves straight to `closed`.
+/// The caller has already checked who may do this (the producer, the claim
+/// holder, or a maintainer); `may_close` re-checks producer and holder on the
+/// locked row so a claim that moved in between is still judged correctly.
+/// A thread with a result keeps every landing gate: separation of duties,
+/// required reviews and the land gate. A thread with no result skips them,
+/// since there is nothing to review.
+///
+/// `duplicate_of` must be a live thread in the same workspace that `actor_id`
+/// can read, and not the thread itself; any other id gets the same refusal.
+/// A duplicate records `thread duplicates duplicate_of`; a superseded thread
+/// records `duplicate_of supersedes thread`.
+///
+/// Returns the transition and the events in order: the reference (when one
+/// was recorded), the state change, then whatever the close owed a plan.
+#[allow(clippy::too_many_arguments)]
+pub async fn close_abandoned(
+    pool: &SqlitePool,
+    keys: &ContentKeyring,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+    maintainer: bool,
+    close: &CloseAbandoned,
+    mut audit: NewAuditEvent,
+) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
+    use crate::thread_access::readable_thread;
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by
+         FROM maidan_threads WHERE id = ?",
+    )
+    .bind(thread_id.0)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(StoreError::NotFound)?;
+    let thread = row_to_thread(&row)?;
+    if thread.tombstoned_at.is_some() {
+        return Err(StoreError::NotFound);
+    }
+    if !matches!(thread.state, ThreadState::Open | ThreadState::InReview) {
+        return Err(StoreError::Conflict(format!(
+            "only an open or in-review thread can be closed as abandoned; this one is {}",
+            thread.state.as_str()
+        )));
+    }
+    let producer = thread.created_by == Some(actor_id);
+    let holder = thread.assignee_id == Some(actor_id);
+    if !(producer || holder || maintainer) {
+        return Err(StoreError::Conflict(
+            "only the thread's producer, its claim holder, or a maintainer can close it as abandoned".into(),
+        ));
+    }
+
+    let relation = match (close.reason, close.duplicate_of) {
+        (CloseReason::Abandoned, Some(_)) => {
+            return Err(StoreError::InvalidInput(
+                "duplicate_of applies to a duplicate or a superseded thread, not an abandoned one"
+                    .into(),
+            ))
+        }
+        (CloseReason::Duplicate, None) => {
+            return Err(StoreError::InvalidInput(
+                "a duplicate must name the thread it duplicates in duplicate_of".into(),
+            ))
+        }
+        (_, Some(other)) if other == thread_id => {
+            return Err(StoreError::InvalidInput(
+                "duplicate_of cannot be the thread being closed".into(),
+            ))
+        }
+        (CloseReason::Duplicate, Some(other)) => Some((thread_id, other, RelationKind::Duplicates)),
+        (CloseReason::Superseded, Some(other)) => {
+            Some((other, thread_id, RelationKind::Supersedes))
+        }
+        (_, None) => None,
+    };
+
+    let mut stored = Vec::new();
+    if let Some((src, dst, kind)) = relation {
+        let other = if src == thread_id { dst } else { src };
+        let (ws, _) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+        let readable = readable_thread("t.id", "?2", "?3", "?4");
+        let sql = format!(
+            "SELECT 1 AS one FROM maidan_threads t JOIN maidan_channels c ON c.id = t.channel_id
+         WHERE t.id = ?1 AND c.workspace_id = ?2 AND t.tombstoned_at IS NULL AND {readable}"
+        );
+        let found = sqlx::query(&sql)
+            .bind(other.0)
+            .bind(ws.0)
+            .bind(actor_id.0)
+            .bind(maidan_types::DM_CHANNEL_NAME)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if found.is_none() {
+            return Err(StoreError::InvalidInput(
+                "duplicate_of is not a thread you can read in this workspace".into(),
+            ));
+        }
+        let inserted = sqlx::query(
+            "INSERT INTO maidan_references (id, src_kind, src_id, dst_kind, dst_id, relation, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO NOTHING
+         RETURNING id, src_kind, src_id, dst_kind, dst_id, relation, created_at",
+        )
+        .bind(Uuid::now_v7())
+        .bind(maidan_types::RefSide::Thread.as_str())
+        .bind(src.0)
+        .bind(maidan_types::RefSide::Thread.as_str())
+        .bind(dst.0)
+        .bind(kind.as_str())
+        .bind(Utc::now())
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(row) = inserted {
+            let reference = super::refs::row_to_reference(&row)?;
+            let event = Event::ReferenceAdded {
+                occurred_at: Utc::now(),
+                reference,
+            };
+            stored.push(events::append_in_tx(&mut tx, &event).await?);
+        }
+    }
+
+    let row = sqlx::query(
+        "SELECT EXISTS(SELECT 1 FROM maidan_thread_results WHERE thread_id = ?) AS had",
+    )
+    .bind(thread_id.0)
+    .fetch_one(&mut *tx)
+    .await?;
+    let had: i64 = sqlx::Row::get(&row, "had");
+    let had_result = had != 0;
+    if had_result {
+        separation_of_duties_in_tx(&mut tx, &thread, actor_id, ThreadState::Closed).await?;
+        review_gate_in_tx(&mut tx, thread_id).await?;
+        super::land_gate::gate_in_tx(&mut tx, thread_id).await?;
+    }
+
+    let result = land_in_tx(&mut tx, &thread, actor_id, ThreadState::Closed).await?;
+    // Nothing landed, so the dependents stay waiting: a dependency is met
+    // only when it is closed or archived without a row here.
+    sqlx::query(
+        "INSERT INTO maidan_thread_unlanded_closes (thread_id, reason, closed_by)
+         VALUES (?, ?, ?)",
+    )
+    .bind(thread_id.0)
+    .bind(close.reason.as_str())
+    .bind(actor_id.0)
+    .execute(&mut *tx)
+    .await?;
+    let mut metadata = match std::mem::take(&mut audit.metadata) {
+        serde_json::Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    metadata.insert("reason".into(), close.reason.as_str().into());
+    metadata.insert(
+        "duplicate_of".into(),
+        close
+            .duplicate_of
+            .map_or(serde_json::Value::Null, |d| d.0.to_string().into()),
+    );
+    metadata.insert("had_result".into(), had_result.into());
+    metadata.insert("from_state".into(), result.from_state.as_str().into());
+    audit.metadata = serde_json::Value::Object(metadata);
+    super::audit::append_scoped(
+        &mut tx,
+        crate::audit_scope::AuditOwner::Thread(thread_id),
+        audit,
+    )
+    .await?;
+    stored.push(state_changed_in_tx(&mut tx, actor_id, &result).await?);
+    stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
+    tx.commit().await?;
+    Ok((result, stored))
 }
 
 pub async fn transition(

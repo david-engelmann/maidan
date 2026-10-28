@@ -45,6 +45,7 @@
     "claim_thread",
     "unassign_thread",
     "transition_thread",
+    "close_abandoned_thread",
     "list_assigned_threads",
     "set_wait",
     "cancel_wait",

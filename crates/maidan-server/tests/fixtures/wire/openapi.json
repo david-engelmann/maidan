@@ -1608,6 +1608,37 @@
         ],
         "type": "string"
       },
+      "CloseAbandonedThread": {
+        "additionalProperties": false,
+        "description": "Body of `POST /threads/{id}/close-abandoned`.",
+        "properties": {
+          "duplicate_of": {
+            "description": "The thread that covers this one: required for `duplicate`, optional\nfor `superseded`, refused for `abandoned`. Must be a live thread you\ncan read in the same workspace.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "$ref": "#/components/schemas/CloseReason",
+            "description": "`duplicate`, `abandoned`, or `superseded`."
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "type": "object"
+      },
+      "CloseReason": {
+        "description": "Why a thread is closed without landing (`close-abandoned`).",
+        "enum": [
+          "duplicate",
+          "abandoned",
+          "superseded"
+        ],
+        "type": "string"
+      },
       "CompleteMultipartArtifact": {
         "additionalProperties": false,
         "properties": {
@@ -24521,6 +24552,99 @@
           }
         ],
         "summary": "Renew a claim",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/close-abandoned": {
+      "post": {
+        "description": "Closes an open or in-review thread as a duplicate, abandoned, or\nsuperseded. Allowed for the thread's producer, its claim holder, or a\nmaintainer. A thread with a result keeps every landing gate; a thread\nwith no result skips the review gates. A duplicate records a\n`duplicates` reference to `duplicate_of`; a superseded thread records\n`duplicate_of supersedes` it. Audited as `thread.close_abandoned`.",
+        "operationId": "close_abandoned_thread",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseAbandonedThread"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Close a thread that will not land",
         "tags": [
           "threads"
         ]

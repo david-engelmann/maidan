@@ -4960,6 +4960,25 @@
         "value": false,
         "reason": "no I/O at all"
       }
+    },
+    "close_abandoned_thread": {
+      "title": "Close abandoned thread",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "close_abandoned_thread UPDATEs state to closed, INSERTs maidan_thread_transitions and maidan_thread_unlanded_closes, may INSERT a maidan_thread_references row, and appends ThreadStateChanged and an audit row"
+      },
+      "destructiveHint": {
+        "value": true,
+        "reason": "closed is terminal (maidan_fsm::apply has no way back) and clears the assignee/claim"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "a second call on the now-closed thread is refused with a conflict instead of returning the same result"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
     }
   }
 }

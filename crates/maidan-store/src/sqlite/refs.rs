@@ -189,7 +189,7 @@ fn parse_side(s: &str) -> Result<RefSide, StoreError> {
     }
 }
 
-fn row_to_reference(row: &sqlx::sqlite::SqliteRow) -> Result<Reference, StoreError> {
+pub(crate) fn row_to_reference(row: &sqlx::sqlite::SqliteRow) -> Result<Reference, StoreError> {
     let src_kind = parse_side(row.get::<&str, _>("src_kind"))?;
     let dst_kind = parse_side(row.get::<&str, _>("dst_kind"))?;
     Ok(Reference {

@@ -78,10 +78,14 @@ pub(crate) const ISSUE_IN_REVIEW: &str = "EXISTS (SELECT 1 FROM maidan_thread_at
 pub(crate) const BLOCKED: &str =
     "EXISTS (SELECT 1 FROM maidan_thread_blocks b WHERE b.thread_id = cand.id)";
 
-/// Depends on a thread that is not yet closed or archived.
+/// Depends on a thread that is not yet closed or archived, or that was
+/// closed without landing (close-abandoned).
 pub(crate) const WAITING: &str = "EXISTS (SELECT 1 FROM maidan_thread_dependencies d
                         JOIN maidan_threads dep ON dep.id = d.depends_on_thread_id
-                        WHERE d.thread_id = cand.id AND dep.state NOT IN ('closed', 'archived'))";
+                        WHERE d.thread_id = cand.id
+                          AND (dep.state NOT IN ('closed', 'archived')
+                               OR EXISTS (SELECT 1 FROM maidan_thread_unlanded_closes u
+                                          WHERE u.thread_id = dep.id)))";
 
 /// Has an approval gate still pending.
 pub(crate) const GATED: &str = "EXISTS (SELECT 1 FROM maidan_approval_gates g

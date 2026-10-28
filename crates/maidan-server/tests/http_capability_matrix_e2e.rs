@@ -591,6 +591,9 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/threads/claim-next" && method == "POST" {
         return b.json(&json!({}));
     }
+    if path == "/threads/{id}/close-abandoned" && method == "POST" {
+        return b.json(&json!({ "reason": "abandoned" }));
+    }
     if path == "/threads/{id}/claim/renew" && method == "POST" {
         return b.json(&json!({
             "claim_lease_id": uuid::Uuid::nil(),

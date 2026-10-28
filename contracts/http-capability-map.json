@@ -684,6 +684,12 @@
     "surface": "http"
   },
   {
+    "method": "POST",
+    "path": "/threads/{id}/close-abandoned",
+    "capability": "thread:transition",
+    "surface": "http"
+  },
+  {
     "method": "PUT",
     "path": "/threads/{id}/unclaimable",
     "capability": "thread:transition",

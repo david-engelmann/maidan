@@ -1921,6 +1921,22 @@ pub trait ThreadStore: Send + Sync {
         action: maidan_fsm::ThreadAction,
     ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError>;
 
+    /// Close a thread that will not land, with its reason and audit row, in
+    /// one transaction. `maintainer` is whether the actor holds the
+    /// maintainer capability; otherwise the actor must be the producer or
+    /// the claim holder. A thread with a result keeps every landing gate; a
+    /// thread with no result skips the review gates. The events come back
+    /// in order: the `duplicates`/`supersedes` reference when one was
+    /// recorded, the state change, then what the close owed a plan.
+    async fn close_abandoned_thread(
+        &self,
+        thread_id: ThreadId,
+        actor_id: MemberId,
+        maintainer: bool,
+        close: &maidan_types::CloseAbandoned,
+        audit: maidan_types::NewAuditEvent,
+    ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError>;
+
     async fn list_thread_transitions(
         &self,
         thread_id: ThreadId,
