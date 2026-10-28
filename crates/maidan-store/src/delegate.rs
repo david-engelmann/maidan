@@ -475,7 +475,11 @@ macro_rules! store_delegations {
                 lease_id: ClaimLeaseId,
                 result: &serde_json::Value,
             ) -> Result<ThreadResult, StoreError> {
-                thread_results::set(self.pool(), thread_id, produced_by, lease_id, result).await
+                let stored =
+                    thread_results::set(self.pool(), thread_id, produced_by, lease_id, result)
+                        .await?;
+                $crate::result_metrics::record(result);
+                Ok(stored)
             }
 
             async fn get_thread_result(

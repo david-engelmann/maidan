@@ -290,6 +290,10 @@ pub fn init() {
             "Background loop ticks that panicked, by loop; the loop logs the panic and runs its next tick"
         );
         describe_counter!(
+            "maidan_thread_results_total",
+            "Stored thread results by harness (codex, claude, grok, gemini, pi, maidan, other), kind (redteam, security, review, plan, build, fix, other), status and verdict (pass, fix, merge, block, reject, other, none); every label a closed set"
+        );
+        describe_counter!(
             "maidan_result_deliveries_total",
             "Thread-result delivery dispositions by outcome (enqueued / skipped)"
         );

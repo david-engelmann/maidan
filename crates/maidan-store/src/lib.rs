@@ -162,6 +162,7 @@ pub mod postgres;
 pub mod pull_watch;
 mod queue_counts;
 pub mod result_delivery;
+mod result_metrics;
 pub mod retention_policy;
 mod review_family;
 mod review_head;
