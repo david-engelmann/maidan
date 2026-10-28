@@ -79,13 +79,14 @@ pub fn listed(auth: &maidan_auth::AuthContext) -> Vec<Value> {
     })]
 }
 
-/// Read a resource. `viewer` is the caller's workspace (`None` for bypass):
+/// Read a resource for `auth`. The viewer is the caller's workspace (`None` for bypass):
 /// an artifact's metadata is that workspace's own, not the shared row's.
 pub async fn read(
     store: &Arc<dyn Store>,
     uri: &str,
-    viewer: Option<WorkspaceId>,
+    auth: &maidan_auth::AuthContext,
 ) -> Result<Value, McpError> {
+    let viewer = (!auth.bypass).then_some(auth.workspace_id);
     let (kind, id_str) = parse_uri(uri)?;
 
     let payload = match kind {
@@ -157,7 +158,12 @@ pub async fn read(
                     serde_json::to_value(&ch)?
                 }
                 "threads" => {
-                    let thread = store.get_thread(ThreadId(id)).await?;
+                    let mut thread = store.get_thread(ThreadId(id)).await?;
+                    // A withheld duplicate says why on the MCP read too, as
+                    // `GET /threads/{id}` does (#1681).
+                    thread.withheld =
+                        crate::withheld::withheld_as_duplicate(store.as_ref(), auth, &thread)
+                            .await?;
                     let messages = store.list_messages(ThreadId(id), 100).await?;
                     json!({
                         "thread": thread,

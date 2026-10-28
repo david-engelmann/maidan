@@ -1141,12 +1141,7 @@ impl McpServer {
             ));
         }
         self.authorize_resource(uri, auth).await?;
-        let read = resources::read(
-            &self.store,
-            uri,
-            (!auth.bypass).then_some(auth.workspace_id),
-        )
-        .await?;
+        let read = resources::read(&self.store, uri, auth).await?;
         Ok(caching::with_hint(read, caching::resource_read(uri)))
     }
 
