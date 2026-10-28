@@ -35174,6 +35174,204 @@
         ]
       }
     },
+    "/workspaces/{id}/threads": {
+      "get": {
+        "description": "Equality filters over the threads' task attributes, combined with AND:\n`attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,\n`attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and\n`ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to\nthat thread. `engine`, `tier` and `lane` are also accepted bare. A\nthread with no stored attributes matches the defaults it reads with\n(`attr.kind=change`, `attr.threat_model=false`); the other fields match\nonly a stored value. Scoped to the caller's own workspace and to the\nthreads the caller may read. Keyset-paginated like the channel thread\nlist (`limit`, `cursor`, `order`); returned threads carry their\nattributes.",
+        "operationId": "list_workspace_threads",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max threads to return (default 100, clamped 1..=500).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Exclusive keyset cursor: the prior page's last thread id.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`\"oldest\"` (default) or `\"newest\"`: the direction of the keyset walk.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only threads routed to this engine (`pi`, `session` or `human`).",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only threads carrying this review tier (`A` or `B`).",
+            "in": "query",
+            "name": "tier",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only threads in this service lane (`batch` or `flex`).",
+            "in": "query",
+            "name": "lane",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Task kind: change, plan or review",
+            "in": "query",
+            "name": "attr.kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Routed engine: pi, session or human",
+            "in": "query",
+            "name": "attr.engine",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Whether the task needs a threat model",
+            "in": "query",
+            "name": "attr.threat_model",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Task size: S, M or L",
+            "in": "query",
+            "name": "attr.size",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The Linear issue key, e.g. ENG-123",
+            "in": "query",
+            "name": "attr.linear_issue",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Review tier: A or B",
+            "in": "query",
+            "name": "attr.tier",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Service lane: batch or flex",
+            "in": "query",
+            "name": "attr.lane",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The provider family a review child is routed to",
+            "in": "query",
+            "name": "attr.review_family",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Threads holding a twin_of reference to this thread; any relation wire name works as ref.<relation> (duplicates, supersedes, ...)",
+            "in": "query",
+            "name": "ref.twin_of",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Thread"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Find a workspace's threads by task attribute",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
     "/workspaces/{id}/tombstones": {
       "get": {
         "operationId": "list_workspace_tombstones",

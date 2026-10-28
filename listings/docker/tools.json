@@ -357,6 +357,10 @@
       "name": "find_thread"
     },
     {
+      "description": "Find a workspace's threads by their task attributes: equality filters over kind, engine, threat_model, size, linear_issue, tier, lane and review_family, given as attr (attr.linear_issue=ENG-123 style pairs), plus engine, tier and lane as bare shorthand, and ref (ref.twin_of=<thread id> style: relation wire name to thread id) for threads holding that reference to that thread; a thread outside your workspace matches nothing. Combined with AND. A thread with no stored attributes matches the defaults it reads with (kind=change, threat_model=false); the other fields match only a stored value. Scoped to your own workspace (workspace_id omitted, the same; a foreign one is refused) and to threads you may read. Keyset-paginated like list_threads (limit, cursor, order); returned threads carry their attributes. The twin of GET /workspaces/{id}/threads.",
+      "name": "find_threads"
+    },
+    {
       "description": "Home a producer's run_id on a thread as parent_run_id. Accepts the producer's string as-is (does not mint a parallel id). Empty / whitespace / over-long is rejected. Use when attributing nested work to a producer run; set_thread_result also auto-homes when the payload carries run_id.",
       "name": "set_thread_lineage"
     },

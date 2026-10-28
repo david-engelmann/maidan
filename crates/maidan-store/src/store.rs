@@ -123,8 +123,11 @@ impl ThreadPageQuery {
 /// while the optional fields (`engine`, `size`, `linear_issue`, `tier`,
 /// `lane`, `review_family`) match only a stored value — an unset tier is
 /// not `B` here, whatever the metrics count it as, because the stored
-/// value is what was said. `twin_of` keeps threads that hold a reference
-/// with relation `twin_of` to the named thread.
+/// value is what was said. `ref.<relation>` keeps the threads that hold a
+/// reference with that relation (its wire name: `twin_of`, `duplicates`,
+/// `supersedes`, ...) to the named thread; a named thread outside the
+/// workspace matches nothing, since only the workspace's own threads are
+/// searched.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ThreadAttributeFilter {
     pub kind: Option<TaskKind>,
@@ -135,13 +138,14 @@ pub struct ThreadAttributeFilter {
     pub tier: Option<TaskTier>,
     pub lane: Option<TaskLane>,
     pub review_family: Option<String>,
-    pub twin_of: Option<ThreadId>,
+    /// `(relation wire name, destination thread)` from `ref.<relation>`.
+    pub reference: Option<(String, ThreadId)>,
 }
 
 impl ThreadAttributeFilter {
     /// Build a filter from `(key, value)` pairs, as a query string or a
     /// tool argument names them: the attribute fields by name, plus
-    /// `twin_of`. An unknown key or a value the field cannot hold is an
+    /// `ref.<relation>`. An unknown key or a value the field cannot hold is an
     /// error naming the key, so a typo'd filter refuses rather than
     /// silently matching everything or nothing. A repeated key keeps the
     /// last value.
@@ -193,15 +197,24 @@ impl ThreadAttributeFilter {
                 "review_family" => {
                     filter.review_family = Some(value);
                 }
-                "twin_of" => {
-                    filter.twin_of = Some(ThreadId(
-                        uuid::Uuid::parse_str(&value).map_err(|_| bad("a thread id"))?,
-                    ));
+                other if other.starts_with("ref.") => {
+                    let relation = &other["ref.".len()..];
+                    if relation.is_empty()
+                        || !relation
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b == b'_')
+                    {
+                        return Err(format!(
+                            "{key:?} is not ref.<relation>, a relation's wire name such as ref.twin_of"
+                        ));
+                    }
+                    let dst = uuid::Uuid::parse_str(&value).map_err(|_| bad("a thread id"))?;
+                    filter.reference = Some((relation.to_string(), ThreadId(dst)));
                 }
                 _ => {
                     return Err(format!(
                         "unknown attribute filter {key:?}: filter on kind, engine, \
-                         threat_model, size, linear_issue, tier, lane, review_family or twin_of"
+                         threat_model, size, linear_issue, tier, lane, review_family or ref.<relation>"
                     ));
                 }
             }

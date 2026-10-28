@@ -175,7 +175,9 @@ pub async fn list_threads(
 
 /// Find a workspace's threads by their task attributes: `attr.linear_issue`,
 /// `attr.engine` and the rest of the attribute fields as equality filters,
-/// with `engine`, `tier` and `lane` also accepted bare. The workspace is
+/// with `engine`, `tier` and `lane` also accepted bare, and
+/// `ref.<relation>=<thread id>` for the threads holding that reference to
+/// the named thread. The workspace is
 /// the caller's own — `ensure_workspace` refuses any other, so a foreign
 /// id narrows nothing and widens nothing — and the store filters to the
 /// threads the caller may read. Returned threads carry their attributes.
@@ -201,6 +203,8 @@ pub async fn list_workspace_threads(
     for (key, value) in &params {
         if let Some(field) = key.strip_prefix("attr.") {
             pairs.push((field.to_string(), value.clone()));
+        } else if key.starts_with("ref.") {
+            pairs.push((key.clone(), value.clone()));
         } else if !matches!(
             key.as_str(),
             "limit" | "cursor" | "order" | "engine" | "tier" | "lane"

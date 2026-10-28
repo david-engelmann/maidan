@@ -2732,7 +2732,7 @@ pub fn clear_task_duplicate() {}
 /// Equality filters over the threads' task attributes, combined with AND:
 /// `attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`,
 /// `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family`, and
-/// `attr.twin_of=<thread id>` for threads holding a `twin_of` reference to
+/// `ref.<relation>=<thread id>` (e.g. `ref.twin_of`) for threads holding that reference to
 /// that thread. `engine`, `tier` and `lane` are also accepted bare. A
 /// thread with no stored attributes matches the defaults it reads with
 /// (`attr.kind=change`, `attr.threat_model=false`); the other fields match
@@ -2750,7 +2750,7 @@ pub fn clear_task_duplicate() {}
         ("attr.tier" = Option<String>, Query, description = "Review tier: A or B"),
         ("attr.lane" = Option<String>, Query, description = "Service lane: batch or flex"),
         ("attr.review_family" = Option<String>, Query, description = "The provider family a review child is routed to"),
-        ("attr.twin_of" = Option<Uuid>, Query, description = "Threads holding a twin_of reference to this thread")),
+        ("ref.twin_of" = Option<Uuid>, Query, description = "Threads holding a twin_of reference to this thread; any relation wire name works as ref.<relation> (duplicates, supersedes, ...)")),
     security(("bearerAuth" = [])),
     responses(
         (status = 200, body = [Thread]),

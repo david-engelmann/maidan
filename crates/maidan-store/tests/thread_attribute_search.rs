@@ -223,18 +223,46 @@ async fn assert_attribute_search(store: &dyn Store) {
         store,
         ws_a,
         search(ThreadAttributeFilter {
-            twin_of: Some(t_pi),
+            reference: Some(("twin_of".into(), t_pi)),
             ..Default::default()
         }),
     )
     .await;
-    assert_eq!(found, vec![t_review], "twin_of filter");
+    assert_eq!(found, vec![t_review], "ref.twin_of filter");
+    // The relation is part of the match: no thread duplicates t_pi.
+    let found = ids(
+        store,
+        ws_a,
+        search(ThreadAttributeFilter {
+            reference: Some(("duplicates".into(), t_pi)),
+            ..Default::default()
+        }),
+    )
+    .await;
+    assert!(
+        found.is_empty(),
+        "ref.duplicates matches only that relation"
+    );
+    // A destination in another workspace probes nothing: workspace B's
+    // search for twins of A's thread is empty.
+    let found = ids(
+        store,
+        ws_b,
+        search(ThreadAttributeFilter {
+            reference: Some(("twin_of".into(), t_pi)),
+            ..Default::default()
+        }),
+    )
+    .await;
+    assert!(found.is_empty(), "ref.twin_of across workspaces");
 
-    // Filters combine, and the returned threads carry their attributes.
+    // Filters combine: the review thread shares the issue and engine but
+    // not the kind. The returned threads carry their attributes.
     let found = store
         .find_threads_for_workspace(
             ws_a,
             search(ThreadAttributeFilter {
+                kind: Some(TaskKind::Change),
                 linear_issue: Some("ENG-100".into()),
                 engine: Some(TaskEngine::Pi),
                 ..Default::default()

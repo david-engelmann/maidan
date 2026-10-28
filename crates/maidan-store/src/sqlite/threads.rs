@@ -1384,7 +1384,7 @@ pub async fn find_for_workspace(
                  SELECT 1 FROM maidan_references r
                  WHERE r.src_kind = 'thread' AND r.src_id = t.id
                    AND r.dst_kind = 'thread' AND r.dst_id = ?13
-                   AND r.relation = 'twin_of'
+                   AND r.relation = ?15
                ))
          ORDER BY t.created_at {direction}, t.id {direction}
          LIMIT ?14",
@@ -1403,8 +1403,14 @@ pub async fn find_for_workspace(
         .bind(filter.tier.map(|tier| tier.as_str()))
         .bind(filter.lane.map(|lane| lane.as_str()))
         .bind(filter.review_family.as_deref())
-        .bind(filter.twin_of.map(|t| t.0))
+        .bind(filter.reference.as_ref().map(|(_, dst)| dst.0))
         .bind(search.limit.max(0))
+        .bind(
+            filter
+                .reference
+                .as_ref()
+                .map(|(relation, _)| relation.as_str()),
+        )
         .fetch_all(pool)
         .await?;
     rows.iter()

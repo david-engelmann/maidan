@@ -202,6 +202,37 @@ async fn find_threads_by_attribute_over_the_wire() {
     assert_eq!(status, StatusCode::OK, "{found}");
     assert_eq!(ids(&found), vec![other["id"].as_str().unwrap()]);
 
+    // ref.<relation> keeps the threads holding that reference: session is
+    // the twin of pi. B's search for twins of A's thread finds nothing, so
+    // the filter cannot probe another workspace's threads.
+    let id = |t: &Value| uuid::Uuid::parse_str(t["id"].as_str().unwrap()).unwrap();
+    store
+        .add_reference(maidan_types::NewReference {
+            src_kind: maidan_types::RefSide::Thread,
+            src_id: id(&session),
+            dst_kind: maidan_types::RefSide::Thread,
+            dst_id: id(&pi),
+            relation: maidan_types::RelationKind::from_wire("twin_of"),
+        })
+        .await
+        .unwrap();
+    let twins = format!("ref.twin_of={}", id(&pi));
+    let (status, found) = find(&base, &a.token, a.ws, &twins).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert_eq!(ids(&found), vec![session["id"].as_str().unwrap()]);
+    let (status, found) = find(
+        &base,
+        &a.token,
+        a.ws,
+        &format!("ref.duplicates={}", id(&pi)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert!(ids(&found).is_empty(), "{found}");
+    let (status, found) = find(&base, &b.token, b.ws, &twins).await;
+    assert_eq!(status, StatusCode::OK, "{found}");
+    assert!(ids(&found).is_empty(), "{found}");
+
     // A's token searching B's workspace is refused, and no filter value
     // changes that.
     let (status, _) = find(&base, &a.token, b.ws, "attr.linear_issue=ENG-100").await;
@@ -212,6 +243,9 @@ async fn find_threads_by_attribute_over_the_wire() {
         "attr.engine=robot",
         "attr.engnie=pi",
         "attr.linear_issue=not-a-key",
+        "ref.twin_of=not-a-thread",
+        "ref.=00000000-0000-0000-0000-000000000000",
+        "attr.twin_of=00000000-0000-0000-0000-000000000000",
         "bogus=1",
         "order=sideways",
     ] {

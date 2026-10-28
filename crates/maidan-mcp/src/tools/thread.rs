@@ -150,11 +150,15 @@ struct FindThreadsArgs {
     #[serde(default)]
     workspace_id: Option<uuid::Uuid>,
     /// Attribute equality filters by field name: kind, engine,
-    /// threat_model, size, linear_issue, tier, lane, review_family and
-    /// twin_of. Values are the fields' wire forms (`"pi"`, `"A"`,
-    /// `"true"`); `twin_of` takes a thread id.
+    /// threat_model, size, linear_issue, tier, lane and review_family.
+    /// Values are the fields' wire forms (`"pi"`, `"A"`, `"true"`).
     #[serde(default)]
     attr: Option<std::collections::BTreeMap<String, Value>>,
+    /// Reference filters by relation wire name (`twin_of`, `duplicates`,
+    /// `supersedes`, ...): keeps the threads holding that reference to the
+    /// given thread id.
+    #[serde(default, rename = "ref")]
+    references: Option<std::collections::BTreeMap<String, String>>,
     /// Only threads routed to this engine; shorthand for `attr.engine`.
     #[serde(default)]
     engine: Option<String>,
@@ -209,6 +213,9 @@ pub(super) async fn find_threads(
             };
             pairs.push((key, value));
         }
+    }
+    for (relation, dst) in a.references.unwrap_or_default() {
+        pairs.push((format!("ref.{relation}"), dst));
     }
     let filter = maidan_store::store::ThreadAttributeFilter::from_pairs(pairs)
         .map_err(McpError::InvalidParams)?;
