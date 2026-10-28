@@ -203,12 +203,27 @@ async fn outside_approval_in_tx(
 /// The FSM transition on a caller-supplied tx, without committing. Shared by
 /// `transition` (commit only) and `transition_with_event` (append the
 /// `ThreadStateChanged` event in the same tx, then commit).
+/// [`transition_in_spawning`] for callers that publish nothing of their own.
 pub(crate) async fn transition_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
     actor_id: MemberId,
     action: ThreadAction,
 ) -> Result<ThreadTransitionResult, StoreError> {
+    Ok(transition_in_spawning(tx, thread_id, actor_id, action)
+        .await?
+        .0)
+}
+
+/// Make the transition in `tx`, returning with it the events of any
+/// review child it spawned, for the caller to publish after commit.
+pub(crate) async fn transition_in_spawning(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    thread_id: ThreadId,
+    actor_id: MemberId,
+    action: ThreadAction,
+) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
+    let mut spawned = Vec::new();
     let row = sqlx::query(
         "SELECT id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by
          FROM maidan_threads WHERE id = $1 FOR UPDATE",
@@ -260,7 +275,7 @@ pub(crate) async fn transition_in_tx(
         // What the reviewers are handed, pinned before the state moves.
         super::review_packets::record_in_tx(tx, thread_id, actor_id).await?;
         // A change entering review gets its second-family review child.
-        super::review_family::spawn_in_tx(tx, thread_id, actor_id).await?;
+        spawned = super::review_family::spawn_in_tx(tx, thread_id, actor_id).await?;
     }
     if to_state == ThreadState::Closed {
         review_gate_in_tx(tx, thread_id).await?;
@@ -334,11 +349,14 @@ pub(crate) async fn transition_in_tx(
     .await?;
 
     let thread = row_to_thread(&row)?;
-    Ok(ThreadTransitionResult {
-        thread,
-        from_state,
-        to_state,
-    })
+    Ok((
+        ThreadTransitionResult {
+            thread,
+            from_state,
+            to_state,
+        },
+        spawned,
+    ))
 }
 
 pub async fn transition(
@@ -370,8 +388,9 @@ pub async fn transition_with_event(
     action: ThreadAction,
 ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    let result = transition_in_tx(&mut tx, thread_id, actor_id, action).await?;
+    let (result, spawned) = transition_in_spawning(&mut tx, thread_id, actor_id, action).await?;
     let mut stored = vec![state_changed_in_tx(&mut tx, actor_id, &result).await?];
+    stored.extend(spawned);
     if result.to_state == ThreadState::Closed {
         stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
     }

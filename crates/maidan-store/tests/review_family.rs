@@ -155,10 +155,33 @@ where
         .set_thread_result_claiming(change, author, &json!({"status": "done"}))
         .await
         .expect("result");
-    store
-        .transition_thread(change, author, ThreadAction::StartReview)
+    let (_, events) = store
+        .transition_thread_with_event(change, author, ThreadAction::StartReview)
         .await
         .expect("start review");
+    // The spawned review child's routing rides out with the transition so a
+    // live subscriber sees it (#1572).
+    let routed = events
+        .iter()
+        .map(|e| e.opened_event().expect("event"))
+        .find_map(|e| match e {
+            Event::ThreadAttributesSet {
+                attributes,
+                author_family,
+                ..
+            } => Some((attributes, author_family)),
+            _ => None,
+        })
+        .expect("the review child's routing is published");
+    assert_eq!(routed.0.kind, TaskKind::Review);
+    assert_eq!(routed.0.review_family.as_deref(), Some("openai"));
+    assert_eq!(routed.1.as_deref(), Some("anthropic"));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e.opened_event(), Ok(Event::ThreadCreated { .. }))),
+        "the review child's creation is published"
+    );
 
     for seat in [author, same] {
         assert!(
