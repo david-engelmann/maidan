@@ -1520,7 +1520,8 @@
         "enum": [
           "pending",
           "success",
-          "failure"
+          "failure",
+          "unreadable"
         ],
         "type": "string"
       },
