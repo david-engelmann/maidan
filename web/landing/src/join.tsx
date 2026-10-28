@@ -1,12 +1,20 @@
-import { motion, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { motion, useDragControls, useReducedMotion, type PanInfo } from "motion/react";
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Field = "wl-email" | "wl-use" | "wl-consent";
 
-export function Join() {
-  const reduce = useReducedMotion();
+const sheetSpring = { type: "spring" as const, stiffness: 340, damping: 34, mass: 0.8 };
+
+export function Join({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const reduce = useReducedMotion() === true;
   const email = useRef<HTMLInputElement>(null);
   const useCase = useRef<HTMLTextAreaElement>(null);
   const consent = useRef<HTMLInputElement>(null);
@@ -14,6 +22,8 @@ export function Join() {
   const slot = useRef<HTMLDivElement>(null);
   const widget = useRef<string | null>(null);
   const token = useRef("");
+  const wasOpen = useRef(false);
+  const controls = useDragControls();
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
   const [status, setStatus] = useState("");
   const [bad, setBad] = useState(false);
@@ -60,6 +70,32 @@ export function Join() {
       gone = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+      const id = window.setTimeout(() => email.current?.focus(), 280);
+      return () => window.clearTimeout(id);
+    }
+    if (wasOpen.current) {
+      document.querySelector<HTMLButtonElement>(".join-btn")?.focus();
+    }
+    return undefined;
+  }, [open]);
 
   function validate(): Field | null {
     const next: Partial<Record<Field, string>> = {};
@@ -132,108 +168,147 @@ export function Join() {
     }
   }
 
+  function onDragEnd(_event: PointerEvent, info: PanInfo) {
+    if (info.offset.y > 90 || info.velocity.y > 700) onOpenChange(false);
+  }
+
+  function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("button")) return;
+    controls.start(event);
+  }
+
   return (
-    <section className="close" id="join" aria-labelledby="join-title">
-      <motion.div
-        className="close-copy"
-        initial={reduce ? false : { opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.5 }}
-        transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 280, damping: 32 }}
+    <>
+      {open ? (
+        <motion.button
+          type="button"
+          className="scrim"
+          aria-label="Close the invite sheet"
+          onClick={() => onOpenChange(false)}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={reduce ? { duration: 0 } : { duration: 0.25 }}
+        />
+      ) : null}
+      <motion.section
+        className={open ? "sheet is-open" : "sheet"}
+        id="join"
+        role="dialog"
+        aria-modal={open}
+        aria-labelledby="join-title"
+        aria-hidden={open ? undefined : true}
+        inert={open ? undefined : true}
+        initial={false}
+        animate={{ y: open ? 0 : "110%" }}
+        transition={reduce ? { duration: 0 } : sheetSpring}
+        drag={open && !reduce ? "y" : false}
+        dragControls={controls}
+        dragListener={false}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0.04, bottom: 0.55 }}
+        onDragEnd={onDragEnd}
       >
-        <p className="kicker">The list</p>
-        <h2 id="join-title">Take a place on the board.</h2>
-        <p>We invite people in batches. One email when your place comes up.</p>
-      </motion.div>
-      <div className="card">
-        {done ? (
-          <div className="done" tabIndex={-1}>
-            <h2>You&apos;re on the list.</h2>
-            <p>We&apos;ll email you when your invite is ready. Nothing else, ever.</p>
-          </div>
-        ) : (
-          <form id="waitlist-form" noValidate onSubmit={onSubmit}>
-            <div className="field">
-              <label htmlFor="wl-email">Work email</label>
-              <input
-                ref={email}
-                id="wl-email"
-                name="email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                maxLength={254}
-                required
-                aria-describedby="wl-email-err"
-                aria-invalid={errors["wl-email"] ? true : undefined}
-                placeholder="you@example.com"
-                onInput={() => {
-                  if (errors["wl-email"]) validate();
-                }}
-              />
-              <p className="err" id="wl-email-err" hidden={!errors["wl-email"]}>
-                {errors["wl-email"]}
+        <div className="sheet-grab" onPointerDown={startDrag}>
+          <span className="grabber" aria-hidden="true" />
+          <p className="kicker">The list</p>
+          <h2 id="join-title">Take a place on the board.</h2>
+          <p className="lede">We invite people in batches. One email when your place comes up.</p>
+          <button type="button" className="sheet-close" onClick={() => onOpenChange(false)}>
+            Close
+          </button>
+        </div>
+        <div className="card">
+          {done ? (
+            <div className="done" tabIndex={-1}>
+              <h2>You&apos;re on the list.</h2>
+              <p>We&apos;ll email you when your invite is ready. Nothing else, ever.</p>
+            </div>
+          ) : (
+            <form id="waitlist-form" noValidate onSubmit={onSubmit}>
+              <div className="field">
+                <label htmlFor="wl-email">Work email</label>
+                <input
+                  ref={email}
+                  id="wl-email"
+                  name="email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  required
+                  aria-describedby="wl-email-err"
+                  aria-invalid={errors["wl-email"] ? true : undefined}
+                  placeholder="you@example.com"
+                  onInput={() => {
+                    if (errors["wl-email"]) validate();
+                  }}
+                />
+                <p className="err" id="wl-email-err" hidden={!errors["wl-email"]}>
+                  {errors["wl-email"]}
+                </p>
+              </div>
+              <div className="field">
+                <label htmlFor="wl-use">What would you use Maidan for?</label>
+                <textarea
+                  ref={useCase}
+                  id="wl-use"
+                  name="use_case"
+                  rows={3}
+                  maxLength={2000}
+                  required
+                  aria-describedby="wl-use-err"
+                  aria-invalid={errors["wl-use"] ? true : undefined}
+                  placeholder="e.g. a review swarm for our backend repo"
+                  onInput={() => {
+                    if (errors["wl-use"]) validate();
+                  }}
+                />
+                <p className="err" id="wl-use-err" hidden={!errors["wl-use"]}>
+                  {errors["wl-use"]}
+                </p>
+              </div>
+              <div className="hp" aria-hidden="true">
+                <label htmlFor="wl-website">Leave this empty</label>
+                <input
+                  ref={website}
+                  id="wl-website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="check">
+                <input
+                  ref={consent}
+                  id="wl-consent"
+                  name="consent"
+                  type="checkbox"
+                  required
+                  aria-describedby="wl-consent-err"
+                  aria-invalid={errors["wl-consent"] ? true : undefined}
+                  onChange={() => {
+                    if (errors["wl-consent"]) validate();
+                  }}
+                />
+                <label htmlFor="wl-consent">You may email me about my place on the list.</label>
+              </div>
+              <p className="err" id="wl-consent-err" hidden={!errors["wl-consent"]}>
+                {errors["wl-consent"]}
               </p>
-            </div>
-            <div className="field">
-              <label htmlFor="wl-use">What would you use Maidan for?</label>
-              <textarea
-                ref={useCase}
-                id="wl-use"
-                name="use_case"
-                rows={3}
-                maxLength={2000}
-                required
-                aria-describedby="wl-use-err"
-                aria-invalid={errors["wl-use"] ? true : undefined}
-                placeholder="e.g. a review swarm for our backend repo"
-                onInput={() => {
-                  if (errors["wl-use"]) validate();
-                }}
-              />
-              <p className="err" id="wl-use-err" hidden={!errors["wl-use"]}>
-                {errors["wl-use"]}
+              <div className="turnstile" id="wl-turnstile" ref={slot} hidden />
+              <button id="wl-submit" className="submit" type="submit" aria-busy={busy || undefined} disabled={busy}>
+                Request an invite
+              </button>
+              <p className={bad ? "status is-error" : "status"} role="status" aria-live="polite">
+                {status}
               </p>
-            </div>
-            <div className="hp" aria-hidden="true">
-              <label htmlFor="wl-website">Leave this empty</label>
-              <input
-                ref={website}
-                id="wl-website"
-                name="website"
-                type="text"
-                tabIndex={-1}
-                autoComplete="off"
-              />
-            </div>
-            <div className="check">
-              <input
-                ref={consent}
-                id="wl-consent"
-                name="consent"
-                type="checkbox"
-                required
-                aria-describedby="wl-consent-err"
-                aria-invalid={errors["wl-consent"] ? true : undefined}
-                onChange={() => {
-                  if (errors["wl-consent"]) validate();
-                }}
-              />
-              <label htmlFor="wl-consent">You may email me about my place on the list.</label>
-            </div>
-            <p className="err" id="wl-consent-err" hidden={!errors["wl-consent"]}>
-              {errors["wl-consent"]}
-            </p>
-            <div className="turnstile" id="wl-turnstile" ref={slot} hidden />
-            <button id="wl-submit" type="submit" aria-busy={busy || undefined} disabled={busy}>
-              Request an invite
-            </button>
-            <p className={bad ? "status is-error" : "status"} role="status" aria-live="polite">
-              {status}
-            </p>
-          </form>
-        )}
-      </div>
-    </section>
+              <p className="fine">Your email is used only for your invite.</p>
+            </form>
+          )}
+        </div>
+      </motion.section>
+    </>
   );
 }

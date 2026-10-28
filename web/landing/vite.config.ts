@@ -16,10 +16,16 @@ export default defineConfig({
       output: {
         entryFileNames: "app.js",
         chunkFileNames: "[name].js",
-        assetFileNames: "[name][extname]",
+        assetFileNames(info) {
+          const name = info.names?.[0] ?? "";
+          if (name.endsWith(".css")) return "style.css";
+          if (name.endsWith(".woff2")) return "geist.woff2";
+          return "[name][extname]";
+        },
         manualChunks(id) {
           if (id.includes("node_modules")) return "vendor";
           if (id.includes("/src/story")) return "story";
+          if (id.includes("/src/aurora")) return "aurora";
         },
       },
     },

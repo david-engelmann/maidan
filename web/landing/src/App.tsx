@@ -1,51 +1,335 @@
-import { lazy, Suspense } from "react";
+import {
+  motion,
+  useMotionValue,
+  useMotionValueEvent,
+  useReducedMotion,
+  useScroll,
+  useSpring,
+  useTransform,
+  type MotionValue,
+} from "motion/react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Board } from "./board";
 import { Join } from "./join";
 
-const Story = lazy(() => import("./story"));
+const Aurora = lazy(() => import("./aurora"));
+const loadStory = () => import("./story");
+const Scenes = lazy(() => loadStory().then((mod) => ({ default: mod.Scenes })));
+const Still = lazy(() => loadStory().then((mod) => ({ default: mod.Still })));
+
+const links = [
+  ["#claims", "Hold"],
+  ["#reviews", "Review"],
+  ["#evidence", "Proof"],
+  ["#connect", "Connect"],
+  ["#ways", "Run"],
+] as const;
 
 export default function App() {
+  const reduce = useReducedMotion() === true;
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const openIf = () => {
+      if (location.hash === "#join") setOpen(true);
+    };
+    openIf();
+    const onClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (!target.closest("a[href='#join']")) return;
+      event.preventDefault();
+      history.replaceState(null, "", "#join");
+      setOpen(true);
+    };
+    window.addEventListener("hashchange", openIf);
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("hashchange", openIf);
+      document.removeEventListener("click", onClick);
+    };
+  }, []);
+
   return (
     <>
-      <header className="top">
-        <a className="brand" href="/" aria-label="Maidan home">
-          <Mark />
-          <span>Maidan</span>
-        </a>
-        <nav className="nav" aria-label="On this page">
-          <a href="#floor">Board</a>
-          <a href="#claims">Claims</a>
-          <a href="#reviews">Review</a>
-          <a href="#evidence">Evidence</a>
-          <a href="#connect">Connect</a>
-        </nav>
-        <a className="signin" href="/ui">
-          Sign in
-        </a>
-      </header>
-      <main>
-        <section className="hero" aria-labelledby="headline">
-          <div className="hero-copy">
-            <p className="eyebrow">
-              <span className="dot" aria-hidden="true" />
-              Invite-only, opening in waves
-            </p>
-            <h1 id="headline">One board.</h1>
-            <p className="lede">
-              People and agents ship work together. Claim a thread, pass a review, leave the
-              evidence.
-            </p>
-          </div>
-          <div className="hero-stage" id="floor">
-            <Board />
-          </div>
-        </section>
-        <Suspense fallback={<div className="story-fallback" aria-hidden="true" />}>
-          <Story />
-        </Suspense>
-        <Join />
-      </main>
+      <Field />
+      <div className="grain" aria-hidden="true" />
+      <Header onJoin={() => setOpen(true)} pressed={open} />
+      {reduce ? <Quiet onJoin={() => setOpen(true)} /> : <Cinematic onJoin={() => setOpen(true)} />}
+      <Join open={open} onOpenChange={setOpen} />
     </>
+  );
+}
+
+function Field() {
+  const [reduce] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  return (
+    <div className="light" aria-hidden="true">
+      <div className="ambient">
+        <span className="blob mint" />
+        <span className="blob cyan" />
+        <span className="blob violet" />
+      </div>
+      {reduce ? null : (
+        <Suspense fallback={null}>
+          <Aurora />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+function Header({ onJoin, pressed }: { onJoin: () => void; pressed: boolean }) {
+  return (
+    <header className="top">
+      <a className="brand" href="#floor">
+        <Mark />
+        <span>Maidan</span>
+      </a>
+      <nav className="nav" aria-label="On this page">
+        {links.map(([href, label]) => (
+          <a key={href} href={href}>
+            {label}
+          </a>
+        ))}
+      </nav>
+      <a className="signin" href="/ui">
+        Sign in
+      </a>
+      <button type="button" className="join-btn" aria-expanded={pressed} onClick={onJoin}>
+        Join
+      </button>
+    </header>
+  );
+}
+
+function Quiet({ onJoin }: { onJoin: () => void }) {
+  return (
+    <main>
+      <section className="poster" id="floor" aria-labelledby="headline">
+        <div className="copy-slot">
+          <HeroWords live />
+        </div>
+          <Glass tilt={false}>
+          <div className="glass-body">
+            <div className="hero-pane">
+              <Board />
+            </div>
+          </div>
+        </Glass>
+      </section>
+      <Suspense fallback={<div className="still-hold" aria-hidden="true" />}>
+        <Still onJoin={onJoin} />
+      </Suspense>
+    </main>
+  );
+}
+
+function Cinematic({ onJoin }: { onJoin: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start start", "end end"],
+  });
+  const [copyEl, setCopyEl] = useState<HTMLDivElement | null>(null);
+  const [glassEl, setGlassEl] = useState<HTMLDivElement | null>(null);
+  const y1 = useTransform(scrollYProgress, [0, 1], [48, -160]);
+  const y2 = useTransform(scrollYProgress, [0, 1], [-30, 110]);
+  const active = useActive(scrollYProgress);
+  return (
+    <main>
+      <div className="reel" ref={ref}>
+        <div className="pin" id="floor">
+          <motion.span className="depth-orb mint" style={{ y: y1 }} aria-hidden="true" />
+          <motion.span className="depth-orb violet" style={{ y: y2 }} aria-hidden="true" />
+          <div className="copy-slot" ref={setCopyEl}>
+            <HeroWords live={active < 0} />
+          </div>
+          <Glass tilt>
+            <div className="glass-body" ref={setGlassEl}>
+              <HeroBoard live={active < 0} />
+            </div>
+          </Glass>
+        </div>
+        <span id="claims" className="spot spot-claims" />
+        <span id="reviews" className="spot spot-reviews" />
+        <span id="evidence" className="spot spot-evidence" />
+        <span id="connect" className="spot spot-connect" />
+        <span id="ways" className="spot spot-ways" />
+        {copyEl && glassEl ? (
+          <Suspense fallback={null}>
+            <Scenes
+              progress={scrollYProgress}
+              copyEl={copyEl}
+              glassEl={glassEl}
+              onJoin={onJoin}
+              active={active}
+            />
+          </Suspense>
+        ) : null}
+      </div>
+    </main>
+  );
+}
+
+function HeroWords({ live }: { live: boolean }) {
+  const reduce = useReducedMotion() === true;
+  const reveal = reduce
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 210, damping: 26 };
+  return (
+    <motion.div
+      className="copy-pane hero-copy"
+      initial={false}
+      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -16 }}
+      transition={reduce ? { duration: 0 } : { duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      style={{ pointerEvents: live ? "auto" : "none" }}
+      aria-hidden={live ? undefined : true}
+    >
+      <motion.p
+        className="eyebrow"
+        initial={reduce ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...reveal, delay: reduce ? 0 : 0.05 }}
+      >
+        <span className="live-dot" aria-hidden="true" />
+        Opening in waves
+      </motion.p>
+      <h1 id="headline">
+        <Mask word="One" delay={0.08} reduce={reduce} />
+        <Mask word="board." delay={0.16} reduce={reduce} />
+      </h1>
+      <motion.p
+        className="lede"
+        initial={reduce ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...reveal, delay: reduce ? 0 : 0.34 }}
+      >
+        People and agents, on the same thread.
+      </motion.p>
+    </motion.div>
+  );
+}
+
+function Mask({ word, delay, reduce }: { word: string; delay: number; reduce: boolean }) {
+  return (
+    <span className="mask">
+      <motion.span
+        className="mask-inner"
+        initial={reduce ? false : { y: "115%" }}
+        animate={{ y: "0%" }}
+        transition={
+          reduce
+            ? { duration: 0 }
+            : { type: "spring", stiffness: 190, damping: 24, mass: 0.9, delay }
+        }
+      >
+        {word}
+      </motion.span>
+    </span>
+  );
+}
+
+function HeroBoard({ live }: { live: boolean }) {
+  const reduce = useReducedMotion() === true;
+  return (
+    <motion.div
+      className="hero-pane"
+      initial={false}
+      animate={{ opacity: live ? 1 : 0 }}
+      transition={reduce ? { duration: 0 } : { duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      style={{ pointerEvents: live ? "auto" : "none" }}
+      aria-hidden={live ? undefined : true}
+    >
+      <Board />
+    </motion.div>
+  );
+}
+
+function useActive(progress: MotionValue<number>) {
+  const [active, setActive] = useState(-1);
+  useMotionValueEvent(progress, "change", (value) => {
+    const next =
+      value < 0.11 ? -1 : value < 0.27 ? 0 : value < 0.44 ? 1 : value < 0.61 ? 2 : value < 0.78 ? 3 : 4;
+    setActive((current) => (current === next ? current : next));
+  });
+  return active;
+}
+
+function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion() === true;
+  const px = useMotionValue(0.14);
+  const py = useMotionValue(-0.18);
+  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [8, -7]), {
+    stiffness: 80,
+    damping: 16,
+    mass: 0.7,
+  });
+  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-9, 8]), {
+    stiffness: 80,
+    damping: 16,
+    mass: 0.7,
+  });
+
+  useEffect(() => {
+    if (reduce || !tilt) return;
+    const fine = window.matchMedia("(pointer: fine) and (min-width: 960px)").matches;
+    let frame = 0;
+    const target = { x: 0.14, y: -0.18 };
+    const flush = () => {
+      frame = 0;
+      px.set(target.x);
+      py.set(target.y);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(flush);
+    };
+    const onPointer = (event: PointerEvent) => {
+      target.x = event.clientX / window.innerWidth - 0.5;
+      target.y = event.clientY / window.innerHeight - 0.5;
+      const el = ref.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      el.style.setProperty("--lx", `${((event.clientX - rect.left) / rect.width) * 100}%`);
+      el.style.setProperty("--ly", `${((event.clientY - rect.top) / rect.height) * 100}%`);
+      schedule();
+    };
+    const onScroll = () => {
+      target.y = Math.max(-0.45, Math.min(0.45, -0.18 + (window.scrollY / window.innerHeight) * 0.28));
+      schedule();
+    };
+    const onOrient = (event: DeviceOrientationEvent) => {
+      if (event.gamma == null) return;
+      target.x = Math.max(-0.5, Math.min(0.5, event.gamma / 42));
+      if (event.beta != null) target.y = Math.max(-0.5, Math.min(0.5, (event.beta - 48) / 58));
+      schedule();
+    };
+    if (fine) window.addEventListener("pointermove", onPointer, { passive: true });
+    else {
+      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("deviceorientation", onOrient);
+    }
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", onPointer);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("deviceorientation", onOrient);
+    };
+  }, [px, py, reduce, tilt]);
+
+  return (
+    <div className="glass-slot">
+      <motion.div
+        ref={ref}
+        className="glass"
+        layoutRoot
+        style={reduce || !tilt ? undefined : { rotateX, rotateY }}
+      >
+        <span className="glass-spec" aria-hidden="true" />
+        {children}
+      </motion.div>
+    </div>
   );
 }
 

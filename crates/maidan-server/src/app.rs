@@ -1250,7 +1250,7 @@ pub fn router(state: AppState) -> Router {
             &headers,
             landing_csp(&state),
             "text/html; charset=utf-8",
-            &page,
+            page.as_bytes(),
         )
     }
 
@@ -1263,23 +1263,28 @@ pub fn router(state: AppState) -> Router {
             return Err(axum::http::StatusCode::NOT_FOUND);
         }
         // Names are pinned by the Vite build (see web/landing/vite.config.ts).
-        let (content_type, body) = match name.as_str() {
+        let (content_type, body): (&str, &[u8]) = match name.as_str() {
             "app.js" => (
                 "text/javascript; charset=utf-8",
-                include_str!("../static/landing/dist/app.js"),
+                include_bytes!("../static/landing/dist/app.js"),
             ),
             "vendor.js" => (
                 "text/javascript; charset=utf-8",
-                include_str!("../static/landing/dist/vendor.js"),
+                include_bytes!("../static/landing/dist/vendor.js"),
             ),
             "story.js" => (
                 "text/javascript; charset=utf-8",
-                include_str!("../static/landing/dist/story.js"),
+                include_bytes!("../static/landing/dist/story.js"),
+            ),
+            "aurora.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/aurora.js"),
             ),
             "style.css" => (
                 "text/css; charset=utf-8",
-                include_str!("../static/landing/dist/style.css"),
+                include_bytes!("../static/landing/dist/style.css"),
             ),
+            "geist.woff2" => ("font/woff2", include_bytes!("../static/landing/dist/geist.woff2")),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(
@@ -1294,10 +1299,10 @@ pub fn router(state: AppState) -> Router {
         headers: &axum::http::HeaderMap,
         csp: &'static str,
         content_type: &'static str,
-        body: &str,
+        body: &[u8],
     ) -> axum::response::Response {
         use axum::response::IntoResponse as _;
-        let etag = strong_etag(body.as_bytes());
+        let etag = strong_etag(body);
         if if_none_match_fresh(headers, &etag) {
             return (
                 axum::http::StatusCode::NOT_MODIFIED,
@@ -1309,7 +1314,7 @@ pub fn router(state: AppState) -> Router {
         (
             landing_headers(content_type, csp),
             ui_cache_headers(&etag),
-            body.to_owned(),
+            body.to_vec(),
         )
             .into_response()
     }
