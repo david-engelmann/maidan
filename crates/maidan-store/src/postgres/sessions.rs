@@ -24,6 +24,17 @@ pub(crate) async fn create_on(
     // delete or deactivation wait for this transaction, and a committed one
     // visible to it, so a sign-in that resolved its member earlier cannot
     // mint a session after the member is gone.
+    //
+    // Lock order matches `scim_audited::deprovision` and SCIM PUT/PATCH: the
+    // SCIM row first, then the member row (#1670). The SCIM row is locked
+    // whether or not it is active, so a deactivation that has not committed
+    // yet waits for this write instead of slipping past an unlocked row.
+    let scim_active: Option<bool> =
+        sqlx::query_scalar("SELECT active FROM maidan_scim_users WHERE member_id = $1 FOR SHARE")
+            .bind(new.member_id.0)
+            .fetch_optional(&mut *conn)
+            .await?;
+    let deactivated = scim_active == Some(false);
     let live = sqlx::query(
         "SELECT 1 FROM maidan_members
          WHERE id = $1 AND workspace_id = $2 AND tombstoned_at IS NULL
@@ -31,13 +42,6 @@ pub(crate) async fn create_on(
     )
     .bind(new.member_id.0)
     .bind(new.workspace_id.0)
-    .fetch_optional(&mut *conn)
-    .await?
-    .is_some();
-    let deactivated = sqlx::query(
-        "SELECT 1 FROM maidan_scim_users WHERE member_id = $1 AND NOT active FOR SHARE",
-    )
-    .bind(new.member_id.0)
     .fetch_optional(&mut *conn)
     .await?
     .is_some();
