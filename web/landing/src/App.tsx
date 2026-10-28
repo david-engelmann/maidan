@@ -1,4 +1,3 @@
-import { motion, useReducedMotion, useScroll, useSpring } from "motion/react";
 import { lazy, Suspense } from "react";
 import { Board } from "./board";
 import { Join } from "./join";
@@ -6,17 +5,8 @@ import { Join } from "./join";
 const Story = lazy(() => import("./story"));
 
 export default function App() {
-  const reduce = useReducedMotion();
-  const { scrollYProgress } = useScroll();
-  const scaleX = useSpring(scrollYProgress, {
-    stiffness: reduce ? 1000 : 140,
-    damping: reduce ? 80 : 28,
-    restDelta: 0.001,
-  });
-
   return (
     <>
-      <motion.div className="scroll-progress" style={{ scaleX }} aria-hidden="true" />
       <header className="top">
         <a className="brand" href="/" aria-label="Maidan home">
           <Mark />

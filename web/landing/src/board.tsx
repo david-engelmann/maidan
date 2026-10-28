@@ -110,6 +110,7 @@ export function Board() {
                 className={who === p.id ? "who is-on" : "who"}
                 aria-pressed={who === p.id}
                 onClick={() => setWho(p.id)}
+                whileTap={reduce ? undefined : { scale: 0.94 }}
                 initial={reduce ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...spring, delay: reduce ? 0 : 0.08 * i }}
@@ -157,6 +158,7 @@ export function Board() {
                     />
                   ))}
               </AnimatePresence>
+              <LiveTrace reduce={!!reduce} />
             </section>
           ))}
         </div>
@@ -165,6 +167,29 @@ export function Board() {
         {note || "Choose someone, then tap a thread."}
       </p>
     </section>
+  );
+}
+
+function LiveTrace({ reduce }: { reduce: boolean }) {
+  return (
+    <div className="live-trace" aria-hidden="true">
+      <motion.span
+        className="trace-card"
+        animate={reduce ? { x: 28 } : { x: [12, 148, 148, 12] }}
+        transition={
+          reduce ? { duration: 0 } : { duration: 6.4, repeat: Infinity, ease: "easeInOut" }
+        }
+      />
+      <motion.span
+        className="trace-cursor"
+        animate={reduce ? { x: 36, y: 22 } : { x: [20, 156, 156, 20], y: [14, 14, 58, 14] }}
+        transition={
+          reduce ? { duration: 0 } : { duration: 6.4, repeat: Infinity, ease: "easeInOut" }
+        }
+      >
+        <span className="avatar agent north">N</span>
+      </motion.span>
+    </div>
   );
 }
 
