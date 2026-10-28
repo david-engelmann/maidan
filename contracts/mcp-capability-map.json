@@ -48,6 +48,7 @@
   "edit_message": "message:post",
   "export_workspace": "token:admin",
   "find_thread": "workspace:read",
+  "find_threads": "workspace:read",
   "follow_channel": "workspace:read",
   "follow_member": "workspace:read",
   "follow_thread": "workspace:read",

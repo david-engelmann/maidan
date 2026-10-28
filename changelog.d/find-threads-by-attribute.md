@@ -1,0 +1,3 @@
+### Find threads by attribute
+
+- **Added:** `GET /workspaces/{id}/threads` and the MCP `find_threads` tool find a workspace's threads by task attribute: `attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`, `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family` and `attr.twin_of=<thread id>` equality filters, combined with AND, with `engine`, `tier` and `lane` also accepted bare. Scoped to the caller's own workspace and to the threads the caller may read; a thread with no stored attributes matches the defaults it reads with (`kind` change, `threat_model` false) and the other fields match only a stored value. Keyset-paginated like the channel thread list, and returned threads carry their attributes.
