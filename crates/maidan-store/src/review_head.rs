@@ -26,7 +26,8 @@ pub(crate) fn current_head(thread: &str) -> String {
 }
 
 /// Dismiss, at `now`, every standing approval on change `change` or its
-/// review children that named a head other than `head`.
+/// review children that named a head other than `head`, returning each
+/// dismissed approval's thread, reviewer and named head.
 pub(crate) fn dismiss_stale(change: &str, head: &str, now: &str) -> String {
     format!(
         "UPDATE maidan_thread_reviews SET dismissed_at = {now}
@@ -35,6 +36,7 @@ pub(crate) fn dismiss_stale(change: &str, head: &str, now: &str) -> String {
            AND (thread_id = {change} OR thread_id IN (
                SELECT t.id FROM maidan_threads t
                JOIN maidan_thread_attributes a ON a.thread_id = t.id
-               WHERE t.parent_thread_id = {change} AND a.kind = 'review'))"
+               WHERE t.parent_thread_id = {change} AND a.kind = 'review'))
+         RETURNING thread_id, reviewer_id, head_sha"
     )
 }

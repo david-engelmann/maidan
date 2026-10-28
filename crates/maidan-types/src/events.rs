@@ -179,6 +179,7 @@ pub enum EventKind {
     ThreadHandoff,
     ResultDeliveryFailed,
     ReviewSubmitted,
+    ApprovalDismissed,
     WaitTimedOut,
     ScheduleSkipped,
     ThreadSpawnDenied,
@@ -227,6 +228,7 @@ impl EventKind {
             Self::ThreadHandoff => "thread_handoff",
             Self::ResultDeliveryFailed => "result_delivery_failed",
             Self::ReviewSubmitted => "review_submitted",
+            Self::ApprovalDismissed => "approval_dismissed",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
             Self::ThreadSpawnDenied => "thread_spawn_denied",
@@ -275,6 +277,7 @@ impl EventKind {
             "thread_handoff" => Some(Self::ThreadHandoff),
             "result_delivery_failed" => Some(Self::ResultDeliveryFailed),
             "review_submitted" => Some(Self::ReviewSubmitted),
+            "approval_dismissed" => Some(Self::ApprovalDismissed),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
             "thread_spawn_denied" => Some(Self::ThreadSpawnDenied),
@@ -348,6 +351,7 @@ impl EventKind {
         Self::ThreadHandoff,
         Self::ResultDeliveryFailed,
         Self::ReviewSubmitted,
+        Self::ApprovalDismissed,
         Self::WaitTimedOut,
         Self::ScheduleSkipped,
         Self::ThreadSpawnDenied,
@@ -449,6 +453,7 @@ impl EventKind {
             // table is what the close-gate reads, and a peer must not announce
             // a verdict nobody gave here.
             Self::ReviewSubmitted => false,
+            Self::ApprovalDismissed => false,
             // A wait timeout is fired by *this* deployment's sweeper (this
             // clock); a peer must not inject one.
             Self::WaitTimedOut => false,
@@ -802,6 +807,25 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         worker_id: Option<MemberId>,
     },
+    /// A push moved a tracked change's head past the one a standing approval
+    /// named, so the approval was dismissed. Appended by the pull-request CI
+    /// read in the dismissal's own transaction, one per dismissed approval,
+    /// so a waiter sees the gate reopen (#1572). Local governance: not
+    /// federatable.
+    ApprovalDismissed {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        /// The thread the approval was recorded on: the change or one of its
+        /// review children.
+        thread_id: ThreadId,
+        /// The member whose approval was dismissed.
+        reviewer_id: MemberId,
+        /// The head the approval named.
+        approved_head: String,
+        /// The head the change moved to.
+        head_sha: String,
+    },
     /// A thread's wait timer lapsed. Fired by *this* deployment's wait sweeper
     /// when a wait passed its deadline unsatisfied. The escalation `policy`
     /// names what the sweeper did (`notify` reaches the owner; `park`
@@ -1069,6 +1093,7 @@ impl Event {
             Self::ThreadHandoff { .. } => EventKind::ThreadHandoff,
             Self::ResultDeliveryFailed { .. } => EventKind::ResultDeliveryFailed,
             Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
+            Self::ApprovalDismissed { .. } => EventKind::ApprovalDismissed,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
             Self::ThreadSpawnDenied { .. } => EventKind::ThreadSpawnDenied,
@@ -1117,6 +1142,7 @@ impl Event {
             | Self::ThreadHandoff { occurred_at, .. }
             | Self::ResultDeliveryFailed { occurred_at, .. }
             | Self::ReviewSubmitted { occurred_at, .. }
+            | Self::ApprovalDismissed { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
             | Self::ThreadSpawnDenied { occurred_at, .. }
@@ -1165,6 +1191,7 @@ impl Event {
             | Self::ThreadHandoff { workspace_id, .. }
             | Self::ResultDeliveryFailed { workspace_id, .. }
             | Self::ReviewSubmitted { workspace_id, .. }
+            | Self::ApprovalDismissed { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
             | Self::ThreadSpawnDenied { workspace_id, .. }
@@ -1207,6 +1234,7 @@ impl Event {
             | Self::ThreadHandoff { channel_id, .. }
             | Self::ResultDeliveryFailed { channel_id, .. }
             | Self::ReviewSubmitted { channel_id, .. }
+            | Self::ApprovalDismissed { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
             | Self::ThreadSpawnDenied { channel_id, .. }
@@ -1242,6 +1270,7 @@ impl Event {
             Self::ThreadHandoff { thread_id, .. } => Some(*thread_id),
             Self::ResultDeliveryFailed { thread_id, .. } => Some(*thread_id),
             Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
+            Self::ApprovalDismissed { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
             Self::ProjectorMisconfigured { thread_id, .. } => Some(*thread_id),
@@ -1291,6 +1320,7 @@ impl Event {
             | Self::MemberUnfrozen { member_id, .. }
             | Self::MemberDisplayNameChanged { member_id, .. } => Some(*member_id),
             Self::ReviewSubmitted { reviewer_id, .. } => Some(*reviewer_id),
+            Self::ApprovalDismissed { reviewer_id, .. } => Some(*reviewer_id),
             Self::UsageReported { stamp, .. } => Some(stamp.reporter),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
@@ -1667,6 +1697,7 @@ mod kind_tests {
                 | EventKind::ThreadHandoff
                 | EventKind::ResultDeliveryFailed
                 | EventKind::ReviewSubmitted
+                | EventKind::ApprovalDismissed
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
                 | EventKind::ThreadSpawnDenied
@@ -1757,6 +1788,7 @@ mod kind_tests {
             EventKind::ThreadHandoff,
             EventKind::ResultDeliveryFailed,
             EventKind::ReviewSubmitted,
+            EventKind::ApprovalDismissed,
             EventKind::WaitTimedOut,
             EventKind::ScheduleSkipped,
             EventKind::ThreadSpawnDenied,

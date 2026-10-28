@@ -2646,6 +2646,13 @@ pub trait AssignmentStore: Send + Sync {
         &self,
         new: maidan_types::NewPullCi,
     ) -> Result<Vec<maidan_types::PostedNotice>, StoreError>;
+    /// [`Store::record_pull_ci`], also returning the `approval_dismissed`
+    /// events a moved head appended, one per dismissed approval, in the same
+    /// transaction (#1572).
+    async fn record_pull_ci_with_events(
+        &self,
+        new: maidan_types::NewPullCi,
+    ) -> Result<(Vec<maidan_types::PostedNotice>, Vec<StoredEvent>), StoreError>;
     /// Whether `head_sha` is the head the last read of a tracked pull
     /// request recorded, with commits its base lacked at some read: what a
     /// pull request closed without merging must show to count as landed.

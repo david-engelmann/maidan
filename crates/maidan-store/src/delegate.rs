@@ -3159,6 +3159,13 @@ macro_rules! store_delegations {
                 pull_ci::record(self.pool(), new).await
             }
 
+            async fn record_pull_ci_with_events(
+                &self,
+                new: maidan_types::NewPullCi,
+            ) -> Result<(Vec<maidan_types::PostedNotice>, Vec<StoredEvent>), StoreError> {
+                pull_ci::record_with_events(self.pool(), new).await
+            }
+
             async fn pull_head_was_ahead(
                 &self,
                 workspace_id: WorkspaceId,
