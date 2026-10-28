@@ -57,6 +57,8 @@ pub(crate) const DUPLICATE: &str = "EXISTS (SELECT 1 FROM maidan_task_fingerprin
 /// ("Session: ENG-1 ..." against "ENG-1 ..."), so the fingerprint alone misses
 /// it. Closing the thread, or clearing its duplicate link (which records
 /// `cleared_at`), lifts the hold; so does the other thread leaving review.
+/// A cleared hold stays cleared. A thread with no title or description has
+/// no fingerprint row to clear, so only closing or the review ending lifts it.
 pub(crate) const ISSUE_IN_REVIEW: &str = "EXISTS (SELECT 1 FROM maidan_thread_attributes ia
                         JOIN maidan_channels ich ON ich.id = cand.channel_id
                         JOIN maidan_thread_attributes oa

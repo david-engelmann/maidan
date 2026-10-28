@@ -177,6 +177,20 @@ async fn refresh(
                 continue;
             }
         };
+        if snapshot.checks_denied {
+            tracing::warn!(
+                repo,
+                pull_number,
+                "change sweep: GitHub refused this token the pull request's checks, and its Actions runs or commit statuses too; no CI notice can fire"
+            );
+            crate::ops_alert::alert(
+                &format!("github-checks-denied:{repo}"),
+                &format!(
+                    "GitHub refuses Maidan's token the CI on {repo}'s pull requests, so no ci_failed or checks_done notice can fire. A fine-grained token needs Actions: read and Commit statuses: read on {repo} (it cannot be given check runs; a GitHub App or classic token reads them directly)."
+                ),
+            )
+            .await;
+        }
         let brief = &snapshot.brief;
         if brief.open {
             if let Some((state, stats)) = sweep.as_mut() {
