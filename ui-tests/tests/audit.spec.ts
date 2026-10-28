@@ -207,8 +207,13 @@ test("phone width: one column, no sideways scroll, Needs you buttons on screen",
   await signIn(page);
   const approve = page.locator("#needs-you-list .ny-item").first().getByRole("button", { name: "Approve", exact: true });
   await expect(approve).toBeVisible();
-  const box = await approve.boundingBox();
-  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  // The needs-you row is redrawn when its review packet arrives, and a
+  // phone-width reflow can report the button visible before it has a box.
+  // Read the box only once layout has one; the on-screen check is unchanged.
+  await expect.poll(async () => {
+    const laidOut = await approve.boundingBox();
+    return laidOut !== null && laidOut.width > 0 && laidOut.x + laidOut.width <= 390;
+  }).toBe(true);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
   const cols = await page.evaluate(() => getComputedStyle(document.getElementById("board")!).gridTemplateColumns.split(" ").length);
