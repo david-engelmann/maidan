@@ -10361,6 +10361,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "withheld": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadWithheld",
+                "description": "Why an open thread is kept off the queue, when it is a live duplicate\nof another task (the task-fingerprint rule). Read by a single-thread\nread and the create answer only; absent everywhere else."
+              }
+            ]
+          },
           "work_started_at": {
             "description": "The working clock. `assignment_expires_at` is the *claim* clock (lease\ndeadline); this is when the current holder acknowledged and began work\n(`acknowledge_claim`). `None` = claimed but not yet started, or\nunassigned. Reset to `None` on every (re)claim/assign/unassign so it\nalways reflects the CURRENT claim epoch — letting occupancy separate a\nclaimed-but-idle agent from one actively working.",
             "format": "date-time",
@@ -11222,6 +11233,30 @@
           "on_timeout",
           "created_by",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "ThreadWithheld": {
+        "description": "Why a thread is withheld from claims, shown on the thread itself so a\nclaimer that sees an open, ready-looking thread can tell why it is never\nhanded out.",
+        "properties": {
+          "reason": {
+            "description": "`duplicate_of`: created with the same task fingerprint as a task that\nis still open or in review, so the work goes to that one.",
+            "type": "string"
+          },
+          "thread": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The original task, when the caller may read it."
+              }
+            ]
+          }
+        },
+        "required": [
+          "reason"
         ],
         "type": "object"
       },

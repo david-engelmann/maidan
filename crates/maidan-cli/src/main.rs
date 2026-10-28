@@ -15,7 +15,7 @@ use maidan_search::{
 use maidan_store::{
     run_postgres_migrations, run_sqlite_migrations, Dialect, PostgresStore, SqliteStore, Store,
 };
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 
 #[derive(Parser)]
 #[command(name = "maidan", version = version(), about = "Maidan operator CLI")]
@@ -197,6 +197,17 @@ async fn run() -> anyhow::Result<()> {
     }
 }
 
+/// Every SQLite pool the CLI opens: through `maidan_search`'s pool options,
+/// so each connection loads sqlite-vec and gets the per-connection PRAGMAs
+/// (#1614). A bare sqlx pool lacks `vec_distance_cosine`.
+async fn connect_sqlite(database_url: &str, max: u32) -> anyhow::Result<sqlx::SqlitePool> {
+    maidan_search::sqlite_pool_options()
+        .max_connections(max)
+        .connect(database_url)
+        .await
+        .context("connect sqlite")
+}
+
 /// Connect, migrate and open the store with the content keyring.
 async fn open_store(
     database_url: &str,
@@ -205,11 +216,8 @@ async fn open_store(
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     Ok(match dialect {
         Dialect::Sqlite => {
-            let pool = SqlitePoolOptions::new()
-                .max_connections(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS)
-                .connect(database_url)
-                .await
-                .context("connect sqlite")?;
+            let pool =
+                connect_sqlite(database_url, maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS).await?;
             maidan_store::configure_sqlite_pool(&pool)
                 .await
                 .context("configure sqlite pragmas")?;
@@ -434,11 +442,7 @@ async fn run_mcp_stdio(
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     let (store, search) = match dialect {
         Dialect::Sqlite => {
-            let pool = SqlitePoolOptions::new()
-                .max_connections(4)
-                .connect(database_url)
-                .await
-                .context("connect sqlite")?;
+            let pool = connect_sqlite(database_url, 4).await?;
             maidan_store::configure_sqlite_pool(&pool)
                 .await
                 .context("configure sqlite pragmas")?;
@@ -510,11 +514,7 @@ async fn run_reindex_embeddings(
     let dialect = Dialect::from_url(database_url).context("detect dialect")?;
     match dialect {
         Dialect::Sqlite => {
-            let pool = SqlitePoolOptions::new()
-                .max_connections(4)
-                .connect(database_url)
-                .await
-                .context("connect sqlite")?;
+            let pool = connect_sqlite(database_url, 4).await?;
             maidan_store::configure_sqlite_pool(&pool)
                 .await
                 .context("configure sqlite pragmas")?;
@@ -561,11 +561,7 @@ async fn run_verify_shredding(
     let workspace = workspace_id.map(maidan_types::WorkspaceId);
     let residue = match Dialect::from_url(database_url).context("detect dialect")? {
         Dialect::Sqlite => {
-            let pool = SqlitePoolOptions::new()
-                .max_connections(1)
-                .connect(database_url)
-                .await
-                .context("connect sqlite")?;
+            let pool = connect_sqlite(database_url, 1).await?;
             maidan_store::find_shred_residue_sqlite(&pool, workspace).await
         }
         Dialect::Postgres => {
@@ -592,6 +588,27 @@ async fn run_verify_shredding(
     }
     println!("no residue: every withdrawn message is gone from derived tables");
     Ok(())
+}
+
+#[cfg(all(test, feature = "sqlite-vec"))]
+mod sqlite_pool_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn every_cli_sqlite_pool_connection_has_sqlite_vec_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}?mode=rwc", dir.path().join("cli.db").display());
+        let pool = connect_sqlite(&url, 2).await.unwrap();
+        let mut a = pool.acquire().await.unwrap();
+        let mut b = pool.acquire().await.unwrap();
+        for conn in [&mut a, &mut b] {
+            let v: String = sqlx::query_scalar("SELECT vec_version()")
+                .fetch_one(&mut **conn)
+                .await
+                .unwrap();
+            assert!(!v.is_empty());
+        }
+    }
 }
 
 #[cfg(test)]

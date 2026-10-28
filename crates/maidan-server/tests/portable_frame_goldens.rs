@@ -94,6 +94,7 @@ fn sample_export() -> WorkspaceExport {
             human_wait: None,
             notices: Vec::new(),
             plan_state: None,
+            withheld: None,
             ci: Vec::new(),
             created_by: None,
         }],

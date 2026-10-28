@@ -7,7 +7,9 @@ use metrics::counter;
 pub(crate) fn record(entry: &UsageLedgerEntry) {
     // No model label. The model id is caller-supplied, up to 255 bytes, and
     // there is no finite server-side catalog. A label would be one series per
-    // distinct string.
+    // distinct string. The provider family is the closed set the review
+    // routing uses, so cost by family costs at most one series per family.
+    let family = family_label(entry);
     let tokens = entry.stamp.tokens;
     let tiers = [
         ("input", tokens.input),
@@ -18,11 +20,13 @@ pub(crate) fn record(entry: &UsageLedgerEntry) {
     ];
     for (tier, amount) in tiers {
         if amount > 0 {
-            counter!("maidan_usage_tokens_total", "tier" => tier).increment(amount as u64);
+            counter!("maidan_usage_tokens_total", "tier" => tier, "family" => family)
+                .increment(amount as u64);
         }
     }
     if entry.stamp.usd_micros > 0 {
-        counter!("maidan_usage_usd_micros_total").increment(entry.stamp.usd_micros as u64);
+        counter!("maidan_usage_usd_micros_total", "family" => family)
+            .increment(entry.stamp.usd_micros as u64);
     }
     if let Some(standard) = entry.evidence.standard_price {
         let saved = standard
@@ -53,5 +57,29 @@ pub(crate) fn record(entry: &UsageLedgerEntry) {
             counter!("maidan_usage_write_premium_usd_micros_total").increment(saved.unsigned_abs());
         }
         _ => {}
+    }
+}
+
+/// The usage record's provider family, or `other` when its provider and model
+/// name none, so the label set stays closed.
+fn family_label(entry: &UsageLedgerEntry) -> &'static str {
+    family_of(entry.evidence.provider.as_deref(), &entry.stamp.model)
+}
+
+fn family_of(provider: Option<&str>, model: &str) -> &'static str {
+    maidan_types::provider_family(provider, model).unwrap_or("other")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::family_of;
+
+    #[test]
+    fn the_family_label_is_a_known_family_or_other() {
+        assert_eq!(family_of(Some("openai"), "gpt-5.6-sol"), "openai");
+        assert_eq!(family_of(None, "claude-opus-5-5"), "anthropic");
+        // A caller-supplied model nobody recognizes never becomes a label.
+        assert_eq!(family_of(Some("acme"), "my-private-model-7f3a"), "other");
+        assert_eq!(family_of(None, ""), "other");
     }
 }
