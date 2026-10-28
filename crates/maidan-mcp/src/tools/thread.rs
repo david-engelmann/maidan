@@ -1432,6 +1432,12 @@ pub(super) async fn acknowledge_claim(
             ClaimLeaseId(a.claim_lease_id),
         )
         .await?;
+    maidan_observability::observe_stage(
+        maidan_observability::ThreadStage::Acknowledge,
+        ThreadId(a.thread_id),
+        None,
+        None,
+    );
     Ok(content_json(&thread))
 }
 

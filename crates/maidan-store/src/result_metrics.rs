@@ -6,7 +6,8 @@
 //! that names nothing on these lists reads as `other`, and the verdict is one
 //! of a fixed few words, so no free text, id or model name becomes a series.
 
-use metrics::counter;
+use chrono::{DateTime, Utc};
+use metrics::{counter, histogram};
 use serde_json::Value;
 
 /// Harnesses a `result_kind` can name before its first `.`
@@ -39,6 +40,34 @@ pub(crate) fn record(result: &Value) {
         "verdict" => labels.verdict,
     )
     .increment(1);
+}
+
+/// Seconds from a claim's acknowledgement to its stored result, by the same
+/// closed harness and kind labels. A result with no acknowledged start
+/// records nothing.
+pub(crate) fn record_claim_duration(
+    result: &Value,
+    work_started_at: Option<DateTime<Utc>>,
+    produced_at: DateTime<Utc>,
+) {
+    let Some(seconds) = claim_seconds(work_started_at, produced_at) else {
+        return;
+    };
+    let labels = labels(result);
+    histogram!(
+        "maidan_thread_claim_duration_seconds",
+        "harness" => labels.harness,
+        "kind" => labels.kind,
+    )
+    .record(seconds);
+}
+
+fn claim_seconds(
+    work_started_at: Option<DateTime<Utc>>,
+    produced_at: DateTime<Utc>,
+) -> Option<f64> {
+    let millis = (produced_at - work_started_at?).num_milliseconds();
+    (millis >= 0).then(|| millis as f64 / 1000.0)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -96,6 +125,21 @@ fn verdict(rendered: &str) -> &'static str {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_claim_lasts_from_its_acknowledgement_to_its_result() {
+        let started = DateTime::<Utc>::from_timestamp(1_000, 0).unwrap_or_default();
+        let produced = DateTime::<Utc>::from_timestamp(1_090, 500_000_000).unwrap_or_default();
+        assert_eq!(claim_seconds(Some(started), produced), Some(90.5));
+    }
+
+    #[test]
+    fn a_result_with_no_acknowledged_start_or_a_skewed_clock_has_no_duration() {
+        let produced = DateTime::<Utc>::from_timestamp(1_000, 0).unwrap_or_default();
+        let later = DateTime::<Utc>::from_timestamp(2_000, 0).unwrap_or_default();
+        assert_eq!(claim_seconds(None, produced), None);
+        assert_eq!(claim_seconds(Some(later), produced), None);
+    }
 
     #[test]
     fn a_red_team_result_reads_as_harness_kind_status_and_verdict() {

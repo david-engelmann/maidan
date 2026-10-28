@@ -571,6 +571,7 @@ impl McpServer {
     pub(crate) async fn publish_event(&self, event: Event) -> Option<i64> {
         let bus = self.event_bus.as_ref()?;
         let stored = self.store.append_event(&event).await.ok()?;
+        maidan_observability::observe_event(&event);
         let envelope = BusEnvelope {
             log_id: stored.id,
             event,
@@ -586,6 +587,9 @@ impl McpServer {
     /// `Event` from the stored payload; a missing bus (embedded use) is a no-op.
     /// Unlike [`Self::publish_event`], this does NOT append (no double-log).
     pub(crate) async fn publish_stored(&self, stored: &StoredEvent) {
+        if let Ok(event) = stored.opened_event() {
+            maidan_observability::observe_event(&event);
+        }
         if let Some(bus) = self.event_bus.as_ref()
             && let Ok(envelope) = BusEnvelope::from_stored(stored)
         {

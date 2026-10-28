@@ -479,6 +479,13 @@ macro_rules! store_delegations {
                     thread_results::set(self.pool(), thread_id, produced_by, lease_id, result)
                         .await?;
                 $crate::result_metrics::record(result);
+                if let Ok(thread) = threads::get(self.pool(), thread_id).await {
+                    $crate::result_metrics::record_claim_duration(
+                        result,
+                        thread.work_started_at,
+                        stored.produced_at,
+                    );
+                }
                 Ok(stored)
             }
 

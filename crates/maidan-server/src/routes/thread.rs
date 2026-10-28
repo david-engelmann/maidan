@@ -1909,6 +1909,12 @@ pub async fn acknowledge_claim(
         .store
         .acknowledge_claim(thread_id, auth.member_id, ClaimLeaseId(body.claim_lease_id))
         .await?;
+    maidan_observability::observe_stage(
+        maidan_observability::ThreadStage::Acknowledge,
+        thread_id,
+        None,
+        None,
+    );
     Ok(Json(thread))
 }
 

@@ -609,7 +609,7 @@ async fn record_skip(state: &AppState, row: ResultDelivery, reason: &str) -> Res
     {
         crate::routes::publish_stored(state, event).await;
     }
-    crate::metrics::record_result_delivery(status::SKIPPED);
+    crate::metrics::record_result_delivery(&row.surface, status::SKIPPED);
     warn!(
         thread_id = %row.thread_id,
         surface = %row.surface,
@@ -650,7 +650,7 @@ async fn enqueue_routable(
         })
         .await
         .map_err(|e| e.to_string())?;
-    crate::metrics::record_result_delivery("enqueued");
+    crate::metrics::record_result_delivery(target.surface().as_str(), "enqueued");
     Ok(())
 }
 
