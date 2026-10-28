@@ -155,6 +155,10 @@ type Thread struct {
 	ClosedWithoutReview bool `json:"closed_without_review,omitempty"`
 	// Attributes are its task attributes, on the reads that report them.
 	Attributes *TaskAttributes `json:"attributes,omitempty"`
+	// CI is where the checks stand on each tracked pull request (a single-thread read).
+	CI []PullCi `json:"ci,omitempty"`
+	// Withheld is why an open thread is kept off the queue, when it is.
+	Withheld *ThreadWithheld `json:"withheld,omitempty"`
 	// Notices are the change notices on it, newest first (a single-thread read).
 	Notices []json.RawMessage `json:"notices,omitempty"`
 	// PlanState is, on a plan parent, how far its children have got.
@@ -185,6 +189,8 @@ type TaskAttributes struct {
 	Lane *string `json:"lane,omitempty"`
 	// ReviewFamily is the provider family a review child is routed to; server-set.
 	ReviewFamily *string `json:"review_family,omitempty"`
+	// AuthorFamily is the provider family that wrote the change a review task reviews.
+	AuthorFamily *string `json:"author_family,omitempty"`
 }
 
 // StrongRef is a content-addressed pin (maidan:event/{id} plus its hash).
@@ -384,4 +390,41 @@ type StoredEvent struct {
 	ContentKey  *string         `json:"content_key,omitempty"`
 	Traceparent *string         `json:"traceparent,omitempty"`
 	Tracestate  *string         `json:"tracestate,omitempty"`
+}
+
+// PullCi is where the checks on a tracked pull request stand, as the change sweep last read them.
+type PullCi struct {
+	Repo                  string             `json:"repo"`
+	PullNumber            int64              `json:"pull_number"`
+	HeadSHA               string             `json:"head_sha"`
+	Status                string             `json:"status"`
+	FailingJobs           []string           `json:"failing_jobs,omitempty"`
+	GateReasons           []string           `json:"gate_reasons,omitempty"`
+	LogTail               *string            `json:"log_tail,omitempty"`
+	MergeQueue            *MergeQueue        `json:"merge_queue,omitempty"`
+	MergeState            *string            `json:"merge_state,omitempty"`
+	MissingChecks         []string           `json:"missing_checks,omitempty"`
+	UnresolvedThreadLinks []ReviewThreadLink `json:"unresolved_thread_links,omitempty"`
+	UnresolvedThreads     int64              `json:"unresolved_threads,omitempty"`
+	UpdatedAt             time.Time          `json:"updated_at"`
+}
+
+// MergeQueue is where a pull request stands with its base branch's merge queue.
+type MergeQueue struct {
+	State  string  `json:"state"`
+	Reason *string `json:"reason,omitempty"`
+}
+
+// ReviewThreadLink is an unresolved review thread on a pull request.
+type ReviewThreadLink struct {
+	URL    string  `json:"url"`
+	Author *string `json:"author,omitempty"`
+}
+
+// ThreadWithheld is why a thread is withheld from claims.
+type ThreadWithheld struct {
+	// Reason is duplicate_of: a live duplicate of another task.
+	Reason string `json:"reason"`
+	// Thread is the original task, when the caller may read it.
+	Thread *string `json:"thread,omitempty"`
 }

@@ -154,6 +154,53 @@ class Channel(Model):
 
 
 @dataclass(kw_only=True)
+class ReviewThreadLink(Model):
+    """An unresolved review thread on a pull request."""
+
+    url: str
+    author: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class MergeQueue(Model):
+    """Where a pull request stands with its base branch's merge queue."""
+
+    #: ``ready_to_merge``, ``queued``, ``dequeued`` or ``landed``.
+    state: str
+    reason: Optional[str] = None
+
+
+@dataclass(kw_only=True)
+class PullCi(Model):
+    """Where the checks on a tracked pull request stand."""
+
+    repo: str
+    pull_number: int
+    head_sha: str
+    #: ``pending``, ``success``, ``failure`` or ``unreadable``.
+    status: str
+    updated_at: str
+    failing_jobs: List[str] = field(default_factory=list)
+    gate_reasons: List[str] = field(default_factory=list)
+    log_tail: Optional[str] = None
+    merge_queue: Optional[MergeQueue] = None
+    merge_state: Optional[str] = None
+    missing_checks: List[str] = field(default_factory=list)
+    unresolved_thread_links: List[ReviewThreadLink] = field(default_factory=list)
+    unresolved_threads: Optional[int] = None
+
+
+@dataclass(kw_only=True)
+class ThreadWithheld(Model):
+    """Why a thread is withheld from claims."""
+
+    #: ``duplicate_of``: a live duplicate of another task.
+    reason: str
+    #: The original task, when the caller may read it.
+    thread: Optional[str] = None
+
+
+@dataclass(kw_only=True)
 class TaskAttributes(Model):
     """What kind of work a task is and who it is routed to."""
 
@@ -174,6 +221,8 @@ class TaskAttributes(Model):
     lane: Optional[str] = None
     #: The provider family a review child is routed to; server-set.
     review_family: Optional[str] = None
+    #: The provider family that wrote the change a review task reviews.
+    author_family: Optional[str] = None
 
 
 @dataclass(kw_only=True)
@@ -204,6 +253,10 @@ class Thread(Model):
     closed_without_review: Optional[bool] = None
     #: Its task attributes, on the reads that report them.
     attributes: Optional[TaskAttributes] = None
+    #: Checks on each tracked pull request (a single-thread read).
+    ci: List[PullCi] = field(default_factory=list)
+    #: Why an open thread is kept off the queue, when it is.
+    withheld: Optional[ThreadWithheld] = None
     #: Change notices on it, newest first (a single-thread read).
     notices: Optional[List[Dict[str, Any]]] = None
     #: On a plan parent, how far its children have got.

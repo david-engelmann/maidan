@@ -232,6 +232,10 @@ export interface Thread {
   closed_without_review?: boolean;
   /** Its task attributes, on the reads that report them. */
   attributes?: TaskAttributes;
+  /** Checks on each tracked pull request (a single-thread read; empty on lists). */
+  ci?: PullCi[];
+  /** Why an open thread is kept off the queue (a single-thread read and the create answer). */
+  withheld?: ThreadWithheld | null;
   /** Change notices on it, newest first (a single-thread read). */
   notices?: unknown[];
   /** On a plan parent, how far its children have got. */
@@ -259,6 +263,8 @@ export interface TaskAttributes {
   lane?: "batch" | "flex";
   /** The provider family a review child is routed to; server-set. */
   review_family?: string;
+  /** The provider family that wrote the change a review task reviews; kept once set. */
+  author_family?: string | null;
 }
 
 /** A content-addressed pin (`maidan:event/{id}` + its hash). */
@@ -720,3 +726,41 @@ export function normalizeUsage(
 export function usdMicros(tokens: TokenUsage, priceSnapshot: PriceSnapshot): number;
 
 export default Client;
+
+/** Where the checks on a tracked pull request stand, as the change sweep last read them. */
+export interface PullCi {
+  /** Lowercase `owner/name`. */
+  repo: string;
+  pull_number: number;
+  head_sha: string;
+  status: "pending" | "success" | "failure" | "unreadable";
+  failing_jobs?: string[];
+  gate_reasons?: string[];
+  log_tail?: string | null;
+  merge_queue?: MergeQueue | null;
+  merge_state?: string | null;
+  missing_checks?: string[];
+  unresolved_thread_links?: ReviewThreadLink[];
+  unresolved_threads?: number;
+  updated_at: string;
+}
+
+/** Where a pull request stands with its base branch's merge queue. */
+export interface MergeQueue {
+  state: "ready_to_merge" | "queued" | "dequeued" | "landed";
+  reason?: string | null;
+}
+
+/** An unresolved review thread on a pull request. */
+export interface ReviewThreadLink {
+  url: string;
+  author?: string | null;
+}
+
+/** Why a thread is withheld from claims. */
+export interface ThreadWithheld {
+  /** `duplicate_of`: a live duplicate of another task. */
+  reason: string;
+  /** The original task, when the caller may read it. */
+  thread?: ThreadId | null;
+}
