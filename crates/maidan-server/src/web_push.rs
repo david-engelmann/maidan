@@ -12,11 +12,24 @@ use base64::Engine as _;
 use hkdf::Hkdf;
 use maidan_types::PushSubscription;
 use p256::ecdsa::{signature::Signer, Signature, SigningKey};
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::{PublicKey, SecretKey};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use sha2::Sha256;
+
+/// A fresh P-256 secret from the OS RNG. p256 0.14 takes a rand_core 0.10
+/// RNG, so draw 32 bytes with this crate's `rand` and retry the
+/// vanishingly rare out-of-range scalar.
+fn random_secret_key() -> SecretKey {
+    loop {
+        let mut bytes = [0u8; 32];
+        OsRng.fill_bytes(&mut bytes);
+        if let Ok(key) = SecretKey::from_slice(&bytes) {
+            return key;
+        }
+    }
+}
 
 /// aes128gcm record size advertised in the content-coding header (RFC 8188). A
 /// single small notification record fits well under this.
@@ -202,7 +215,7 @@ fn encrypt_payload(
         .map_err(|e| WebPushError::InvalidKey(e.to_string()))?;
 
     let as_public = as_secret.public_key();
-    let as_public_bytes = as_public.to_encoded_point(false).as_bytes().to_vec();
+    let as_public_bytes = as_public.to_sec1_point(false).as_bytes().to_vec();
 
     // ECDH shared secret: server_private × ua_public.
     let shared = p256::ecdh::diffie_hellman(as_secret.to_nonzero_scalar(), ua_public.as_affine());
@@ -275,7 +288,7 @@ impl WebPushSender for VapidWebPushSender {
     async fn send(&self, sub: &PushSubscription, payload: &[u8]) -> Result<(), WebPushError> {
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
-        let as_secret = SecretKey::random(&mut OsRng);
+        let as_secret = random_secret_key();
         let body = encrypt_payload(&sub.p256dh, &sub.auth, &as_secret, &salt, payload)?;
         let auth =
             vapid_authorization(&self.config, &sub.endpoint, chrono::Utc::now().timestamp())?;
@@ -307,9 +320,9 @@ mod tests {
 
     /// A fresh VAPID keypair (base64url) for tests.
     fn gen_vapid() -> (String, String) {
-        let sk = SecretKey::random(&mut OsRng);
+        let sk = random_secret_key();
         let priv_b64 = URL_SAFE_NO_PAD.encode(sk.to_bytes());
-        let pub_b64 = URL_SAFE_NO_PAD.encode(sk.public_key().to_encoded_point(false).as_bytes());
+        let pub_b64 = URL_SAFE_NO_PAD.encode(sk.public_key().to_sec1_point(false).as_bytes());
         (priv_b64, pub_b64)
     }
 
@@ -387,7 +400,7 @@ mod tests {
 
         let ua_public_bytes = ua_secret
             .public_key()
-            .to_encoded_point(false)
+            .to_sec1_point(false)
             .as_bytes()
             .to_vec();
         let as_public = PublicKey::from_sec1_bytes(as_public_bytes).unwrap();
@@ -447,15 +460,15 @@ mod tests {
     #[test]
     fn encrypt_payload_round_trips_through_a_ua_decrypt() {
         // The "user agent" (subscription) keypair + auth secret.
-        let ua_secret = SecretKey::random(&mut OsRng);
+        let ua_secret = random_secret_key();
         let ua_public_b64 =
-            URL_SAFE_NO_PAD.encode(ua_secret.public_key().to_encoded_point(false).as_bytes());
+            URL_SAFE_NO_PAD.encode(ua_secret.public_key().to_sec1_point(false).as_bytes());
         let mut auth_secret = [0u8; 16];
         OsRng.fill_bytes(&mut auth_secret);
         let auth_b64 = URL_SAFE_NO_PAD.encode(auth_secret);
 
         // The server-side ephemeral key + salt.
-        let as_secret = SecretKey::random(&mut OsRng);
+        let as_secret = random_secret_key();
         let mut salt = [0u8; 16];
         OsRng.fill_bytes(&mut salt);
 
@@ -469,7 +482,7 @@ mod tests {
         assert_eq!(body[20], 65);
         assert_eq!(
             &body[21..86],
-            as_secret.public_key().to_encoded_point(false).as_bytes()
+            as_secret.public_key().to_sec1_point(false).as_bytes()
         );
 
         let recovered = ua_decrypt(&ua_secret, &auth_secret, &body);
