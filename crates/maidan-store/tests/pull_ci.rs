@@ -767,6 +767,13 @@ async fn a_push_read_in_one_workspace_leaves_anothers_approvals(store: Arc<dyn S
     );
 }
 
+/// The event-surface matrix's evidence that a push publishes each
+/// dismissal (#1572); the scenario also runs on both backends below.
+#[tokio::test]
+async fn a_push_says_each_dismissed_approval_on_sqlite() {
+    a_push_dismisses_approvals_given_to_an_earlier_head(sqlite().await).await;
+}
+
 macro_rules! on_both_backends {
     ($($name:ident),* $(,)?) => {
         mod sqlite_backend {
