@@ -4,6 +4,7 @@
 //! until shutdown, then call [`Guard::shutdown`].
 
 mod metrics;
+mod thread_trace;
 mod trace;
 
 #[cfg(feature = "otel")]
@@ -26,6 +27,9 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 pub use metrics::{build_otlp_metrics_recorder, MeterGuard};
 pub use metrics::{
     otlp_metrics_endpoint_from_env, otlp_metrics_interval_from_env, MetricsPushConfig,
+};
+pub use thread_trace::{
+    observe_event, observe_stage, thread_trace, ThreadStage, SPAN_ATTRIBUTE_KEYS,
 };
 pub use trace::{adopt_remote_parent, recorded_span};
 

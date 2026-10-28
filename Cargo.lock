@@ -2847,6 +2847,7 @@ dependencies = [
  "maidan-auth",
  "maidan-bus",
  "maidan-fsm",
+ "maidan-observability",
  "maidan-router",
  "maidan-search",
  "maidan-store",

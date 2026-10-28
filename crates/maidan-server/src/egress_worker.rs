@@ -1204,7 +1204,13 @@ async fn record_result_landed(
         );
         return;
     }
-    crate::metrics::record_result_delivery("delivered");
+    crate::metrics::record_result_delivery(target.surface().as_str(), "delivered");
+    maidan_observability::observe_stage(
+        maidan_observability::ThreadStage::Delivered,
+        entry.thread_id,
+        Some(entry.workspace_id),
+        Some(target.surface().as_str()),
+    );
 }
 
 /// A change refused for a reason no retry fixes: recorded as a skip, the
@@ -1240,7 +1246,10 @@ async fn record_result_refused(
         reason,
         "change flow: refused"
     );
-    crate::metrics::record_result_delivery(maidan_types::status::SKIPPED);
+    crate::metrics::record_result_delivery(
+        target.surface().as_str(),
+        maidan_types::status::SKIPPED,
+    );
 }
 
 /// The transport gave up. Leave `external_ref` / `delivered_revision` alone —
@@ -1270,7 +1279,7 @@ async fn record_result_gave_up(
             return;
         }
     }
-    crate::metrics::record_result_delivery("failed");
+    crate::metrics::record_result_delivery(target.surface().as_str(), "failed");
 }
 
 /// Best-effort audit of a result-delivery send attempt. Never fails the

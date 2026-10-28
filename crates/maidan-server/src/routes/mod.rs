@@ -420,6 +420,7 @@ async fn publish_from(
             }
         }
     };
+    maidan_observability::observe_event(&event);
     if state.outbox_relay {
         // Wake an idle relay promptly. Capacity-1 channel: a `Full` error means
         // a nudge is already queued, which is enough.
@@ -470,6 +471,9 @@ pub(crate) async fn observe_spawn_denial<T>(
 /// `*_with_event` store method — so this is purely the best-effort live
 /// notification, and a bus/relay hiccup can never undo a committed mutation.
 pub(crate) async fn publish_stored(state: &AppState, stored: StoredEvent) {
+    if let Ok(event) = stored.opened_event() {
+        maidan_observability::observe_event(&event);
+    }
     if state.outbox_relay {
         if let Some(nudge) = &state.outbox_nudge {
             let _ = nudge.try_send(());

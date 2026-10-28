@@ -289,13 +289,17 @@ pub fn init() {
             "maidan_background_loop_panics_total",
             "Background loop ticks that panicked, by loop; the loop logs the panic and runs its next tick"
         );
+        describe_histogram!(
+            "maidan_thread_claim_duration_seconds",
+            "Seconds from a claim's acknowledgement to its stored result, by harness and kind (closed sets)"
+        );
         describe_counter!(
             "maidan_thread_results_total",
             "Stored thread results by harness (codex, claude, deepseek, grok, gemini, pi, maidan, other), kind (redteam, security, review, plan, build, fix, other), status and verdict (pass, fix, merge, block, reject, other, none); every label a closed set"
         );
         describe_counter!(
             "maidan_result_deliveries_total",
-            "Thread-result delivery dispositions by outcome (enqueued / skipped)"
+            "Thread-result delivery dispositions by surface (github, github_branch, slack, linear, other) and outcome (enqueued, skipped, delivered, failed)"
         );
         describe_counter!(
             "maidan_authorization_decisions_total",
@@ -478,12 +482,22 @@ pub fn record_loop_panic(name: &'static str) {
     counter!("maidan_background_loop_panics_total", "loop" => name).increment(1);
 }
 
-pub fn record_result_delivery(outcome: &str) {
+pub fn record_result_delivery(surface: &str, outcome: &str) {
     counter!(
         "maidan_result_deliveries_total",
+        "surface" => delivery_surface(surface),
         "outcome" => outcome.to_string()
     )
     .increment(1);
+}
+
+/// A delivery surface as a closed label: a surface this build does not know
+/// reads as `other`, so a stored string never becomes a series.
+fn delivery_surface(surface: &str) -> &'static str {
+    ["github", "github_branch", "slack", "linear"]
+        .into_iter()
+        .find(|known| *known == surface)
+        .unwrap_or("other")
 }
 
 /// A task schedule fired by the scheduler sweeper. `outcome` is `created` when

@@ -24,6 +24,7 @@ maidan-search = { path = "../maidan-search", default-features = false }
 maidan-artifacts = { path = "../maidan-artifacts" }
 maidan-bus = { path = "../maidan-bus" }
 maidan-fsm = { path = "../maidan-fsm" }
+maidan-observability = { path = "../maidan-observability", default-features = false }
 async-trait.workspace = true
 base64 = "0.22"
 futures = "0.3"
