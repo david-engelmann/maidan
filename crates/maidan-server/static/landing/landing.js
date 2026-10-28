@@ -137,3 +137,15 @@ for (const input of [email, useCase, consent]) {
     if (input.getAttribute("aria-invalid") === "true") validate();
   });
 }
+
+// Restart the lane animation. The settled state is in the stylesheet, so
+// visitors who prefer reduced motion never see this control.
+const floor = document.getElementById("floor");
+const replay = document.getElementById("replay");
+if (floor && replay) {
+  replay.addEventListener("click", () => {
+    floor.classList.remove("is-playing");
+    void floor.offsetWidth;
+    floor.classList.add("is-playing");
+  });
+}
