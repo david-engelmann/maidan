@@ -26,11 +26,12 @@ fn main() -> Result<(), MaidanError> {
     // content-addressed `pin`), or None when nothing is ready.
     if let Some(claim) = client.claim_next_thread(channel_id, None)? {
         client.messages().post(&claim.id, "on it")?;
-        let lease = claim.claim_lease_id.clone().unwrap_or_default();
-        client.threads().set_result(&claim.id, json!({ "ok": true }), &lease)?;
-        // Long job? Heartbeat the lease with the fencing token the claim returned.
-        if let Some(lease) = &claim.claim_lease_id {
+        // The claim's lease is the fencing token for writes under it. Without
+        // one there is nothing to write under, so don't send an empty lease.
+        if let Some(lease) = claim.claim_lease_id.as_deref() {
+            // Long job? Heartbeat the lease before it expires.
             client.renew_claim(&claim.id, lease, 300)?;
+            client.threads().set_result(&claim.id, json!({ "ok": true }), lease)?;
         }
     }
 
