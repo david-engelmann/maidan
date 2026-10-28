@@ -383,9 +383,9 @@ input[type="email"], input[type="text"], textarea {
 textarea { resize: vertical; min-height: 5.5rem; }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.75; }
 input:focus-visible, textarea:focus-visible {
-  outline: none;
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
 }
 [aria-invalid="true"] { border-color: var(--err); }
 .check {
