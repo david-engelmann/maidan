@@ -525,6 +525,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "submit_review"
         | "set_thread_steer"
         | "transition_thread"
+        | "close_abandoned_thread"
         | "set_land_gate"
         | "require_land_gate"
         | "remove_thread_dependency"
@@ -878,6 +879,7 @@ async fn enforce_channel_access(
         | "list_reviews"
         | "list_review_history"
         | "transition_thread"
+        | "close_abandoned_thread"
         | "set_land_gate"
         | "get_land_gate"
         | "list_land_gate_history"
@@ -989,6 +991,7 @@ pub async fn dispatch(
         "claim_thread" => thread::claim_thread(server, auth, args).await,
         "unassign_thread" => thread::unassign_thread(server, auth, args).await,
         "transition_thread" => thread::transition_thread(server, auth, args).await,
+        "close_abandoned_thread" => thread::close_abandoned_thread(server, auth, args).await,
         "list_assigned_threads" => thread::list_assigned_threads(store, auth, args).await,
         "set_wip_limit" => thread::set_wip_limit(store, auth, args).await,
         "get_wip_limit" => thread::get_wip_limit(store, auth, args).await,

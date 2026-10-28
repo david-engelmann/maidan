@@ -148,6 +148,19 @@ pub enum TransitionAction {
     Archive,
 }
 
+/// Body of `POST /threads/{id}/close-abandoned`.
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CloseAbandonedThread {
+    /// `duplicate`, `abandoned`, or `superseded`.
+    pub reason: maidan_types::CloseReason,
+    /// The thread that covers this one: required for `duplicate`, optional
+    /// for `superseded`, refused for `abandoned`. Must be a live thread you
+    /// can read in the same workspace.
+    #[serde(default)]
+    pub duplicate_of: Option<uuid::Uuid>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TransitionThread {

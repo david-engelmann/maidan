@@ -2923,6 +2923,37 @@ impl utoipa::PartialSchema for RelationKind {
     }
 }
 
+/// Why a thread is closed without landing (`close-abandoned`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CloseReason {
+    /// Another thread already covers it; `duplicate_of` names that thread.
+    Duplicate,
+    /// Nobody will do it.
+    Abandoned,
+    /// A later thread replaces it; `duplicate_of` may name that thread.
+    Superseded,
+}
+
+impl CloseReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Duplicate => "duplicate",
+            Self::Abandoned => "abandoned",
+            Self::Superseded => "superseded",
+        }
+    }
+}
+
+/// A request to close a thread that will not land: the reason, and for a
+/// duplicate or a superseded thread, the thread that covers it instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloseAbandoned {
+    pub reason: CloseReason,
+    pub duplicate_of: Option<ThreadId>,
+}
+
 #[cfg(feature = "openapi")]
 impl utoipa::ToSchema for RelationKind {
     fn name() -> std::borrow::Cow<'static, str> {

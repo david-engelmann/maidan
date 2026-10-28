@@ -5,7 +5,9 @@ use axum::body::Body;
 use axum::http::{header, Response};
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use maidan_auth::{
-    capability::{ARTIFACT_UPLOAD, THREAD_TRANSITION, WORKSPACE_READ, WORKSPACE_WRITE},
+    capability::{
+        ARTIFACT_UPLOAD, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    },
     AuthContext,
 };
 use maidan_fsm::ThreadAction;
@@ -481,8 +483,21 @@ pub async fn transition_thread(
             return Err(err.into());
         }
     };
+    publish_transition(&state, ctx.workspace_id, thread_id, &result, stored).await;
+    Ok(Json(result.thread))
+}
+
+/// Everything a committed transition owes its watchers: its stored events,
+/// a `ThreadReady` for each dependent it unblocked, and MCP resource updates.
+async fn publish_transition(
+    state: &AppState,
+    workspace_id: WorkspaceId,
+    thread_id: ThreadId,
+    result: &ThreadTransitionResult,
+    stored: Vec<StoredEvent>,
+) {
     for event in stored {
-        super::publish_stored(&state, event).await;
+        super::publish_stored(state, event).await;
     }
     // Entering a terminal state can unblock dependents. Push a `ThreadReady`
     // for each task that just became ready, so an agent waiting on the DAG
@@ -494,10 +509,10 @@ pub async fn transition_thread(
             Ok(ready) => {
                 for dep in ready {
                     super::publish(
-                        &state,
+                        state,
                         Event::ThreadReady {
                             occurred_at: chrono::Utc::now(),
-                            workspace_id: ctx.workspace_id,
+                            workspace_id,
                             channel_id: dep.channel_id,
                             thread_id: dep.id,
                             thread: dep,
@@ -515,6 +530,50 @@ pub async fn transition_thread(
         maidan_mcp::resource_updates::uris_for_thread_transition(state.store.as_ref(), thread_id)
             .await;
     state.mcp.publish_resource_uris(uris).await;
+}
+
+/// `POST /threads/{id}/close-abandoned`: close a thread that will not land,
+/// as a duplicate, abandoned, or superseded. Allowed for the thread's
+/// producer, its claim holder, or a maintainer; audited. A thread with a
+/// result keeps every landing gate; one with no result skips the review
+/// gates.
+pub async fn close_abandoned_thread(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<CloseAbandonedThread>,
+) -> ApiResult<Json<Thread>> {
+    cap(&auth, THREAD_TRANSITION)?;
+    let thread_id = ThreadId(id);
+    let ctx = maidan_auth::authorize_thread(state.store.as_ref(), &auth, thread_id).await?;
+    let maintainer = auth.bypass || auth.has_capability(TOKEN_ADMIN);
+    let thread = state.store.get_thread(thread_id).await?;
+    if !maintainer
+        && thread.created_by != Some(auth.member_id)
+        && thread.assignee_id != Some(auth.member_id)
+    {
+        return Err(ApiError::Forbidden(
+            "only the thread's producer, its claim holder, or a maintainer can close it as abandoned"
+                .into(),
+        ));
+    }
+    let close = CloseAbandoned {
+        reason: body.reason,
+        duplicate_of: body.duplicate_of.map(ThreadId),
+    };
+    let audit = NewAuditEvent {
+        scope: AuditScope::Workspace(ctx.workspace_id),
+        actor_id: Some(auth.actor_id),
+        action: "thread.close_abandoned".into(),
+        target_kind: Some("thread".into()),
+        target_id: Some(thread_id.0),
+        metadata: json!({}),
+    };
+    let (result, stored) = state
+        .store
+        .close_abandoned_thread(thread_id, auth.member_id, maintainer, &close, audit)
+        .await?;
+    publish_transition(&state, ctx.workspace_id, thread_id, &result, stored).await;
     Ok(Json(result.thread))
 }
 

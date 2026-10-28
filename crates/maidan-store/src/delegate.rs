@@ -2055,6 +2055,26 @@ macro_rules! store_delegations {
                 .await
             }
 
+            async fn close_abandoned_thread(
+                &self,
+                thread_id: ThreadId,
+                actor_id: MemberId,
+                maintainer: bool,
+                close: &maidan_types::CloseAbandoned,
+                audit: maidan_types::NewAuditEvent,
+            ) -> Result<(ThreadTransitionResult, Vec<StoredEvent>), StoreError> {
+                thread_transitions::close_abandoned(
+                    self.pool(),
+                    &self.keys,
+                    thread_id,
+                    actor_id,
+                    maintainer,
+                    close,
+                    audit,
+                )
+                .await
+            }
+
             async fn list_thread_transitions(
                 &self,
                 thread_id: ThreadId,

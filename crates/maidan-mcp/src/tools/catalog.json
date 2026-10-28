@@ -1425,6 +1425,44 @@
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Close abandoned thread"
+    },
+    "description": "Close an open or in-review thread that will not land, as a duplicate, abandoned, or superseded. The MCP twin of REST POST /threads/:id/close-abandoned. Allowed for the thread's producer, its claim holder, or a maintainer, and audited as thread.close_abandoned. A thread with a result keeps every landing gate (separation of duties, required reviewers, land gate); a thread with no result skips the review gates. A duplicate records a duplicates reference to duplicate_of; a superseded thread records duplicate_of supersedes it. Returns the closed thread.",
+    "inputSchema": {
+      "properties": {
+        "duplicate_of": {
+          "description": "The thread that covers this one: required for duplicate, optional for superseded, refused for abandoned. Must be a live thread you can read in the same workspace",
+          "format": "uuid",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why the thread is closed without landing",
+          "enum": [
+            "duplicate",
+            "abandoned",
+            "superseded"
+          ],
+          "type": "string"
+        },
+        "thread_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "name": "close_abandoned_thread"
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,

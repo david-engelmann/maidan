@@ -27,6 +27,7 @@
   "clear_review_requirement": "channel:admin",
   "clear_thread_block": "thread:transition",
   "clear_thread_lineage": "thread:transition",
+  "close_abandoned_thread": "thread:transition",
   "complete_artifact_multipart": "artifact:upload",
   "create_channel": "workspace:write",
   "create_delegation_grant": "token:admin",

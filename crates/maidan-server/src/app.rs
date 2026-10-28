@@ -738,6 +738,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/{id}/claim/release", post(routes::release_claim))
         .route(
+            "/threads/{id}/close-abandoned",
+            post(routes::close_abandoned_thread),
+        )
+        .route(
             "/threads/{id}",
             get(routes::get_thread).merge(post(routes::transition_thread)),
         )

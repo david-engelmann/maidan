@@ -1319,6 +1319,27 @@ pub fn get_tool_transcript() {}
     ))]
 pub fn transition_thread() {}
 
+/// Close a thread that will not land
+///
+/// Closes an open or in-review thread as a duplicate, abandoned, or
+/// superseded. Allowed for the thread's producer, its claim holder, or a
+/// maintainer. A thread with a result keeps every landing gate; a thread
+/// with no result skips the review gates. A duplicate records a
+/// `duplicates` reference to `duplicate_of`; a superseded thread records
+/// `duplicate_of supersedes` it. Audited as `thread.close_abandoned`.
+#[utoipa::path(post, path = "/threads/{id}/close-abandoned", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = CloseAbandonedThread,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Thread),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    ))]
+pub fn close_abandoned_thread() {}
+
 /// Assign a thread
 #[utoipa::path(put, path = "/threads/{id}/assignee", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),

@@ -27,6 +27,7 @@
   "clear_review_requirement",
   "clear_thread_block",
   "clear_thread_lineage",
+  "close_abandoned_thread",
   "complete_artifact_multipart",
   "create_channel",
   "create_delegation_grant",

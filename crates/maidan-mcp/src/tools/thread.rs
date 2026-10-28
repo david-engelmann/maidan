@@ -558,6 +558,77 @@ pub(super) async fn transition_thread(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct CloseAbandonedArgs {
+    thread_id: uuid::Uuid,
+    reason: CloseReason,
+    #[serde(default)]
+    duplicate_of: Option<uuid::Uuid>,
+}
+
+/// MCP twin of `POST /threads/{id}/close-abandoned`: same authority (the
+/// producer, the claim holder, or a maintainer), same gates, same audit row.
+pub(super) async fn close_abandoned_thread(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: CloseAbandonedArgs = crate::tools::parse_args(args)?;
+    let thread_id = ThreadId(a.thread_id);
+    let maintainer = auth.bypass || auth.has_capability(maidan_auth::capability::TOKEN_ADMIN);
+    let thread = server.store.get_thread(thread_id).await?;
+    if !maintainer
+        && thread.created_by != Some(auth.member_id)
+        && thread.assignee_id != Some(auth.member_id)
+    {
+        return Err(McpError::Forbidden(
+            "only the thread's producer, its claim holder, or a maintainer can close it as \
+             abandoned"
+                .into(),
+        ));
+    }
+    let channel = server.store.get_channel(thread.channel_id).await?;
+    let close = CloseAbandoned {
+        reason: a.reason,
+        duplicate_of: a.duplicate_of.map(ThreadId),
+    };
+    let audit = NewAuditEvent {
+        scope: AuditScope::Workspace(channel.workspace_id),
+        actor_id: Some(auth.actor_id),
+        action: "thread.close_abandoned".into(),
+        target_kind: Some("thread".into()),
+        target_id: Some(thread_id.0),
+        metadata: json!({}),
+    };
+    let (result, stored) = server
+        .store
+        .close_abandoned_thread(thread_id, auth.member_id, maintainer, &close, audit)
+        .await?;
+    for event in &stored {
+        server.publish_stored(event).await;
+    }
+    match server.store.newly_ready_dependents(thread_id).await {
+        Ok(ready) => {
+            for dep in ready {
+                server
+                    .publish_event(Event::ThreadReady {
+                        occurred_at: Utc::now(),
+                        workspace_id: channel.workspace_id,
+                        channel_id: dep.channel_id,
+                        thread_id: dep.id,
+                        thread: dep,
+                    })
+                    .await;
+            }
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "thread_ready: newly_ready_dependents failed");
+        }
+    }
+    Ok(content_json(&result.thread))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SetWaitArgs {
     thread_id: uuid::Uuid,
     wait_until: chrono::DateTime<chrono::Utc>,
