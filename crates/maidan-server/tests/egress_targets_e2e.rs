@@ -40,7 +40,12 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId, caps: Vec<St
     secret.as_str().to_string()
 }
 
-async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
+async fn spawn() -> (
+    SocketAddr,
+    reqwest::Client,
+    Arc<dyn Store>,
+    sqlx::SqlitePool,
+) {
     let pool = SqlitePoolOptions::new()
         .max_connections(4)
         .connect("sqlite::memory:")
@@ -52,7 +57,8 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
         .unwrap();
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> =
+        Arc::new(maidan_search::SqliteSearch::new(pool.clone()));
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(maidan_bus::InMemoryBus::new());
@@ -72,12 +78,12 @@ async fn spawn() -> (SocketAddr, reqwest::Client, Arc<dyn Store>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    (addr, reqwest::Client::new(), store)
+    (addr, reqwest::Client::new(), store, pool)
 }
 
 #[tokio::test]
 async fn an_operator_blesses_and_revokes_an_egress_target() {
-    let (addr, client, store) = spawn().await;
+    let (addr, client, store, _pool) = spawn().await;
     let base = format!("http://{addr}");
 
     let ws = store
@@ -298,7 +304,7 @@ async fn an_operator_blesses_and_revokes_an_egress_target() {
 /// authority over it.
 #[tokio::test]
 async fn a_workspace_admin_cannot_bless_another_workspaces_target() {
-    let (addr, client, store) = spawn().await;
+    let (addr, client, store, _pool) = spawn().await;
     let base = format!("http://{addr}");
 
     let mine = store
@@ -339,4 +345,93 @@ async fn a_workspace_admin_cannot_bless_another_workspaces_target() {
         .await
         .unwrap()
         .is_empty());
+}
+
+/// An entry stored before a rule tightened (here a non-ASCII branch base) is
+/// still listed, so the operator can revoke it, but it says it is dead. A live
+/// entry carries no such mark, and another workspace's list never shows it.
+#[tokio::test]
+async fn a_stored_entry_no_rule_would_bless_is_listed_as_dead() {
+    let (addr, client, store, pool) = spawn().await;
+    let base = format!("http://{addr}");
+    let mut admins = Vec::new();
+    for name in ["home", "away"] {
+        let ws = store
+            .create_workspace(NewWorkspace { name: name.into() })
+            .await
+            .unwrap();
+        let op = store
+            .create_member(NewMember {
+                workspace_id: ws.id,
+                handle: "op".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            })
+            .await
+            .unwrap();
+        let token = mint(
+            store.as_ref(),
+            ws.id,
+            op.id,
+            vec![capability::TOKEN_ADMIN.into()],
+        )
+        .await;
+        admins.push((ws.id, token));
+    }
+    let (home, home_admin) = &admins[0];
+    let (away, away_admin) = &admins[1];
+
+    let live = client
+        .post(format!("{base}/workspaces/{}/egress-targets", home))
+        .bearer_auth(home_admin)
+        .json(&json!({ "surface": "github_branch", "selector": "acme/widgets@dev" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(live.status(), StatusCode::CREATED);
+    let refused = client
+        .post(format!("{base}/workspaces/{}/egress-targets", home))
+        .bearer_auth(home_admin)
+        .json(&json!({ "surface": "github_branch", "selector": "acme/widgets@d\u{e9}v" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    // The shape an older build could have left behind.
+    sqlx::query(
+        "INSERT INTO maidan_egress_targets (id, workspace_id, surface, selector, created_at)
+         VALUES (?, ?, 'github_branch', 'acme/widgets@d\u{e9}v', ?)",
+    )
+    .bind(uuid::Uuid::new_v4())
+    .bind(home.0)
+    .bind(chrono::Utc::now())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let list = |ws: WorkspaceId, token: String| {
+        let client = client.clone();
+        let url = format!("{base}/workspaces/{}/egress-targets", ws);
+        async move {
+            let resp = client.get(url).bearer_auth(token).send().await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            resp.json::<Vec<Value>>().await.unwrap()
+        }
+    };
+    let entries = list(*home, home_admin.clone()).await;
+    assert_eq!(entries.len(), 2);
+    for entry in &entries {
+        if entry["selector"] == "acme/widgets@dev" {
+            assert!(
+                entry.get("dead").is_none(),
+                "a live entry is marked dead: {entry}"
+            );
+        } else {
+            assert!(
+                entry["dead"].as_str().is_some_and(|r| !r.is_empty()),
+                "{entry}"
+            );
+        }
+    }
+    assert!(list(*away, away_admin.clone()).await.is_empty());
 }

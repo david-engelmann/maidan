@@ -82,7 +82,17 @@ pub async fn list_egress_targets(
     let workspace_id = WorkspaceId(wid);
     cap(&auth, TOKEN_ADMIN)?;
     ensure_workspace(&auth, workspace_id)?;
-    Ok(Json(state.store.list_egress_targets(workspace_id).await?))
+    let targets = state.store.list_egress_targets(workspace_id).await?;
+    for target in targets.iter().filter(|t| t.dead.is_some()) {
+        tracing::warn!(
+            workspace_id = %workspace_id.0,
+            id = %target.id.0,
+            surface = %target.surface,
+            reason = target.dead.as_deref().unwrap_or_default(),
+            "egress allowlist entry is dead; revoke it"
+        );
+    }
+    Ok(Json(targets))
 }
 
 /// `DELETE /workspaces/:wid/egress-targets/:tid` — revoke a blessing. `404` when
