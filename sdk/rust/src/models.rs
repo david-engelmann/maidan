@@ -262,6 +262,11 @@ model! {
         closed_without_review: Option<bool>,
         /// Its task attributes, on the reads that report them.
         attributes: Option<TaskAttributes>,
+        /// Checks on each tracked pull request (a single-thread read).
+        #[serde(default)]
+        ci: Vec<PullCi>,
+        /// Why an open thread is kept off the queue, when it is.
+        withheld: Option<ThreadWithheld>,
         /// Change notices on it, newest first (a single-thread read).
         notices: Option<Vec<Value>>,
         /// On a plan parent, how far its children have got.
@@ -294,6 +299,8 @@ model! {
         lane: Option<String>,
         /// The provider family a review child is routed to; server-set.
         review_family: Option<String>,
+        /// The provider family that wrote the change a review task reviews.
+        author_family: Option<String>,
     }
 }
 
@@ -450,6 +457,8 @@ model! {
         owner_id: Option<String>,
         #[serde(default)]
         required_skills: Vec<String>,
+        /// Its task attributes. Absent from an as-of pack.
+        attributes: Option<TaskAttributes>,
         created_at: String,
     }
 }
@@ -566,5 +575,57 @@ model! {
         content_key: Option<String>,
         traceparent: Option<String>,
         tracestate: Option<String>,
+    }
+}
+
+model! {
+    /// Where the checks on a tracked pull request stand.
+    PullCi {
+        /// Lowercase `owner/name`.
+        repo: String,
+        pull_number: i64,
+        head_sha: String,
+        /// `pending`, `success`, `failure` or `unreadable`.
+        status: String,
+        #[serde(default)]
+        failing_jobs: Vec<String>,
+        #[serde(default)]
+        gate_reasons: Vec<String>,
+        log_tail: Option<String>,
+        merge_queue: Option<MergeQueue>,
+        merge_state: Option<String>,
+        #[serde(default)]
+        missing_checks: Vec<String>,
+        #[serde(default)]
+        unresolved_thread_links: Vec<ReviewThreadLink>,
+        unresolved_threads: Option<i64>,
+        updated_at: String,
+    }
+}
+
+model! {
+    /// Where a pull request stands with its base branch's merge queue.
+    MergeQueue {
+        /// `ready_to_merge`, `queued`, `dequeued` or `landed`.
+        state: String,
+        reason: Option<String>,
+    }
+}
+
+model! {
+    /// An unresolved review thread on a pull request.
+    ReviewThreadLink {
+        url: String,
+        author: Option<String>,
+    }
+}
+
+model! {
+    /// Why a thread is withheld from claims.
+    ThreadWithheld {
+        /// `duplicate_of`: a live duplicate of another task.
+        reason: String,
+        /// The original task, when the caller may read it.
+        thread: Option<String>,
     }
 }
