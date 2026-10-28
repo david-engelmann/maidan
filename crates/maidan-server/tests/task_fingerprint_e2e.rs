@@ -459,10 +459,13 @@ async fn a_withheld_duplicate_posts_a_thread_notice_and_says_why_on_the_mcp_read
         .filter(|m| m["metadata"]["notice"] == json!("withheld"))
         .collect();
     assert_eq!(notices.len(), 1, "{messages}");
-    assert_eq!(notices[0]["metadata"]["duplicate_of"], json!(original_id));
+    assert_eq!(
+        notices[0]["metadata"],
+        json!({ "notice": "withheld", "reason": "duplicate_of" })
+    );
     assert!(
-        notices[0]["body"].as_str().unwrap().contains(&original_id),
-        "{messages}"
+        !notices[0]["body"].as_str().unwrap().contains(&original_id),
+        "the notice is read by everyone on the thread, so it never names the original: {messages}"
     );
     let (_, messages) = get_json(
         &base,
@@ -486,4 +489,93 @@ async fn a_withheld_duplicate_posts_a_thread_notice_and_says_why_on_the_mcp_read
     );
     let via_mcp = mcp_thread(&base, &home.token, &original_id).await;
     assert!(via_mcp["thread"].get("withheld").is_none(), "{via_mcp}");
+}
+
+/// The notice on a withheld duplicate is read by everyone on its thread, so
+/// a member who cannot see the private original reads the notice without the
+/// original's id, and the thread read and MCP read leave `withheld.thread`
+/// empty for them, while the creator, who can see it, is told which (#1681).
+#[tokio::test]
+async fn a_withheld_notice_names_no_original_to_a_member_who_cannot_read_it() {
+    let (base, store) = spawn().await;
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "notice-private".into(),
+        })
+        .await
+        .unwrap();
+    let (alice, alice_token) = member_with(store.as_ref(), ws.id, "alice", CAPS).await;
+    let (_bob, bob_token) = member_with(store.as_ref(), ws.id, "bob", CAPS).await;
+    let mut channels = Vec::new();
+    for (name, private) in [("secret", true), ("open", false)] {
+        channels.push(
+            store
+                .create_channel(NewChannel {
+                    workspace_id: ws.id,
+                    name: name.into(),
+                    topic: None,
+                    private,
+                })
+                .await
+                .unwrap()
+                .id,
+        );
+    }
+    let (secret, open) = (channels[0], channels[1]);
+    store
+        .add_channel_member(secret, alice, ChannelMemberRole::Member)
+        .await
+        .unwrap();
+    let brief = json!({ "title": "Rotate the keys again" });
+    let as_alice = |channel| Room {
+        channel,
+        token: alice_token.clone(),
+    };
+    let (status, original) = create_thread(&base, &as_alice(secret), brief.clone()).await;
+    assert_eq!(status, StatusCode::CREATED, "{original}");
+    let (status, duplicate) = create_thread(&base, &as_alice(open), brief).await;
+    assert_eq!(status, StatusCode::CREATED, "{duplicate}");
+    let original_id = original["id"].as_str().unwrap().to_string();
+    let duplicate_id = duplicate["id"].as_str().unwrap().to_string();
+    assert_eq!(duplicate["withheld"]["thread"], json!(original_id));
+
+    let (status, messages) = get_json(
+        &base,
+        &bob_token,
+        &format!("/threads/{duplicate_id}/messages"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{messages}");
+    let notice = messages
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["metadata"]["notice"] == json!("withheld"))
+        .unwrap_or_else(|| panic!("no notice: {messages}"))
+        .clone();
+    assert!(
+        !notice.to_string().contains(&original_id),
+        "the notice leaks the private original: {notice}"
+    );
+
+    let (status, read) = get_json(&base, &bob_token, &format!("/threads/{duplicate_id}")).await;
+    assert_eq!(status, StatusCode::OK, "{read}");
+    assert_eq!(read["withheld"]["reason"], json!("duplicate_of"));
+    assert!(read["withheld"]["thread"].is_null(), "{read}");
+    let via_mcp = mcp_thread(&base, &bob_token, &duplicate_id).await;
+    assert_eq!(
+        via_mcp["thread"]["withheld"]["reason"],
+        json!("duplicate_of")
+    );
+    assert!(
+        via_mcp["thread"]["withheld"]["thread"].is_null(),
+        "{via_mcp}"
+    );
+    assert!(
+        !via_mcp.to_string().contains(&original_id),
+        "the MCP read leaks the private original: {via_mcp}"
+    );
+
+    let via_mcp = mcp_thread(&base, &alice_token, &duplicate_id).await;
+    assert_eq!(via_mcp["thread"]["withheld"]["thread"], json!(original_id));
 }

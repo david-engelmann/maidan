@@ -103,21 +103,20 @@ pub async fn create_thread(
 }
 
 /// A task withheld as a duplicate at creation says so on the thread too, so
-/// whoever opens it later reads why it is never handed out (#1681). Posted
-/// as the producer, after the creation event. Best-effort: the thread is
-/// committed and the create answer already names the reason.
+/// whoever opens it later reads why it is never handed out (#1681). Every
+/// reader of the thread sees this message, so it never names the original:
+/// that is judged per viewer, and an allowed viewer reads it from
+/// `withheld.thread` on the thread itself. Posted as the producer, after the
+/// creation event. Best-effort: the thread is committed and the create answer
+/// already carries the reason.
 async fn record_withheld_notice(
     state: &AppState,
     author_id: MemberId,
     thread_id: ThreadId,
     withheld: &ThreadWithheld,
 ) {
-    let original = withheld
-        .thread
-        .map(|original| format!("task {}", original.0))
-        .unwrap_or_else(|| "an earlier task".into());
     let body = format!(
-        "Withheld from claims: this task has the same fingerprint as {original}, which is still open or in review, so the work goes there. Clear the link (DELETE /threads/{}/fingerprint/duplicate-of) if this one is meant to repeat.",
+        "Withheld from claims: this task has the same fingerprint as an earlier task that is still open or in review, so the work goes there. Clear the link (DELETE /threads/{}/fingerprint/duplicate-of) if this one is meant to repeat.",
         thread_id.0
     );
     match state
@@ -130,7 +129,6 @@ async fn record_withheld_notice(
                 metadata: json!({
                     "notice": "withheld",
                     "reason": withheld.reason,
-                    "duplicate_of": withheld.thread,
                 }),
                 content: None,
             },
