@@ -108,6 +108,9 @@ test("a redrawn row never hands focus to a disabled control", async ({ page }) =
 
   const redrawn = row(page, fx.desk_waiting_thread_id);
   await expect(redrawn.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
-  expect(await redrawn.evaluate((li) => li.contains(document.activeElement))).toBe(true);
-  expect(await page.evaluate(() => (document.activeElement as HTMLButtonElement).disabled === true)).toBe(false);
+  // Focus moves after the redraw settles; poll rather than read it once.
+  await expect.poll(() => redrawn.evaluate((li) => li.contains(document.activeElement))).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => (document.activeElement as HTMLButtonElement).disabled === true))
+    .toBe(false);
 });
