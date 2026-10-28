@@ -8,6 +8,7 @@ pub mod approval_policy;
 pub mod attribution;
 mod audit_scope;
 mod cancel;
+mod clock;
 mod plan_notices;
 
 /// The audit row an authority-changing store call writes in its own

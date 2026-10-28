@@ -100,8 +100,9 @@ async fn an_unacknowledged_claim_is_reported_once_and_left_alone(store: &dyn Sto
         panic!("not a ClaimUnacknowledged: {event:?}");
     };
     assert_eq!(member_id, holder, "names the holder");
-    // A claim stamps `updated_at` and `claimed_at` from one clock reading,
-    // so the event names the exact moment the claim was taken.
+    // A claim stamps `updated_at` and `claimed_at` from one microsecond
+    // reading (`clock::db_now`). Postgres cannot store the nanoseconds on
+    // `Utc::now()`, and a second reading can fall in the next microsecond.
     assert_eq!(
         claimed_at, held.updated_at,
         "claimed_at is when the claim was taken"

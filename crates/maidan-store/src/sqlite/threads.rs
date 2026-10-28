@@ -298,6 +298,7 @@ pub async fn assign(
     // A reassignment ends the claim it replaces. Charge it before the write
     // clears the working clock; a free thread charges nothing.
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
+    let stamped = crate::clock::db_now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id) {same}
@@ -306,8 +307,8 @@ pub async fn assign(
     ))
     .bind(assignee_id.0)
     .bind(lease.0)
-    .bind(Utc::now().to_rfc3339())
-    .bind(Utc::now().to_rfc3339())
+    .bind(&stamped)
+    .bind(&stamped)
     .bind(thread_id.0)
     .bind(assignee_id.0)
     .bind(assignee_id.0)
@@ -440,6 +441,7 @@ pub async fn assign_with_event(
     .map(MemberId);
     charge_open_claim_in_tx(&mut tx, thread_id).await?;
     let lease = ClaimLeaseId::new();
+    let stamped = crate::clock::db_now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND tombstoned_at IS NULL AND EXISTS (SELECT 1 FROM maidan_members m JOIN maidan_channels c ON c.workspace_id = m.workspace_id WHERE m.id = ? AND c.id = maidan_threads.channel_id) {same}
@@ -448,8 +450,8 @@ pub async fn assign_with_event(
     ))
     .bind(assignee_id.0)
     .bind(lease.0)
-    .bind(Utc::now().to_rfc3339())
-    .bind(Utc::now().to_rfc3339())
+    .bind(&stamped)
+    .bind(&stamped)
     .bind(thread_id.0)
     .bind(assignee_id.0)
     .bind(assignee_id.0)
@@ -641,6 +643,7 @@ async fn take_candidate(
     now: DateTime<Utc>,
     lease_secs: Option<i64>,
 ) -> Result<Thread, StoreError> {
+    let now = crate::clock::truncate_micros(now);
     let expires = lease_secs.map(|s| (now + chrono::Duration::seconds(s)).to_rfc3339());
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = ?, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
@@ -672,6 +675,7 @@ pub async fn claim(
     // never held the thread.
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
+    let stamped = crate::clock::db_now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
@@ -680,8 +684,8 @@ pub async fn claim(
     ))
     .bind(member_id.0)
     .bind(lease.0)
-    .bind(Utc::now().to_rfc3339())
-    .bind(Utc::now().to_rfc3339())
+    .bind(&stamped)
+    .bind(&stamped)
     .bind(thread_id.0)
     .bind(member_id.0)
     .fetch_optional(&mut *tx)
@@ -722,6 +726,7 @@ pub async fn claim_with_event(
     let mut tx = pool.begin().await?;
     super::review_family::refuse_same_family_in_tx(&mut tx, thread_id, member_id).await?;
     let lease = ClaimLeaseId::new();
+    let stamped = crate::clock::db_now().to_rfc3339();
     let row = sqlx::query(&format!(
         "UPDATE maidan_threads SET assignee_id = ?, assignment_expires_at = NULL, claim_lease_id = ?, work_started_at = NULL, updated_at = ?, claimed_at = ?
          WHERE id = ? AND assignee_id IS NULL AND tombstoned_at IS NULL {same}
@@ -730,8 +735,8 @@ pub async fn claim_with_event(
     ))
     .bind(member_id.0)
     .bind(lease.0)
-    .bind(Utc::now().to_rfc3339())
-    .bind(Utc::now().to_rfc3339())
+    .bind(&stamped)
+    .bind(&stamped)
     .bind(thread_id.0)
     .bind(member_id.0)
     .fetch_optional(&mut *tx)
@@ -881,7 +886,9 @@ pub async fn claim_next(
     lease_secs: Option<i64>,
     engine: Option<maidan_types::TaskEngine>,
 ) -> Result<Option<Thread>, StoreError> {
-    let now = Utc::now();
+    // One microsecond reading for the lease window and for both claim stamps.
+    // See `crate::clock`.
+    let now = crate::clock::db_now();
     // Claimable = unassigned OR the current lease has expired (dead-agent
     // recovery). SQLite serializes writers so the select-then-update is
     // race-free. The transaction exists so the worker record commits with the
@@ -1001,7 +1008,8 @@ pub(crate) async fn claim_next_with_event(
     lane: Option<maidan_types::TaskLane>,
 ) -> Result<(Option<Thread>, Vec<StoredEvent>), StoreError> {
     let mut tx = pool.begin().await?;
-    let now = Utc::now();
+    // One microsecond reading for the lease window and for both claim stamps.
+    let now = crate::clock::db_now();
     // SQLite serializes writers, so a select-then-update in one tx is race-free.
     // The candidate row keeps its pre-update claim, so a reclaim of an expired
     // lease can end the dead holder's claim (RETURNING would only give the

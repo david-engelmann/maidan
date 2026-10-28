@@ -304,7 +304,7 @@ pub async fn assign(
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
-    .bind(chrono::Utc::now())
+    .bind(crate::clock::db_now())
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -344,7 +344,7 @@ pub async fn assign_with_event(
     .bind(assignee_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
-    .bind(chrono::Utc::now())
+    .bind(crate::clock::db_now())
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -599,7 +599,7 @@ pub async fn claim(
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
-    .bind(chrono::Utc::now())
+    .bind(crate::clock::db_now())
     .fetch_optional(&mut *tx)
     .await?;
     match row {
@@ -645,7 +645,7 @@ pub async fn claim_with_event(
     .bind(member_id.0)
     .bind(thread_id.0)
     .bind(lease.0)
-    .bind(chrono::Utc::now())
+    .bind(crate::clock::db_now())
     .fetch_optional(&mut *tx)
     .await?;
     match row {
@@ -803,7 +803,9 @@ async fn claim_next_in_tx(
 ) -> Result<Option<Claimed>, StoreError> {
     // Before the candidate is read, so it reads every claim committed ahead.
     super::footprints::lock_for_claim(tx, scope).await?;
-    let now = chrono::Utc::now();
+    // One microsecond reading for the lease window and for both claim stamps.
+    // See `crate::clock`.
+    let now = crate::clock::db_now();
     let expires = lease_secs.map(|s| now + chrono::Duration::seconds(s));
     let candidate = claim_next::candidate_select(
         scope,
