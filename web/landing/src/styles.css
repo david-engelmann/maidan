@@ -10,10 +10,12 @@
 :root {
   color-scheme: dark;
   --bg: #05060a;
-  --ink: #f6f7f8;
-  --muted: rgba(246, 247, 248, 0.74);
-  --faint: rgba(246, 247, 248, 0.52);
-  --mint: #b9ffe4;
+  --ink: #f5f7fa;
+  --muted: rgba(245, 247, 250, 0.64);
+  --faint: rgba(245, 247, 250, 0.5);
+  --mint: #6ee7b7;
+  --cyan: #67e8f9;
+  --violet: #a78bfa;
   --danger: #ffb4c0;
   --sans: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", ui-sans-serif, Menlo, Consolas, monospace;
@@ -33,8 +35,8 @@ body {
   min-height: 100dvh;
   overflow-x: clip;
   font-family: var(--sans);
-  font-size: 16px;
-  line-height: 1.45;
+  font-size: 17px;
+  line-height: 1.5;
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -210,13 +212,14 @@ main { position: relative; z-index: 2; }
   height: 100dvh;
   min-height: 100dvh;
 }
-.reel { position: relative; height: 640dvh; }
+.reel { position: relative; height: 700dvh; }
 .spot { position: absolute; left: 0; width: 1px; height: 1px; }
-.spot-claims { top: 16%; }
+.spot-holder { top: 17%; }
 .spot-reviews { top: 30%; }
-.spot-evidence { top: 44.3%; }
-.spot-connect { top: 58.6%; }
-.spot-ways { top: 75%; }
+.spot-evidence { top: 42%; }
+.spot-connect { top: 53%; }
+.spot-run { top: 65%; }
+.spot-belong { top: 77%; }
 
 .depth-orb {
   position: absolute;
@@ -240,7 +243,7 @@ main { position: relative; z-index: 2; }
 .copy-slot {
   position: relative;
   z-index: 1;
-  min-height: 14.4rem;
+  min-height: 18.5rem;
 }
 .copy-pane {
   position: absolute;
@@ -263,17 +266,24 @@ main { position: relative; z-index: 2; }
 h1, .copy-pane h2 {
   margin: 0;
   font-weight: 560;
-  letter-spacing: -0.065em;
-  line-height: 0.88;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+  text-wrap: balance;
   text-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
 }
-h1 { font-size: clamp(4.15rem, 18vw, 5.5rem); }
+h1 { font-size: clamp(3.5rem, 12vw, 10rem); }
 .copy-pane h2 {
-  font-size: clamp(3rem, 11vw, 4.6rem);
-  letter-spacing: -0.055em;
-  line-height: 0.92;
+  font-size: clamp(2.15rem, 8vw, 4.4rem);
+  letter-spacing: -0.04em;
+  line-height: 1.02;
 }
-.mask { display: block; overflow: hidden; padding-bottom: 0.08em; }
+.mask {
+  display: inline-block;
+  overflow: hidden;
+  margin-right: 0.22em;
+  padding-bottom: 0.06em;
+  vertical-align: bottom;
+}
 .mask-inner { display: block; }
 .lede {
   margin: 0.55rem 0 0;
@@ -306,6 +316,20 @@ h1 { font-size: clamp(4.15rem, 18vw, 5.5rem); }
   z-index: 1;
   perspective: 1400px;
 }
+.square {
+  position: absolute;
+  inset: -14px -10px;
+  border-radius: 36px;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(80% 70% at 50% 40%, rgba(110, 231, 183, 0.28), transparent 62%),
+    radial-gradient(60% 60% at 70% 70%, rgba(103, 232, 249, 0.18), transparent 70%),
+    radial-gradient(50% 50% at 30% 80%, rgba(167, 139, 250, 0.22), transparent 72%);
+  box-shadow:
+    0 0 60px rgba(110, 231, 183, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
 .glass-slot::before {
   content: "";
   position: absolute;
@@ -320,8 +344,8 @@ h1 { font-size: clamp(4.15rem, 18vw, 5.5rem); }
   position: relative;
   border-radius: 28px;
   background: linear-gradient(168deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.12) 16%, rgba(10, 14, 22, 0.58) 58%, rgba(8, 10, 16, 0.5));
-  -webkit-backdrop-filter: blur(36px) saturate(1.85);
-  backdrop-filter: blur(36px) saturate(1.85);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  backdrop-filter: blur(32px) saturate(1.6);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.62),
     inset 0 0 0 1px rgba(255, 255, 255, 0.1),
@@ -529,6 +553,7 @@ h1 { font-size: clamp(4.15rem, 18vw, 5.5rem); }
 
 .ticket {
   position: relative;
+  overflow: hidden;
   width: 100%;
   text-align: left;
   border-radius: 18px;
@@ -787,6 +812,43 @@ h1 { font-size: clamp(4.15rem, 18vw, 5.5rem); }
 .status { min-height: 1.3rem; margin: 0.55rem 0 0; color: var(--muted); }
 .status.is-error { color: var(--danger); }
 .fine { margin: 0.35rem 0 0; color: var(--faint); font-size: 0.84rem; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1rem; }
+.cta {
+  min-height: 48px;
+  padding: 0 1.05rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #101418;
+  font-weight: 620;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.cta:active { transform: scale(0.97); }
+.cta.ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+.star { width: 0.95rem; height: 0.95rem; }
+.ring { display: inline-flex; border-radius: 999px; box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.9), 0 0 16px rgba(110, 231, 183, 0.75); }
+.intruder, .reviewer { display: flex; align-items: center; gap: 0.45rem; margin: 0.75rem 0 0; color: var(--muted); }
+.review-scene, .hold, .belong, .compose { width: min(100%, 460px); }
+.proof.fan { transform-style: preserve-3d; }
+.compose pre {
+  margin: 0 0 0.85rem;
+  font-family: var(--mono);
+  font-size: 1.02rem;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+.compose ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.compose li { display: flex; align-items: center; gap: 0.5rem; text-transform: capitalize; }
+.constellation { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.45rem; margin-bottom: 0.9rem; }
+.avatar.light { width: 34px; height: 34px; }
 .done h2 { margin-bottom: 0.4rem; }
 .done p { color: var(--muted); }
 .turnstile { margin-top: 0.8rem; }
@@ -827,8 +889,8 @@ h1 { font-size: clamp(4.15rem, 18vw, 5.5rem); }
   }
   .copy-slot { min-height: 18rem; height: 100%; }
   .copy-pane { justify-content: center; }
-  h1 { font-size: clamp(6.4rem, 7.6vw, 8.8rem); }
-  .copy-pane h2 { font-size: clamp(4.4rem, 5vw, 6.6rem); }
+  h1 { font-size: clamp(4.6rem, 6.2vw, 7.6rem); }
+  .copy-pane h2 { font-size: clamp(3.2rem, 4.2vw, 5rem); }
   .lede { font-size: 1.2rem; }
   .glass-slot { display: flex; align-items: center; }
   .glass { width: min(100%, 680px); }

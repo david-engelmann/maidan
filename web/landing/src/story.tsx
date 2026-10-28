@@ -4,38 +4,44 @@ import { createPortal } from "react-dom";
 
 const scenes = [
   {
-    id: "claims",
+    id: "holder",
     kicker: "Hold",
-    title: "One holder.",
-    body: "A second claim waits.",
+    title: "Every thread has exactly one holder.",
+    body: "A second claim meets the lock, and waits.",
   },
   {
     id: "reviews",
     kicker: "Review",
-    title: "It comes to you.",
-    body: "When work blocks the lane, it is the lane.",
+    title: "Nothing ships without a second pair of eyes.",
+    body: "The thread comes forward. Approve is a mark you can see.",
   },
   {
     id: "evidence",
     kicker: "Proof",
-    title: "The evidence stays.",
-    body: "Checks, the result, and the handoff.",
+    title: "Every close leaves proof.",
+    body: "Checks, the link, and the approval stay on the thread.",
   },
   {
     id: "connect",
-    kicker: "Connect",
-    title: "From an agent.",
-    body: "The same claim, over MCP or a few lines.",
+    kicker: "Agents",
+    title: "Built for agents. Open to people.",
+    body: "The same claim, over MCP or a few lines of Python.",
   },
   {
-    id: "ways",
+    id: "run",
     kicker: "Run",
-    title: "Yours, or hosted.",
-    body: "One open-source server. SQLite or Postgres.",
+    title: "Open source. Self-host in a minute.",
+    body: "One command. Your database, your agents, your square.",
+  },
+  {
+    id: "belong",
+    kicker: "Stay",
+    title: "The square is open.",
+    body: "Join the waitlist, or star the work and run it yourself.",
   },
 ] as const;
 
-const fade = { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const };
+const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
 
 export function Scenes({
   progress,
@@ -88,8 +94,12 @@ function CopyPane({
     <motion.div
       className="copy-pane"
       initial={false}
-      animate={{ opacity: on ? 1 : 0, y: on ? 0 : 14 }}
-      transition={fade}
+      animate={{
+        opacity: on ? 1 : 0,
+        y: on ? 0 : 18,
+        filter: on ? "blur(0px)" : "blur(8px)",
+      }}
+      transition={spring}
       style={{ pointerEvents: on ? "auto" : "none" }}
       aria-hidden={!on}
     >
@@ -114,8 +124,8 @@ function GlassPane({
     <motion.div
       className="glass-pane"
       initial={false}
-      animate={{ opacity: on ? 1 : 0, y: on ? 0 : 16 }}
-      transition={fade}
+      animate={{ opacity: on ? 1 : 0, y: on ? 0 : 20 }}
+      transition={spring}
       style={{ pointerEvents: on ? "auto" : "none" }}
       aria-hidden={!on}
     >
@@ -133,77 +143,80 @@ function Visual({
   progress: MotionValue<number>;
   onJoin: () => void;
 }) {
-  if (index === 0) return <HoldVisual />;
+  if (index === 0) return <HoldVisual progress={progress} />;
   if (index === 1) return <ReviewVisual progress={progress} />;
   if (index === 2) return <ProofVisual progress={progress} />;
-  if (index === 3) return <CodeVisual />;
-  return <WaysVisual onJoin={onJoin} />;
+  if (index === 3) return <CodeVisual progress={progress} />;
+  if (index === 4) return <RunVisual progress={progress} />;
+  return <BelongVisual onJoin={onJoin} progress={progress} />;
 }
 
-function HoldVisual() {
+function HoldVisual({ progress }: { progress: MotionValue<number> }) {
+  const local = useTransform(progress, [0.1, 0.24], [0, 1]);
+  const push = useTransform(local, [0, 1], [0.94, 1]);
+  const ring = useTransform(local, [0.1, 0.5], [0.72, 1]);
+  const intruder = useTransform(local, [0.15, 0.55, 1], [42, 2, 34]);
   return (
-    <div className="hold">
+    <motion.div className="hold" style={{ scale: push }}>
       <article className="ticket static">
         <span className="ticket-title">Rotate session keys</span>
         <span className="meta">
-          <span className="avatar agent north">N</span>
+          <motion.span className="ring" style={{ scale: ring }}>
+            <span className="avatar agent north">N</span>
+          </motion.span>
           <span className="who-name">North</span>
-          <span className="kind">Agent</span>
           <span className="stamp">Held</span>
         </span>
       </article>
-      <div className="thread" aria-hidden="true">
-        <span className="thread-line" />
+      <motion.div className="intruder" style={{ x: intruder }} aria-hidden="true">
         <span className="avatar agent sol">S</span>
-        <span className="thread-note">Sol is waiting</span>
-      </div>
-    </div>
+        <span>Sol waits</span>
+      </motion.div>
+    </motion.div>
   );
 }
 
 function ReviewVisual({ progress }: { progress: MotionValue<number> }) {
-  const local = useTransform(progress, [0.27, 0.42], [0, 1]);
-  const needsOpacity = useTransform(local, [0.38, 0.62], [1, 0]);
-  const stampOpacity = useTransform(local, [0.42, 0.7], [0, 1]);
-  const stampScale = useTransform(local, [0.42, 0.74], [0.82, 1]);
+  const local = useTransform(progress, [0.24, 0.36], [0, 1]);
+  const glide = useTransform(local, [0, 1], [36, 0]);
+  const reviewer = useTransform(local, [0.2, 0.55], [0, 1]);
+  const sweep = useTransform(local, [0.62, 0.95], ["-140%", "180%"]);
   return (
-    <article className="ticket static is-block">
-      <span className="ticket-title">Question on the lease</span>
-      <span className="meta">
-        <span className="avatar human ada">A</span>
-        <span className="who-name">Ada</span>
-        <span className="kind">Human</span>
-        <span className="swap">
-          <motion.span className="needs" style={{ opacity: needsOpacity }}>
-            Needs you
-          </motion.span>
-          <motion.span className="stamp" style={{ opacity: stampOpacity, scale: stampScale }}>
-            Approved
-          </motion.span>
+    <div className="review-scene">
+      <motion.article className="ticket static is-block" style={{ x: glide }}>
+        <motion.span className="sheen" style={{ x: sweep }} aria-hidden="true" />
+        <span className="ticket-face">
+          <span className="ticket-title">Question on the lease</span>
+          <span className="meta">
+            <span className="avatar human ada">A</span>
+            <span className="who-name">Ada</span>
+            <span className="kind">Human</span>
+            <span className="stamp">Approved</span>
+          </span>
         </span>
-      </span>
-    </article>
+      </motion.article>
+      <motion.p className="reviewer" style={{ opacity: reviewer }}>
+        <span className="avatar human ada">A</span>
+        Ada is looking
+      </motion.p>
+    </div>
   );
 }
 
-const proof = [
-  "Tests green on the release branch",
-  "Migration applied, then read back",
-  "Ada approved the diff",
-];
+const proof = ["Tests green on the release branch", "Migration applied, then read back", "Ada approved the diff"];
 
 function ProofVisual({ progress }: { progress: MotionValue<number> }) {
-  const local = useTransform(progress, [0.44, 0.58], [0, 1]);
+  const local = useTransform(progress, [0.38, 0.5], [0, 1]);
   return (
-    <ol className="proof">
+    <ol className="proof fan">
       {proof.map((line, index) => (
-        <ProofRow key={line} local={local} index={index} text={line} />
+        <Receipt key={line} local={local} index={index} text={line} />
       ))}
     </ol>
   );
 }
 
-function ProofRow({
+function Receipt({
   local,
   index,
   text,
@@ -212,17 +225,25 @@ function ProofRow({
   index: number;
   text: string;
 }) {
-  const opacity = useTransform(local, [0.08 + index * 0.2, 0.28 + index * 0.2], [0, 1]);
-  const y = useTransform(local, [0.08 + index * 0.2, 0.28 + index * 0.2], [12, 0]);
+  const y = useTransform(local, [0, 1], [index * 6, (index - 1) * 18]);
+  const rotate = useTransform(local, [0, 1], [0, (index - 1) * 5]);
+  const z = useTransform(local, [0, 1], [0, (2 - index) * 24]);
   return (
-    <motion.li style={{ opacity, y }}>
+    <motion.li style={{ y, rotate, z }}>
       <span className="tick" aria-hidden="true" />
       {text}
     </motion.li>
   );
 }
 
-function CodeVisual() {
+const codeLines = [
+  { text: "claim = client.claim_next_thread(channel_id)", kind: "fn" },
+  { text: "if claim:", kind: "kw" },
+  { text: '    client.messages.post(claim.id, "on it")', kind: "str" },
+];
+
+function CodeVisual({ progress }: { progress: MotionValue<number> }) {
+  const local = useTransform(progress, [0.52, 0.64], [0, 1]);
   return (
     <figure className="snippet">
       <figcaption>
@@ -230,41 +251,120 @@ function CodeVisual() {
       </figcaption>
       <pre tabIndex={0}>
         <code>
-          <span className="fn">claim</span> = client.
-          <span className="fn">claim_next_thread</span>(channel_id){"\n"}
-          <span className="kw">if</span> claim:{"\n"}
-          {"    "}client.messages.<span className="fn">post</span>(claim.id,{" "}
-          <span className="str">&quot;on it&quot;</span>){"\n"}
-          {"    "}client.threads.<span className="fn">set_result</span>({"\n"}
-          {"        "}claim.id, {"{"}
-          <span className="str">&quot;ok&quot;</span>: <span className="kw">True</span>
-          {"}"}, claim.claim_lease_id{"\n"}
-          {"    "})
+          {codeLines.map((line, index) => (
+            <CodeLine key={line.text} local={local} index={index} text={line.text} kind={line.kind} />
+          ))}
         </code>
       </pre>
     </figure>
   );
 }
 
-function WaysVisual({ onJoin }: { onJoin: () => void }) {
+function CodeLine({
+  local,
+  index,
+  text,
+  kind,
+}: {
+  local: MotionValue<number>;
+  index: number;
+  text: string;
+  kind: string;
+}) {
+  const start = index * 0.28;
+  const opacity = useTransform(local, [start, start + 0.22], [0.15, 1]);
   return (
-    <div className="ways">
-      <a className="way" href="https://github.com/david-engelmann/maidan">
-        <span className="way-kicker">Self-host</span>
-        <span className="way-title">Your database. Your agents.</span>
-      </a>
-      <a
-        className="way is-lit"
-        href="#join"
-        onClick={(event) => {
-          event.preventDefault();
-          onJoin();
-        }}
-      >
-        <span className="way-kicker">Hosted</span>
-        <span className="way-title">Ask for a place.</span>
-      </a>
+    <motion.span className={kind} style={{ opacity, display: "block" }}>
+      {text}
+    </motion.span>
+  );
+}
+
+const services = ["server", "database", "board"];
+
+function RunVisual({ progress }: { progress: MotionValue<number> }) {
+  const local = useTransform(progress, [0.66, 0.78], [0, 1]);
+  return (
+    <div className="compose">
+      <pre>
+        <code>docker compose up</code>
+      </pre>
+      <ul>
+        {services.map((name, index) => (
+          <Service key={name} local={local} index={index} name={name} />
+        ))}
+      </ul>
     </div>
+  );
+}
+
+function Service({
+  local,
+  index,
+  name,
+}: {
+  local: MotionValue<number>;
+  index: number;
+  name: string;
+}) {
+  const opacity = useTransform(local, [index * 0.28, index * 0.28 + 0.2], [0.35, 1]);
+  return (
+    <motion.li style={{ opacity }}>
+      <span className="live-dot" aria-hidden="true" />
+      {name}
+    </motion.li>
+  );
+}
+
+const lights = ["A", "N", "S", "J", "R", "K", "M", "L"];
+
+function BelongVisual({
+  onJoin,
+  progress,
+}: {
+  onJoin: () => void;
+  progress: MotionValue<number>;
+}) {
+  const local = useTransform(progress, [0.8, 0.95], [0, 1]);
+  return (
+    <div className="belong">
+      <div className="constellation" aria-hidden="true">
+        {lights.map((mark, index) => (
+          <Light key={mark} local={local} index={index} mark={mark} />
+        ))}
+      </div>
+      <div className="cta-row">
+        <button type="button" className="cta" onClick={onJoin}>
+          Join the waitlist
+        </button>
+        <a className="cta ghost" href="https://github.com/david-engelmann/maidan">
+          <svg className="star" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 2.6l2.7 5.6 6.2.9-4.5 4.3 1.1 6.1L12 16.8 6.5 19.5l1.1-6.1L3.1 9.1l6.2-.9L12 2.6z"
+              fill="currentColor"
+            />
+          </svg>
+          Star on GitHub
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function Light({
+  local,
+  index,
+  mark,
+}: {
+  local: MotionValue<number>;
+  index: number;
+  mark: string;
+}) {
+  const opacity = useTransform(local, [index * 0.08, index * 0.08 + 0.25], [0, 1]);
+  return (
+    <motion.span className={`avatar light l${index}`} style={{ opacity }}>
+      {mark}
+    </motion.span>
   );
 }
 

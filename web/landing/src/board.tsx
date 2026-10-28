@@ -185,7 +185,7 @@ export function Board() {
                 className={who === p.id ? "who is-on" : "who"}
                 aria-pressed={who === p.id}
                 onClick={() => setWho(p.id)}
-                whileTap={reduce ? undefined : { scale: 0.94 }}
+                whileTap={reduce ? undefined : { scale: 0.97 }}
                 initial={reduce ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ ...spring, delay: reduce ? 0 : 0.05 * i }}
@@ -311,7 +311,7 @@ function CardView({
             className="sheen"
             initial={{ x: "-160%" }}
             animate={{ x: "260%" }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ type: "spring", stiffness: 280, damping: 28 }}
           />
         ) : null}
         <span className="ticket-title">{card.title}</span>

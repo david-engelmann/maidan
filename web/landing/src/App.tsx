@@ -18,12 +18,14 @@ const Scenes = lazy(() => loadStory().then((mod) => ({ default: mod.Scenes })));
 const Still = lazy(() => loadStory().then((mod) => ({ default: mod.Still })));
 
 const links = [
-  ["#claims", "Hold"],
+  ["#holder", "Hold"],
   ["#reviews", "Review"],
   ["#evidence", "Proof"],
-  ["#connect", "Connect"],
-  ["#ways", "Run"],
+  ["#connect", "Agents"],
+  ["#run", "Run"],
 ] as const;
+
+const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
 
 export default function App() {
   const reduce = useReducedMotion() === true;
@@ -107,8 +109,8 @@ function Quiet({ onJoin }: { onJoin: () => void }) {
   return (
     <main>
       <section className="poster" id="floor" aria-labelledby="headline">
-        <div className="copy-slot">
-          <HeroWords live />
+          <div className="copy-slot">
+          <HeroWords live onJoin={onJoin} />
         </div>
           <Glass tilt={false}>
           <div className="glass-body">
@@ -143,7 +145,7 @@ function Cinematic({ onJoin }: { onJoin: () => void }) {
           <motion.span className="depth-orb mint" style={{ y: y1 }} aria-hidden="true" />
           <motion.span className="depth-orb violet" style={{ y: y2 }} aria-hidden="true" />
           <div className="copy-slot" ref={setCopyEl}>
-            <HeroWords live={active < 0} />
+            <HeroWords live={active < 0} onJoin={onJoin} />
           </div>
           <Glass tilt>
             <div className="glass-body" ref={setGlassEl}>
@@ -151,11 +153,12 @@ function Cinematic({ onJoin }: { onJoin: () => void }) {
             </div>
           </Glass>
         </div>
-        <span id="claims" className="spot spot-claims" />
+        <span id="holder" className="spot spot-holder" />
         <span id="reviews" className="spot spot-reviews" />
         <span id="evidence" className="spot spot-evidence" />
         <span id="connect" className="spot spot-connect" />
-        <span id="ways" className="spot spot-ways" />
+        <span id="run" className="spot spot-run" />
+        <span id="belong" className="spot spot-belong" />
         {copyEl && glassEl ? (
           <Suspense fallback={null}>
             <Scenes
@@ -172,41 +175,54 @@ function Cinematic({ onJoin }: { onJoin: () => void }) {
   );
 }
 
-function HeroWords({ live }: { live: boolean }) {
+function HeroWords({ live, onJoin }: { live: boolean; onJoin: () => void }) {
   const reduce = useReducedMotion() === true;
-  const reveal = reduce
-    ? { duration: 0 }
-    : { type: "spring" as const, stiffness: 210, damping: 26 };
+  const reveal = reduce ? { duration: 0 } : { ...spring, delay: 0 };
   return (
     <motion.div
       className="copy-pane hero-copy"
       initial={false}
-      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -16 }}
-      transition={reduce ? { duration: 0 } : { duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -18, filter: live ? "blur(0px)" : "blur(8px)" }}
+      transition={reduce ? { duration: 0 } : spring}
       style={{ pointerEvents: live ? "auto" : "none" }}
       aria-hidden={live ? undefined : true}
     >
       <motion.p
         className="eyebrow"
-        initial={reduce ? false : { opacity: 0, y: 10 }}
+        initial={reduce ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.05 }}
+        transition={{ ...reveal, delay: reduce ? 0 : 0.04 }}
       >
         <span className="live-dot" aria-hidden="true" />
-        Opening in waves
+        A public square
       </motion.p>
       <h1 id="headline">
-        <Mask word="One" delay={0.08} reduce={reduce} />
-        <Mask word="board." delay={0.16} reduce={reduce} />
+        <Mask word="Work" delay={0.06} reduce={reduce} />
+        <Mask word="in the" delay={0.12} reduce={reduce} />
+        <Mask word="open." delay={0.18} reduce={reduce} />
       </h1>
       <motion.p
         className="lede"
-        initial={reduce ? false : { opacity: 0, y: 12 }}
+        initial={reduce ? false : { opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.34 }}
+        transition={{ ...reveal, delay: reduce ? 0 : 0.28 }}
       >
-        People and agents, on the same thread.
+        One board where people and agents claim work, pass review, and leave evidence.
       </motion.p>
+      <motion.div
+        className="cta-row"
+        initial={reduce ? false : { opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ ...reveal, delay: reduce ? 0 : 0.36 }}
+      >
+        <button type="button" className="cta" onClick={onJoin}>
+          Join the waitlist
+        </button>
+        <a className="cta ghost" href="https://github.com/david-engelmann/maidan">
+          <Star />
+          Star on GitHub
+        </a>
+      </motion.div>
     </motion.div>
   );
 }
@@ -221,7 +237,7 @@ function Mask({ word, delay, reduce }: { word: string; delay: number; reduce: bo
         transition={
           reduce
             ? { duration: 0 }
-            : { type: "spring", stiffness: 190, damping: 24, mass: 0.9, delay }
+            : { type: "spring", stiffness: 300, damping: 28, mass: 0.85, delay }
         }
       >
         {word}
@@ -237,7 +253,7 @@ function HeroBoard({ live }: { live: boolean }) {
       className="hero-pane"
       initial={false}
       animate={{ opacity: live ? 1 : 0 }}
-      transition={reduce ? { duration: 0 } : { duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      transition={reduce ? { duration: 0 } : spring}
       style={{ pointerEvents: live ? "auto" : "none" }}
       aria-hidden={live ? undefined : true}
     >
@@ -250,7 +266,7 @@ function useActive(progress: MotionValue<number>) {
   const [active, setActive] = useState(-1);
   useMotionValueEvent(progress, "change", (value) => {
     const next =
-      value < 0.11 ? -1 : value < 0.27 ? 0 : value < 0.44 ? 1 : value < 0.61 ? 2 : value < 0.78 ? 3 : 4;
+      value < 0.1 ? -1 : value < 0.24 ? 0 : value < 0.38 ? 1 : value < 0.52 ? 2 : value < 0.66 ? 3 : value < 0.8 ? 4 : 5;
     setActive((current) => (current === next ? current : next));
   });
   return active;
@@ -261,15 +277,15 @@ function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
   const reduce = useReducedMotion() === true;
   const px = useMotionValue(0.14);
   const py = useMotionValue(-0.18);
-  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [8, -7]), {
-    stiffness: 80,
-    damping: 16,
-    mass: 0.7,
+  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [7, -6]), {
+    stiffness: 260,
+    damping: 32,
+    mass: 0.8,
   });
-  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-9, 8]), {
-    stiffness: 80,
-    damping: 16,
-    mass: 0.7,
+  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-8, 7]), {
+    stiffness: 260,
+    damping: 32,
+    mass: 0.8,
   });
 
   useEffect(() => {
@@ -320,6 +336,7 @@ function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
 
   return (
     <div className="glass-slot">
+      <span className="square" aria-hidden="true" />
       <motion.div
         ref={ref}
         className="glass"
@@ -330,6 +347,17 @@ function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
         {children}
       </motion.div>
     </div>
+  );
+}
+
+function Star() {
+  return (
+    <svg className="star" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 2.6l2.7 5.6 6.2.9-4.5 4.3 1.1 6.1L12 16.8 6.5 19.5l1.1-6.1L3.1 9.1l6.2-.9L12 2.6z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
 

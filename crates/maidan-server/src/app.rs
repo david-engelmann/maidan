@@ -1288,6 +1288,11 @@ pub fn router(state: AppState) -> Router {
                 "font/woff2",
                 include_bytes!("../static/landing/dist/geist.woff2"),
             ),
+            "og.png" => ("image/png", include_bytes!("../static/landing/dist/og.png")),
+            "icon.png" => (
+                "image/png",
+                include_bytes!("../static/landing/dist/icon.png"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(
