@@ -91,15 +91,18 @@ pub async fn set(
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
         .filter(|footprint| !footprint.items.is_empty());
+    // The app clock, the one every lease deadline was computed from (#1605).
+    let now = chrono::Utc::now();
     let mut tx = pool.begin().await?;
     let row = sqlx::query(&format!(
         "SELECT ch.workspace_id, {} AS live
          FROM maidan_threads t JOIN maidan_channels ch ON ch.id = t.channel_id
          WHERE t.id = $1
          FOR UPDATE OF t",
-        live_claim("t", "NOW()")
+        live_claim("t", "$2")
     ))
     .bind(thread_id.0)
+    .bind(now)
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(StoreError::NotFound)?;
@@ -116,8 +119,9 @@ pub async fn set(
     };
     insert_items_on(&mut tx, thread_id, workspace_id, &footprint).await?;
     if live {
-        let rows = sqlx::query(&crate::footprints::conflicts_select("$1", "NOW()"))
+        let rows = sqlx::query(&crate::footprints::conflicts_select("$1", "$2"))
             .bind(thread_id.0)
+            .bind(now)
             .fetch_all(&mut *tx)
             .await?;
         if !rows.is_empty() {
@@ -171,12 +175,13 @@ pub async fn list_active(
            AND {}
            AND ($3::uuid IS NULL OR {readable})
          ORDER BY held.assignment_expires_at ASC NULLS LAST, f.thread_id, f.kind, f.value",
-        live_claim("held", "NOW()")
+        live_claim("held", "$5")
     ))
     .bind(workspace_id.0)
     .bind(repo)
     .bind(readable_by.map(|m| m.0))
     .bind(DM_CHANNEL_NAME)
+    .bind(chrono::Utc::now())
     .fetch_all(pool)
     .await?;
     group_active(rows.iter().map(item_row).collect())
@@ -292,9 +297,10 @@ pub async fn list_slots(
          JOIN maidan_threads held ON held.id = f.thread_id
          WHERE f.workspace_id = $1 AND f.match_namespace = 'slot' AND {}
          GROUP BY f.match_key",
-        live_claim("held", "NOW()")
+        live_claim("held", "$2")
     ))
     .bind(workspace_id.0)
+    .bind(chrono::Utc::now())
     .fetch_all(pool)
     .await?;
     for row in &in_use {
@@ -401,11 +407,12 @@ pub async fn list_deferred(
     readable_by: Option<MemberId>,
 ) -> Result<Vec<maidan_types::DeferredThread>, StoreError> {
     let rows = sqlx::query(&crate::footprints::deferred_select(
-        "$1", "$2::uuid", "$3", "NOW()",
+        "$1", "$2::uuid", "$3", "$4",
     ))
     .bind(workspace_id.0)
     .bind(readable_by.map(|m| m.0))
     .bind(DM_CHANNEL_NAME)
+    .bind(chrono::Utc::now())
     .fetch_all(pool)
     .await?;
     Ok(rows
