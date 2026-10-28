@@ -247,8 +247,10 @@
               </select>
             </label>
             <label>File <input id="artifact-file" type="file" /></label>
-            <label><input id="attach-artifact-next" type="checkbox" checked /> Post to selected thread after upload</label>
+            <label><input id="attach-artifact-next" type="checkbox" checked /> Link to the selected task and post it</label>
             <button id="upload-artifact" type="button">Upload</button>
+            <p id="thread-linked-note" class="muted">Select a task to link a file as evidence.</p>
+            <ul id="thread-artifact-links"></ul>
           </details>
         </section>
       </main>

@@ -326,6 +326,8 @@
   {"method":"GET","path":"/ui/api/threads/{tid}","kind":"reads"},
   {"method":"POST","path":"/ui/api/threads/{tid}","kind":"changes"},
   {"method":"GET","path":"/ui/api/threads/{tid}/artifacts","kind":"reads"},
+  {"method":"DELETE","path":"/ui/api/threads/{tid}/artifacts/{sha}","kind":"changes"},
+  {"method":"PUT","path":"/ui/api/threads/{tid}/artifacts/{sha}","kind":"changes"},
   {"method":"DELETE","path":"/ui/api/threads/{tid}/block","kind":"changes"},
   {"method":"GET","path":"/ui/api/threads/{tid}/dependencies","kind":"reads"},
   {"method":"GET","path":"/ui/api/threads/{tid}/evidence","kind":"reads"},

@@ -1656,6 +1656,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_thread),
         )
         .route("/ui/api/threads/{tid}/messages", post(routes::post_message))
+        .route(
+            "/ui/api/threads/{tid}/artifacts/{sha}",
+            put(routes::link_thread_artifact).merge(delete(routes::unlink_thread_artifact)),
+        )
         .route("/ui/api/threads/{tid}", post(routes::transition_thread))
         .route(
             "/ui/api/threads/{tid}/block",

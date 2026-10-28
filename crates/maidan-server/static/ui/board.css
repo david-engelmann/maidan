@@ -169,6 +169,8 @@
       .artifact-card .artifact-head { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
       .artifact-card .artifact-name { font-weight: 600; overflow-wrap: anywhere; }
       .artifact-card img { display: block; max-width: 100%; max-height: 20rem; margin-top: 0.35rem; border-radius: 3px; }
+      #thread-artifact-links { list-style: none; margin: 0.35rem 0 0; padding: 0; display: grid; gap: 0.35rem; }
+      #thread-artifact-links li { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
       #audit-list, #peer-list, #edit-history-list {
         font-size: 0.85rem;
         max-height: 10rem;

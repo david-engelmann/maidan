@@ -229,7 +229,9 @@ fn substitute_path(template: &str, f: &FixtureIds) -> String {
         return template.replace("{cid}", &f.channel);
     }
     if template.starts_with("/ui/api/threads/") {
-        return template.replace("{tid}", &f.thread);
+        return template
+            .replace("{tid}", &f.thread)
+            .replace("{sha}", &f.sha);
     }
     if template.starts_with("/ui/api/messages/") {
         return template.replace("{mid}", &f.message);

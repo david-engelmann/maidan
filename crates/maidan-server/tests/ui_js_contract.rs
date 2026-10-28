@@ -201,6 +201,8 @@ const ALLOWED: &[&str] = &[
     "WebSocket",
     "URL",
     "URLSearchParams",
+    "Event",
+    "CustomEvent",
     "Blob",
     "FormData",
     "TextEncoder",
@@ -5856,4 +5858,34 @@ fn ui_dm_and_group_dm_share_one_conversation_module() {
     ] {
         assert!(main.contains(wiring), "main.js wires `{wiring}`");
     }
+}
+
+/// Attaching a file to the open task links it as evidence, not only as a
+/// message citation. The review packet and the evidence timeline read the
+/// thread's links.
+#[test]
+fn ui_js_links_an_uploaded_file_to_the_open_task() {
+    let artifacts = include_str!("../static/ui/artifacts.js");
+    assert!(
+        artifacts.contains("async function linkArtifactToSelectedThread(sha)"),
+        "the link helper must exist"
+    );
+    assert!(
+        artifacts.contains("await linkArtifactToSelectedThread(artifact.sha256)"),
+        "attaching to the open task must link the file before it posts"
+    );
+    assert!(
+        artifacts.contains("/artifacts/${encodeURIComponent(sha)}"),
+        "the link uses the thread artifact route"
+    );
+    assert!(artifacts.contains("method: \"PUT\""), "linking is a PUT");
+    assert!(
+        artifacts.contains("method: \"DELETE\""),
+        "unlinking is a DELETE"
+    );
+    let html = include_str!("../static/index.html");
+    assert!(
+        html.contains("id=\"thread-artifact-links\""),
+        "the open task lists the files linked as evidence"
+    );
 }
