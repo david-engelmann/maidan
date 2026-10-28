@@ -210,8 +210,99 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
         return JSON.parse(body);
       }
 
+      // A message can cite a sha without making it evidence. The review packet
+      // and the evidence timeline read the thread's own links, so an attach
+      // records one before it posts.
+      async function linkArtifactToSelectedThread(sha) {
+        if (!selectedThreadId) return false;
+        const res = await writeApi(
+          null,
+          apiWritePath(`/threads/${selectedThreadId}/artifacts/${encodeURIComponent(sha)}`),
+          { method: "PUT", headers: headers(), credentials: "include" },
+        );
+        if (!res.ok) {
+          showError(textError(res.status, await res.text(), "Could not link that file to this task"));
+          return false;
+        }
+        document.dispatchEvent(new CustomEvent("maidan-thread-artifacts-changed"));
+        await loadLinkedArtifacts();
+        return true;
+      }
+
+      async function unlinkArtifactFromSelectedThread(sha) {
+        if (!selectedThreadId) return false;
+        const res = await writeApi(
+          null,
+          apiWritePath(`/threads/${selectedThreadId}/artifacts/${encodeURIComponent(sha)}`),
+          { method: "DELETE", headers: headers(), credentials: "include" },
+        );
+        if (!res.ok) {
+          showError(textError(res.status, await res.text(), "Could not unlink that file"));
+          return false;
+        }
+        document.dispatchEvent(new CustomEvent("maidan-thread-artifacts-changed"));
+        await loadLinkedArtifacts();
+        return true;
+      }
+
+      // A slow read for the task just left must not paint over the one now open.
+      let linkedLoad = 0;
+
+      async function loadLinkedArtifacts() {
+        const list = document.getElementById("thread-artifact-links");
+        const note = document.getElementById("thread-linked-note");
+        if (!list || !note) return;
+        const generation = ++linkedLoad;
+        const threadId = selectedThreadId;
+        list.replaceChildren();
+        if (!threadId) {
+          note.textContent = "Select a task to link a file as evidence.";
+          return;
+        }
+        note.textContent = "Loading this task's linked files.";
+        const res = await api(uiReadPath(`/threads/${threadId}/artifacts`), {
+          headers: headers(),
+          credentials: "include",
+        });
+        if (generation !== linkedLoad) return;
+        if (!res.ok) {
+          note.textContent = await responseError(res, "Could not load this task's linked files");
+          return;
+        }
+        const rows = await res.json();
+        if (generation !== linkedLoad) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+          note.textContent = "No files linked to this task as evidence yet.";
+          return;
+        }
+        note.textContent = "Linked to this task as evidence.";
+        for (const row of rows) {
+          const sha = String(row.sha256 || "");
+          const li = document.createElement("li");
+          const name = document.createElement("span");
+          name.className = "artifact-name";
+          name.textContent = `${sha.slice(0, 12)}…`;
+          name.title = sha;
+          const unlink = document.createElement("button");
+          unlink.type = "button";
+          unlink.className = "ghost";
+          unlink.textContent = "Unlink";
+          unlink.onclick = () => unlinkArtifactFromSelectedThread(sha);
+          li.append(name, unlink);
+          list.appendChild(li);
+          artifactMeta(sha).then((meta) => {
+            if (meta && meta.filename) name.textContent = meta.filename;
+          });
+        }
+      }
+
+      document.addEventListener("maidan-thread-selected", () => {
+        loadLinkedArtifacts();
+      });
+
       async function attachToSelectedThread(artifact) {
         if (!selectedThreadId) return false;
+        if (!(await linkArtifactToSelectedThread(artifact.sha256))) return false;
         const pres = await writeApi(null, apiWritePath(`/threads/${selectedThreadId}/messages`), {
           method: "POST",
           headers: headers(true),
@@ -222,10 +313,12 @@ import { artifactObjectUrls, loadMessages } from "./thread.js";
           }),
         });
         if (pres.ok) {
-          showError("Artifact attached in thread", "success");
+          showError("File linked to this task and posted", "success");
           await loadMessages();
+        } else {
+          showError(textError(pres.status, await pres.text(), "The file is linked, but the message did not post"));
         }
         return pres.ok;
       }
 
-export { artifactBlob, artifactCard, artifactImage, artifactMeta, artifactObjectUrl, artifactShasFromMetadata, attachToSelectedThread, escapeHtml, formatBytes, mediaEssence, trimImageCache, uploadArtifact };
+export { artifactBlob, artifactCard, artifactImage, artifactMeta, artifactObjectUrl, artifactShasFromMetadata, attachToSelectedThread, escapeHtml, formatBytes, loadLinkedArtifacts, mediaEssence, trimImageCache, uploadArtifact };

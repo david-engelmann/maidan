@@ -306,6 +306,11 @@ import { loadMessageEdits } from "./tools.js";
       // Which thread the Evidence panel's contents belong to.
       let evidenceShownFor = null;
 
+      document.addEventListener("maidan-thread-artifacts-changed", () => {
+        const panel = document.getElementById("evidence-timeline");
+        if (panel && panel.open) loadEvidenceTimeline();
+      });
+
       // The open thread's evidence, oldest first, as the server recorded it:
       // links, the standing result, land-gate verdicts, each hand-off to
       // review and each verdict. Read only; this panel decides nothing. It

@@ -876,6 +876,7 @@ import { loadMessages } from "./thread.js";
         });
         renderThreadHeader();
         loadMessages();
+        document.dispatchEvent(new CustomEvent("maidan-thread-selected"));
       }
 
 
@@ -957,6 +958,7 @@ import { loadMessages } from "./thread.js";
               selectedChannelName = ch.name;
               localStorage.setItem(channelKey, ch.id);
               selectedThreadId = null;
+              document.dispatchEvent(new CustomEvent("maidan-thread-selected"));
               syncCollabPanel();
               boardSeen = new Map();
               document.getElementById("channel-id").value = ch.id;
