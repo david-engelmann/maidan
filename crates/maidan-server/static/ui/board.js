@@ -684,6 +684,36 @@ import { loadMessages } from "./thread.js";
       // right after a card click) cannot append its facts a second time.
       let headerGen = 0;
 
+      // A close clears the claim, so a finished task no longer says who held
+      // it. The transition history keeps both people: whoever moved it to
+      // closed, and whoever last handed it into review. Name the hand-off only
+      // when it was someone other than the closer.
+      async function closedByFacts(tid, gen, fact) {
+        try {
+          const res = await api(uiReadPath(`/threads/${tid}/transitions`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok || gen !== headerGen) return;
+          const rows = await res.json();
+          if (gen !== headerGen || !Array.isArray(rows)) return;
+          let closed = null;
+          let handedOff = null;
+          for (const row of rows) {
+            if (!row || !row.actor_id) continue;
+            if (row.to_state === "closed") closed = row;
+            if (row.to_state === "in_review") handedOff = row.actor_id;
+          }
+          if (!closed) return;
+          const f = fact("closed by ", personEl(closed.actor_id, { avatar: false }));
+          const when = ago(closed.occurred_at);
+          if (when) f.append(` ${when}`);
+          if (handedOff && handedOff !== closed.actor_id) fact("handed off by ", personEl(handedOff, { avatar: false }));
+        } catch (_e) {
+          /* the badge already says the task is done */
+        }
+      }
+
       async function renderThreadHeader() {
         const gen = ++headerGen;
         const th = threadsById.get(selectedThreadId);
@@ -707,6 +737,7 @@ import { loadMessages } from "./thread.js";
         };
         if (th.assignee_id) fact("held by ", personEl(th.assignee_id, { tag: true }));
         if (th.owner_id) fact("owner ", personEl(th.owner_id));
+        if (th.state === "closed" || th.state === "archived") await closedByFacts(tid, gen, fact);
         try {
           const res = await api(uiReadPath(`/threads/${tid}/result`), {
             headers: headers(),
