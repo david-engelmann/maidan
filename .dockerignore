@@ -1,5 +1,7 @@
 target/
 **/target/
+**/node_modules
+crates/maidan-server/static/landing/dist
 **/*.rs.bk
 Cargo.lock.bak
 

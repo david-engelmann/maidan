@@ -756,7 +756,17 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
     assert!(csp.contains("default-src 'none'"), "{csp}");
     assert!(csp.contains("script-src 'self'"), "{csp}");
     assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
-    assert!(!csp.contains("unsafe-inline"), "{csp}");
+    assert!(
+        !csp.contains("script-src 'unsafe-inline'")
+            && !csp.contains("script-src 'self' 'unsafe-inline'"),
+        "{csp}"
+    );
+    assert!(csp.contains("style-src 'self'"), "{csp}");
+    assert!(
+        csp.contains("style-src-attr 'unsafe-inline'"),
+        "motion sets transform as a style attribute: {csp}"
+    );
+    assert!(!csp.contains("style-src 'unsafe-inline'"), "{csp}");
     assert_eq!(h["x-content-type-options"], "nosniff");
     assert_eq!(h["x-frame-options"], "DENY");
     assert_eq!(h["referrer-policy"], "no-referrer");
@@ -781,7 +791,16 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
     assert!(!lower.contains("<style"), "no style element");
     assert!(!lower.contains("style="), "no inline style");
     assert!(!has_inline_handler(&lower), "no inline handlers");
-    for asset in ["landing.css", "landing.js"] {
+    for asset in [
+        "style.css",
+        "app.js",
+        "vendor.js",
+        "story.js",
+        "aurora.js",
+        "geist.woff2",
+        "og.png",
+        "icon.png",
+    ] {
         let res = env
             .client
             .get(format!("{}/landing/{asset}", env.base))
@@ -881,7 +900,7 @@ async fn an_origin_matching_the_public_url_is_taken_even_when_the_host_differs()
 }
 
 #[tokio::test]
-async fn landing_asset_paths_other_than_the_two_files_are_not_found() {
+async fn landing_asset_paths_outside_the_built_bundle_are_not_found() {
     let env = spawn(true, vec![]).await;
     for path in [
         "/landing/../Cargo.toml",
@@ -905,7 +924,16 @@ async fn landing_asset_paths_other_than_the_two_files_are_not_found() {
 #[tokio::test]
 async fn landing_assets_are_not_found_where_sign_up_is_off() {
     let off = spawn(false, vec![]).await;
-    for asset in ["landing.css", "landing.js"] {
+    for asset in [
+        "style.css",
+        "app.js",
+        "vendor.js",
+        "story.js",
+        "aurora.js",
+        "geist.woff2",
+        "og.png",
+        "icon.png",
+    ] {
         let res = off
             .client
             .get(format!("{}/landing/{asset}", off.base))

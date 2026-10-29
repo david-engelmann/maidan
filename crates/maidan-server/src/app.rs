@@ -69,7 +69,10 @@ pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src
 /// the board's: the page loads one stylesheet and one module from this
 /// origin, posts JSON to `/waitlist` on this origin, and nothing else. No
 /// inline script or style, no images beyond the inline SVG mark, no frames.
-pub const LANDING_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+/// Style *elements* stay on `'self'`. Style *attributes* are `'unsafe-inline'`
+/// because the landing app's motion runtime sets transform and opacity on
+/// elements. Scripts stay external: there is no `unsafe-inline` in `script-src`.
+pub const LANDING_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// [`BOARD_UI_CSP`] on an instance that runs Turnstile: the widget's script
 /// and its frame may load from Cloudflare's challenge origin, and nothing
@@ -78,7 +81,7 @@ pub const BOARD_UI_CSP_TURNSTILE: &str = "default-src 'self'; script-src 'self' 
 
 /// [`LANDING_CSP`] on an instance that runs Turnstile, widened the same
 /// narrow way as [`BOARD_UI_CSP_TURNSTILE`].
-pub const LANDING_CSP_TURNSTILE: &str = "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+pub const LANDING_CSP_TURNSTILE: &str = "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// The board's CSP for this instance: Cloudflare's challenge origin appears
 /// only when Turnstile is on.
@@ -1239,7 +1242,7 @@ pub fn router(state: AppState) -> Router {
         if crate::routes::require_signup(&state).is_err() {
             return crate::error::ApiError::NotFound.into_response();
         }
-        let page = include_str!("../static/landing/index.html").replace(
+        let page = include_str!("../static/landing/dist/index.html").replace(
             "<!-- policy-links -->",
             &crate::routes::policy_links_html(&state),
         );
@@ -1247,7 +1250,7 @@ pub fn router(state: AppState) -> Router {
             &headers,
             landing_csp(&state),
             "text/html; charset=utf-8",
-            &page,
+            page.as_bytes(),
         )
     }
 
@@ -1259,14 +1262,36 @@ pub fn router(state: AppState) -> Router {
         if crate::routes::require_signup(&state).is_err() {
             return Err(axum::http::StatusCode::NOT_FOUND);
         }
-        let (content_type, body) = match name.as_str() {
-            "landing.css" => (
-                "text/css; charset=utf-8",
-                include_str!("../static/landing/landing.css"),
-            ),
-            "landing.js" => (
+        // Names are pinned by the Vite build (see web/landing/vite.config.ts).
+        let (content_type, body): (&str, &[u8]) = match name.as_str() {
+            "app.js" => (
                 "text/javascript; charset=utf-8",
-                include_str!("../static/landing/landing.js"),
+                include_bytes!("../static/landing/dist/app.js"),
+            ),
+            "vendor.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/vendor.js"),
+            ),
+            "story.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/story.js"),
+            ),
+            "aurora.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/landing/dist/aurora.js"),
+            ),
+            "style.css" => (
+                "text/css; charset=utf-8",
+                include_bytes!("../static/landing/dist/style.css"),
+            ),
+            "geist.woff2" => (
+                "font/woff2",
+                include_bytes!("../static/landing/dist/geist.woff2"),
+            ),
+            "og.png" => ("image/png", include_bytes!("../static/landing/dist/og.png")),
+            "icon.png" => (
+                "image/png",
+                include_bytes!("../static/landing/dist/icon.png"),
             ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
@@ -1282,10 +1307,10 @@ pub fn router(state: AppState) -> Router {
         headers: &axum::http::HeaderMap,
         csp: &'static str,
         content_type: &'static str,
-        body: &str,
+        body: &[u8],
     ) -> axum::response::Response {
         use axum::response::IntoResponse as _;
-        let etag = strong_etag(body.as_bytes());
+        let etag = strong_etag(body);
         if if_none_match_fresh(headers, &etag) {
             return (
                 axum::http::StatusCode::NOT_MODIFIED,
@@ -1297,7 +1322,7 @@ pub fn router(state: AppState) -> Router {
         (
             landing_headers(content_type, csp),
             ui_cache_headers(&etag),
-            body.to_owned(),
+            body.to_vec(),
         )
             .into_response()
     }

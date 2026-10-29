@@ -84,6 +84,11 @@ jobs:
           fetch-depth: 0
       - name: install repository-script dependencies
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -96,6 +101,12 @@ jobs:
           # scratch (#1680), and PR runs don't evict it.
           shared-key: lint
           save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
+      - name: landing typecheck and lint
+        working-directory: web/landing
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
@@ -176,6 +187,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -215,6 +231,11 @@ jobs:
     # gated by the required Rust e2e tests.
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -237,6 +258,11 @@ jobs:
     # (docs/Decisions.md).
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -264,6 +290,11 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -291,6 +322,11 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -341,6 +377,11 @@ jobs:
     # advisory can turn it red with no change in this repo.
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: osv-scanner
@@ -361,6 +402,11 @@ jobs:
     # required check (docs/Conventions.md, "Dependencies").
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: install cargo-vet
@@ -384,6 +430,11 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -446,6 +497,11 @@ jobs:
             /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
           docker system prune -af --volumes >/dev/null
           df -h /
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -523,6 +579,11 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -553,6 +614,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -611,6 +677,11 @@ jobs:
             /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
           docker system prune -af --volumes >/dev/null
           df -h /
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -974,6 +1045,11 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -1007,6 +1083,11 @@ jobs:
     # See ui-tests/README.md.
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
