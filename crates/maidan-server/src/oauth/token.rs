@@ -173,8 +173,7 @@ async fn exchange_code(
         }
         return Err(OAuthError::invalid_grant("the code was already used"));
     }
-    let client =
-        client_auth::authenticate_in(state, creds, preregistered, pending.workspace_id).await?;
+    let client = client_auth::authenticate_in(state, creds, preregistered).await?;
     if pending.expires_at <= Utc::now() {
         return Err(OAuthError::invalid_grant("the code has expired"));
     }
@@ -316,8 +315,7 @@ async fn refresh(
         .ok_or_else(|| {
             OAuthError::invalid_grant("the grant behind the refresh token is revoked")
         })?;
-    let client =
-        client_auth::authenticate_in(state, creds, preregistered, grant.workspace_id).await?;
+    let client = client_auth::authenticate_in(state, creds, preregistered).await?;
     let resource = require_resource(form.resource.as_deref(), origin)?;
     if resource != stored.resource {
         return Err(OAuthError::invalid_target(
