@@ -5606,13 +5606,15 @@ walk(byId.board, (el) => {
   const chips = [];
   let stalledTitle = "";
   let waitTitle = "";
+  let label = "";
   walk(el, (kid) => {
     if (!kid.className) return;
+    if (classHas(kid, "card-open")) label = (kid.attrs && kid.attrs["aria-label"]) || "";
     chips.push(String(kid.className) + ":" + flatText(kid));
     if (classHas(kid, "card-stalled")) stalledTitle = kid.title || "";
     if (classHas(kid, "card-human-wait")) waitTitle = kid.title || "";
   });
-  cards.push({ id: el.dataset.id, label: el.attrs["aria-label"] || "", chips: chips, stalled_title: stalledTitle, wait_title: waitTitle });
+  cards.push({ id: el.dataset.id, label: label, chips: chips, stalled_title: stalledTitle, wait_title: waitTitle });
 });
 const alerts = [];
 for (const kid of byId["board-summary"].children) {

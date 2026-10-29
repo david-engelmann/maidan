@@ -338,8 +338,6 @@ import { loadMessages } from "./thread.js";
           card.className = "card";
           card.dataset.id = th.id;
           card.dataset.chrome = chrome.label;
-          card.tabIndex = 0;
-          card.setAttribute("role", "button");
           // The review gate is opt-in: a close with no approval says so.
           const stateLabel = th.closed_without_review ? "closed without review" : chrome.label;
           const waitWords = {
@@ -348,7 +346,13 @@ import { loadMessages } from "./thread.js";
             returned_to_queue: "returning to the queue",
           };
           const wait = th.human_wait && waitWords[th.human_wait.state] ? th.human_wait : null;
-          card.setAttribute(
+          // The card's title is its one control, a real button: the keyboard
+          // reaches it, Enter and Space press it, and it names the card's state.
+          const t = document.createElement("button");
+          t.type = "button";
+          t.className = "card-title card-open";
+          t.textContent = title;
+          t.setAttribute(
             "aria-label",
             `${title}: ${stateLabel}${th.stalled ? ", stalled" : ""}${wait ? `, ${waitWords[wait.state]}` : ""}`,
           );
@@ -356,9 +360,6 @@ import { loadMessages } from "./thread.js";
           const sig = `${chrome.label}|${th.assignee_id || ""}`;
           if (boardSeen.size && boardSeen.get(th.id) !== sig) card.classList.add("fresh");
           nextSeen.set(th.id, sig);
-          const t = document.createElement("div");
-          t.className = "card-title";
-          t.textContent = title;
           const foot = document.createElement("div");
           foot.className = "card-foot";
           const stateWord = document.createElement("span");
@@ -439,19 +440,20 @@ import { loadMessages } from "./thread.js";
             card.appendChild(line);
             if (refused.text) card.title = refused.text;
           }
+          // A click anywhere on the card opens it, as the button does.
           card.onclick = () => selectThread(th.id, title);
-          card.onkeydown = (e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              selectThread(th.id, title);
-            }
-          };
           const col = cols[chrome.column];
           wanted[chrome.column].push(sameCardOrNew(onScreen, card));
           col.n += 1;
         });
         const firstPaint = boardSeen.size === 0;
         boardSeen = nextSeen;
+        // A card that changed is a new node; the old one, focused, would drop
+        // focus to <body>. Note which card had it, and hand it to the new one.
+        const focusedCard = document.activeElement && document.activeElement.closest
+          ? document.activeElement.closest("#board .card")
+          : null;
+        const focusedId = focusedCard ? focusedCard.dataset.id : null;
         BOARD_COLUMNS.forEach((c) => {
           const col = cols[c.key];
           col.count.textContent = String(col.n);
@@ -463,6 +465,13 @@ import { loadMessages } from "./thread.js";
           }
           placeInLane(col.el, wanted[c.key]);
         });
+        if (focusedId && !focusedCard.isConnected) {
+          // The same task's card, or, when it left the board, the first card.
+          const again =
+            board.querySelector(`.card[data-id="${CSS.escape(focusedId)}"] .card-open`) ||
+            board.querySelector(".card-open");
+          if (again) again.focus();
+        }
         summary.replaceChildren();
         const facts = [
           [threads.length, threads.length === 1 ? "task" : "tasks"],
