@@ -167,6 +167,21 @@ Working beside other agents (several PRs are usually open at once):
 
 Lessons that cost real time, and that still apply:
 
+- **`main` is prod; work lands on `dev`.** A PR based on `main` was merged
+  there by the merge loop (admin merges bypass `lock_branch`); the loop now
+  refuses any PR whose base is `main`. Two PRs that each passed CI broke `dev`
+  together twice on 2026-10-28: batch ready PRs on one integration branch and
+  run CI once, and never merge a batch without its integration run (that is
+  how a Postgres lock bug shipped, #1764).
+- **Checks that are not required still gate deploys.** The swarm's deploy
+  reads `cargo vet`, `open work` and Playwright; each merged red once and held
+  every `dev` commit. The merge loop refuses them red. A cancelled job is a
+  timeout until shown otherwise: compare its duration with `timeout-minutes`
+  (integration is 60 since #1768).
+- **No local builds while the swarm runs.** They were 40% of the maintainer's
+  CPU. CI is the build; `cargo vet` and `gh` are fine. Never kill a test run:
+  it orphans its testcontainers.
+
 - **Something outranked the control meant to bind it.** Every authorization
   defect found in the 2026-09 audits passed CI and its own tests, because every
   test asked "does the control work?" and none asked "what outranks it?".
