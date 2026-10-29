@@ -12,10 +12,17 @@ const shake = { x: [0, -10, 9, -6, 4, 0], transition: { duration: 0.45 } };
 export default function App() {
   const [open, setOpen] = useState(false);
   const [wells, setWells] = useState<Wells>(EMPTY);
+  const [scrolled, setScrolled] = useState(false);
   useEffect(() => (FILM ? playFilm() : undefined), []);
+  useEffect(() => {
+    const on = () => setScrolled(window.scrollY > 8);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
   return (
     <>
-      <header className={FILM ? "top film" : "top"}>
+      <header className={`top${FILM ? " film" : ""}${scrolled ? " scrolled" : ""}`}>
         <a className="brand" href="#top">Maidan</a>
         <nav className="nav" aria-label="Sections">
           <a href="#hundred">Scale</a>

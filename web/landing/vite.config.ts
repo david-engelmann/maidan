@@ -5,7 +5,21 @@ import react from "@vitejs/plugin-react";
 // server can embed them without a manifest.
 export default defineConfig({
   base: "/landing/",
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Dev only: the server owns /.well-known/maidan.json; answer it locally so
+    // the dev console stays clean (no Turnstile key, so the widget stays off).
+    {
+      name: "dev-well-known",
+      apply: "serve",
+      configureServer(server) {
+        server.middlewares.use("/.well-known/maidan.json", (_req, res) => {
+          res.setHeader("content-type", "application/json");
+          res.end("{}");
+        });
+      },
+    },
+  ],
   build: {
     outDir: process.env.LANDING_OUT ?? "../../crates/maidan-server/static/landing/dist",
     emptyOutDir: true,
