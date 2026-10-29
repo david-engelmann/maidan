@@ -646,10 +646,10 @@ impl SeatCostQuery {
         if !(1..=Self::MAX_LIMIT).contains(&self.limit) {
             return Err(format!("limit must be 1 to {}", Self::MAX_LIMIT));
         }
-        if let (Some(since), Some(until)) = (self.since, self.until) {
-            if since >= until {
-                return Err("since must be before until".into());
-            }
+        if let (Some(since), Some(until)) = (self.since, self.until)
+            && since >= until
+        {
+            return Err("since must be before until".into());
         }
         Ok(())
     }
