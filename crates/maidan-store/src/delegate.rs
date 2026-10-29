@@ -682,6 +682,13 @@ macro_rules! store_delegations {
                 usage_ledger::rollup(self.read_pool(), query).await
             }
 
+            async fn seat_costs(
+                &self,
+                query: maidan_types::SeatCostQuery,
+            ) -> Result<maidan_types::SeatCosts, StoreError> {
+                usage_ledger::seat_costs(self.read_pool(), query).await
+            }
+
             async fn add_usage_meters(
                 &self,
                 batch: &[maidan_types::UsageMeterDay],
