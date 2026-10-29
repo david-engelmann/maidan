@@ -71,3 +71,16 @@ body { background: radial-gradient(120% 60% at 50% -10%, rgba(103,232,249,0.14),
 @media (min-width: 720px) { .cc-label { font-size: 14px; } .cc-board { margin-top: 0.9rem; } }
 @media (max-width: 719px) { .c-lede { font-size: 1.02rem; } }
 @media (prefers-reduced-motion: reduce) { .cc-halo, .cc-log li:first-child { animation: none; } }
+.cc-burst { fill: none; stroke: var(--mint); stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: ccburst 0.7s ease-out forwards; pointer-events: none; }
+@keyframes ccburst { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(1.8); opacity: 0; } }
+@media (min-width: 1100px) {
+  .cc { display: grid; grid-template-columns: minmax(0, 1fr) 300px; grid-template-areas: "pal pal" "board side"; column-gap: 1rem; }
+  .cc-palette { grid-area: pal; position: static; }
+  .cc-board { grid-area: board; }
+  .cc-side { grid-area: side; margin-top: 0.9rem; display: flex; flex-direction: column; }
+  .cc-side .cc-controls { margin-top: 0; }
+  .cc-log { flex: 1; }
+  .c-hero { padding-top: 7rem; }
+}
+@media (prefers-reduced-motion: reduce) { .cc-burst { display: none; } }
+.cc-log .is-idle { color: var(--faint); animation: none; } .cc-log .is-idle .cc-led { background: var(--faint); box-shadow: none; }

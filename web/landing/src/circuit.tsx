@@ -174,19 +174,20 @@ export function Circuit({ config, setConfig, reduce }: { config: Config; setConf
   }, [running]);
 
   const W = wide ? 960 : 360;
-  const H = wide ? 300 : 700;
-  const pos = (i: number) => (wide ? { x: 80 + i * 160, y: 140 } : { x: 150, y: 56 + i * 112 });
+  const H = wide ? 250 : 760;
+  const pos = (i: number) => (wide ? { x: 80 + i * 160, y: 118 } : { x: 150, y: 56 + i * 112 });
 
-  function packetXY(pk: Packet, all: Packet[]) {
+  function packetXY(pk: Packet, all: Packet[], lag = 0) {
     if (pk.p < 0) {
       const a = pos(pk.seg);
       const stack = all.filter((o) => o.p < 0 && o.seg === pk.seg && o.id < pk.id).length;
       const off = Math.min(stack, 6) * 10;
-      return wide ? { x: a.x - 25 + off, y: a.y + 80 } : { x: a.x + 64 + off, y: a.y };
+      return wide ? { x: a.x - 25 + off, y: a.y + 48 } : { x: a.x + 64 + off, y: a.y };
     }
     const a = pos(pk.seg);
     const b = pos(pk.seg + 1);
-    const t = pk.p * pk.p * (3 - 2 * pk.p);
+    const q = Math.max(0, pk.p - lag);
+    const t = q * q * (3 - 2 * q);
     const lane = pk.kind === "dup" ? 9 : 0;
     return wide ? { x: a.x + (b.x - a.x) * t, y: a.y + lane } : { x: a.x + lane, y: a.y + (b.y - a.y) * t };
   }
@@ -326,10 +327,17 @@ export function Circuit({ config, setConfig, reduce }: { config: Config; setConf
               </g>
             );
           })}
+          {flash && <circle key={flash.id} cx={pos(5).x} cy={pos(5).y} r={34} className="cc-burst" />}
           <g className="cc-packets">
           {packets.map((pk) => {
             const { x, y } = packetXY(pk, packets);
-            return <circle key={pk.id} cx={x} cy={y} r={pk.p < 0 ? 9 : 12} fill={`url(#glow-${pk.kind})`} />;
+            const tail = pk.p > 0.1 ? packetXY(pk, packets, 0.09) : null;
+            return (
+              <g key={pk.id}>
+                {tail && <circle cx={tail.x} cy={tail.y} r={7} fill={`url(#glow-${pk.kind})`} opacity={0.4} />}
+                <circle cx={x} cy={y} r={pk.p < 0 ? 9 : 12} fill={`url(#glow-${pk.kind})`} />
+              </g>
+            );
           })}
           </g>
         </svg>
@@ -340,6 +348,7 @@ export function Circuit({ config, setConfig, reduce }: { config: Config; setConf
           <span className={stats.waiting ? "is-warn" : ""}><b>{stats.waiting}</b> stuck</span>
         </div>
       </div>
+      <div className="cc-side">
       <div className="cc-controls">
         <button type="button" className="c-btn c-btn-primary cc-run" onClick={() => setRunning(!running)} aria-pressed={running}>
           {running ? "Pause" : "Run"}
@@ -347,11 +356,13 @@ export function Circuit({ config, setConfig, reduce }: { config: Config; setConf
         <button type="button" className="c-btn" onClick={() => { sim.current = fresh(); setPackets([]); setStats({ shipped: 0, wasted: 0, unreviewed: 0, waiting: 0 }); }}>Reset</button>
       </div>
       <ol className="cc-log" aria-label="Live ledger">
+        {!log.length && <li className="is-idle"><span className="cc-led" aria-hidden="true" />Ledger: every claim, review and close lands here.</li>}
         {log.map((l) => <li key={l.id} className={`is-${l.tone}`}><span className="cc-led" aria-hidden="true" />{l.text}</li>)}
       </ol>
       <ul className="cc-diag" aria-live="polite">
         {diag.map((d) => <li key={d.text} className={`is-${d.tone}`}>{d.text}</li>)}
       </ul>
+      </div>
       {drag?.moved && (
         <div className="cc-ghost" aria-hidden="true" style={{ transform: `translate(${drag.x - 44}px, ${drag.y - 22}px)`, ["--c" as string]: ROLE_COLOR[drag.role] }}>
           <span className="cc-dot" />{drag.role}
