@@ -34,17 +34,14 @@ reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: webpki-roots 0.26.11 is a shim o
 id = "GHSA-qwgh-2vcv-g2f7"
 reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: block-buffer 0.10.4 under digest 0.10 hashers whose compress never panics, and nothing catches a hasher panic; no fixed 0.10 release"
 
-# examples/openhands/requirements.txt. litellm requires filelock<4.0, and these
-# three are fixed only in 4.2.1, so no floor satisfies both. Revisit when litellm
-# allows filelock 4.
-[[IgnoredVulns]]
-id = "GHSA-v4x8-3wr5-3wq8"
-reason = "examples/openhands/requirements.txt: filelock < 4.2.1 is forced by litellm (filelock<4.0); exploiting ReadWriteLock's SQLite lock database needs another local user to plant a symlink or journal file beside it, and the OpenHands example runs as the only user in a container it owns"
-
-[[IgnoredVulns]]
-id = "GHSA-9vhv-jxww-xfm5"
-reason = "examples/openhands/requirements.txt: filelock < 4.2.1 is forced by litellm (filelock<4.0); the advisory affects Windows only, and the OpenHands example runs in a Linux container"
-
-[[IgnoredVulns]]
-id = "GHSA-567q-5qvw-pf92"
-reason = "examples/openhands/requirements.txt: filelock < 4.2.1 is forced by litellm (filelock<4.0); the advisory affects Windows only, and the OpenHands example runs in a Linux container"
+# examples/openhands/requirements.txt. litellm (every release through
+# 1.106.6) pins filelock<4.0, and the filelock advisories keep coming, fixed
+# only in 4.x, so no floor satisfies both. filelock there guards the example's
+# own lock files in a single-user Linux container. Revisit by the date, or
+# sooner when litellm allows filelock 4.
+[[PackageOverrides]]
+name = "filelock"
+ecosystem = "PyPI"
+ignore = true
+effectiveUntil = 2026-12-31T00:00:00Z
+reason = "examples/openhands/requirements.txt: litellm pins filelock<4.0 and every filelock advisory is fixed only in 4.x; the example runs as the only user in a Linux container it owns"
