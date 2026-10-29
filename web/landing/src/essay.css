@@ -42,6 +42,7 @@ a { color: inherit; }
 .top-link { min-height: 44px; display: flex; align-items: center; gap: 0.3rem; padding: 0 0.7rem; color: var(--ink-2); text-decoration: none; font-weight: 560; }
 .top-join { min-height: 44px; padding: 0 1.1rem; border-radius: 999px; background: var(--ink); color: var(--paper); font-weight: 600; }
 .film .top { display: none; }
+@media (min-width: 1200px) { html.film { zoom: 1.18; } }
 .top { transition: background .4s, color .4s, border-color .4s; }
 .night .top { background: rgba(7, 8, 12, 0.72); color: #eef1f6; border-color: rgba(255,255,255,.08); }
 .night .top-link { color: rgba(238,241,246,.8); }
@@ -99,7 +100,7 @@ code { font-family: var(--mono); font-size: 0.84em; }
 .rchip-ghost { min-height: 46px; }
 .rdot { width: 8px; height: 8px; border-radius: 50%; background: #1b1503; }
 .grip { width: 8px; height: 16px; background: radial-gradient(circle, rgba(27,21,3,.5) 1.2px, transparent 1.6px) 0 0 / 4px 4px; }
-.dragme { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); white-space: nowrap; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: #fcd34d; animation: bob 1.6s ease-in-out infinite; }
+.dragme { position: absolute; left: 50%; bottom: calc(100% + 11px); transform: translateX(-50%); white-space: nowrap; font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: #fcd34d; animation: bob 1.6s ease-in-out infinite; }
 .dragme::after { content: " ↗"; }
 .switch { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 44px; padding: 0 0.9rem 0 0.4rem; border-radius: 99px; font: 600 14px var(--sans); color: #eef1f6; background: rgba(255,255,255,.06); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
 .switch-track { position: relative; width: 44px; height: 26px; border-radius: 99px; background: rgba(255,255,255,.16); transition: background .3s; }
