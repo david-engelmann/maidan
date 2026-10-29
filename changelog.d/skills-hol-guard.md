@@ -1,0 +1,5 @@
+### Skills for every Maidan flow, and a HOL Guard policy
+
+- **Added:** nine Agent Skills beside `maidan-claimant` in `examples/claude-code/`: `maidan-reviewer`, `maidan-approver`, `maidan-dispatcher`, `maidan-planner`, `maidan-recipes`, `maidan-memory`, `maidan-inbox`, `maidan-operator` and `maidan-admin`. Together they cover all 260 MCP tools, and `scripts/check-agent-skills.py` (in the `lint` job) fails when a skill names a tool the catalog lacks or a tool has no skill.
+- **Added:** `listings/hol-guard/`: a risk tier for every MCP tool (`policy.json`) and the HOL Guard contributions generated from it by `scripts/gen-hol-guard.py`, for the hosted full endpoint, each profile endpoint and `maidan mcp-stdio`. Gates, removals, outside delivery and authority changes need the person's review; `resolve_secret` is blocked. `--check` (in the `lint` job) fails on drift, and `--local` prints the same policy as Guard custom-extension choices for a Maidan on this machine.
+- **Fixed:** the claimant runbook named a `get_thread` tool that does not exist; it reads `get_thread_context`.
