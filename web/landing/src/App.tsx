@@ -17,10 +17,11 @@ const RULES: { id: Rule; name: string; what: string }[] = [
   { id: "approval", name: "Human approval", what: "A person approves each ship." },
 ];
 type Member = { id: number; role: Role };
-type Ledger = { t: string; text: string; tone: "ok" | "bad" | "info" };
+type Ledger = { id: number; t: string; text: string; tone: "ok" | "bad" | "info" };
 type Day = { hour: number; shipped: number; dup: number; conflicts: number; incidents: number; log: Ledger[] };
 const EMPTY_DAY: Day = { hour: 0, shipped: 0, dup: 0, conflicts: 0, incidents: 0, log: [] };
 const DAY_MS = 20000;
+let SEQ = 0;
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -30,7 +31,7 @@ function rng(seed: number) {
 function tick(d: Day, hour: number, team: Record<Role, number>, rules: Record<Rule, boolean>, r: () => number): Day {
   const n = { ...d, hour, log: d.log };
   const clock = `${String(9 + Math.floor(hour)).padStart(2, "0")}:${String(Math.floor((hour % 1) * 60)).padStart(2, "0")}`;
-  const add = (text: string, tone: Ledger["tone"]) => { n.log = [{ t: clock, text, tone }, ...n.log].slice(0, 6); };
+  const add = (text: string, tone: Ledger["tone"]) => { n.log = [{ id: ++SEQ, t: clock, text, tone }, ...n.log].slice(0, 6); };
   const coders = team.coder;
   if (!coders) { if (r() < 0.08) add("No coders in the square. Tasks pile up.", "bad"); return n; }
   const plan = team.planner ? 1 : 0.55;
@@ -64,8 +65,8 @@ function python(team: Record<Role, number>, rules: Record<Rule, boolean>) {
     `agent = sq.join(role="${role}")`,
     "",
     "for task in agent.tasks():",
-    ...(rules.leases ? ["    with agent.lease(task, ttl=600):"] : ["    if True:  # leases off: others may take it too"]),
-    ...(rules.footprints ? ['        agent.declare(task, files=["src/**"])'] : []),
+    ...(rules.leases ? ["    with agent.lease(task, ttl=600):"] : ["    with agent.claim(task):  # no lease"]),
+    ...(rules.footprints ? ['        agent.declare(task, files=["src/api/**"])'] : []),
     "        result = do_work(task)",
     `        agent.submit(task, result${rules.review ? ", review=True" : ""})`,
   ].join("\n");
@@ -214,7 +215,7 @@ function Configurator() {
             {day.log.length === 0 && <li className="k-idle">The ledger fills as your square works.</li>}
             <AnimatePresence initial={false}>
               {day.log.map((l) => (
-                <motion.li key={`${l.t}-${l.text}`} className={`k-${l.tone}`} layout={!reduce}
+                <motion.li key={l.id} className={`k-${l.tone}`}
                   initial={reduce ? false : { opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
                   <time>{l.t}</time>{l.text}
                 </motion.li>
