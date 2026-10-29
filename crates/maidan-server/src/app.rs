@@ -1599,6 +1599,7 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/workspaces/{wid}/app-installations",
             get(apps::list_app_installations),
         )
+        .route("/ui/api/members/{id}", get(routes::get_member))
         .route(
             "/ui/api/members/{id}/notifications",
             get(routes::list_member_notifications),
@@ -1757,6 +1758,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::answer_approval_gate),
         )
         // Prefs console: self-only writes.
+        .route(
+            "/ui/api/members/{id}",
+            patch(routes::set_member_display_name),
+        )
         .route(
             "/ui/api/members/{id}/notification-prefs",
             put(routes::set_member_notification_pref),

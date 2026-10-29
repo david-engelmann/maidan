@@ -8,13 +8,13 @@ use crate::dto::{
     ListEventsQuery, ListMessageEditsQuery, ListMessagesQuery, ListThreadsQuery,
     MintApiTokenResponse, OidcCallbackQuery, OidcLoginQuery, OidcSignupForm, OidcSignupQuery,
     PeerResponse, RenameWorkspace, SearchQuery, SessionResponse, SessionWorkspaces,
-    ThreadTransitionsQuery,
+    SetMemberDisplayName, ThreadTransitionsQuery,
 };
 use crate::error::ProblemDetails;
 use crate::openapi::schemas::SearchHit;
 use maidan_types::{
-    ApprovalGate, AuditEvent, Channel, Message, MessageEdit, StoredEvent, Thread, ThreadArtifact,
-    ThreadReview, ThreadTransition, Workspace,
+    ApprovalGate, AuditEvent, Channel, Member, Message, MessageEdit, StoredEvent, Thread,
+    ThreadArtifact, ThreadReview, ThreadTransition, Workspace,
 };
 
 /// Start an OIDC login
@@ -519,6 +519,50 @@ pub fn ui_list_thread_artifacts() {}
     )
 )]
 pub fn ui_list_thread_transitions() {}
+
+/// Get a member (console)
+///
+/// The bearer tree's `GET /members/{id}` for the console, so the session
+/// panel can show the signed-in member's own display name.
+#[utoipa::path(
+    get,
+    path = "/ui/api/members/{id}",
+    tag = "auth",
+    params(("id" = Uuid, Path, description = "Member id")),
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Member),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_get_member() {}
+
+/// Set your own display name (console)
+///
+/// The bearer tree's `PATCH /members/{id}`. A blank name clears it. The name
+/// is personal state, so the caller must be that member.
+#[utoipa::path(
+    patch,
+    path = "/ui/api/members/{id}",
+    tag = "auth",
+    params(("id" = Uuid, Path, description = "Member id")),
+    request_body = SetMemberDisplayName,
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, body = Member),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn ui_set_member_display_name() {}
 
 /// Search a workspace's messages (console)
 #[utoipa::path(

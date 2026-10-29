@@ -335,6 +335,11 @@
           <dt>Workspace</dt><dd id="session-workspace">—</dd>
           <dt>Credential</dt><dd id="session-credential">—</dd>
         </dl>
+        <div class="row" id="member-name-row">
+          <label>Your name <input id="member-display-name" autocomplete="name" /></label>
+          <button id="member-display-name-save" type="button">Save name</button>
+        </div>
+        <p class="muted">The name other people see. Leave it blank to clear it.</p>
         <div id="session-rotate" class="row" hidden>
           <button id="rotate-own-token" type="button">Rotate this token</button>
           <span class="muted">A new secret for the same member, capabilities and expiry. The old one stops working at once, so an agent that uses it needs the new one.</span>
