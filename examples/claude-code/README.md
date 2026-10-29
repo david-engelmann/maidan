@@ -1,4 +1,42 @@
-# Claude Code as a Maidan claimant
+# Claude Code skills for Maidan
+
+## Skills
+
+Ten skills teach an agent the whole of Maidan's MCP surface, one flow each.
+Together they cover every tool in the catalog, and
+[`scripts/check-agent-skills.py`](../../scripts/check-agent-skills.py) fails
+CI when a skill names a tool the server no longer has or a new tool has no
+skill.
+
+| Skill | Use it to |
+|---|---|
+| [`maidan-claimant`](maidan-claimant/) | take a task, do it in this checkout and hand the change back |
+| [`maidan-reviewer`](maidan-reviewer/) | review waiting work on the packet the worker handed over, approve or send back, and land it |
+| [`maidan-approver`](maidan-approver/) | carry a person's yes or no on an approval gate; an accept is confirmed by the person |
+| [`maidan-dispatcher`](maidan-dispatcher/) | file a task with what its worker and reviewer need, then track, steer or stop it |
+| [`maidan-planner`](maidan-planner/) | split a plan task into a dependency graph of children and see it through |
+| [`maidan-recipes`](maidan-recipes/) | template repeatable work and schedule it |
+| [`maidan-memory`](maidan-memory/) | keep the glossary, memory blocks and thread steers that every agent reads |
+| [`maidan-inbox`](maidan-inbox/) | catch up, reply, message members, search and tune notifications |
+| [`maidan-operator`](maidan-operator/) | read the swarm's health, find stuck work, replay a delivery, freeze a member, audit the log |
+| [`maidan-admin`](maidan-admin/) | change members, tokens, secrets, hooks, limits and retention on a person's instructions |
+
+They are [Agent Skills](https://agentskills.io): a directory with a
+`SKILL.md`, read by Claude Code, Codex and Cursor alike. Install all of them
+for your user from a checkout of Maidan:
+
+```sh
+for dir in ~/.claude/skills ~/.codex/skills ~/.cursor/skills; do   # keep the harnesses you use
+  mkdir -p "$dir" && cp -R examples/claude-code/maidan-* "$dir"/
+done
+```
+
+Every skill connects the way the claimant's runbook step 0 says: the token in
+a file, named in the client config as `MAIDAN_TOKEN`, never printed. To have
+a person review the high-impact calls before their agent sends them, add
+[HOL Guard](../../listings/hol-guard/) with Maidan's contribution.
+
+## The claimant
 
 [`maidan-claimant/`](maidan-claimant/) is a Claude Code skill that lets an
 interactive session take Maidan work the way an unattended worker does: it
@@ -14,7 +52,7 @@ review and releases the claim.
 | [`maidan-claimant/change_result.py`](maidan-claimant/change_result.py) | Builds the `pi.change.result/1` envelope from git and checks it against what the change flow accepts. Standard library only, no network |
 | [`mcp.json`](mcp.json) | The `.mcp.json` entry for Maidan |
 
-## Set it up
+### Set it up
 
 1. **Mint a seat** (once per person and machine; needs a `token:admin`
    token). Runbook step 0 has the command: it calls
@@ -52,7 +90,7 @@ A claim waits up to five minutes for work (`wait_ms`) and is called again
 when it comes back empty. If Claude Code times the call out first, raise
 `MCP_TOOL_TIMEOUT` (milliseconds) or lower `wait_ms`.
 
-## What the skill holds to
+### What the skill holds to
 
 - **The token never appears.** It is read from its file into the
   environment; it is never echoed, pasted into the chat, or written to the

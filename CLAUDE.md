@@ -157,7 +157,12 @@ Working beside other agents (several PRs are usually open at once):
   `Store::get_member_in(workspace, id)` (from #1152); an MCP tool declares
   `annotations` (a title and the four hints) and has a row, with a reason for
   each hint, in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`
-  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`).
+  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`),
+  a risk tier in `listings/hol-guard/policy.json` (then run
+  `python3 scripts/gen-hol-guard.py`), and a skill under
+  `examples/claude-code/` that says how to use it
+  (`scripts/check-agent-skills.py`). A new profile in `profiles.rs` also
+  regenerates the Guard files.
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
   merged with `gh pr merge --squash --match-head-commit <sha>`; `gh pr checks` and even

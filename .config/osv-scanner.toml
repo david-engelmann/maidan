@@ -42,6 +42,6 @@ reason = "fuzz/Cargo.lock, sdk/rust/Cargo.lock: block-buffer 0.10.4 under digest
 [[PackageOverrides]]
 name = "filelock"
 ecosystem = "PyPI"
-ignore = true
+vulnerability.ignore = true
 effectiveUntil = 2026-12-31T00:00:00Z
 reason = "examples/openhands/requirements.txt: litellm pins filelock<4.0 and every filelock advisory is fixed only in 4.x; the example runs as the only user in a Linux container it owns"

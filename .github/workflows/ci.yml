@@ -134,6 +134,10 @@ jobs:
         run: ./scripts/check-capped.sh
       - name: no internal project names
         run: ./scripts/check-no-internal-names.sh
+      - name: agent skills cover the MCP catalog
+        run: python3 scripts/check-agent-skills.py
+      - name: HOL Guard contributions match the tool tiers
+        run: python3 scripts/gen-hol-guard.py --check
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
 
