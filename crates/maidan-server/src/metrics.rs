@@ -432,7 +432,7 @@ pub fn record_github_mark_ready(outcome: &str) {
 }
 
 /// A projector-egress delivery leaving the durable queue, by `surface` (`slack`
-/// | `github`) and `outcome`:
+/// | `github` | `github_branch` | `linear` | `other`) and `outcome`:
 /// - `sent` — posted to the external surface.
 /// - `retry` — failed transiently; rescheduled with backoff (377.2).
 /// - `dead` — dead-lettered after exhausting its attempts (377.2).
@@ -440,16 +440,59 @@ pub fn record_github_mark_ready(outcome: &str) {
 ///   delivery dead-lettered without further retries (377.3).
 /// - `unroutable` — the stored destination does not decode, so no sender can
 ///   address it; dead-lettered on sight (377.2).
+/// - `refused` — the surface answered, and the result refused delivery.
+/// - `over_allowance` — parked: the workspace is past its deliveries allowance.
 ///
 /// The queue-level companion to `maidan_{slack,github}_egress_total`, which
 /// stay a count of *post attempts* against each surface.
-pub fn record_egress_delivery(surface: &str, outcome: &str) {
+///
+/// `surface` reads through the same closed list as
+/// `maidan_result_deliveries_total` (an unknown stored string is `other`), and
+/// `outcome` is an [`EgressOutcome`], so neither label can grow a new series.
+pub fn record_egress_delivery(surface: &str, outcome: EgressOutcome) {
     counter!(
         "maidan_egress_deliveries_total",
-        "surface" => surface.to_string(),
-        "outcome" => outcome.to_string(),
+        "surface" => delivery_surface(surface),
+        "outcome" => outcome.as_str(),
     )
     .increment(1);
+}
+
+/// What happened to one egress delivery: the closed `outcome` label of
+/// `maidan_egress_deliveries_total`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EgressOutcome {
+    Sent,
+    Retry,
+    Dead,
+    Disabled,
+    Unroutable,
+    Refused,
+    OverAllowance,
+}
+
+impl EgressOutcome {
+    pub const ALL: [EgressOutcome; 7] = [
+        EgressOutcome::Sent,
+        EgressOutcome::Retry,
+        EgressOutcome::Dead,
+        EgressOutcome::Disabled,
+        EgressOutcome::Unroutable,
+        EgressOutcome::Refused,
+        EgressOutcome::OverAllowance,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EgressOutcome::Sent => "sent",
+            EgressOutcome::Retry => "retry",
+            EgressOutcome::Dead => "dead",
+            EgressOutcome::Disabled => "disabled",
+            EgressOutcome::Unroutable => "unroutable",
+            EgressOutcome::Refused => "refused",
+            EgressOutcome::OverAllowance => "over_allowance",
+        }
+    }
 }
 
 /// A retry the per-host retry budget refused, by `worker` (`webhook`,
@@ -719,4 +762,57 @@ pub async fn middleware(request: Request, next: Next) -> Response {
     .record(elapsed);
 
     response
+}
+
+#[cfg(test)]
+mod egress_label_tests {
+    use super::{delivery_surface, EgressOutcome};
+
+    #[test]
+    fn every_known_surface_keeps_its_own_label() {
+        for surface in ["github", "github_branch", "slack", "linear"] {
+            assert_eq!(delivery_surface(surface), surface);
+        }
+    }
+
+    #[test]
+    fn a_surface_this_build_does_not_know_reads_as_other() {
+        for stored in ["teams", "", "Slack", "github ", "x\u{0}y"] {
+            assert_eq!(delivery_surface(stored), "other", "{stored:?}");
+        }
+    }
+
+    #[test]
+    fn every_egress_surface_variant_has_a_closed_label() {
+        use maidan_types::EgressSurface;
+        for surface in [
+            EgressSurface::Slack,
+            EgressSurface::Github,
+            EgressSurface::GithubBranch,
+            EgressSurface::Linear,
+        ] {
+            assert_eq!(delivery_surface(surface.as_str()), surface.as_str());
+        }
+    }
+
+    #[test]
+    fn egress_outcomes_are_a_fixed_set_of_distinct_snake_case_labels() {
+        let labels: Vec<&str> = EgressOutcome::ALL.iter().map(|o| o.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "sent",
+                "retry",
+                "dead",
+                "disabled",
+                "unroutable",
+                "refused",
+                "over_allowance"
+            ]
+        );
+        let mut deduped = labels.clone();
+        deduped.sort_unstable();
+        deduped.dedup();
+        assert_eq!(deduped.len(), labels.len());
+    }
 }
