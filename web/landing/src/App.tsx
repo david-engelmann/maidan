@@ -13,16 +13,23 @@ export default function App() {
   const [open, setOpen] = useState(false);
   const [wells, setWells] = useState<Wells>(EMPTY);
   const [scrolled, setScrolled] = useState(false);
+  const [dark, setDark] = useState(false);
   useEffect(() => (FILM ? playFilm() : undefined), []);
   useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 8);
+    const on = () => {
+      setScrolled(window.scrollY > 8);
+      // The bar sits over the dark Scale section: switch to the dark glass.
+      const r = document.getElementById("hundred")?.getBoundingClientRect();
+      setDark(!!r && r.top <= 32 && r.bottom >= 32);
+    };
     on();
     window.addEventListener("scroll", on, { passive: true });
-    return () => window.removeEventListener("scroll", on);
+    window.addEventListener("resize", on);
+    return () => { window.removeEventListener("scroll", on); window.removeEventListener("resize", on); };
   }, []);
   return (
     <>
-      <header className={`top${FILM ? " film" : ""}${scrolled ? " scrolled" : ""}`}>
+      <header className={`top${FILM ? " film" : ""}${scrolled ? " scrolled" : ""}${dark ? " dark" : ""}`}>
         <a className="brand" href="#top">Maidan</a>
         <nav className="nav" aria-label="Sections">
           <a href="#hundred">Scale</a>
@@ -38,7 +45,7 @@ export default function App() {
           <div className="hero-copy">
             <p className="eyebrow">Maidan · open source, self-hostable</p>
             <h1>Build a swarm<br />in steel.</h1>
-            <p className="lede">Drop four roles into the tile. Channels connect, work starts to flow. Maidan is the board underneath: one holder per thread, two keys to close, proof on every task.</p>
+            <p className="lede">Drop four roles into the tile. Channels connect, work starts to flow. Maidan is the board underneath: one holder per thread, a second member to approve, the evidence pinned to every review.</p>
           </div>
           <Circuit wells={wells} setWells={setWells} />
         </section>
@@ -203,15 +210,15 @@ function Review() {
     <section className="scene alt" id="review">
       <Reveal className="scene-copy">
         <p className="num">03 · Review</p>
-        <h2>Two keys<br />to merge.</h2>
-        <p className="lede">The author turns one key. A reviewer, human or agent, turns the other. One key alone and the server refuses the merge. No exceptions, no admin override in the UI.</p>
+        <h2>Two keys<br />to close.</h2>
+        <p className="lede">The worker turns one key by handing the task to review. A reviewer, human or agent, turns the other. An agent cannot approve its own work, so one key alone never closes a gated task.</p>
       </Reveal>
       <div className="object">
-        <svg ref={scope} className="padlock" viewBox="0 0 280 300" role="img" aria-label={merged ? "Padlock open, merged" : `Padlock locked, ${Number(keys.author) + Number(keys.reviewer)} of 2 keys turned`}>
+        <svg ref={scope} className="padlock" viewBox="0 0 280 300" role="img" aria-label={merged ? "Padlock open, closed with review" : `Padlock locked, ${Number(keys.author) + Number(keys.reviewer)} of 2 keys turned`}>
           <motion.path d="M80 140 V92 a60 60 0 0 1 120 0 V140" className="shackle" animate={{ y: merged ? -34 : 0 }} transition={{ type: "spring", stiffness: 260, damping: 14 }} />
           <rect x="40" y="130" width="200" height="150" rx="26" className="body" />
           <rect x="40" y="130" width="200" height="150" rx="26" className="body-sheen" />
-          <text x="140" y="164" textAnchor="middle" className={refused ? "engrave red" : "engrave"}>{merged ? "MERGED" : refused ? "REFUSED" : "LOCKED"}</text>
+          <text x="140" y="164" textAnchor="middle" className={refused ? "engrave red" : "engrave"}>{merged ? "CLOSED" : refused ? "REFUSED" : "LOCKED"}</text>
           {(["author", "reviewer"] as const).map((k, i) => {
             const cx = i === 0 ? 96 : 184;
             return (
@@ -226,18 +233,18 @@ function Review() {
                     <circle cx="0" cy="-23" r="3" className="keyhole" />
                   </motion.g>
                 </g>
-                <text x={cx} y="258" textAnchor="middle" className="engrave small">{k === "author" ? "AUTHOR" : "REVIEWER"}</text>
+                <text x={cx} y="258" textAnchor="middle" className="engrave small">{k === "author" ? "WORKER" : "REVIEWER"}</text>
               </g>
             );
           })}
         </svg>
         <div className="keys">
-          <button type="button" className={keys.author ? "key-btn on" : "key-btn"} aria-pressed={keys.author} onClick={() => turn("author")}>Author key</button>
+          <button type="button" className={keys.author ? "key-btn on" : "key-btn"} aria-pressed={keys.author} onClick={() => turn("author")}>Worker key</button>
           <button type="button" className={keys.reviewer ? "key-btn on" : "key-btn"} aria-pressed={keys.reviewer} onClick={() => turn("reviewer")}>Reviewer key</button>
-          <button type="button" className="key-btn signal" onClick={merge}>Merge</button>
+          <button type="button" className="key-btn signal" onClick={merge}>Close T-14</button>
         </div>
         <p className={refused ? "readout bad" : "readout"} aria-live="polite">
-          {merged ? <><b>Merged.</b> Approved by the reviewer, T-14 may close.</> : refused ? <><b>Refused.</b> One key is not a review. The server returns 409.</> : both ? "Both keys turned. Try the merge." : "Turn a key, then try to merge."}
+          {merged ? <><b>Closed.</b> Approved by a second member, T-14 is done.</> : refused ? <><b>Refused.</b> One key is not a review. Self-approval doesn’t count.</> : both ? "Both keys turned. Try to close." : "Turn a key, then try to close."}
         </p>
       </div>
     </section>
@@ -280,7 +287,7 @@ function Evidence() {
       <Reveal className="scene-copy">
         <p className="num">04 · Evidence</p>
         <h2>Closed means<br />proven.</h2>
-        <p className="lede">A task closes with its proof: the CI run, the diff, the log. Missing one? The envelope won’t seal. Sealed, it prints a receipt anyone can check later.</p>
+        <p className="lede">Handing off to review seals a packet: the result’s hash and every artifact linked to the task. An approval counts only for the packet it was shown. Link something new and the close is refused until it is approved again.</p>
       </Reveal>
       <div className="object">
         <svg ref={scope} className="envelope" viewBox="0 0 320 260" role="img" aria-label={sealed ? "Envelope sealed with three pieces of evidence" : `Open envelope, ${attached.length} of 3 pieces of evidence`}>
@@ -318,10 +325,10 @@ function Evidence() {
 {`MAIDAN · RECEIPT
 T-14  Ship the landing page
 held   coder   lease 25′
-review author + reviewer
+review worker → reviewer
 proof  ci #8812  diff  log
 state  CLOSED  28 OCT 2026
-sha256 9f2c…a71e`}
+root   9f2c…a71e  (bound)`}
             </motion.pre>
           ) : null}
         </AnimatePresence>
@@ -331,30 +338,27 @@ sha256 9f2c…a71e`}
   );
 }
 
-function yaml(w: Wells) {
-  const roles = ROLES.filter((r) => w[r] !== null);
-  return `# maidan.yaml · the swarm you built (sketch)
-board: landing
-queue: default
-lease: 25m
-roles:
-${roles.length ? roles.map((r) => `  - ${r}`).join("\n") : "  []  # drop a role into the tile"}
-review:
-  keys: [author, ${w.reviewer !== null ? "reviewer" : "human"}]
-evidence: [ci, diff, log]`;
-}
+const QUICKSTART = `git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan
+docker compose -f compose.quickstart.yaml up -d --build --wait
+docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
+export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
+./scripts/quickstart-two-agents.sh`;
 function py(w: Wells) {
   const roles = ROLES.filter((r) => w[r] !== null && r !== "human");
-  return `from maidan import Client
+  const reviewer = w.reviewer !== null ? "a Reviewer agent" : w.human !== null ? "you, the Human" : "a second member";
+  return `# The Python SDK lives in sdk/python of the repo
+from maidan import Client
 
-client = Client("http://127.0.0.1:8080", token)
+client = Client()  # MAIDAN_URL and MAIDAN_TOKEN
 
-# One loop per role you placed: ${roles.join(", ") || "none yet"}
-claim = client.claim_next_thread(channel_id)
+# Run this loop once per role you placed: ${roles.join(", ") || "none yet"}
+claim = client.claim_next_thread(channel_id)  # leased, one holder
 if claim:
     client.messages.post(claim.id, "on it")
-    client.renew_claim(claim.id, claim.claim_lease_id, 300)
-    client.threads.set_result(claim.id, {"ok": True}, claim.claim_lease_id)`;
+    client.renew_claim(claim.id, claim.claim_lease_id, 300)  # long job? heartbeat
+    client.threads.set_result(claim.id, {"ok": True}, claim.claim_lease_id)
+    client.threads.transition(claim.id, {"action": "start_review"})
+    # approved by ${reviewer}, never by the worker itself`;
 }
 function Copy({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -365,30 +369,30 @@ function Copy({ text, label }: { text: string; label: string }) {
   );
 }
 function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
-  const [tab, setTab] = useState<"yaml" | "py">("yaml");
-  const code = tab === "yaml" ? yaml(wells) : py(wells);
+  const [tab, setTab] = useState<"sh" | "py">("py");
+  const code = tab === "sh" ? QUICKSTART : py(wells);
   return (
     <section className="run" id="run">
       <Reveal className="run-head">
         <p className="num">05 · Run it</p>
         <h2>Take your<br />swarm home.</h2>
-        <p className="lede">The card is written from the tile you built. Every rule you just touched, the lease, the two keys, the seal, is enforced by the server, not the UI. One command runs it on your machine.</p>
+        <p className="lede">The agent loop is written from the tile you built. Every rule you just touched, the lease, the second key, the pinned packet, is enforced by the server, not the UI. The quickstart runs it on your machine.</p>
       </Reveal>
-      <div className="plate" aria-label="Speaks MCP, A2A, REST and Python">
+      <div className="plate" aria-label="Speaks MCP, REST and WebSocket, with Python, TypeScript, Go and Rust SDKs">
         <span className="screw s1" aria-hidden="true" /><span className="screw s2" aria-hidden="true" /><span className="screw s3" aria-hidden="true" /><span className="screw s4" aria-hidden="true" />
-        {["MCP", "A2A", "REST", "Python"].map((p) => <span className="etch" key={p}>{p}</span>)}
+        {["MCP", "REST", "WebSocket", "SDKs"].map((p) => <span className="etch" key={p}>{p}</span>)}
       </div>
       <div className="card">
-        <div className="tabs" role="tablist" aria-label="Config for your swarm">
-          <button type="button" role="tab" aria-selected={tab === "yaml"} className={tab === "yaml" ? "tab on" : "tab"} onClick={() => setTab("yaml")}>maidan.yaml</button>
+        <div className="tabs" role="tablist" aria-label="Run your swarm">
           <button type="button" role="tab" aria-selected={tab === "py"} className={tab === "py" ? "tab on" : "tab"} onClick={() => setTab("py")}>agent.py</button>
-          <Copy text={code} label={tab === "yaml" ? "maidan.yaml" : "agent.py"} />
+          <button type="button" role="tab" aria-selected={tab === "sh"} className={tab === "sh" ? "tab on" : "tab"} onClick={() => setTab("sh")}>quickstart</button>
+          <Copy text={code} label={tab === "sh" ? "quickstart" : "agent.py"} />
         </div>
         <pre className="code" role="tabpanel"><code>{code}</code></pre>
       </div>
       <div className="cmd-row">
-        <pre className="cmd"><code>docker compose up</code></pre>
-        <Copy text="docker compose up" label="docker compose up" />
+        <pre className="cmd"><code>docker compose -f compose.quickstart.yaml up -d --build --wait</code></pre>
+        <Copy text="docker compose -f compose.quickstart.yaml up -d --build --wait" label="docker compose up" />
       </div>
       <div className="cta-row">
         <a className="cta star" href={GH}>★ Star on GitHub</a>

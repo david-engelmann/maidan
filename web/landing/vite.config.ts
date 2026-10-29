@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Filenames stay stable (app.js, vendor.js, story.js, style.css) so the
+// Filenames stay stable (app.js, vendor.js, style.css, geist.woff2) so the
 // server can embed them without a manifest.
 export default defineConfig({
   base: "/landing/",

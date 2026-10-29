@@ -1272,14 +1272,6 @@ pub fn router(state: AppState) -> Router {
                 "text/javascript; charset=utf-8",
                 include_bytes!("../static/landing/dist/vendor.js"),
             ),
-            "story.js" => (
-                "text/javascript; charset=utf-8",
-                include_bytes!("../static/landing/dist/story.js"),
-            ),
-            "aurora.js" => (
-                "text/javascript; charset=utf-8",
-                include_bytes!("../static/landing/dist/aurora.js"),
-            ),
             "style.css" => (
                 "text/css; charset=utf-8",
                 include_bytes!("../static/landing/dist/style.css"),
