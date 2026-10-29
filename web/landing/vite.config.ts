@@ -24,8 +24,8 @@ export default defineConfig({
         },
         manualChunks(id) {
           if (id.includes("node_modules")) return "vendor";
-          if (id.includes("/src/story")) return "story";
-          if (id.includes("/src/aurora")) return "aurora";
+          
+          
         },
       },
     },

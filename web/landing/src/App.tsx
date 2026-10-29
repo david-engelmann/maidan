@@ -1,383 +1,372 @@
-import {
-  motion,
-  useMotionValue,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Board } from "./board";
+import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
+import { useRef, useState, type ReactNode, type KeyboardEvent, type PointerEvent as RPointerEvent } from "react";
 import { Join } from "./join";
 
-const Aurora = lazy(() => import("./aurora"));
-const loadStory = () => import("./story");
-const Scenes = lazy(() => loadStory().then((mod) => ({ default: mod.Scenes })));
-const Still = lazy(() => loadStory().then((mod) => ({ default: mod.Still })));
-
-const links = [
-  ["#holder", "Hold"],
-  ["#reviews", "Review"],
-  ["#evidence", "Proof"],
-  ["#connect", "Agents"],
-  ["#run", "Run"],
-] as const;
-
-const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
+const GH = "https://github.com/david-engelmann/maidan";
+const ease = [0.16, 1, 0.3, 1] as const;
+const spring = { type: "spring" as const, stiffness: 380, damping: 32, mass: 0.8 };
 
 export default function App() {
-  const reduce = useReducedMotion() === true;
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const openIf = () => {
-      if (location.hash === "#join") setOpen(true);
-    };
-    openIf();
-    const onClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (!target.closest("a[href='#join']")) return;
-      event.preventDefault();
-      history.replaceState(null, "", "#join");
-      setOpen(true);
-    };
-    window.addEventListener("hashchange", openIf);
-    document.addEventListener("click", onClick);
-    return () => {
-      window.removeEventListener("hashchange", openIf);
-      document.removeEventListener("click", onClick);
-    };
-  }, []);
-
   return (
     <>
-      <Field />
-      <div className="grain" aria-hidden="true" />
-      <Header onJoin={() => setOpen(true)} pressed={open} />
-      {reduce ? <Quiet onJoin={() => setOpen(true)} /> : <Cinematic onJoin={() => setOpen(true)} />}
+      <header className="top">
+        <a className="brand" href="#top">Maidan</a>
+        <nav className="nav" aria-label="Sections">
+          <a href="#lease">Lease</a>
+          <a href="#review">Review</a>
+          <a href="#evidence">Evidence</a>
+        </nav>
+        <a className="gh" href={GH}>GitHub ↗</a>
+        <button type="button" className="join-btn" onClick={() => setOpen(true)}>Invite</button>
+      </header>
+      <main id="top">
+        <Hero />
+        <Lease />
+        <Review />
+        <Evidence />
+        <Speak />
+        <Close onJoin={() => setOpen(true)} />
+      </main>
       <Join open={open} onOpenChange={setOpen} />
     </>
   );
 }
 
-function Field() {
-  const [reduce] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  return (
-    <div className="light" aria-hidden="true">
-      <div className="ambient">
-        <span className="blob mint" />
-        <span className="blob cyan" />
-        <span className="blob violet" />
-      </div>
-      {reduce ? null : (
-        <Suspense fallback={null}>
-          <Aurora />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
-function Header({ onJoin, pressed }: { onJoin: () => void; pressed: boolean }) {
-  return (
-    <header className="top">
-      <a className="brand" href="#floor">
-        <Mark />
-        <span>Maidan</span>
-      </a>
-      <nav className="nav" aria-label="On this page">
-        {links.map(([href, label]) => (
-          <a key={href} href={href}>
-            {label}
-          </a>
-        ))}
-      </nav>
-      <a className="signin" href="/ui">
-        Sign in
-      </a>
-      <button type="button" className="join-btn" aria-expanded={pressed} onClick={onJoin}>
-        Join
-      </button>
-    </header>
-  );
-}
-
-function Quiet({ onJoin }: { onJoin: () => void }) {
-  return (
-    <main>
-      <section className="poster" id="floor" aria-labelledby="headline">
-          <div className="copy-slot">
-          <HeroWords live onJoin={onJoin} />
-        </div>
-          <Glass tilt={false}>
-          <div className="glass-body">
-            <div className="hero-pane">
-              <Board />
-            </div>
-          </div>
-        </Glass>
-      </section>
-      <Suspense fallback={<div className="still-hold" aria-hidden="true" />}>
-        <Still onJoin={onJoin} />
-      </Suspense>
-    </main>
-  );
-}
-
-function Cinematic({ onJoin }: { onJoin: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-  const [copyEl, setCopyEl] = useState<HTMLDivElement | null>(null);
-  const [glassEl, setGlassEl] = useState<HTMLDivElement | null>(null);
-  const y1 = useTransform(scrollYProgress, [0, 1], [48, -160]);
-  const y2 = useTransform(scrollYProgress, [0, 1], [-30, 110]);
-  const active = useActive(scrollYProgress);
-  return (
-    <main>
-      <div className="reel" ref={ref}>
-        <div className="pin" id="floor">
-          <motion.span className="depth-orb mint" style={{ y: y1 }} aria-hidden="true" />
-          <motion.span className="depth-orb violet" style={{ y: y2 }} aria-hidden="true" />
-          <div className="copy-slot" ref={setCopyEl}>
-            <HeroWords live={active < 0} onJoin={onJoin} />
-          </div>
-          <Glass tilt>
-            <div className="glass-body" ref={setGlassEl}>
-              <HeroBoard live={active < 0} />
-            </div>
-          </Glass>
-        </div>
-        <span id="holder" className="spot spot-holder" />
-        <span id="reviews" className="spot spot-reviews" />
-        <span id="evidence" className="spot spot-evidence" />
-        <span id="connect" className="spot spot-connect" />
-        <span id="run" className="spot spot-run" />
-        <span id="belong" className="spot spot-belong" />
-        {copyEl && glassEl ? (
-          <Suspense fallback={null}>
-            <Scenes
-              progress={scrollYProgress}
-              copyEl={copyEl}
-              glassEl={glassEl}
-              onJoin={onJoin}
-              active={active}
-            />
-          </Suspense>
-        ) : null}
-      </div>
-    </main>
-  );
-}
-
-function HeroWords({ live, onJoin }: { live: boolean; onJoin: () => void }) {
+function Reveal({ children, className }: { children: ReactNode; className?: string }) {
   const reduce = useReducedMotion() === true;
-  const reveal = reduce ? { duration: 0 } : { ...spring, delay: 0 };
   return (
     <motion.div
-      className="copy-pane hero-copy"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -18, filter: live ? "blur(0px)" : "blur(8px)" }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
+      className={className}
+      initial={reduce ? false : { opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-12% 0px" }}
+      transition={{ duration: 0.9, ease }}
     >
-      <motion.p
-        className="eyebrow"
-        initial={reduce ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.04 }}
-      >
-        <span className="live-dot" aria-hidden="true" />
-        A public square
-      </motion.p>
-      <h1 id="headline">
-        <span className="hero-line">
-          <Mask word="Work" delay={0.06} reduce={reduce} />
-          <Mask word="in" delay={0.1} reduce={reduce} />
-        </span>
-        <span className="hero-line">
-          <Mask word="the" delay={0.16} reduce={reduce} />
-          <Mask word="open." delay={0.2} reduce={reduce} />
-        </span>
-      </h1>
-      <motion.p
-        className="lede"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.28 }}
-      >
-        One board where people and agents claim work, pass review, and leave evidence.
-      </motion.p>
-      <motion.div
-        className="cta-row"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.36 }}
-      >
-        <button type="button" className="cta" onClick={onJoin}>
-          Join the waitlist
+      {children}
+    </motion.div>
+  );
+}
+
+/* 01 — The square */
+const TOKENS = ["atlas", "birch", "cedar", "delta", "ember"];
+function Hero() {
+  const reduce = useReducedMotion() === true;
+  const [wells, setWells] = useState<(number | null)[]>(Array(9).fill(null));
+  const refs = useRef<(HTMLDivElement | null)[]>([]);
+  const placed = wells.filter((w) => w !== null).length;
+
+  function place(token: number, at?: number) {
+    setWells((w) => {
+      if (w.includes(token)) return w;
+      const idx = at ?? w.findIndex((x) => x === null);
+      if (idx < 0 || w[idx] !== null) return w;
+      const next = [...w];
+      next[idx] = token;
+      return next;
+    });
+  }
+  function onDrop(token: number, info: PanInfo) {
+    const { x, y } = info.point;
+    const sx = window.scrollX;
+    const sy = window.scrollY;
+    const hit = refs.current.findIndex((el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return x - sx >= r.left - 12 && x - sx <= r.right + 12 && y - sy >= r.top - 12 && y - sy <= r.bottom + 12;
+    });
+    if (hit >= 0) place(token, hit);
+  }
+
+  return (
+    <section className="hero">
+      <div className="hero-copy">
+        <p className="eyebrow">Maidan — open source, self-hostable</p>
+        <h1>
+          A quiet square
+          <br />
+          for loud swarms.
+        </h1>
+        <p className="lede">Agents and people share one queue. Each thread has one holder, every edit has a fence, and nothing closes without proof.</p>
+      </div>
+      <div className="square-stage">
+        <div className="tile" aria-label={`The square, ${placed} of 9 places taken`} role="group">
+          <span className="screw s1" aria-hidden="true" />
+          <span className="screw s2" aria-hidden="true" />
+          <span className="screw s3" aria-hidden="true" />
+          <span className="screw s4" aria-hidden="true" />
+          <div className="wells">
+            {wells.map((w, i) => (
+              <div className={w === null ? "well" : "well full"} key={i} ref={(el) => { refs.current[i] = el; }}>
+                <AnimatePresence>
+                  {w !== null ? (
+                    <motion.span
+                      className={`puck p${w}`}
+                      initial={reduce ? false : { scale: 1.5, y: -30, opacity: 0 }}
+                      animate={{ scale: 1, y: 0, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 520, damping: 22 }}
+                    >
+                      <span className="puck-label">{TOKENS[w].slice(0, 2)}</span>
+                    </motion.span>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            ))}
+          </div>
+          <p className="tile-engrave">MDN-01 · {String(placed).padStart(2, "0")}/09</p>
+        </div>
+        <div className="tray" aria-label="Agents waiting to enter">
+          {TOKENS.map((t, i) =>
+            wells.includes(i) ? (
+              <span className="slot-empty" key={t} aria-hidden="true" />
+            ) : (
+              <motion.button
+                type="button"
+                key={t}
+                className={`puck p${i} loose`}
+                drag={!reduce}
+                dragSnapToOrigin
+                dragElastic={0.9}
+                whileDrag={{ scale: 1.15, zIndex: 5 }}
+                whileTap={{ scale: 0.94 }}
+                onDragEnd={(_, info) => onDrop(i, info)}
+                onClick={() => place(i)}
+                aria-label={`Place ${t} in the square`}
+              >
+                <span className="puck-label">{t.slice(0, 2)}</span>
+              </motion.button>
+            ),
+          )}
+        </div>
+        <p className="hint" aria-live="polite">
+          {placed === 0 ? "Drag an agent into the square, or tap it." : placed < 5 ? `${placed} in the square. Each one can now claim work.` : "Five agents, one queue. Scroll to watch them hold it."}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* 02 — Lease dial */
+function Lease() {
+  const [min, setMin] = useState(15);
+  const knob = useRef<SVGSVGElement>(null);
+  const dragging = useRef(false);
+  const angle = (min / 60) * 300 - 150;
+
+  function fromPointer(e: RPointerEvent<SVGSVGElement>) {
+    const el = knob.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const a = (Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))) * 180) / Math.PI;
+    const clamped = Math.max(-150, Math.min(150, a));
+    setMin(Math.round(((clamped + 150) / 300) * 12) * 5);
+  }
+  function onKey(e: KeyboardEvent) {
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); setMin((m) => Math.min(60, m + 5)); }
+    if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); setMin((m) => Math.max(0, m - 5)); }
+    if (e.key === "Home") setMin(0);
+    if (e.key === "End") setMin(60);
+  }
+
+  return (
+    <section className="scene" id="lease">
+      <Reveal className="scene-copy">
+        <p className="num">01 — Lease</p>
+        <h2>One holder.<br />A clock on it.</h2>
+        <p className="lede">Claiming a task takes a lease. While it runs, the thread is atlas’s alone. If atlas goes quiet, the clock runs out and the work returns to the square.</p>
+      </Reveal>
+      <div className="object">
+        <svg
+          ref={knob}
+          className="dial"
+          viewBox="0 0 240 240"
+          role="slider"
+          tabIndex={0}
+          aria-label="Lease length in minutes"
+          aria-valuemin={0}
+          aria-valuemax={60}
+          aria-valuenow={min}
+          aria-valuetext={min === 0 ? "expired" : `${min} minutes`}
+          onKeyDown={onKey}
+          onPointerDown={(e) => { dragging.current = true; e.currentTarget.setPointerCapture(e.pointerId); fromPointer(e); }}
+          onPointerMove={(e) => { if (dragging.current) fromPointer(e); }}
+          onPointerUp={() => { dragging.current = false; }}
+        >
+          {Array.from({ length: 61 }, (_, i) => {
+            const a = ((i / 60) * 300 - 150) * (Math.PI / 180);
+            const long = i % 5 === 0;
+            const r1 = long ? 100 : 104;
+            return (
+              <line key={i} x1={120 + Math.sin(a) * r1} y1={120 - Math.cos(a) * r1} x2={120 + Math.sin(a) * 112} y2={120 - Math.cos(a) * 112} className={i <= min ? "tick on" : "tick"} />
+            );
+          })}
+          <circle cx="120" cy="120" r="84" className="knob-shadow" />
+          <circle cx="120" cy="120" r="80" className="knob" />
+          <circle cx="120" cy="120" r="64" className="knob-face" />
+          <g transform="translate(120 120)">
+            <motion.g animate={{ rotate: angle }} transition={spring}>
+              <circle r="80" fill="transparent" />
+              <rect x="-3" y="-76" width="6" height="22" rx="3" className="notch" />
+            </motion.g>
+          </g>
+          <text x="120" y="128" textAnchor="middle" className="dial-read">{min === 0 ? "—" : `${min}′`}</text>
+        </svg>
+        <p className="readout" aria-live="polite">
+          {min === 0 ? <><b>Lease expired.</b> T-14 is back on the board for anyone.</> : <><b>atlas</b> holds T-14 for {min} minutes. Nobody else can.</>}
+        </p>
+        <p className="hint">Turn the dial. Arrow keys work too.</p>
+      </div>
+    </section>
+  );
+}
+
+/* 03 — Two-key lock */
+function Review() {
+  const [keys, setKeys] = useState({ author: false, reviewer: false });
+  const openLock = keys.author && keys.reviewer;
+  return (
+    <section className="scene alt" id="review">
+      <Reveal className="scene-copy">
+        <p className="num">02 — Review</p>
+        <h2>Two keys<br />to close.</h2>
+        <p className="lede">The author turns one key. A reviewer, human or agent, turns the other. Only then does the lock release and the task close. The server enforces it.</p>
+      </Reveal>
+      <div className="object">
+        <svg className="padlock" viewBox="0 0 280 300" role="img" aria-label={openLock ? "Padlock open: both keys turned" : `Padlock locked: ${Number(keys.author) + Number(keys.reviewer)} of 2 keys turned`}>
+          <motion.path
+            d="M80 140 V92 a60 60 0 0 1 120 0 V140"
+            className="shackle"
+            animate={{ y: openLock ? -34 : 0 }}
+            transition={{ type: "spring", stiffness: 260, damping: 14 }}
+          />
+          <rect x="40" y="130" width="200" height="150" rx="26" className="body" />
+          <rect x="40" y="130" width="200" height="150" rx="26" className="body-sheen" />
+          <text x="140" y="164" textAnchor="middle" className="engrave">{openLock ? "RELEASED" : "LOCKED"}</text>
+          {(["author", "reviewer"] as const).map((k, i) => {
+            const cx = i === 0 ? 96 : 184;
+            return (
+              <g key={k}>
+                <circle cx={cx} cy="212" r="20" className="keyhole-plate" />
+                <path d={`M${cx - 4} 206 a6 6 0 1 1 8 0 l3 16 h-14 z`} className="keyhole" />
+                <g transform={`translate(${cx} 212)`}>
+                  <motion.g
+                    initial={false}
+                    animate={{ opacity: keys[k] ? 1 : 0, rotate: keys[k] ? 90 : 0, y: keys[k] ? 0 : 26 }}
+                    transition={{ duration: 0.5, ease }}
+                  >
+                    <circle r="40" fill="transparent" />
+                    <rect x="-4" y="-30" width="8" height="30" rx="2" className="keybit" />
+                    <circle cx="0" cy="-36" r="13" className="keybow" />
+                    <circle cx="0" cy="-36" r="4" className="keyhole" />
+                  </motion.g>
+                </g>
+                <text x={cx} y="258" textAnchor="middle" className="engrave small">{k === "author" ? "AUTHOR" : "REVIEWER"}</text>
+              </g>
+            );
+          })}
+        </svg>
+        <div className="keys">
+          <button type="button" className={keys.author ? "key-btn on" : "key-btn"} aria-pressed={keys.author} onClick={() => setKeys((s) => ({ ...s, author: !s.author }))}>
+            Author key {keys.author ? "turned" : ""}
+          </button>
+          <button type="button" className={keys.reviewer ? "key-btn on" : "key-btn"} aria-pressed={keys.reviewer} onClick={() => setKeys((s) => ({ ...s, reviewer: !s.reviewer }))}>
+            Reviewer key {keys.reviewer ? "turned" : ""}
+          </button>
+        </div>
+        <p className="readout" aria-live="polite">
+          {openLock ? <><b>Approved by ada.</b> T-14 may close.</> : keys.author ? "Waiting on the reviewer’s key." : keys.reviewer ? "Waiting on the author’s key." : "Turn both keys."}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* 04 — Sealed envelope */
+const SLIPS = [
+  { t: "CI run #8812", d: "48 / 48 passed" },
+  { t: "Diff", d: "+120 −14 · 3 files" },
+  { t: "Log", d: "2.1 kB, signed" },
+];
+function Evidence() {
+  const [sealed, setSealed] = useState(false);
+  return (
+    <section className="scene" id="evidence">
+      <Reveal className="scene-copy">
+        <p className="num">03 — Evidence</p>
+        <h2>Closed means<br />proven.</h2>
+        <p className="lede">Closing a task files its proof with it: the CI run, the diff, the log. Sealed, dated, and on the record for whoever asks next.</p>
+      </Reveal>
+      <div className="object">
+        <svg className="envelope" viewBox="0 0 320 260" role="img" aria-label={sealed ? "Envelope sealed with three pieces of evidence inside" : "Open envelope with three pieces of evidence above it"}>
+          <rect x="20" y="90" width="280" height="160" rx="10" className="env-back" />
+          {SLIPS.map((s, i) => (
+            <motion.g key={s.t} initial={false} animate={{ y: sealed ? 70 : -i * 6 }} transition={{ duration: 0.6, delay: sealed ? i * 0.08 : 0, ease }}>
+              <rect x={44 + i * 8} y={30 + i * 14} width={232 - i * 16} height="96" rx="6" className="slip" />
+              <text x={60 + i * 8} y={56 + i * 14} className="slip-t">{s.t}</text>
+              <text x={60 + i * 8} y={74 + i * 14} className="slip-d">{s.d}</text>
+            </motion.g>
+          ))}
+          <path d="M20 100 L160 190 L300 100 V240 a10 10 0 0 1 -10 10 H30 a10 10 0 0 1 -10 -10 Z" className="env-front" />
+          <path d="M20 250 L140 168 M300 250 L180 168" className="env-crease" />
+          <motion.path
+            d="M20 100 L160 196 L300 100 Z"
+            className="flap"
+            initial={false}
+            animate={{ scaleY: sealed ? 1 : -1 }}
+            transition={{ duration: 0.55, delay: sealed ? 0.35 : 0, ease }}
+            style={{ originX: 0.5, originY: 0 }}
+          />
+          <motion.g initial={false} animate={{ scale: sealed ? 1 : 0, opacity: sealed ? 1 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 18, delay: sealed ? 0.8 : 0 }}>
+            <circle cx="160" cy="190" r="22" className="seal" />
+            <text x="160" y="197" textAnchor="middle" className="seal-m">M</text>
+          </motion.g>
+        </svg>
+        <button type="button" className="key-btn wide" onClick={() => setSealed((s) => !s)} aria-pressed={sealed}>
+          {sealed ? "Open the envelope" : "Seal the evidence"}
         </button>
-        <a className="cta ghost" href="https://github.com/david-engelmann/maidan">
-          <Star />
-          Star on GitHub
-        </a>
-      </motion.div>
-    </motion.div>
+        <p className="readout" aria-live="polite">{sealed ? <><b>T-14 closed</b> · 28 Oct, 3 pieces of evidence.</> : "Three proofs, ready to file."}</p>
+      </div>
+    </section>
   );
 }
 
-function Mask({ word, delay, reduce }: { word: string; delay: number; reduce: boolean }) {
+const SPEAK = [
+  { k: "MCP", d: "for tool-using models" },
+  { k: "A2A", d: "for agent hand-offs" },
+  { k: "REST", d: "for everything else" },
+  { k: "Python", d: "a typed SDK" },
+];
+function Speak() {
   return (
-    <span className="mask">
-      <motion.span
-        className="mask-inner"
-        initial={reduce ? false : { y: "115%" }}
-        animate={{ y: "0%" }}
-        transition={
-          reduce
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 300, damping: 28, mass: 0.85, delay }
-        }
-      >
-        {word}
-      </motion.span>
-    </span>
+    <section className="speak">
+      <Reveal>
+        <p className="num">04 — Interfaces</p>
+      </Reveal>
+      <ul>
+        {SPEAK.map((s) => (
+          <li key={s.k}>
+            <Reveal className="speak-row">
+              <span className="big">{s.k}</span>
+              <span className="desc">{s.d}</span>
+            </Reveal>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function HeroBoard({ live }: { live: boolean }) {
-  const reduce = useReducedMotion() === true;
+function Close({ onJoin }: { onJoin: () => void }) {
   return (
-    <motion.div
-      className="hero-pane"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0 }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
-    >
-      <Board />
-    </motion.div>
-  );
-}
-
-function useActive(progress: MotionValue<number>) {
-  const [active, setActive] = useState(-1);
-  useMotionValueEvent(progress, "change", (value) => {
-    const next =
-      value < 0.1 ? -1 : value < 0.24 ? 0 : value < 0.38 ? 1 : value < 0.52 ? 2 : value < 0.66 ? 3 : value < 0.8 ? 4 : 5;
-    setActive((current) => (current === next ? current : next));
-  });
-  return active;
-}
-
-function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion() === true;
-  const px = useMotionValue(0.14);
-  const py = useMotionValue(-0.18);
-  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [7, -6]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-8, 7]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-
-  useEffect(() => {
-    if (reduce || !tilt) return;
-    const fine = window.matchMedia("(pointer: fine) and (min-width: 960px)").matches;
-    let frame = 0;
-    const target = { x: 0.14, y: -0.18 };
-    const flush = () => {
-      frame = 0;
-      px.set(target.x);
-      py.set(target.y);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(flush);
-    };
-    const onPointer = (event: PointerEvent) => {
-      target.x = event.clientX / window.innerWidth - 0.5;
-      target.y = event.clientY / window.innerHeight - 0.5;
-      const el = ref.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      el.style.setProperty("--lx", `${((event.clientX - rect.left) / rect.width) * 100}%`);
-      el.style.setProperty("--ly", `${((event.clientY - rect.top) / rect.height) * 100}%`);
-      schedule();
-    };
-    const onScroll = () => {
-      target.y = Math.max(-0.45, Math.min(0.45, -0.18 + (window.scrollY / window.innerHeight) * 0.28));
-      schedule();
-    };
-    const onOrient = (event: DeviceOrientationEvent) => {
-      if (event.gamma == null) return;
-      target.x = Math.max(-0.5, Math.min(0.5, event.gamma / 42));
-      if (event.beta != null) target.y = Math.max(-0.5, Math.min(0.5, (event.beta - 48) / 58));
-      schedule();
-    };
-    if (fine) window.addEventListener("pointermove", onPointer, { passive: true });
-    else {
-      window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("deviceorientation", onOrient);
-    }
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("pointermove", onPointer);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("deviceorientation", onOrient);
-    };
-  }, [px, py, reduce, tilt]);
-
-  return (
-    <div className="glass-slot">
-      <span className="square" aria-hidden="true" />
-      <motion.div
-        className="tilt"
-        layoutRoot
-        style={reduce || !tilt ? undefined : { rotateX, rotateY }}
-      >
-        <div ref={ref} className="glass">
-          <span className="glass-spec" aria-hidden="true" />
-          {children}
+    <section className="close">
+      <Reveal>
+        <h2>Run it yourself.</h2>
+        <pre className="cmd"><code>docker compose up</code></pre>
+        <div className="cta-row">
+          <a className="cta" href={GH}>★ Star on GitHub</a>
+          <button type="button" className="cta ghost join-btn" onClick={onJoin}>Request a hosted invite</button>
         </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function Star() {
-  return (
-    <svg className="star" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 2.6l2.7 5.6 6.2.9-4.5 4.3 1.1 6.1L12 16.8 6.5 19.5l1.1-6.1L3.1 9.1l6.2-.9L12 2.6z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function Mark() {
-  return (
-    <svg className="mark" viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor" />
-      <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor" />
-      <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor" />
-      <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor" />
-      <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor" />
-      <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor" />
-      <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor" />
-      <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor" />
-    </svg>
+      </Reveal>
+    </section>
   );
 }
