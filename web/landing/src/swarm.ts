@@ -30,12 +30,14 @@ export function resize(world: World, w: number, h: number) {
 function slot(world: World, i: number, n: number) {
   const cols = Math.ceil(Math.sqrt(n * (world.w / world.h)));
   const rows = Math.ceil(n / cols);
-  const size = Math.min(world.w * 0.62, world.h * 0.5);
+  const size = world.w >= 900 ? Math.min(world.w * 0.5, world.h * 0.55) : Math.min(world.w * 0.78, world.h * 0.4);
   const cw = size / Math.max(cols - 1, 1);
   const ch = (size * (rows / cols)) / Math.max(rows - 1, 1);
   const c = i % cols;
   const r = Math.floor(i / cols);
-  return { x: world.w / 2 - size / 2 + c * cw, y: world.h / 2 - (ch * (rows - 1)) / 2 + r * ch };
+  const cx = world.w >= 900 ? world.w * 0.66 : world.w / 2;
+  const cy = world.w >= 900 ? world.h / 2 : world.h * 0.6;
+  return { x: cx - size / 2 + c * cw, y: cy - (ch * (rows - 1)) / 2 + r * ch };
 }
 
 export function step(world: World, dt: number, speed = 1) {
@@ -178,11 +180,11 @@ export function draw(ctx: CanvasRenderingContext2D, world: World, dpr: number) {
   ctx.globalCompositeOperation = "lighter";
   for (const a of world.agents) {
     const c = HUES[a.hue];
-    const grd = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 9);
+    const grd = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 13);
     grd.addColorStop(0, `rgba(${c},0.95)`);
     grd.addColorStop(1, `rgba(${c},0)`);
     ctx.fillStyle = grd;
-    ctx.fillRect(a.x - 9, a.y - 9, 18, 18);
+    ctx.fillRect(a.x - 13, a.y - 13, 26, 26);
   }
   ctx.globalCompositeOperation = "source-over";
 }
