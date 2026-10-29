@@ -81,7 +81,7 @@ function Hundred() {
           animate={seen || reduce ? { scale: 1 } : { scale: 7.2 }}
           transition={{ duration: 3.4, ease: [0.65, 0, 0.15, 1], delay: 0.2 }}
         >
-          {Array.from({ length: 100 }, (_, i) => <i key={i} />)}
+          {Array.from({ length: 100 }, (_, i) => <i key={i} className={i === 44 ? "mine" : undefined} />)}
         </motion.div>
       </div>
       <dl className="stats" aria-live="off">

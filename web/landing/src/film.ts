@@ -4,25 +4,25 @@ export const FILM = typeof window !== "undefined" && new URLSearchParams(window.
 type Cue = { at: number; name: string; scroll?: string };
 
 export const CUES: Cue[] = [
-  { at: 1400, name: "place:planner" },
-  { at: 2300, name: "place:coder" },
-  { at: 3200, name: "place:reviewer" },
-  { at: 4100, name: "place:human" },
-  { at: 8200, name: "remove:reviewer" },
-  { at: 11200, name: "place:reviewer" },
-  { at: 13600, name: "scroll", scroll: "#hundred" },
-  { at: 20400, name: "scroll", scroll: "#lease" },
-  { at: 21400, name: "lease:expire" },
-  { at: 24600, name: "scroll", scroll: "#review" },
-  { at: 25400, name: "lock:author" },
-  { at: 26000, name: "lock:merge" },
-  { at: 27200, name: "lock:reviewer" },
-  { at: 27900, name: "lock:merge" },
-  { at: 29400, name: "scroll", scroll: "#evidence" },
-  { at: 30100, name: "env:seal" },
-  { at: 31100, name: "env:all" },
-  { at: 31700, name: "env:seal" },
-  { at: 34400, name: "scroll", scroll: "#run" },
+  { at: 1200, name: "place:planner" },
+  { at: 2000, name: "place:coder" },
+  { at: 2800, name: "place:reviewer" },
+  { at: 3600, name: "place:human" },
+  { at: 7000, name: "remove:reviewer" },
+  { at: 9600, name: "place:reviewer" },
+  { at: 12000, name: "scroll", scroll: ".wall-frame" },
+  { at: 18000, name: "scroll", scroll: "#lease .object" },
+  { at: 18900, name: "lease:expire" },
+  { at: 21600, name: "scroll", scroll: "#review .object" },
+  { at: 22300, name: "lock:author" },
+  { at: 22900, name: "lock:merge" },
+  { at: 24000, name: "lock:reviewer" },
+  { at: 24600, name: "lock:merge" },
+  { at: 26000, name: "scroll", scroll: "#evidence .object" },
+  { at: 26700, name: "env:seal" },
+  { at: 27600, name: "env:all" },
+  { at: 28200, name: "env:seal" },
+  { at: 31200, name: "scroll", scroll: "#run" },
 ];
 
 export function onCue(fn: (name: string) => void): () => void {
@@ -36,7 +36,7 @@ export function playFilm(): () => void {
     window.setTimeout(() => {
       if (c.scroll) {
         const el = document.querySelector(c.scroll);
-        if (el instanceof HTMLElement) window.scrollTo({ top: el.offsetTop, behavior: "smooth" });
+        if (el instanceof HTMLElement) el.scrollIntoView({ behavior: "smooth", block: c.scroll === "#run" ? "start" : "center" });
       } else {
         window.dispatchEvent(new CustomEvent("maidan-film", { detail: c.name }));
       }

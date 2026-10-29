@@ -183,6 +183,7 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 .wall i::after { content: ""; position: absolute; z-index: 1; width: 16%; aspect-ratio: 1; left: 16%; top: 16%; box-shadow: 0 0 4px #f3d58e; border-radius: 50%; background: #d4a64a; animation: orbit 2.4s linear infinite; }
 @keyframes hum { 50% { opacity: 0.55; box-shadow: 0 0 2px rgba(255, 106, 51, 0.4); } }
 @keyframes orbit { 25% { transform: translateX(325%); } 50% { transform: translate(325%, 325%); } 75% { transform: translateY(325%); } }
+.wall i.mine { box-shadow: inset 0 1px 0 #fff, 0 0 0 1.5px #ff8a5c, 0 0 14px rgba(255, 106, 51, 0.7); }
 .paused .wall i::before, .paused .wall i::after { animation-play-state: paused; }
 .stats { display: flex; gap: 2.2rem; margin: 0; font-family: var(--mono); text-align: center; }
 .stats dt { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #c9c3b6; }
