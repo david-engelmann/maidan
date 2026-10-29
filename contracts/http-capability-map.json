@@ -241,6 +241,18 @@
   },
   {
     "method": "GET",
+    "path": "/ui/api/members/{id}",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "PATCH",
+    "path": "/ui/api/members/{id}",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/members/{id}/inbox",
     "capability": "workspace:read",
     "surface": "http"

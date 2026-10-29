@@ -1,11 +1,25 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Filenames stay stable (app.js, vendor.js, story.js, style.css) so the
+// Filenames stay stable (app.js, vendor.js, style.css, geist.woff2) so the
 // server can embed them without a manifest.
 export default defineConfig({
   base: "/landing/",
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Dev only: the server owns /.well-known/maidan.json; answer it locally so
+    // the dev console stays clean (no Turnstile key, so the widget stays off).
+    {
+      name: "dev-well-known",
+      apply: "serve",
+      configureServer(server) {
+        server.middlewares.use("/.well-known/maidan.json", (_req, res) => {
+          res.setHeader("content-type", "application/json");
+          res.end("{}");
+        });
+      },
+    },
+  ],
   build: {
     outDir: process.env.LANDING_OUT ?? "../../crates/maidan-server/static/landing/dist",
     emptyOutDir: true,
@@ -24,8 +38,8 @@ export default defineConfig({
         },
         manualChunks(id) {
           if (id.includes("node_modules")) return "vendor";
-          if (id.includes("/src/story")) return "story";
-          if (id.includes("/src/aurora")) return "aurora";
+          
+          
         },
       },
     },

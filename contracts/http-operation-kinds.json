@@ -295,6 +295,8 @@
   {"method":"GET","path":"/ui/api/group-dms/{id}","kind":"reads"},
   {"method":"POST","path":"/ui/api/group-dms/{id}/messages","kind":"changes"},
   {"method":"GET","path":"/ui/api/me","kind":"reads"},
+  {"method":"GET","path":"/ui/api/members/{id}","kind":"reads"},
+  {"method":"PATCH","path":"/ui/api/members/{id}","kind":"changes"},
   {"method":"GET","path":"/ui/api/members/{id}/channel-follows","kind":"reads"},
   {"method":"POST","path":"/ui/api/members/{id}/channel-follows","kind":"changes"},
   {"method":"DELETE","path":"/ui/api/members/{id}/channel-follows/{cid}","kind":"changes"},

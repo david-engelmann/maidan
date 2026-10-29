@@ -1,10 +1,10 @@
 // @ts-check
-import { api, apiWritePath, base, headers, persist, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
+import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, token, uiReadPath, wid, writeApi } from "./api.js";
 import { escapeHtml } from "./artifacts.js";
 import { clearLoading, renderState, responseError, setLoading, setOut, showError, unreachable } from "./feedback.js";
-import { authorId, memberName } from "./people.js";
+import { authorId, loadMembers, memberName } from "./people.js";
 import { connectWs, disconnectWs, wsSocket } from "./realtime.js";
-import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showSecretOnce } from "./session.js";
+import { credentialMode, exchangeToken, renderIdentity, sessionMemberId, showIdentityMode, showSecretOnce } from "./session.js";
 
 
       let approvalsLoading = false;
@@ -1210,10 +1210,59 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
               `HTTP ${res.status} — sign in or set a bearer token above`;
             return;
           }
-          renderSession(await res.json());
+          const me = await res.json();
+          renderSession(me);
+          await loadOwnDisplayName(me.member_id);
         } catch (e) {
           showError(unreachable(e));
         }
+      }
+
+
+      async function loadOwnDisplayName(memberId) {
+        const input = document.getElementById("member-display-name");
+        if (!input || !memberId) return;
+        try {
+          const res = await api(apiReadPath(`/members/${memberId}`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok || document.activeElement === input) return;
+          const member = await res.json();
+          input.value = member.display_name || "";
+        } catch (_e) {
+          /* the field stays as it is */
+        }
+      }
+
+
+      async function saveOwnDisplayName() {
+        if (!requireAuthForWrite()) return;
+        const id = authorId();
+        const input = document.getElementById("member-display-name");
+        const button = document.getElementById("member-display-name-save");
+        if (!id || !input) return;
+        let res;
+        try {
+          res = await writeApi(button, apiWritePath(`/members/${id}`), {
+            method: "PATCH",
+            headers: headers(true),
+            credentials: "include",
+            body: JSON.stringify({ display_name: input.value }),
+          });
+        } catch (e) {
+          showError(unreachable(e));
+          return;
+        }
+        if (!res.ok) {
+          showError(await responseError(res, "Could not save your name"));
+          return;
+        }
+        const member = await res.json();
+        if (document.activeElement !== input) input.value = member.display_name || "";
+        showError(member.display_name ? "Name saved" : "Name cleared", "success");
+        await loadMembers();
+        renderIdentity(id);
       }
 
 
@@ -1457,4 +1506,4 @@ import { credentialMode, exchangeToken, sessionMemberId, showIdentityMode, showS
         });
       }
 
-export { answerGate, approvalsLoading, decidedViaLine, modelRequestLine, openConfirmation, capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadPrefsFollows, loadSession, loadSlashCommands, loadWaiting, loadWork, loadWorkChannels, loadWorkDepth, loadWorkSchedules, loadWorkThreads, markAllNotificationsRead, markNotificationRead, myCapabilities, parseCaps, pollReindex, prefsWrite, registerSlashCommand, renderApprovals, renderCapList, renderDeliveries, renderNotifications, renderReindexJob, renderSession, replayDelivery, revokeSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, showWorkThread, startReindex, unfollowTarget };
+export { answerGate, approvalsLoading, decidedViaLine, modelRequestLine, openConfirmation, capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glassArtifact, glassEventsByKind, glassPeers, glassThread, initTablist, loadApprovals, loadAttenuationCeiling, loadDeliveries, loadGlass, loadGlobalAudit, loadMessageEdits, loadNotifications, loadPeers, loadPrefs, loadPrefsFollows, loadSession, saveOwnDisplayName, loadSlashCommands, loadWaiting, loadWork, loadWorkChannels, loadWorkDepth, loadWorkSchedules, loadWorkThreads, markAllNotificationsRead, markNotificationRead, myCapabilities, parseCaps, pollReindex, prefsWrite, registerSlashCommand, renderApprovals, renderCapList, renderDeliveries, renderNotifications, renderReindexJob, renderSession, replayDelivery, revokeSlashCommand, rotateToken, setPrefsDeliveryMode, setPrefsEmail, setPrefsMute, showWorkThread, startReindex, unfollowTarget };

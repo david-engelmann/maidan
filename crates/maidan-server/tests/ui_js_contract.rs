@@ -5913,3 +5913,28 @@ fn ui_js_names_who_requested_the_review() {
         "the result's producer is already named, so the requester is added only when they differ"
     );
 }
+
+/// The session panel saves the signed-in member's own display name. Creation
+/// was the only way to set one, so a member who arrived without a name stayed
+/// nameless everywhere the console shows people.
+#[test]
+fn ui_js_saves_your_own_display_name() {
+    let tools = include_str!("../static/ui/tools.js");
+    assert!(
+        tools.contains("async function saveOwnDisplayName("),
+        "saving your name must have a helper"
+    );
+    assert!(
+        tools.contains("method: \"PATCH\""),
+        "saving your name is a PATCH"
+    );
+    assert!(
+        tools.contains("/members/${id}"),
+        "the save uses your own member route"
+    );
+    let html = include_str!("../static/index.html");
+    assert!(
+        html.contains("id=\"member-display-name\""),
+        "the session panel has a field for your name"
+    );
+}

@@ -58,6 +58,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn degraded_is_false_until_an_error_and_false_again_after_a_success() {
+        // The listener's probe sends only while this is true.
+        let h = ListenerHealth::default();
+        assert!(!h.is_degraded(), "a new listener is healthy");
+        h.record_error();
+        assert!(h.is_degraded(), "an error degrades it");
+        h.record_ok();
+        assert!(!h.is_degraded(), "a received notification heals it");
+    }
+
+    #[test]
     fn check_ok_until_error_then_recovery() {
         let h = ListenerHealth::default();
         h.check().expect("initially ok");

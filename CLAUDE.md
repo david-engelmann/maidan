@@ -157,7 +157,12 @@ Working beside other agents (several PRs are usually open at once):
   `Store::get_member_in(workspace, id)` (from #1152); an MCP tool declares
   `annotations` (a title and the four hints) and has a row, with a reason for
   each hint, in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`
-  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`).
+  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`),
+  a risk tier in `listings/hol-guard/policy.json` (then run
+  `python3 scripts/gen-hol-guard.py`), and a skill under
+  `examples/claude-code/` that says how to use it
+  (`scripts/check-agent-skills.py`). A new profile in `profiles.rs` also
+  regenerates the Guard files.
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
   merged with `gh pr merge --squash --match-head-commit <sha>`; `gh pr checks` and even
@@ -166,6 +171,21 @@ Working beside other agents (several PRs are usually open at once):
   [`docs/Conventions.md`](docs/Conventions.md) ("CodeRabbit").
 
 Lessons that cost real time, and that still apply:
+
+- **`main` is prod; work lands on `dev`.** A PR based on `main` was merged
+  there by the merge loop (admin merges bypass `lock_branch`); the loop now
+  refuses any PR whose base is `main`. Two PRs that each passed CI broke `dev`
+  together twice on 2026-10-28: batch ready PRs on one integration branch and
+  run CI once, and never merge a batch without its integration run (that is
+  how a Postgres lock bug shipped, #1764).
+- **Checks that are not required still gate deploys.** The swarm's deploy
+  reads `cargo vet`, `open work` and Playwright; each merged red once and held
+  every `dev` commit. The merge loop refuses them red. A cancelled job is a
+  timeout until shown otherwise: compare its duration with `timeout-minutes`
+  (integration is 60 since #1768).
+- **No local builds while the swarm runs.** They were 40% of the maintainer's
+  CPU. CI is the build; `cargo vet` and `gh` are fine. Never kill a test run:
+  it orphans its testcontainers.
 
 - **Something outranked the control meant to bind it.** Every authorization
   defect found in the 2026-09 audits passed CI and its own tests, because every
