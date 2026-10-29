@@ -67,6 +67,7 @@
     "/ui/api/operator/reindex-embeddings",
     "/ui/api/operator/reindex-embeddings/{job_id}",
     "/ui/api/threads/{tid}",
+    "/ui/api/threads/{tid}/artifacts/{sha}",
     "/ui/api/threads/{tid}/block",
     "/ui/api/threads/{tid}/dependencies",
     "/ui/api/threads/{tid}/evidence",

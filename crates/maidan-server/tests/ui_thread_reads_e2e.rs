@@ -288,6 +288,109 @@ async fn a_signed_in_member_reads_who_decided_and_who_linked_each_artifact() {
     assert!(links[0]["linked_at"].is_string(), "{links:?}");
 }
 
+/// Who moved the task into review is a session read of the transition history.
+/// The worker handed it off, so that member is the actor of the move into review.
+#[tokio::test]
+async fn a_signed_in_member_reads_who_requested_the_review() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let a = tenant(store.as_ref(), "a").await;
+
+    let (s, rows, _) = get(
+        &client,
+        format!("{base}/ui/api/threads/{}/transitions", a.thread.0),
+        &a.operator,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{rows}");
+    let into_review: Vec<_> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["to_state"] == "in_review")
+        .collect();
+    assert_eq!(into_review.len(), 1, "{rows}");
+    assert_eq!(into_review[0]["actor_id"], json!(a.worker.0));
+    assert_eq!(into_review[0]["from_state"], "open");
+}
+
+/// The console links a file the workspace already holds onto the open task,
+/// and unlinks it. Another workspace's session cannot.
+#[tokio::test]
+async fn a_signed_in_member_links_and_unlinks_a_file_on_the_open_task() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let a = tenant(store.as_ref(), "a").await;
+    let b = tenant(store.as_ref(), "b").await;
+    let t = a.thread.0;
+    let link = format!("{base}/ui/api/threads/{t}/artifacts/{DROPPED}");
+
+    let denied = client
+        .put(&link)
+        .header("Cookie", &b.operator)
+        .header("Idempotency-Key", "other-workspace")
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            denied.status(),
+            StatusCode::FORBIDDEN | StatusCode::NOT_FOUND
+        ),
+        "another workspace linked A's file: {}",
+        denied.status()
+    );
+
+    let linked = client
+        .put(&link)
+        .header("Cookie", &a.operator)
+        .header("Idempotency-Key", "link-dropped")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        linked.status(),
+        StatusCode::OK,
+        "{}",
+        linked.text().await.unwrap()
+    );
+    let (_s, rows, _) = get(
+        &client,
+        format!("{base}/ui/api/threads/{t}/artifacts"),
+        &a.operator,
+    )
+    .await;
+    let shas: Vec<_> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["sha256"].as_str().unwrap().to_string())
+        .collect();
+    assert!(shas.contains(&DROPPED.to_string()), "{shas:?}");
+
+    let unlinked = client
+        .delete(&link)
+        .header("Cookie", &a.operator)
+        .header("Idempotency-Key", "unlink-dropped")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unlinked.status(), StatusCode::NO_CONTENT);
+    let (_s, rows, _) = get(
+        &client,
+        format!("{base}/ui/api/threads/{t}/artifacts"),
+        &a.operator,
+    )
+    .await;
+    let shas: Vec<_> = rows
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|row| row["sha256"].as_str())
+        .collect();
+    assert!(!shas.contains(&DROPPED), "{shas:?}");
+}
+
 /// Workspace B's signed-in session gets nothing of A's reviews or links: the
 /// same refusal as the packet read beside them (403 or 404, a problem body
 /// naming none of A's members or hashes), while B's own task reads fine. A
@@ -300,7 +403,7 @@ async fn another_workspaces_session_gets_nothing_of_a_threads_reviews_or_links()
     let b = tenant(store.as_ref(), "b").await;
 
     for tid in [a.thread.0, a.private_thread.0] {
-        for read in ["reviews", "artifacts", "review-packet"] {
+        for read in ["reviews", "artifacts", "transitions", "review-packet"] {
             let (s, body, content_type) = get(
                 &client,
                 format!("{base}/ui/api/threads/{tid}/{read}"),
@@ -342,7 +445,7 @@ async fn another_workspaces_session_gets_nothing_of_a_threads_reviews_or_links()
             cookie,
         )
         .await;
-        for read in ["reviews", "artifacts"] {
+        for read in ["reviews", "artifacts", "transitions"] {
             let (s, body, _) = get(
                 &client,
                 format!("{base}/ui/api/threads/{tid}/{read}"),

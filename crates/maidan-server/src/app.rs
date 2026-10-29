@@ -1535,6 +1535,11 @@ pub fn router(state: AppState) -> Router {
             "/ui/api/threads/{tid}/artifacts",
             get(routes::list_thread_artifacts),
         )
+        // Who moved the task into review, so the approval card can name them.
+        .route(
+            "/ui/api/threads/{tid}/transitions",
+            get(routes::list_thread_transitions),
+        )
         .route("/ui/api/workspaces/{wid}", get(routes::get_workspace))
         .route(
             "/ui/api/workspaces/{wid}/search",
@@ -1673,6 +1678,10 @@ pub fn router(state: AppState) -> Router {
             post(routes::create_thread),
         )
         .route("/ui/api/threads/{tid}/messages", post(routes::post_message))
+        .route(
+            "/ui/api/threads/{tid}/artifacts/{sha}",
+            put(routes::link_thread_artifact).merge(delete(routes::unlink_thread_artifact)),
+        )
         .route("/ui/api/threads/{tid}", post(routes::transition_thread))
         .route(
             "/ui/api/threads/{tid}/block",

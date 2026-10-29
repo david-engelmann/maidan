@@ -21,6 +21,13 @@
   font-weight: 700;
 }
 
+/* Docs keep their own themes. Titles take a serif so a long page still
+   has a display face. */
+.content h1 {
+  font-family: Palatino, "Palatino Linotype", Georgia, "Noto Serif", "Liberation Serif", serif;
+  letter-spacing: -0.02em;
+}
+
 /* The locked mark is monochrome/currentColor. Markdown emits it as an <img>,
    so theme-aware filters keep the same asset legible without recolouring its
    source or maintaining divergent logo files. */
