@@ -119,8 +119,8 @@ function fixed(id: number, kind: Kind, name: string, x: number, y: number): Node
 
 export function initial(): Sim {
   const nodes: Node[] = [fixed(QUEUE, "queue", "Queue", 0, 0), fixed(REVIEW, "review", "Review gate", 0, 250), fixed(MAIN, "main", "main", 0, 345)];
-  for (let i = 0; i < 6; i++) nodes.push(makeAgent(3 + i, i, 6));
-  return { nodes, pulses: [], seed: 7, nextId: 9, shipped: 0, claims: 0, reviewed: 0, base: 6, target: 6, grow: 0, cam: { cx: 0, cy: 0, s: 1 }, dragging: null };
+  for (let i = 0; i < 12; i++) nodes.push(makeAgent(3 + i, i, 12));
+  return { nodes, pulses: [], seed: 7, nextId: 15, shipped: 0, claims: 0, reviewed: 0, base: 12, target: 12, grow: 0, cam: { cx: 0, cy: 0, s: 1 }, dragging: null };
 }
 
 export function agents(s: Sim): Node[] {
