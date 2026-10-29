@@ -1,383 +1,471 @@
-import {
-  motion,
-  useMotionValue,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Board } from "./board";
+import { AnimatePresence, motion, useReducedMotion, type PanInfo } from "motion/react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import { AGENTS, LEVELS, fresh, step, type Action, type Game, type Task } from "./game";
 import { Join } from "./join";
 
-const Aurora = lazy(() => import("./aurora"));
-const loadStory = () => import("./story");
-const Scenes = lazy(() => loadStory().then((mod) => ({ default: mod.Scenes })));
-const Still = lazy(() => loadStory().then((mod) => ({ default: mod.Still })));
-
-const links = [
-  ["#holder", "Hold"],
-  ["#reviews", "Review"],
-  ["#evidence", "Proof"],
-  ["#connect", "Agents"],
-  ["#run", "Run"],
-] as const;
-
-const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
+const GITHUB = "https://github.com/david-engelmann/maidan";
+const pop = { type: "spring" as const, stiffness: 520, damping: 30 };
 
 export default function App() {
-  const reduce = useReducedMotion() === true;
   const [open, setOpen] = useState(false);
-
   useEffect(() => {
     const openIf = () => {
       if (location.hash === "#join") setOpen(true);
     };
     openIf();
-    const onClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (!target.closest("a[href='#join']")) return;
-      event.preventDefault();
-      history.replaceState(null, "", "#join");
-      setOpen(true);
-    };
     window.addEventListener("hashchange", openIf);
-    document.addEventListener("click", onClick);
-    return () => {
-      window.removeEventListener("hashchange", openIf);
-      document.removeEventListener("click", onClick);
-    };
+    return () => window.removeEventListener("hashchange", openIf);
   }, []);
-
+  const join = () => setOpen(true);
   return (
     <>
-      <Field />
-      <div className="grain" aria-hidden="true" />
-      <Header onJoin={() => setOpen(true)} pressed={open} />
-      {reduce ? <Quiet onJoin={() => setOpen(true)} /> : <Cinematic onJoin={() => setOpen(true)} />}
+      <header className="top">
+        <a className="brand" href="#play">
+          <span className="brand-mark" aria-hidden="true" />
+          Maidan
+        </a>
+        <a className="top-link" href={GITHUB}>
+          ★ GitHub
+        </a>
+        <button type="button" className="top-join" onClick={join}>
+          Join
+        </button>
+      </header>
+      <main>
+        <Play onJoin={join} />
+        <After onJoin={join} />
+      </main>
       <Join open={open} onOpenChange={setOpen} />
     </>
   );
 }
 
-function Field() {
-  const [reduce] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  return (
-    <div className="light" aria-hidden="true">
-      <div className="ambient">
-        <span className="blob mint" />
-        <span className="blob cyan" />
-        <span className="blob violet" />
-      </div>
-      {reduce ? null : (
-        <Suspense fallback={null}>
-          <Aurora />
-        </Suspense>
-      )}
-    </div>
-  );
+function useTick(running: boolean, dispatch: (a: Action) => void) {
+  useEffect(() => {
+    if (!running) return;
+    let last = performance.now();
+    let raf = 0;
+    const loop = (now: number) => {
+      dispatch({ type: "tick", dt: Math.min(0.05, (now - last) / 1000) });
+      last = now;
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [running, dispatch]);
 }
 
-function Header({ onJoin, pressed }: { onJoin: () => void; pressed: boolean }) {
-  return (
-    <header className="top">
-      <a className="brand" href="#floor">
-        <Mark />
-        <span>Maidan</span>
-      </a>
-      <nav className="nav" aria-label="On this page">
-        {links.map(([href, label]) => (
-          <a key={href} href={href}>
-            {label}
-          </a>
-        ))}
-      </nav>
-      <a className="signin" href="/ui">
-        Sign in
-      </a>
-      <button type="button" className="join-btn" aria-expanded={pressed} onClick={onJoin}>
-        Join
-      </button>
-    </header>
-  );
+type Ghost = { x: number; y: number; down: boolean; n: number } | null;
+
+function center(sel: string, box: HTMLElement | null) {
+  const el = document.querySelector(sel);
+  if (!el || !box) return null;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  return { x: r.left + r.width / 2 - b.left, y: r.top + r.height / 2 - b.top };
 }
 
-function Quiet({ onJoin }: { onJoin: () => void }) {
-  return (
-    <main>
-      <section className="poster" id="floor" aria-labelledby="headline">
-          <div className="copy-slot">
-          <HeroWords live onJoin={onJoin} />
-        </div>
-          <Glass tilt={false}>
-          <div className="glass-body">
-            <div className="hero-pane">
-              <Board />
-            </div>
-          </div>
-        </Glass>
-      </section>
-      <Suspense fallback={<div className="still-hold" aria-hidden="true" />}>
-        <Still onJoin={onJoin} />
-      </Suspense>
-    </main>
-  );
+function botMove(g: Game): { from: string; to: string; action: Action } | null {
+  const lvl = LEVELS[g.level];
+  const done = g.tasks.find((t) => t.where === "agent" && t.progress >= 1);
+  if (done) {
+    if (!done.proof) return { from: `[data-id="${done.id}"]`, to: `[data-id="${done.id}"]`, action: { type: "proof", id: done.id } };
+    if (done.review && !g.tasks.some((t) => t.where === "review"))
+      return { from: `[data-id="${done.id}"]`, to: `[data-drop="review"]`, action: { type: "review", id: done.id } };
+    if (!done.review) return { from: `[data-id="${done.id}"]`, to: `[data-drop="ship"]`, action: { type: "ship", id: done.id } };
+  }
+  const q = g.tasks.find((t) => t.where === "queue");
+  if (!q) return null;
+  for (let i = 0; i < lvl.agents; i++) {
+    if (!g.tasks.some((t) => t.where === "agent" && t.agent === i))
+      return { from: `[data-id="${q.id}"]`, to: `[data-drop="agent-${i}"]`, action: { type: "assign", id: q.id, agent: i } };
+  }
+  return null;
 }
 
-function Cinematic({ onJoin }: { onJoin: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-  const [copyEl, setCopyEl] = useState<HTMLDivElement | null>(null);
-  const [glassEl, setGlassEl] = useState<HTMLDivElement | null>(null);
-  const y1 = useTransform(scrollYProgress, [0, 1], [48, -160]);
-  const y2 = useTransform(scrollYProgress, [0, 1], [-30, 110]);
-  const active = useActive(scrollYProgress);
-  return (
-    <main>
-      <div className="reel" ref={ref}>
-        <div className="pin" id="floor">
-          <motion.span className="depth-orb mint" style={{ y: y1 }} aria-hidden="true" />
-          <motion.span className="depth-orb violet" style={{ y: y2 }} aria-hidden="true" />
-          <div className="copy-slot" ref={setCopyEl}>
-            <HeroWords live={active < 0} onJoin={onJoin} />
-          </div>
-          <Glass tilt>
-            <div className="glass-body" ref={setGlassEl}>
-              <HeroBoard live={active < 0} />
-            </div>
-          </Glass>
-        </div>
-        <span id="holder" className="spot spot-holder" />
-        <span id="reviews" className="spot spot-reviews" />
-        <span id="evidence" className="spot spot-evidence" />
-        <span id="connect" className="spot spot-connect" />
-        <span id="run" className="spot spot-run" />
-        <span id="belong" className="spot spot-belong" />
-        {copyEl && glassEl ? (
-          <Suspense fallback={null}>
-            <Scenes
-              progress={scrollYProgress}
-              copyEl={copyEl}
-              glassEl={glassEl}
-              onJoin={onJoin}
-              active={active}
-            />
-          </Suspense>
-        ) : null}
-      </div>
-    </main>
-  );
-}
-
-function HeroWords({ live, onJoin }: { live: boolean; onJoin: () => void }) {
+function Play({ onJoin }: { onJoin: () => void }) {
   const reduce = useReducedMotion() === true;
-  const reveal = reduce ? { duration: 0 } : { ...spring, delay: 0 };
+  const [g, dispatch] = useReducer(step, undefined, () => fresh(reduce ? "intro" : "attract", 0));
+  const board = useRef<HTMLDivElement>(null);
+  const latest = useRef(g);
+  const [ghost, setGhost] = useState<Ghost>(null);
+  useEffect(() => {
+    latest.current = g;
+  });
+  useTick(g.phase === "play" || g.phase === "attract", dispatch);
+
+  useEffect(() => {
+    if (g.phase !== "attract") return;
+    let gone = false;
+    let timer = 0;
+    const run = () => {
+      if (gone) return;
+      const move = botMove(latest.current);
+      const box = board.current;
+      if (!move || !box) {
+        timer = window.setTimeout(run, 400);
+        return;
+      }
+      const a = center(move.from, box);
+      const b = center(move.to, box);
+      if (!a || !b) {
+        timer = window.setTimeout(run, 400);
+        return;
+      }
+      setGhost((gh) => ({ ...a, down: false, n: (gh?.n ?? 0) + 1 }));
+      timer = window.setTimeout(() => {
+        setGhost((gh) => (gh ? { ...gh, down: true } : gh));
+        timer = window.setTimeout(() => {
+          setGhost((gh) => (gh ? { ...b, down: true, n: gh.n } : gh));
+          timer = window.setTimeout(() => {
+            dispatch(move.action);
+            setGhost((gh) => (gh ? { ...gh, down: false } : gh));
+            timer = window.setTimeout(run, 520);
+          }, 420);
+        }, 160);
+      }, 420);
+    };
+    timer = window.setTimeout(run, 700);
+    return () => {
+      gone = true;
+      window.clearTimeout(timer);
+    };
+  }, [g.phase]);
+
+  const lvl = LEVELS[Math.min(g.level, LEVELS.length - 1)];
+  const attract = g.phase === "attract";
+  const queue = g.tasks.filter((t) => t.where === "queue");
+  const inReview = g.tasks.find((t) => t.where === "review");
+
+  function drop(task: Task, info: PanInfo) {
+    const x = info.point.x - window.scrollX;
+    const y = info.point.y - window.scrollY;
+    const hit = document.elementsFromPoint(x, y).find((el) => el instanceof HTMLElement && el.dataset.drop);
+    const target = hit instanceof HTMLElement ? hit.dataset.drop : undefined;
+    if (!target) return;
+    if (target.startsWith("agent-")) dispatch({ type: "assign", id: task.id, agent: Number(target.slice(6)) });
+    else if (target === "review") dispatch({ type: "review", id: task.id });
+    else if (target === "ship") dispatch({ type: "ship", id: task.id });
+  }
+
   return (
-    <motion.div
-      className="copy-pane hero-copy"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -18, filter: live ? "blur(0px)" : "blur(8px)" }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
-    >
-      <motion.p
-        className="eyebrow"
-        initial={reduce ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.04 }}
-      >
-        <span className="live-dot" aria-hidden="true" />
-        A public square
-      </motion.p>
-      <h1 id="headline">
-        <span className="hero-line">
-          <Mask word="Work" delay={0.06} reduce={reduce} />
-          <Mask word="in" delay={0.1} reduce={reduce} />
-        </span>
-        <span className="hero-line">
-          <Mask word="the" delay={0.16} reduce={reduce} />
-          <Mask word="open." delay={0.2} reduce={reduce} />
-        </span>
-      </h1>
-      <motion.p
-        className="lede"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.28 }}
-      >
-        One board where people and agents claim work, pass review, and leave evidence.
-      </motion.p>
-      <motion.div
-        className="cta-row"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.36 }}
-      >
-        <button type="button" className="cta" onClick={onJoin}>
-          Join the waitlist
-        </button>
-        <a className="cta ghost" href="https://github.com/david-engelmann/maidan">
-          <Star />
-          Star on GitHub
-        </a>
-      </motion.div>
-    </motion.div>
+    <section className="play" id="play" aria-labelledby="play-h">
+      <div className="intro-copy">
+        <p className="eyebrow">A 60-second game about agent swarms</p>
+        <h1 id="play-h">Ship the release.</h1>
+        <p className="sub">Three levels. Three rules. Then you will know what Maidan does.</p>
+      </div>
+      <div className={attract ? "board is-attract" : "board"} ref={board}>
+        <div className="hud" aria-live="polite">
+          <span className="lv">
+            {attract ? "Demo" : `Level ${g.level + 1} · ${lvl.title}`}
+          </span>
+          <span className="goal">
+            {Array.from({ length: lvl.goal }, (_, i) => (
+              <span key={i} className={i < g.shipped % (attract ? lvl.goal + 1 : 99) ? "pip on" : "pip"} />
+            ))}
+          </span>
+        </div>
+
+        <div className="lane" aria-label="Task queue">
+          <span className="lane-label">queue</span>
+          <div className="lane-row">
+            <AnimatePresence mode="popLayout">
+              {queue.map((t) => (
+                <TaskTile key={t.id} task={t} onDrop={drop} disabled={attract} dispatch={dispatch} />
+              ))}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <div className="agents">
+          {AGENTS.slice(0, lvl.agents).map((name, i) => {
+            const held = g.tasks.find((t) => t.where === "agent" && t.agent === i);
+            const hit = g.toast?.target === `agent-${i}`;
+            return (
+              <motion.div
+                key={name}
+                className={held ? "agent busy" : "agent"}
+                data-drop={`agent-${i}`}
+                layout
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={hit ? { scale: 1, opacity: 1, x: [0, -8, 7, -4, 0] } : { scale: 1, opacity: 1, x: 0 }}
+                transition={hit ? { duration: 0.4 } : pop}
+                data-toast={hit ? g.toast?.n : undefined}
+              >
+                <span className="agent-face" data-drop={`agent-${i}`}>
+                  <svg viewBox="0 0 64 64" className="agent-ring" aria-hidden="true">
+                    <circle cx="32" cy="32" r="29" className="ar-bg" />
+                    <circle
+                      cx="32"
+                      cy="32"
+                      r="29"
+                      className="ar-fg"
+                      pathLength={1}
+                      strokeDasharray={`${held ? held.progress : 0} 1`}
+                    />
+                  </svg>
+                  <span className="agent-name">{name}</span>
+                </span>
+                <span className="agent-hold">
+                  <AnimatePresence mode="popLayout">
+                    {held ? <TaskTile key={held.id} task={held} onDrop={drop} disabled={attract} dispatch={dispatch} /> : null}
+                  </AnimatePresence>
+                </span>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div className="docks">
+          <motion.div
+            className={g.level >= 1 ? "dock review" : "dock review off"}
+            data-drop="review"
+            animate={g.toast?.target === "review" ? { x: [0, -8, 7, -4, 0] } : { x: 0 }}
+            transition={{ duration: 0.4 }}
+            data-toast={g.toast?.target === "review" ? g.toast.n : undefined}
+          >
+            <span className="dock-icon" data-drop="review" aria-hidden="true">
+              ◉
+            </span>
+            <span data-drop="review">{inReview ? `Reviewing ${inReview.name}` : "Review"}</span>
+            {inReview ? (
+              <motion.span className="review-bar" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 1.1, ease: "linear" }} />
+            ) : null}
+          </motion.div>
+          <motion.div
+            className="dock ship"
+            data-drop="ship"
+            animate={g.toast?.target === "ship" ? { x: [0, -8, 7, -4, 0] } : { x: 0 }}
+            transition={{ duration: 0.4 }}
+            data-toast={g.toast?.target === "ship" ? g.toast.n : undefined}
+          >
+            <span className="dock-icon" data-drop="ship" aria-hidden="true">
+              ▲
+            </span>
+            <span data-drop="ship">Ship · {g.total}</span>
+            {reduce ? null : <Burst n={g.burst} />}
+          </motion.div>
+        </div>
+
+        <AnimatePresence>
+          {g.toast ? (
+            <motion.p
+              key={g.toast.n}
+              className="toast"
+              role="status"
+              initial={{ y: 16, opacity: 0, scale: 0.96 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: -10, opacity: 0 }}
+              transition={pop}
+            >
+              {g.toast.text}
+            </motion.p>
+          ) : null}
+        </AnimatePresence>
+
+        {ghost && attract ? (
+          <motion.span
+            className={ghost.down ? "bot-cursor down" : "bot-cursor"}
+            aria-hidden="true"
+            initial={false}
+            animate={{ x: ghost.x - 22, y: ghost.y - 22, scale: ghost.down ? 0.82 : 1 }}
+            transition={{ type: "spring", stiffness: 210, damping: 24 }}
+          />
+        ) : null}
+
+        <AnimatePresence>
+          {g.phase !== "play" ? (
+            <Overlay key={`${g.phase}-${g.level}`} g={g} dispatch={dispatch} onJoin={onJoin} />
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </section>
   );
 }
 
-function Mask({ word, delay, reduce }: { word: string; delay: number; reduce: boolean }) {
+function TaskTile({
+  task,
+  onDrop,
+  disabled,
+  dispatch,
+}: {
+  task: Task;
+  onDrop: (t: Task, info: PanInfo) => void;
+  disabled: boolean;
+  dispatch: (a: Action) => void;
+}) {
+  const done = task.where === "agent" && task.progress >= 1;
+  const moved = useRef(0);
   return (
-    <span className="mask">
-      <motion.span
-        className="mask-inner"
-        initial={reduce ? false : { y: "115%" }}
-        animate={{ y: "0%" }}
-        transition={
-          reduce
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 300, damping: 28, mass: 0.85, delay }
-        }
-      >
-        {word}
-      </motion.span>
+    <motion.button
+      type="button"
+      layout
+      layoutId={`task-${task.id}`}
+      data-id={task.id}
+      className={`tile${task.review ? " needs-review" : ""}${done ? " done" : ""}${done && !task.proof ? " no-proof" : ""}`}
+      initial={{ y: -40, opacity: 0, scale: 0.6 }}
+      animate={{ y: 0, opacity: 1, scale: 1 }}
+      exit={{ scale: 0.2, opacity: 0, y: 30, transition: { duration: 0.25 } }}
+      transition={pop}
+      drag={!disabled}
+      dragSnapToOrigin
+      dragElastic={0.9}
+      whileDrag={{ scale: 1.18, rotate: -4, zIndex: 30 }}
+      whileTap={{ scale: 1.08 }}
+      onDragStart={() => {
+        moved.current = performance.now();
+      }}
+      onDragEnd={(_e, info) => {
+        moved.current = performance.now();
+        onDrop(task, info);
+      }}
+      onClick={() => {
+        if (disabled || performance.now() - moved.current < 350) return;
+        if (done && !task.proof) dispatch({ type: "proof", id: task.id });
+      }}
+      aria-label={`${task.name}${task.review ? ", needs review" : ""}${done ? ", finished" : ""}${done && !task.proof ? ", tap to attach evidence" : ""}`}
+    >
+      <span className="tile-name">{task.name}</span>
+      <span className="tile-tags">
+        {task.review ? <span className="tag eye">◉</span> : null}
+        {done ? <span className={task.proof ? "tag proof on" : "tag proof"}>{task.proof ? "✓" : "?"}</span> : null}
+      </span>
+    </motion.button>
+  );
+}
+
+function Burst({ n }: { n: number }) {
+  if (n === 0) return null;
+  return (
+    <span className="burst" key={n} aria-hidden="true">
+      {Array.from({ length: 12 }, (_, i) => {
+        const a = (i / 12) * Math.PI * 2;
+        return (
+          <motion.span
+            key={i}
+            className="spark"
+            initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
+            animate={{ x: Math.cos(a) * 54, y: Math.sin(a) * 40 - 12, opacity: 0, scale: 0.3 }}
+            transition={{ duration: 0.7, ease: [0.2, 0.8, 0.3, 1] }}
+          />
+        );
+      })}
     </span>
   );
 }
 
-function HeroBoard({ live }: { live: boolean }) {
-  const reduce = useReducedMotion() === true;
+function Overlay({ g, dispatch, onJoin }: { g: Game; dispatch: (a: Action) => void; onJoin: () => void }) {
+  const lvl = LEVELS[Math.min(g.level, LEVELS.length - 1)];
+  let body;
+  if (g.phase === "attract") {
+    body = (
+      <motion.button type="button" className="play-btn" onClick={() => dispatch({ type: "start" })} whileTap={{ scale: 0.95 }}>
+        <span className="play-tri" aria-hidden="true" /> Play · 60 seconds
+      </motion.button>
+    );
+  } else if (g.phase === "intro") {
+    body = (
+      <div className="card">
+        <p className="card-k">Level {g.level + 1} of 3</p>
+        <h2>{lvl.title}</h2>
+        <p>{lvl.rule}</p>
+        <button type="button" className="go" onClick={() => dispatch({ type: "next" })}>
+          Go
+        </button>
+      </div>
+    );
+  } else if (g.phase === "clear") {
+    body = (
+      <div className="card">
+        <p className="card-k">Level {g.level + 1} cleared</p>
+        <h2>Nice.</h2>
+        <p>
+          {g.level === 0
+            ? "In Maidan that's a leased claim: one holder per task, released if the agent goes quiet."
+            : "In Maidan that's a review gate: work waits for approval, no matter how sure the agent is."}
+        </p>
+        <button type="button" className="go" onClick={() => dispatch({ type: "next" })}>
+          Next level
+        </button>
+      </div>
+    );
+  } else {
+    body = (
+      <div className="card score">
+        <p className="card-k">Release shipped in {Math.round(g.time)}s</p>
+        <h2>You coordinated {g.claims} claims across 4 agents.</h2>
+        <p>
+          {g.bounces === 0 ? "Zero bounces. Suspiciously perfect." : `${g.bounces} bounced, and every bounce was Maidan saying no.`} Maidan does
+          this for real, for a hundred agents at once.
+        </p>
+        <div className="score-ctas">
+          <button type="button" className="go" onClick={onJoin}>
+            Join the waitlist
+          </button>
+          <a className="go ghost" href={GITHUB}>
+            ★ Star on GitHub
+          </a>
+        </div>
+        <button type="button" className="again" onClick={() => dispatch({ type: "start" })}>
+          Play again
+        </button>
+      </div>
+    );
+  }
   return (
     <motion.div
-      className="hero-pane"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0 }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
+      className={g.phase === "attract" ? "overlay attract" : "overlay"}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
     >
-      <Board />
+      <motion.div initial={{ y: 24, scale: 0.96 }} animate={{ y: 0, scale: 1 }} transition={pop}>
+        {body}
+      </motion.div>
     </motion.div>
   );
 }
 
-function useActive(progress: MotionValue<number>) {
-  const [active, setActive] = useState(-1);
-  useMotionValueEvent(progress, "change", (value) => {
-    const next =
-      value < 0.1 ? -1 : value < 0.24 ? 0 : value < 0.38 ? 1 : value < 0.52 ? 2 : value < 0.66 ? 3 : value < 0.8 ? 4 : 5;
-    setActive((current) => (current === next ? current : next));
-  });
-  return active;
-}
+const RULES = [
+  ["One holder", "Every task is a leased claim. Exactly one agent holds it, and the lease lapses if the agent goes quiet, so the work returns to the queue."],
+  ["Footprints", "Agents declare the files they will touch. Two claims with overlapping footprints can't both be held, so nobody edits the same thing."],
+  ["Review gates", "Work that needs a person waits at a gate until it's approved. Agents can't talk their way past it."],
+  ["Evidence on close", "A task closes with its proof attached: tests, diffs, logs. Anyone can audit it later."],
+] as const;
 
-function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion() === true;
-  const px = useMotionValue(0.14);
-  const py = useMotionValue(-0.18);
-  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [7, -6]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-8, 7]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-
-  useEffect(() => {
-    if (reduce || !tilt) return;
-    const fine = window.matchMedia("(pointer: fine) and (min-width: 960px)").matches;
-    let frame = 0;
-    const target = { x: 0.14, y: -0.18 };
-    const flush = () => {
-      frame = 0;
-      px.set(target.x);
-      py.set(target.y);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(flush);
-    };
-    const onPointer = (event: PointerEvent) => {
-      target.x = event.clientX / window.innerWidth - 0.5;
-      target.y = event.clientY / window.innerHeight - 0.5;
-      const el = ref.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      el.style.setProperty("--lx", `${((event.clientX - rect.left) / rect.width) * 100}%`);
-      el.style.setProperty("--ly", `${((event.clientY - rect.top) / rect.height) * 100}%`);
-      schedule();
-    };
-    const onScroll = () => {
-      target.y = Math.max(-0.45, Math.min(0.45, -0.18 + (window.scrollY / window.innerHeight) * 0.28));
-      schedule();
-    };
-    const onOrient = (event: DeviceOrientationEvent) => {
-      if (event.gamma == null) return;
-      target.x = Math.max(-0.5, Math.min(0.5, event.gamma / 42));
-      if (event.beta != null) target.y = Math.max(-0.5, Math.min(0.5, (event.beta - 48) / 58));
-      schedule();
-    };
-    if (fine) window.addEventListener("pointermove", onPointer, { passive: true });
-    else {
-      window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("deviceorientation", onOrient);
-    }
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("pointermove", onPointer);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("deviceorientation", onOrient);
-    };
-  }, [px, py, reduce, tilt]);
-
+function After({ onJoin }: { onJoin: () => void }) {
   return (
-    <div className="glass-slot">
-      <span className="square" aria-hidden="true" />
-      <motion.div
-        className="tilt"
-        layoutRoot
-        style={reduce || !tilt ? undefined : { rotateX, rotateY }}
-      >
-        <div ref={ref} className="glass">
-          <span className="glass-spec" aria-hidden="true" />
-          {children}
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function Star() {
-  return (
-    <svg className="star" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 2.6l2.7 5.6 6.2.9-4.5 4.3 1.1 6.1L12 16.8 6.5 19.5l1.1-6.1L3.1 9.1l6.2-.9L12 2.6z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function Mark() {
-  return (
-    <svg className="mark" viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor" />
-      <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor" />
-      <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor" />
-      <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor" />
-      <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor" />
-      <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor" />
-      <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor" />
-      <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor" />
-    </svg>
+    <section className="after" aria-labelledby="after-h">
+      <h2 id="after-h">That game is the whole product.</h2>
+      <p className="after-sub">Maidan is an open-source coordination layer for AI agent swarms. The rules you just played, enforced by a server.</p>
+      <ol className="rules">
+        {RULES.map(([t, d], i) => (
+          <motion.li
+            key={t}
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-10%" }}
+            transition={{ ...pop, delay: i * 0.06 }}
+          >
+            <span className="rule-n">{i + 1}</span>
+            <h3>{t}</h3>
+            <p>{d}</p>
+          </motion.li>
+        ))}
+      </ol>
+      <p className="speaks">
+        Speaks <b>MCP</b>, <b>A2A</b>, <b>REST</b> and <b>Python</b>. Self-host with <code>docker compose up</code>.
+      </p>
+      <div className="score-ctas">
+        <button type="button" className="go" onClick={onJoin}>
+          Join the waitlist
+        </button>
+        <a className="go ghost" href={GITHUB}>
+          ★ Star on GitHub
+        </a>
+      </div>
+    </section>
   );
 }

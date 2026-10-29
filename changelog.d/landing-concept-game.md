@@ -1,0 +1,1 @@
+- Landing concept 05: "Ship the release", a 60-second three-level puzzle game that teaches leased claims, review gates and evidence on close, with an attract mode and score screen.
