@@ -17,8 +17,14 @@ and the root `CHANGELOG.md`; how the project got here is in
   ranked Next list in Open Work. Each carries its own PR-level retro and a
   `CHANGELOG.md` `[Unreleased]` entry and names the Open Work row it closes;
   the coordinator updates Open Work after the merge.
-- **Releases** are cut when the maintainer chooses, as a `vN.0.0` tag that runs
-  `release.yml`. `scripts/check-release-records.sh` refuses a tag without its
+- **Branches.** Since 2026-10-27, `dev` takes every pull request and `main` is
+  prod: the coordinator fast-forwards `main` to a `dev` commit that is green
+  and has run a day on the swarm stack. Ready pull requests merge in batches,
+  one integration branch with one CI run, so two changes that pass alone
+  cannot break `dev` together.
+- **Releases** are cut from `main` as a `vN.0.0` tag that runs `release.yml`;
+  publishing it deploys maidan.world (`deploy-prod.yml`, the `prod`
+  environment). `scripts/check-release-records.sh` refuses a tag without its
   CHANGELOG section and Capabilities record. A retro does not imply a tag: work
   from an untagged cluster ships in the next tag (v23–26, v78–100, v311,
   v350–401, v403 and v411 were never cut).
@@ -41,7 +47,7 @@ release, with the launch rows in Open Work (Next 23, 24, 29 and 30) closed.
 
 ## Where it is
 
-The latest release is `v416.0.0` (2026-10-23). The work in flight and the
+The latest release is `v419.0.0` (2026-10-27), which maidan.world runs; `dev` is ahead of it. The work in flight and the
 launch path are the **Now** and **Next** sections of [Open Work](Open%20Work.md),
 which end at the launch gate. `scripts/sdk-test.sh` and `scripts/lease-demo.sh`
 run the binary from `CARGO_TARGET_DIR` when it is set.
@@ -51,7 +57,7 @@ run the binary from `CARGO_TARGET_DIR` when it is set.
 0. **Safe to deploy.** Before anyone runs Maidan: every deploy path runs the
    newest release, no chart renders a default credential or the `dev` image,
    and a contract keeps the pins from drifting (both #1156). Done: every
-   deploy path pins the newest tag (`v416.0.0`), including the ARM64 page with auth on, and the
+   deploy path pins the newest tag (`v419.0.0`), including the ARM64 page with auth on, and the
    stack's bundled Postgres and MinIO run in the chart since #1172. Open Work's
    **Before anyone deploys** has no open blocker.
 1. **A Slack message becomes a reviewed PR.** David's agent loop, decided on
