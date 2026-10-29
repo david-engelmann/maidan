@@ -227,6 +227,7 @@ export function yaml(c: Circ): string {
     const n = count(c, r.id);
     if (n && r.id !== "human") lines.push(`  - role: ${r.id}`, `    count: ${n}`);
   }
+  if (!ROLES.some((r) => r.id !== "human" && count(c, r.id))) lines.push("  [] # drag a Planner and a Coder onto the board above");
   const h = count(c, "human");
   if (h) lines.push("people:", "  - role: approver", `    count: ${h}`);
   lines.push(

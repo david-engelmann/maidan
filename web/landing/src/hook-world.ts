@@ -205,13 +205,13 @@ export function draw(ctx: CanvasRenderingContext2D, wd: HWorld, dpr: number, mot
   const cy = (f.y0 + f.y1) / 2;
   const rad = Math.max(f.x1 - f.x0, f.y1 - f.y0) * 0.85;
   const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
-  glow.addColorStop(0, wd.order ? "rgba(45,212,191,0.13)" : "rgba(244,63,94,0.12)");
-  glow.addColorStop(0.55, wd.order ? "rgba(167,139,250,0.05)" : "rgba(251,191,36,0.04)");
+  glow.addColorStop(0, wd.order ? "rgba(45,212,191,0.2)" : "rgba(244,63,94,0.17)");
+  glow.addColorStop(0.55, wd.order ? "rgba(167,139,250,0.08)" : "rgba(251,191,36,0.06)");
   glow.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, wd.w, wd.h);
   ctx.lineCap = "round";
-  const s = wd.portrait ? 18 : 22;
+  const s = wd.portrait ? 18 : 28;
   // Holder lines.
   if (wd.order) {
     ctx.lineWidth = 1;
@@ -287,7 +287,7 @@ export function draw(ctx: CanvasRenderingContext2D, wd: HWorld, dpr: number, mot
     }
     ctx.fillStyle = `rgb(${col})`;
     ctx.beginPath();
-    ctx.arc(a.x, a.y, wd.portrait ? 3.2 : 3.6, 0, Math.PI * 2);
+    ctx.arc(a.x, a.y, wd.portrait ? 3.2 : 4.6, 0, Math.PI * 2);
     ctx.fill();
   }
 }

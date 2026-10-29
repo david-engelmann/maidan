@@ -23,12 +23,16 @@ function targetCam(scene: Scene, s: Sim, portrait: boolean): Camera {
 
 const C = { claim: "45,212,191", lease: "251,191,36", review: "167,139,250", proof: "74,222,128", ink: "242,243,247" };
 
+// Where the camera centre lands: above the card on phones, right of it on wide screens.
+const originX = (w: number) => (w >= 900 ? w * 0.6 : w / 2);
+const originY = (w: number, h: number) => (w < 760 ? h * 0.37 : h / 2);
+
 function draw(ctx: CanvasRenderingContext2D, s: Sim, scene: Scene, w: number, h: number, dpr: number, selected: number | null, t: number) {
   const k = Math.max(w, h) / 1000;
   const z = s.cam.s * k;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (w / 2 - s.cam.cx * z), dpr * (h / 2 - s.cam.cy * z));
+  ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (originX(w) - s.cam.cx * z), dpr * (originY(w, h) - s.cam.cy * z));
   const list = agents(s);
   const crowd = list.length > 12;
   const q = s.nodes[QUEUE];
@@ -248,7 +252,7 @@ export function Stage({ reduce, onJoin }: { reduce: boolean; onJoin: () => void 
     if (!cv) return [0, 0];
     const r = cv.getBoundingClientRect();
     const z = sim.current.cam.s * (Math.max(r.width, r.height) / 1000);
-    return [(cx - r.left - r.width / 2) / z + sim.current.cam.cx, (cy - r.top - r.height / 2) / z + sim.current.cam.cy];
+    return [(cx - r.left - originX(r.width)) / z + sim.current.cam.cx, (cy - r.top - originY(r.width, r.height)) / z + sim.current.cam.cy];
   };
   const hit = (x: number, y: number): number | null => {
     const s = sim.current;

@@ -223,8 +223,16 @@ a { color: inherit; -webkit-tap-highlight-color: transparent; }
 }
 @media (min-width: 900px) {
   .step { align-items: center; padding-left: max(4rem, 7vw); padding-bottom: 0; }
-  .step .card { max-width: 27rem; }
+  .step .card { max-width: 30rem; padding: 1.4rem 1.5rem; }
+  .step .card p { font-size: 1.08rem; }
+  .step .card h2 { font-size: 1.9rem; }
   .inspect { left: auto; right: 2rem; bottom: auto; top: 5rem; width: 21rem; }
+}
+@media (max-width: 759px) {
+  .step { padding-bottom: calc(env(safe-area-inset-bottom) + 3.9rem); }
+  .step .card { padding: 0.9rem 1rem; border-radius: 20px; }
+  .step .card p { font-size: 0.92rem; line-height: 1.42; }
+  .step .card.intro h2 { font-size: 1.75rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .power:not(.is-on) { animation: none; }
