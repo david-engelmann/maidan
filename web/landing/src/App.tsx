@@ -1,383 +1,551 @@
-import {
-  motion,
-  useMotionValue,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Board } from "./board";
+import { motion, useReducedMotion, type PanInfo } from "motion/react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Join } from "./join";
+import { Swarm } from "./swarm";
 
-const Aurora = lazy(() => import("./aurora"));
-const loadStory = () => import("./story");
-const Scenes = lazy(() => loadStory().then((mod) => ({ default: mod.Scenes })));
-const Still = lazy(() => loadStory().then((mod) => ({ default: mod.Still })));
-
-const links = [
-  ["#holder", "Hold"],
-  ["#reviews", "Review"],
-  ["#evidence", "Proof"],
-  ["#connect", "Agents"],
-  ["#run", "Run"],
-] as const;
-
-const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
+const GITHUB = "https://github.com/david-engelmann/maidan";
 
 export default function App() {
-  const reduce = useReducedMotion() === true;
   const [open, setOpen] = useState(false);
-
   useEffect(() => {
     const openIf = () => {
       if (location.hash === "#join") setOpen(true);
     };
     openIf();
-    const onClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (!target.closest("a[href='#join']")) return;
-      event.preventDefault();
-      history.replaceState(null, "", "#join");
-      setOpen(true);
-    };
     window.addEventListener("hashchange", openIf);
-    document.addEventListener("click", onClick);
-    return () => {
-      window.removeEventListener("hashchange", openIf);
-      document.removeEventListener("click", onClick);
-    };
+    return () => window.removeEventListener("hashchange", openIf);
   }, []);
-
+  const join = () => setOpen(true);
   return (
     <>
-      <Field />
-      <div className="grain" aria-hidden="true" />
-      <Header onJoin={() => setOpen(true)} pressed={open} />
-      {reduce ? <Quiet onJoin={() => setOpen(true)} /> : <Cinematic onJoin={() => setOpen(true)} />}
+      <Top onJoin={join} />
+      <main className="essay">
+        <Hero />
+        <Lease />
+        <Footprints />
+        <Gate />
+        <Evidence />
+        <Finale onJoin={join} />
+      </main>
       <Join open={open} onOpenChange={setOpen} />
     </>
   );
 }
 
-function Field() {
-  const [reduce] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  return (
-    <div className="light" aria-hidden="true">
-      <div className="ambient">
-        <span className="blob mint" />
-        <span className="blob cyan" />
-        <span className="blob violet" />
-      </div>
-      {reduce ? null : (
-        <Suspense fallback={null}>
-          <Aurora />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
-function Header({ onJoin, pressed }: { onJoin: () => void; pressed: boolean }) {
+function Top({ onJoin }: { onJoin: () => void }) {
   return (
     <header className="top">
-      <a className="brand" href="#floor">
-        <Mark />
-        <span>Maidan</span>
+      <a className="brand" href="#top">
+        <span className="brand-dot" aria-hidden="true" />
+        Maidan
       </a>
-      <nav className="nav" aria-label="On this page">
-        {links.map(([href, label]) => (
-          <a key={href} href={href}>
-            {label}
-          </a>
-        ))}
-      </nav>
-      <a className="signin" href="/ui">
-        Sign in
+      <a className="top-link" href={GITHUB}>
+        GitHub
       </a>
-      <button type="button" className="join-btn" aria-expanded={pressed} onClick={onJoin}>
+      <button type="button" className="top-join" onClick={onJoin}>
         Join
       </button>
     </header>
   );
 }
 
-function Quiet({ onJoin }: { onJoin: () => void }) {
+function Hero() {
   return (
-    <main>
-      <section className="poster" id="floor" aria-labelledby="headline">
-          <div className="copy-slot">
-          <HeroWords live onJoin={onJoin} />
-        </div>
-          <Glass tilt={false}>
-          <div className="glass-body">
-            <div className="hero-pane">
-              <Board />
-            </div>
-          </div>
-        </Glass>
-      </section>
-      <Suspense fallback={<div className="still-hold" aria-hidden="true" />}>
-        <Still onJoin={onJoin} />
-      </Suspense>
-    </main>
+    <section className="hero" id="top" aria-labelledby="title">
+      <p className="kicker">An explorable explanation · 6 minutes</p>
+      <h1 id="title">How to run a hundred agents without chaos</h1>
+      <p className="dek">
+        Give one AI agent a task and it does fine. Give twenty agents twenty tasks and they overwrite each other,
+        forget what they claimed, and ship things nobody checked. This page shows, one rule at a time, how{" "}
+        <b>Maidan</b> keeps a swarm in order. Everything below is live. Touch it.
+      </p>
+      <Figure n={0} caption="A small swarm. Each dot is an agent; the centre is the task queue. Drag to stir it.">
+        <Swarm count={18} tall={false} />
+      </Figure>
+    </section>
   );
 }
 
-function Cinematic({ onJoin }: { onJoin: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-  const [copyEl, setCopyEl] = useState<HTMLDivElement | null>(null);
-  const [glassEl, setGlassEl] = useState<HTMLDivElement | null>(null);
-  const y1 = useTransform(scrollYProgress, [0, 1], [48, -160]);
-  const y2 = useTransform(scrollYProgress, [0, 1], [-30, 110]);
-  const active = useActive(scrollYProgress);
+function Figure({ n, caption, children }: { n: number; caption: ReactNode; children: ReactNode }) {
   return (
-    <main>
-      <div className="reel" ref={ref}>
-        <div className="pin" id="floor">
-          <motion.span className="depth-orb mint" style={{ y: y1 }} aria-hidden="true" />
-          <motion.span className="depth-orb violet" style={{ y: y2 }} aria-hidden="true" />
-          <div className="copy-slot" ref={setCopyEl}>
-            <HeroWords live={active < 0} onJoin={onJoin} />
-          </div>
-          <Glass tilt>
-            <div className="glass-body" ref={setGlassEl}>
-              <HeroBoard live={active < 0} />
-            </div>
-          </Glass>
-        </div>
-        <span id="holder" className="spot spot-holder" />
-        <span id="reviews" className="spot spot-reviews" />
-        <span id="evidence" className="spot spot-evidence" />
-        <span id="connect" className="spot spot-connect" />
-        <span id="run" className="spot spot-run" />
-        <span id="belong" className="spot spot-belong" />
-        {copyEl && glassEl ? (
-          <Suspense fallback={null}>
-            <Scenes
-              progress={scrollYProgress}
-              copyEl={copyEl}
-              glassEl={glassEl}
-              onJoin={onJoin}
-              active={active}
-            />
-          </Suspense>
-        ) : null}
-      </div>
-    </main>
+    <figure className="fig">
+      <div className="fig-body">{children}</div>
+      <figcaption>
+        <span className="fig-n">Fig. {n}</span> {caption}
+      </figcaption>
+    </figure>
   );
 }
 
-function HeroWords({ live, onJoin }: { live: boolean; onJoin: () => void }) {
+function Chapter({ id, n, title, children }: { id: string; n: string; title: string; children: ReactNode }) {
   const reduce = useReducedMotion() === true;
-  const reveal = reduce ? { duration: 0 } : { ...spring, delay: 0 };
   return (
-    <motion.div
-      className="copy-pane hero-copy"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -18, filter: live ? "blur(0px)" : "blur(8px)" }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
+    <motion.section
+      className="chapter"
+      id={id}
+      aria-labelledby={`${id}-h`}
+      initial={reduce ? false : { opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "0px 0px -15% 0px" }}
+      transition={{ type: "spring", stiffness: 160, damping: 26 }}
     >
-      <motion.p
-        className="eyebrow"
-        initial={reduce ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.04 }}
-      >
-        <span className="live-dot" aria-hidden="true" />
-        A public square
-      </motion.p>
-      <h1 id="headline">
-        <span className="hero-line">
-          <Mask word="Work" delay={0.06} reduce={reduce} />
-          <Mask word="in" delay={0.1} reduce={reduce} />
-        </span>
-        <span className="hero-line">
-          <Mask word="the" delay={0.16} reduce={reduce} />
-          <Mask word="open." delay={0.2} reduce={reduce} />
-        </span>
-      </h1>
-      <motion.p
-        className="lede"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.28 }}
-      >
-        One board where people and agents claim work, pass review, and leave evidence.
-      </motion.p>
-      <motion.div
-        className="cta-row"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.36 }}
-      >
-        <button type="button" className="cta" onClick={onJoin}>
-          Join the waitlist
-        </button>
-        <a className="cta ghost" href="https://github.com/david-engelmann/maidan">
-          <Star />
-          Star on GitHub
-        </a>
-      </motion.div>
-    </motion.div>
+      <p className="num">{n}</p>
+      <h2 id={`${id}-h`}>{title}</h2>
+      {children}
+    </motion.section>
   );
 }
 
-function Mask({ word, delay, reduce }: { word: string; delay: number; reduce: boolean }) {
-  return (
-    <span className="mask">
-      <motion.span
-        className="mask-inner"
-        initial={reduce ? false : { y: "115%" }}
-        animate={{ y: "0%" }}
-        transition={
-          reduce
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 300, damping: 28, mass: 0.85, delay }
-        }
-      >
-        {word}
-      </motion.span>
-    </span>
-  );
-}
-
-function HeroBoard({ live }: { live: boolean }) {
-  const reduce = useReducedMotion() === true;
-  return (
-    <motion.div
-      className="hero-pane"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0 }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
-    >
-      <Board />
-    </motion.div>
-  );
-}
-
-function useActive(progress: MotionValue<number>) {
-  const [active, setActive] = useState(-1);
-  useMotionValueEvent(progress, "change", (value) => {
-    const next =
-      value < 0.1 ? -1 : value < 0.24 ? 0 : value < 0.38 ? 1 : value < 0.52 ? 2 : value < 0.66 ? 3 : value < 0.8 ? 4 : 5;
-    setActive((current) => (current === next ? current : next));
-  });
-  return active;
-}
-
-function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion() === true;
-  const px = useMotionValue(0.14);
-  const py = useMotionValue(-0.18);
-  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [7, -6]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-8, 7]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-
+function useTicker(running: boolean, step: (dt: number) => void) {
+  const fn = useRef(step);
   useEffect(() => {
-    if (reduce || !tilt) return;
-    const fine = window.matchMedia("(pointer: fine) and (min-width: 960px)").matches;
-    let frame = 0;
-    const target = { x: 0.14, y: -0.18 };
-    const flush = () => {
-      frame = 0;
-      px.set(target.x);
-      py.set(target.y);
+    fn.current = step;
+  });
+  useEffect(() => {
+    if (!running) return;
+    let last = performance.now();
+    let raf = 0;
+    const loop = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      fn.current(dt);
+      raf = requestAnimationFrame(loop);
     };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(flush);
-    };
-    const onPointer = (event: PointerEvent) => {
-      target.x = event.clientX / window.innerWidth - 0.5;
-      target.y = event.clientY / window.innerHeight - 0.5;
-      const el = ref.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      el.style.setProperty("--lx", `${((event.clientX - rect.left) / rect.width) * 100}%`);
-      el.style.setProperty("--ly", `${((event.clientY - rect.top) / rect.height) * 100}%`);
-      schedule();
-    };
-    const onScroll = () => {
-      target.y = Math.max(-0.45, Math.min(0.45, -0.18 + (window.scrollY / window.innerHeight) * 0.28));
-      schedule();
-    };
-    const onOrient = (event: DeviceOrientationEvent) => {
-      if (event.gamma == null) return;
-      target.x = Math.max(-0.5, Math.min(0.5, event.gamma / 42));
-      if (event.beta != null) target.y = Math.max(-0.5, Math.min(0.5, (event.beta - 48) / 58));
-      schedule();
-    };
-    if (fine) window.addEventListener("pointermove", onPointer, { passive: true });
-    else {
-      window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("deviceorientation", onOrient);
-    }
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("pointermove", onPointer);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("deviceorientation", onOrient);
-    };
-  }, [px, py, reduce, tilt]);
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [running]);
+}
 
+function useInView<T extends Element>() {
+  const ref = useRef<T>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => setSeen(entry.isIntersecting), { threshold: 0.2 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return [ref, seen] as const;
+}
+
+/* ---------- 1. Leases ---------- */
+
+function Lease() {
+  const reduce = useReducedMotion() === true;
+  const [t, setT] = useState(0.35);
+  const [beat, setBeat] = useState(false);
+  const [held, setHeld] = useState(false);
+  const [ref, seen] = useInView<HTMLDivElement>();
+  useTicker(seen && !reduce && !held, (dt) => {
+    setT((v) => {
+      const next = v + dt * 0.11;
+      if (beat && next > 0.7 && next < 1) return 0.12;
+      return next > 1.75 ? 0.05 : next;
+    });
+  });
+  const expired = t >= 1;
+  const holder = expired ? "Bo" : "Ada";
+  const left = expired ? Math.max(0, 1 - (t - 1)) : 1 - t;
+  const secs = Math.round(left * 90);
   return (
-    <div className="glass-slot">
-      <span className="square" aria-hidden="true" />
-      <motion.div
-        className="tilt"
-        layoutRoot
-        style={reduce || !tilt ? undefined : { rotateX, rotateY }}
-      >
-        <div ref={ref} className="glass">
-          <span className="glass-spec" aria-hidden="true" />
-          {children}
+    <Chapter id="lease" n="01" title="One holder, on a timer">
+      <p>
+        The first rule is boring and essential: a task has <em className="c-claim">exactly one holder</em>. When
+        Ada claims <code>fix-login</code>, nobody else can. But agents crash, hang, and lose their network. So the
+        claim is a <em className="c-lease">lease</em>: it lasts only as long as Ada keeps sending heartbeats.
+      </p>
+      <p>Drag the timeline. Push it past the end and watch what happens to an abandoned claim.</p>
+      <Figure n={1} caption={<>A lease. When it runs out, the task goes back to the queue and the next free agent takes it.</>}>
+        <div className="lease" ref={ref}>
+          <div className="lease-stage">
+            <div className={expired ? "slot queue flash" : "slot queue"}>
+              <span className="slot-label">queue</span>
+            </div>
+            <motion.div
+              className="task"
+              layout
+              transition={{ type: "spring", stiffness: 260, damping: 24 }}
+              data-holder={holder}
+            >
+              <span className="task-id">fix-login</span>
+              <span className="task-holder">
+                held by <b className={expired ? "c-bo" : "c-ada"}>{holder}</b>
+              </span>
+              <svg className="ring" viewBox="0 0 40 40" aria-hidden="true">
+                <circle cx="20" cy="20" r="16" className="ring-bg" />
+                <circle cx="20" cy="20" r="16" className="ring-fg" pathLength={1} strokeDasharray={`${left} 1`} />
+              </svg>
+            </motion.div>
+            <div className="agents-row">
+              <span className={expired ? "agent dead" : "agent c-ada-bg"}>Ada {expired ? "· silent" : "· working"}</span>
+              <span className={expired ? "agent c-bo-bg" : "agent idle"}>Bo {expired ? "· working" : "· idle"}</span>
+            </div>
+          </div>
+          <label className="scrub">
+            <span>Time since claim</span>
+            <input
+              type="range"
+              min={0}
+              max={1.75}
+              step={0.005}
+              value={t}
+              onPointerDown={() => setHeld(true)}
+              onPointerUp={() => setHeld(false)}
+              onBlur={() => setHeld(false)}
+              onChange={(e) => setT(Number(e.target.value))}
+              aria-valuetext={expired ? `Lease expired, Bo holds the task` : `${secs} seconds left on Ada's lease`}
+            />
+            <span className="readout">{expired ? `expired → Bo, ${secs}s left` : `${secs}s left`}</span>
+          </label>
+          <label className="toggle">
+            <input type="checkbox" checked={beat} onChange={(e) => setBeat(e.target.checked)} />
+            Ada sends heartbeats
+          </label>
         </div>
-      </motion.div>
-    </div>
+      </Figure>
+      <p>
+        With heartbeats on, the lease keeps renewing and Ada keeps the task forever. Turn them off and Ada is just a
+        crashed process; ninety seconds later the work is back on the board. No human had to notice.
+      </p>
+    </Chapter>
   );
 }
 
-function Star() {
+/* ---------- 2. Footprints ---------- */
+
+const FILES = ["auth.rs", "lease.rs", "queue.rs", "api.rs", "README.md"];
+type Who = "Ada" | "Bo";
+
+function Footprints() {
+  const [at, setAt] = useState<Record<Who, number | null>>({ Ada: 1, Bo: null });
+  const [bounce, setBounce] = useState<{ who: Who; file: number; n: number } | null>(null);
+  const [blocked, setBlocked] = useState(0);
+
+  function place(who: Who, file: number | null) {
+    const other: Who = who === "Ada" ? "Bo" : "Ada";
+    if (file !== null && at[other] === file) {
+      setBounce((b) => ({ who, file, n: (b?.n ?? 0) + 1 }));
+      setBlocked((n) => n + 1);
+      return;
+    }
+    setBounce(null);
+    setAt((cur) => ({ ...cur, [who]: file }));
+  }
+
+  function onDrop(who: Who, event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
+    void event;
+    const x = info.point.x - window.scrollX;
+    const y = info.point.y - window.scrollY;
+    const hit = document.elementsFromPoint(x, y).find((el) => el instanceof HTMLElement && el.dataset.file);
+    const idx = hit instanceof HTMLElement && hit.dataset.file ? Number(hit.dataset.file) : null;
+    place(who, idx);
+  }
+
+  function chip(who: Who) {
+    return (
+      <motion.button
+        type="button"
+        key={who}
+        layoutId={`chip-${who}`}
+        className={`chip c-${who.toLowerCase()}-bg`}
+        drag
+        dragSnapToOrigin
+        dragElastic={0.6}
+        whileDrag={{ scale: 1.12, zIndex: 5, boxShadow: "0 18px 40px rgba(20,20,30,.28)" }}
+        onDragEnd={(e, info) => onDrop(who, e, info)}
+        onClick={() => {
+          const cur = at[who];
+          const next = cur === null ? 0 : cur + 1 >= FILES.length ? null : cur + 1;
+          place(who, next);
+        }}
+        aria-label={`${who}, editing ${at[who] === null ? "nothing" : FILES[at[who] ?? 0]}. Drag onto a file, or press to move to the next file.`}
+      >
+        {who}
+      </motion.button>
+    );
+  }
+
   return (
-    <svg className="star" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 2.6l2.7 5.6 6.2.9-4.5 4.3 1.1 6.1L12 16.8 6.5 19.5l1.1-6.1L3.1 9.1l6.2-.9L12 2.6z"
-        fill="currentColor"
-      />
-    </svg>
+    <Chapter id="footprints" n="02" title="Footprints: two agents, one file">
+      <p>
+        Leases stop two agents taking the same <em>task</em>. But two different tasks can still touch the same{" "}
+        <em>file</em>. So when an agent claims work it also declares a <em className="c-foot">footprint</em>: the
+        paths it will edit. Maidan refuses a claim whose footprint overlaps one already held.
+      </p>
+      <p>Drag Ada and Bo onto files. Try to put them on the same one.</p>
+      <Figure n={2} caption="Footprints. Overlapping claims are refused before any code is written, not discovered later as a merge conflict.">
+        <div className="foot">
+          <div className="bench" aria-label="Agents not editing anything">
+            {at.Ada === null ? chip("Ada") : null}
+            {at.Bo === null ? chip("Bo") : null}
+            <span className="bench-label">bench</span>
+          </div>
+          <ul className="files">
+            {FILES.map((f, i) => {
+              const holder = at.Ada === i ? "Ada" : at.Bo === i ? "Bo" : null;
+              const hit = bounce?.file === i;
+              return (
+                <motion.li
+                  key={f}
+                  data-file={i}
+                  className={holder ? `file held-${holder.toLowerCase()}` : "file"}
+                  animate={hit ? { x: [0, -9, 8, -5, 3, 0] } : { x: 0 }}
+                  transition={{ duration: 0.42 }}
+                  data-n={hit ? bounce?.n : 0}
+                >
+                  <span className="fname" data-file={i}>
+                    {f}
+                  </span>
+                  <span className="fslot" data-file={i}>
+                    {at.Ada === i ? chip("Ada") : null}
+                    {at.Bo === i ? chip("Bo") : null}
+                  </span>
+                </motion.li>
+              );
+            })}
+          </ul>
+          <p className="foot-status" role="status" aria-live="polite">
+            {bounce
+              ? `Refused: ${FILES[bounce.file]} is in ${bounce.who === "Ada" ? "Bo" : "Ada"}'s footprint.`
+              : "No overlap. Both agents can work."}{" "}
+            <span className="muted">Collisions stopped: {blocked}</span>
+          </p>
+        </div>
+      </Figure>
+    </Chapter>
   );
 }
 
-function Mark() {
+/* ---------- 3. Review gate ---------- */
+
+type Packet = { id: number; x: number; phase: "in" | "wait" | "out"; risky: boolean };
+type Sim = { id: number; spawn: number; work: number; packets: Packet[]; shipped: number; unchecked: number };
+const GATE_X = 0.55;
+
+function stepGate(prev: Sim, dt: number, need: number, reviewers: number): Sim {
+  let { id, spawn, work, shipped, unchecked } = prev;
+  spawn += dt;
+  work += dt;
+  let packets = prev.packets.map((p) => ({ ...p }));
+  if (spawn > 0.75) {
+    spawn = 0;
+    id += 1;
+    packets.push({ id, x: 0, phase: "in", risky: id % 3 === 0 });
+  }
+  const waiting = packets.filter((p) => p.phase === "wait").length;
+  for (const p of packets) {
+    if (p.phase === "in") {
+      const slot = Math.max(0.04, GATE_X - 0.035 * (waiting + 1));
+      p.x = Math.min(p.x + dt * 0.5, slot);
+      if (p.x >= slot - 0.001) p.phase = "wait";
+    } else if (p.phase === "out") {
+      p.x += dt * 0.6;
+    }
+  }
+  const service = need === 0 ? 0 : (need * 1.7) / reviewers;
+  const head = packets.find((p) => p.phase === "wait");
+  if (head && work >= service) {
+    work = 0;
+    head.phase = "out";
+    head.x = GATE_X + 0.02;
+    shipped += 1;
+    if (need === 0 && head.risky) unchecked += 1;
+  }
+  const queue = packets.filter((p) => p.phase === "wait");
+  queue.forEach((p, i) => {
+    p.x = GATE_X - 0.035 * (queue.length - i);
+  });
+  packets = packets.filter((p) => p.x < 1.05).slice(-40);
+  return { id, spawn, work, packets, shipped, unchecked };
+}
+
+function Gate() {
+  const reduce = useReducedMotion() === true;
+  const [need, setNeed] = useState(1);
+  const [reviewers, setReviewers] = useState(2);
+  const [sim, setSim] = useState<Sim>({ id: 0, spawn: 0, work: 0, packets: [], shipped: 0, unchecked: 0 });
+  const [ref, seen] = useInView<HTMLDivElement>();
+  useTicker(seen && !reduce, (dt) => setSim((prev) => stepGate(prev, dt, need, reviewers)));
+  const packets = sim.packets;
+  const stats = sim;
+  const queued = packets.filter((p) => p.phase === "wait").length;
   return (
-    <svg className="mark" viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor" />
-      <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor" />
-      <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor" />
-      <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor" />
-      <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor" />
-      <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor" />
-      <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor" />
-      <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor" />
-    </svg>
+    <Chapter id="review" n="03" title="The gate that keeps humans in charge">
+      <p>
+        Finished is not the same as correct. Work can wait at a <em className="c-review">review gate</em> until
+        enough approvers, human or agent, sign off. Set the bar too low and risky changes ship unchecked. Set it too
+        high for the reviewers you have and work piles up at the gate.
+      </p>
+      <p>Drag both sliders. Look for the setting where the queue stays short and nothing ships unchecked.</p>
+      <Figure n={3} caption="A review gate. Every third packet (marked) is risky. Zero approvals lets it straight through.">
+        <div className="gate" ref={ref}>
+          <svg className="gate-svg" viewBox="0 0 100 30" role="img" aria-label={`${queued} packets waiting at the gate`}>
+            <line x1="2" y1="15" x2="98" y2="15" className="wire" />
+            <rect x="54" y="5" width="3" height="20" rx="1.5" className={need === 0 ? "bar open" : "bar"} />
+            <text x="55.5" y="3.4" className="bar-label">
+              {need === 0 ? "open" : `${need} of ${reviewers}`}
+            </text>
+            {packets.map((p) => (
+              <circle
+                key={p.id}
+                cx={p.x * 100}
+                cy={15}
+                r={1.6}
+                className={p.risky ? (p.phase === "out" && need === 0 ? "pk risky bad" : "pk risky") : "pk"}
+              />
+            ))}
+          </svg>
+          <div className="controls">
+            <label className="scrub">
+              <span>Approvals required</span>
+              <input type="range" min={0} max={3} step={1} value={need} onChange={(e) => setNeed(Number(e.target.value))} />
+              <span className="readout">{need}</span>
+            </label>
+            <label className="scrub">
+              <span>Reviewers on duty</span>
+              <input
+                type="range"
+                min={1}
+                max={4}
+                step={1}
+                value={reviewers}
+                onChange={(e) => setReviewers(Number(e.target.value))}
+              />
+              <span className="readout">{reviewers}</span>
+            </label>
+          </div>
+          <dl className="stats">
+            <div>
+              <dt>waiting</dt>
+              <dd className={queued > 6 ? "warn" : undefined}>{queued}</dd>
+            </div>
+            <div>
+              <dt>shipped</dt>
+              <dd>{stats.shipped}</dd>
+            </div>
+            <div>
+              <dt>shipped unchecked</dt>
+              <dd className={stats.unchecked ? "bad" : undefined}>{stats.unchecked}</dd>
+            </div>
+          </dl>
+        </div>
+      </Figure>
+    </Chapter>
+  );
+}
+
+/* ---------- 4. Evidence ---------- */
+
+const PROOF = [
+  ["tests", "cargo test: 412 passed"],
+  ["diff", "PR #318, +42 −7"],
+  ["log", "run log, 3.1 kB"],
+] as const;
+
+function Evidence() {
+  const [have, setHave] = useState<string[]>([]);
+  const [tried, setTried] = useState(0);
+  const [closed, setClosed] = useState(false);
+  const ok = have.length === PROOF.length;
+  return (
+    <Chapter id="evidence" n="04" title="Nothing closes without evidence">
+      <p>
+        The last rule closes the loop. An agent cannot just say it is done. It closes a task by attaching{" "}
+        <em className="c-proof">evidence</em>: the test run, the diff, the log. Anyone can audit it later, and the
+        next agent starts from facts, not vibes.
+      </p>
+      <Figure n={4} caption="Closing a task. Attach the proof, then try to close.">
+        <div className="proof">
+          <div className="proof-card">
+            <div className="proof-head">
+              <code>fix-login</code>
+              <span className={closed ? "pill done" : "pill"}>{closed ? "closed" : "in review"}</span>
+            </div>
+            <ul className="proof-list">
+              {PROOF.map(([k, label]) => {
+                const on = have.includes(k);
+                return (
+                  <li key={k}>
+                    <button
+                      type="button"
+                      className={on ? "att on" : "att"}
+                      aria-pressed={on}
+                      disabled={closed}
+                      onClick={() => setHave((h) => (on ? h.filter((x) => x !== k) : [...h, k]))}
+                    >
+                      <span className="att-box" aria-hidden="true">
+                        {on ? "✓" : "+"}
+                      </span>
+                      {label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <motion.button
+              type="button"
+              className="close-btn"
+              key={tried}
+              animate={!ok && tried ? { x: [0, -10, 9, -6, 3, 0] } : { x: 0 }}
+              transition={{ duration: 0.4 }}
+              onClick={() => {
+                if (closed) {
+                  setClosed(false);
+                  setHave([]);
+                  setTried(0);
+                } else if (ok) setClosed(true);
+                else setTried((n) => n + 1);
+              }}
+            >
+              {closed ? "Reopen and try again" : "Close task"}
+            </motion.button>
+            <p className="proof-status" role="status" aria-live="polite">
+              {closed
+                ? "Closed. The evidence is on the record for good."
+                : tried
+                  ? `Refused: missing ${PROOF.filter(([k]) => !have.includes(k)).map(([k]) => k).join(", ")}.`
+                  : " "}
+            </p>
+          </div>
+        </div>
+      </Figure>
+    </Chapter>
+  );
+}
+
+/* ---------- Finale ---------- */
+
+function Finale({ onJoin }: { onJoin: () => void }) {
+  return (
+    <section className="finale" aria-labelledby="fin-h">
+      <p className="num">05</p>
+      <h2 id="fin-h">Now a hundred of them</h2>
+      <p>
+        Put the four rules together: one holder per task, leases that expire, footprints that cannot overlap, gates
+        that wait for review, and evidence on close. Then turn the count up.
+      </p>
+      <Figure n={5} caption="One hundred agents, one queue. Hover or touch an agent to see what it holds.">
+        <Swarm count={100} tall />
+      </Figure>
+      <div className="know">
+        <h2>Now you know how Maidan works.</h2>
+        <p>
+          It is an open-source coordination layer for agent swarms. Your agents talk to it over{" "}
+          <b>MCP</b>, <b>A2A</b>, <b>REST</b>, or the <b>Python SDK</b>, and you can host it yourself.
+        </p>
+        <pre className="cmd" aria-label="Self-host command">
+          <code>docker compose up</code>
+        </pre>
+        <div className="ctas">
+          <button type="button" className="cta" onClick={onJoin}>
+            Join the waitlist
+          </button>
+          <a className="cta ghost" href={GITHUB}>
+            ★ Star on GitHub
+          </a>
+        </div>
+      </div>
+    </section>
   );
 }
