@@ -10,7 +10,7 @@ function rand(seed: number) {
   return x - Math.floor(x);
 }
 
-export function Swarm({ count, tall }: { count: number; tall: boolean }) {
+export function Swarm({ count, tall, dark = false }: { count: number; tall: boolean; dark?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const label = useRef<HTMLParagraphElement>(null);
   const counter = useRef<HTMLSpanElement>(null);
@@ -20,6 +20,7 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
     if (!el) return;
     const ctx = el.getContext("2d");
     if (!ctx) return;
+    const ink = dark ? "236,240,248" : "22,24,29";
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let w = 0;
     let h = 0;
@@ -74,21 +75,21 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
       const cy = h / 2;
       // queue core: crisp ring with a slow tick
       const spin = (performance.now() / 4000) % 1;
-      ctx.strokeStyle = "rgba(22,24,29,0.14)";
+      ctx.strokeStyle = `rgba(${ink},0.16)`;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(cx, cy, 26, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(22,24,29,0.6)";
+      ctx.strokeStyle = `rgba(${ink},0.7)`;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(cx, cy, 26, spin * Math.PI * 2, spin * Math.PI * 2 + 0.9);
       ctx.stroke();
-      ctx.fillStyle = "#16181d";
+      ctx.fillStyle = dark ? "#eef1f6" : "#16181d";
       ctx.beginPath();
       ctx.arc(cx, cy, 15, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#f4f1ea";
+      ctx.fillStyle = dark ? "#0b0d12" : "#f4f1ea";
       ctx.font = "600 8px ui-monospace, Menlo, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -132,7 +133,7 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
         const busy = a.hold > 0;
         if (busy) holding += 1;
         if (busy) {
-          ctx.strokeStyle = `hsla(${a.hue}, 70%, 45%, 0.22)`;
+          ctx.strokeStyle = `hsla(${a.hue}, 70%, ${dark ? 62 : 45}%, ${dark ? 0.3 : 0.22})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(cx, cy);
@@ -150,7 +151,7 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
           ctx.fill();
         }
         const r = count > 30 ? 3.4 : 5.5;
-        ctx.fillStyle = busy ? `hsl(${a.hue}, 72%, 44%)` : "rgba(20,24,31,0.28)";
+        ctx.fillStyle = busy ? `hsl(${a.hue}, 78%, ${dark ? 62 : 44}%)` : `rgba(${ink},0.28)`;
         ctx.beginPath();
         ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
         ctx.fill();
@@ -173,7 +174,7 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
       }
       if (counter.current && done !== lastDone) {
         lastDone = done;
-        counter.current.textContent = `${holding} holding · ${done} closed · 0 collisions`;
+        counter.current.textContent = `${holding} holding · ${done} closed`;
       }
     }
     function loop(now: number) {
@@ -215,14 +216,18 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
       el.removeEventListener("pointerup", up);
       el.removeEventListener("pointerleave", leave);
     };
-  }, [count]);
+  }, [count, dark]);
 
   return (
-    <div className={tall ? "swarm tall" : "swarm"}>
+    <div className={`swarm${tall ? " tall" : ""}${dark ? " dark" : ""}`}>
       <canvas ref={canvas} className="swarm-canvas" aria-label={`${count} agents claiming tasks from one queue`} role="img" />
       <p className="swarm-label" ref={label} aria-hidden="true" />
       <p className="swarm-count">
         <span ref={counter}>{count} agents</span>
+      </p>
+      <p className="swarm-zero" aria-label="Zero collisions">
+        <b>0</b>
+        <span>collisions</span>
       </p>
     </div>
   );
