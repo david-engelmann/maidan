@@ -55,11 +55,10 @@ function Hero() {
       <p className="kicker">An explorable explanation · 6 minutes</p>
       <h1 id="title">How to run a hundred agents without chaos</h1>
       <p className="dek">
-        Give one AI agent a task and it does fine. Give twenty agents twenty tasks and they overwrite each other,
-        forget what they claimed, and ship things nobody checked. This page shows, one rule at a time, how{" "}
-        <b>Maidan</b> keeps a swarm in order. Everything below is live. Touch it.
+        Twenty agents on one repo will overwrite each other, forget what they claimed, and ship things nobody
+        checked. Here are the four rules <b>Maidan</b> uses to keep a swarm in order. Every diagram is live.
       </p>
-      <Figure n={0} caption="A small swarm. Each dot is an agent; the centre is the task queue. Drag to stir it.">
+      <Figure n={0} caption="Eighteen agents, one queue. Coloured agents hold a lease; grey ones wait. Drag through them.">
         <Swarm count={18} tall={false} />
       </Figure>
     </section>
@@ -145,6 +144,7 @@ function Lease() {
     });
   });
   const expired = t >= 1;
+  const requeued = t >= 1 && t < 1.14;
   const holder = expired ? "Bo" : "Ada";
   const left = expired ? Math.max(0, 1 - (t - 1)) : 1 - t;
   const secs = Math.round(left * 90);
@@ -159,24 +159,11 @@ function Lease() {
       <Figure n={1} caption={<>A lease. When it runs out, the task goes back to the queue and the next free agent takes it.</>}>
         <div className="lease" ref={ref}>
           <div className="lease-stage">
-            <div className={expired ? "slot queue flash" : "slot queue"}>
-              <span className="slot-label">queue</span>
+            <div className={requeued ? "slot queue flash" : "slot queue"}>
+              <span className="slot-label">{requeued ? "back in the queue" : "queue"}</span>
+              {requeued ? <LeaseCard holder={null} left={0} /> : null}
             </div>
-            <motion.div
-              className="task"
-              layout
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-              data-holder={holder}
-            >
-              <span className="task-id">fix-login</span>
-              <span className="task-holder">
-                held by <b className={expired ? "c-bo" : "c-ada"}>{holder}</b>
-              </span>
-              <svg className="ring" viewBox="0 0 40 40" aria-hidden="true">
-                <circle cx="20" cy="20" r="16" className="ring-bg" />
-                <circle cx="20" cy="20" r="16" className="ring-fg" pathLength={1} strokeDasharray={`${left} 1`} />
-              </svg>
-            </motion.div>
+            <div className="slot hold">{requeued ? null : <LeaseCard holder={holder} left={left} />}</div>
             <div className="agents-row">
               <span className={expired ? "agent dead" : "agent c-ada-bg"}>Ada {expired ? "· silent" : "· working"}</span>
               <span className={expired ? "agent c-bo-bg" : "agent idle"}>Bo {expired ? "· working" : "· idle"}</span>
@@ -212,6 +199,27 @@ function Lease() {
   );
 }
 
+function LeaseCard({ holder, left }: { holder: string | null; left: number }) {
+  return (
+    <motion.div className="task" layoutId="lease-task" transition={{ type: "spring", stiffness: 300, damping: 26 }}>
+      <span className="task-id">fix-login</span>
+      <span className="task-holder">
+        {holder ? (
+          <>
+            held by <b className={holder === "Bo" ? "c-bo" : "c-ada"}>{holder}</b>
+          </>
+        ) : (
+          "unclaimed"
+        )}
+      </span>
+      <svg className="ring" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="16" className="ring-bg" />
+        <circle cx="20" cy="20" r="16" className="ring-fg" pathLength={1} strokeDasharray={`${left} 1`} />
+      </svg>
+    </motion.div>
+  );
+}
+
 /* ---------- 2. Footprints ---------- */
 
 const FILES = ["auth.rs", "lease.rs", "queue.rs", "api.rs", "README.md"];
@@ -221,6 +229,7 @@ function Footprints() {
   const [at, setAt] = useState<Record<Who, number | null>>({ Ada: 1, Bo: null });
   const [bounce, setBounce] = useState<{ who: Who; file: number; n: number } | null>(null);
   const [blocked, setBlocked] = useState(0);
+  const dragged = useRef(0);
 
   function place(who: Who, file: number | null) {
     const other: Who = who === "Ada" ? "Bo" : "Ada";
@@ -253,8 +262,15 @@ function Footprints() {
         dragSnapToOrigin
         dragElastic={0.6}
         whileDrag={{ scale: 1.12, zIndex: 5, boxShadow: "0 18px 40px rgba(20,20,30,.28)" }}
-        onDragEnd={(e, info) => onDrop(who, e, info)}
+        onDragStart={() => {
+          dragged.current = performance.now();
+        }}
+        onDragEnd={(e, info) => {
+          dragged.current = performance.now();
+          onDrop(who, e, info);
+        }}
         onClick={() => {
+          if (performance.now() - dragged.current < 400) return;
           const cur = at[who];
           const next = cur === null ? 0 : cur + 1 >= FILES.length ? null : cur + 1;
           place(who, next);

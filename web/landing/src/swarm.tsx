@@ -72,18 +72,27 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
       ctx.clearRect(0, 0, w, h);
       const cx = w / 2;
       const cy = h / 2;
-      // queue core
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, 46);
-      g.addColorStop(0, "rgba(20,24,32,0.9)");
-      g.addColorStop(1, "rgba(20,24,32,0)");
-      ctx.fillStyle = g;
+      // queue core: crisp ring with a slow tick
+      const spin = (performance.now() / 4000) % 1;
+      ctx.strokeStyle = "rgba(22,24,29,0.14)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(cx, cy, 46, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#14181f";
+      ctx.arc(cx, cy, 26, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(22,24,29,0.6)";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 26, spin * Math.PI * 2, spin * Math.PI * 2 + 0.9);
+      ctx.stroke();
+      ctx.fillStyle = "#16181d";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 15, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = "#f4f1ea";
+      ctx.font = "600 8px ui-monospace, Menlo, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("QUEUE", cx, cy + 0.5);
       let nearest: Agent | null = null;
       let nd = 28 * 28;
       let holding = 0;
@@ -164,7 +173,7 @@ export function Swarm({ count, tall }: { count: number; tall: boolean }) {
       }
       if (counter.current && done !== lastDone) {
         lastDone = done;
-        counter.current.textContent = `${holding} holding · ${done} closed with evidence · 0 collisions`;
+        counter.current.textContent = `${holding} holding · ${done} closed · 0 collisions`;
       }
     }
     function loop(now: number) {

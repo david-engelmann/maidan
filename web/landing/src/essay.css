@@ -115,8 +115,9 @@ figcaption { font-family: var(--sans); font-size: 0.82rem; color: var(--muted); 
 .swarm-count { position: absolute; left: 0.8rem; bottom: 0.4rem; margin: 0; font-size: 12px; font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* lease */
-.lease-stage { display: grid; gap: 1rem; justify-items: center; padding: 0.6rem 0 1rem; }
-.slot.queue { justify-self: stretch; height: 34px; border-radius: 10px; border: 1.5px dashed var(--rule); display: flex; align-items: center; padding: 0 0.8rem; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; transition: background .3s, border-color .3s; }
+.lease-stage { display: grid; gap: 0.8rem; justify-items: center; padding: 0.6rem 0 1rem; }
+.slot.hold { min-height: 78px; width: min(100%, 20rem); display: grid; }
+.slot.queue { justify-self: stretch; min-height: 34px; flex-wrap: wrap; gap: .5rem; padding-block: .5rem; border-radius: 10px; border: 1.5px dashed var(--rule); display: flex; align-items: center; padding: 0 0.8rem; color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; transition: background .3s, border-color .3s; }
 .slot.queue.flash { background: rgba(180, 83, 9, 0.08); border-color: var(--lease); color: var(--lease); }
 .task { position: relative; display: grid; gap: 0.1rem; width: min(100%, 20rem); padding: 0.9rem 4rem 0.9rem 1rem; border-radius: 16px; background: white; box-shadow: 0 0 0 1px var(--rule), 0 10px 30px -14px rgba(0,0,0,.25); }
 .task-id { font-family: var(--mono); font-weight: 600; }
@@ -196,4 +197,15 @@ figcaption { font-family: var(--sans); font-size: 0.82rem; color: var(--muted); 
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+}
+
+.slot.queue .task { width: 100%; box-shadow: 0 0 0 1.5px var(--lease); }
+.sheet:not(.is-open) { visibility: hidden; transition: visibility 0s 0.5s; }
+@media (min-width: 900px) {
+  .files { grid-template-columns: repeat(5, 1fr); }
+  .file { flex-direction: column; align-items: stretch; min-height: 150px; padding: 0.9rem 0.6rem; gap: .6rem; }
+  .fname { flex: 0; }
+  .fslot { flex: 1; flex-direction: column; justify-content: flex-end; min-width: 0; }
+  .chip { width: 100%; }
+  h1 { font-size: 5.6rem; }
 }

@@ -24,7 +24,7 @@ export async function interact(page, name, out) {
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${out}/${name}_interaction.png` });
   await to(page, "#lease .fig");
-  await page.locator("#lease input[type=range]").fill("1.2");
+  await page.locator("#lease input[type=range]").fill("1.01");
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${out}/${name}_section2.png` });
 }
