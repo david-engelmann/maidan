@@ -166,7 +166,7 @@ function Lease() {
             <div className="slot hold">{requeued ? null : <LeaseCard holder={holder} left={left} />}</div>
             <div className="agents-row">
               <span className={expired ? "agent dead" : "agent c-ada-bg"}>Ada {expired ? "· silent" : "· working"}</span>
-              <span className={expired ? "agent c-bo-bg" : "agent idle"}>Bo {expired ? "· working" : "· idle"}</span>
+              <span className={expired && !requeued ? "agent c-bo-bg" : "agent idle"}>Bo {expired && !requeued ? "· working" : "· idle"}</span>
             </div>
           </div>
           <label className="scrub">
@@ -181,9 +181,9 @@ function Lease() {
               onPointerUp={() => setHeld(false)}
               onBlur={() => setHeld(false)}
               onChange={(e) => setT(Number(e.target.value))}
-              aria-valuetext={expired ? `Lease expired, Bo holds the task` : `${secs} seconds left on Ada's lease`}
+              aria-valuetext={requeued ? "Lease expired, task back in the queue" : expired ? `Lease expired, Bo holds the task` : `${secs} seconds left on Ada's lease`}
             />
-            <span className="readout">{expired ? `expired → Bo, ${secs}s left` : `${secs}s left`}</span>
+            <span className="readout">{requeued ? "expired → back in queue" : expired ? `Bo claimed it, ${secs}s left` : `${secs}s left`}</span>
           </label>
           <label className="toggle">
             <input type="checkbox" checked={beat} onChange={(e) => setBeat(e.target.checked)} />
