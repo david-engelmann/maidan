@@ -8317,6 +8317,89 @@
         ],
         "type": "object"
       },
+      "SeatCost": {
+        "description": "One seat's spend in a window, read from the usage ledger. A seat is the\nmember that reported the usage (the claim holder), so the id never needs\nto be a metric label. `threads` counts distinct threads, which is what a\ntrace backend joins to the `maidan.thread` spans carrying the same\n`member_id`.",
+        "properties": {
+          "first_accepted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "last_accepted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "member_id": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "reports": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "threads": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "usd_micros": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "member_id",
+          "handle",
+          "reports",
+          "threads",
+          "usd_micros",
+          "first_accepted_at",
+          "last_accepted_at"
+        ],
+        "type": "object"
+      },
+      "SeatCosts": {
+        "description": "Per-seat cost for a workspace, most expensive seat first (ties by member\nid). `usd_micros` sums the listed seats. `truncated` is true when more\nseats spent in the window than `limit` allowed, in which case the total\ncovers the listed seats only.",
+        "properties": {
+          "seats": {
+            "items": {
+              "$ref": "#/components/schemas/SeatCost"
+            },
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "until": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usd_micros": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "seats",
+          "usd_micros",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "Secret": {
         "description": "A stored secret's **metadata** — never its value. Listing secrets returns\nthese; the value is a separate, capability-gated resolve.",
         "properties": {
@@ -36057,6 +36140,95 @@
           }
         ],
         "summary": "Model and effort by task class, learned from the usage ledger",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{id}/usage-seats": {
+      "get": {
+        "operationId": "get_workspace_usage_seats",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Inclusive window start (RFC 3339); omitted, the first report.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exclusive window end (RFC 3339); omitted, now.",
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Most seats to list, 1 to 1000; omitted, 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatCosts"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Per-seat cost, summed from the usage ledger by reporting member",
         "tags": [
           "workspaces"
         ]

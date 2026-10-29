@@ -1,7 +1,7 @@
 use maidan_types::{
-    ClaimLeaseId, MemberId, NewUsageLedgerEntry, PayerStamp, PriceSnapshot, TaskClassUsageRow,
-    ThreadBudget, ThreadId, TokenUsage, UsageEvidence, UsageLedgerEntry, UsageRollup,
-    UsageRollupQuery, UsageSums, WorkspaceId,
+    ClaimLeaseId, MemberId, NewUsageLedgerEntry, PayerStamp, PriceSnapshot, SeatCost,
+    SeatCostQuery, SeatCosts, TaskClassUsageRow, ThreadBudget, ThreadId, TokenUsage, UsageEvidence,
+    UsageLedgerEntry, UsageRollup, UsageRollupQuery, UsageSums, WorkspaceId,
 };
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
@@ -447,4 +447,52 @@ fn standard_price(row: &sqlx::sqlite::SqliteRow) -> Option<PriceSnapshot> {
         cache_write_1h_usd_micros_per_million: row
             .get::<Option<i64>, _>("standard_cache_write_1h_price")?,
     })
+}
+
+/// Per-seat cost over a window: completed reports summed by the member that
+/// reported them. Fetches one row past the limit so the answer can say it was
+/// truncated.
+pub async fn seat_costs(pool: &SqlitePool, query: SeatCostQuery) -> Result<SeatCosts, StoreError> {
+    query.validate().map_err(StoreError::InvalidInput)?;
+    let fetch = query.limit.saturating_add(1);
+    // The ledger's sqlite default stamps `YYYY-MM-DD HH:MM:SS`, so the window
+    // compares as julian days, never as text.
+    let since = query.since.map(|t| t.to_rfc3339());
+    let until = query.until.map(|t| t.to_rfc3339());
+    let rows = sqlx::query(
+        "SELECT l.reporter_id AS member_id, m.handle AS handle,
+                COUNT(*) AS reports, COUNT(DISTINCT l.thread_id) AS threads,
+                CAST(COALESCE(SUM(l.usd_micros), 0) AS INTEGER) AS usd,
+                MIN(l.accepted_at) AS first_accepted_at,
+                MAX(l.accepted_at) AS last_accepted_at
+         FROM maidan_usage_ledger l
+         JOIN maidan_members m ON m.id = l.reporter_id
+         WHERE l.workspace_id = ? AND l.budget IS NOT NULL
+           AND (? IS NULL OR julianday(l.accepted_at) >= julianday(?))
+           AND (? IS NULL OR julianday(l.accepted_at) < julianday(?))
+         GROUP BY l.reporter_id, m.handle
+         ORDER BY usd DESC, l.reporter_id
+         LIMIT ?",
+    )
+    .bind(query.workspace_id.0)
+    .bind(since.clone())
+    .bind(since)
+    .bind(until.clone())
+    .bind(until)
+    .bind(fetch)
+    .fetch_all(pool)
+    .await?;
+    let seats = rows
+        .iter()
+        .map(|row| SeatCost {
+            member_id: MemberId(row.get("member_id")),
+            handle: row.get("handle"),
+            reports: row.get("reports"),
+            threads: row.get("threads"),
+            usd_micros: row.get("usd"),
+            first_accepted_at: row.get("first_accepted_at"),
+            last_accepted_at: row.get("last_accepted_at"),
+        })
+        .collect();
+    SeatCosts::from_rows(query, seats).map_err(StoreError::InvalidInput)
 }

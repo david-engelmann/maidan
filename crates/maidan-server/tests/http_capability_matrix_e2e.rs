@@ -1371,6 +1371,46 @@ async fn usage_routing_suggests_a_model_and_effort_from_the_callers_workspace_an
 }
 
 #[tokio::test]
+async fn usage_seats_sum_the_callers_workspace_by_member_and_refuse_another() {
+    let h = spawn().await;
+    let a = tenant(h.store.as_ref(), "a").await;
+    let b = tenant(h.store.as_ref(), "b").await;
+    report_usage(&h, &a, a.thread, 10).await;
+    report_usage(&h, &a, a.thread, 5).await;
+    report_usage(&h, &b, b.thread, 10).await;
+
+    let path = format!("/workspaces/{}/usage-seats", a.workspace.0);
+    let (s, costs) = read(&h, &path, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{costs}");
+    assert_eq!(costs["workspace_id"], json!(a.workspace.0));
+    assert_eq!(costs["truncated"], json!(false));
+    let seats = costs["seats"].as_array().cloned().unwrap_or_default();
+    assert_eq!(seats.len(), 1, "only A's reporting agent: {costs}");
+    assert_eq!(seats[0]["member_id"], json!(a.agent.0));
+    assert_eq!(seats[0]["reports"], 2);
+    assert_eq!(seats[0]["threads"], 1);
+
+    let refused = read(&h, &path, &b.admin_token).await;
+    assert_refused(&path, &refused, &[a.workspace.0.to_string()]);
+
+    for bad in [
+        format!("{path}?limit=0"),
+        format!("{path}?limit=1001"),
+        format!("{path}?since=2026-01-02T00:00:00Z&until=2026-01-01T00:00:00Z"),
+    ] {
+        let (s, body) = read(&h, &bad, &a.admin_token).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{bad}: {body}");
+    }
+
+    let future = format!("{path}?since=2999-01-01T00:00:00Z");
+    let (s, costs) = read(&h, &future, &a.admin_token).await;
+    assert_eq!(s, StatusCode::OK, "{costs}");
+    assert_eq!(costs["seats"], json!([]));
+    assert_eq!(costs["usd_micros"], 0);
+    h.shutdown().await;
+}
+
+#[tokio::test]
 async fn deferred_threads_list_the_overlap_and_refuse_another_workspace() {
     let h = spawn().await;
     let a = tenant(h.store.as_ref(), "a").await;
