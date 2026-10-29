@@ -121,13 +121,17 @@ h3 { margin: 0.6rem 0 0.3rem; font-size: 1.2rem; letter-spacing: -0.02em; }
   .hero-copy { text-align: center; }
   .hero-copy .lede { margin-inline: auto; }
   .duo { gap: 2.5rem; }
-  .phone { width: 262px; }
+  .phone { width: 280px; }
   .mac { display: block; width: min(760px, 56vw); height: 440px; border-radius: 14px; background: #fff; box-shadow: 0 0 0 1px var(--line), 0 40px 80px -30px rgba(0, 0, 0, 0.35); overflow: hidden; }
   .mac-chrome { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; background: #f0f0f2; border-bottom: 1px solid var(--line); font-size: 0.78rem; color: var(--muted); }
   .mac-chrome i { width: 11px; height: 11px; border-radius: 50%; background: #ff5f57; } .mac-chrome i:nth-child(2) { background: #febc2e; } .mac-chrome i:nth-child(3) { background: #28c840; }
   .mac-chrome span { margin-left: 12px; }
-  .mac-chrome em { margin-left: auto; font-style: normal; color: var(--green); font-weight: 600; }
-  .mac-body { display: grid; grid-template-columns: 150px 1fr; height: calc(100% - 38px); }
+  .mac-chrome em { margin-left: auto; font-style: normal; color: #157a41; font-weight: 600; }
+  .mac { position: relative; }
+  .mac-body { display: grid; grid-template-columns: 150px 1fr; height: calc(100% - 38px - 132px); }
+  .mac-log { position: absolute; left: 150px; right: 0; bottom: 0; height: 132px; margin: 0; padding: 12px 16px; list-style: none; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 0.74rem; color: var(--muted); overflow: hidden; }
+  .mac-log li { padding: 3px 0; }
+  .mac-log li:first-child { color: var(--ink); }
   .mac-side { display: grid; align-content: start; gap: 10px; padding: 18px 16px; background: #fafafa; border-right: 1px solid var(--line); font-size: 0.84rem; color: var(--muted); }
   .mac-side b { color: var(--ink); }
   .mac-cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 16px; }

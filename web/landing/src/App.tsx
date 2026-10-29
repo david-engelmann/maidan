@@ -28,23 +28,27 @@ function useSwarm() {
   const [receipts, setReceipts] = useState<Receipt[]>(SEED_RECEIPTS);
   const [pulse, setPulse] = useState(0);
   const [n, setN] = useState(0);
+  const [log, setLog] = useState<string[]>(["dune closed T-19 · reviewed by ada", "birch closed T-20 · reviewed by lin"]);
+  const say = (m: string) => setLog((l) => [m, ...l].slice(0, 5));
   const bump = () => setPulse((p) => p + 1);
   const claim = (id: string) => {
     setTasks((ts) => ts.map((t) => (t.id === id && t.state === "open" ? { ...t, state: "leased", agent: AGENTS[n % AGENTS.length] } : t)));
     setN((x) => x + 1);
+    say(`${AGENTS[n % AGENTS.length]} leased ${id} · 30 min`);
     bump();
   };
-  const review = (id: string) => { setTasks((ts) => ts.map((t) => (t.id === id && t.state === "leased" ? { ...t, state: "review" } : t))); bump(); };
+  const review = (id: string) => { say(`${id} sent to review · waiting on ada`); setTasks((ts) => ts.map((t) => (t.id === id && t.state === "leased" ? { ...t, state: "review" } : t))); bump(); };
   const approve = (id: string) => {
     const t = tasks.find((x) => x.id === id);
     if (!t || t.state !== "review") return;
     setTasks((ts) => ts.map((x) => (x.id === id ? { ...x, state: "done" } : x)));
     const sha = (parseInt(id.slice(2), 10) * 2654435761 >>> 0).toString(16).slice(0, 7);
+    say(`ada approved ${id} · receipt ${sha}`);
     setReceipts((rs) => [...rs, { id, title: t.title, agent: t.agent ?? "atlas", reviewer: "ada", sha, tests: 40 + (parseInt(id.slice(2), 10) % 30) }]);
     bump();
   };
-  const reset = () => { setTasks(SEED); setReceipts(SEED_RECEIPTS); setN(0); bump(); };
-  return { tasks, receipts, pulse, claim, review, approve, reset };
+  const reset = () => { say("square reset"); setTasks(SEED); setReceipts(SEED_RECEIPTS); setN(0); bump(); };
+  return { tasks, receipts, pulse, log, claim, review, approve, reset };
 }
 type Swarm = ReturnType<typeof useSwarm>;
 
@@ -110,7 +114,7 @@ function Island({ swarm }: { swarm: Swarm }) {
         {pending ? (
           <motion.div key={pending.id} className="activity" initial={{ opacity: 0, filter: "blur(6px)" }} animate={{ opacity: 1, filter: "blur(0px)" }} exit={{ opacity: 0, filter: "blur(6px)" }} transition={{ duration: 0.3 }}>
             <span className="act-ring" aria-hidden="true"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" className="ring-bg" /><circle cx="18" cy="18" r="15" className="ring-half" /></svg></span>
-            <span className="act-text"><b>{pending.id} · review</b><small>{pending.agent} · 1 of 2 keys</small></span>
+            <span className="act-text"><b>{pending.id} · review</b><small>1 of 2 keys</small></span>
             <button type="button" className="approve" onClick={() => swarm.approve(pending.id)} aria-label={`Approve ${pending.id}`}>Approve</button>
           </motion.div>
         ) : (
@@ -218,6 +222,13 @@ function Mac({ swarm }: { swarm: Swarm }) {
           ))}
         </div>
       </div>
+      <ul className="mac-log">
+        <AnimatePresence initial={false}>
+          {swarm.log.map((l, i) => (
+            <motion.li key={l + (swarm.log.length - i)} layout initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3 }}>{l}</motion.li>
+          ))}
+        </AnimatePresence>
+      </ul>
     </div>
   );
 }
