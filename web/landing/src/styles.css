@@ -132,9 +132,10 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 @media (min-width: 960px) {
   .nav { display: flex; margin-left: 2rem; }
   .nav a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 0.8rem; color: var(--muted); text-decoration: none; font-size: 0.92rem; }
-  .hero { grid-template-columns: 1.15fr 1fr; align-items: center; align-content: center; padding: 6rem 6vw 4rem; gap: 4vw; }
+  .hero { grid-template-columns: 1fr 1fr; align-items: center; align-content: center; padding: 6rem 6vw 4rem; gap: 3vw; }
+  .square-stage { justify-self: center; }
   h1 { font-size: clamp(5rem, 7.4vw, 9.5rem); }
-  .tile { width: min(34vw, 440px); }
+  .tile { width: min(40vw, 580px, calc(100svh - 17rem)); }
   .scene { grid-template-columns: 1fr 1fr; padding: 7rem 6vw; gap: 6vw; }
   .scene.alt .scene-copy { order: 2; }
   h2 { font-size: clamp(4.5rem, 6.6vw, 8rem); }

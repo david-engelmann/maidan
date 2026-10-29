@@ -254,10 +254,10 @@ function Review() {
                     animate={{ opacity: keys[k] ? 1 : 0, rotate: keys[k] ? 90 : 0, y: keys[k] ? 0 : 26 }}
                     transition={{ duration: 0.5, ease }}
                   >
-                    <circle r="40" fill="transparent" />
-                    <rect x="-4" y="-30" width="8" height="30" rx="2" className="keybit" />
-                    <circle cx="0" cy="-36" r="13" className="keybow" />
-                    <circle cx="0" cy="-36" r="4" className="keyhole" />
+                    <circle r="32" fill="transparent" />
+                    <rect x="-3" y="-16" width="6" height="16" rx="2" className="keybit" />
+                    <circle cx="0" cy="-23" r="9" className="keybow" />
+                    <circle cx="0" cy="-23" r="3" className="keyhole" />
                   </motion.g>
                 </g>
                 <text x={cx} y="258" textAnchor="middle" className="engrave small">{k === "author" ? "AUTHOR" : "REVIEWER"}</text>

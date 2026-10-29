@@ -51,3 +51,5 @@
 @media (min-width: 960px) {
   .sheet { left: auto; right: max(4vw, env(safe-area-inset-right)); width: min(440px, 92vw); bottom: 4vh; border-radius: 28px; }
 }
+
+.sheet:not(.is-open) { box-shadow: none; }
