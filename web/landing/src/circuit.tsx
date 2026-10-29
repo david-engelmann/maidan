@@ -145,7 +145,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
             return (
               <div className={i === QUEUE ? "well queue" : r ? "well full" : "well"} key={i} ref={(el) => { refs.current[i] = el; }}>
                 {i === QUEUE ? (
-                  <span className="queue-mark" aria-hidden="true"><b>{String(closed % 100).padStart(2, "0")}</b>QUEUE</span>
+                  <span className="queue-mark" aria-hidden="true"><b>{String(99 - (closed % 100)).padStart(2, "0")}</b>QUEUE</span>
                 ) : null}
                 <AnimatePresence>
                   {r ? (

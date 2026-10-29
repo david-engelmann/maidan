@@ -267,6 +267,7 @@ function Evidence() {
     if (n === "env:all") { setRefusal(""); setHas({ ci: true, diff: true, log: true }); }
   }), []);
   const attached = SLIPS.filter((s) => has[s.k]);
+  const flapEl = <motion.path key="flap" d="M20 100 L160 196 L300 100 Z" className="flap" initial={sealed ? { scaleY: -1 } : false} animate={{ scaleY: sealed ? 1 : -1 }} transition={{ duration: 0.55, delay: sealed ? 0.35 : 0, ease }} style={{ originX: 0.5, originY: 0 }} />;
   return (
     <section className="scene" id="evidence">
       <Reveal className="scene-copy">
@@ -277,6 +278,7 @@ function Evidence() {
       <div className="object">
         <svg ref={scope} className="envelope" viewBox="0 0 320 260" role="img" aria-label={sealed ? "Envelope sealed with three pieces of evidence" : `Open envelope, ${attached.length} of 3 pieces of evidence`}>
           <rect x="20" y="90" width="280" height="160" rx="10" className="env-back" />
+          {sealed ? null : flapEl}
           <AnimatePresence>
             {attached.map((s) => {
               const i = SLIPS.findIndex((x) => x.k === s.k);
@@ -291,7 +293,7 @@ function Evidence() {
           </AnimatePresence>
           <path d="M20 100 L160 190 L300 100 V240 a10 10 0 0 1 -10 10 H30 a10 10 0 0 1 -10 -10 Z" className="env-front" />
           <path d="M20 250 L140 168 M300 250 L180 168" className="env-crease" />
-          <motion.path d="M20 100 L160 196 L300 100 Z" className="flap" initial={false} animate={{ scaleY: sealed ? 1 : -1 }} transition={{ duration: 0.55, delay: sealed ? 0.35 : 0, ease }} style={{ originX: 0.5, originY: 0 }} />
+          {sealed ? flapEl : null}
           <motion.g initial={false} animate={{ scale: sealed ? 1 : 0, opacity: sealed ? 1 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 18, delay: sealed ? 0.8 : 0 }}>
             <circle cx="160" cy="190" r="22" className="seal" />
             <text x="160" y="197" textAnchor="middle" className="seal-m">M</text>
@@ -363,6 +365,7 @@ function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
       <Reveal className="run-head">
         <p className="num">05 · Run it</p>
         <h2>Take your<br />swarm home.</h2>
+        <p className="lede">The card is written from the tile you built. Every rule you just touched, the lease, the two keys, the seal, is enforced by the server, not the UI. One command runs it on your machine.</p>
       </Reveal>
       <div className="plate" aria-label="Speaks MCP, A2A, REST and Python">
         <span className="screw s1" aria-hidden="true" /><span className="screw s2" aria-hidden="true" /><span className="screw s3" aria-hidden="true" /><span className="screw s4" aria-hidden="true" />
