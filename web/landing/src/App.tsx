@@ -1,383 +1,250 @@
-import {
-  motion,
-  useMotionValue,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-  useSpring,
-  useTransform,
-  type MotionValue,
-} from "motion/react";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
-import { Board } from "./board";
-import { Join } from "./join";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { Page } from "./page";
 
-const Aurora = lazy(() => import("./aurora"));
-const loadStory = () => import("./story");
-const Scenes = lazy(() => loadStory().then((mod) => ({ default: mod.Scenes })));
-const Still = lazy(() => loadStory().then((mod) => ({ default: mod.Still })));
+type Role = "planner" | "coder" | "reviewer" | "human";
+type Rule = "leases" | "footprints" | "review" | "approval";
+const ROLES: { id: Role; name: string; hint: string; glyph: string }[] = [
+  { id: "planner", name: "Planner", hint: "Splits goals into tasks", glyph: "P" },
+  { id: "coder", name: "Coder", hint: "Claims a task and ships it", glyph: "C" },
+  { id: "reviewer", name: "Reviewer", hint: "Checks work before merge", glyph: "R" },
+  { id: "human", name: "Human", hint: "Approves what ships", glyph: "H" },
+];
+const RULES: { id: Rule; name: string; what: string }[] = [
+  { id: "leases", name: "Leases", what: "One holder per task. No duplicate work." },
+  { id: "footprints", name: "Footprints", what: "Agents declare the files they touch. No collisions." },
+  { id: "review", name: "Review gate", what: "Nothing merges until a reviewer signs off." },
+  { id: "approval", name: "Human approval", what: "A person approves each ship." },
+];
+type Member = { id: number; role: Role };
+type Ledger = { t: string; text: string; tone: "ok" | "bad" | "info" };
+type Day = { hour: number; shipped: number; dup: number; conflicts: number; incidents: number; log: Ledger[] };
+const EMPTY_DAY: Day = { hour: 0, shipped: 0, dup: 0, conflicts: 0, incidents: 0, log: [] };
+const DAY_MS = 20000;
 
-const links = [
-  ["#holder", "Hold"],
-  ["#reviews", "Review"],
-  ["#evidence", "Proof"],
-  ["#connect", "Agents"],
-  ["#run", "Run"],
-] as const;
+function rng(seed: number) {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+}
 
-const spring = { type: "spring" as const, stiffness: 320, damping: 28 };
+function tick(d: Day, hour: number, team: Record<Role, number>, rules: Record<Rule, boolean>, r: () => number): Day {
+  const n = { ...d, hour, log: d.log };
+  const clock = `${String(9 + Math.floor(hour)).padStart(2, "0")}:${String(Math.floor((hour % 1) * 60)).padStart(2, "0")}`;
+  const add = (text: string, tone: Ledger["tone"]) => { n.log = [{ t: clock, text, tone }, ...n.log].slice(0, 6); };
+  const coders = team.coder;
+  if (!coders) { if (r() < 0.08) add("No coders in the square. Tasks pile up.", "bad"); return n; }
+  const plan = team.planner ? 1 : 0.55;
+  if (r() > 0.42 * plan * Math.min(1, coders / 2 + 0.4)) return n;
+  const k = Math.floor(r() * 40) + 100;
+  if (!rules.leases && coders > 1 && r() < 0.35) { n.dup++; add(`Two coders both built task #${k}. One copy thrown away.`, "bad"); return n; }
+  if (!rules.footprints && coders > 1 && r() < 0.22) { n.conflicts++; add(`Merge conflict on task #${k}: same files touched.`, "bad"); return n; }
+  const reviewed = rules.review && team.reviewer > 0;
+  const approved = rules.approval && team.human > 0;
+  const bad = r() < 0.2;
+  if (bad && !reviewed && !approved) { n.incidents++; n.shipped++; add(`Task #${k} shipped with a bug. Incident opened.`, "bad"); return n; }
+  if (bad) { add(`${reviewed ? "Reviewer" : "Human"} caught a bug in #${k}. Sent back.`, "info"); return n; }
+  n.shipped++;
+  add(`Task #${k} ${reviewed ? "reviewed, " : ""}${approved ? "approved, " : ""}shipped.`, "ok");
+  return n;
+}
+
+function yaml(team: Record<Role, number>, rules: Record<Rule, boolean>) {
+  const lines = ["# maidan.yaml", "square: my-swarm", "agents:"];
+  for (const ro of ROLES) if (team[ro.id] && ro.id !== "human") lines.push(`  - role: ${ro.id}`, `    count: ${team[ro.id]}`);
+  if (team.human) lines.push("humans:", `  - role: approver`, `    count: ${team.human}`);
+  lines.push("rules:", `  leases: ${rules.leases ? "{ ttl: 10m }" : "off"}`, `  footprints: ${rules.footprints ? "required" : "off"}`, `  review_gate: ${rules.review ? "{ min_reviewers: 1 }" : "off"}`, `  human_approval: ${rules.approval ? "required" : "off"}`);
+  return lines.join("\n");
+}
+function python(team: Record<Role, number>, rules: Record<Rule, boolean>) {
+  const role = team.coder ? "coder" : team.planner ? "planner" : "reviewer";
+  return [
+    "from maidan import Square",
+    "",
+    'sq = Square.connect("my-swarm")',
+    `agent = sq.join(role="${role}")`,
+    "",
+    "for task in agent.tasks():",
+    ...(rules.leases ? ["    with agent.lease(task, ttl=600):"] : ["    if True:  # leases off: others may take it too"]),
+    ...(rules.footprints ? ['        agent.declare(task, files=["src/**"])'] : []),
+    "        result = do_work(task)",
+    `        agent.submit(task, result${rules.review ? ", review=True" : ""})`,
+  ].join("\n");
+}
+
+function Copy({ text, label }: { text: string; label: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button type="button" className="k-copy" aria-label={`Copy ${label}`}
+      onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); window.setTimeout(() => setDone(false), 1400); }); }}>
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function Configurator() {
+  const reduce = useReducedMotion();
+  const [members, setMembers] = useState<Member[]>([
+    { id: 1, role: "planner" }, { id: 2, role: "coder" }, { id: 3, role: "coder" }, { id: 4, role: "reviewer" },
+  ]);
+  const [rules, setRules] = useState<Record<Rule, boolean>>({ leases: true, footprints: true, review: true, approval: false });
+  const [day, setDay] = useState<Day>(EMPTY_DAY);
+  const [running, setRunning] = useState(false);
+  const [drag, setDrag] = useState<{ role: Role; x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const [over, setOver] = useState(false);
+  const square = useRef<HTMLDivElement>(null);
+  const nextId = useRef(10);
+  const moved = useRef(false);
+  const team: Record<Role, number> = { planner: 0, coder: 0, reviewer: 0, human: 0 };
+  for (const m of members) team[m.role]++;
+
+  const add = (role: Role) => setMembers((ms) => (ms.length >= 10 ? ms : [...ms, { id: nextId.current++, role }]));
+  const remove = (id: number) => setMembers((ms) => ms.filter((m) => m.id !== id));
+  const inSquare = (x: number, y: number) => {
+    const b = square.current?.getBoundingClientRect();
+    return !!b && x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+  };
+
+  const teamRef = useRef(team);
+  const rulesRef = useRef(rules);
+  useEffect(() => { teamRef.current = team; rulesRef.current = rules; });
+
+  useEffect(() => {
+    if (!running) return;
+    const r = rng(7 + Math.floor(Math.random() * 1000));
+    const start = performance.now();
+    const id = window.setInterval(() => {
+      const p = Math.min(1, (performance.now() - start) / (reduce ? 2000 : DAY_MS));
+      setDay((d) => tick(d, p * 8, teamRef.current, rulesRef.current, r));
+      if (p >= 1) { setRunning(false); window.clearInterval(id); }
+    }, reduce ? 40 : 160);
+    return () => window.clearInterval(id);
+  }, [running, reduce]);
+
+  const startDay = () => { setDay(EMPTY_DAY); setRunning(true); };
+  const ruleCount = Object.values(rules).filter(Boolean).length;
+  const y = yaml(team, rules);
+  const py = python(team, rules);
+
+  return (
+    <div className="k-wrap">
+      {drag?.moved && <div className={`k-ghost k-${drag.role}`} style={{ transform: `translate(${drag.x - 22}px, ${drag.y - 22}px)` }} aria-hidden="true">{ROLES.find((x) => x.id === drag.role)?.glyph}</div>}
+      <section className="k-step" aria-labelledby="k1">
+        <p className="c-eyebrow">Step 1</p>
+        <h2 id="k1" className="k-h2">Who's in your square?</h2>
+        <p className="k-sub">Drag agents and people in. Tap to add, tap a member to remove.</p>
+        <div className="k-palette" role="list">
+          {ROLES.map((ro) => (
+            <button key={ro.id} type="button" role="listitem" className={`k-chip k-${ro.id}`} data-role={ro.id}
+              onClick={() => { if (moved.current) { moved.current = false; return; } add(ro.id); }}
+              onPointerDown={(e) => { if (e.pointerType === "mouse" && e.button !== 0) return; e.currentTarget.setPointerCapture(e.pointerId); moved.current = false; setDrag({ role: ro.id, x: e.clientX, y: e.clientY, ox: e.clientX, oy: e.clientY, moved: false }); }}
+              onPointerMove={(e) => { if (!drag) return; const mv = drag.moved || Math.hypot(e.clientX - drag.ox, e.clientY - drag.oy) > 8; moved.current = mv; setDrag({ ...drag, x: e.clientX, y: e.clientY, moved: mv }); setOver(inSquare(e.clientX, e.clientY)); }}
+              onPointerUp={(e) => { if (drag && moved.current && inSquare(e.clientX, e.clientY)) add(drag.role); setDrag(null); setOver(false); }}
+              onPointerCancel={() => { setDrag(null); setOver(false); }}>
+              <span className="k-glyph" aria-hidden="true">{ro.glyph}</span>
+              <span><b>{ro.name}</b><small>{ro.hint}</small></span>
+              <span className="k-plus" aria-hidden="true">+</span>
+            </button>
+          ))}
+        </div>
+        <div ref={square} className={`k-square${over ? " is-over" : ""}${running ? " is-running" : ""}`} aria-label={`Square with ${members.length} members`}>
+          <div className={`k-board r-${ruleCount}`}>
+            <span className="k-board-label">The square</span>
+            <AnimatePresence>
+              {rules.leases && <motion.span key="l" className="k-badge" initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>lease</motion.span>}
+              {rules.footprints && <motion.span key="f" className="k-badge" initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>footprint</motion.span>}
+              {rules.review && <motion.span key="r" className="k-badge" initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>review</motion.span>}
+              {rules.approval && <motion.span key="a" className="k-badge" initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>approval</motion.span>}
+            </AnimatePresence>
+          </div>
+          <svg className="k-links" viewBox="-100 -100 200 200" aria-hidden="true">
+            {members.map((m, i) => {
+              const a = (i / Math.max(members.length, 1)) * Math.PI * 2 - Math.PI / 2;
+              const ok = m.role !== "coder" || rules.leases;
+              return <line key={m.id} x1={Math.cos(a) * 30} y1={Math.sin(a) * 30} x2={Math.cos(a) * 78} y2={Math.sin(a) * 78}
+                className={`k-link ${ok ? "is-ok" : "is-loose"}${running ? " is-flow" : ""}`} />;
+            })}
+          </svg>
+          {members.map((m, i) => {
+            const a = (i / Math.max(members.length, 1)) * Math.PI * 2 - Math.PI / 2;
+            const ro = ROLES.find((x) => x.id === m.role) ?? ROLES[0];
+            return (
+              <motion.button key={m.id} type="button" layout={!reduce} className={`k-member k-${m.role}`} aria-label={`Remove ${ro.name}`}
+                initial={reduce ? false : { opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                style={{ left: `${50 + Math.cos(a) * 39}%`, top: `${50 + Math.sin(a) * 39}%` }}
+                onClick={() => remove(m.id)}>{ro.glyph}</motion.button>
+            );
+          })}
+          {members.length === 0 && <p className="k-empty">Drop someone in</p>}
+        </div>
+        <p className="k-team" aria-live="polite">{ROLES.map((ro) => `${team[ro.id]} ${ro.name.toLowerCase()}${team[ro.id] === 1 ? "" : "s"}`).join(" · ")}</p>
+      </section>
+
+      <section className="k-step" aria-labelledby="k2">
+        <p className="c-eyebrow">Step 2</p>
+        <h2 id="k2" className="k-h2">Pick the rules.</h2>
+        <div className="k-rules">
+          {RULES.map((ru) => (
+            <button key={ru.id} type="button" role="switch" aria-checked={rules[ru.id]} className={`k-rule${rules[ru.id] ? " is-on" : ""}`}
+              onClick={() => setRules((rs) => ({ ...rs, [ru.id]: !rs[ru.id] }))}>
+              <span className="k-rule-text"><b>{ru.name}</b><small>{ru.what}</small></span>
+              <span className="k-track" aria-hidden="true"><motion.span layout={!reduce} className="k-knob" /></span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="k-step" aria-labelledby="k3">
+        <p className="c-eyebrow">Step 3</p>
+        <h2 id="k3" className="k-h2">Run a day.</h2>
+        <p className="k-sub">Eight working hours in twenty seconds.</p>
+        <div className="k-day">
+          <div className="k-day-top">
+            <button type="button" className="c-btn c-btn-primary" onClick={startDay} disabled={running}>{running ? "Running…" : day.hour ? "Run it again" : "Run a day"}</button>
+            <span className="k-clock" aria-label="Time of day">{String(9 + Math.floor(day.hour)).padStart(2, "0")}:{String(Math.floor((day.hour % 1) * 60)).padStart(2, "0")}</span>
+          </div>
+          <div className="k-progress" aria-hidden="true"><span style={{ transform: `scaleX(${day.hour / 8})` }} /></div>
+          <dl className="k-stats">
+            <div><dt>Shipped</dt><dd>{day.shipped}</dd></div>
+            <div className={day.dup ? "is-bad" : ""}><dt>Duplicate work</dt><dd>{day.dup}</dd></div>
+            <div className={day.conflicts ? "is-bad" : ""}><dt>Conflicts</dt><dd>{day.conflicts}</dd></div>
+            <div className={day.incidents ? "is-bad" : ""}><dt>Incidents</dt><dd>{day.incidents}</dd></div>
+          </dl>
+          <ol className="k-ledger" aria-live="polite">
+            {day.log.length === 0 && <li className="k-idle">The ledger fills as your square works.</li>}
+            <AnimatePresence initial={false}>
+              {day.log.map((l) => (
+                <motion.li key={`${l.t}-${l.text}`} className={`k-${l.tone}`} layout={!reduce}
+                  initial={reduce ? false : { opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                  <time>{l.t}</time>{l.text}
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ol>
+        </div>
+      </section>
+
+      <section className="k-step" aria-labelledby="k4" id="config">
+        <p className="c-eyebrow">Your swarm</p>
+        <h2 id="k4" className="k-h2">Here's your config.</h2>
+        <div className="k-out">
+          <figure className="k-code"><figcaption>maidan.yaml<Copy text={y} label="YAML config" /></figcaption><pre><code>{y}</code></pre></figure>
+          <figure className="k-code"><figcaption>agent.py<Copy text={py} label="Python snippet" /></figcaption><pre><code>{py}</code></pre></figure>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 export default function App() {
-  const reduce = useReducedMotion() === true;
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const openIf = () => {
-      if (location.hash === "#join") setOpen(true);
-    };
-    openIf();
-    const onClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      if (!target.closest("a[href='#join']")) return;
-      event.preventDefault();
-      history.replaceState(null, "", "#join");
-      setOpen(true);
-    };
-    window.addEventListener("hashchange", openIf);
-    document.addEventListener("click", onClick);
-    return () => {
-      window.removeEventListener("hashchange", openIf);
-      document.removeEventListener("click", onClick);
-    };
-  }, []);
-
   return (
-    <>
-      <Field />
-      <div className="grain" aria-hidden="true" />
-      <Header onJoin={() => setOpen(true)} pressed={open} />
-      {reduce ? <Quiet onJoin={() => setOpen(true)} /> : <Cinematic onJoin={() => setOpen(true)} />}
-      <Join open={open} onOpenChange={setOpen} />
-    </>
-  );
-}
-
-function Field() {
-  const [reduce] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  return (
-    <div className="light" aria-hidden="true">
-      <div className="ambient">
-        <span className="blob mint" />
-        <span className="blob cyan" />
-        <span className="blob violet" />
-      </div>
-      {reduce ? null : (
-        <Suspense fallback={null}>
-          <Aurora />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
-function Header({ onJoin, pressed }: { onJoin: () => void; pressed: boolean }) {
-  return (
-    <header className="top">
-      <a className="brand" href="#floor">
-        <Mark />
-        <span>Maidan</span>
-      </a>
-      <nav className="nav" aria-label="On this page">
-        {links.map(([href, label]) => (
-          <a key={href} href={href}>
-            {label}
-          </a>
-        ))}
-      </nav>
-      <a className="signin" href="/ui">
-        Sign in
-      </a>
-      <button type="button" className="join-btn" aria-expanded={pressed} onClick={onJoin}>
-        Join
-      </button>
-    </header>
-  );
-}
-
-function Quiet({ onJoin }: { onJoin: () => void }) {
-  return (
-    <main>
-      <section className="poster" id="floor" aria-labelledby="headline">
-          <div className="copy-slot">
-          <HeroWords live onJoin={onJoin} />
-        </div>
-          <Glass tilt={false}>
-          <div className="glass-body">
-            <div className="hero-pane">
-              <Board />
-            </div>
-          </div>
-        </Glass>
-      </section>
-      <Suspense fallback={<div className="still-hold" aria-hidden="true" />}>
-        <Still onJoin={onJoin} />
-      </Suspense>
-    </main>
-  );
-}
-
-function Cinematic({ onJoin }: { onJoin: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start start", "end end"],
-  });
-  const [copyEl, setCopyEl] = useState<HTMLDivElement | null>(null);
-  const [glassEl, setGlassEl] = useState<HTMLDivElement | null>(null);
-  const y1 = useTransform(scrollYProgress, [0, 1], [48, -160]);
-  const y2 = useTransform(scrollYProgress, [0, 1], [-30, 110]);
-  const active = useActive(scrollYProgress);
-  return (
-    <main>
-      <div className="reel" ref={ref}>
-        <div className="pin" id="floor">
-          <motion.span className="depth-orb mint" style={{ y: y1 }} aria-hidden="true" />
-          <motion.span className="depth-orb violet" style={{ y: y2 }} aria-hidden="true" />
-          <div className="copy-slot" ref={setCopyEl}>
-            <HeroWords live={active < 0} onJoin={onJoin} />
-          </div>
-          <Glass tilt>
-            <div className="glass-body" ref={setGlassEl}>
-              <HeroBoard live={active < 0} />
-            </div>
-          </Glass>
-        </div>
-        <span id="holder" className="spot spot-holder" />
-        <span id="reviews" className="spot spot-reviews" />
-        <span id="evidence" className="spot spot-evidence" />
-        <span id="connect" className="spot spot-connect" />
-        <span id="run" className="spot spot-run" />
-        <span id="belong" className="spot spot-belong" />
-        {copyEl && glassEl ? (
-          <Suspense fallback={null}>
-            <Scenes
-              progress={scrollYProgress}
-              copyEl={copyEl}
-              glassEl={glassEl}
-              onJoin={onJoin}
-              active={active}
-            />
-          </Suspense>
-        ) : null}
-      </div>
-    </main>
-  );
-}
-
-function HeroWords({ live, onJoin }: { live: boolean; onJoin: () => void }) {
-  const reduce = useReducedMotion() === true;
-  const reveal = reduce ? { duration: 0 } : { ...spring, delay: 0 };
-  return (
-    <motion.div
-      className="copy-pane hero-copy"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0, y: live ? 0 : -18, filter: live ? "blur(0px)" : "blur(8px)" }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
-    >
-      <motion.p
-        className="eyebrow"
-        initial={reduce ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.04 }}
-      >
-        <span className="live-dot" aria-hidden="true" />
-        A public square
-      </motion.p>
-      <h1 id="headline">
-        <span className="hero-line">
-          <Mask word="Work" delay={0.06} reduce={reduce} />
-          <Mask word="in" delay={0.1} reduce={reduce} />
-        </span>
-        <span className="hero-line">
-          <Mask word="the" delay={0.16} reduce={reduce} />
-          <Mask word="open." delay={0.2} reduce={reduce} />
-        </span>
-      </h1>
-      <motion.p
-        className="lede"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.28 }}
-      >
-        One board where people and agents claim work, pass review, and leave evidence.
-      </motion.p>
-      <motion.div
-        className="cta-row"
-        initial={reduce ? false : { opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...reveal, delay: reduce ? 0 : 0.36 }}
-      >
-        <button type="button" className="cta" onClick={onJoin}>
-          Join the waitlist
-        </button>
-        <a className="cta ghost" href="https://github.com/david-engelmann/maidan">
-          <Star />
-          Star on GitHub
-        </a>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function Mask({ word, delay, reduce }: { word: string; delay: number; reduce: boolean }) {
-  return (
-    <span className="mask">
-      <motion.span
-        className="mask-inner"
-        initial={reduce ? false : { y: "115%" }}
-        animate={{ y: "0%" }}
-        transition={
-          reduce
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 300, damping: 28, mass: 0.85, delay }
-        }
-      >
-        {word}
-      </motion.span>
-    </span>
-  );
-}
-
-function HeroBoard({ live }: { live: boolean }) {
-  const reduce = useReducedMotion() === true;
-  return (
-    <motion.div
-      className="hero-pane"
-      initial={false}
-      animate={{ opacity: live ? 1 : 0 }}
-      transition={reduce ? { duration: 0 } : spring}
-      style={{ pointerEvents: live ? "auto" : "none" }}
-      aria-hidden={live ? undefined : true}
-    >
-      <Board />
-    </motion.div>
-  );
-}
-
-function useActive(progress: MotionValue<number>) {
-  const [active, setActive] = useState(-1);
-  useMotionValueEvent(progress, "change", (value) => {
-    const next =
-      value < 0.1 ? -1 : value < 0.24 ? 0 : value < 0.38 ? 1 : value < 0.52 ? 2 : value < 0.66 ? 3 : value < 0.8 ? 4 : 5;
-    setActive((current) => (current === next ? current : next));
-  });
-  return active;
-}
-
-function Glass({ tilt, children }: { tilt: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const reduce = useReducedMotion() === true;
-  const px = useMotionValue(0.14);
-  const py = useMotionValue(-0.18);
-  const rotateX = useSpring(useTransform(py, [-0.5, 0.5], [7, -6]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-  const rotateY = useSpring(useTransform(px, [-0.5, 0.5], [-8, 7]), {
-    stiffness: 260,
-    damping: 32,
-    mass: 0.8,
-  });
-
-  useEffect(() => {
-    if (reduce || !tilt) return;
-    const fine = window.matchMedia("(pointer: fine) and (min-width: 960px)").matches;
-    let frame = 0;
-    const target = { x: 0.14, y: -0.18 };
-    const flush = () => {
-      frame = 0;
-      px.set(target.x);
-      py.set(target.y);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(flush);
-    };
-    const onPointer = (event: PointerEvent) => {
-      target.x = event.clientX / window.innerWidth - 0.5;
-      target.y = event.clientY / window.innerHeight - 0.5;
-      const el = ref.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      el.style.setProperty("--lx", `${((event.clientX - rect.left) / rect.width) * 100}%`);
-      el.style.setProperty("--ly", `${((event.clientY - rect.top) / rect.height) * 100}%`);
-      schedule();
-    };
-    const onScroll = () => {
-      target.y = Math.max(-0.45, Math.min(0.45, -0.18 + (window.scrollY / window.innerHeight) * 0.28));
-      schedule();
-    };
-    const onOrient = (event: DeviceOrientationEvent) => {
-      if (event.gamma == null) return;
-      target.x = Math.max(-0.5, Math.min(0.5, event.gamma / 42));
-      if (event.beta != null) target.y = Math.max(-0.5, Math.min(0.5, (event.beta - 48) / 58));
-      schedule();
-    };
-    if (fine) window.addEventListener("pointermove", onPointer, { passive: true });
-    else {
-      window.addEventListener("scroll", onScroll, { passive: true });
-      window.addEventListener("deviceorientation", onOrient);
-    }
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      window.removeEventListener("pointermove", onPointer);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("deviceorientation", onOrient);
-    };
-  }, [px, py, reduce, tilt]);
-
-  return (
-    <div className="glass-slot">
-      <span className="square" aria-hidden="true" />
-      <motion.div
-        className="tilt"
-        layoutRoot
-        style={reduce || !tilt ? undefined : { rotateX, rotateY }}
-      >
-        <div ref={ref} className="glass">
-          <span className="glass-spec" aria-hidden="true" />
-          {children}
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function Star() {
-  return (
-    <svg className="star" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 2.6l2.7 5.6 6.2.9-4.5 4.3 1.1 6.1L12 16.8 6.5 19.5l1.1-6.1L3.1 9.1l6.2-.9L12 2.6z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-function Mark() {
-  return (
-    <svg className="mark" viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M38.95,32.85L48.07,37.53L59.65,35.70L59.74,34.95L48.69,28.76Z" fill="currentColor" />
-      <path d="M36.31,37.52L39.45,47.28L46.40,51.08L47.18,50.46L46.09,41.51Z" fill="currentColor" />
-      <path d="M31.15,38.95L26.47,48.07L28.30,59.65L29.05,59.74L35.24,48.69Z" fill="currentColor" />
-      <path d="M26.48,36.31L16.72,39.45L12.92,46.40L13.54,47.18L22.49,46.09Z" fill="currentColor" />
-      <path d="M25.05,31.15L15.93,26.47L4.35,28.30L4.26,29.05L15.31,35.24Z" fill="currentColor" />
-      <path d="M27.69,26.48L24.55,16.72L17.60,12.92L16.82,13.54L17.91,22.49Z" fill="currentColor" />
-      <path d="M32.85,25.05L37.53,15.93L35.70,4.35L34.95,4.26L28.76,15.31Z" fill="currentColor" />
-      <path d="M37.52,27.69L47.28,24.55L51.08,17.60L50.46,16.82L41.51,17.91Z" fill="currentColor" />
-    </svg>
+    <Page>
+      <header className="k-hero">
+        <p className="c-eyebrow">Open-source coordination for agent swarms</p>
+        <h1 className="c-h1">Design your swarm<br />in 30 seconds.</h1>
+        <p className="c-lede">Pick who's in. Pick the rules. Watch a day go by. Leave with a config you can run.</p>
+      </header>
+      <Configurator />
+    </Page>
   );
 }
