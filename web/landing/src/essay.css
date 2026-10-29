@@ -306,3 +306,8 @@ figcaption { font-family: var(--sans); font-size: 0.82rem; color: var(--muted); 
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; }
 }
+.t-com { color: rgba(216,224,238,.42); }
+.t-str { color: #fcd34d; }
+.t-key { color: #7dd3fc; }
+.t-kw { color: #c4b5fd; }
+.t-num { color: #6ee7b7; }

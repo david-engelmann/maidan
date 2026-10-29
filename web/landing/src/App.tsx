@@ -616,6 +616,22 @@ function Evidence() {
 
 /* ---------- Finale ---------- */
 
+/** Just enough tinting to read code at a glance: comments, strings, keys, keywords. */
+function Tint({ src }: { src: string }) {
+  const re = /(#[^\n]*)|("[^"\n]*")|(^\s*-?\s*[a-z_]+:)|\b(from|import|for|in|with|as)\b|(\b\d+s?\b)/gm;
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of src.matchAll(re)) {
+    const i = m.index ?? 0;
+    if (i > last) out.push(src.slice(last, i));
+    const cls = m[1] ? "t-com" : m[2] ? "t-str" : m[3] ? "t-key" : m[4] ? "t-kw" : "t-num";
+    out.push(<span key={i} className={cls}>{m[0]}</span>);
+    last = i + m[0].length;
+  }
+  out.push(src.slice(last));
+  return <code>{out}</code>;
+}
+
 function yaml(review: boolean) {
   return [
     "# maidan.yaml",
@@ -688,11 +704,11 @@ function Finale({ onJoin, review }: { onJoin: () => void; review: boolean }) {
           <div className="codes">
             <figure className="code">
               <figcaption>maidan.yaml <Copy text={y} label="maidan.yaml" /></figcaption>
-              <pre><code>{y}</code></pre>
+              <pre><Tint src={y} /></pre>
             </figure>
             <figure className="code">
               <figcaption>agent.py <Copy text={PY} label="Python snippet" /></figcaption>
-              <pre><code>{PY}</code></pre>
+              <pre><Tint src={PY} /></pre>
             </figure>
           </div>
           <div className="cmd-row">

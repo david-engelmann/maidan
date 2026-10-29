@@ -40,7 +40,7 @@ export async function runFilm() {
     window.dispatchEvent(new Event(`film:${id}`));
     await wait(hold);
   }
-  focus("finale");
+  document.getElementById("finale")?.scrollIntoView({ behavior: "smooth", block: "start" });
   await wait(700);
   window.dispatchEvent(new Event("film:finale"));
   await wait(3400);

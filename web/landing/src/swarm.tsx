@@ -133,7 +133,7 @@ export function Swarm({ count, tall, dark = false }: { count: number; tall: bool
         const busy = a.hold > 0;
         if (busy) holding += 1;
         if (busy) {
-          ctx.strokeStyle = `hsla(${a.hue}, 70%, ${dark ? 62 : 45}%, ${dark ? 0.3 : 0.22})`;
+          ctx.strokeStyle = `hsla(${a.hue}, 70%, ${dark ? 62 : 45}%, ${dark ? 0.42 : 0.22})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(cx, cy);
@@ -145,16 +145,21 @@ export function Swarm({ count, tall, dark = false }: { count: number; tall: bool
           const t = (performance.now() / 1400 + a.hx * 0.01) % 1;
           const px = (1 - t) * (1 - t) * cx + 2 * (1 - t) * t * mx + t * t * a.x;
           const py = (1 - t) * (1 - t) * cy + 2 * (1 - t) * t * my + t * t * a.y;
-          ctx.fillStyle = `hsla(${a.hue}, 80%, 50%, 0.7)`;
+          ctx.fillStyle = `hsla(${a.hue}, 80%, ${dark ? 66 : 50}%, ${dark ? 0.9 : 0.7})`;
           ctx.beginPath();
-          ctx.arc(px, py, 1.6, 0, Math.PI * 2);
+          ctx.arc(px, py, dark ? 2.2 : 1.6, 0, Math.PI * 2);
           ctx.fill();
         }
-        const r = count > 30 ? 3.4 : 5.5;
+        const r = dark ? 4.8 : count > 30 ? 3.4 : 5.5;
         ctx.fillStyle = busy ? `hsl(${a.hue}, 78%, ${dark ? 62 : 44}%)` : `rgba(${ink},0.28)`;
         ctx.beginPath();
         ctx.arc(a.x, a.y, r, 0, Math.PI * 2);
+        if (dark && busy) {
+          ctx.shadowColor = `hsl(${a.hue}, 90%, 60%)`;
+          ctx.shadowBlur = 10;
+        }
         ctx.fill();
+        ctx.shadowBlur = 0;
         if (busy) {
           ctx.strokeStyle = `hsla(${a.hue}, 72%, 44%, 0.5)`;
           ctx.lineWidth = 1.2;
