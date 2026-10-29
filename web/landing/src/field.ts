@@ -49,7 +49,8 @@ export const wastedPct = (w: World) => Math.round((100 * w.wasted) / Math.max(w.
 export function step(world: World, dt: number) {
   const { agents, tasks } = world;
   const decay = Math.exp(-dt / 2.2);
-  world.wasted *= decay;
+  // Once Maidan is on, duplicated work stops at the source, so the waste reading falls fast.
+  world.wasted *= world.order ? Math.exp(-dt / 0.8) : decay;
   world.work *= decay;
   for (const t of tasks) t.workers = 0;
   if (world.order) {
