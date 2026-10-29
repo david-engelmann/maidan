@@ -1,0 +1,1 @@
+- Landing concept 07: "The orchestra", a draggable node graph of agents and task pulses that zooms through a lease, a review gate and evidence on close, then scales to a hundred agents.
