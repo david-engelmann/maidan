@@ -1,0 +1,32 @@
+.c-hero2 { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+.c-field { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.c-hero2-copy { position: relative; padding: calc(env(safe-area-inset-top) + 5.4rem) var(--safe-x) 0; max-width: 48rem; pointer-events: none; text-shadow: 0 2px 30px rgba(5,6,10,0.9); }
+.c-hero2-copy .c-lede { max-width: 30rem; }
+.c-dock { position: relative; margin: 0 var(--safe-x) calc(env(safe-area-inset-bottom) + 1rem); padding: 0.8rem; border-radius: 26px; border: 1px solid var(--line);
+  background: rgba(14,16,24,0.55); backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%); display: grid; gap: 0.7rem;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 30px 80px -30px rgba(0,0,0,0.8); }
+.c-dock-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.c-dock-stats span, .c-mini-bar > span { color: var(--muted); font-size: 13px; }
+.c-dock-stats b { display: block; font-size: 28px; line-height: 1.1; font-weight: 640; color: var(--ink); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.is-bad b { color: var(--red) !important; }
+@media (min-width: 900px) { .c-dock { position: absolute; right: var(--safe-x); bottom: 2rem; margin: 0; width: 380px; } .c-hero2-copy { padding-left: max(2.5rem, var(--safe-x)); padding-top: 9rem; } }
+.c-switch { display: flex; align-items: center; gap: 0.8rem; width: 100%; min-height: 56px; padding: 0 1rem; border-radius: 18px; background: rgba(255,255,255,0.06); border: 1px solid var(--line); font-weight: 600; font-size: 16px; }
+.c-switch-track { width: 50px; height: 30px; border-radius: 99px; background: rgba(255,255,255,0.16); display: flex; padding: 3px; transition: background 0.3s; }
+.c-switch.is-on .c-switch-track { background: var(--mint); justify-content: flex-end; }
+.c-switch-knob { width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+.c-sec { padding: 7rem var(--safe-x) 0; max-width: 72rem; margin: 0 auto; }
+.c-sec > h2 { margin-bottom: 3rem; }
+.c-mini { display: grid; gap: 1.2rem; margin-bottom: 5rem; }
+@media (min-width: 900px) { .c-mini { grid-template-columns: 1fr 1.3fr; align-items: center; gap: 3rem; } }
+.c-mini-copy h3 { font-size: clamp(1.7rem, 6vw, 2.4rem); letter-spacing: -0.03em; margin: 0.3rem 0 0; }
+.c-mini-copy p { color: var(--muted); }
+.c-rule-n { font: 500 12px var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; }
+.c-rule-h { color: var(--mint) !important; font-weight: 550; margin: 0.2rem 0 0.6rem; font-size: 1.1rem; }
+.c-mini-stage { border-radius: 26px; border: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015)); overflow: hidden; }
+.c-mini-canvas { display: block; width: 100%; aspect-ratio: 4 / 3; }
+.c-mini-canvas.is-short { aspect-ratio: 2 / 1; }
+.c-mini-bar { display: flex; align-items: center; gap: 1rem; padding: 0.7rem; border-top: 1px solid var(--line); }
+.c-mini-bar .c-switch { width: auto; flex: 1; min-height: 50px; }
+.c-mini-bar b { color: var(--ink); font-size: 18px; margin-right: 0.2rem; font-variant-numeric: tabular-nums; }
+.c-hero2 .c-h1, .c-hero2 .c-lede { text-shadow: 0 2px 24px rgba(5,6,10,0.9); }
+.c-mini, #rules { scroll-margin-top: 88px; }
