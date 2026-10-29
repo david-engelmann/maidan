@@ -23,9 +23,11 @@ export default defineConfig({
           return "[name][extname]";
         },
         manualChunks(id) {
+          // three and r3f only load with the 3D plaza, never on first paint.
+          if (/node_modules\/(three|@react-three|its-fine|zustand|suspend-react|react-use-measure)\//.test(id)) return "three-vendor";
           if (id.includes("node_modules")) return "vendor";
-          if (id.includes("/src/story")) return "story";
-          if (id.includes("/src/aurora")) return "aurora";
+          
+          
         },
       },
     },
