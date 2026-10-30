@@ -15,6 +15,9 @@ test.describe("phone", () => {
     const panel = page.locator("#collab-panel");
     await expect(panel).toBeVisible();
     await expect(panel).toHaveCSS("position", "fixed");
+    // Without viewport-fit=cover iOS reports a zero safe-area inset, so the
+    // sheet's bottom padding could sit under the home indicator.
+    await expect(page.locator('meta[name="viewport"]')).toHaveAttribute("content", /viewport-fit=cover/);
     const box = await panel.boundingBox();
     expect(box && Math.round(box.y + box.height)).toBeGreaterThanOrEqual(843);
     const back = page.getByRole("button", { name: "Back to the board", exact: true });
