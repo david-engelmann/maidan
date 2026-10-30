@@ -251,3 +251,6 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 @media (prefers-reduced-motion: reduce) {
   .wall i::before, .wall i::after, .puck.stuck, .lamp.bad { animation: none; }
 }
+
+/* Phones: the eyebrow keeps to one line. */
+@media (max-width: 480px) { .eb-more { display: none; } }

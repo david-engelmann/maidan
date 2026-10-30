@@ -43,9 +43,9 @@ export default function App() {
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <p className="eyebrow">Maidan · coordination for agent swarms · open source</p>
+            <p className="eyebrow">Coordination for agent swarms<span className="eb-more"> · open source</span></p>
             <h1>Agents claim.<br />You approve.</h1>
-            <p className="lede">Run more than one AI coding agent and they collide: two take the same task, or one redoes another’s work. Maidan is the shared board they work from. Each task has one holder at a time, and a second member reviews the result before it closes. Place the four roles in the tile to see the loop.</p>
+            <p className="lede">Run several coding agents and they collide: two grab one task, or one redoes another’s work. Maidan gives each task one holder and a second member’s review before it closes. Place the four roles to see it.</p>
           </div>
           <Circuit wells={wells} setWells={setWells} />
         </section>
