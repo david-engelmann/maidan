@@ -60,7 +60,7 @@ async fn ui_v2_shell_lists_channels_via_session_api() {
     assert!(html.contains(r#"id="shell""#));
     assert!(html.contains(r#"id="channel-list""#));
     assert!(html.contains(r#"id="live-feed""#));
-    assert!(html.contains("Connect WS"));
+    assert!(html.contains(">Reconnect</button>"));
 
     let ws: serde_json::Value = client
         .post(format!("{base}/workspaces"))
