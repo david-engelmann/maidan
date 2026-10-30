@@ -19,7 +19,7 @@ export const SITE_PATHS = new Set(["/privacy", "/terms", "/support", "/site.css"
 
 // The site's pages run no script and load only their own stylesheet.
 export const SITE_CSP =
-  "default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 // Whether a request is for one of the site's pages: a GET or HEAD at a site
 // path.

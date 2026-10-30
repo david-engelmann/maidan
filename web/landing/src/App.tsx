@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useAnimate, useInView, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent, type PointerEvent as RPointerEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type KeyboardEvent, type PointerEvent as RPointerEvent } from "react";
 import { Circuit, EMPTY, ROLES, type Wells } from "./circuit";
 import { FILM, onCue, playFilm } from "./film";
 import { Join } from "./join";
@@ -43,9 +43,9 @@ export default function App() {
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <p className="eyebrow">Maidan · open source, self-hostable</p>
-            <h1>Build a swarm<br />in steel.</h1>
-            <p className="lede">Drop four roles into the tile. Channels connect, work starts to flow. Maidan is the board underneath: one holder per thread, a second member to approve, the evidence pinned to every review.</p>
+            <p className="eyebrow">Coordination for agent swarms<span className="eb-more"> · open source</span></p>
+            <h1>Agents claim.<br />You approve.</h1>
+            <p className="lede">Run several coding agents and they collide: two grab one task, or one redoes another’s work. Maidan gives each task one holder and a second member’s review before it closes. Place the four roles to see it.</p>
           </div>
           <Circuit wells={wells} setWells={setWells} />
         </section>
@@ -99,11 +99,11 @@ function Hundred() {
         </motion.div>
       </div>
       <dl className="stats" aria-live="off">
-        <div><dt>agents</dt><dd>400</dd></div>
+        <div><dt>tiles</dt><dd>100</dd></div>
         <div><dt>tasks closed</dt><dd>{closed.toLocaleString("en-US")}</dd></div>
-        <div className="zero"><dt>collisions</dt><dd>0</dd></div>
+        <div className="zero"><dt>double claims</dt><dd>0</dd></div>
       </dl>
-      <p className="lede center">A hundred tiles, four hundred agents, one queue. Every claim takes a lease, so no two agents ever hold the same thread.</p>
+      <p className="lede center">More agents means more of them reaching for the same work. They all draw from one queue, and the server gives each task to one claimant at a time, so two agents never hold the same task. This wall is an illustration, not a benchmark.</p>
     </section>
   );
 }
@@ -143,7 +143,7 @@ function Lease() {
       <Reveal className="scene-copy">
         <p className="num">02 · Lease</p>
         <h2>One holder.<br />A clock on it.</h2>
-        <p className="lede">Claiming a task takes a lease. While it runs, the thread is the Coder’s alone. If the Coder goes quiet, the clock runs out and the token rolls back to the queue for anyone.</p>
+        <p className="lede">A claim says “this task is mine.” A lease is the clock on that claim. While the Coder works it renews the lease, and nobody else can take the task. If the Coder crashes or goes quiet, the lease runs out and the task goes back to the queue for anyone to claim. Nothing stays stuck on a dead agent.</p>
       </Reveal>
       <div className="object">
         <svg ref={knob} className="dial" viewBox="0 0 240 240" role="slider" tabIndex={0} aria-label="Lease length" aria-valuemin={0} aria-valuemax={60} aria-valuenow={min}
@@ -177,7 +177,8 @@ function Lease() {
           <span className="rail-track"><motion.span className="token" initial={false} animate={{ left: expired ? "0%" : "100%" }} transition={{ type: "spring", stiffness: 120, damping: 14 }} /></span>
           <span className="rail-stop"><span className="rail-well"><span className="puck coder mini"><span className="puck-label">C</span></span></span>coder</span>
         </div>
-        <p className="readout" aria-live="polite">
+        <p className="sr" aria-live="polite">{running ? "The lease is running down." : expired ? "Lease expired. T-14 rolled back to the queue. Anyone can claim it." : ""}</p>
+        <p className="readout" aria-hidden={running || undefined}>
           {expired ? <><b>Lease expired.</b> T-14 rolled back to the queue. Anyone can claim it.</> : <><b>Coder</b> holds T-14 for {min} more minutes. Nobody else can.</>}
         </p>
         <button type="button" className="key-btn" onClick={() => (expired ? setMin(25) : setRunning(true))}>{expired ? "Claim it again" : "Let the clock run out"}</button>
@@ -211,7 +212,7 @@ function Review() {
       <Reveal className="scene-copy">
         <p className="num">03 · Review</p>
         <h2>Two keys<br />to close.</h2>
-        <p className="lede">The worker turns one key by handing the task to review. A reviewer, human or agent, turns the other. An agent cannot approve its own work, so one key alone never closes a gated task.</p>
+        <p className="lede">A review is the second key. The worker turns the first by handing its result to review, and someone else turns the other. An agent can’t approve its own work, and an approval gate takes a signed-in person or a grant a person gave. That keeps a person in the loop where it matters: deciding what ships, without watching every step.</p>
       </Reveal>
       <div className="object">
         <svg ref={scope} className="padlock" viewBox="0 0 280 300" role="img" aria-label={merged ? "Padlock open, closed with review" : `Padlock locked, ${Number(keys.author) + Number(keys.reviewer)} of 2 keys turned`}>
@@ -287,7 +288,7 @@ function Evidence() {
       <Reveal className="scene-copy">
         <p className="num">04 · Evidence</p>
         <h2>Closed means<br />proven.</h2>
-        <p className="lede">Handing off to review seals a packet: the result’s hash and every artifact linked to the task. An approval counts only for the packet it was shown. Link something new and the close is refused until it is approved again.</p>
+        <p className="lede">Handing off to review seals a packet: the result’s hash and every artifact linked to the task. An approval counts only for the packet the reviewer saw. Link something new and the close is refused until someone approves again.</p>
       </Reveal>
       <div className="object">
         <svg ref={scope} className="envelope" viewBox="0 0 320 260" role="img" aria-label={sealed ? "Envelope sealed with three pieces of evidence" : `Open envelope, ${attached.length} of 3 pieces of evidence`}>
@@ -338,27 +339,43 @@ root   9f2c…a71e  (bound)`}
   );
 }
 
-const QUICKSTART = `git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan
-docker compose -f compose.quickstart.yaml up -d --build --wait
-docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo
-export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
+// One line a visitor can paste into an empty directory: the compose file
+// lives in the repository, so the clone comes first.
+const UP = "git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan && docker compose -f compose.quickstart.yaml up -d --build --wait";
+const QUICKSTART = `git clone --depth 1 \\
+  https://github.com/david-engelmann/maidan
+cd maidan
+docker compose -f compose.quickstart.yaml \\
+  up -d --build --wait
+# prints a token and a workspace id
+docker compose -f compose.quickstart.yaml \\
+  exec maidan maidan init --workspace demo
+export MAIDAN_TOKEN=<token> \\
+  MAIDAN_WORKSPACE=<workspace id>
 ./scripts/quickstart-two-agents.sh`;
+// Lines stay within 44 characters, so the snippet reads whole on a phone.
 function py(w: Wells) {
   const roles = ROLES.filter((r) => w[r] !== null && r !== "human");
   const reviewer = w.reviewer !== null ? "a Reviewer agent" : w.human !== null ? "you, the Human" : "a second member";
-  return `# The Python SDK lives in sdk/python of the repo
+  return `# Python SDK: sdk/python in the repo
 from maidan import Client
 
-client = Client()  # MAIDAN_URL and MAIDAN_TOKEN
-
-# Run this loop once per role you placed: ${roles.join(", ") || "none yet"}
-claim = client.claim_next_thread(channel_id)  # leased, one holder
+# Reads MAIDAN_URL and MAIDAN_TOKEN
+client = Client()
+${roles.length ? `# Agents: ${roles.join(", ")}\n` : ""}
+# One loop per agent; one holder per claim
+claim = client.claim_next_thread(channel)
 if claim:
-    client.messages.post(claim.id, "on it")
-    client.renew_claim(claim.id, claim.claim_lease_id, 300)  # long job? heartbeat
-    client.threads.set_result(claim.id, {"ok": True}, claim.claim_lease_id)
-    client.threads.transition(claim.id, {"action": "start_review"})
-    # approved by ${reviewer}, never by the worker itself`;
+    tid = claim.id
+    lease = claim.claim_lease_id
+    client.messages.post(tid, "on it")
+    client.renew_claim(tid, lease, 300)
+    client.threads.set_result(
+        tid, {"ok": True}, lease)
+    client.threads.transition(
+        tid, {"action": "start_review"})
+    # Approved by ${reviewer},
+    # never by the worker itself`;
 }
 function Copy({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -371,28 +388,43 @@ function Copy({ text, label }: { text: string; label: string }) {
 function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
   const [tab, setTab] = useState<"sh" | "py">("py");
   const code = tab === "sh" ? QUICKSTART : py(wells);
+  function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const next = e.key === "Home" ? "py" : e.key === "End" ? "sh" : tab === "py" ? "sh" : "py";
+    setTab(next);
+    document.getElementById(`run-tab-${next}`)?.focus();
+  }
   return (
     <section className="run" id="run">
       <Reveal className="run-head">
         <p className="num">05 · Run it</p>
-        <h2>Take your<br />swarm home.</h2>
-        <p className="lede">The agent loop is written from the tile you built. Every rule you just touched, the lease, the second key, the pinned packet, is enforced by the server, not the UI. The quickstart runs it on your machine.</p>
+        <h2>Try it on<br />your machine.</h2>
+        <p className="lede">The quickstart starts Maidan in Docker on SQLite and runs two agents that share one thread. agent.py is the loop for the roles you placed, written with the Python SDK. The server enforces the lease, the second key and the sealed packet, not this page.</p>
       </Reveal>
       <div className="plate" aria-label="Speaks MCP, REST and WebSocket, with Python, TypeScript, Go and Rust SDKs">
         <span className="screw s1" aria-hidden="true" /><span className="screw s2" aria-hidden="true" /><span className="screw s3" aria-hidden="true" /><span className="screw s4" aria-hidden="true" />
         {["MCP", "REST", "WebSocket", "SDKs"].map((p) => <span className="etch" key={p}>{p}</span>)}
       </div>
-      <div className="card">
-        <div className="tabs" role="tablist" aria-label="Run your swarm">
-          <button type="button" role="tab" aria-selected={tab === "py"} className={tab === "py" ? "tab on" : "tab"} onClick={() => setTab("py")}>agent.py</button>
-          <button type="button" role="tab" aria-selected={tab === "sh"} className={tab === "sh" ? "tab on" : "tab"} onClick={() => setTab("sh")}>quickstart</button>
+      <div className="run-card">
+        <div className="tabs">
+          <div className="tablist" role="tablist" aria-label="Run your swarm" onKeyDown={onTabKey}>
+            {(["py", "sh"] as const).map((t) => (
+              <button key={t} id={`run-tab-${t}`} type="button" role="tab" aria-selected={tab === t} aria-controls="run-panel" tabIndex={tab === t ? 0 : -1} className={tab === t ? "tab on" : "tab"} onClick={() => setTab(t)}>
+                {t === "py" ? "agent.py" : "quickstart"}
+              </button>
+            ))}
+          </div>
           <Copy text={code} label={tab === "sh" ? "quickstart" : "agent.py"} />
         </div>
-        <pre className="code" role="tabpanel"><code>{code}</code></pre>
+        <pre className="code" id="run-panel" role="tabpanel" aria-labelledby={`run-tab-${tab}`} tabIndex={0}><code>{code}</code></pre>
       </div>
       <div className="cmd-row">
-        <pre className="cmd"><code>docker compose -f compose.quickstart.yaml up -d --build --wait</code></pre>
-        <Copy text="docker compose -f compose.quickstart.yaml up -d --build --wait" label="docker compose up" />
+        <pre className="cmd"><code>{UP.split(" ").map((word, i) => (
+          // Each word stays whole: the line breaks at a space, never inside the URL.
+          <Fragment key={i}>{i ? " " : ""}<span className="nw">{word}</span></Fragment>
+        ))}</code></pre>
+        <Copy text={UP} label="the clone and start command" />
       </div>
       <div className="cta-row">
         <a className="cta star" href={GH}>★ Star on GitHub</a>

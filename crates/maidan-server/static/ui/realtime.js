@@ -70,7 +70,7 @@ import { loadApprovals } from "./tools.js";
 
       function setPresence(status) {
         if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
-          return showError("Press Connect WS in the Live toolbar first");
+          return showError("Press Reconnect in the Live toolbar first");
         }
         wsSocket.send(JSON.stringify({ type: "presence", status }));
         showError(`Presence → ${status}`, "success");
