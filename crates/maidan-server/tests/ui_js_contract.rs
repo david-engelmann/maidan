@@ -1510,7 +1510,7 @@ fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
     );
 }
 
-/// The live control is Connect WS in the Live toolbar, not an Events tab.
+/// The live control is Reconnect in the Live toolbar, not an Events tab.
 #[test]
 fn ui_js_names_the_live_connect_control() {
     assert!(
@@ -1523,18 +1523,18 @@ fn ui_js_names_the_live_connect_control() {
     );
     assert!(
         page().contains(
-            "title=\"This thread updates live from the WebSocket. Press Connect WS in the Live toolbar.\""
+            "title=\"This thread updates live from the WebSocket. Press Reconnect in the Live toolbar.\""
         ),
-        "the live mark names Connect WS"
+        "the live mark names Reconnect"
     );
     assert!(
-        page().contains("Press <strong>Connect WS</strong> in the Live"),
-        "the roster names Connect WS in the Live toolbar"
+        page().contains("Press <strong>Reconnect</strong> in the Live"),
+        "the roster names Reconnect in the Live toolbar"
     );
     let presence = function_body(script(HTML), "setPresence");
     assert!(
-        presence.contains("Press Connect WS in the Live toolbar first"),
-        "setting presence names Connect WS"
+        presence.contains("Press Reconnect in the Live toolbar first"),
+        "setting presence names Reconnect"
     );
     assert!(
         page().contains("id=\"ws-connect\""),
@@ -1636,7 +1636,7 @@ fn ui_js_keeps_the_first_screen_quiet() {
         "the live menu and the empty-queue line exist"
     );
     assert!(
-        !page().contains("class=\"primary\">Connect WS"),
+        !page().contains("class=\"primary\">Reconnect"),
         "connecting the socket is not the page's primary button"
     );
     assert!(

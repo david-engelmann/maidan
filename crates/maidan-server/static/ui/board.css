@@ -318,7 +318,9 @@
       #ws-status { max-width: min(16rem, 42vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.78rem; color: var(--muted); }
       #ws-status.error { color: var(--err); }
       #live-more { position: relative; font-size: 0.78rem; color: var(--muted); }
-      #live-more summary { cursor: pointer; list-style: none; }
+      /* Centred, not top-aligned: a touch screen gives the summary a 44px box,
+         and its word has to sit on the same line as the status beside it. */
+      #live-more summary { cursor: pointer; list-style: none; display: flex; align-items: center; }
       #live-more summary::-webkit-details-marker { display: none; }
       #live-more[open] #live-more-body { position: absolute; z-index: 6; top: calc(100% + 0.35rem); right: 0; display: grid; gap: 0.4rem; min-width: 16rem; padding: 0.55rem 0.7rem; background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem; box-shadow: var(--shadow); }
       #live-more-body label { margin: 0; display: flex; align-items: center; gap: 0.4rem; }
