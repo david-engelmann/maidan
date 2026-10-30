@@ -5946,7 +5946,7 @@ fn ui_js_saves_your_own_display_name() {
 fn ui_js_names_who_closed_a_task() {
     let board = include_str!("../static/ui/board.js");
     assert!(
-        board.contains("/threads/${tid}/transitions"),
+        board.contains("/threads/${tid}/transitions?limit=500"),
         "the thread header must read the transition history"
     );
     assert!(
@@ -5956,6 +5956,10 @@ fn ui_js_names_who_closed_a_task() {
     assert!(
         board.contains("\"closed by \""),
         "the header must say who closed the task"
+    );
+    assert!(
+        board.contains("\"completed by \""),
+        "a reviewed close says who completed the task"
     );
     assert!(
         board.contains("handedOff !== closed.actor_id"),
