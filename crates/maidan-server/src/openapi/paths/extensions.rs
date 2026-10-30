@@ -158,6 +158,22 @@ pub fn get_workspace_usage_conformance() {}
 )]
 pub fn get_workspace_usage_routing() {}
 
+/// Per-seat cost, summed from the usage ledger by reporting member
+#[utoipa::path(
+    get,
+    path = "/workspaces/{id}/usage-seats",
+    tag = "workspaces",
+    params(("id" = Uuid, Path, description = "Workspace id"), SeatCostParams),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = SeatCosts),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn get_workspace_usage_seats() {}
+
 /// List a workspace's withdrawn messages
 #[utoipa::path(
     get,

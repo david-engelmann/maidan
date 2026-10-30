@@ -217,7 +217,7 @@ not `pending`. Go ahead only on `accepted`. Never approve your own request.
 
    If a renewal is refused, the claim is gone: it lapsed, or the task was
    cancelled. If the work is already done and committed locally, read the
-   thread (`get_thread`). When it is still `open` with no assignee, take it
+   thread (`get_thread_context`: its state and lease are in the second part). When it is still `open` with no assignee, take it
    back with `claim_thread` (the thread's id), acknowledge, and deliver the
    same local commit. Anything else (cancelled, closed, held by another
    claimant): post what you had on the thread, deliver nothing, and stop.

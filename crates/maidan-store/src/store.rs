@@ -777,6 +777,9 @@ pub trait UsageLedgerStore: Send + Sync {
     /// Spend, cache shape, and cost per completed task. A thread or member
     /// outside the named workspace is `NotFound`.
     async fn usage_rollup(&self, query: UsageRollupQuery) -> Result<UsageRollup, StoreError>;
+    /// Per-seat cost: the workspace's completed reports in the query's
+    /// window, summed by reporting member, most expensive first.
+    async fn seat_costs(&self, query: SeatCostQuery) -> Result<SeatCosts, StoreError>;
     /// Add a flushed batch of usage-meter counts to their days' totals.
     async fn add_usage_meters(
         &self,

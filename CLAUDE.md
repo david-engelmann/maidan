@@ -139,13 +139,11 @@ Working beside other agents (several PRs are usually open at once):
   `scripts/changelog-fragments.sh check` and `scripts/check-changelog-released.sh`
   (the `changelog (released sections)` job) check the shape, duplicates, and
   that the newest tagged section gains nothing after its tag.
-- **Counters that two PRs can bump by the same line:** the `.route(` count
-  pinned in `tenant_isolation_e2e`, the MCP tool count in `docs/Protocols.md`,
-  `README.md` and `book/src/introduction.md`, and migration numbers. Git merges
-  two identical edits into one, so after a rebase recount (`grep -o '\.route('
-  crates/maidan-server/src/app.rs | wc -l`, which counts what the test counts)
-  rather than trusting the number, and take
-  the next free migration number on `main` plus the open PRs. A conflict in a
+- **Counters that two PRs can bump by the same line:** the MCP tool count in
+  `docs/Protocols.md`, `README.md` and `book/src/introduction.md`, and
+  migration numbers. Git merges two identical edits into one, so after a
+  rebase recount rather than trusting the number, and take the next free
+  migration number on `main` plus the open PRs. A conflict in a
   golden or a catalog copy (the tool count, `contracts/mcp-tool-names.json`, the
   listings, `tools_list_*.json`, the profile golden, the MCP reference) is
   resolved by taking either side and running `make regen`.
@@ -157,7 +155,12 @@ Working beside other agents (several PRs are usually open at once):
   `Store::get_member_in(workspace, id)` (from #1152); an MCP tool declares
   `annotations` (a title and the four hints) and has a row, with a reason for
   each hint, in `crates/maidan-mcp/tests/fixtures/tool-annotations.json`
-  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`).
+  (`tool_annotations_contract`; a read-only tool is also in `READ_ONLY_TOOLS`),
+  a risk tier in `listings/hol-guard/policy.json` (then run
+  `python3 scripts/gen-hol-guard.py`), and a skill under
+  `examples/claude-code/` that says how to use it
+  (`scripts/check-agent-skills.py`). A new profile in `profiles.rs` also
+  regenerates the Guard files.
 - **Merging:** an admin squash only when all eight required checks passed on
   the PR's exact head commit and every CodeRabbit comment has a fix or a reply,
   merged with `gh pr merge --squash --match-head-commit <sha>`; `gh pr checks` and even
@@ -318,9 +321,10 @@ The long version is in [`docs/Operations.md`](docs/Operations.md).
   OpenAPI path (`openapi_well_formed` fails on an undeclared path parameter or
   a dangling `$ref`), and, for a POST, PUT or PATCH, a body clause in
   `http_capability_matrix_e2e.rs`, or the extractor's 400 hides the 403.
-  `tenant_isolation_e2e` then probes it with another tenant's token, and pins
-  the total `.route(` count in `app.rs`: bump the number, and if the route is a
-  live stream, add a probe in `stream_probes`.
+  `tenant_isolation_e2e` then probes it with another tenant's token. It reads
+  the routes from `app.rs` and pins no count; a route outside the OpenAPI spec
+  must be listed in `tests/fixtures/non_openapi_routes.json`, and a live stream
+  also needs a probe in `stream_probes`.
 - **A new route must be classified** `reads` or `changes` in
   `contracts/http-operation-kinds.json`. A GET that writes or a POST that only
   reads needs a `reason`, and a POST that only reads also goes in

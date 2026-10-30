@@ -628,6 +628,99 @@ impl UsageRollup {
     }
 }
 
+/// Which seats a per-seat cost read covers: one workspace's completed usage
+/// reports accepted in `[since, until)`, each bound optional, at most `limit`
+/// seats (1 to 1000).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeatCostQuery {
+    pub workspace_id: WorkspaceId,
+    pub since: Option<DateTime<Utc>>,
+    pub until: Option<DateTime<Utc>>,
+    pub limit: i64,
+}
+
+impl SeatCostQuery {
+    pub const MAX_LIMIT: i64 = 1000;
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=Self::MAX_LIMIT).contains(&self.limit) {
+            return Err(format!("limit must be 1 to {}", Self::MAX_LIMIT));
+        }
+        if let (Some(since), Some(until)) = (self.since, self.until)
+            && since >= until
+        {
+            return Err("since must be before until".into());
+        }
+        Ok(())
+    }
+}
+
+/// One seat's spend in a window, read from the usage ledger. A seat is the
+/// member that reported the usage (the claim holder), so the id never needs
+/// to be a metric label. `threads` counts distinct threads, which is what a
+/// trace backend joins to the `maidan.thread` spans carrying the same
+/// `member_id`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SeatCost {
+    pub member_id: MemberId,
+    pub handle: String,
+    pub reports: i64,
+    pub threads: i64,
+    pub usd_micros: i64,
+    pub first_accepted_at: DateTime<Utc>,
+    pub last_accepted_at: DateTime<Utc>,
+}
+
+/// Per-seat cost for a workspace, most expensive seat first (ties by member
+/// id). `usd_micros` sums the listed seats. `truncated` is true when more
+/// seats spent in the window than `limit` allowed, in which case the total
+/// covers the listed seats only.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SeatCosts {
+    pub workspace_id: WorkspaceId,
+    pub since: Option<DateTime<Utc>>,
+    pub until: Option<DateTime<Utc>>,
+    pub seats: Vec<SeatCost>,
+    pub usd_micros: i64,
+    pub truncated: bool,
+}
+
+impl SeatCosts {
+    /// Build the answer from a backend's rows. Backends fetch `limit + 1`
+    /// rows so truncation is known without a second count query.
+    pub fn from_rows(query: SeatCostQuery, mut rows: Vec<SeatCost>) -> Result<Self, String> {
+        query.validate()?;
+        let limit = usize::try_from(query.limit).map_err(|_| "limit overflow".to_string())?;
+        if rows
+            .iter()
+            .any(|r| r.reports < 1 || r.threads < 1 || r.usd_micros < 0)
+        {
+            return Err("seat rows must have reports, threads and non-negative spend".into());
+        }
+        rows.sort_by(|a, b| {
+            b.usd_micros
+                .cmp(&a.usd_micros)
+                .then_with(|| a.member_id.0.cmp(&b.member_id.0))
+        });
+        let truncated = rows.len() > limit;
+        rows.truncate(limit);
+        let usd_micros = rows
+            .iter()
+            .try_fold(0_i64, |sum, r| sum.checked_add(r.usd_micros))
+            .ok_or_else(|| "seat spend overflow".to_string())?;
+        Ok(Self {
+            workspace_id: query.workspace_id,
+            since: query.since,
+            until: query.until,
+            seats: rows,
+            usd_micros,
+            truncated,
+        })
+    }
+}
+
 fn ppm(part: i64, whole: i64) -> Result<Option<i64>, String> {
     if whole == 0 {
         return Ok(None);
@@ -1727,5 +1820,75 @@ mod tests {
         entry.usd_micros = 5;
         entry.evidence.cache_key = Some("x".repeat(257));
         assert!(entry.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod seat_cost_tests {
+    use super::*;
+
+    fn seat(n: u128, usd: i64) -> SeatCost {
+        SeatCost {
+            member_id: MemberId(uuid::Uuid::from_u128(n)),
+            handle: format!("seat-{n}"),
+            reports: 1,
+            threads: 1,
+            usd_micros: usd,
+            first_accepted_at: DateTime::<Utc>::UNIX_EPOCH,
+            last_accepted_at: DateTime::<Utc>::UNIX_EPOCH,
+        }
+    }
+
+    fn query(limit: i64) -> SeatCostQuery {
+        SeatCostQuery {
+            workspace_id: WorkspaceId(uuid::Uuid::from_u128(9)),
+            since: None,
+            until: None,
+            limit,
+        }
+    }
+
+    #[test]
+    fn seats_sort_by_spend_then_id_and_total_the_listed_seats() {
+        let costs = SeatCosts::from_rows(query(10), vec![seat(2, 5), seat(1, 5), seat(3, 40)])
+            .map_err(|e| e.to_string());
+        let costs = costs.as_ref().map(|c| {
+            (
+                c.seats
+                    .iter()
+                    .map(|s| s.handle.as_str())
+                    .collect::<Vec<_>>(),
+                c.usd_micros,
+                c.truncated,
+            )
+        });
+        assert_eq!(costs, Ok((vec!["seat-3", "seat-1", "seat-2"], 50, false)));
+    }
+
+    #[test]
+    fn more_seats_than_the_limit_are_truncated_and_say_so() {
+        let costs = SeatCosts::from_rows(query(2), vec![seat(1, 1), seat(2, 2), seat(3, 3)]);
+        assert_eq!(
+            costs.map(|c| (c.seats.len(), c.usd_micros, c.truncated)),
+            Ok((2, 5, true))
+        );
+    }
+
+    #[test]
+    fn a_bad_window_or_limit_is_refused() {
+        let mut q = query(0);
+        assert!(q.validate().is_err());
+        q.limit = 1001;
+        assert!(q.validate().is_err());
+        q.limit = 1;
+        q.since = Some(DateTime::<Utc>::UNIX_EPOCH);
+        q.until = Some(DateTime::<Utc>::UNIX_EPOCH);
+        assert_eq!(q.validate(), Err("since must be before until".into()));
+    }
+
+    #[test]
+    fn a_spend_total_that_overflows_is_an_error_not_a_wrap() {
+        let costs = SeatCosts::from_rows(query(10), vec![seat(1, i64::MAX), seat(2, 1)]);
+        assert_eq!(costs, Err("seat spend overflow".into()));
     }
 }
