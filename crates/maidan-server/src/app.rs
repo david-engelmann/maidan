@@ -93,6 +93,27 @@ pub fn board_ui_csp(state: &AppState) -> &'static str {
     }
 }
 
+/// Content-Security-Policy for the React console at `/console`. The board's
+/// policy, plus `style-src-attr 'unsafe-inline'` because the console's motion
+/// runtime sets transform and opacity on elements (as the landing's does),
+/// and `manifest-src 'self'` for the install manifest. Style *elements* and
+/// scripts stay on `'self'`; the build fails on an inline one
+/// (web/console/scripts/check-csp.mjs).
+pub const CONSOLE_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/// [`CONSOLE_CSP`] on an instance that runs Turnstile, widened the same
+/// narrow way as [`BOARD_UI_CSP_TURNSTILE`].
+pub const CONSOLE_CSP_TURNSTILE: &str = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/// The console's CSP for this instance, as [`board_ui_csp`] chooses.
+pub fn console_csp(state: &AppState) -> &'static str {
+    if state.turnstile.is_some() {
+        CONSOLE_CSP_TURNSTILE
+    } else {
+        CONSOLE_CSP
+    }
+}
+
 /// The waitlist page's CSP for this instance, as [`board_ui_csp`] chooses.
 pub fn landing_csp(state: &AppState) -> &'static str {
     if state.turnstile.is_some() {
@@ -1299,6 +1320,57 @@ pub fn router(state: AppState) -> Router {
         ))
     }
 
+    // The React console, served beside the board at /ui until it replaces
+    // it. Static and public like /ui: the API calls it makes carry the auth.
+    async fn console_index(
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> axum::response::Response {
+        landing_body(
+            &headers,
+            console_csp(&state),
+            "text/html; charset=utf-8",
+            include_bytes!("../static/console/dist/index.html"),
+        )
+    }
+
+    async fn console_asset(
+        crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        // Names are pinned by the Vite build (see web/console/vite.config.ts).
+        let (content_type, body): (&str, &[u8]) = match name.as_str() {
+            "app.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/app.js"),
+            ),
+            "vendor.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/vendor.js"),
+            ),
+            "style.css" => (
+                "text/css; charset=utf-8",
+                include_bytes!("../static/console/dist/style.css"),
+            ),
+            "geist.woff2" => (
+                "font/woff2",
+                include_bytes!("../static/console/dist/geist.woff2"),
+            ),
+            "icon.png" => (
+                "image/png",
+                include_bytes!("../static/console/dist/icon.png"),
+            ),
+            _ => return Err(axum::http::StatusCode::NOT_FOUND),
+        };
+        Ok(landing_body(
+            &headers,
+            console_csp(&state),
+            content_type,
+            body,
+        ))
+    }
+
     fn landing_body(
         headers: &axum::http::HeaderMap,
         csp: &'static str,
@@ -1858,6 +1930,9 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics::scrape))
         .route("/", get(landing_page))
         .route("/landing/{name}", get(landing_asset))
+        .route("/console", get(console_index))
+        .route("/console/", get(console_index))
+        .route("/console/{name}", get(console_asset))
         .route("/ui", get(ui_index))
         .route("/ui/", get(ui_index))
         .route("/ui/static/{name}", get(ui_asset))

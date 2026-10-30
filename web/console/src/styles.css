@@ -1,0 +1,35 @@
+/* Console tokens: the landing's steel language (paper, ink, steel, signal). */
+@font-face { font-family: Geist; src: url("./fonts/geist-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+:root {
+  --paper: #f2eee6;
+  --paper-2: #e9e4d9;
+  --card: #faf8f3;
+  --ink: #151411;
+  --muted: #5c5850;
+  --line: rgba(21, 20, 17, 0.12);
+  --signal: #e8501c;
+  --ok: #2f7d4f;
+  --danger: #b4231a;
+  --steel-1: #f7f7f5;
+  --steel-2: #c9c8c3;
+  --steel-3: #9d9b95;
+  --sans: Geist, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --pad: max(1.1rem, env(safe-area-inset-left), env(safe-area-inset-right));
+  --tab-h: 56px;
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); -webkit-text-size-adjust: 100%; }
+body { margin: 0; min-height: 100dvh; font-family: var(--sans); font-size: 17px; line-height: 1.45; color: var(--ink); background: var(--paper); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.mono { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.steel {
+  background: linear-gradient(145deg, var(--steel-1), var(--steel-2) 60%, var(--steel-3));
+  box-shadow: inset 0 2px 1px #fff, inset 0 -3px 6px rgba(0, 0, 0, 0.18), 0 1px 0 #fff, 0 18px 36px -18px rgba(60, 50, 30, 0.45);
+}
+.splash { min-height: 100dvh; display: grid; place-items: center; padding: var(--pad); text-align: center; }
+.splash .mark { width: 72px; height: 72px; border-radius: 22%; margin: 0 auto 1.2rem; }
+.splash h1 { margin: 0; font-size: 2.2rem; font-weight: 560; letter-spacing: -0.05em; }
+.splash p { margin: 0.4rem 0 0; color: var(--muted); }

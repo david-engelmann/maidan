@@ -88,7 +88,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -107,6 +109,14 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
+      - name: console typecheck, lint, tests and CSP-checked build
+        working-directory: web/console
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
@@ -195,7 +205,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -239,7 +251,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -266,7 +280,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -298,7 +314,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -330,7 +348,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -385,7 +405,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: osv-scanner
@@ -410,7 +432,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: install cargo-vet
@@ -438,7 +462,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -505,7 +531,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -587,7 +615,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -622,7 +652,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -685,7 +717,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -1053,7 +1087,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -1091,7 +1127,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
