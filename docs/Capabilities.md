@@ -42,6 +42,21 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v420.0.0](https://github.com/david-engelmann/maidan/releases/tag/v420.0.0) — claude.ai connects to a fresh hosted workspace
+
+The first release cut from `dev` after `main` became prod. It ships every PR merged through #1789. `CHANGELOG.md` under `[420.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Connected apps** | OAuth discovery advertises client metadata documents; the hosts they are fetched from are one instance setting, `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` (claude.ai on dev and prod); a signed-out browser at `/oauth/authorize` signs in and comes back | `crates/maidan-server/src/oauth/` |
+| **Swarm** | Close a thread that will not land; find threads by attribute; review families (DeepSeek included) and same-family refusal before the lock; a verdict names the head it reviewed; withheld duplicates leave a notice | `crates/maidan-store/src/`, `crates/maidan-mcp/src/` |
+| **Cost and telemetry** | Per-seat cost from the usage ledger; cost by provider family; thread results by harness, kind, status and verdict; closed egress metric labels; request spans name their route and thread; the release image exports OTLP; the swarm dashboard | `crates/maidan-server/src/`, `deploy/` |
+| **Agents** | Ten Agent Skills covering all 260 MCP tools, and a HOL Guard risk tier for every tool with generated contributions | `examples/claude-code/`, `listings/hol-guard/` |
+| **Console and site** | The landing page revamp and its swarm builder; set your own name; a review names its requester; files link to the open task as evidence | `web/`, `crates/maidan-server/static/` |
+| **Branches** | `dev` takes the work and `main` is prod; prod deploys only a release tag on `main` | `.github/workflows/` |
+
+The deploy pins move to `v420.0.0` in the PR that follows the tag.
+
 ## [v419.0.0](https://github.com/david-engelmann/maidan/releases/tag/v419.0.0) — removed members lose access, and the cutoff covers every metered surface
 
 The first published release since `v417.0.0`. `v418.0.0` was tagged but never published (its release scan failed on a distroless `libssl3` CVE that no binary links), so this release also carries everything in `[418.0.0]`. It ships every PR merged through #1686. `CHANGELOG.md` under `[419.0.0]` has every entry.
