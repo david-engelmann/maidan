@@ -1,10 +1,11 @@
 //! Metadata-document OAuth clients persist as marked rows (migration
 //! 0172): the row anchors the client's codes and grants, and it never
 //! makes the client pre-registered — the token endpoint and authorize
-//! resolve a marked client from its document, through the egress guard,
-//! every time. The document host is never allowlisted here, so a
-//! resolution attempt is refused by the guard; that refusal is what
-//! proves the row was not served from the cache.
+//! resolve a marked client from its document, through the fetch guard,
+//! every time. The document host is never in the instance's
+//! `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` here (the list is empty by
+//! default), so a resolution attempt is refused by the guard; that
+//! refusal is what proves the row was not served from the cache.
 
 use std::sync::{atomic::AtomicI64, Arc};
 
@@ -207,7 +208,7 @@ async fn a_marked_client_is_resolved_from_its_document_never_from_its_row() {
     // not there — before 0172 there was no row, and they did.
 
     // At the token endpoint the row buys nothing: resolution goes to
-    // the document, the egress guard refuses the unallowlisted host,
+    // the document, the fetch guard refuses the unlisted host,
     // and the exchange is an invalid_client refusal.
     let (code, verifier) = seed_code(&h, &t, META).await;
     let resp = exchange(&h, META, &code, &verifier).await;
@@ -243,7 +244,7 @@ async fn an_unmarked_client_with_a_url_id_exchanges_from_its_row() {
 }
 
 #[tokio::test]
-async fn authorize_refuses_a_marked_client_at_the_egress_guard_but_not_an_unmarked_one() {
+async fn authorize_refuses_a_marked_client_at_the_fetch_guard_but_not_an_unmarked_one() {
     let h = spawn().await;
     let t = tenant(&h, "authorize").await;
     marked_row(&h).await;
@@ -270,7 +271,7 @@ async fn authorize_refuses_a_marked_client_at_the_egress_guard_but_not_an_unmark
     };
 
     // The marked client is not served from its row: resolution reaches
-    // the egress guard, which refuses the unallowlisted host.
+    // the fetch guard, which refuses the unlisted host.
     let refused = h
         .no_redirect
         .get(authorize(META))
