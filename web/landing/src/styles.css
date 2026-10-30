@@ -174,8 +174,8 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 .tray-name, .slot-empty span { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
 .puck.loose { width: 52px; height: 52px; cursor: grab; }
 .slot-empty::before { content: ""; width: 52px; height: 52px; border-radius: 50%; box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.16), inset 0 0 0 1.5px var(--line); }
-.status { font-size: 0.8rem; color: var(--ink); min-height: 2.6em; max-width: 22rem; }
-.status.bad { color: #a8300c; }
+.circuit-status { font-size: 0.8rem; color: var(--ink); min-height: 2.6em; max-width: 22rem; }
+.circuit-status.bad { color: #a8300c; }
 .meter { margin: 0.2rem 0 0; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
 .meter span { color: var(--ink); font-weight: 600; }
 
@@ -222,7 +222,7 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 .plate .screw { width: 7px; height: 7px; }
 .plate .s1 { left: 10px; top: 10px; } .plate .s2 { right: 10px; top: 10px; } .plate .s3 { left: 10px; bottom: 10px; } .plate .s4 { right: 10px; bottom: 10px; }
 .etch { text-align: center; font-family: var(--mono); font-weight: 600; font-size: clamp(0.9rem, 3.6vw, 1.5rem); letter-spacing: 0.1em; color: #3d3b36; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85); }
-.card { border-radius: 18px; background: #1a1916; color: #f2eee6; overflow: hidden; box-shadow: 0 24px 50px -24px rgba(30, 25, 15, 0.6); }
+.run-card { border-radius: 18px; background: #1a1916; color: #f2eee6; overflow: hidden; box-shadow: 0 24px 50px -24px rgba(30, 25, 15, 0.6); }
 .tabs { display: flex; align-items: center; gap: 0.2rem; padding: 0.4rem; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
 .tab { min-height: 44px; padding: 0 0.9rem; border-radius: 10px; font-family: var(--mono); font-size: 0.78rem; color: #c9c3b6; }
 .tab.on { background: rgba(255, 255, 255, 0.1); color: #fff; }
@@ -254,3 +254,27 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 
 /* Phones: the eyebrow keeps to one line. */
 @media (max-width: 480px) { .eb-more { display: none; } }
+
+/* Review polish. Status lines balance instead of leaving one word on a line
+   of its own. */
+.readout, .circuit-status { text-wrap: balance; }
+/* The footer's note and links share one centre line. */
+.foot { align-items: center; }
+/* The wall's crop fades out instead of cutting tiles off at a hard edge. */
+.wall-frame {
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 72%, transparent 100%);
+}
+/* The command wraps instead of hiding its end behind the Copy button. */
+.cmd-row .cmd { white-space: pre-wrap; overflow-wrap: break-word; overflow-x: visible; font-size: 0.92rem; line-height: 1.45; }
+/* The plate's four words sit an equal distance apart, not in equal columns. */
+@media (min-width: 900px) { .plate { display: flex; justify-content: space-evenly; } }
+/* Phones: a scene is as tall as what it holds, not a whole screen of empty
+   space, and code wraps rather than scrolling out of sight. */
+@media (max-width: 720px) {
+  .scene, .hundred { min-height: 0; padding-block: 4.5rem 3.5rem; }
+  .code { white-space: pre-wrap; overflow-wrap: break-word; }
+  .cmd-row { flex-wrap: wrap; justify-content: flex-end; padding: 0.8rem; }
+  .cmd-row .cmd { flex: 1 1 100%; font-size: 0.78rem; }
+}
+.cmd .nw { white-space: nowrap; }

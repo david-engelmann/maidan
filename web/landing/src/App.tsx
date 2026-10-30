@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useAnimate, useInView, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState, type ReactNode, type KeyboardEvent, type PointerEvent as RPointerEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type KeyboardEvent, type PointerEvent as RPointerEvent } from "react";
 import { Circuit, EMPTY, ROLES, type Wells } from "./circuit";
 import { FILM, onCue, playFilm } from "./film";
 import { Join } from "./join";
@@ -339,27 +339,43 @@ root   9f2c…a71e  (bound)`}
   );
 }
 
-const QUICKSTART = `git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan
-docker compose -f compose.quickstart.yaml up -d --build --wait
-docker compose -f compose.quickstart.yaml exec maidan maidan init --workspace demo  # prints a token and a workspace id
-export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
+// One line a visitor can paste into an empty directory: the compose file
+// lives in the repository, so the clone comes first.
+const UP = "git clone --depth 1 https://github.com/david-engelmann/maidan && cd maidan && docker compose -f compose.quickstart.yaml up -d --build --wait";
+const QUICKSTART = `git clone --depth 1 \\
+  https://github.com/david-engelmann/maidan
+cd maidan
+docker compose -f compose.quickstart.yaml \\
+  up -d --build --wait
+# prints a token and a workspace id
+docker compose -f compose.quickstart.yaml \\
+  exec maidan maidan init --workspace demo
+export MAIDAN_TOKEN=<token> \\
+  MAIDAN_WORKSPACE=<workspace id>
 ./scripts/quickstart-two-agents.sh`;
+// Lines stay within 44 characters, so the snippet reads whole on a phone.
 function py(w: Wells) {
   const roles = ROLES.filter((r) => w[r] !== null && r !== "human");
   const reviewer = w.reviewer !== null ? "a Reviewer agent" : w.human !== null ? "you, the Human" : "a second member";
-  return `# The Python SDK lives in sdk/python of the repo
+  return `# Python SDK: sdk/python in the repo
 from maidan import Client
 
-client = Client()  # MAIDAN_URL and MAIDAN_TOKEN
-
-# Run this loop once per role you placed: ${roles.join(", ") || "none yet"}
-claim = client.claim_next_thread(channel_id)  # leased, one holder
+# Reads MAIDAN_URL and MAIDAN_TOKEN
+client = Client()
+${roles.length ? `# Agents: ${roles.join(", ")}\n` : ""}
+# One loop per agent; one holder per claim
+claim = client.claim_next_thread(channel)
 if claim:
-    client.messages.post(claim.id, "on it")
-    client.renew_claim(claim.id, claim.claim_lease_id, 300)  # long job? heartbeat
-    client.threads.set_result(claim.id, {"ok": True}, claim.claim_lease_id)
-    client.threads.transition(claim.id, {"action": "start_review"})
-    # approved by ${reviewer}, never by the worker itself`;
+    tid = claim.id
+    lease = claim.claim_lease_id
+    client.messages.post(tid, "on it")
+    client.renew_claim(tid, lease, 300)
+    client.threads.set_result(
+        tid, {"ok": True}, lease)
+    client.threads.transition(
+        tid, {"action": "start_review"})
+    # Approved by ${reviewer},
+    # never by the worker itself`;
 }
 function Copy({ text, label }: { text: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -390,7 +406,7 @@ function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
         <span className="screw s1" aria-hidden="true" /><span className="screw s2" aria-hidden="true" /><span className="screw s3" aria-hidden="true" /><span className="screw s4" aria-hidden="true" />
         {["MCP", "REST", "WebSocket", "SDKs"].map((p) => <span className="etch" key={p}>{p}</span>)}
       </div>
-      <div className="card">
+      <div className="run-card">
         <div className="tabs">
           <div className="tablist" role="tablist" aria-label="Run your swarm" onKeyDown={onTabKey}>
             {(["py", "sh"] as const).map((t) => (
@@ -404,8 +420,11 @@ function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
         <pre className="code" id="run-panel" role="tabpanel" aria-labelledby={`run-tab-${tab}`} tabIndex={0}><code>{code}</code></pre>
       </div>
       <div className="cmd-row">
-        <pre className="cmd"><code>docker compose -f compose.quickstart.yaml up -d --build --wait</code></pre>
-        <Copy text="docker compose -f compose.quickstart.yaml up -d --build --wait" label="docker compose up" />
+        <pre className="cmd"><code>{UP.split(" ").map((word, i) => (
+          // Each word stays whole: the line breaks at a space, never inside the URL.
+          <Fragment key={i}>{i ? " " : ""}<span className="nw">{word}</span></Fragment>
+        ))}</code></pre>
+        <Copy text={UP} label="the clone and start command" />
       </div>
       <div className="cta-row">
         <a className="cta star" href={GH}>★ Star on GitHub</a>

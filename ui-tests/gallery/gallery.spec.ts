@@ -23,6 +23,16 @@ interface Capture {
 }
 
 const fx: Capture = JSON.parse(readFileSync(resolve(__dirname, "../.gallery.json"), "utf8"));
+// The server answers `/` with the landing only where sign-up is on, and the
+// capture seed leaves it off. The page is the one build.rs wrote; its assets
+// come from the server's /landing/ route as they do in production.
+const LANDING = resolve(__dirname, "../../crates/maidan-server/static/landing/dist/index.html");
+async function openLanding(page: Page) {
+  await page.route((url) => url.pathname === "/", (route) =>
+    route.fulfill({ path: LANDING, contentType: "text/html; charset=utf-8" }),
+  );
+  await page.goto("/", { waitUntil: "networkidle" });
+}
 const OUT = resolve(__dirname, "..", process.env.GALLERY_OUT ?? "gallery-out");
 mkdirSync(OUT, { recursive: true });
 
@@ -78,13 +88,13 @@ for (const vp of VIEWPORTS) {
     });
 
     test(`landing, ${vp.tag}`, async ({ page }) => {
-      await page.goto("/", { waitUntil: "networkidle" });
+      await openLanding(page);
       await shoot(page, `landing-${vp.tag}`, vp.width, errors);
     });
 
     test(`landing, reduced motion, ${vp.tag}`, async ({ page }) => {
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await page.goto("/", { waitUntil: "networkidle" });
+      await openLanding(page);
       await shoot(page, `landing-reduced-motion-${vp.tag}`, vp.width, errors);
     });
 
