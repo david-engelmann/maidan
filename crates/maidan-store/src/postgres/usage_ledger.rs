@@ -1,7 +1,7 @@
 use maidan_types::{
-    ClaimLeaseId, MemberId, NewUsageLedgerEntry, PayerStamp, PriceSnapshot, TaskClassUsageRow,
-    ThreadBudget, ThreadId, TokenUsage, UsageEvidence, UsageLedgerEntry, UsageRollup,
-    UsageRollupQuery, UsageSums, WorkspaceId,
+    ClaimLeaseId, MemberId, NewUsageLedgerEntry, PayerStamp, PriceSnapshot, SeatCost,
+    SeatCostQuery, SeatCosts, TaskClassUsageRow, ThreadBudget, ThreadId, TokenUsage, UsageEvidence,
+    UsageLedgerEntry, UsageRollup, UsageRollupQuery, UsageSums, WorkspaceId,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
@@ -455,4 +455,46 @@ fn standard_price(row: &sqlx::postgres::PgRow) -> Option<PriceSnapshot> {
         cache_write_1h_usd_micros_per_million: row
             .get::<Option<i64>, _>("standard_cache_write_1h_price")?,
     })
+}
+
+/// Per-seat cost over a window: completed reports summed by the member that
+/// reported them. Fetches one row past the limit so the answer can say it was
+/// truncated.
+pub async fn seat_costs(pool: &PgPool, query: SeatCostQuery) -> Result<SeatCosts, StoreError> {
+    query.validate().map_err(StoreError::InvalidInput)?;
+    let fetch = query.limit.saturating_add(1);
+    let rows = sqlx::query(
+        "SELECT l.reporter_id AS member_id, m.handle AS handle,
+                COUNT(*)::bigint AS reports, COUNT(DISTINCT l.thread_id)::bigint AS threads,
+                COALESCE(SUM(l.usd_micros), 0)::bigint AS usd,
+                MIN(l.accepted_at) AS first_accepted_at,
+                MAX(l.accepted_at) AS last_accepted_at
+         FROM maidan_usage_ledger l
+         JOIN maidan_members m ON m.id = l.reporter_id
+         WHERE l.workspace_id = $1 AND l.budget IS NOT NULL
+           AND ($2::timestamptz IS NULL OR l.accepted_at >= $2)
+           AND ($3::timestamptz IS NULL OR l.accepted_at < $3)
+         GROUP BY l.reporter_id, m.handle
+         ORDER BY usd DESC, l.reporter_id
+         LIMIT $4",
+    )
+    .bind(query.workspace_id.0)
+    .bind(query.since)
+    .bind(query.until)
+    .bind(fetch)
+    .fetch_all(pool)
+    .await?;
+    let seats = rows
+        .iter()
+        .map(|row| SeatCost {
+            member_id: MemberId(row.get("member_id")),
+            handle: row.get("handle"),
+            reports: row.get("reports"),
+            threads: row.get("threads"),
+            usd_micros: row.get("usd"),
+            first_accepted_at: row.get("first_accepted_at"),
+            last_accepted_at: row.get("last_accepted_at"),
+        })
+        .collect();
+    SeatCosts::from_rows(query, seats).map_err(StoreError::InvalidInput)
 }

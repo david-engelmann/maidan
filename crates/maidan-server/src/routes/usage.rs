@@ -115,6 +115,30 @@ pub async fn get_workspace_usage_routing(
         .map_err(ApiError::BadRequest)
 }
 
+/// Per-seat cost (#1771): the workspace's completed usage reports accepted in
+/// `[since, until)`, summed by the member that reported them, most expensive
+/// first. Seats are open-ended, so this is a ledger read rather than a metric
+/// label. `workspace:read`, the caller's workspace only.
+pub async fn get_workspace_usage_seats(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiQuery(params): ApiQuery<crate::dto::SeatCostParams>,
+) -> ApiResult<Json<SeatCosts>> {
+    let workspace_id = WorkspaceId(id);
+    cap(&auth, maidan_auth::capability::WORKSPACE_READ)?;
+    ensure_workspace(&auth, workspace_id)?;
+    state.store.get_workspace(workspace_id).await?;
+    let query = SeatCostQuery {
+        workspace_id,
+        since: params.since,
+        until: params.until,
+        limit: params.limit.unwrap_or(100),
+    };
+    query.validate().map_err(ApiError::BadRequest)?;
+    Ok(Json(state.store.seat_costs(query).await?))
+}
+
 /// The same rollup for one member of the caller's workspace.
 pub async fn get_member_usage_rollup(
     State(state): State<AppState>,
