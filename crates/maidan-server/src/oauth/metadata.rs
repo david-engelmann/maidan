@@ -154,7 +154,7 @@ pub struct AuthorizationServerMetadata {
     code_challenge_methods_supported: Vec<String>,
     /// A client may name itself by the HTTPS URL of its metadata document
     /// (draft-ietf-oauth-client-id-metadata-document), which `registry`
-    /// resolves through the workspace's egress allowlist. Without this flag
+    /// resolves from the hosts in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. Without this flag
     /// a client such as claude.ai assumes it must register dynamically,
     /// which this server never offers, and stops.
     client_id_metadata_document_supported: bool,
