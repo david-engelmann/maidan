@@ -701,7 +701,7 @@
   /* Three equal columns, and a label wraps inside its own button: the row
      holds on one line whatever the system font's width (a measured 8px of
      slack held on one machine and not on another). */
-  .ny-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.3rem; }
+  .ny-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 0.3rem; }
   .ny-actions button { padding-inline: 0.4rem; white-space: normal; line-height: 1.15; }
   .mate { border-radius: 0.9rem; align-items: flex-start; }
   .mate-text small {
