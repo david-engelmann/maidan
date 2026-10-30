@@ -188,6 +188,18 @@ pub async fn middleware(State(state): State<AppState>, mut req: Request, next: N
             }
             return run_authorized(&state, req, next, reader).await;
         }
+        // A browser at the authorization endpoint: the person consents on
+        // their own signed-in session, and a browser that is not signed in
+        // yet is sent to sign in and brought back.
+        if req.method() == Method::GET && path == crate::oauth::metadata::AUTHORIZE_PATH {
+            match authorize_session(&state, req.headers(), req.uri()).await {
+                Ok((session, ctx)) => {
+                    req.extensions_mut().insert(session);
+                    return run_authorized(&state, req, next, ctx).await;
+                }
+                Err(response) => return *response,
+            }
+        }
         // A page that exchanged its token for a session sends no bearer.
         // Its client IP was already counted by the outer limiter.
         let session = token_session(&state, req.uri().path(), req.method(), req.headers()).await;
@@ -362,6 +374,35 @@ async fn token_session(
     };
     check_request_origin(method, headers)?;
     Ok((session, ctx))
+}
+
+/// The session a bearer-less `GET /oauth/authorize` rides on. A token's
+/// session carries the token's authority; an OIDC session, the person's own
+/// sign-in, lends what they may do in the console. With no credential at
+/// all, a browser is redirected to sign in with `return_to` set to this exact
+/// request, so it comes back here and goes on to consent. Anything carrying
+/// an `Authorization` header is not a signed-out browser and keeps its 401.
+async fn authorize_session(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    uri: &axum::http::Uri,
+) -> Result<(SessionContext, AuthContext), Box<Response>> {
+    match load_session(state, headers).await {
+        Ok(session) => {
+            let ctx = session.auth_context(OIDC_WRITE_CAPABILITIES);
+            Ok((session, ctx))
+        }
+        Err(ApiError::Unauthorized) => {
+            if !headers.contains_key(header::AUTHORIZATION)
+                && let Some(redirect) = crate::oauth::authorize::sign_in_redirect(state, uri)
+            {
+                return Err(Box::new(redirect));
+            }
+            record_authentication_denial(uri.path());
+            Err(Box::new(ApiError::Unauthorized.into_response()))
+        }
+        Err(err) => Err(Box::new(err.into_response())),
+    }
 }
 
 fn record_authentication_denial(path: &str) {
