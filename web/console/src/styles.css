@@ -512,11 +512,12 @@ a { color: inherit; }
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
 }
-.channel-pick { flex: 1; min-width: 0; }
+.channel-pick { flex: 1; min-width: 0; max-width: 320px; }
 .channel-pick select { flex: 1; min-width: 0; }
 
 /* Empty lanes: say what is going on, offer the next move. */
-.empty-state { display: grid; gap: 6px; justify-items: start; padding: 18px 16px; border: 1px dashed var(--line); border-radius: 14px; }
+.cards .empty:has(.empty-state) { text-align: left; padding: 0; }
+.empty-state { display: grid; gap: 6px; justify-items: start; text-align: left; padding: 18px 16px; border: 1px dashed var(--line); border-radius: 14px; }
 .empty-state p { margin: 0; }
 
 /* Task sheet extras and Connect. */
@@ -526,4 +527,12 @@ a { color: inherit; }
 .result-form textarea, .result-form input { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
 .snippet { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .snippet-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--paper-2); }
-.snippet-body { margin: 0; padding: 10px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.snippet-scroll { position: relative; }
+.snippet-scroll::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 24px; pointer-events: none; background: linear-gradient(to right, transparent, var(--card)); }
+.snippet-body { margin: 0; padding: 10px 24px 10px 10px; font-family: var(--mono); font-size: 12px; white-space: pre; overflow-x: auto; background: var(--card); }
+.brand .mark { color: var(--ink); border-radius: 0; }
+.snippet, .snippet-scroll { min-width: 0; max-width: 100%; }
+.snippet { overflow: hidden; }
+.snippet-body { max-width: 100%; }
+.tools { grid-template-columns: minmax(0, 1fr); }
+.content { min-width: 0; }

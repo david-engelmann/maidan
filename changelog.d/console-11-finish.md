@@ -7,3 +7,4 @@
 - **Changed:** Board lane segments fit on one line with count badges; the channel select matches the console; empty lanes say what to do next.
 - **Changed:** Tools tabs fade at the edge, snap, and keep the open tab in view.
 - **Fixed:** The reaction "+" is gone on touch and quieter with a mouse; a toast no longer follows you to another page.
+- **Fixed:** The rail shows the Maidan mark, board empty states are left-aligned, the channel select is capped at 320px, Turn off only appears when this device is subscribed, and Connect snippets scroll sideways with a fade.

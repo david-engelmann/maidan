@@ -38,12 +38,12 @@ export function Connect({ api, base, signedIn }: { api: ToolsApi; base: string; 
     <>
       <section className="card">
         <h3>Connect an agent</h3>
-        <p className="muted small">Point any MCP client at this endpoint. Replace the placeholder with a token you minted under People.</p>
+        <p className="muted small">Paste one into your agent, then swap in a token from People.</p>
         <p className="mono-id break">{mcpUrl(base)}</p>
         {snippets(base).map((s) => (
           <div key={s.id} className="snippet">
             <div className="snippet-head"><strong>{s.title}</strong><Copy text={s.text} /></div>
-            <pre className="snippet-body">{s.text}</pre>
+            <div className="snippet-scroll"><pre className="snippet-body">{s.text}</pre></div>
           </div>
         ))}
         <div className="edit-actions">

@@ -30,7 +30,7 @@ import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
-import { PUSH_WORDS, disablePush, enablePush, pushRefusal, type PushOutcome } from "../pwa/push.ts";
+import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
 import { Connect } from "./Connect.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
 
@@ -719,7 +719,16 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
       live = false;
     };
   }, [api]);
-  const onWhy = pushRefusal({ me, permission, hasKey });
+  const [subscribed, setSubscribed] = useState(false);
+  const [checked, setChecked] = useState(0);
+  useEffect(() => {
+    let live = true;
+    pushSubscribed(consolePushManager).then((on) => live && setSubscribed(on));
+    return () => {
+      live = false;
+    };
+  }, [checked]);
+  const onWhy = subscribed ? null : pushRefusal({ me, permission, hasKey });
   const run = async (fn: () => Promise<PushOutcome>) => {
     setBusy(true);
     try {
@@ -727,6 +736,7 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
       setNote(PUSH_WORDS[out.reason] ?? out.reason);
     } finally {
       setBusy(false);
+      setChecked((n) => n + 1);
     }
   };
   return (
@@ -743,9 +753,13 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
       <Panel title="Notifications">
         <p className="muted small">Get a notification on this device when a task needs you or someone mentions you.</p>
         {onWhy ? <p className="muted small" id="push-why">{onWhy}</p> : <p className="muted small">Browser permission: {permission}.</p>}
+        {subscribed ? <p className="small">Notifications are on for this device.</p> : null}
         <div className="push-actions">
-          <button type="button" className="button ink" disabled={busy || onWhy !== null} aria-describedby={onWhy ? "push-why" : undefined} onClick={() => void run(() => enablePush(me, deps))}>Turn on</button>
-          <button type="button" className="button ghost" disabled={busy} onClick={() => void run(() => disablePush(deps, (ep) => (me ? api.forgetPush(me, ep) : Promise.resolve())))}>Turn off</button>
+          {subscribed ? (
+            <button type="button" className="button ghost" disabled={busy} onClick={() => void run(() => disablePush(deps, (ep) => (me ? api.forgetPush(me, ep) : Promise.resolve())))}>Turn off</button>
+          ) : (
+            <button type="button" className="button ink" disabled={busy || onWhy !== null} aria-describedby={onWhy ? "push-why" : undefined} onClick={() => void run(() => enablePush(me, deps))}>Turn on</button>
+          )}
         </div>
         {note ? <p className="small" role="status">{note}</p> : null}
       </Panel>

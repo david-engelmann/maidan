@@ -90,3 +90,9 @@ export function pushRefusal({ me, permission, hasKey }: { me: string | null; per
   if (hasKey === false) return "This server has no push key yet, so it cannot send notifications. An operator sets one up.";
   return null;
 }
+
+/** Whether this device holds a push subscription right now. */
+export async function pushSubscribed(pushManager: () => Promise<PushManagerLike | null>): Promise<boolean> {
+  const pm = await pushManager().catch(() => null);
+  return pm ? Boolean(await pm.getSubscription().catch(() => null)) : false;
+}
