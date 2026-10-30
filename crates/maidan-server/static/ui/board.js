@@ -707,6 +707,30 @@ import { loadMessages } from "./thread.js";
         };
         if (th.assignee_id) fact("held by ", personEl(th.assignee_id, { tag: true }));
         if (th.owner_id) fact("owner ", personEl(th.owner_id));
+        if (th.state === "closed" || th.state === "archived") {
+          // The holder is cleared on close, so the transition record is the
+          // only place that still says who finished the task, and when.
+          try {
+            const res = await api(uiReadPath(`/threads/${tid}/transitions?limit=500`), {
+              headers: headers(),
+              credentials: "include",
+            });
+            if (res.ok && gen === headerGen) {
+              const rows = await res.json();
+              if (gen !== headerGen) return;
+              const last = Array.isArray(rows) ? rows.filter((t) => t.to_state === "closed").pop() : null;
+              if (last) {
+                const when = document.createElement("time");
+                when.dateTime = last.occurred_at;
+                when.textContent = new Date(last.occurred_at).toLocaleString();
+                const f = fact(th.closed_without_review ? "closed by " : "completed by ", personEl(last.actor_id, { avatar: false }));
+                f.append(" · ", when);
+              }
+            }
+          } catch (_e) {
+            /* the close record is optional chrome */
+          }
+        }
         try {
           const res = await api(uiReadPath(`/threads/${tid}/result`), {
             headers: headers(),
