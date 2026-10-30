@@ -5938,3 +5938,27 @@ fn ui_js_saves_your_own_display_name() {
         "the session panel has a field for your name"
     );
 }
+
+/// A close clears the claim, so a closed task's header names who closed it
+/// from the transition history, and names who handed it into review only when
+/// that was someone else.
+#[test]
+fn ui_js_names_who_closed_a_task() {
+    let board = include_str!("../static/ui/board.js");
+    assert!(
+        board.contains("/threads/${tid}/transitions"),
+        "the thread header must read the transition history"
+    );
+    assert!(
+        board.contains("row.to_state === \"closed\""),
+        "the closer is whoever last moved the task to closed"
+    );
+    assert!(
+        board.contains("\"closed by \""),
+        "the header must say who closed the task"
+    );
+    assert!(
+        board.contains("handedOff !== closed.actor_id"),
+        "the hand-off is named only when it was not the closer"
+    );
+}

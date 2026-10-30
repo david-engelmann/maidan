@@ -172,3 +172,18 @@ test("a double click on Add task makes one task", async ({ page }) => {
   await page.waitForTimeout(2000);
   await expect(cards).toHaveCount(1);
 });
+
+// A close clears the claim, so a finished task used to show no person at all.
+// The header names who closed it, from the transition history.
+test("a closed task names who closed it", async ({ page }) => {
+  await openBoard(page);
+  await page.click(`#board .card[data-id="${fx.board_done_thread_id}"]`);
+
+  await expect(page.locator("#thread-badge")).toHaveText("done");
+  const closed = page.locator("#thread-facts .fact", { hasText: "closed by" });
+  await expect(closed).toHaveCount(1);
+  await expect(closed.locator(".name")).toHaveText("Operator");
+  await expect(closed).toContainText("just now");
+  // The same member handed it to review, so the hand-off is not named twice.
+  await expect(page.locator("#thread-facts")).not.toContainText("handed off by");
+});
