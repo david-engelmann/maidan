@@ -250,7 +250,11 @@
         background: #fff;
         font-size: 16px;
       }
+      /* The field border turns accent on any focus; a keyboard focus also keeps
+         the 3px ring every other control gets, since a 12% glow is not a
+         visible focus indicator (WCAG 2.4.7, 1.4.11). */
       input:focus, select:focus, textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(20, 83, 45, 0.12); }
+      input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
       header { padding: 0.55rem 1rem; gap: 0.75rem; }
       header h1 { font-size: 1.15rem; letter-spacing: -0.01em; }
       #conn-fields { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
