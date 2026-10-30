@@ -209,7 +209,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
         )}
       </div>
       <p className={`hint status${jammed ? " bad" : ""}`} aria-live="polite">{status}</p>
-      <p className="meter" aria-hidden="true"><span>{closed}</span> {closed === 1 ? "task" : "tasks"} closed · <span>0</span> collisions</p>
+      <p className="meter" aria-hidden="true"><span>{closed}</span> {closed === 1 ? "task" : "tasks"} closed · <span>0</span> double claims</p>
     </div>
   );
 }
