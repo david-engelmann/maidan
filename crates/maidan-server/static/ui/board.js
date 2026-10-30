@@ -938,8 +938,11 @@ import { loadMessages } from "./thread.js";
         syncCollabPanel();
         document.querySelectorAll("#board .card.selected").forEach((n) => n.classList.remove("selected"));
         document.dispatchEvent(new CustomEvent("maidan-thread-selected"));
-        const card = /** @type {HTMLElement | null} */ (document.querySelector(`#board .card[data-id="${CSS.escape(id)}"]`));
-        if (card) card.focus();
+        // The card's control is its title button; the card itself takes no focus.
+        const open = /** @type {HTMLElement | null} */ (
+          document.querySelector(`#board .card[data-id="${CSS.escape(id)}"] .card-open`)
+        );
+        if (open) open.focus();
       }
 
       // ---- Onboarding, Connect an agent, command palette --------------------
