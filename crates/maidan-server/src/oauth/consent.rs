@@ -75,7 +75,7 @@ pub async fn consent_page(
             "this consent request belongs to another member".into(),
         ));
     }
-    let client = resolve_client(&state, pending.workspace_id, &pending.client_id)
+    let client = resolve_client(&state, &pending.client_id)
         .await
         .map_err(|_| ApiError::BadRequest("unknown client".into()))?;
 
