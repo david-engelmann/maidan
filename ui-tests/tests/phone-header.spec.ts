@@ -8,7 +8,15 @@ async function headerRows(page: import("@playwright/test").Page) {
   return page.evaluate(() => {
     const h = document.querySelector("header") as HTMLElement;
     const shown = [...h.children].filter((e) => (e as HTMLElement).offsetParent !== null);
-    return { rows: new Set(shown.map((e) => Math.round(e.getBoundingClientRect().top))).size, height: h.getBoundingClientRect().height };
+    // Items of different heights centre on one line, so a new row starts only
+    // where an item begins below the bottom of the row before it.
+    const boxes = shown.map((e) => e.getBoundingClientRect()).sort((a, b) => a.top - b.top);
+    let rows = 0;
+    let bottom = -Infinity;
+    for (const b of boxes) {
+      if (b.top >= bottom - 2) { rows += 1; bottom = b.bottom; } else bottom = Math.max(bottom, b.bottom);
+    }
+    return { rows, height: h.getBoundingClientRect().height };
   });
 }
 
