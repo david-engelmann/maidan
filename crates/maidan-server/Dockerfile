@@ -29,7 +29,7 @@ COPY web/landing/ ./
 ENV LANDING_OUT=/landing-dist
 RUN npm run build
 
-# The console (web/console) is built the same way, beside the landing.
+# The console (web/console, served at /ui) is built the same way, beside the landing.
 FROM node:22-bookworm-slim AS console
 WORKDIR /web
 COPY web/console/package.json web/console/package-lock.json ./

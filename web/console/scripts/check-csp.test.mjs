@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { cspViolations } from "./check-csp.mjs";
 
 test("an external module script and stylesheet pass", () => {
-  const html = '<link rel="stylesheet" href="/console/style.css"><script type="module" crossorigin src="/console/app.js"></script>';
+  const html = '<link rel="stylesheet" href="/ui/style.css"><script type="module" crossorigin src="/ui/app.js"></script>';
   assert.deepEqual(cspViolations(html), []);
 });
 

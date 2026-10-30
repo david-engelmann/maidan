@@ -1,4 +1,4 @@
-// The console's service worker, built to /console/sw.js. It keeps the static
+// The console's service worker, built to /ui/sw.js. It keeps the static
 // shell for offline starts (see policy.ts for what never gets cached) and
 // shows Web Push notifications from the server's existing push sender.
 import { NOTIFICATION_TARGET, SHELL_CACHE, SHELL_FILES, SHELL_SCOPE, cacheable, pushPayload, shellKey } from "./policy.ts";

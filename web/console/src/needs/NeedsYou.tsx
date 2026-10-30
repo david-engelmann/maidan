@@ -71,14 +71,6 @@ export function NeedsYou() {
   const { groups, headings } = useMemo(() => groupNeeds(shown), [shown]);
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
-  if (session.status === "signed-out")
-    return (
-      <div className="card">
-        <h2>Sign in to see what needs you</h2>
-        <p className="muted">Sign in on the classic board, then come back here.</p>
-        <a className="button steel" href="/ui/">Open the classic board</a>
-      </div>
-    );
 
   return (
     <section className="needs" aria-labelledby="needs-title">
@@ -391,12 +383,12 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
                   <button type="button" className="btn stop" onClick={() => start("decline")}>Decline</button>
                   <button type="button" className="btn go" onClick={() => start("accept")}>Approve</button>
                 </>
-              ) : (
-                <a className="btn" href="/ui/">Answer on the classic board</a>
-              ))}
+              ) : tid ? (
+                <a className="btn" href={convHash({ kind: "task", id: tid })}>Open the thread</a>
+              ) : null)}
             {item.kind === "blocked" && <button type="button" className="btn go" onClick={() => start("unblock")}>Unblock</button>}
-            {item.kind === "question" && (
-              <a className="btn go" href={tid ? convHash({ kind: "task", id: tid }) : "/ui/"}>{tid ? "Answer in the thread" : "Answer on the classic board"}</a>
+            {item.kind === "question" && tid && (
+              <a className="btn go" href={convHash({ kind: "task", id: tid })}>Answer in the thread</a>
             )}
           </div>
         )}

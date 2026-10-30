@@ -1,5 +1,4 @@
-// The console. Each place is a placeholder until its screen lands; the
-// classic board at /ui stays served until they all have.
+// The console at /ui: one shell, a screen per place.
 import { useEffect, useState } from "react";
 import { SessionContext, createSessionStore } from "./hooks/useSession.ts";
 import { Board } from "./board/Board.tsx";

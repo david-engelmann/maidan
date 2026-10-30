@@ -8,6 +8,7 @@ import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { Icon, Mark } from "./icons.tsx";
+import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { Palette, type Command } from "./Palette.tsx";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
@@ -48,7 +49,6 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const commands = useMemo<Command[]>(
     () => [
       ...ROUTES.map((r) => ({ id: `go-${r.id}`, title: `Go to ${r.title}`, hint: r.hint, run: () => navigate(r.id) })),
-      { id: "old-board", title: "Open the classic board", hint: "/ui", run: () => window.location.assign("/ui/") },
     ],
     [],
   );
@@ -89,7 +89,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
           aria-label={current.title}
         >
-          {screens[route]}
+          {session.status === "signed-out" ? <SignIn /> : screens[route]}
         </motion.section>
       </main>
 

@@ -24,7 +24,7 @@ export function standalone(): boolean {
   return window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
-/** Register /console/sw.js and start listening for the install prompt. */
+/** Register /ui/sw.js and start listening for the install prompt. */
 export function startPwa(): void {
   set({ canPrompt: false, installed: standalone() });
   window.addEventListener("beforeinstallprompt", (e) => {
@@ -37,7 +37,7 @@ export function startPwa(): void {
     set({ canPrompt: false, installed: true });
   });
   if ("serviceWorker" in navigator) {
-    void navigator.serviceWorker.register("/console/sw.js", { scope: "/console/", type: "module" }).catch(() => undefined);
+    void navigator.serviceWorker.register("/ui/sw.js", { scope: "/ui/", type: "module" }).catch(() => undefined);
   }
 }
 
@@ -54,6 +54,6 @@ export async function promptInstall(): Promise<boolean> {
 /** The push manager of the console's worker, or null when push is unavailable. */
 export async function consolePushManager(): Promise<PushManager | null> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return null;
-  const reg = (await navigator.serviceWorker.getRegistration("/console/")) ?? (await navigator.serviceWorker.register("/console/sw.js", { scope: "/console/", type: "module" }));
+  const reg = (await navigator.serviceWorker.getRegistration("/ui/")) ?? (await navigator.serviceWorker.register("/ui/sw.js", { scope: "/ui/", type: "module" }));
   return reg.pushManager;
 }

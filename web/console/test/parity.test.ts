@@ -113,7 +113,7 @@ test("workspace switcher degrades to nothing and links back to the console", asy
   assert.equal((await ok.switchable()).length, 1);
   const no = new ToolsApi(fetcher([{ status: 404 }]).fn, () => session, () => "session");
   assert.deepEqual(await no.switchable(), []);
-  assert.equal(switchHref("http://h/", "w 1"), "http://h/auth/oidc/login?workspace_id=w%201&return_to=/console/");
+  assert.equal(switchHref("http://h/", "w 1"), "http://h/auth/oidc/login?workspace_id=w%201&return_to=/ui/");
 });
 
 test("handles and peers are checked before sending", () => {

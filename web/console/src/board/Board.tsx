@@ -51,14 +51,6 @@ export function Board() {
   const opened = data.threads.find((t) => t.id === openId) ?? null;
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
-  if (session.status === "signed-out")
-    return (
-      <div className="card">
-        <h2>Sign in to see the board</h2>
-        <p className="muted">Sign in on the classic board, then come back here.</p>
-        <a className="button steel" href="/ui/">Open the classic board</a>
-      </div>
-    );
 
   const shown = wide ? LANES : LANES.filter((l) => l.key === lane);
   return (

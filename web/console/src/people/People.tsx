@@ -84,15 +84,6 @@ export function People() {
   const held = useMemo(() => holding(board.threads), [board.threads]);
   const rows = useMemo(() => roster(people.value ?? [], presence, held, me), [people.value, presence, held, me]);
 
-  if (session.status === "signed-out") {
-    return (
-      <div className="card">
-        <h2>People</h2>
-        <p className="muted">Sign in on the classic board first, then come back.</p>
-        <a className="button steel" href="/ui/">Open the classic board</a>
-      </div>
-    );
-  }
 
   return (
     <div className="people">

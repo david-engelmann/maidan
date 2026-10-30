@@ -31,8 +31,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error(`CSP check failed for ${path}:\n- ${bad.join("\n- ")}`);
     process.exit(1);
   }
-  if (!/<script\b[^>]*\bsrc="\/console\/app\.js"/.test(html)) {
-    console.error(`CSP check: ${path} does not load /console/app.js`);
+  if (!/<script\b[^>]*\bsrc="\/ui\/app\.js"/.test(html)) {
+    console.error(`CSP check: ${path} does not load /ui/app.js`);
     process.exit(1);
   }
   console.log(`CSP check passed: ${path}`);

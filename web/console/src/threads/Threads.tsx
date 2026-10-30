@@ -98,14 +98,6 @@ export function Threads() {
   }, [open, tasks, dms]);
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
-  if (session.status === "signed-out")
-    return (
-      <div className="card">
-        <h2>Sign in to read your threads</h2>
-        <p className="muted">Sign in on the classic board, then come back here.</p>
-        <a className="button steel" href="/ui/">Open the classic board</a>
-      </div>
-    );
 
   const list = tab === "tasks" ? tasks : dms;
   const listError = tab === "tasks" ? board.error : direct.error;

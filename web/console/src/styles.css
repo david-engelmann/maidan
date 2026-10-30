@@ -536,3 +536,7 @@ a { color: inherit; }
 .snippet-body { max-width: 100%; }
 .tools { grid-template-columns: minmax(0, 1fr); }
 .content { min-width: 0; }
+/* console-12: sign-in */
+.sign-in { display: grid; gap: 12px; max-width: 480px; }
+.sign-in-token { display: grid; gap: 6px; }
+.sign-in-token input { min-width: 0; }
