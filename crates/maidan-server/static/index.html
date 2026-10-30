@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Maidan</title>
     <link id="favicon" rel="icon" href="data:," />
     <link rel="stylesheet" href="/ui/static/board.css" />
@@ -37,8 +37,8 @@
         <button id="conn-edit" type="button" class="ghost" title="Change API base, workspace or token">Change</button>
       </span>
       <button id="ws-switch" type="button" class="ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="ws-switcher" title="Switch to another of your workspaces" hidden>Switch workspace</button>
-      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd mod-k">⌘K</span></button>
-      <button id="connect-open" type="button" class="ghost" data-open-connect>Connect an agent</button>
+      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action"><svg class="hdr-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.4 10.4L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="hdr-long">Search or jump…</span> <span class="kbd mod-k">⌘K</span></button>
+      <button id="connect-open" type="button" class="ghost" data-open-connect>Connect<span class="hdr-long"> an agent</span></button>
       <button id="mint" type="button" hidden>Mint admin</button>
       <button id="logout" type="button" hidden>Sign out</button>
     </header>
@@ -68,7 +68,7 @@
           <h2 id="connect-title">Connect an agent</h2>
           <p>Any MCP client works. Give each agent its own token, so the board knows who did what.</p>
         </div>
-        <button type="button" class="ghost close" id="connect-close" aria-label="Close">Esc</button>
+        <button type="button" class="ghost close" id="connect-close">Close</button>
       </div>
       <div class="cx-body">
         <div class="cx-block">
@@ -118,7 +118,7 @@
         <section id="live-panel" aria-label="Live updates">
           <div id="live-toolbar">
             <span id="ws-status">disconnected</span>
-            <button id="ws-connect" type="button" class="ghost">Connect WS</button>
+            <button id="ws-connect" type="button" class="ghost">Reconnect</button>
             <details id="live-more">
               <summary>Live</summary>
               <div id="live-more-body">
@@ -209,8 +209,9 @@
             <span class="th-label">Thread</span>
             <span id="thread-badge"></span>
             <span id="thread-context" class="muted">none selected</span>
-            <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket. Press Connect WS in the Live toolbar.">● live</span>
+            <span id="live-indicator" class="muted" hidden title="This thread updates live from the WebSocket. Press Reconnect in the Live toolbar.">● live</span>
             <span id="thread-actions"></span>
+            <button type="button" id="thread-close" class="ghost">Back to the board</button>
           </div>
           <div id="thread-facts"></div>
           <details id="evidence-timeline">
@@ -393,7 +394,7 @@
       <section id="panel-presence" class="panel">
         <p class="muted">
           Live workspace roster from the presence hub. Requires an active
-          WebSocket subscribe. Press <strong>Connect WS</strong> in the Live
+          WebSocket subscribe. Press <strong>Reconnect</strong> in the Live
           toolbar while signed in (the subscribe sends your member ID, which
           registers you online). The roster updates on each
           <code>presence_snapshot</code> frame.

@@ -1510,7 +1510,7 @@ fn ui_js_shows_a_refused_close_and_leads_with_the_latest_review() {
     );
 }
 
-/// The live control is Connect WS in the Live toolbar, not an Events tab.
+/// The live control is Reconnect in the Live toolbar, not an Events tab.
 #[test]
 fn ui_js_names_the_live_connect_control() {
     assert!(
@@ -1523,18 +1523,18 @@ fn ui_js_names_the_live_connect_control() {
     );
     assert!(
         page().contains(
-            "title=\"This thread updates live from the WebSocket. Press Connect WS in the Live toolbar.\""
+            "title=\"This thread updates live from the WebSocket. Press Reconnect in the Live toolbar.\""
         ),
-        "the live mark names Connect WS"
+        "the live mark names Reconnect"
     );
     assert!(
-        page().contains("Press <strong>Connect WS</strong> in the Live"),
-        "the roster names Connect WS in the Live toolbar"
+        page().contains("Press <strong>Reconnect</strong> in the Live"),
+        "the roster names Reconnect in the Live toolbar"
     );
     let presence = function_body(script(HTML), "setPresence");
     assert!(
-        presence.contains("Press Connect WS in the Live toolbar first"),
-        "setting presence names Connect WS"
+        presence.contains("Press Reconnect in the Live toolbar first"),
+        "setting presence names Reconnect"
     );
     assert!(
         page().contains("id=\"ws-connect\""),
@@ -1636,7 +1636,7 @@ fn ui_js_keeps_the_first_screen_quiet() {
         "the live menu and the empty-queue line exist"
     );
     assert!(
-        !page().contains("class=\"primary\">Connect WS"),
+        !page().contains("class=\"primary\">Reconnect"),
         "connecting the socket is not the page's primary button"
     );
     assert!(
@@ -5938,5 +5938,33 @@ fn ui_js_saves_your_own_display_name() {
     assert!(
         html.contains("id=\"member-display-name\""),
         "the session panel has a field for your name"
+    );
+}
+
+/// A close clears the claim, so a closed task's header names who closed it
+/// from the transition history, and names who handed it into review only when
+/// that was someone else.
+#[test]
+fn ui_js_names_who_closed_a_task() {
+    let board = include_str!("../static/ui/board.js");
+    assert!(
+        board.contains("/threads/${tid}/transitions?limit=500"),
+        "the thread header must read the transition history"
+    );
+    assert!(
+        board.contains("row.to_state === \"closed\""),
+        "the closer is whoever last moved the task to closed"
+    );
+    assert!(
+        board.contains("\"closed by \""),
+        "the header must say who closed the task"
+    );
+    assert!(
+        board.contains("\"completed by \""),
+        "a reviewed close says who completed the task"
+    );
+    assert!(
+        board.contains("handedOff !== closed.actor_id"),
+        "the hand-off is named only when it was not the closer"
     );
 }

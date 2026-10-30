@@ -693,6 +693,45 @@ import { loadMessages } from "./thread.js";
       // right after a card click) cannot append its facts a second time.
       let headerGen = 0;
 
+      // A close clears the claim, so a finished task no longer says who held
+      // it. The transition history keeps both people: whoever moved it to
+      // closed, and whoever last handed it into review. Name the hand-off only
+      // when it was someone other than the closer.
+      async function closedByFacts(th, tid, gen, fact) {
+        try {
+          const res = await api(uiReadPath(`/threads/${tid}/transitions?limit=500`), {
+            headers: headers(),
+            credentials: "include",
+          });
+          if (!res.ok || gen !== headerGen) return;
+          const rows = await res.json();
+          if (gen !== headerGen || !Array.isArray(rows)) return;
+          let closed = null;
+          let handedOff = null;
+          for (const row of rows) {
+            if (!row || !row.actor_id) continue;
+            if (row.to_state === "closed") closed = row;
+            if (row.to_state === "in_review") handedOff = row.actor_id;
+          }
+          if (!closed) return;
+          // A reviewed close is a finished task; a close that skipped review
+          // is only closed, and the badge already says so.
+          const verb = th.closed_without_review ? "closed by " : "completed by ";
+          const f = fact(verb, personEl(closed.actor_id, { avatar: false }));
+          const when = ago(closed.occurred_at);
+          if (when && closed.occurred_at) {
+            const t = document.createElement("time");
+            t.dateTime = closed.occurred_at;
+            t.title = new Date(closed.occurred_at).toLocaleString();
+            t.textContent = when;
+            f.append(" ", t);
+          }
+          if (handedOff && handedOff !== closed.actor_id) fact("handed off by ", personEl(handedOff, { avatar: false }));
+        } catch (_e) {
+          /* the badge already says the task is done */
+        }
+      }
+
       async function renderThreadHeader() {
         const gen = ++headerGen;
         const th = threadsById.get(selectedThreadId);
@@ -716,6 +755,7 @@ import { loadMessages } from "./thread.js";
         };
         if (th.assignee_id) fact("held by ", personEl(th.assignee_id, { tag: true }));
         if (th.owner_id) fact("owner ", personEl(th.owner_id));
+        if (th.state === "closed" || th.state === "archived") await closedByFacts(th, tid, gen, fact);
         try {
           const res = await api(uiReadPath(`/threads/${tid}/result`), {
             headers: headers(),
@@ -889,6 +929,19 @@ import { loadMessages } from "./thread.js";
       }
 
 
+      // On a phone the thread is a sheet over the board, so it needs a way
+      // back. Closing it returns focus to the card that opened it.
+      function closeThreadPanel() {
+        const id = selectedThreadId;
+        if (!id) return;
+        selectedThreadId = null;
+        syncCollabPanel();
+        document.querySelectorAll("#board .card.selected").forEach((n) => n.classList.remove("selected"));
+        document.dispatchEvent(new CustomEvent("maidan-thread-selected"));
+        const card = /** @type {HTMLElement | null} */ (document.querySelector(`#board .card[data-id="${CSS.escape(id)}"]`));
+        if (card) card.focus();
+      }
+
       // ---- Onboarding, Connect an agent, command palette --------------------
       // An empty channel is one sentence and one action. It replaces the
       // lanes. While the first-run card is on screen, that card is the only
@@ -1006,4 +1059,4 @@ import { loadMessages } from "./thread.js";
         }
       }
 
-export { boardChannel, boardNote, boardRects, boardRefreshTimer, boardSeen, boardShownFor, boardState, emptyChannelHelp, faviconHref, fetchPendingGatesByThread, glideCards, headerGen, hydrateRefusals, lastGates, loadChannels, loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, paintRefusal, pendingGateViews, refreshTeamSoon, rememberRefusal, renderBoard, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedChannelId, selectedChannelName, selectedThreadId, sessionChrome, setAttention, teamTimer, threadLoadGen, threadsById };
+export { boardChannel, closeThreadPanel, boardNote, boardRects, boardRefreshTimer, boardSeen, boardShownFor, boardState, emptyChannelHelp, faviconHref, fetchPendingGatesByThread, glideCards, headerGen, hydrateRefusals, lastGates, loadChannels, loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, paintRefusal, pendingGateViews, refreshTeamSoon, rememberRefusal, renderBoard, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedChannelId, selectedChannelName, selectedThreadId, sessionChrome, setAttention, teamTimer, threadLoadGen, threadsById };

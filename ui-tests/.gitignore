@@ -1,6 +1,8 @@
 node_modules/
 .fixtures.json
 .capture.json
+.gallery.json
+gallery-out/
 test-results/
 playwright-report/
 blob-report/

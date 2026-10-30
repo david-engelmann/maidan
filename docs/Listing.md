@@ -106,6 +106,16 @@ Self-hosted variant: in place of the "Hosted or self-hosted" paragraph, use
 
 The copy deliberately gives no tool count: a listing leads with the room.
 
+## Where the pack is wired in
+
+The listing files under `listings/` carry the self-hosted short description,
+because that variant is true today. Switch them to the hosted one once
+`maidan.world` serves the room. `listings/registry/server.json` also sets the
+`title`, the `repository` and both icons. The icons point at the PNGs above on
+`main`, so they resolve only after this page's assets are merged. The file
+validates against the registry's 2025-12-11 schema. Nothing has been
+submitted.
+
 ## Icons
 
 | File | Size | Use |
