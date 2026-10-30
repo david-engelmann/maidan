@@ -68,6 +68,7 @@ async fn console_index_is_the_built_shell_under_a_strict_csp() {
         let body = resp.text().await.expect("body");
         assert!(body.contains(r#"src="/console/app.js""#), "{body}");
         assert!(body.contains(r#"href="/console/style.css""#), "{body}");
+        assert!(body.contains(r#"href="/console/manifest.webmanifest""#), "{body}");
         assert!(!body.contains("<style"), "inline style element in {body}");
     }
     // The board stays served beside it.
@@ -89,6 +90,8 @@ async fn console_assets_are_pinned_names_only() {
         ("style.css", "text/css"),
         ("geist.woff2", "font/woff2"),
         ("icon.png", "image/png"),
+        ("manifest.webmanifest", "application/manifest+json"),
+        ("sw.js", "text/javascript"),
     ] {
         let resp = client()
             .get(format!("http://{addr}/console/{name}"))

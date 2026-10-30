@@ -1,0 +1,12 @@
+{
+  "name": "Maidan console",
+  "short_name": "Maidan",
+  "description": "Your board, needs and threads.",
+  "id": "/console/",
+  "start_url": "/console/#/board",
+  "scope": "/console/",
+  "display": "standalone",
+  "background_color": "#f2eee6",
+  "theme_color": "#f2eee6",
+  "icons": [{ "src": "/console/icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }]
+}
