@@ -698,8 +698,11 @@
    tighter padding keeps them on one line and lets them share it. A teammate's
    status wraps to two lines instead of being cut mid-word. */
 @media (max-width: 720px) {
-  .ny-actions { gap: 0.3rem; }
-  .ny-actions button { flex: 1 1 auto; padding-inline: 0.5rem; white-space: nowrap; }
+  /* Three equal columns, and a label wraps inside its own button: the row
+     holds on one line whatever the system font's width (a measured 8px of
+     slack held on one machine and not on another). */
+  .ny-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.3rem; }
+  .ny-actions button { padding-inline: 0.4rem; white-space: normal; line-height: 1.15; }
   .mate { border-radius: 0.9rem; align-items: flex-start; }
   .mate-text small {
     white-space: normal; display: -webkit-box; -webkit-box-orient: vertical;
@@ -755,7 +758,3 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
    ".waitlist { display: grid }" was showing the sign-up check's empty
    Turnstile block to every signed-out visitor. */
 [hidden] { display: none !important; }
-
-/* Signed out, the sign-in card is the page. Channels, the live toolbar, the
-   board and More tools have nothing to show until a session exists. */
-body:has(#first-run:not([hidden])) :is(aside, #live-panel, #board-head, #team, #board, #tools) { display: none; }
