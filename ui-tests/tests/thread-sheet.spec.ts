@@ -26,6 +26,18 @@ test.describe("phone", () => {
     await expect(panel).toBeHidden();
     await expect(card).toBeFocused();
   });
+
+  test("Escape puts the sheet away and returns to the card", async ({ page }) => {
+    await signIn(page, fx.workspace_id, fx.review_token);
+    await page.click(`#channel-list li[data-id="${fx.board_channel_id}"]`);
+    const card = page.locator(`#board .card[data-id="${fx.board_claimed_thread_id}"]`);
+    await card.click();
+    const panel = page.locator("#collab-panel");
+    await expect(panel).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(card).toBeFocused();
+  });
 });
 
 test("on a wide screen the panel stays in the layout and the back button is hidden", async ({ page }) => {
@@ -36,4 +48,7 @@ test("on a wide screen the panel stays in the layout and the back button is hidd
   await expect(page.locator("#collab-panel")).toBeVisible();
   await expect(page.locator("#collab-panel")).not.toHaveCSS("position", "fixed");
   await expect(page.locator("#thread-close")).toBeHidden();
+  // Escape does not close an inline panel.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#collab-panel")).toBeVisible();
 });

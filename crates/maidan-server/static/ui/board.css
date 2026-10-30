@@ -740,7 +740,9 @@
     padding-bottom: calc(env(safe-area-inset-bottom) + 0.9rem);
     padding-left: max(env(safe-area-inset-left), 1rem);
     padding-right: max(env(safe-area-inset-right), 1rem);
-    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.35);
+    /* The second shadow dims the board behind the sheet, so the sheet reads
+       as the one thing in front. */
+    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.35), 0 0 0 100vmax rgba(20, 18, 14, 0.32);
   }
   #thread-close { display: inline-flex; margin-left: auto; }
 }

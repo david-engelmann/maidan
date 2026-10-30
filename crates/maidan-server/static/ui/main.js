@@ -546,6 +546,15 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
       document.getElementById("reload-messages").onclick = loadMessages;
       document.getElementById("evidence-timeline").addEventListener("toggle", loadEvidenceTimeline);
       document.getElementById("thread-close").addEventListener("click", closeThreadPanel);
+      // On a phone the thread is a sheet over the board: Escape puts it away,
+      // as the Back button does. On wider screens the panel is part of the
+      // page and Escape leaves it alone.
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape" || e.defaultPrevented || !selectedThreadId) return;
+        if (!window.matchMedia("(max-width: 720px)").matches) return;
+        if (document.querySelector("dialog[open]")) return;
+        closeThreadPanel();
+      });
 
       initDmPickers();
 
