@@ -29,6 +29,8 @@
   },
   "vars": {
     "MAIDAN_PUBLIC_ORIGIN": "https://dev.maidan.world",
+    // Hosts OAuth client metadata documents are fetched from.
+    "MAIDAN_OAUTH_CLIENT_METADATA_HOSTS": "claude.ai",
     "ARTIFACT_BACKEND": "s3",
     "S3_BUCKET": "maidan-artifacts-dev",
     "S3_REGION": "auto"
