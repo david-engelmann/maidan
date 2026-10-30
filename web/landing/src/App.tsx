@@ -177,7 +177,8 @@ function Lease() {
           <span className="rail-track"><motion.span className="token" initial={false} animate={{ left: expired ? "0%" : "100%" }} transition={{ type: "spring", stiffness: 120, damping: 14 }} /></span>
           <span className="rail-stop"><span className="rail-well"><span className="puck coder mini"><span className="puck-label">C</span></span></span>coder</span>
         </div>
-        <p className="readout" aria-live="polite">
+        <p className="sr" aria-live="polite">{running ? "The lease is running down." : expired ? "Lease expired. T-14 rolled back to the queue. Anyone can claim it." : ""}</p>
+        <p className="readout" aria-hidden={running || undefined}>
           {expired ? <><b>Lease expired.</b> T-14 rolled back to the queue. Anyone can claim it.</> : <><b>Coder</b> holds T-14 for {min} more minutes. Nobody else can.</>}
         </p>
         <button type="button" className="key-btn" onClick={() => (expired ? setMin(25) : setRunning(true))}>{expired ? "Claim it again" : "Let the clock run out"}</button>
@@ -371,6 +372,13 @@ function Copy({ text, label }: { text: string; label: string }) {
 function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
   const [tab, setTab] = useState<"sh" | "py">("py");
   const code = tab === "sh" ? QUICKSTART : py(wells);
+  function onTabKey(e: KeyboardEvent<HTMLDivElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const next = e.key === "Home" ? "py" : e.key === "End" ? "sh" : tab === "py" ? "sh" : "py";
+    setTab(next);
+    document.getElementById(`run-tab-${next}`)?.focus();
+  }
   return (
     <section className="run" id="run">
       <Reveal className="run-head">
@@ -383,12 +391,17 @@ function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
         {["MCP", "REST", "WebSocket", "SDKs"].map((p) => <span className="etch" key={p}>{p}</span>)}
       </div>
       <div className="card">
-        <div className="tabs" role="tablist" aria-label="Run your swarm">
-          <button type="button" role="tab" aria-selected={tab === "py"} className={tab === "py" ? "tab on" : "tab"} onClick={() => setTab("py")}>agent.py</button>
-          <button type="button" role="tab" aria-selected={tab === "sh"} className={tab === "sh" ? "tab on" : "tab"} onClick={() => setTab("sh")}>quickstart</button>
+        <div className="tabs">
+          <div className="tablist" role="tablist" aria-label="Run your swarm" onKeyDown={onTabKey}>
+            {(["py", "sh"] as const).map((t) => (
+              <button key={t} id={`run-tab-${t}`} type="button" role="tab" aria-selected={tab === t} aria-controls="run-panel" tabIndex={tab === t ? 0 : -1} className={tab === t ? "tab on" : "tab"} onClick={() => setTab(t)}>
+                {t === "py" ? "agent.py" : "quickstart"}
+              </button>
+            ))}
+          </div>
           <Copy text={code} label={tab === "sh" ? "quickstart" : "agent.py"} />
         </div>
-        <pre className="code" role="tabpanel"><code>{code}</code></pre>
+        <pre className="code" id="run-panel" role="tabpanel" aria-labelledby={`run-tab-${tab}`} tabIndex={0}><code>{code}</code></pre>
       </div>
       <div className="cmd-row">
         <pre className="cmd"><code>docker compose -f compose.quickstart.yaml up -d --build --wait</code></pre>
