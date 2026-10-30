@@ -16,5 +16,5 @@ export async function signInWithCookie(page: Page, fx: Fixtures): Promise<void> 
 export async function openOnChannel(page: Page, channelId: string, hash = "#/board"): Promise<void> {
   await page.addInitScript(([key, id]) => window.localStorage.setItem(key, id), [CHANNEL_KEY, channelId]);
   await page.goto(`/ui/${hash}`);
-  await expect(page.locator(".rail")).toBeVisible();
+  await expect(page.locator(".rail:visible, .tabbar:visible").first()).toBeVisible();
 }

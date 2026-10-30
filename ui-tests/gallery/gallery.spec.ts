@@ -62,7 +62,7 @@ async function signIn(page: Page, board: Board, hash = "#/board") {
   await page.getByLabel(/paste a token/i).fill(board.token);
   await page.getByRole("button", { name: "Sign in with token" }).click();
   await expect(page.getByRole("heading", { name: "Sign in to Maidan" })).toBeHidden();
-  await expect(page.locator(".rail")).toBeVisible();
+  await expect(page.locator(".rail:visible, .tabbar:visible").first()).toBeVisible();
 }
 
 async function shoot(page: Page, name: string, width: number, errors: string[]) {
@@ -108,7 +108,9 @@ for (const vp of VIEWPORTS) {
 
     test(`board in flight, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.flight);
-      await expect(page.locator("button.task")).toHaveCount(7);
+      // A phone shows one lane at a time; a desktop shows all seven tasks.
+      if (vp.mobile) await expect(page.locator("button.task").first()).toBeVisible();
+      else await expect(page.locator("button.task")).toHaveCount(7);
       await shoot(page, `board-in-flight-${vp.tag}`, vp.width, errors);
     });
 
