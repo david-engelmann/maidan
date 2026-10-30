@@ -17,10 +17,13 @@ import {
   waitingFor,
   type Ask,
   type GateView,
+  type ConfirmLink,
+  parseConfirmLink,
   type Need,
   type RowState,
 } from "../core/needs.ts";
 import { convHash } from "../core/threads.ts";
+import { say } from "../core/notices.ts";
 import { useNeeds } from "../hooks/useNeeds.ts";
 import { useSession } from "../hooks/useSession.ts";
 
@@ -43,6 +46,12 @@ export function NeedsYou() {
     [store],
   );
   const { data, refresh } = useNeeds(session, api);
+  // Read the signed link once, then drop it from the address bar so the
+  // token does not linger in history or get shared by a copied URL.
+  const [link, setLink] = useState(() => parseConfirmLink(window.location.hash));
+  useEffect(() => {
+    if (link) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#/needs`);
+  }, [link]);
   // A row with an answer in flight or on screen stays until it is done,
   // even when a live refresh has already dropped it from the list.
   const [held, setHeld] = useState<Map<string, Need>>(new Map());
@@ -73,6 +82,7 @@ export function NeedsYou() {
 
   return (
     <section className="needs" aria-labelledby="needs-title">
+      {link ? <ConfirmPanel api={api} link={link} workspaceId={session.workspaceId} onDone={() => { setLink(null); void refresh(); }} /> : null}
       <h2 id="needs-title" className="visually-hidden">Needs you</h2>
       {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
       {data.staleSince !== null && (
@@ -392,5 +402,46 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
         )}
       </motion.div>
     </motion.li>
+  );
+}
+
+function ConfirmPanel({ api, link, workspaceId, onDone }: { api: NeedsApi; link: ConfirmLink; workspaceId: string | null; onDone: () => void }) {
+  const [gate, setGate] = useState<GateView | null | "loading">("loading");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void (workspaceId ? api.gates(workspaceId) : Promise.resolve(new Map<string, GateView>())).then((m) => {
+      if (live) setGate(m.get(link.gateId) ?? null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [api, link.gateId, workspaceId]);
+  const confirm = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.confirmLink(link);
+      say("Approval confirmed");
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not confirm");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const model = gate && gate !== "loading" ? modelRequestLine(gate.model_request) : null;
+  return (
+    <div className="card confirm-link" role="region" aria-label="Confirm an approval">
+      <h2>Confirm this approval</h2>
+      {gate === "loading" ? <p className="muted">Looking up the gate…</p> : gate ? <p>{gate.gate.prompt || "An approval gate"}</p> : <p className="muted">This gate is not pending in this workspace. It may already be answered.</p>}
+      {model ? <p className="muted small">{model}</p> : null}
+      {err ? <p className="err small" role="alert">{err}</p> : null}
+      <div className="edit-actions">
+        <button className="button steel" disabled={busy || gate === null} onClick={() => void confirm()}>Confirm</button>
+        <button className="button ghost" disabled={busy} onClick={onDone}>Not now</button>
+      </div>
+    </div>
   );
 }

@@ -35,7 +35,8 @@ import {
 import { hasToken } from "../core/api.ts";
 import { say, sayError } from "../core/notices.ts";
 import { convHash } from "../core/threads.ts";
-import { parseCaps } from "../core/tools.ts";
+import { capsExceeding, parseCaps } from "../core/tools.ts";
+import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { SecretOnce } from "../tools/SecretOnce.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hooks/usePeople.ts";
@@ -190,6 +191,9 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
   const [busy, setBusy] = useState(false);
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const canWrite = session.status === "signed-in" && hasToken(session.credentials);
+  const pageToken = session.status === "signed-in" ? session.credentials.sessionTokenId ?? null : null;
+  const tools = useToolsApi();
+  const held = useLoad(canWrite ? "me-caps" : null, () => tools.me());
   const p = row.person;
   const run = async (what: () => Promise<void>, done: string, fallback: string) => {
     if (busy) return;
@@ -241,6 +245,7 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
             <li key={t.id} className={`token ${state}`}>
               <div className="token-head">
                 <b>{t.label || "Unlabelled token"}</b>
+                {t.id === pageToken ? <span className="state-chip">This page</span> : null}
                 <span className={`state-chip ${state}`}>{state === "active" ? "Active" : state === "revoked" ? "Revoked" : "Expired"}</span>
               </div>
               <p className="muted small">Made {ago(t.createdAt, now)}{t.expiresAt ? ` · ${state === "expired" ? "expired" : "expires"} ${new Date(t.expiresAt).toLocaleDateString()}` : " · no expiry"}</p>
@@ -251,7 +256,7 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
                 <div className="token-actions">
                   <button type="button" className={`chip-btn${asking === "rotate" ? " confirm" : ""}`} disabled={busy} onClick={() => tokenAct(t.id, "rotate")}>{asking === "rotate" ? "Rotate: sure?" : "Rotate"}</button>
                   <button type="button" className={`chip-btn danger${asking === "revoke" ? " confirm" : ""}`} disabled={busy} onClick={() => tokenAct(t.id, "revoke")}>{asking === "revoke" ? "Revoke: sure?" : "Revoke"}</button>
-                  {asking ? <span className="muted small">If this page signed in with it, you will need to sign in again.</span> : null}
+                  {asking && t.id === pageToken ? <span className="muted small">This page runs on this token. {asking === "revoke" ? "Revoking it signs you out here." : "Rotating it may sign you out here."}</span> : null}
                 </div>
               ) : null}
             </li>
@@ -259,7 +264,7 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
         })}
       </ul>
       {canWrite && workspace ? (
-        <MintForm busy={busy} onMint={(req) => void run(async () => {
+        <MintForm busy={busy} held={held.value ?? null} onMint={(req) => void run(async () => {
           const out = await api.mint(workspace, p.id, req);
           setSecret({ title: `New token for ${p.name}`, value: out.secret });
         }, "Token minted", "Could not mint the token")} />
@@ -270,10 +275,11 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
   );
 }
 
-function MintForm({ busy, onMint }: { busy: boolean; onMint: (req: { label: string; capabilities: string[]; preset: string | null }) => void }) {
+function MintForm({ busy, held, onMint }: { busy: boolean; held: string[] | null; onMint: (req: { label: string; capabilities: string[]; preset: string | null }) => void }) {
   const [label, setLabel] = useState("");
   const [caps, setCaps] = useState("");
   const [preset, setPreset] = useState(true);
+  const over = preset ? [] : capsExceeding(parseCaps(caps), held);
   return (
     <form
       className="stack-form mint"
@@ -286,7 +292,8 @@ function MintForm({ busy, onMint }: { busy: boolean; onMint: (req: { label: stri
       <label className="field">Label<input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="What it is for" /></label>
       <label className="check"><input type="checkbox" checked={preset} onChange={(e) => setPreset(e.target.checked)} /> Agent worker preset</label>
       {!preset ? <label className="field">Capabilities<input value={caps} onChange={(e) => setCaps(e.target.value)} placeholder="thread:read, message:write" spellCheck={false} autoCapitalize="off" /></label> : null}
-      <button className="button steel" disabled={busy}>Mint</button>
+      {over.length ? <p className="err small" role="alert">Your token does not hold {over.join(", ")}, so it cannot grant {over.length === 1 ? "it" : "them"}.</p> : null}
+      <button className="button steel" disabled={busy || over.length > 0}>Mint</button>
       <p className="muted small">A token cannot hold more than the token you act with.</p>
     </form>
   );

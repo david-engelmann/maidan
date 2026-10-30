@@ -30,6 +30,34 @@ export type WorkEvent = { id: number | string; kind: string; thread_id?: string 
 export type Peer = { id: string; name?: string | null; base_url?: string | null };
 export type ArtifactMeta = { sha256?: string; filename?: string | null; mime_type?: string | null; size_bytes?: number; kind?: string | null; created_at?: string | null };
 
+export type SearchHit = { message_id?: string; id?: string; thread_id?: string | null; body?: string | null; snippet?: string | null };
+export type AppInstallation = { id: string; app_id: string; revoked_at?: string | null };
+export type SwitchableWorkspace = { workspace_id: string; name: string; current?: boolean };
+export const SEARCH_MODES = ["lexical", "semantic"] as const;
+
+/** The query string for a workspace search; empty fields stay out. */
+export function searchQuery(q: string, mode: string, channel = "", author = ""): string {
+  const p = new URLSearchParams({ q: q.trim(), mode, limit: "20" });
+  if (channel.trim()) p.set("channel", channel.trim());
+  if (author.trim()) p.set("author", author.trim());
+  return p.toString();
+}
+
+/** Where switching workspace goes: the sign-in flow, back to the console. */
+export function switchHref(base: string, workspaceId: string, loginPath = "/auth/oidc/login"): string {
+  return `${trimBase(base)}${loginPath}?workspace_id=${encodeURIComponent(workspaceId)}&return_to=/console/`;
+}
+
+export const HANDLE_REQUIRED = "Give the agent a handle: lower case letters, digits and dashes.";
+export function handleRefusal(handle: string): string | null {
+  return /^[a-z0-9][a-z0-9-]{0,62}$/.test(handle.trim()) ? null : HANDLE_REQUIRED;
+}
+
+export function peerRefusal(name: string, baseUrl: string): string | null {
+  if (!name.trim()) return "Name the peer.";
+  return /^https?:\/\/\S+$/.test(baseUrl.trim()) ? null : "Give the peer's base URL, starting with https://.";
+}
+
 export const DELIVERY_KINDS = ["all", "webhook", "automation"] as const;
 export const HANDLER_KINDS = ["http", "mcp_tool"] as const;
 export const NOTIFICATION_KINDS = ["message_posted", "mention_recorded", "thread_ready", "thread_result_set", "review_submitted", "claim_expired", "thread_landed"] as const;
@@ -288,6 +316,48 @@ export class ToolsApi {
   peers(workspace: string): Promise<Peer[]> {
     return this.get(`/workspaces/${workspace}/peers`);
   }
+  addPeer(workspace: string, name: string, baseUrl: string): Promise<Peer | null> {
+    return this.send("POST", `/workspaces/${workspace}/peers`, { name: name.trim(), base_url: baseUrl.trim() }, true);
+  }
+  async removePeer(workspace: string, id: string): Promise<void> {
+    await this.send("DELETE", `/workspaces/${workspace}/peers/${id}`, undefined, true);
+  }
+
+  // Workspace
+  async renameWorkspace(workspace: string, name: string): Promise<void> {
+    await this.send("PATCH", `/workspaces/${workspace}`, { name: name.trim() });
+  }
+  createChannel(workspace: string, name: string): Promise<{ id: string; name: string } | null> {
+    return this.send("POST", `/workspaces/${workspace}/channels`, { name: name.trim(), private: false });
+  }
+  createThread(channel: string, title: string): Promise<{ id: string } | null> {
+    return this.send("POST", `/channels/${channel}/threads`, { title: title.trim() });
+  }
+  createAgent(workspace: string, handle: string, display: string): Promise<{ id?: string; member_id?: string } | null> {
+    return this.send("POST", `/workspaces/${workspace}/agents`, { handle: handle.trim(), display_name: display.trim() || null }, true);
+  }
+  workspaceAudit(workspace: string, limit: number): Promise<AuditEvent[]> {
+    return this.get(`/workspaces/${workspace}/audit?limit=${limit}`);
+  }
+  appInstallations(workspace: string): Promise<AppInstallation[]> {
+    return this.get(`/workspaces/${workspace}/app-installations`);
+  }
+  search(workspace: string, query: string): Promise<SearchHit[]> {
+    return this.get(`/workspaces/${workspace}/search?${query}`);
+  }
+  /** Workspaces this browser session can switch to; empty when the server has none to offer. */
+  async switchable(): Promise<SwitchableWorkspace[]> {
+    const c = this.creds();
+    try {
+      const res = await this.fetchFn(`${trimBase(c.base)}/auth/session/workspaces`, { credentials: "include" });
+      if (!res.ok) return [];
+      const body = (await res.json()) as { workspaces?: SwitchableWorkspace[] };
+      return Array.isArray(body.workspaces) ? body.workspaces : [];
+    } catch {
+      return [];
+    }
+  }
+
   async me(): Promise<string[]> {
     return (await this.get<{ capabilities?: string[] }>("/me")).capabilities ?? [];
   }

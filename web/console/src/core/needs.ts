@@ -40,6 +40,18 @@ export const GROUP_LABEL: Record<GroupId, string> = {
   question: "An agent asked",
 };
 
+/** A `#confirm-approval=<gate>.<token>` link from a confirmation email or chat, or null. */
+export type ConfirmLink = { gateId: string; token: string };
+export function parseConfirmLink(hash: string): ConfirmLink | null {
+  const m = /^#\/?confirm-approval=([^.&]+)\.([^&]+)$/.exec(hash);
+  if (!m) return null;
+  try {
+    return { gateId: decodeURIComponent(m[1]), token: decodeURIComponent(m[2]) };
+  } catch {
+    return null;
+  }
+}
+
 export function isNeed(it: WaitingItem): it is Need {
   return KINDS.has(it.kind);
 }
@@ -241,6 +253,23 @@ export class NeedsApi {
     const body: Record<string, unknown> = { request_state: view.request_state, action };
     if (note.trim()) body.content = { note: note.trim() };
     await this.write(apiPath(this.creds(), `/approval-gates/${view.gate.id}/answer`), "POST", body);
+  }
+
+  /**
+   * Confirm a gate from a signed link. The server takes this on the browser
+   * session only, so no bearer header rides along, and the link token is
+   * never stored or shown.
+   */
+  async confirmLink(link: ConfirmLink): Promise<void> {
+    const c = this.creds();
+    const init = writeInit({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ gate_id: link.gateId, token: link.token }),
+    });
+    const res = await this.fetchFn(`${c.base}/auth/approval-confirmations/confirm`, init);
+    if (!res.ok) await fail(res, this.mode());
   }
 
   async unblock(threadId: string): Promise<void> {
