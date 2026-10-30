@@ -30,6 +30,9 @@ export const REASON_LABELS: Record<string, string> = {
   slot_full: "A slot it needs is at capacity",
 };
 
+export const WORKER_PRESET = "maidan.agent.worker";
+export const CAPS_REQUIRED = "Name at least one capability, or use the worker preset.";
+
 export const REPO_REQUIRED = "Name the repository to pause, as owner/name.";
 
 /** Why a repository name cannot be paused, or null when it can. */
@@ -281,7 +284,37 @@ export class PeopleApi {
     await this.write("DELETE", `/workspaces/${workspace}/repo-pauses?repo=${encodeURIComponent(repo)}`, undefined);
   }
 
+  /**
+   * Mints a token for a member. The secret comes back once; the caller shows
+   * it and drops it, and nothing here keeps or logs it. Needs a bearer token.
+   */
+  async mint(workspace: string, member: string, req: { label: string; capabilities: string[]; preset: string | null }): Promise<{ id: string; secret: string }> {
+    if (!req.preset && !req.capabilities.length) throw new PeopleError(CAPS_REQUIRED);
+    const body = req.preset ? { label: req.label.trim() || null, capability_set: req.preset, capabilities: [] } : { label: req.label.trim() || null, capabilities: req.capabilities };
+    return this.secretWrite("POST", `/workspaces/${workspace}/members/${member}/tokens`, body);
+  }
+
+  /** Rotates a token: the old secret stops working and the new one comes back once. */
+  rotate(id: string): Promise<{ id: string; secret: string }> {
+    return this.secretWrite("POST", `/tokens/${encodeURIComponent(id)}/rotate`, undefined);
+  }
+
+  async revoke(id: string): Promise<void> {
+    await this.write("DELETE", `/tokens/${encodeURIComponent(id)}`, undefined);
+  }
+
+  private async secretWrite(method: string, path: string, body: unknown): Promise<{ id: string; secret: string }> {
+    const res = await this.raw(method, path, body);
+    const out = (await res.json()) as { id?: string; secret?: string };
+    if (typeof out.id !== "string" || typeof out.secret !== "string") throw new PeopleError("The server did not send the new token back.");
+    return { id: out.id, secret: out.secret };
+  }
+
   private async write(method: string, path: string, body: unknown): Promise<void> {
+    await this.raw(method, path, body);
+  }
+
+  private async raw(method: string, path: string, body: unknown): Promise<Response> {
     const c = this.creds();
     const why = bearerRefusal(c);
     if (why) throw new PeopleError(why);
@@ -289,5 +322,6 @@ export class PeopleApi {
     if (body !== undefined) init.body = JSON.stringify(body);
     const res = await this.fetchFn(`${trimBase(c.base)}${path}`, writeInit(init));
     if (!res.ok) return fail(res, this.mode());
+    return res;
   }
 }

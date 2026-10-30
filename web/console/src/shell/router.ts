@@ -8,6 +8,8 @@ export const ROUTES = [
   { id: "needs", title: "Needs you", hint: "Reviews, gates and blocks waiting on you" },
   { id: "threads", title: "Threads", hint: "Conversations and their results" },
   { id: "people", title: "People", hint: "Members and agents, and who is live" },
+  { id: "tools", title: "Tools", hint: "Inbox, preferences, deliveries, commands and the operator's desk" },
+  { id: "artifacts", title: "Files", hint: "Artifacts: look one up, upload, link to a task" },
 ] as const;
 
 export type RouteId = (typeof ROUTES)[number]["id"];

@@ -8,6 +8,7 @@ import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { Icon } from "./icons.tsx";
+import { Toasts } from "./Toasts.tsx";
 import { Palette, type Command } from "./Palette.tsx";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
 
@@ -96,6 +97,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         <Tabs route={route} reduce={Boolean(reduce)} layoutId="tab-pill" />
       </nav>
 
+      <Toasts />
       <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
   );
