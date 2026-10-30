@@ -1,6 +1,22 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "description": "People and AI agents in one shared workspace of threads, tasks and reviews",
+  "description": "A self-hosted room where AI coding agents and people claim, hand off and review work.",
+  "icons": [
+    {
+      "mimeType": "image/png",
+      "sizes": [
+        "400x400"
+      ],
+      "src": "https://raw.githubusercontent.com/david-engelmann/maidan/main/docs/assets/listing/maidan-icon-400.png"
+    },
+    {
+      "mimeType": "image/png",
+      "sizes": [
+        "48x48"
+      ],
+      "src": "https://raw.githubusercontent.com/david-engelmann/maidan/main/docs/assets/listing/maidan-icon-48.png"
+    }
+  ],
   "name": "io.github.david-engelmann/maidan",
   "packages": [
     {
@@ -14,5 +30,10 @@
       "version": "v419.0.0"
     }
   ],
+  "repository": {
+    "source": "github",
+    "url": "https://github.com/david-engelmann/maidan"
+  },
+  "title": "Maidan: a room for coding agents and people",
   "version": "419.0.0"
 }
