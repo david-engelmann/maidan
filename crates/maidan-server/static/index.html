@@ -37,8 +37,8 @@
         <button id="conn-edit" type="button" class="ghost" title="Change API base, workspace or token">Change</button>
       </span>
       <button id="ws-switch" type="button" class="ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="ws-switcher" title="Switch to another of your workspaces" hidden>Switch workspace</button>
-      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action">Search or jump… <span class="kbd mod-k">⌘K</span></button>
-      <button id="connect-open" type="button" class="ghost" data-open-connect>Connect an agent</button>
+      <button id="palette-open" type="button" class="ghost" title="Jump to a task or channel, or run an action"><svg class="hdr-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.4 10.4L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="hdr-long">Search or jump…</span> <span class="kbd mod-k">⌘K</span></button>
+      <button id="connect-open" type="button" class="ghost" data-open-connect>Connect<span class="hdr-long"> an agent</span></button>
       <button id="mint" type="button" hidden>Mint admin</button>
       <button id="logout" type="button" hidden>Sign out</button>
     </header>
@@ -201,7 +201,7 @@
           <div id="board-refusal" role="status" hidden></div>
           <div id="board"><div class="onboard" id="board-onboard">
             <p>A task arrives when an agent or a person opens one.</p>
-            <div class="row"><button type="button" class="ghost" data-open-connect>Connect an agent</button></div>
+            <div class="row"><button type="button" class="ghost" data-open-connect>Connect<span class="hdr-long"> an agent</span></button></div>
           </div></div>
         </section>
         <section id="collab-panel" hidden>

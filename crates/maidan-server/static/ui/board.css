@@ -706,3 +706,25 @@
     -webkit-line-clamp: 2; overflow: hidden;
   }
 }
+
+/* Phones: the header was four rows (174px) at 390px. Brand, search, Connect
+   and Sign out share one row; who you are sits on a single second line. The
+   long words stay in the accessible name and leave the screen. */
+.hdr-icon { display: none; width: 1rem; height: 1rem; flex: none; }
+@media (max-width: 720px) {
+  header { padding-block: 0.4rem; }
+  #palette-open { min-width: 0; justify-content: center; }
+  #palette-open .hdr-icon { display: block; }
+  header .hdr-long, header h1 span {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+  #identity-pill:not([hidden]) {
+    order: 10; flex: 1 1 100%; min-width: 0; white-space: nowrap;
+  }
+  #identity-pill #identity-who, #identity-pill #identity-ws {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  }
+  #identity-pill #conn-edit { margin-left: auto; }
+  #ws-switch:not([hidden]) { order: 11; }
+}
