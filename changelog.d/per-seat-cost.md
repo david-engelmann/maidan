@@ -1,3 +1,0 @@
-### Per-seat cost from the usage ledger
-
-- **Added:** `GET /workspaces/{id}/usage-seats` sums a workspace's completed usage reports by the member that reported them, most expensive first: reports, distinct threads, spend in micro-USD, and first and last report times per seat. Optional `since` (inclusive) and `until` (exclusive) bound the window, `limit` is 1 to 1000 seats (default 100), and `truncated` says more seats spent than were listed. `workspace:read`, the caller's workspace only. Seats stay off metric labels; a per-seat dashboard view reads this table or joins the `maidan.thread` spans' `member_id` in a trace backend (#1771).

@@ -7,6 +7,293 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [420.0.0] — 2026-10-30
+
+The first release since `main` became prod and `dev` took the work. It
+connects claude.ai to a workspace fresh from sign-up: the OAuth client
+metadata hosts are an instance setting, and a signed-out browser at
+`/oauth/authorize` is sent to sign in. It also adds per-seat cost, a closed
+egress metric, close-abandoned, find-by-attribute, the review families, swarm
+traces and the dashboard, and the landing page revamp, plus ten agent skills
+and a HOL Guard policy for every MCP tool. It ships every PR merged through
+#1789.
+
+### A removed member's approval no longer counts toward required reviewers
+
+- **Fixed:** A thread's required-reviewer count now ignores an approval whose reviewer, or whose submitter, has been removed from the workspace or belongs to another one, on SQLite and Postgres (#1684). Each case has its own test, and each asserts the close is refused as a conflict (#1688).
+
+### The mention webhook no longer reveals another workspace's subscription ids
+
+- **Fixed:** `PUT /workspaces/{wid}/mention-webhook` now answers a missing subscription id with the same 400 it gives another workspace's id or a revoked one, so a caller can no longer test whether an id exists in some other workspace (#1672).
+
+### Every deploy path pins v419.0.0
+
+- **Changed:** every deploy pin and install command moves from `v417.0.0` to `v419.0.0` (`v418.0.0` was never published), with the quickstart Dockerfile's tarball SHA-256s, and the stack's bundled chart is repackaged.
+
+### Work lands on `dev`; `main` is prod
+
+- **Changed:** `dev` is the default branch. Every pull request targets it, with the same eight required checks, and CI and the docs build run on pushes to both `main` and `dev`. dev.maidan.world deploys `dev` (images are tagged `dev-<sha>`). `main` moves only when a tested `dev` commit is fast-forwarded into it, and is then tagged and deployed to maidan.world.
+- **Security:** the OpenHands example's `litellm` floor moves to 1.100.4, the fixed release for GHSA-7hp6-4w63-5g45 (a proxy-admin privilege escalation). litellm pins `filelock<4.0`, and its three advisories (fixed only in 4.2.1) are accepted for that example in `.config/osv-scanner.toml`, with the reason.
+
+### The release image exports OTLP
+
+- **Fixed:** the server image is built without default features, to leave out the bootstrap routes, and that dropped the `otel` feature as well. Every published image since then logged that `OTLP_ENDPOINT` was set but ignored, and exported no traces or OTLP metrics. The image now builds with `--features otel`, `check-deploy-contract.sh` fails if a no-default-features build line leaves it out, and the server SBOM is generated with the same features. The `otlp smoke` job never caught this because it built with `MAIDAN_ENABLE_BOOTSTRAP=1`, which keeps the default features; it now builds with the production args, so a dropped `otel` reds a required check.
+
+### PayerStamp usage reports work over gRPC A2A
+
+- **Fixed:** a PayerStamp report sent over the gRPC A2A binding, whose metadata numbers all arrive as doubles, is no longer refused: whole doubles in the exact range are read as integers, while fractional or out-of-range numbers are still refused (#1661).
+
+### Cut-off workspaces no longer starve other tenants' digests
+
+- **Fixed:** The digest sweeper leaves members of workspaces past their deliveries allowance out of its due page, so a cut-off workspace with more due members than one page can no longer keep every other workspace from getting its digest.
+
+### The email digest honors the deliveries cutoff and is metered
+
+- **Fixed:** the digest sweeper sends no digest to a member whose workspace is past its deliveries allowance, leaving the watermark so the digest goes out once the cutoff lifts, and counts one delivery per digest sent (#1644).
+
+### The lint job starts warm and has headroom
+
+- **Fixed:** the `lint (fmt + clippy + deny)` job restores one shared cache saved from `main` and `dev`, so a pull request no longer compiles all 716 crates from scratch, and its timeout moves from 15 to 25 minutes for a cold run on a slow runner (#1680). PRs had been timing out and reporting the required check as cancelled.
+
+### Sign-up start keeps the Turnstile token out of the URL
+
+- **Fixed:** The console's sign-up check now POSTs its Turnstile token to `/auth/oidc/signup` in a form body instead of putting it in the query string, so the token no longer reaches proxy or access logs or the browser history. `GET /auth/oidc/signup` no longer reads a `turnstile` query parameter (#1632).
+
+### A task result that could never be delivered is refused instead of stored
+
+- **Fixed:** `PUT /threads/{id}/result` (400) and the `set_thread_result` MCP tool (invalid params) refuse a `maidan.waiter.result/1` envelope with no string `result_kind` or `status`, naming the missing field. Result routing drops such an envelope, so it used to be stored and silently never delivered (#1649).
+
+### Check runs are not attempted with a GitHub token
+
+- **Fixed:** With `MAIDAN_GITHUB_TOKEN` (no GitHub App), result delivery no longer tries to create a check run, which GitHub always refuses with 403. It records `skipped` and says so once at boot instead of a warning per result; the summary comment still carries the verdict.
+
+### Postgres sign-in no longer deadlocks against a SCIM delete or deactivation
+
+- **Fixed:** On Postgres, a sign-in that overlaps a SCIM delete or deactivation no longer deadlocks against it. The session write now locks the SCIM row before the member row, the same order the SCIM writes use, so the sign-in waits and is refused. The SCIM row is locked whether or not it is active, so a deactivation in flight is also waited for (#1670).
+
+### A withheld duplicate task says so
+
+- **Fixed:** A task withheld from claims as a live duplicate now says why: `POST /channels/{id}/threads` and `GET /threads/{id}` carry `withheld: {reason: "duplicate_of", thread}` (the original named only when the caller may read it). Queue depth already counted it under `unclaimable`.
+
+### Every SQLite pool loads sqlite-vec
+
+- **Fixed:** The CLI (`maidan` store, MCP stdio and shred-residue paths) and the in-crate test pools of maidan-mcp and maidan-server now open SQLite through `maidan_search::sqlite_pool_options`, so every connection has sqlite-vec and the per-connection PRAGMAs. A CI check (`scripts/check-sqlite-pools.sh`) refuses a bare `SqlitePoolOptions::new()` in `crates/*/src` outside maidan-search.
+
+### Usage rollup no longer overflows on large validated rows
+
+- **Fixed:** The usage rollup computes each row's uncached and standard-lane charge without forming 64-bit tokens × rate products, so a validated report near the limit no longer fails the rollup with `bigint out of range` on Postgres or loses precision on SQLite (#1595).
+
+### Claim ordering and same-issue hold follow-ups
+
+- **Fixed:** Tests now prove warm affinity in `claim_next` is only a tiebreak: a higher-priority thread or one that has waited more whole hours beats the claimer's warm thread, and an agent with no history gets the oldest thread (#1584).
+- **Fixed:** A second change thread for a Linear issue is withheld from claiming while another change thread for that issue is in review. Clearing its duplicate link lifts the hold for good; a thread with no title or description has no link to clear, so its hold lifts only when the review ends or it closes (#1609).
+
+### Clearing a duplicate link needs sight of the original
+
+- **Fixed:** `DELETE /threads/{id}/fingerprint/duplicate-of` now answers `404` when the caller can't see the original the thread is linked to, or can't see the thread itself (another workspace, a private channel). That is the same answer a missing thread gets, so nothing about another tenant's threads leaks. Each clear writes a `thread.duplicate_cleared` audit event in the thread's workspace, in the same transaction (#1580).
+
+### Postgres claim writes use the server clock
+
+- **Fixed:** On Postgres, claim, assign, release, renew, reap, footprint liveness, outbox, inbox and delivery-cursor claims now stamp and compare against the server's clock instead of the database's `NOW()`, as SQLite already did, so a drifting database clock cannot shorten or extend a lease (#1605).
+
+### A fine-grained GitHub token gets CI notices through the Actions API
+
+- **Fixed:** When GitHub refuses Maidan's token a pull request's check runs, the change sweep now reads the head's CI from the Actions and commit-status APIs instead. GitHub cannot give a fine-grained token check runs at all, so with one the check rollup came back `FORBIDDEN`, the sweep read that as "nothing has reported yet", and no `ci_failed` or `checks_done` notice ever fired (#1623). A fine-grained token now needs **Actions: read** and **Commit statuses: read**. Every workflow run is read down to its jobs, so the notice names the failing job and carries its log tail, and a required check that hasn't reported still holds the gate. A run that failed before any job did, or hasn't created its jobs yet, counts under its workflow's name. Lists longer than five pages of 100 read as pending. Check runs from apps other than Actions aren't visible this way. When the token can't read either API, the sweep logs a warning and raises an ops alert naming the permissions it needs.
+
+### Usage cost by provider family
+
+- **Added:** `maidan_usage_tokens_total` and `maidan_usage_usd_micros_total` carry a `family` label (`anthropic`, `openai`, `google`, `xai` or `other`), taken from the same provider-family table that review routing uses, so a dashboard can split spend and tokens by model family. The model id itself still never becomes a label (ENG-6218).
+
+### Review child routing is published live
+
+- **Fixed:** A change entering review now publishes its spawned review child's `thread_created` event and a new `thread_attributes_set` event carrying the child's kind, review family and author family, so live subscribers see the routing (#1572).
+
+### maidan-mcp's tests build on dev again
+
+- **Fixed:** a test added by #1718 built its SQLite pool with `SqlitePoolOptions`, which #1726 had just routed through `maidan_search::sqlite_pool_options`, removing the import. Each PR passed on its own; merged together, `maidan-mcp`'s unit tests stopped compiling. The test now uses the shared helper.
+
+### web_push on p256 0.14; corrected RUSTSEC-2026-0387 ignore
+
+- **Fixed:** Web Push (VAPID signing and payload encryption) now uses p256 0.14, which pulls the fixed crypto-bigint 0.7.x, so the long-lived VAPID key no longer runs on crypto-bigint 0.5.5. The RUSTSEC-2026-0387 ignore now names the right fix version (0.7.6) and covers only openidconnect's public-key verification (#1596).
+
+### Find threads by attribute
+
+- **Added:** `GET /workspaces/{id}/threads` and the MCP `find_threads` tool find a workspace's threads by task attribute: `attr.linear_issue=ENG-123`, `attr.kind`, `attr.engine`, `attr.tier`, `attr.lane`, `attr.size`, `attr.threat_model`, `attr.review_family` equality filters, plus `ref.<relation>=<thread id>` (`ref.twin_of`, `ref.duplicates`, `ref.supersedes`, ...) for the threads holding that reference to a thread, combined with AND, with `engine`, `tier` and `lane` also accepted bare. Scoped to the caller's own workspace and to the threads the caller may read; a thread with no stored attributes matches the defaults it reads with (`kind` change, `threat_model` false) and the other fields match only a stored value. A relation is checked for its syntax only, so an unused one is an empty page; a cursor that is not a live thread the caller can read in the workspace is a 400, the same for a foreign, unreadable, deleted or made-up id. Keyset-paginated like the channel thread list, and returned threads carry their attributes.
+
+### A push that dismisses approvals says so
+
+- **Fixed:** A CI read that finds a tracked change's head moved now appends and publishes one `approval_dismissed` event per approval it dismisses, naming the reviewer, the approved head and the new head, so waiters see the gate reopen (#1572).
+
+### A quiet server's event listener recovers its health
+
+- **Fixed:** the Postgres `LISTEN` listener marked itself healthy again only when a notification arrived. After a failed reconnect (a hosted database briefly unreachable), a server with no traffic stayed `degraded`, and `/health` answered 503 indefinitely, which is what took dev.maidan.world's health down on 2026-10-27. While degraded, the listener now sends itself a probe NOTIFY every 5 seconds, so it reads healthy as soon as the path works again.
+
+### A re-claim of an assigned duplicate gets the usual answer
+
+- **Fixed:** Claiming a thread that is already assigned now returns `claimed: false` even when the thread is also a live duplicate, instead of the duplicate refusal. The holder re-claiming gets the usual answer; an unassigned duplicate is still refused (#1580).
+
+### DeepSeek is a review family
+
+- **Added:** `deepseek` joins the provider families second-family review routing reads, so a seat whose usage names DeepSeek (`provider: "deepseek"`, models `deepseek-chat` and `deepseek-reasoner`) counts as its own family: it can review work any other family wrote, and never a change DeepSeek wrote.
+
+### Prod deploys only what main carries
+
+- **Fixed:** the `deploy prod` workflow refuses a release tag whose commit is not on `main`, and its image push reads `wrangler.prod.jsonc`. It read the dev Wrangler config, whose Dockerfile build is not in the checkout, so the push failed. The `prod` GitHub environment allows only `main` and `v*` tags.
+
+### The server image names its MCP registry entry
+
+- **Added:** the server image carries `io.modelcontextprotocol.server.name="io.github.david-engelmann/maidan"`, which the official MCP registry requires before it accepts an OCI package, plus the OCI `source` and `licenses` labels. `check-deploy-contract.sh` fails when the label and `listings/registry/server.json` name different servers.
+
+### OAuth discovery says client metadata documents work
+
+- **Fixed:** the authorization-server metadata now carries `client_id_metadata_document_supported: true`. Maidan already resolved a client named by the HTTPS URL of its metadata document (through the workspace's egress allowlist), but without the flag a client such as claude.ai assumed it had to register dynamically, which Maidan never offers, and refused to connect ("Automatic client registration isn't supported"). Found in Next 23's P6 run with a real claude.ai connector.
+
+### A review can name the family that wrote its change
+
+- **Added:** A thread's task attributes take `author_family` (`anthropic`, `openai`, `google` or `xai`), set at intake on REST and MCP `create_thread` or by `PUT /threads/{id}/attributes` and `set_thread_attributes`. No path hands such a thread to a member whose usage names that family: `claim_next` skips it, and a direct claim or assign is refused with a 409 naming the family (before, only `claim_next` checked, even for the review children Maidan spawns). Before, only the review children Maidan spawns carried it, so a producer filing a review of an outside or Codex-written change had to route it by hand. One family is stored per change: a later set that omits it keeps it and one that names another is refused with a 409, so the change's author cannot lift or move it.
+
+### Thread results by harness, kind, status and verdict
+
+- **Added:** `maidan_thread_results_total{harness, kind, status, verdict}` counts every stored thread result, so a swarm's verdict mix (pass or fix, per Codex, Claude or Grok red-team) and outcomes can be charted without reading results. Every label is a closed set read from the result's `result_kind`, `status` and the report's `VERDICT` line; anything else reads as `other`, so no free text, id or model name becomes a series (ENG-6218).
+
+### Request spans name their route and thread
+
+- **Added:** every request's `inbound` span carries `http.route` (the route template, never the path), `http.request.method`, and `maidan.thread_id` when the route or an MCP tool call's `thread_id` argument names a thread. A caller that sends `traceparent` on its calls for a thread (the swarm's pi harness uses the thread id as its trace id) gets one trace across both services, and Tempo can find every request made for a thread (ENG-6218).
+
+### A validation record for v419, and the Glama manifest
+
+- **Added:** `listings/validation/v419.md`, the Next 14 validation record: the official MCP Inspector against the signed v419 release binaries (cosign-verified, no source build) passed all 50 checks, with what remains open before a listing ships. `glama.json` names the maintainer for the Glama MCP catalog.
+
+### A verdict can name the head it reviewed
+
+- **Fixed:** `submit_review` (REST and MCP) takes an optional `head_sha`, the full commit SHA the reviewer read. A head the change has since moved past is refused with 409 instead of stamping the verdict with a head the reviewer never saw (#1574).
+
+### Find-by-attribute reads the author family
+
+- **Fixed:** the find-by-attribute row reader (#1751) and the batch that added `author_family` (#1752) merged separately, and `dev` stopped compiling: the reader built `TaskAttributes` without the new field. It now reads `author_family`, and both backends' search queries select it.
+
+### A withheld duplicate leaves a notice and shows on MCP
+
+- **Added:** A task withheld from claims as a live duplicate gets a notice message on its thread at creation, and the MCP `maidan://threads/{id}` read carries the same `withheld` reason as `GET /threads/{id}`.
+
+### Dead egress allowlist entries are marked
+
+- **Added:** `GET /workspaces/{id}/egress-targets` marks an entry that no current rule would bless (a non-ASCII branch base or a ref spelling stored before the rules tightened, or a surface this build cannot deliver to) with a `dead` reason, and logs a warning, so the operator can see it and revoke it. Live entries are unchanged on the wire.
+- **Added:** A test checks that a stored non-ASCII branch destination in the egress outbox dead-letters as unroutable without a post.
+
+### A refused checks read still moves the head
+
+- **Fixed:** when GitHub refuses a pull request's checks and its Actions runs and commit statuses too, the change sweep now records the read with the new head and the checks `unreadable` (a new `CiStatus`), instead of `pending` (or nothing at all when GitHub lists no head commit). A push therefore dismisses approvals given to the old head, and no checks_done is said for a result nobody could read (#1748).
+
+### SDK interop suites claim their own seeded task again
+
+- **Fixed:** The TypeScript, Python, Go and Rust SDK black-box suites seeded every queue with a task titled "kickoff", so since task fingerprints each seed after the first was linked as a duplicate of an earlier open one and withheld from claim-next, and the claim tests got nothing. Each seed now gives its task a unique title.
+
+### SDK set-result under the claim
+
+- **Fixed:** `setResult` / `SetResult` / `set_result` in the TypeScript, Go, Python and Rust SDKs now take the claim's `claim_lease_id` and send it. The server has required it since results became writable only under the writer's live claim (#1530), so before this every SDK call to set a result got a 400.
+
+### Usage ledger clock
+
+- **Fixed:** On Postgres, a usage report's `accepted_at` now comes from the app clock instead of the database's `now()`. Claim-next's warm-prefix window compares it against an app-computed cutoff, so a drifting database clock no longer shifts that window (#1586).
+
+### A refused same-family claim no longer holds the thread
+
+- **Fixed:** on Postgres, a claim or assign that second-family routing refused had already taken the thread's row lock, and kept it until sqlx rolled the dropped transaction back on the connection's next use. A claim-next running in that window skipped the thread (`SKIP LOCKED`) and found nothing, so a seat of another family could miss a review it was allowed to take. The refusal is now checked before the lock; the lock and a second read still serialize a claim against a racing family label.
+
+### Close a thread that will not land
+
+- **Added:** `POST /threads/{id}/close-abandoned` and its MCP twin `close_abandoned_thread` close an open or in-review thread as a `duplicate`, `abandoned`, or `superseded`. The thread's producer, its claim holder, or a maintainer may do it, and each close is audited as `thread.close_abandoned` with its reason. `duplicate_of` names the thread that covers this one: a duplicate records a `duplicates` reference to it, and a superseded thread records that `duplicate_of` supersedes it. It must be a live thread you can read in the same workspace; any other id gets the same 400. A thread with a result keeps every landing gate (separation of duties, required reviewers, the land gate); a thread with no result skips the review gates, since there is nothing to review. Nothing lands, so the thread's dependents stay waiting instead of becoming ready.
+
+### The redrawn-row focus test waits for focus to settle
+
+- **Fixed:** `needs-you-focus.spec.ts` "a redrawn row never hands focus to a disabled control" read the focused element once, right after the redraw, and failed whenever focus moved a moment later. It now polls until focus settles, the fix Open Work recorded for this flake on 2026-10-23.
+
+### SDK ThreadBrief attributes
+
+- **Fixed:** `ThreadBrief` in the TypeScript, Go, Python and Rust SDKs now declares the optional `attributes` (task attributes) that OpenAPI declares and the server sends, so the typed models match the contract.
+- **Fixed:** `Thread` in all four SDKs now declares `ci` (a list of the new `PullCi`, with `MergeQueue` and `ReviewThreadLink`) and `withheld` (the new `ThreadWithheld`), and `TaskAttributes` declares `author_family`, matching OpenAPI, so sdk interop sees no undeclared members.
+
+### Rust SDK docs
+
+- **Fixed:** The README and crate-level example no longer pass `unwrap_or_default()` for the claim lease, which sent an empty `claim_lease_id` and got a 400. They now renew and write the result only when the claim returned a lease (#1763).
+
+### The integration job has room for the whole suite
+
+- **Fixed:** the required `integration (testcontainers)` job's limit moves from 40 to 60 minutes. With 3,353 tests, a run on a slow runner hit 40 minutes and was cancelled with nothing failed, which held every `dev` commit at the swarm's deploy gate.
+
+### Swarm observability: thread traces and claim latency
+
+- **Added:** Each thread's stages (claim, acknowledge, result, review verdict, delivery, landed) record a `maidan.thread` span on one trace per thread; the trace id is the thread's id, so a seat's harness can join with `traceparent: 00-<thread id hex>-<span>-01`. Span attributes come from a fixed allowlist of names and closed values; event text never reaches a span.
+- **Added:** `maidan_thread_claim_duration_seconds{harness,kind}`, the time from a claim's acknowledgement to its stored result.
+- **Added:** `maidan_result_deliveries_total` carries a closed `surface` label (github, github_branch, slack, linear, other) and now counts delivered, failed and skipped outcomes per surface.
+
+### Swarm dashboard
+
+- **Added:** `deploy/observability/maidan-swarm-dashboard.json`, a Grafana dashboard for swarm throughput, verdict mix, cost, claim latency and delivery failures on `job="maidan-server"`.
+
+### A claim's two timestamps are one microsecond
+
+- **Fixed:** Claim, assign, and claim-next stamp `claimed_at` and `updated_at` from one `Utc::now()` truncated to microseconds on both backends. Postgres stores microseconds, so a nanosecond reading (or a second reading taken for the other column) made the unacknowledged-claim event's `claimed_at` disagree with the claim row.
+
+### A share ticket test does not expire before it is minted
+
+- **Fixed:** The share-ticket test minted a ticket 50 ms after an instant taken before the insert. Create judges the deadline against its own later clock, so a slow runner minted a ticket that was already expired and the insert was refused. The test now uses a deadline a stalled runner cannot reach, and still checks that the ticket resolves until that exact instant.
+
+### A phone-width audit waits for the button's box
+
+- **Fixed:** The phone-width UI test read `boundingBox()` once, as soon as the Approve button was visible. A needs-you redraw, or the phone-width reflow, can report the button visible before it has a box, so the read was null. The test now waits until the button has a laid-out box and that box sits on the 390 px screen.
+
+### A file attached to a task is linked as evidence
+
+- **Fixed:** Uploading a file onto the open task posted a message that cited the hash and did not link the artifact to the task. Review and the evidence timeline only read those links, so the file never became evidence. The console now links it with `PUT /ui/api/threads/{id}/artifacts/{sha}` before posting, lists the task's linked files, and can unlink one.
+
+### A review names who requested it
+
+- **Fixed:** The approval card showed a result's producer, or that no result was posted, and never who moved the task into review. That person is the actor on the transition into review. The card now reads it and says who requested the review.
+
+### The public page is a glass board in a light field
+
+- **Changed:** The waitlist page opens in a dark square of light. The headline sits on that field as "Work in / the open." A glass board floats in it: claim a thread, pass review, and leave the evidence. Scrolling moves through one holder, a review handoff, proof, the same claim in MCP and Python, self-hosting, and an invitation to join or star the source. The invite form is a glass sheet and still posts to `/waitlist`. Reduced motion keeps a still gradient. Style attributes are allowed for the animation runtime; scripts, the typeface, and the share image stay in files from this origin.
+
+### Privacy, terms and support use the dark public language
+
+- **Changed:** The hosted privacy, terms and support pages use the landing's near-black ground, a mint, cyan and violet light field, glass tables and a blurred header. The words of each policy are unchanged. Docs titles use a serif; the book keeps its own themes.
+
+### You can set your own name in the console
+
+- **Fixed:** A member's display name could be set only when the member was created, or by a direct `PATCH` a person had to know about. The session panel now shows your name and saves it, and a blank name clears it.
+
+### The landing page's steel tile, a hands-on swarm builder
+
+- **Changed:** Drop a Planner, Coder, Reviewer and Human into the tile and machined channels light up as task tokens flow; pull the Reviewer and the flow jams. Then a hundred-tile pull-back, a lease dial that returns a lapsed claim to the queue, a two-key lock where a worker cannot approve its own task, a review packet that pins the result and its artifacts, and a closing card with a real `agent.py` (built from the roles you placed, Python SDK calls) and the `compose.quickstart.yaml` quickstart. The nav glass turns dark over the dark section. The server stops serving the removed `story.js` and `aurora.js` chunks.
+
+### OSV and the listener-health mutation run go green on dev
+
+- **Changed:** the `osv scan` job accepts `filelock` in the OpenHands example with one dated override (until 2026-12-31) instead of one exception per advisory. litellm pins `filelock<4.0`, every advisory is fixed only in 4.x, and eight more arrived this week. The example runs single-user in its own container.
+- **Fixed:** a test pins `ListenerHealth::is_degraded`: false at the start, true after an error, false after a success. The mutation run found that replacing it with `true` survived every test.
+
+### Skills for every Maidan flow, and a HOL Guard policy
+
+- **Added:** nine Agent Skills beside `maidan-claimant` in `examples/claude-code/`: `maidan-reviewer`, `maidan-approver`, `maidan-dispatcher`, `maidan-planner`, `maidan-recipes`, `maidan-memory`, `maidan-inbox`, `maidan-operator` and `maidan-admin`. Together they cover all 260 MCP tools, and `scripts/check-agent-skills.py` (in the `lint` job) fails when a skill names a tool the catalog lacks or a tool has no skill.
+- **Added:** `listings/hol-guard/`: a risk tier for every MCP tool (`policy.json`) and the HOL Guard contributions generated from it by `scripts/gen-hol-guard.py`, for the hosted full endpoint, each profile endpoint and `maidan mcp-stdio`. Gates, removals, outside delivery and authority changes need the person's review; `resolve_secret` is blocked. `--check` (in the `lint` job) fails on drift, and `--local` prints the same policy as Guard custom-extension choices for a Maidan on this machine.
+- **Fixed:** the claimant runbook named a `get_thread` tool that does not exist; it reads `get_thread_context`.
+- **Fixed:** the osv scan's `filelock` override used osv-scanner v1's package-level `ignore`, which v2.6 does not apply to a resolved requirements file, so the scan stayed red; it now says `vulnerability.ignore`.
+
+### The egress delivery metric's labels are a fixed set
+
+- **Fixed:** `maidan_egress_deliveries_total` recorded `surface` from the stored string, so an unknown value became a new series. It now reads through the same closed list as `maidan_result_deliveries_total` (`github`, `github_branch`, `slack`, `linear`, anything else `other`), and `outcome` is a typed `EgressOutcome` (`sent`, `retry`, `dead`, `disabled`, `unroutable`, `refused`, `over_allowance`) (#1772).
+
+### Per-seat cost from the usage ledger
+
+- **Added:** `GET /workspaces/{id}/usage-seats` sums a workspace's completed usage reports by the member that reported them, most expensive first: reports, distinct threads, spend in micro-USD, and first and last report times per seat. Optional `since` (inclusive) and `until` (exclusive) bound the window, `limit` is 1 to 1000 seats (default 100), and `truncated` says more seats spent than were listed. `workspace:read`, the caller's workspace only. Seats stay off metric labels; a per-seat dashboard view reads this table or joins the `maidan.thread` spans' `member_id` in a trace backend (#1771).
+
+### OAuth client metadata hosts are an instance setting, and signed-out browsers sign in from authorize
+
+- **Changed:** The hosts an OAuth client metadata document may be fetched from are now set for the instance with `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` (comma-separated exact host names, empty by default) instead of being read from each workspace's egress targets. A workspace fresh from sign-up can now connect an MCP client that identifies itself by a metadata document. Operators who relied on egress rows for this must list those hosts in the new setting.
+- **Changed:** A signed-out browser at `GET /oauth/authorize` is redirected to sign in and brought back to the same request, instead of getting a JSON 401. A request with a bad bearer still gets a 401.
+- **Fixed:** A sign-in `return_to` with a backslash or control character now falls back to the console, like `//host` and absolute URLs already did.
+
 ## [419.0.0] — 2026-10-27
 
 The first published release since 417.0.0. `v418.0.0` was tagged but never
