@@ -283,8 +283,14 @@ import { answerGate, modelRequestLine } from "./tools.js";
         main.className = "ny-main";
         // A row that opens its task leads with a real button; one that does
         // not is plain text.
-        const title = document.createElement(item.thread_id ? "button" : "div");
-        if (item.thread_id) title.type = "button";
+        let title;
+        if (item.thread_id) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          title = btn;
+        } else {
+          title = document.createElement("div");
+        }
         title.className = "ny-title";
         const th = item.thread_id ? threadsById.get(item.thread_id) : null;
         // A gate row leads with its question: that is what the human answers.
