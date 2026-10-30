@@ -183,7 +183,8 @@ test("a closed task names who closed it", async ({ page }) => {
   const closed = page.locator("#thread-facts .fact", { hasText: "closed by" });
   await expect(closed).toHaveCount(1);
   await expect(closed.locator(".name")).toHaveText("Operator");
-  await expect(closed).toContainText("just now");
+  // The fixture is closed at seed time, so the age depends on test order.
+  await expect(closed).toContainText(/just now|\d+m ago|\d+h ago/);
   // The same member handed it to review, so the hand-off is not named twice.
   await expect(page.locator("#thread-facts")).not.toContainText("handed off by");
 });
