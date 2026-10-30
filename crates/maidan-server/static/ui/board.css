@@ -686,3 +686,17 @@
   .kbd.mod-k, .palette-foot { display: none; }
 }
 .turnstile-slot { min-height: 65px; }
+
+/* Phones, Needs you and the team strip. A review row's three buttons were
+   8px too wide for the row, so "Approve with note" fell to a line of its own;
+   tighter padding keeps them on one line and lets them share it. A teammate's
+   status wraps to two lines instead of being cut mid-word. */
+@media (max-width: 720px) {
+  .ny-actions { gap: 0.3rem; }
+  .ny-actions button { flex: 1 1 auto; padding-inline: 0.5rem; white-space: nowrap; }
+  .mate { border-radius: 0.9rem; align-items: flex-start; }
+  .mate-text small {
+    white-space: normal; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2; overflow: hidden;
+  }
+}
