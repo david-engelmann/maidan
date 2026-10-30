@@ -195,6 +195,28 @@ async fn freeze_member_over_http() {
         .await
         .unwrap();
     assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+
+    // The reason is optional, so is the body: a bare POST, with no body and
+    // no Content-Type, freezes the member like `{}` does.
+    let bare = client
+        .post(format!("{base}/members/{}/freeze", agent.id.0))
+        .header("Authorization", &admin_h)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bare.status(), StatusCode::OK);
+    let bare: Value = bare.json().await.unwrap();
+    assert_eq!(bare["freeze"]["member_id"], agent.id.0.to_string());
+    // A body that is there is still read as JSON: text is refused.
+    let text = client
+        .post(format!("{base}/members/{}/freeze", agent.id.0))
+        .header("Authorization", &admin_h)
+        .header("Content-Type", "text/plain")
+        .body("compromised")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(text.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
 }
 
 /// Every text frame a WebSocket subscriber receives within `window`.

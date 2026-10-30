@@ -13,6 +13,9 @@
 //! | path parameter or query string that does not deserialize | 400 |
 //! | JSON body that does not parse or does not match its type | 400 |
 //! | body without a JSON `Content-Type` where JSON is required | 415 |
+//!
+//! A route whose body is optional takes [`ApiOptionalJson`]: an empty body,
+//! with or without a `Content-Type`, reads as `{}`, so `curl -X POST` works.
 //! | body over the body-size limit | 413 |
 //! | text body that is not UTF-8 | 400 |
 
@@ -174,6 +177,38 @@ wrap_extractor!(
     rejected
 );
 
+/// A JSON body the route does not require: every field is optional. An
+/// empty body, with any or no `Content-Type`, reads as `{}`; a non-empty
+/// body is read exactly as [`ApiJson`] reads it, `Content-Type` included.
+pub struct ApiOptionalJson<T>(pub T);
+
+impl<T> crate::routing::Checked for ApiOptionalJson<T> {}
+
+impl<T, S> FromRequest<S> for ApiOptionalJson<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, ApiError> {
+        let (parts, body) = req.into_parts();
+        let bytes = Bytes::from_request(Request::from_parts(parts.clone(), body), state)
+            .await
+            .map_err(|e| rejected(e.status(), e.body_text()))?;
+        if bytes.iter().all(u8::is_ascii_whitespace) {
+            return serde_json::from_slice::<T>(b"{}")
+                .map(Self)
+                .map_err(|e| ApiError::BadRequest(format!("this route needs a JSON body: {e}")));
+        }
+        let req = Request::from_parts(parts, axum::body::Body::from(bytes));
+        Json::<T>::from_request(req, state)
+            .await
+            .map(|Json(value)| Self(value))
+            .map_err(|e| rejected(e.status(), e.body_text()))
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)] // mock servers, not the API
 mod tests {
@@ -314,6 +349,71 @@ mod tests {
             StatusCode::PAYLOAD_TOO_LARGE,
         )
         .await;
+    }
+
+    /// A body every field of which is optional.
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Note {
+        #[serde(default)]
+        reason: Option<String>,
+    }
+
+    async fn note(ApiOptionalJson(b): ApiOptionalJson<Note>) -> Json<String> {
+        Json(b.reason.unwrap_or_else(|| "none".into()))
+    }
+
+    async fn post_note(content_type: Option<&str>, body: &str) -> (StatusCode, Value) {
+        let mut request = HttpRequest::post("/");
+        if let Some(content_type) = content_type {
+            request = request.header(header::CONTENT_TYPE, content_type);
+        }
+        let response = Router::new()
+            .route("/", post(note))
+            .layer(axum::extract::DefaultBodyLimit::max(64))
+            .oneshot(request.body(Body::from(body.to_owned())).expect("request"))
+            .await
+            .expect("response");
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+
+    #[tokio::test]
+    async fn an_optional_body_may_be_absent_with_or_without_a_content_type() {
+        for content_type in [None, Some("application/json"), Some("text/plain")] {
+            for body in ["", " \n"] {
+                let (status, got) = post_note(content_type, body).await;
+                assert_eq!(status, StatusCode::OK, "{content_type:?} {body:?}: {got}");
+                assert_eq!(got, "none");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_present_optional_body_is_read_like_a_required_one() {
+        let json = Some("application/json");
+        assert_eq!(
+            post_note(json, r#"{"reason":"r"}"#).await,
+            (StatusCode::OK, Value::from("r"))
+        );
+        assert_eq!(post_note(json, "{}").await.0, StatusCode::OK);
+        assert_eq!(post_note(json, "{nope").await.0, StatusCode::BAD_REQUEST);
+        assert_eq!(
+            post_note(json, r#"{"x":1}"#).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            post_note(None, r#"{"reason":"r"}"#).await.0,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE
+        );
+        let big = format!(r#"{{"reason":"{}"}}"#, "x".repeat(128));
+        assert_eq!(post_note(json, &big).await.0, StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[test]
