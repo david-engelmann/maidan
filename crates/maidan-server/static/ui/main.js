@@ -1,7 +1,7 @@
 // @ts-check
 import { api, apiReadPath, apiWritePath, base, headers, persist, requireAuthForWrite, requireBearer, token, uiReadPath, wid, writeApi } from "./api.js";
 import { attachToSelectedThread, escapeHtml, uploadArtifact } from "./artifacts.js";
-import { loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
+import { closeThreadPanel, loadChannels, loadThreads, refreshTeamSoon, selectThread, selectedChannelId, selectedThreadId } from "./board.js";
 import { DM, GROUP_DM, clearDmPickers, initDmPickers, loadConversations, openDm, openGroupDm, sendConversationMessage } from "./dm.js";
 import { humanError, responseError, setOut, showError, textError, toggleLiveFeed, unreachable } from "./feedback.js";
 import { openConnect, openPalette, openTool } from "./palette.js";
@@ -545,6 +545,7 @@ import { capsExceedingGrant, clearPrefsEmail, currentTokenId, followTarget, glas
 
       document.getElementById("reload-messages").onclick = loadMessages;
       document.getElementById("evidence-timeline").addEventListener("toggle", loadEvidenceTimeline);
+      document.getElementById("thread-close").addEventListener("click", closeThreadPanel);
 
       initDmPickers();
 

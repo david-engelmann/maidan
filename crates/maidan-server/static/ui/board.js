@@ -920,6 +920,19 @@ import { loadMessages } from "./thread.js";
       }
 
 
+      // On a phone the thread is a sheet over the board, so it needs a way
+      // back. Closing it returns focus to the card that opened it.
+      function closeThreadPanel() {
+        const id = selectedThreadId;
+        if (!id) return;
+        selectedThreadId = null;
+        syncCollabPanel();
+        document.querySelectorAll("#board .card.selected").forEach((n) => n.classList.remove("selected"));
+        document.dispatchEvent(new CustomEvent("maidan-thread-selected"));
+        const card = /** @type {HTMLElement | null} */ (document.querySelector(`#board .card[data-id="${CSS.escape(id)}"]`));
+        if (card) card.focus();
+      }
+
       // ---- Onboarding, Connect an agent, command palette --------------------
       // An empty channel is one sentence and one action. It replaces the
       // lanes. While the first-run card is on screen, that card is the only
@@ -1037,4 +1050,4 @@ import { loadMessages } from "./thread.js";
         }
       }
 
-export { boardChannel, boardNote, boardRects, boardRefreshTimer, boardSeen, boardShownFor, boardState, emptyChannelHelp, faviconHref, fetchPendingGatesByThread, glideCards, headerGen, hydrateRefusals, lastGates, loadChannels, loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, paintRefusal, pendingGateViews, refreshTeamSoon, rememberRefusal, renderBoard, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedChannelId, selectedChannelName, selectedThreadId, sessionChrome, setAttention, teamTimer, threadLoadGen, threadsById };
+export { boardChannel, closeThreadPanel, boardNote, boardRects, boardRefreshTimer, boardSeen, boardShownFor, boardState, emptyChannelHelp, faviconHref, fetchPendingGatesByThread, glideCards, headerGen, hydrateRefusals, lastGates, loadChannels, loadThreads, markSeen, markSeenFromFrame, noteRefusalFromFrame, paintRefusal, pendingGateViews, refreshTeamSoon, rememberRefusal, renderBoard, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedChannelId, selectedChannelName, selectedThreadId, sessionChrome, setAttention, teamTimer, threadLoadGen, threadsById };

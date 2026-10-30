@@ -728,3 +728,23 @@
   #identity-pill #conn-edit { margin-left: auto; }
   #ws-switch:not([hidden]) { order: 11; }
 }
+
+/* Phones: the open thread is a sheet over the board instead of a panel
+   below every lane, with a way back. Wider screens keep it inline. */
+#thread-close { display: none; }
+@media (max-width: 720px) {
+  #collab-panel:not([hidden]) {
+    position: fixed; inset: auto 0 0; z-index: 40; margin: 0;
+    max-height: 82dvh; overflow: auto; overscroll-behavior: contain;
+    border-radius: 1rem 1rem 0 0; border-bottom: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.9rem);
+    padding-left: max(env(safe-area-inset-left), 1rem);
+    padding-right: max(env(safe-area-inset-right), 1rem);
+    box-shadow: 0 -12px 32px -12px rgba(0, 0, 0, 0.35);
+  }
+  #thread-close { display: inline-flex; margin-left: auto; }
+}
+
+/* viewport-fit=cover lets the sheet reach under the home indicator; keep the
+   rest of the page clear of a landscape notch. Zero on screens without one. */
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
