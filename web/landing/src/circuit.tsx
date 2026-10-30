@@ -38,6 +38,17 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
   const refs = useRef<(HTMLDivElement | null)[]>([]);
   const [closed, setClosed] = useState(0);
   const [sweep, setSweep] = useState(0);
+  // The button that had focus unmounts when a puck moves (tray to well or
+  // back), so focus is handed to where the puck went instead of the page.
+  const focusNext = useRef<string | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sel = focusNext.current;
+    if (!sel) return;
+    focusNext.current = null;
+    const el = stage.current?.querySelector<HTMLElement>(sel) ?? stage.current?.querySelector<HTMLElement>(".puck.loose");
+    el?.focus();
+  }, [wells]);
   const { pts, chain, broken } = route(wells);
   const placed = ROLES.filter((r) => wells[r] !== null).length;
   const complete = broken === null;
@@ -55,6 +66,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
     });
   }
   const remove = (role: Role) => setWells((w) => ({ ...w, [role]: null }));
+  const fromKeyboard = (e: { detail: number }) => e.detail === 0;
   function onDrop(role: Role, info: PanInfo) {
     const x = info.point.x - window.scrollX;
     const y = info.point.y - window.scrollY;
@@ -96,7 +108,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
         : `${NAME[broken as Role]} next. The channel is cut, waiting.`;
 
   return (
-    <div className="square-stage">
+    <div className="square-stage" ref={stage}>
       <div className={`tile${complete ? " lit" : ""}${jammed ? " jam" : ""}`} ref={tile} role="group" aria-label={`Circuit tile, ${placed} of 4 roles placed`}>
         <span className="screw s1" aria-hidden="true" />
         <span className="screw s2" aria-hidden="true" />
@@ -154,7 +166,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
                       key={r}
                       className={`puck ${r}${jammed && r === chain[chain.length - 1] ? " stuck" : ""}`}
                       aria-label={`Remove the ${NAME[r]}`}
-                      onClick={() => remove(r)}
+                      onClick={(e) => { if (fromKeyboard(e)) focusNext.current = `.puck.loose.${r}`; remove(r); }}
                       initial={reduce ? false : { scale: 1.6, y: -40, opacity: 0 }}
                       animate={{ scale: 1, y: 0, opacity: 1 }}
                       exit={reduce ? { opacity: 0 } : { scale: 1.3, y: -24, opacity: 0, transition: { duration: 0.25 } }}
@@ -171,7 +183,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
         <p className="tile-engrave">MDN-01 · {complete ? "CLOSED" : jammed ? "JAM" : `${placed}/4`}</p>
         <span className={`lamp${complete ? " ok" : jammed ? " bad" : ""}`} aria-hidden="true" />
       </div>
-      <div className="tray" aria-label="Roles to place">
+      <div className="tray" role="group" aria-label="Roles to place">
         {ROLES.map((r) =>
           wells[r] !== null ? (
             <span className="slot-empty" key={r} aria-hidden="true"><span>{NAME[r]}</span></span>
@@ -186,7 +198,7 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
                 whileDrag={{ scale: 1.18, zIndex: 5 }}
                 whileTap={{ scale: 0.94 }}
                 onDragEnd={(_, info) => onDrop(r, info)}
-                onClick={() => place(r)}
+                onClick={(e) => { if (fromKeyboard(e)) focusNext.current = `.well .puck.${r}`; place(r); }}
                 aria-label={`Place the ${NAME[r]} in the circuit`}
               >
                 <span className="puck-label">{r[0]}</span>
@@ -196,8 +208,8 @@ export function Circuit({ wells, setWells }: { wells: Wells; setWells: (f: (w: W
           ),
         )}
       </div>
-      <p className={`hint status${jammed ? " bad" : ""}`} aria-live="polite">{status}</p>
-      <p className="meter" aria-hidden="true"><span>{closed}</span> {closed === 1 ? "task" : "tasks"} closed · <span>0</span> collisions</p>
+      <p className={`hint circuit-status${jammed ? " bad" : ""}`} aria-live="polite">{status}</p>
+      <p className="meter" aria-hidden="true"><span>{closed}</span> {closed === 1 ? "task" : "tasks"} closed · <span>0</span> double claims</p>
     </div>
   );
 }
