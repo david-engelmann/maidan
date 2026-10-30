@@ -688,9 +688,9 @@ import { loadMessages } from "./thread.js";
       // it. The transition history keeps both people: whoever moved it to
       // closed, and whoever last handed it into review. Name the hand-off only
       // when it was someone other than the closer.
-      async function closedByFacts(tid, gen, fact) {
+      async function closedByFacts(th, tid, gen, fact) {
         try {
-          const res = await api(uiReadPath(`/threads/${tid}/transitions`), {
+          const res = await api(uiReadPath(`/threads/${tid}/transitions?limit=500`), {
             headers: headers(),
             credentials: "include",
           });
@@ -705,9 +705,18 @@ import { loadMessages } from "./thread.js";
             if (row.to_state === "in_review") handedOff = row.actor_id;
           }
           if (!closed) return;
-          const f = fact("closed by ", personEl(closed.actor_id, { avatar: false }));
+          // A reviewed close is a finished task; a close that skipped review
+          // is only closed, and the badge already says so.
+          const verb = th.closed_without_review ? "closed by " : "completed by ";
+          const f = fact(verb, personEl(closed.actor_id, { avatar: false }));
           const when = ago(closed.occurred_at);
-          if (when) f.append(` ${when}`);
+          if (when && closed.occurred_at) {
+            const t = document.createElement("time");
+            t.dateTime = closed.occurred_at;
+            t.title = new Date(closed.occurred_at).toLocaleString();
+            t.textContent = when;
+            f.append(" ", t);
+          }
           if (handedOff && handedOff !== closed.actor_id) fact("handed off by ", personEl(handedOff, { avatar: false }));
         } catch (_e) {
           /* the badge already says the task is done */
@@ -737,7 +746,7 @@ import { loadMessages } from "./thread.js";
         };
         if (th.assignee_id) fact("held by ", personEl(th.assignee_id, { tag: true }));
         if (th.owner_id) fact("owner ", personEl(th.owner_id));
-        if (th.state === "closed" || th.state === "archived") await closedByFacts(tid, gen, fact);
+        if (th.state === "closed" || th.state === "archived") await closedByFacts(th, tid, gen, fact);
         try {
           const res = await api(uiReadPath(`/threads/${tid}/result`), {
             headers: headers(),
