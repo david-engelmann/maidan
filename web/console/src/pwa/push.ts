@@ -81,3 +81,12 @@ export async function disablePush(d: Pick<PushDeps, "pushManager">, forget: (end
   }
   return { registered: false, reason: "off" };
 }
+
+/** Why Turn on cannot run here, or null when it can. */
+export function pushRefusal({ me, permission, hasKey }: { me: string | null; permission: string; hasKey: boolean | null }): string | null {
+  if (!me) return "Sign in as a member to get notifications.";
+  if (permission === "unsupported") return "This browser does not support notifications.";
+  if (permission === "denied") return "Notifications are blocked for this site. Allow them in your browser's site settings (the icon next to the address), then reload.";
+  if (hasKey === false) return "This server has no push key yet, so it cannot send notifications. An operator sets one up.";
+  return null;
+}

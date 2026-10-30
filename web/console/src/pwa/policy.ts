@@ -4,7 +4,7 @@
 // carries auth can be read back from the cache by a later visitor.
 
 export const SHELL_SCOPE = "/console/";
-export const SHELL_FILES = ["", "app.js", "vendor.js", "style.css", "geist.woff2", "icon.png", "manifest.webmanifest"] as const;
+export const SHELL_FILES = ["", "app.js", "vendor.js", "style.css", "geist.woff2", "icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"] as const;
 export const SHELL_CACHE = "maidan-console-shell-v1";
 
 const NEVER_PREFIXES = ["/ui/api", "/v1", "/auth", "/ws", "/oauth", "/.well-known", "/web-push", "/members", "/workspaces"];

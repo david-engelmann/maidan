@@ -1361,6 +1361,14 @@ pub fn router(state: AppState) -> Router {
                 "image/png",
                 include_bytes!("../static/console/dist/icon.png"),
             ),
+            "icon-192.png" => (
+                "image/png",
+                include_bytes!("../static/console/dist/icon-192.png"),
+            ),
+            "icon-512.png" => (
+                "image/png",
+                include_bytes!("../static/console/dist/icon-512.png"),
+            ),
             // Install manifest and service worker (web/console/src/pwa). The
             // worker caches only these static files, never an API answer.
             "manifest.webmanifest" => (

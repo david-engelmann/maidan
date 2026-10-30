@@ -296,8 +296,6 @@ a { color: inherit; }
 .reacts.none { margin: 0; height: 0; }
 .reacts.none .react.add { position: absolute; right: 0; top: 4px; opacity: 0; }
 .reacts.none .react.add { z-index: 1; }
-/* No hover on touch: keep the message actions reachable, but quiet. */
-@media (hover: none) { .reacts.none .react.add { opacity: 0.55; min-height: 28px; min-width: 32px; } }
 .msg:hover .react.add, .msg:focus-within .react.add, .react.add[aria-expanded="true"] { opacity: 1; }
 .react { min-height: 30px; min-width: 36px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 13px; }
 .react.on { border-color: color-mix(in srgb, var(--signal) 55%, var(--line)); background: color-mix(in srgb, var(--signal) 10%, var(--card)); }
@@ -481,4 +479,51 @@ a { color: inherit; }
 .edit-history { margin: 4px 0; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper-2); }
 .edit-history ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .edit-history p { margin: 0; overflow-wrap: anywhere; }
-@media (hover: none) { .msg:has(.reacts.none) { padding-right: 36px; } }
+
+/* ---- console-11 finish ---- */
+/* Reactions: on touch the "+" is gone; tapping a message opens its actions.
+   With a mouse it is a quiet glyph that appears on hover. */
+.reacts.none .react.add { min-height: 24px; min-width: 24px; padding: 0 6px; border-color: transparent; background: transparent; color: var(--muted); font-size: 14px; }
+.reacts.none .react.add:hover { color: var(--ink); background: var(--paper-2); }
+@media (hover: none) { .reacts.none .react.add:not([aria-expanded="true"]) { display: none; } }
+.react.word.danger, .button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+
+/* Tools tab strip: snap, and fade the edge so it reads as scrollable. */
+.seg-wrap { position: relative; min-width: 0; }
+.seg-wrap::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 28px; pointer-events: none; background: linear-gradient(to right, transparent, var(--paper)); border-radius: 0 12px 12px 0; }
+.seg-scroll { scroll-snap-type: x proximity; scroll-padding-inline: 28px; }
+.seg-scroll a { scroll-snap-align: start; }
+.seg-scroll a:last-child { margin-right: 28px; }
+
+/* Notifications: words first, then a full-width pair on a phone. */
+.push-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.push-actions .button { min-height: 44px; width: 100%; justify-content: center; }
+@media (min-width: 700px) { .push-actions { display: flex; } .push-actions .button { width: auto; min-width: 140px; } }
+
+/* Board lanes: one line per segment, count as a badge. */
+.lane-pick button { flex-direction: row; gap: 6px; white-space: nowrap; font-size: 13px; }
+.lane-pick .count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, transparent); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; opacity: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Native selects dressed like the console's fields. */
+.channel-pick select, select.select {
+  appearance: none; -webkit-appearance: none; min-height: 44px; padding: 0 36px 0 12px; border-radius: 12px; border: 1px solid var(--line);
+  color: var(--ink); font: inherit; font-size: 15px; background-color: var(--card);
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.channel-pick { flex: 1; min-width: 0; }
+.channel-pick select { flex: 1; min-width: 0; }
+
+/* Empty lanes: say what is going on, offer the next move. */
+.empty-state { display: grid; gap: 6px; justify-items: start; padding: 18px 16px; border: 1px dashed var(--line); border-radius: 14px; }
+.empty-state p { margin: 0; }
+
+/* Task sheet extras and Connect. */
+.sheet-more { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.sheet-more summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; font-weight: 600; }
+.result-form { display: grid; gap: 8px; margin-top: 8px; }
+.result-form textarea, .result-form input { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.snippet { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.snippet-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: var(--paper-2); }
+.snippet-body { margin: 0; padding: 10px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

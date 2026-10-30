@@ -3,7 +3,7 @@
 // scrim, and gives focus back to the card that opened it.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { BoardApi, actionsFor, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
+import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, type TransitionAction, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
 import { hasToken } from "../core/api.ts";
 import { useSession } from "../hooks/useSession.ts";
 
@@ -173,7 +173,77 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
         <a className="button ghost" href="/ui/">Open in the classic board</a>
       </div>
       {claimWhy && <p id="claim-why" className="muted small">{claimWhy}</p>}
+      <MoreActions th={th} api={api} onChanged={onChanged} setNote={setNote} />
       <p className="sheet-note" role="status" aria-live="polite">{note}</p>
     </div>
+  );
+}
+
+function MoreActions({ th, api, onChanged, setNote }: { th: Thread; api: BoardApi; onChanged: () => void; setNote: (s: string | null) => void }) {
+  const { session } = useSession();
+  const moves = transitionsFor(th);
+  const [move, setMove] = useState<TransitionAction | "">("");
+  const [armed, setArmed] = useState(false);
+  const [result, setResult] = useState("");
+  const [lease, setLease] = useState("");
+  const [busy, setBusy] = useState(false);
+  const tokenWhy = bearerRefusal(session.credentials);
+  const go = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      await fn();
+      setNote(done);
+      onChanged();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "That did not go through");
+    } finally {
+      setBusy(false);
+      setArmed(false);
+    }
+  };
+  const apply = () => {
+    if (!move) return;
+    if (move === "archive" && !armed) return setArmed(true);
+    void go(() => api.transition(th.id, move), `${TRANSITION_WORDS[move]}: done.`);
+  };
+  const record = () => {
+    const parsed = parseResult(result);
+    if (!parsed.ok) return setNote(parsed.why);
+    if (!lease.trim()) return setNote("Paste the claim's lease id: only the claim holder records a result.");
+    void go(() => api.setResult(th.id, parsed.value, lease), "Result recorded.");
+  };
+  return (
+    <details className="sheet-more">
+      <summary>More actions</summary>
+      {moves.length > 0 && (
+        <div className="row-form">
+          <label className="field grow">
+            Move to
+            <select className="select" value={move} onChange={(e) => { setMove(e.target.value as TransitionAction | ""); setArmed(false); }}>
+              <option value="">Pick a state…</option>
+              {moves.map((m) => <option key={m} value={m}>{TRANSITION_WORDS[m]}</option>)}
+            </select>
+          </label>
+          <button type="button" className={armed ? "button danger" : "button steel"} disabled={!move || busy} onClick={apply}>
+            {armed ? "Archive? Tap again" : "Apply"}
+          </button>
+        </div>
+      )}
+      {th.state !== "closed" && th.state !== "archived" && (
+        <div className="result-form">
+          <label className="field">
+            Result
+            <textarea rows={3} value={result} onChange={(e) => setResult(e.target.value)} placeholder='JSON, or a plain summary' />
+          </label>
+          <label className="field">
+            Claim lease id
+            <input value={lease} onChange={(e) => setLease(e.target.value)} spellCheck={false} autoCapitalize="off" className="mono" />
+          </label>
+          <button type="button" className="button steel" disabled={busy || tokenWhy !== null} onClick={record}>Record result</button>
+          {tokenWhy && <p className="muted small">{tokenWhy}</p>}
+        </div>
+      )}
+    </details>
   );
 }

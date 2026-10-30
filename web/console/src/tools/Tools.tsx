@@ -5,7 +5,7 @@
 // Search finds messages; Workspace renames, switches, and adds channels,
 // tasks, agents and peers, and reads apps and the workspace audit.
 // Recent is every notice this tab has shown.
-import { type FormEvent, type ReactNode, useState, useSyncExternalStore } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ago } from "../core/board.ts";
 import { convHash } from "../core/threads.ts";
 import { notices, say, sayError } from "../core/notices.ts";
@@ -30,7 +30,8 @@ import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
-import { PUSH_WORDS, disablePush, enablePush, type PushOutcome } from "../pwa/push.ts";
+import { PUSH_WORDS, disablePush, enablePush, pushRefusal, type PushOutcome } from "../pwa/push.ts";
+import { Connect } from "./Connect.tsx";
 import { SecretOnce } from "./SecretOnce.tsx";
 
 export const TOOL_TABS = [
@@ -44,6 +45,7 @@ export const TOOL_TABS = [
   { id: "operator", title: "Operator" },
   { id: "recent", title: "Recent" },
   { id: "device", title: "This device" },
+  { id: "connect", title: "Connect" },
 ] as const;
 type ToolTab = (typeof TOOL_TABS)[number]["id"];
 
@@ -61,6 +63,11 @@ export function Tools() {
   const { session } = useSession();
   const api = useToolsApi();
   const tab = toolTab(useSyncExternalStore(subscribeHash, () => window.location.hash));
+  const tabs = useRef<HTMLDivElement>(null);
+  // Keep the open tab in view when the strip scrolls sideways on a phone.
+  useEffect(() => {
+    tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [tab]);
   if (session.status === "signed-out") {
     return (
       <div className="card">
@@ -74,10 +81,12 @@ export function Tools() {
   const ws = session.status === "signed-in" ? session.workspaceId : null;
   return (
     <div className="tools">
-      <div className="seg seg-scroll" role="tablist" aria-label="Tools">
+      <div className="seg-wrap">
+      <div ref={tabs} className="seg seg-scroll" role="tablist" aria-label="Tools">
         {TOOL_TABS.map((t) => (
           <a key={t.id} role="tab" aria-selected={tab === t.id} href={`#/tools/${t.id}`}>{t.title}</a>
         ))}
+      </div>
       </div>
       {tab === "inbox" ? <Inbox api={api} me={me} /> : null}
       {tab === "prefs" ? <Prefs api={api} me={me} /> : null}
@@ -89,6 +98,7 @@ export function Tools() {
       {tab === "operator" ? <Operator api={api} ws={ws} /> : null}
       {tab === "recent" ? <Recent /> : null}
       {tab === "device" ? <Device api={api} me={me} /> : null}
+      {tab === "connect" ? <Connect api={api} base={session.credentials.base || window.location.origin} signedIn={session.status === "signed-in"} /> : null}
     </div>
   );
 }
@@ -701,6 +711,15 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
     vapidKey: () => api.vapidKey(),
     save: (m: string, sub: { endpoint: string; keys: Record<string, string> }) => api.savePush(m, sub),
   };
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.vapidKey().then((k) => live && setHasKey(Boolean(k?.public_key)), () => live && setHasKey(false));
+    return () => {
+      live = false;
+    };
+  }, [api]);
+  const onWhy = pushRefusal({ me, permission, hasKey });
   const run = async (fn: () => Promise<PushOutcome>) => {
     setBusy(true);
     try {
@@ -722,10 +741,11 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
         )}
       </Panel>
       <Panel title="Notifications">
-        <p className="muted small">Browser permission: {permission}.</p>
-        <div className="edit-actions">
-          <button type="button" className="steel" disabled={busy || !me} onClick={() => void run(() => enablePush(me, deps))}>Turn on</button>
-          <button type="button" disabled={busy} onClick={() => void run(() => disablePush(deps, (ep) => (me ? api.forgetPush(me, ep) : Promise.resolve())))}>Turn off</button>
+        <p className="muted small">Get a notification on this device when a task needs you or someone mentions you.</p>
+        {onWhy ? <p className="muted small" id="push-why">{onWhy}</p> : <p className="muted small">Browser permission: {permission}.</p>}
+        <div className="push-actions">
+          <button type="button" className="button ink" disabled={busy || onWhy !== null} aria-describedby={onWhy ? "push-why" : undefined} onClick={() => void run(() => enablePush(me, deps))}>Turn on</button>
+          <button type="button" className="button ghost" disabled={busy} onClick={() => void run(() => disablePush(deps, (ep) => (me ? api.forgetPush(me, ep) : Promise.resolve())))}>Turn off</button>
         </div>
         {note ? <p className="small" role="status">{note}</p> : null}
       </Panel>

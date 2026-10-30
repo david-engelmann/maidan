@@ -1,17 +1,17 @@
 // The board's model, a port of the classic board.js without the DOM: which
 // lane a task sits in, what its card says, who closed it, and the reads and
 // writes behind the lanes. Fetch and the clock are passed in, so it is tested.
-import { apiPath, headers, uiPath, writeInit, humanError, type Credentials, type CredentialMode } from "./api.ts";
+import { apiPath, bearerRefusal, headers, uiPath, writeInit, humanError, type Credentials, type CredentialMode } from "./api.ts";
 
 export { bearerRefusal } from "./api.ts";
 
 export type LaneKey = "open" | "working" | "review" | "done";
 
-export const LANES: ReadonlyArray<{ key: LaneKey; title: string }> = [
-  { key: "open", title: "Open" },
-  { key: "working", title: "In progress" },
-  { key: "review", title: "Needs review" },
-  { key: "done", title: "Done" },
+export const LANES: ReadonlyArray<{ key: LaneKey; title: string; short: string }> = [
+  { key: "open", title: "Open", short: "Open" },
+  { key: "working", title: "In progress", short: "Working" },
+  { key: "review", title: "Needs review", short: "Review" },
+  { key: "done", title: "Done", short: "Done" },
 ];
 
 export type Thread = {
@@ -146,6 +146,27 @@ export function closeFacts(th: Thread, rows: Transition[]): CloseFacts | null {
 }
 
 /** Which actions the sheet offers on a task, and why one is held back. */
+export type TransitionAction = "start_review" | "close" | "archive";
+export const TRANSITION_WORDS: Record<TransitionAction, string> = { start_review: "Send to review", close: "Close", archive: "Archive" };
+
+/** The moves the server accepts from this state, close aside (it has its own button). */
+export function transitionsFor(th: Thread): TransitionAction[] {
+  if (th.state === "archived") return [];
+  if (th.state === "closed") return ["archive"];
+  return th.state === "in_review" ? ["archive"] : ["start_review", "archive"];
+}
+
+/** Parse a typed result: JSON when it parses, else the text as a note. */
+export function parseResult(raw: string): { ok: true; value: unknown } | { ok: false; why: string } {
+  const t = raw.trim();
+  if (!t) return { ok: false, why: "Write the result first." };
+  try {
+    return { ok: true, value: JSON.parse(t) };
+  } catch {
+    return { ok: true, value: { summary: t } };
+  }
+}
+
 export function actionsFor(th: Thread, me: string | null, canClaim: boolean): { claim: string | null | false; close: boolean } {
   const terminal = th.state === "closed" || th.state === "archived";
   let claim: string | null | false = false;
@@ -255,15 +276,29 @@ export class BoardApi {
   }
 
   /** Claim with a token. A session has no claim route; the sheet says so. */
+  /** Record a task's result. Token only, and it needs the claim's lease id. */
+  async setResult(threadId: string, result: unknown, leaseId: string): Promise<void> {
+    const c = this.creds();
+    const why = bearerRefusal(c);
+    if (why) throw new Error(why);
+    const res = await this.fetchFn(`${c.base.replace(/\/$/, "")}/threads/${threadId}/result`, writeInit({ method: "PUT", headers: headers(c, true), credentials: "include", body: JSON.stringify({ result, claim_lease_id: leaseId.trim() }) }));
+    if (!res.ok) await fail(res, this.mode());
+  }
+
   async claim(threadId: string): Promise<void> {
     const c = this.creds();
     const res = await this.fetchFn(`${c.base.replace(/\/$/, "")}/threads/${threadId}/assignee/claim`, writeInit({ method: "POST", headers: headers(c, true), credentials: "include", body: "{}" }));
     if (!res.ok) await fail(res, this.mode());
   }
 
-  async close(threadId: string): Promise<Thread> {
+  close(threadId: string): Promise<Thread> {
+    return this.transition(threadId, "close");
+  }
+
+  /** Move a task through the state machine: start_review, close or archive. */
+  async transition(threadId: string, action: TransitionAction): Promise<Thread> {
     const c = this.creds();
-    const res = await this.fetchFn(apiPath(c, `/threads/${threadId}`), writeInit({ method: "POST", headers: headers(c, true), credentials: "include", body: JSON.stringify({ action: "close" }) }));
+    const res = await this.fetchFn(apiPath(c, `/threads/${threadId}`), writeInit({ method: "POST", headers: headers(c, true), credentials: "include", body: JSON.stringify({ action }) }));
     if (!res.ok) return fail(res, this.mode());
     return (await res.json()) as Thread;
   }
