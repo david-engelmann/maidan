@@ -107,6 +107,9 @@ pub struct AppState {
     /// This instance's public origin (`MAIDAN_PUBLIC_ORIGIN`), which OAuth
     /// identifiers are built from. `None` serves no OAuth metadata.
     pub public_origin: Option<String>,
+    /// The hosts client metadata documents may be fetched from
+    /// (`MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`). Empty fetches none.
+    pub oauth_client_metadata_hosts: crate::oauth::registry::ClientMetadataHosts,
     /// Enables the explicit test-identity header used by in-process E2E
     /// harnesses. Never enabled by the server binary.
     pub test_identity_header: bool,
@@ -354,6 +357,7 @@ impl AppState {
             dev_anonymous_reader: None,
             allowed_hosts: Vec::new(),
             public_origin: None,
+            oauth_client_metadata_hosts: Default::default(),
             test_identity_header: false,
             bootstrap_enabled,
             federation,

@@ -1,8 +1,10 @@
 //! `GET /oauth/authorize` — the OAuth 2.1 authorization endpoint
 //! (`docs/OAuth.md`, phase two).
 //!
-//! The client redirects the member's browser here. The member is already
-//! authenticated (the bearer middleware ran before this route). This step
+//! The client redirects the member's browser here. The bearer middleware ran
+//! before this route: the member is authenticated by a bearer or a signed-in
+//! session, and a browser with no credential at all was redirected to sign in
+//! and brought back ([`sign_in_redirect`]). This step
 //! validates everything — client, exact redirect URI, S256 PKCE, scopes as
 //! delegatable capabilities the member holds and the client allows — then
 //! stores a pending request and redirects to the consent page. No code is
@@ -11,7 +13,8 @@
 
 use axum::{
     extract::State,
-    response::{IntoResponse, Redirect},
+    http::{header, StatusCode},
+    response::{IntoResponse, Redirect, Response},
     Extension,
 };
 use chrono::Utc;
@@ -46,6 +49,32 @@ pub struct AuthorizeQuery {
     pub response_type: String,
 }
 
+/// Where a signed-out browser at `/oauth/authorize` goes: the sign-in, with
+/// `return_to` set to the full authorize path and query so the browser comes
+/// back to this request once signed in. `None` when the instance has no
+/// sign-in to send it to, which leaves the 401.
+pub fn sign_in_redirect(state: &AppState, uri: &axum::http::Uri) -> Option<Response> {
+    state.oidc.as_ref()?;
+    let return_to = uri
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or(super::metadata::AUTHORIZE_PATH);
+    let location = format!(
+        "/auth/oidc/login?return_to={}",
+        urlencoding::encode(return_to)
+    );
+    Some(
+        (
+            StatusCode::FOUND,
+            [
+                (header::LOCATION, location),
+                (header::CACHE_CONTROL, "no-store".to_string()),
+            ],
+        )
+            .into_response(),
+    )
+}
+
 /// Validate the authorization request, store it pending the member's
 /// consent decision, and redirect to the consent page. Never issues a code.
 pub async fn authorize(
@@ -64,9 +93,8 @@ pub async fn authorize(
         return Err(ApiError::BadRequest("response_type must be code".into()));
     }
 
-    // P1: pre-registered clients first, then CIMD via the egress guard.
-    let client =
-        super::registry::resolve_client(&state, auth.workspace_id, &query.client_id).await?;
+    // P1: pre-registered clients first, then CIMD via the fetch guard.
+    let client = super::registry::resolve_client(&state, &query.client_id).await?;
 
     // Exact match: no prefix games, no path confusion.
     if !client.redirect_uris.contains(&query.redirect_uri) {

@@ -37,9 +37,19 @@ fn random_token() -> String {
 
 fn safe_return_to(return_to: Option<&str>) -> String {
     match return_to {
-        Some(path) if path.starts_with('/') && !path.starts_with("//") => path.to_string(),
+        Some(path) if is_same_origin_path(path) => path.to_string(),
         _ => "/ui/".to_string(),
     }
+}
+
+/// A path on this origin and nothing else: it starts with one `/`, and
+/// carries no backslash or control character a browser could read as the
+/// start of another authority (`//evil`, `/\evil`, a tab).
+fn is_same_origin_path(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.starts_with("//")
+        && !path.contains('\\')
+        && !path.chars().any(char::is_control)
 }
 
 fn with_hint(location: String, hint: &str) -> String {
@@ -817,5 +827,36 @@ mod email_verified_tests {
     fn an_explicit_claim_wins_over_the_operator_setting() {
         assert!(!email_is_verified(Some(false), true));
         assert!(email_is_verified(Some(true), false));
+    }
+}
+
+#[cfg(test)]
+mod return_to_tests {
+    use super::safe_return_to;
+
+    #[test]
+    fn a_same_origin_path_round_trips_exactly() {
+        let authorize = "/oauth/authorize?response_type=code&client_id=https%3A%2F%2Fclient.example%2Fm.json&state=a%2Fb";
+        assert_eq!(safe_return_to(Some(authorize)), authorize);
+        assert_eq!(safe_return_to(Some("/ui/")), "/ui/");
+    }
+
+    #[test]
+    fn anything_that_could_leave_the_origin_falls_back_to_the_console() {
+        for bad in [
+            "//evil.example",
+            "//evil.example/oauth/authorize",
+            "https://evil.example/",
+            "http:evil.example",
+            "/\\evil.example",
+            "\\\\evil.example",
+            "/\t/evil.example",
+            "/\n//evil.example",
+            "evil.example",
+            "",
+        ] {
+            assert_eq!(safe_return_to(Some(bad)), "/ui/", "{bad:?}");
+        }
+        assert_eq!(safe_return_to(None), "/ui/");
     }
 }

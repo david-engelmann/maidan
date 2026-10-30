@@ -80,15 +80,17 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required.
 
-## Current state (2026-10-27)
+## Current state (2026-10-30)
 
-- **Releases:** latest **`v419.0.0`** (2026-10-27), removed members lose
-  access and the cutoff covers every metered surface. Tags are cut whenever the swarm stack needs
+- **Releases:** latest **`v420.0.0`** (2026-10-30), claude.ai connects to a
+  fresh hosted workspace, per-seat cost, and the work since `main` became prod.
+  A release is cut from the newest `dev` commit whose push CI is green, with
+  no soak wait (the maintainer, 2026-10-30). Tags are cut whenever the swarm stack needs
   newer code (the maintainer, 2026-10-23), from a `main` whose eight required
   checks passed, with the record PR first and the pins PR after the release
   publishes. Some old clusters were never tagged (v23–26, v78–100, v311,
   v350–401, v403, v411). `v418.0.0` is tagged on `c0f00014` but was never
-  published (a Trivy scan failure); `v419.0.0` carries its contents.
+  published (a Trivy scan failure); `v419.0.0` carried its contents.
 - **Two queues, in Open Work's Next.** The swarm factory first (Next 33 to
   41): finding and closing threads by attribute (MaidanFadin), and the M13
   alert proof. Then the launch path (Next 23,
@@ -101,7 +103,7 @@ change.
 - **The swarm stack is local** (decided 2026-10-14) and runs any `dev`
   commit whose required checks passed. Its operator pins and deploys it;
   coordination with the agents working on this repo is on issue #1495.
-- **Deploy pins move to `v419.0.0`** in the PR that follows its tag.
+- **Deploy pins move to `v420.0.0`** in the PR that follows its tag.
   `scripts/check-deploy-pins.sh`
   keeps the pins on the newest tag, `docs/Pi.md` included, and says which lines
   to change after the next one. The `:dev`
