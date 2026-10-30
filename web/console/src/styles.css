@@ -105,6 +105,8 @@ a { color: inherit; }
 .splash p { margin: 0.4rem 0 0; color: var(--muted); }
 
 /* ── Board ─────────────────────────────────────────────────────────── */
+/* The board uses the whole width; reading screens keep the 980px measure. */
+.content:has(.board) { max-width: none; }
 .board { display: grid; gap: 12px; }
 .board-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 .channel-pick { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
