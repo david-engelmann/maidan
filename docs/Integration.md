@@ -1368,6 +1368,18 @@ cheapest combination with at least `min_completed` completed tasks (1 to
 1000, default 3); a harness reads it when it starts a task in that class and
 keeps it for the whole task.
 
+`GET /workspaces/{id}/usage-seats` is per-seat cost (`workspace:read`, the
+caller's workspace only). It sums the workspace's completed usage reports by
+the member that reported them (the seat that held the claim), most expensive
+first, with each seat's reports, distinct threads, spend in micro-USD, and
+first and last report times. `since` (inclusive) and `until` (exclusive) are
+optional RFC 3339 bounds on when a report was accepted; `limit` is 1 to 1000
+seats (default 100), and `truncated` says more seats spent in the window. The
+swarm dashboard keeps closed-label metrics only: seats are open-ended, so a
+member id never becomes a metric label. A per-seat panel is a table backed by
+this read, or a trace-backend panel over the `maidan.thread` spans, which
+carry `member_id` and `thread_id` (one trace per thread).
+
 #### Normalizing provider usage
 
 Providers disagree on what "input tokens" means, so each SDK has a pure

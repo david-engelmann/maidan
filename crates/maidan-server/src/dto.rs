@@ -592,6 +592,18 @@ pub struct UsageRoutingQuery {
     pub min_completed: Option<i64>,
 }
 
+/// Query params for per-seat cost from the usage ledger.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct SeatCostParams {
+    /// Inclusive window start (RFC 3339); omitted, the first report.
+    pub since: Option<DateTime<Utc>>,
+    /// Exclusive window end (RFC 3339); omitted, now.
+    pub until: Option<DateTime<Utc>>,
+    /// Most seats to list, 1 to 1000; omitted, 100.
+    pub limit: Option<i64>,
+}
+
 /// Query params for lifting a repository pause.
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]

@@ -1366,7 +1366,10 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
             );
             dead_letter(state, &entry, &error).await;
             tracing::warn!(id = %entry.id, %error, "egress worker: dead-lettered");
-            crate::metrics::record_egress_delivery(&entry.surface, "unroutable");
+            crate::metrics::record_egress_delivery(
+                &entry.surface,
+                crate::metrics::EgressOutcome::Unroutable,
+            );
             if entry.kind == EgressKind::Result {
                 audit_result_attempt(state, &entry, None, "dead", Some(&error)).await;
             }
@@ -1400,7 +1403,10 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 reason = "over_allowance",
                 "egress worker: parked; workspace past its free allowance for deliveries"
             );
-            crate::metrics::record_egress_delivery(surface, "over_allowance");
+            crate::metrics::record_egress_delivery(
+                surface,
+                crate::metrics::EgressOutcome::OverAllowance,
+            );
             stats.deferred += 1;
             continue;
         }
@@ -1441,7 +1447,10 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                 } else {
                     tracing::info!(id = %entry.id, kind = %entry.kind, %reason, "egress worker: refused");
                 }
-                crate::metrics::record_egress_delivery(surface, "refused");
+                crate::metrics::record_egress_delivery(
+                    surface,
+                    crate::metrics::EgressOutcome::Refused,
+                );
                 stats.refused += 1;
             }
             Ok(Sent::Landed(reference)) => {
@@ -1459,7 +1468,10 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     external_ref = reference.as_ref().map(|r| r.handle()),
                     "egress worker: delivered"
                 );
-                crate::metrics::record_egress_delivery(surface, "sent");
+                crate::metrics::record_egress_delivery(
+                    surface,
+                    crate::metrics::EgressOutcome::Sent,
+                );
                 state.usage_meters.record(
                     entry.workspace_id,
                     maidan_types::UsageMeter::Deliveries,
@@ -1482,12 +1494,18 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                     )
                     .await;
                 }
-                crate::metrics::record_egress_delivery(surface, "dead");
+                crate::metrics::record_egress_delivery(
+                    surface,
+                    crate::metrics::EgressOutcome::Dead,
+                );
                 stats.dead += 1;
             }
             Err(failure) if failure.misconfiguration => {
                 disable_link(state, &entry, &target, &failure.message).await;
-                crate::metrics::record_egress_delivery(surface, "disabled");
+                crate::metrics::record_egress_delivery(
+                    surface,
+                    crate::metrics::EgressOutcome::Disabled,
+                );
                 stats.dead += 1;
                 stats.disabled += 1;
             }
@@ -1504,7 +1522,10 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                         )
                         .await;
                     }
-                    crate::metrics::record_egress_delivery(surface, "dead");
+                    crate::metrics::record_egress_delivery(
+                        surface,
+                        crate::metrics::EgressOutcome::Dead,
+                    );
                     stats.dead += 1;
                 } else {
                     if entry.kind == EgressKind::Result {
@@ -1517,7 +1538,10 @@ pub async fn sweep_once(state: &AppState) -> EgressSweepStats {
                         )
                         .await;
                     }
-                    crate::metrics::record_egress_delivery(surface, "retry");
+                    crate::metrics::record_egress_delivery(
+                        surface,
+                        crate::metrics::EgressOutcome::Retry,
+                    );
                     stats.retried += 1;
                 }
             }

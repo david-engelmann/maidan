@@ -641,6 +641,9 @@ async fn serve(from_files: Vec<&'static str>) -> anyhow::Result<()> {
     state.public_origin =
         maidan_server::oauth::metadata::public_origin_from(public_origin.as_deref())
             .map_err(anyhow::Error::msg)?;
+    state.oauth_client_metadata_hosts =
+        maidan_server::oauth::registry::ClientMetadataHosts::from_env()
+            .map_err(anyhow::Error::msg)?;
     state.turnstile =
         maidan_server::turnstile::TurnstileSettings::from_env(state.public_origin.as_deref())?
             .map(Arc::new);

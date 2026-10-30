@@ -2,17 +2,17 @@
 //! section 2.3): `client_secret_basic`, `client_secret_post`, or `none` for a
 //! public client, whose only proof is PKCE at the token endpoint.
 //!
-//! Authentication runs in two steps because a client identified by a client
-//! metadata document resolves only against a workspace's egress allowlist,
-//! and the workspace is known only once the code or token is read. A
-//! pre-registered client, which is what a secret can belong to, is checked
-//! before anything else is read.
+//! Authentication runs in two steps: a pre-registered client, which is what a
+//! secret can belong to, is checked before anything else is read, and a
+//! client identified by a client metadata document is resolved (through the
+//! instance's `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` guard) only once the code
+//! or token has been read.
 
 use axum::http::{header, HeaderMap};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use maidan_auth::hash_secret;
 use maidan_auth::token::hashes_equal;
-use maidan_types::{OAuthClient, WorkspaceId};
+use maidan_types::OAuthClient;
 
 use super::error::OAuthError;
 use crate::state::AppState;
@@ -171,12 +171,11 @@ pub fn require_known_shape(creds: &ClientCredentials) -> Result<(), OAuthError> 
 
 /// Finish authentication once the workspace is known: a client that is not
 /// pre-registered must resolve from its client metadata document through the
-/// workspace's egress guard. Such a client is public, so it sends no secret.
+/// instance's fetch guard. Such a client is public, so it sends no secret.
 pub async fn authenticate_in(
     state: &AppState,
     creds: &ClientCredentials,
     preregistered: Option<OAuthClient>,
-    workspace_id: WorkspaceId,
 ) -> Result<OAuthClient, OAuthError> {
     if let Some(client) = preregistered {
         return Ok(client);
@@ -184,7 +183,7 @@ pub async fn authenticate_in(
     if creds.secret.is_some() {
         return Err(creds.invalid_client("unknown client"));
     }
-    super::registry::resolve_client(state, workspace_id, &creds.client_id)
+    super::registry::resolve_client(state, &creds.client_id)
         .await
         .map_err(|_| creds.invalid_client("unknown client"))
 }
