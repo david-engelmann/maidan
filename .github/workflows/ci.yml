@@ -1110,6 +1110,46 @@ jobs:
         if: always()
         run: scripts/replica-harness.sh down
 
+  ui-gallery:
+    name: ui gallery
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The review gallery (ui-tests/README.md, "Review gallery"): the landing
+    # and console's first screens at desktop and phone widths, uploaded for a
+    # person to look at before a UI change merges. It fails on a screen that
+    # scrolls sideways or a page that throws. Not a required check.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: build the capture harness
+        run: cargo build --example capture_server -p maidan-server
+      - name: install node deps
+        working-directory: ui-tests
+        run: npm ci
+      - name: install chromium
+        working-directory: ui-tests
+        run: npx playwright install --with-deps chromium
+      - name: take the gallery
+        working-directory: ui-tests
+        run: npm run gallery
+      - name: upload the gallery
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-gallery
+          path: ui-tests/gallery-out/
+          retention-days: 14
+
   ui-tests:
     name: ui tests (playwright)
     needs: changes
