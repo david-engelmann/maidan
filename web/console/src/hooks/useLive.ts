@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { STORAGE, wsUrl } from "../core/api.ts";
+import { liveActions } from "../core/bus.ts";
 import { LiveConnection, type SocketLike, type ControlFrame, type EventFrame, type LiveFilter, type LiveStatus } from "../core/live.ts";
 import type { SessionState } from "../core/session.ts";
 
@@ -32,6 +33,14 @@ export function useLive(session: SessionState, filter: Omit<LiveFilter, "workspa
   useEffect(() => {
     conn.update({ token: () => token, memberId: () => memberId, ...handlers });
   });
+
+  // Screens send presence through the one connection.
+  useEffect(() => {
+    liveActions.setPresence = (status) => conn.sendPresence(status);
+    return () => {
+      liveActions.setPresence = () => false;
+    };
+  }, [conn]);
 
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const key = JSON.stringify(filter);
