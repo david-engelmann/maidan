@@ -27,7 +27,7 @@ the security controls in Next 23.
 | Phase | What ships | Acceptance criteria |
 |---|---|---|
 | P0, resource metadata | RFC 9728 metadata for the MCP endpoint at `/.well-known/oauth-protected-resource/mcp/streamable`, and a `WWW-Authenticate` challenge on a 401 from that endpoint, both off until `MAIDAN_PUBLIC_ORIGIN` is set | An unauthenticated `POST /mcp/streamable` answers 401 with `Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp/streamable"`. `/mcp` and other 401s carry no challenge, and no root-form document is served, since a client must reject metadata whose `resource` is not the URL it asked. The document names no authorization server yet (`oauth_resource_metadata_e2e`) |
-| P1, client registry | Pre-registered clients and client metadata documents | Metadata documents are fetched only through the egress guard. A client id resolves to exactly one client |
+| P1, client registry | Pre-registered clients and client metadata documents | Metadata documents are fetched only from hosts the operator lists in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. A client id resolves to exactly one client |
 | P2, authorize and consent | `GET /oauth/authorize` and the consent page in `/ui` | PKCE S256 only. Redirect URIs match exactly. The consent page cannot be framed. A grant never exceeds the member's capabilities, and a scope names only a delegatable capability, never `token:*`, `operator:*` or `audit:read-global` |
 | P3, token endpoint and server metadata | `POST /oauth/token`, `POST /oauth/revoke`, and the RFC 8414 document, which lists only the endpoints and grants that now exist | A code is consumed only after its client, `redirect_uri`, verifier and resource all validate, in one atomic step, so a stolen code cannot be burned by a wrong guess. Every access and refresh token from one grant carries the grant's lineage id, and a reused refresh token revokes everything under that id. Tokens are bound to the MCP resource (RFC 8707). Responses carry `iss` (RFC 9207). The resource document gains `authorization_servers` |
 | P4, consent management | Listing and revoking grants in the console | A revoked grant stops working on the next request |
@@ -93,6 +93,24 @@ P3 shipped. These are its controls and what each one does.
 - **A narrowed client stops refreshing.** When an operator narrows a client's
   allowed scopes, a code exchange or refresh that would carry a scope the
   client no longer allows is `unauthorized_client`.
+- **Client metadata hosts.** A client whose `client_id` is an HTTPS URL is
+  resolved from the document at that URL, but only when the URL's host is
+  listed exactly in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS` (comma-separated
+  host names, empty by default) and names no port. Any other host is refused
+  with 403 before anything is fetched, and redirects are never followed. The
+  guard is against server-side request forgery, which is the operator's
+  concern, so it is an instance setting and not a workspace one: a workspace
+  fresh from sign-up resolves the same clients as every other. The hosted
+  instances list `claude.ai`.
+- **Signing in from the authorization endpoint.** A browser that reaches
+  `GET /oauth/authorize` with no credential at all, usually a person arriving
+  from an MCP client before signing in, is answered 302 to
+  `/auth/oidc/login?return_to=<the authorize path and query>`. After sign-in
+  it comes back to the same request and goes on to consent. `return_to` is
+  honoured only as a same-origin path: `//host`, an absolute URL, a backslash
+  or a control character falls back to `/ui/`. A request that carries an
+  `Authorization` header, valid or not, is never redirected, and a bad bearer
+  still answers 401. With no sign-in configured the endpoint answers 401.
 - **Rate limits.** The token, revocation, authorize and consent endpoints
   are charged under two buckets of their own, tighter than the API at
   large. One bucket is per client id and address pair (120 requests a
