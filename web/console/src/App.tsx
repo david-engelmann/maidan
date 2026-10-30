@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SessionContext, createSessionStore, useSession } from "./hooks/useSession.ts";
 import { Board } from "./board/Board.tsx";
+import { NeedsYou } from "./needs/NeedsYou.tsx";
 import { Shell } from "./shell/Shell.tsx";
 import { ROUTES, type RouteId } from "./shell/router.ts";
 
@@ -32,7 +33,7 @@ export default function App() {
       <Shell
         screens={{
           board: <Board />,
-          needs: <Placeholder id="needs" />,
+          needs: <NeedsYou />,
           threads: <Placeholder id="threads" />,
           people: <Placeholder id="people" />,
         }}
