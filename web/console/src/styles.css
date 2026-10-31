@@ -536,3 +536,19 @@ a { color: inherit; }
 .snippet-body { max-width: 100%; }
 .tools { grid-template-columns: minmax(0, 1fr); }
 .content { min-width: 0; }
+
+@media (hover: none) { .msg:has(.reacts.none) { padding-right: 36px; } }
+
+/* Needs you: the evidence an approval signs, shown before Approve. */
+.need-evidence { margin: 0.7rem 0 0.2rem; padding: 0.7rem 0.8rem; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); font-size: 0.86rem; }
+.need-evidence .ev-head { margin: 0 0 0.4rem; font-weight: 600; }
+.need-evidence code { font-family: var(--mono); font-size: 0.78rem; overflow-wrap: anywhere; }
+.need-evidence .ev-warn { margin: 0.3rem 0 0.5rem; padding: 0.45rem 0.6rem; border-radius: 10px; background: color-mix(in srgb, var(--signal) 12%, var(--paper)); color: var(--ink); }
+.need-evidence .ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.need-evidence .ev-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem; }
+.need-evidence .ev-kind { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.need-evidence .ev-name { font-weight: 500; overflow-wrap: anywhere; }
+.need-evidence .ev-tier { padding: 0 0.45rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.74rem; color: var(--muted); }
+.need-evidence .ev-tier.tier-verified { color: #1f5f2e; border-color: #1f5f2e; }
+.need-evidence .ev-unlinked { color: color-mix(in srgb, var(--signal) 70%, #000); }
+.need-evidence .ev-open { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-weight: 500; }
