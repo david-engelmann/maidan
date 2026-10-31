@@ -100,10 +100,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-.splash { min-height: 100dvh; display: grid; place-items: center; padding: var(--pad); text-align: center; }
-.splash .mark { width: 72px; height: 72px; border-radius: 22%; margin: 0 auto 1.2rem; }
-.splash h1 { margin: 0; font-size: 2.2rem; font-weight: 560; letter-spacing: -0.05em; }
-.splash p { margin: 0.4rem 0 0; color: var(--muted); }
 
 /* ── Board ─────────────────────────────────────────────────────────── */
 /* The board uses the whole width; reading screens keep the 980px measure. */
