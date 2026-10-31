@@ -24,7 +24,9 @@ export default defineConfig({
     assetsDir: "",
     assetsInlineLimit: 0,
     cssCodeSplit: false,
-    modulePreload: false,
+    // Preload the chunks app.js imports, without the polyfill (every target
+    // browser has modulepreload). scripts/check-csp.mjs holds the build to it.
+    modulePreload: { polyfill: false },
     rollupOptions: {
       // The service worker is its own entry so it lands at /ui/sw.js,
       // where its scope covers the whole console.
