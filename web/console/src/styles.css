@@ -184,3 +184,52 @@ a { color: inherit; }
 .button[disabled] { opacity: .5; cursor: not-allowed; }
 .sheet-note { min-height: 1.2em; font-size: 13px; margin: 10px 0 0; }
 @media (prefers-reduced-motion: reduce) { .task { transition: none; } }
+
+/* ---- Needs you: one column, thumb-reach actions ------------------------ */
+.needs { display: grid; gap: 14px; max-width: 640px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.needs-count { margin: 0; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.needs-stale { margin: 0; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--signal) 12%, transparent); font-size: 14px; }
+.needs-empty p { margin: 0.3rem 0; }
+.needs-group { display: grid; gap: 8px; }
+.needs-group-head { margin: 6px 2px 0; font-weight: 500; }
+.needs-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.need { position: relative; border-radius: 20px; }
+.need-under { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; border-radius: 20px; font-weight: 600; font-size: 15px; background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 22%, var(--paper)), color-mix(in srgb, var(--danger) 18%, var(--paper))); }
+.need-under .yes { color: var(--ok); }
+.need-under .no { color: var(--danger); }
+.need-card { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px 16px 14px; box-shadow: 0 1px 0 #fff inset, 0 12px 30px -24px rgba(60, 50, 30, 0.55); touch-action: pan-y; }
+.need.primary .need-card { border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); }
+.need-meta { display: flex; justify-content: space-between; gap: 10px; margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.need-meta .overdue { color: var(--danger); }
+.need-kind { color: var(--ink); }
+.kind-open_gate { color: color-mix(in srgb, var(--signal) 70%, #000); }
+.kind-blocked { color: var(--danger); }
+.need-title { margin: 0 0 4px; font-size: 18px; line-height: 1.3; font-weight: 600; overflow-wrap: anywhere; }
+.need-line { margin: 2px 0 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.need-line.warn { color: var(--danger); }
+.need-state:empty { display: none; }
+.need-state > div, .need-state > form, .need-state > p { margin-top: 12px; }
+.need-state p { margin: 0 0 8px; font-size: 15px; }
+/* Two across, the yes last and full width: the bottom of the card, under the thumb. */
+.need-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.need-actions .btn:only-child, .need-actions .btn.go:nth-child(odd) { grid-column: 1 / -1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; font-size: 15px; font-weight: 550; text-align: center; text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.btn:active { transform: scale(.98); }
+.btn.go { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.stop { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
+.btn[disabled] { opacity: .45; cursor: not-allowed; transform: none; }
+.need-note label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+.need-note textarea { width: 100%; box-sizing: border-box; min-height: 88px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: 16px; resize: vertical; }
+.need-sending { color: var(--muted); }
+.need-done p { font-weight: 600; }
+.need-done.tone-ok p { color: var(--ok); }
+.need-done.tone-no p { color: var(--danger); }
+.need-error p { color: var(--danger); }
+.phase-note .need-card, .phase-confirm .need-card { border-color: var(--ink); }
+@media (min-width: 900px) {
+  .needs { max-width: 760px; }
+  .need-actions { display: flex; justify-content: flex-end; }
+  .need-actions .btn { min-height: 44px; min-width: 120px; }
+}
+@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
