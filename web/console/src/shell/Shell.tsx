@@ -3,16 +3,26 @@
 // screen. Safe-area insets come from viewport-fit=cover in index.html.
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { liveBus } from "../core/bus.ts";
+import type { EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { Icon } from "./icons.tsx";
 import { Palette, type Command } from "./Palette.tsx";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
 
+// The shell owns the one live connection; screens hear it on the bus.
+const NO_FILTER = {};
+const TO_BUS = {
+  onEvent: (frame: EventFrame) => liveBus.emit({ type: "event", frame }),
+  onPoll: () => liveBus.emit({ type: "resync" }),
+  onRecovered: () => liveBus.emit({ type: "resync" }),
+};
+
 export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const route = useRoute();
   const { session } = useSession();
-  const live = useLive(session);
+  const live = useLive(session, NO_FILTER, TO_BUS);
   const reduce = useReducedMotion();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
