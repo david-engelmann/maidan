@@ -109,6 +109,14 @@ test("a rotation that lands after the page signed out does not sign it back in",
   page.on("request", (r) => {
     if (r.url().endsWith("/auth/session/from-token")) trades.push(r.url());
   });
+  // Signing out may cancel the held request, or the server may refuse it
+  // once the credential is gone; either way the page must stay signed out.
+  const settled = new Promise<"done" | "dropped">((r) => {
+    page.on("requestfinished", (q) => {
+      if (q.url().includes("/rotate")) void q.response().then((res) => { r(res && res.ok() ? "done" : "dropped"); });
+    });
+    page.on("requestfailed", (q) => { if (q.url().includes("/rotate")) r("dropped"); });
+  });
   const row = page.locator("li.token", { has: page.locator(".state-chip", { hasText: "This page" }) });
   await row.getByRole("button", { name: "Rotate" }).click();
   await row.getByRole("button", { name: "Rotate: sure?" }).click();
@@ -117,7 +125,9 @@ test("a rotation that lands after the page signed out does not sign it back in",
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByLabel(/paste a token/i)).toBeVisible();
   release();
-  await expect.poll(() => meStatus(request, own.secret), { message: "the rotation finished" }).toBe(401);
+  if ((await settled) === "done") {
+    await expect.poll(() => meStatus(request, own.secret), { message: "the rotation finished" }).toBe(401);
+  }
   await page.waitForTimeout(500);
   expect(trades, "the stale rotation installed no session").toEqual([]);
   await expect(page.getByLabel(/paste a token/i)).toBeVisible();
