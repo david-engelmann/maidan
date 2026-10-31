@@ -1,17 +1,23 @@
-// The console scaffold. Screens arrive one per change; the old board at /ui
-// stays served until they all have.
+// The console. Each place is a placeholder until its screen lands; the
+// classic board at /ui stays served until they all have.
 import { useEffect, useState } from "react";
 import { SessionContext, createSessionStore, useSession } from "./hooks/useSession.ts";
-import { useLive } from "./hooks/useLive.ts";
+import { Shell } from "./shell/Shell.tsx";
+import { ROUTES, type RouteId } from "./shell/router.ts";
 
-function Status() {
+function Placeholder({ id }: { id: RouteId }) {
   const { session } = useSession();
-  const live = useLive(session);
-  const who = session.status === "signed-in" ? (session.displayName ?? session.memberId) : null;
+  const route = ROUTES.find((r) => r.id === id) ?? ROUTES[0];
   return (
-    <p className="mono" aria-live="polite">
-      {session.status === "loading" ? "Checking sign-in" : who ? `Signed in · ${who} · live ${live.kind}` : "Not signed in"}
-    </p>
+    <div className="card">
+      <p className="mono">Coming to the console</p>
+      <h2>{route.title}</h2>
+      <p className="muted">{route.hint}. Until it lands here, it is on the classic board.</p>
+      <a className="button steel" href="/ui/">
+        Open the classic board
+      </a>
+      {session.status === "signed-out" && <p className="muted small">You are not signed in. Sign in on the classic board first.</p>}
+    </div>
   );
 }
 
@@ -22,14 +28,14 @@ export default function App() {
   }, [store]);
   return (
     <SessionContext.Provider value={store}>
-      <main className="splash">
-        <div>
-          <div className="mark steel" aria-hidden="true" />
-          <h1>Maidan console</h1>
-          <p>The new console is being built here. The board is still at /ui.</p>
-          <Status />
-        </div>
-      </main>
+      <Shell
+        screens={{
+          board: <Placeholder id="board" />,
+          needs: <Placeholder id="needs" />,
+          threads: <Placeholder id="threads" />,
+          people: <Placeholder id="people" />,
+        }}
+      />
     </SessionContext.Provider>
   );
 }
