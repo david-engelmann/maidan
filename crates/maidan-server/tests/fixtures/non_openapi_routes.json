@@ -24,6 +24,7 @@
     "/landing/{name}",
     "/llms.txt",
     "/mcp",
+    "/mcp/coordinator",
     "/mcp/reviewer",
     "/mcp/worker",
     "/metrics",

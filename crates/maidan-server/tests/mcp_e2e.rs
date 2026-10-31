@@ -1006,6 +1006,7 @@ async fn profile_endpoints_serve_a_fixed_tool_list() {
     for (path, names) in [
         ("/mcp/worker", maidan_mcp::Profile::Worker.tool_names()),
         ("/mcp/reviewer", maidan_mcp::Profile::Reviewer.tool_names()),
+        ("/mcp/coordinator", maidan_mcp::Profile::Coordinator.tool_names()),
     ] {
         let first = listed(&client, &base, path).await;
         let second = listed(&client, &base, path).await;
