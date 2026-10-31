@@ -2,7 +2,7 @@
 import { api, apiReadPath, apiWritePath, headers, token, uiReadPath, wid, writeApi } from "./api.js";
 import { formatBytes } from "./artifacts.js";
 import { fetchPendingGatesByThread, pendingGateViews, renderResult, renderTeam, renderThreadHeader, scheduleBoardRefresh, selectThread, selectedThreadId, setAttention, threadsById } from "./board.js";
-import { keyActivates, responseError, showError } from "./feedback.js";
+import { responseError, showError } from "./feedback.js";
 import { ago, authorId, personEl } from "./people.js";
 import { sessionMemberId } from "./session.js";
 import { NY_KINDS, NY_RETRY_MAX_MS, NY_RETRY_MIN_MS } from "./state.js";
@@ -281,7 +281,16 @@ import { answerGate, modelRequestLine } from "./tools.js";
         kind.textContent = { open_gate: "Approval", blocked: "Blocked", question: "Question" }[item.kind] || "Review";
         const main = document.createElement("div");
         main.className = "ny-main";
-        const title = document.createElement("div");
+        // A row that opens its task leads with a real button; one that does
+        // not is plain text.
+        let title;
+        if (item.thread_id) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          title = btn;
+        } else {
+          title = document.createElement("div");
+        }
         title.className = "ny-title";
         const th = item.thread_id ? threadsById.get(item.thread_id) : null;
         // A gate row leads with its question: that is what the human answers.
@@ -294,7 +303,6 @@ import { answerGate, modelRequestLine } from "./tools.js";
           : (th && th.title) || (block && block.title) || (asked && asked.title) || item.summary;
         if (item.thread_id) {
           title.onclick = () => selectThread(item.thread_id, (th && th.title) || title.textContent);
-          keyActivates(title, "link"); // it opens the task
         }
         const sub = document.createElement("div");
         sub.className = "ny-sub";
