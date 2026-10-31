@@ -15,7 +15,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::ApiError;
-use crate::extract::{ApiJson, ApiPath};
+use crate::extract::{ApiOptionalJson, ApiPath};
 use crate::state::AppState;
 
 type ApiResult<T> = Result<T, ApiError>;
@@ -70,7 +70,7 @@ fn ensure_workspace(auth: &AuthContext, workspace_id: WorkspaceId) -> ApiResult<
 pub async fn start_reindex_embeddings(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
-    ApiJson(body): ApiJson<StartReindexEmbeddings>,
+    ApiOptionalJson(body): ApiOptionalJson<StartReindexEmbeddings>,
 ) -> ApiResult<(StatusCode, Json<ReindexJob>)> {
     let workspace_id = body.workspace_id.map(WorkspaceId);
     match workspace_id {
