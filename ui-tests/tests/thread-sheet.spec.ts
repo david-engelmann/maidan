@@ -24,7 +24,7 @@ test.describe("phone", () => {
     await expect(back).toBeVisible();
     await back.click();
     await expect(panel).toBeHidden();
-    await expect(card).toBeFocused();
+    await expect(card.locator(".card-open")).toBeFocused();
   });
 
   test("Escape puts the sheet away and returns to the card", async ({ page }) => {
@@ -36,7 +36,7 @@ test.describe("phone", () => {
     await expect(panel).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(panel).toBeHidden();
-    await expect(card).toBeFocused();
+    await expect(card.locator(".card-open")).toBeFocused();
   });
 });
 

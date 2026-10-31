@@ -21,7 +21,7 @@ use super::{
 };
 use crate::dto::*;
 use crate::error::ApiError;
-use crate::extract::{ApiJson, ApiPath, ApiQuery};
+use crate::extract::{ApiJson, ApiOptionalJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
 pub async fn create_thread(
@@ -1142,7 +1142,7 @@ pub async fn unassign_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
-    ApiJson(_body): ApiJson<UnassignThread>,
+    ApiOptionalJson(_body): ApiOptionalJson<UnassignThread>,
 ) -> ApiResult<Json<Thread>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -1219,7 +1219,7 @@ pub async fn claim_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
-    ApiJson(_body): ApiJson<ClaimThread>,
+    ApiOptionalJson(_body): ApiOptionalJson<ClaimThread>,
 ) -> ApiResult<Json<ThreadClaimResult>> {
     cap(&auth, THREAD_TRANSITION)?;
     let thread_id = ThreadId(id);
@@ -1763,7 +1763,7 @@ pub async fn claim_next_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(cid): ApiPath<uuid::Uuid>,
-    ApiJson(body): ApiJson<ClaimNextThread>,
+    ApiOptionalJson(body): ApiOptionalJson<ClaimNextThread>,
 ) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
     let lease_secs = state.mcp.claim_lease_policy().lease_for(body.lease_secs)?;
@@ -1808,7 +1808,7 @@ pub async fn claim_next_workspace_thread(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(wid): ApiPath<uuid::Uuid>,
-    ApiJson(body): ApiJson<ClaimNextThread>,
+    ApiOptionalJson(body): ApiOptionalJson<ClaimNextThread>,
 ) -> ApiResult<Json<Option<ClaimedThread>>> {
     cap(&auth, THREAD_TRANSITION)?;
     let lease_secs = state.mcp.claim_lease_policy().lease_for(body.lease_secs)?;
