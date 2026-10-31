@@ -1,0 +1,3 @@
+### A clean-machine install check against the release
+
+- **Added:** `scripts/clean-machine-install.sh`, the Next 14 clean-machine install: with only docker, curl and jq, it downloads a release's quickstart files (no clone, no Rust), starts them under their own compose project on a free loopback port, seeds the admin with `maidan init`, runs the two-agent demo, checks `/health` reports the pinned release, prints the published GHCR server image digest for the validation record, and tears everything down. It warns, or fails under `STRICT=1`, when a tag's quickstart pins an older binary than the tag itself, as v419.0.0's does (it pins v417.0.0).
