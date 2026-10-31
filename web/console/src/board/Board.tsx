@@ -131,7 +131,7 @@ export function Board() {
                       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97 }}
                       transition={{ duration: 0.18 }}
                     >
-                      <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
+                      <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
                     </motion.li>
                   ))}
                 </AnimatePresence>
@@ -155,16 +155,17 @@ export function Board() {
   );
 }
 
-function TaskCard({ card, now, member, fresh, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; onOpen: () => void }) {
+function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; refusal?: string; onOpen: () => void }) {
   const th = card.thread;
   return (
-    <button type="button" className={`task ${fresh ? "fresh" : ""}`} data-chrome={card.chrome.label} aria-label={cardAriaLabel(card)} aria-haspopup="dialog" onClick={onOpen}>
+    <button type="button" className={`task ${fresh ? "fresh" : ""}`} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}`} aria-haspopup="dialog" onClick={onOpen}>
       <span className="task-title">{card.title}</span>
       <span className="task-foot">
         <span className={`state state-${card.chrome.lane}`}>{card.label}</span>
         {chips(th, card.chrome.lane).map((ch) => (
           <span key={ch.kind} className={`chip chip-${ch.kind}`} title={ch.title}>{ch.text}</span>
         ))}
+        {refusal !== undefined && <span className="chip chip-refused" title={refusal || "The server refused this close"}>Close refused</span>}
         {member && <span className="who">{member.name}</span>}
         <span className="when">{cardWhen(card, now)}</span>
       </span>

@@ -544,7 +544,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
   border: 1px solid var(--line); background: var(--paper); color: var(--ink);
   font: inherit; font-size: 16px;
 }
-.sign-in-token input:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.sign-in-token input:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 
 
 @media (hover: none) { .msg:has(.reacts.none) { padding-right: 36px; } }
@@ -562,3 +562,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .need-evidence .ev-tier.tier-verified { color: #1f5f2e; border-color: #1f5f2e; }
 .need-evidence .ev-unlinked { color: color-mix(in srgb, var(--signal) 70%, #000); }
 .need-evidence .ev-open { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-weight: 500; }
+
+/* The credential badge, the capability card and the front door's chooser. */
+.mode-chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.mode-chip[data-mode="delegated"] { border-color: var(--signal); color: var(--ink); }
+.cap-card { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.cap-cant code { color: var(--muted); }
+.chooser-scrim { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgba(21, 20, 17, 0.32); }
+.chooser { width: min(440px, 100%); display: grid; gap: 10px; }
+.chooser .button { min-height: 44px; }
+.no-workspace { margin: 0; }
+@media (max-width: 520px) { .mode-chip { display: none; } }
+.chip-refused { color: var(--signal); border-color: var(--signal); }

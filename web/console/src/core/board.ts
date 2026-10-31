@@ -114,6 +114,27 @@ export function chips(th: Thread, lane: LaneKey): Array<{ kind: string; text: st
   return out;
 }
 
+type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
+export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
+
+/**
+ * The newest refused-transition sentence for each wanted task. The server
+ * posts one as a notice message when it refuses a move (a close with its
+ * review requirement unmet), so the card can say why it is still in review.
+ */
+export function latestRefusals(events: MessageEvent[], wanted: Set<string>): Map<string, string> {
+  const best = new Map<string, { at: string; text: string }>();
+  for (const ev of events) {
+    const m = ev.payload?.message;
+    const id = m?.thread_id ?? ev.payload?.thread_id ?? ev.thread_id;
+    if (!m || !id || !wanted.has(id) || m.metadata?.notice !== "transition_refused") continue;
+    const at = m.created_at ?? ev.payload?.occurred_at ?? ev.occurred_at ?? "";
+    const prev = best.get(id);
+    if (!prev || at >= prev.at) best.set(id, { at, text: m.body ?? "" });
+  }
+  return new Map([...best].map(([id, r]) => [id, r.text]));
+}
+
 /** The card's accessible name: its title, state, and anything urgent. */
 export function cardAriaLabel(card: Card): string {
   const th = card.thread;
@@ -240,6 +261,18 @@ export class BoardApi {
   }
 
   /** Every task in the channel: pages until a short page or a stuck cursor. */
+  /** Refusal sentences for the channel's tasks in review. A failed read is no refusal. */
+  async refusals(workspaceId: string, channelId: string, threads: Thread[]): Promise<Map<string, string>> {
+    const wanted = new Set(threads.filter((th) => th.state === "in_review").map((th) => th.id));
+    if (!wanted.size) return new Map();
+    const q = new URLSearchParams({ types: "message_posted", channel_id: channelId, limit: "500" });
+    try {
+      return latestRefusals(await this.get<MessageEvent[]>(`/workspaces/${workspaceId}/events?${q}`), wanted);
+    } catch {
+      return new Map();
+    }
+  }
+
   async threads(channelId: string, pageSize = 500): Promise<Thread[]> {
     const out: Thread[] = [];
     let cursor: string | null = null;

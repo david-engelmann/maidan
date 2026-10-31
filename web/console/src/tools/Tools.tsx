@@ -28,6 +28,8 @@ import {
 } from "../core/tools.ts";
 import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { MODE_LINE, signOutPostsLogout, writeInit } from "../core/api.ts";
+import { grantCard } from "../core/session.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
 import { PUSH_WORDS, disablePush, enablePush, pushRefusal, pushSubscribed, type PushOutcome } from "../pwa/push.ts";
@@ -196,6 +198,7 @@ function Prefs({ api, me }: { api: ToolsApi; me: string | null }) {
   const muted = new Set((prefs.value ?? []).filter((p) => p.muted).map((p) => p.kind));
   return (
     <div className="tool-grid">
+      <SessionCard />
       <Panel title="Your name">
         <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); void act("name", () => api.setDisplayName(me, name.trim()), name.trim() ? "Name saved" : "Name cleared", "Could not save your name"); }}>
           <label className="field grow">Display name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="Leave empty to clear" autoComplete="name" /></label>
@@ -755,5 +758,51 @@ function Device({ api, me }: { api: ToolsApi; me: string | null }) {
         {note ? <p className="small" role="status">{note}</p> : null}
       </Panel>
     </>
+  );
+}
+
+// ---- Session ---------------------------------------------------------------
+
+/** The capability card: what GET /me says this credential can and cannot do. */
+function SessionCard() {
+  const { session, store } = useSession();
+  const [leaving, setLeaving] = useState(false);
+  if (session.status !== "signed-in" || !session.mode) return null;
+  const signOut = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    const c = session.credentials;
+    try {
+      if (signOutPostsLogout(session.discovery.sessions, c.sessionMemberId)) {
+        await fetch(`${c.base}/auth/logout`, writeInit({ method: "POST", credentials: "include" }));
+      }
+    } catch {
+      /* the tab forgets its credential either way */
+    }
+    store.signOut();
+    setLeaving(false);
+  };
+  const card = session.grant ? grantCard(session.grant) : null;
+  return (
+    <Panel title="Session">
+      <dl className="facts">
+        <div><dt>Acting with</dt><dd className="session-credential">{MODE_LINE[session.mode]}</dd></div>
+        <div><dt>Member id</dt><dd className="mono-id session-member">{session.memberId}</dd></div>
+        <div><dt>Workspace id</dt><dd className="mono-id">{session.workspaceId}</dd></div>
+      </dl>
+      {card ? (
+        <div className="cap-card">
+          <div>
+            <h3 className="small">Can <span className="muted cap-count">({card.can.length})</span></h3>
+            <ul className="caps cap-can" aria-label="Can">{card.can.map((c) => <li key={c}><code>{c}</code></li>)}</ul>
+          </div>
+          <div>
+            <h3 className="small">Can't <span className="muted">({card.cannot.length})</span></h3>
+            <ul className="caps cap-cant" aria-label="Can't">{card.cannot.map((c) => <li key={c}><code>{c}</code></li>)}</ul>
+          </div>
+        </div>
+      ) : null}
+      <button type="button" className="button ghost session-signout" disabled={leaving} onClick={() => void signOut()}>Sign out</button>
+    </Panel>
   );
 }

@@ -171,7 +171,7 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
 }
 
 function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
-  const { session } = useSession();
+  const { session, store } = useSession();
   const [version, setVersion] = useState(0);
   const tokens = useTokens(session, api, row.person.id, version);
   const [now] = useState(() => Date.now());
@@ -205,8 +205,11 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
     if (op === "revoke") void run(() => api.revoke(id), "Token revoked", "Could not revoke that token");
     else
       void run(async () => {
+        const own = id === pageToken;
+        const connection = store.connection();
         const out = await api.rotate(id);
         setSecret({ title: "New token. The old one no longer works.", value: out.secret });
+        if (own && !(await store.adoptRotated(out.secret, connection))) say("This page's sign-in changed during the rotation, so it was not moved onto the new token.", "error");
       }, "Token rotated", "Could not rotate that token");
   };
   return (

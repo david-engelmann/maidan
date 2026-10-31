@@ -7,6 +7,9 @@ import { controlBus, liveBus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { MODE_WORD } from "../core/api.ts";
+import { readFrontDoorHint } from "../core/session.ts";
+import { Chooser } from "./Chooser.tsx";
 import { Icon, Mark } from "./icons.tsx";
 import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
@@ -26,9 +29,22 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const route = useRoute();
   const { session } = useSession();
   const live = useLive(session, NO_FILTER, TO_BUS);
+  // A refused socket (a revoked or narrowed token) sends no more events, so
+  // ask every screen to read once more: each then shows the refusal it gets.
+  const refused = live.kind === "refused";
+  useEffect(() => {
+    if (refused) liveBus.emit({ type: "resync" });
+  }, [refused]);
   const reduce = useReducedMotion();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // The front door's hint is read once and taken off the address bar, so a
+  // reload never replays it.
+  const [hint, setHint] = useState(() => readFrontDoorHint(window.location.search).hint);
+  useEffect(() => {
+    const { rest } = readFrontDoorHint(window.location.search);
+    if (rest !== window.location.search) window.history.replaceState(null, "", `${window.location.pathname}${rest}${window.location.hash}`);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -71,6 +87,9 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       <header className={scrolled ? "top scrolled" : "top"}>
         <h1>{current.title}</h1>
         <div className="top-actions">
+          {session.status === "signed-in" && session.mode ? (
+            <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
+          ) : null}
           <span className={`live live-${live.kind}`} title={who ? `Signed in as ${who}` : "Not signed in"}>
             <span className="dot" aria-hidden="true" />
             {liveWord}
@@ -89,7 +108,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
           aria-label={current.title}
         >
-          {session.status === "signed-out" ? <SignIn /> : screens[route]}
+          {session.status === "signed-out" ? <SignIn noWorkspace={hint === "no-workspace"} /> : screens[route]}
         </motion.section>
       </main>
 
@@ -97,6 +116,9 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         <Tabs route={route} reduce={Boolean(reduce)} layoutId="tab-pill" />
       </nav>
 
+      {hint === "choose" && session.status === "signed-in" && !session.credentials.pastedToken && !session.credentials.tokenSession ? (
+        <Chooser onClose={() => setHint(null)} />
+      ) : null}
       <Toasts />
       <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>

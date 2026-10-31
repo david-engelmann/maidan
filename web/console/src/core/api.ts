@@ -88,6 +88,20 @@ export function writeInit(init: RequestInit = {}, key = idempotencyKey()): Reque
 
 export type CredentialMode = "session" | "bearer" | "delegated";
 
+/** The badge word for each credential, shown once a credential works. */
+export const MODE_WORD: Record<CredentialMode, string> = {
+  session: "Session",
+  bearer: "Bearer token",
+  delegated: "Delegated token",
+};
+
+/** One line on what the credential is allowed to stand for. */
+export const MODE_LINE: Record<CredentialMode, string> = {
+  session: "Session: your own sign-in, acting as you",
+  bearer: "Bearer token: acts as this member",
+  delegated: "Delegated token: acts only within the grant it was lent",
+};
+
 /** What GET /me says the page acts with. */
 export function credentialMode(
   me: { is_bearer: boolean; delegation_grant_id?: string | null } | null,

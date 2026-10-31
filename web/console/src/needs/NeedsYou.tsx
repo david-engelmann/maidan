@@ -300,6 +300,8 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
       ref={rowRef}
       layout={!reduce}
       className={`need ${primary ? "primary" : ""} need-${item.kind} phase-${state.phase}`}
+      data-kind={item.kind}
+      data-thread-id={tid ?? undefined}
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, x: state.phase === "done" && state.tone === "no" ? -40 : 40, transition: { duration: 0.38 } }}

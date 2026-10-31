@@ -1,7 +1,7 @@
 // The console's sign-in state, as a small store the useSession hook reads.
 // A port of the board's session.js: discovery, the cookie session, the
 // token-for-session exchange, and /me, without touching the DOM.
-import { credentialMode, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
+import { apiPath, credentialMode, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
 
 export type Discovery = {
   /** False when discovery has not been answered yet (unreachable, 5xx, 429). */
@@ -19,6 +19,8 @@ export type SessionState = {
   displayName: string | null;
   workspaceId: string | null;
   mode: CredentialMode | null;
+  /** What GET /me says this credential holds, and the full vocabulary. */
+  grant: { capabilities: string[]; known: string[] } | null;
   discovery: Discovery;
   error: string | null;
 };
@@ -35,6 +37,7 @@ export function initialSession(base: string): SessionState {
     displayName: null,
     workspaceId: null,
     mode: null,
+    grant: null,
     discovery: NO_DISCOVERY,
     error: null,
   };
@@ -72,6 +75,9 @@ export class SessionStore {
   private state: SessionState;
   private listeners = new Set<() => void>();
   private gen = 0;
+  // Bumped whenever this tab's credential changes (a sign-in or a sign-out),
+  // unlike gen, which also moves on every refresh.
+  private epoch = 0;
   private readonly fetchFn: Fetch;
 
   constructor(base: string, fetchFn: Fetch) {
@@ -134,11 +140,23 @@ export class SessionStore {
 
   private async readMe(gen: number): Promise<void> {
     try {
-      const res = await this.fetchFn(`${this.base}/me`, { headers: headers(this.state.credentials), credentials: "include" });
+      const res = await this.fetchFn(apiPath(this.state.credentials, "/me"), { headers: headers(this.state.credentials), credentials: "include" });
       if (gen !== this.gen || !res.ok) return;
-      const me = (await res.json()) as { member_id: string; workspace_id: string; is_bearer: boolean; delegation_grant_id?: string | null };
+      const me = (await res.json()) as {
+        member_id: string;
+        workspace_id: string;
+        is_bearer: boolean;
+        delegation_grant_id?: string | null;
+        capabilities?: unknown;
+        known_capabilities?: unknown;
+      };
       if (gen !== this.gen) return;
-      this.set({ mode: credentialMode(me), memberId: me.member_id, workspaceId: this.state.workspaceId ?? me.workspace_id });
+      this.set({
+        mode: credentialMode(me),
+        grant: { capabilities: strings(me.capabilities), known: strings(me.known_capabilities) },
+        memberId: me.member_id,
+        workspaceId: this.state.workspaceId ?? me.workspace_id,
+      });
     } catch {
       /* the session read already said who this is */
     }
@@ -150,6 +168,7 @@ export class SessionStore {
    * tab's memory only, never in storage.
    */
   async signInWithToken(secret: string): Promise<{ ok: boolean; error?: string }> {
+    this.epoch++;
     const gen = ++this.gen;
     let res: Response;
     try {
@@ -180,12 +199,28 @@ export class SessionStore {
     return { ok: true };
   }
 
+  /** The credential this tab holds now, as a number to compare later. */
+  connection(): number {
+    return this.epoch;
+  }
+
+  /**
+   * Move this page onto the secret that rotated its own token. A rotation
+   * that finishes after the tab signed out or in as someone else must not
+   * install its secret there, so it is dropped when the connection moved.
+   */
+  async adoptRotated(secret: string, connection: number): Promise<boolean> {
+    if (connection !== this.epoch || this.state.status !== "signed-in") return false;
+    return (await this.signInWithToken(secret)).ok;
+  }
+
   setWorkspace(workspaceId: string): void {
     this.set({ workspaceId });
   }
 
   /** Forget this tab's credentials; the caller posts /auth/logout when due. */
   signOut(): void {
+    this.epoch++;
     this.gen++;
     this.set({
       status: "signed-out",
@@ -193,6 +228,36 @@ export class SessionStore {
       memberId: null,
       displayName: null,
       mode: null,
+      grant: null,
     });
   }
+}
+
+function strings(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** Split a grant into what it can and cannot do, each sorted. */
+export function grantCard(grant: { capabilities: string[]; known: string[] }): { can: string[]; cannot: string[] } {
+  const held = new Set(grant.capabilities);
+  return {
+    can: [...held].sort(),
+    cannot: grant.known.filter((c) => !held.has(c)).sort(),
+  };
+}
+
+export type FrontDoorHint = "choose" | "no-workspace" | null;
+
+/**
+ * The hint the identity-provider sign-in leaves on the return path: with
+ * several workspaces the page opens a chooser, with none it says so. The hint
+ * is read once; `rest` is the query without it, for the address bar.
+ */
+export function readFrontDoorHint(search: string): { hint: FrontDoorHint; rest: string } {
+  const q = new URLSearchParams(search);
+  const hint: FrontDoorHint = q.get("choose_workspace") === "1" ? "choose" : q.get("no_workspace") === "1" ? "no-workspace" : null;
+  q.delete("choose_workspace");
+  q.delete("no_workspace");
+  const left = q.toString();
+  return { hint, rest: left ? `?${left}` : "" };
 }

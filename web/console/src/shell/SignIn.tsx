@@ -4,7 +4,7 @@
 import { useState, type FormEvent } from "react";
 import { useSession } from "../hooks/useSession.ts";
 
-export function SignIn() {
+export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
   const { session, store } = useSession();
   const [secret, setSecret] = useState("");
   const [busy, setBusy] = useState(false);
@@ -26,6 +26,11 @@ export function SignIn() {
   return (
     <div className="card sign-in">
       <h2>Sign in to Maidan</h2>
+      {noWorkspace ? (
+        <p className="err small no-workspace" role="alert">
+          You signed in, but that identity isn't a member of any workspace on this server, so no session was made. Ask an admin to add you, or create a workspace.
+        </p>
+      ) : null}
       {oidcLoginPath ? (
         <div className="edit-actions">
           <a className="button ink" href={`${oidcLoginPath}?return_to=/ui/`}>Sign in</a>

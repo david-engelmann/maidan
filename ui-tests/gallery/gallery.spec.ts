@@ -28,6 +28,7 @@ const fx: Capture = JSON.parse(readFileSync(resolve(__dirname, "../.gallery.json
 // come from the server's /landing/ route as they do in production.
 const LANDING = resolve(__dirname, "../../crates/maidan-server/static/landing/dist/index.html");
 async function openLanding(page: Page) {
+  await page.clock.setFixedTime(new Date(fx.now));
   await page.route((url) => url.pathname === "/", (route) =>
     route.fulfill({ path: LANDING, contentType: "text/html; charset=utf-8" }),
   );
@@ -125,6 +126,34 @@ for (const vp of VIEWPORTS) {
       await page.locator("button.task").first().click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await shoot(page, `thread-${vp.tag}`, vp.width, errors);
+    });
+
+    // The capture seed has no identity provider, so discovery is answered as
+    // a server with one would answer it: the card leads with Sign in.
+    test(`console signed out, identity provider, ${vp.tag}`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date(fx.now));
+      await page.route("**/.well-known/maidan.json", async (route) => {
+        const res = await route.fetch();
+        const body = (await res.json()) as { auth?: Record<string, unknown> };
+        await route.fulfill({ response: res, json: { ...body, auth: { ...(body.auth ?? {}), oidc: true, oidc_login: "/auth/oidc/login", sessions: true } } });
+      });
+      await page.goto("/ui/");
+      await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Or paste a token")).toBeVisible();
+      await shoot(page, `console-signed-out-idp-${vp.tag}`, vp.width, errors);
+    });
+
+    test(`task in review, ${vp.tag}`, async ({ page }) => {
+      test.skip(!fx.waiting.review_thread_id, "the seed has no task in review");
+      // The task's own view: its messages, and its result and evidence opened.
+      await signIn(page, fx.waiting, `#/threads/t/${fx.waiting.review_thread_id}`);
+      await expect(page.getByText("End a deactivated member's WebSocket streams").first()).toBeVisible();
+      await expect(page.getByText(/re-checks the token or session/).first()).toBeVisible();
+      const more = page.locator("details", { has: page.locator("summary", { hasText: "Result and evidence" }) });
+      await more.locator("summary").click();
+      await expect(more.getByText(/3 of 3 caught/)).toBeVisible();
+      await expect(more.locator("li").first()).toBeVisible();
+      await shoot(page, `task-in-review-${vp.tag}`, vp.width, errors);
     });
 
     test(`connect an agent, ${vp.tag}`, async ({ page }) => {

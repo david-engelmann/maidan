@@ -11,13 +11,15 @@ export type BoardData = {
   threads: Thread[];
   gates: Record<string, Gate>;
   members: Map<string, Member>;
+  /** The server's sentence for each in-review task whose close it refused. */
+  refusals: Map<string, string>;
   /** Ids whose card changed in the last live refresh, so it can flash once. */
   fresh: Set<string>;
 };
 
 const CHANNEL_KEY = "maidan_console_channel";
 
-const EMPTY: BoardData = { status: "idle", error: null, channels: [], channelId: null, threads: [], gates: {}, members: new Map(), fresh: new Set() };
+const EMPTY: BoardData = { status: "idle", error: null, channels: [], channelId: null, threads: [], gates: {}, members: new Map(), refusals: new Map(), fresh: new Set() };
 
 function sig(th: Thread): string {
   return `${th.state}|${th.assignee_id ?? ""}|${th.work_started_at ?? ""}|${th.updated_at ?? ""}`;
@@ -40,6 +42,7 @@ export function useBoard(session: SessionState, api: BoardApi) {
         const stored = typeof localStorage !== "undefined" ? localStorage.getItem(CHANNEL_KEY) : null;
         const pick = channelId ?? (stored && channels.some((c) => c.id === stored) ? stored : (channels[0]?.id ?? null));
         const [threads, gates] = pick ? await Promise.all([api.threads(pick), api.gates(workspace)]) : [[], {}];
+        const refusals = pick ? await api.refusals(workspace, pick, threads) : new Map<string, string>();
         if (mine !== gen.current) return;
         const fresh = new Set<string>();
         const next = new Map<string, string>();
@@ -49,7 +52,7 @@ export function useBoard(session: SessionState, api: BoardApi) {
           next.set(th.id, s);
         }
         seen.current = next;
-        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), fresh });
+        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), refusals, fresh });
       } catch (e) {
         if (mine !== gen.current) return;
         const message = e instanceof Error ? e.message : "Could not load the board";

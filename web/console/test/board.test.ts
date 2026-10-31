@@ -139,3 +139,13 @@ test("gates are best effort and keyed by thread", async () => {
   const down = new BoardApi(fake(() => json({}, 503)).fetch, () => session, () => "session");
   assert.deepEqual(await down.gates("w"), {});
 });
+
+test("a refused close is the newest refusal notice for a task in review", async () => {
+  const { latestRefusals } = await import("../src/core/board.ts");
+  const ev = (id: string, at: string, body: string, notice = "transition_refused") => ({ payload: { message: { thread_id: id, created_at: at, body, metadata: { notice } } } });
+  const got = latestRefusals(
+    [ev("a", "2026-10-01T00:00:00Z", "old"), ev("a", "2026-10-02T00:00:00Z", "new"), ev("b", "2026-10-02T00:00:00Z", "chat", "other"), ev("c", "2026-10-02T00:00:00Z", "not wanted")],
+    new Set(["a", "b"]),
+  );
+  assert.deepEqual([...got], [["a", "new"]]);
+});

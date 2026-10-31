@@ -1,7 +1,7 @@
 // The session store: discovery, the cookie session, and the token exchange.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SessionStore, readDiscovery, type Fetch } from "../src/core/session.ts";
+import { SessionStore, grantCard, readDiscovery, readFrontDoorHint, type Fetch } from "../src/core/session.ts";
 
 const BASE = "https://maidan.example";
 const json = (status: number, body: unknown) =>
@@ -17,7 +17,9 @@ test("discovery: a 404 is an answer, a 503 is not", async () => {
 test("a cookie session signs in and /me names the mode", async () => {
   const fetchFn: Fetch = async (url) => {
     if (url.endsWith("/auth/session")) return json(200, { member_id: "mem_1", token_id: null, display_name: " Ada ", workspace_id: "ws_1" });
-    if (url.endsWith("/me")) return json(200, { member_id: "mem_1", workspace_id: "ws_1", is_bearer: false });
+    // The bearer /me refuses a cookie; a person's sign-in reads the /ui/api one.
+    if (url === `${BASE}/me`) return json(403, { detail: "This needs a bearer token" });
+    if (url === `${BASE}/ui/api/me`) return json(200, { member_id: "mem_1", workspace_id: "ws_1", is_bearer: false });
     return new Response("", { status: 404 });
   };
   const s = new SessionStore(BASE, fetchFn);
@@ -94,4 +96,35 @@ test("an overtaken read does not land", async () => {
   await first;
   assert.equal(s.getSnapshot().status, "signed-out");
   assert.equal(s.getSnapshot().memberId, null);
+});
+
+test("the capability card splits the real grant from the vocabulary", () => {
+  const card = grantCard({ capabilities: ["workspace:read", "message:post"], known: ["message:post", "token:admin", "workspace:read", "channel:admin"] });
+  assert.deepEqual(card.can, ["message:post", "workspace:read"]);
+  assert.deepEqual(card.cannot, ["channel:admin", "token:admin"]);
+});
+
+test("the front door hint is read once and taken off the query", () => {
+  assert.deepEqual(readFrontDoorHint("?choose_workspace=1"), { hint: "choose", rest: "" });
+  assert.deepEqual(readFrontDoorHint("?no_workspace=1&x=2"), { hint: "no-workspace", rest: "?x=2" });
+  assert.deepEqual(readFrontDoorHint("?choose_workspace=0"), { hint: null, rest: "" });
+  assert.deepEqual(readFrontDoorHint(""), { hint: null, rest: "" });
+});
+
+test("a rotated secret is installed only while the connection is unchanged", async () => {
+  const calls: string[] = [];
+  const fetchFn = async (url: string) => {
+    calls.push(url);
+    if (url.endsWith("/auth/session/from-token")) return new Response("{}", { status: 200 });
+    if (url.endsWith("/auth/session")) return new Response(JSON.stringify({ member_id: "m1", workspace_id: "w1", token_id: "t1" }), { status: 200 });
+    return new Response(JSON.stringify({ member_id: "m1", workspace_id: "w1", is_bearer: true }), { status: 200 });
+  };
+  const s = new SessionStore("http://x", fetchFn);
+  await s.signInWithToken("first");
+  const stale = s.connection();
+  s.signOut();
+  assert.equal(await s.adoptRotated("rotated", stale), false);
+  assert.equal(calls.filter((u) => u.endsWith("/from-token")).length, 1, "the stale rotation made no new session");
+  await s.signInWithToken("again");
+  assert.equal(await s.adoptRotated("rotated", s.connection()), true);
 });
