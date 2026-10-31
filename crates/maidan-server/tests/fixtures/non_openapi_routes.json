@@ -20,7 +20,6 @@
     "/a2a/v1/tasks/{id}/pushNotificationConfigs/{config_id}",
     "/console",
     "/console/",
-    "/console/{name}",
     "/integrations/deploys/events",
     "/integrations/github/events",
     "/integrations/slack/events",
@@ -93,7 +92,7 @@
     "/ui/api/workspaces/{wid}/usage-meters",
     "/ui/oauth/consent",
     "/ui/oauth/grants",
-    "/ui/static/{name}",
+    "/ui/{name}",
     "/workspaces/{id}/audit"
   ]
 }

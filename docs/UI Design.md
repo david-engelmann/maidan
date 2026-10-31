@@ -1,6 +1,6 @@
 # Maidan /ui design spec
 
-Design contract for `crates/maidan-server/static/index.html`.
+> **Superseded.** This was the design contract for the old single-file board (`static/index.html`), which is gone. `/ui` now serves the console built from `web/console`. The screenshot bar below (1440 px, light mode, what each shot must show) still drives `ui-tests/capture`.
 
 For the agent implementing `crates/maidan-server/static/index.html`. One file, vanilla JS, no new framework, no dark theme, no drag between lanes (a lane is a state an agent moves). Read `origin/main` at `65dbfe26` (2026-09-30). Do not restyle work that is already there.
 

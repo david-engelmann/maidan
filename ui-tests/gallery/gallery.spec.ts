@@ -53,15 +53,16 @@ test.afterAll(() => {
   writeFileSync(resolve(OUT, "report.json"), JSON.stringify(rows, null, 2) + "\n");
 });
 
-async function signIn(page: Page, board: Board) {
+// Sign in the way the quickstart does: paste the token, and the console
+// trades it for a browser session. The board's channel is set first.
+async function signIn(page: Page, board: Board, hash = "#/board") {
   await page.clock.setFixedTime(new Date(fx.now));
-  await page.goto("/ui/");
-  await page.fill("#workspace", board.workspace_id);
-  await page.fill("#token", board.token);
-  await page.locator("#token").dispatchEvent("change");
-  await expect(page.locator("#logout")).toBeAttached();
-  await page.reload();
-  await expect(page.locator("#board")).not.toHaveAttribute("aria-busy", "true");
+  await page.addInitScript((id) => window.localStorage.setItem("maidan_console_channel", id), board.channel_id);
+  await page.goto(`/ui/${hash}`);
+  await page.getByLabel(/paste a token/i).fill(board.token);
+  await page.getByRole("button", { name: "Sign in with token" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in to Maidan" })).toBeHidden();
+  await expect(page.locator(".rail:visible, .tabbar:visible").first()).toBeVisible();
 }
 
 async function shoot(page: Page, name: string, width: number, errors: string[]) {
@@ -101,36 +102,40 @@ for (const vp of VIEWPORTS) {
     test(`console signed out, ${vp.tag}`, async ({ page }) => {
       await page.clock.setFixedTime(new Date(fx.now));
       await page.goto("/ui/");
-      await expect(page.locator("#token")).toBeAttached();
+      await expect(page.getByRole("heading", { name: "Sign in to Maidan" })).toBeVisible();
       await shoot(page, `console-signed-out-${vp.tag}`, vp.width, errors);
     });
 
     test(`board in flight, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.flight);
+      // A phone shows one lane at a time; a desktop shows all seven tasks.
+      if (vp.mobile) await expect(page.locator("button.task").first()).toBeVisible();
+      else await expect(page.locator("button.task")).toHaveCount(7);
       await shoot(page, `board-in-flight-${vp.tag}`, vp.width, errors);
     });
 
-    test(`board waiting, ${vp.tag}`, async ({ page }) => {
-      await signIn(page, fx.waiting);
-      await shoot(page, `board-waiting-${vp.tag}`, vp.width, errors);
+    test(`needs you, waiting, ${vp.tag}`, async ({ page }) => {
+      await signIn(page, fx.waiting, "#/needs");
+      await expect(page.locator(".needs-count")).toHaveText("1 waiting on you");
+      await shoot(page, `needs-waiting-${vp.tag}`, vp.width, errors);
     });
 
     test(`thread, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.flight);
-      await page.locator(`#board .card[data-id="${fx.flight.review_thread_id}"]`).click();
-      await expect(page.locator("#collab-panel")).toBeVisible();
+      await page.locator("button.task").first().click();
+      await expect(page.getByRole("dialog")).toBeVisible();
       await shoot(page, `thread-${vp.tag}`, vp.width, errors);
     });
 
     test(`connect an agent, ${vp.tag}`, async ({ page }) => {
-      await signIn(page, fx.flight);
-      await page.locator("#connect-open").click();
-      await expect(page.locator("#connect-dialog")).toBeVisible();
+      await signIn(page, fx.flight, "#/tools/connect");
+      await expect(page.getByRole("heading", { name: "Connect an agent" })).toBeVisible();
       await shoot(page, `connect-${vp.tag}`, vp.width, errors);
     });
 
     test(`empty channel, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.empty);
+      await expect(page.locator("button.task")).toHaveCount(0);
       await shoot(page, `empty-channel-${vp.tag}`, vp.width, errors);
     });
   });

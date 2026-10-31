@@ -3,7 +3,7 @@
 // sent with a token, and never a sign-in or socket path, so nothing that
 // carries auth can be read back from the cache by a later visitor.
 
-export const SHELL_SCOPE = "/console/";
+export const SHELL_SCOPE = "/ui/";
 export const SHELL_FILES = ["", "app.js", "vendor.js", "style.css", "geist.woff2", "icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest"] as const;
 export const SHELL_CACHE = "maidan-console-shell-v1";
 
@@ -22,7 +22,7 @@ export function shellKey(r: RequestFacts): string | null {
   }
   if (u.origin !== r.origin || u.search !== "") return null;
   if (NEVER_PREFIXES.some((p) => u.pathname === p || u.pathname.startsWith(`${p}/`))) return null;
-  if (u.pathname === "/console") return SHELL_SCOPE;
+  if (u.pathname === "/ui") return SHELL_SCOPE;
   if (!u.pathname.startsWith(SHELL_SCOPE)) return null;
   const name = u.pathname.slice(SHELL_SCOPE.length);
   return (SHELL_FILES as readonly string[]).includes(name) ? u.pathname : null;
@@ -55,4 +55,4 @@ export function pushPayload(json: (() => unknown) | null, text: (() => string) |
 }
 
 /** Where a notification click lands. */
-export const NOTIFICATION_TARGET = "/console/#/needs";
+export const NOTIFICATION_TARGET = "/ui/#/needs";

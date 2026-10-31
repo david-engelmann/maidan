@@ -52,12 +52,12 @@ fn header(resp: &reqwest::Response, name: &str) -> String {
 #[tokio::test]
 async fn console_index_is_the_built_shell_under_a_strict_csp() {
     let (addr, server) = spawn().await;
-    for path in ["/console", "/console/"] {
+    for path in ["/ui", "/ui/"] {
         let resp = client()
             .get(format!("http://{addr}{path}"))
             .send()
             .await
-            .expect("GET console");
+            .expect("GET /ui");
         assert_eq!(resp.status(), StatusCode::OK, "{path}");
         assert!(header(&resp, "content-type").contains("text/html"));
         let csp = header(&resp, "content-security-policy");
@@ -66,18 +66,28 @@ async fn console_index_is_the_built_shell_under_a_strict_csp() {
         assert!(csp.contains("frame-ancestors 'none'"), "{csp}");
         assert!(!csp.contains("script-src 'self' 'unsafe-inline'"), "{csp}");
         let body = resp.text().await.expect("body");
-        assert!(body.contains(r#"src="/console/app.js""#), "{body}");
-        assert!(body.contains(r#"href="/console/style.css""#), "{body}");
-        assert!(body.contains(r#"href="/console/manifest.webmanifest""#), "{body}");
+        assert!(body.contains(r#"src="/ui/app.js""#), "{body}");
+        assert!(body.contains(r#"href="/ui/style.css""#), "{body}");
+        assert!(
+            body.contains(r#"href="/ui/manifest.webmanifest""#),
+            "{body}"
+        );
         assert!(!body.contains("<style"), "inline style element in {body}");
     }
-    // The board stays served beside it.
-    let board = client()
-        .get(format!("http://{addr}/ui/"))
-        .send()
-        .await
-        .expect("GET /ui/");
-    assert_eq!(board.status(), StatusCode::OK);
+    // The preview address points at /ui.
+    let no_follow = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .expect("client");
+    for path in ["/console", "/console/"] {
+        let old = no_follow
+            .get(format!("http://{addr}{path}"))
+            .send()
+            .await
+            .expect("GET /console");
+        assert_eq!(old.status(), StatusCode::PERMANENT_REDIRECT, "{path}");
+        assert_eq!(header(&old, "location"), "/ui/", "{path}");
+    }
     server.abort();
 }
 
@@ -96,7 +106,7 @@ async fn console_assets_are_pinned_names_only() {
         ("sw.js", "text/javascript"),
     ] {
         let resp = client()
-            .get(format!("http://{addr}/console/{name}"))
+            .get(format!("http://{addr}/ui/{name}"))
             .send()
             .await
             .expect("GET asset");
@@ -105,7 +115,7 @@ async fn console_assets_are_pinned_names_only() {
         assert!(!header(&resp, "etag").is_empty(), "{name} has no etag");
     }
     let missing = client()
-        .get(format!("http://{addr}/console/index.js"))
+        .get(format!("http://{addr}/ui/index.js"))
         .send()
         .await
         .expect("GET missing");

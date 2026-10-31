@@ -68,15 +68,6 @@ export function Tools() {
   useEffect(() => {
     tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "center" });
   }, [tab]);
-  if (session.status === "signed-out") {
-    return (
-      <div className="card">
-        <h2>Tools</h2>
-        <p className="muted">Sign in on the classic board first, then come back.</p>
-        <a className="button steel" href="/ui/">Open the classic board</a>
-      </div>
-    );
-  }
   const me = session.status === "signed-in" ? session.memberId : null;
   const ws = session.status === "signed-in" ? session.workspaceId : null;
   return (

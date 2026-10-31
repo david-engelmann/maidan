@@ -170,7 +170,6 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
             {busy === "close" ? "Closing…" : "Close task"}
           </button>
         )}
-        <a className="button ghost" href="/ui/">Open in the classic board</a>
       </div>
       {claimWhy && <p id="claim-why" className="muted small">{claimWhy}</p>}
       <MoreActions th={th} api={api} onChanged={onChanged} setNote={setNote} />

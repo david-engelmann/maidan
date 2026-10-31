@@ -3,11 +3,9 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { say, sayError } from "../core/notices.ts";
 import { formatBytes, isSha, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
-import { useSession } from "../hooks/useSession.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 
 export function Artifacts() {
-  const { session } = useSession();
   const api = useToolsApi();
   const [sha, setSha] = useState("");
   const [looked, setLooked] = useState<string | null>(null);
@@ -16,15 +14,6 @@ export function Artifacts() {
   const [busy, setBusy] = useState(false);
   const meta = useLoad(looked, () => api.artifact(looked ?? ""));
   const linked = useLoad(threadOn, () => api.linked(threadOn ?? ""));
-  if (session.status === "signed-out") {
-    return (
-      <div className="card">
-        <h2>Files</h2>
-        <p className="muted">Sign in on the classic board first, then come back.</p>
-        <a className="button steel" href="/ui/">Open the classic board</a>
-      </div>
-    );
-  }
   const lookup = (e: FormEvent) => {
     e.preventDefault();
     const s = sha.trim().toLowerCase();

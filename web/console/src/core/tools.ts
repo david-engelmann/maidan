@@ -45,7 +45,7 @@ export function searchQuery(q: string, mode: string, channel = "", author = ""):
 
 /** Where switching workspace goes: the sign-in flow, back to the console. */
 export function switchHref(base: string, workspaceId: string, loginPath = "/auth/oidc/login"): string {
-  return `${trimBase(base)}${loginPath}?workspace_id=${encodeURIComponent(workspaceId)}&return_to=/console/`;
+  return `${trimBase(base)}${loginPath}?workspace_id=${encodeURIComponent(workspaceId)}&return_to=/ui/`;
 }
 
 export const HANDLE_REQUIRED = "Give the agent a handle: lower case letters, digits and dashes.";

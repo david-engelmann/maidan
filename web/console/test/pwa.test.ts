@@ -7,19 +7,19 @@ const O = "https://m.example";
 const req = (url: string, extra: Partial<{ method: string; hasAuthorization: boolean }> = {}) => ({ method: "GET", url, origin: O, hasAuthorization: false, ...extra });
 
 test("the worker caches only the static console shell", () => {
-  assert.equal(shellKey(req(`${O}/console/`)), SHELL_SCOPE);
-  assert.equal(shellKey(req(`${O}/console`)), SHELL_SCOPE);
-  assert.equal(shellKey(req(`${O}/console/app.js`)), "/console/app.js");
-  assert.equal(shellKey(req(`${O}/console/manifest.webmanifest`)), "/console/manifest.webmanifest");
+  assert.equal(shellKey(req(`${O}/ui/`)), SHELL_SCOPE);
+  assert.equal(shellKey(req(`${O}/ui`)), SHELL_SCOPE);
+  assert.equal(shellKey(req(`${O}/ui/app.js`)), "/ui/app.js");
+  assert.equal(shellKey(req(`${O}/ui/manifest.webmanifest`)), "/ui/manifest.webmanifest");
 });
 
 test("the worker never caches API, auth, socket, query or token-bearing requests", () => {
-  for (const u of ["/ui/api/me", "/v1/workspaces/w/board", "/auth/session", "/ws", "/console/unknown.js", "/ui/", "/console/app.js?v=1"]) {
+  for (const u of ["/ui/api/me", "/v1/workspaces/w/board", "/auth/session", "/ws", "/ui/unknown.js", "/ui/oauth/consent", "/ui/app.js?v=1"]) {
     assert.equal(shellKey(req(`${O}${u}`)), null, u);
   }
-  assert.equal(shellKey(req(`${O}/console/app.js`, { hasAuthorization: true })), null);
-  assert.equal(shellKey(req(`${O}/console/app.js`, { method: "POST" })), null);
-  assert.equal(shellKey(req(`https://evil.example/console/app.js`)), null);
+  assert.equal(shellKey(req(`${O}/ui/app.js`, { hasAuthorization: true })), null);
+  assert.equal(shellKey(req(`${O}/ui/app.js`, { method: "POST" })), null);
+  assert.equal(shellKey(req(`https://evil.example/ui/app.js`)), null);
 });
 
 test("only plain same-origin 200s without no-store or private are stored", () => {

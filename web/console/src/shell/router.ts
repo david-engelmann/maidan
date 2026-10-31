@@ -1,4 +1,4 @@
-// Hash routes (#/board, #/needs, …). The server serves /console and pinned
+// Hash routes (#/board, #/needs, …). The server serves /ui and pinned
 // asset names only, so a hash keeps every screen a deep link without a
 // server-side fallback route.
 import { useSyncExternalStore } from "react";
