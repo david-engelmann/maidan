@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { NeedsApi, NeedsError, approvedLine, groupNeeds, kindLabel, modelRequestLine, movesNeeds, needKey, sortNeeds, splitBlocked, splitQuestion, waitingFor, type GateView, type WaitingItem } from "../src/core/needs.ts";
+import { NeedsApi, NeedsError, approvedLine, evidenceItems, type ReviewPacket, groupNeeds, kindLabel, modelRequestLine, movesNeeds, needKey, sortNeeds, splitBlocked, splitQuestion, waitingFor, type GateView, type WaitingItem } from "../src/core/needs.ts";
 import type { Credentials } from "../src/core/api.ts";
 import { backoff } from "../src/hooks/useNeeds.ts";
 
@@ -108,11 +108,41 @@ test("approve signs the evidence root; request changes carries the note only", a
   assert.deepEqual(JSON.parse(String(calls[1].init?.body)), { decision: "request_changes", note: "add tests" });
 });
 
-test("a missing review packet is no evidence, not an error", async () => {
+test("a missing review packet is no evidence; a failed read says why", async () => {
   const { api } = rig({ "/threads/t1/review-packet": json({ error: "nope" }, 404) });
-  assert.equal(await api.reviewRoot("t1"), null);
-  const ok = rig({ "/threads/t2/review-packet": json({ evidence_root: "r" }) });
-  assert.equal(await ok.api.reviewRoot("t2"), "r");
+  assert.deepEqual(await api.reviewPacket("t1"), { state: "none" });
+  const bad = rig({ "/threads/t3/review-packet": json({ error: "boom" }, 500) });
+  assert.equal((await bad.api.reviewPacket("t3")).state, "error");
+  const ok = rig({ "/threads/t2/review-packet": json({ evidence_root: "r", self_reported_only: false, manifest: {} }) });
+  const read = await ok.api.reviewPacket("t2");
+  assert.equal(read.state === "ready" && read.packet.evidence_root, "r");
+});
+
+test("evidence lists the result, artifacts and land-gate passes with their tiers", () => {
+  const packet: ReviewPacket = {
+    evidence_root: "root",
+    self_reported_only: false,
+    manifest: {
+      result: { sha256: "r".repeat(64), produced_by: "w1" },
+      artifacts: ["a1", "a2"],
+      attestations: [
+        { kind: "result", sha256: "r".repeat(64), tier: "self_reported", attested_by: "w1" },
+        { kind: "artifact", sha256: "a1", tier: "attached", attested_by: "m2" },
+        { kind: "artifact", sha256: "a2", tier: "mystery", attested_by: "m2" },
+        { kind: "land_gate", sha256: "a1", tier: "verified", attested_by: "ci" },
+      ],
+    },
+  };
+  const metas = new Map([["a1", { filename: "log.txt", size_bytes: 2048 }], ["a2", null]]);
+  const items = evidenceItems(packet, metas, new Map([["a1", { sha256: "a1", linked_by: "m2" }]]));
+  assert.deepEqual(items.map((i) => [i.kind, i.label, i.tier?.word, i.by, i.unlinked]), [
+    ["result", "result", "self-reported", "w1", false],
+    ["artifact", "log.txt · 2.0 KB", "attached", "m2", false],
+    ["artifact", "artifact (details unavailable)", "mystery", null, true],
+    ["land_gate", "land-gate pass", "verified", "ci", false],
+  ]);
+  // A failed links read flags nothing.
+  assert.equal(evidenceItems(packet, metas, null).some((i) => i.unlinked), false);
 });
 
 test("a second answer says someone already answered; a refusal is in words", async () => {
