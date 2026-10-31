@@ -214,6 +214,7 @@ pub const SERVER_ENV: &[&str] = &[
 pub const TOLERATED_ENV: &[&str] = &[
     "MAIDAN_A2A_GRPC_PORT",
     "MAIDAN_A2A_PORT",
+    "MAIDAN_ADMIN_TOKEN",
     "MAIDAN_A_PEER_URL",
     "MAIDAN_A_URL",
     "MAIDAN_BIN_DIR",
@@ -253,6 +254,8 @@ pub const TOLERATED_ENV: &[&str] = &[
     "MAIDAN_REPLICA_PORT",
     "MAIDAN_REPLICA_URL",
     "MAIDAN_REPO",
+    "MAIDAN_REVIEWER_TOKEN",
+    "MAIDAN_REVIEW_WAIT_DAYS",
     "MAIDAN_SCALE_LB_PORT",
     "MAIDAN_SDK_PORT",
     "MAIDAN_SHA256_AMD64",
