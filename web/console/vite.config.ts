@@ -24,7 +24,9 @@ export default defineConfig({
     assetsDir: "",
     assetsInlineLimit: 0,
     cssCodeSplit: false,
-    modulePreload: false,
+    // Preload the chunks app.js imports, without the polyfill (every target
+    // browser has modulepreload). scripts/check-csp.mjs holds the build to it.
+    modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         entryFileNames: "app.js",
