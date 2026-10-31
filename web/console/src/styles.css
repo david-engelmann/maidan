@@ -512,8 +512,11 @@ a { color: inherit; }
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
 }
-.channel-pick { flex: 1; min-width: 0; max-width: 320px; }
-.channel-pick select { flex: 1; min-width: 0; }
+/* On a phone the picker takes its own row so a channel's name fits; wider,
+   it sits beside the summary. The select never shrinks below a short name. */
+.channel-pick { flex: 1 1 100%; min-width: 0; }
+.channel-pick select { flex: 1; min-width: 12ch; width: 100%; text-overflow: ellipsis; }
+@media (min-width: 640px) { .channel-pick { flex: 0 1 320px; } }
 
 /* Empty lanes: say what is going on, offer the next move. */
 .cards .empty:has(.empty-state) { text-align: left; padding: 0; }

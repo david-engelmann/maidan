@@ -8,3 +8,4 @@
 - **Changed:** Tools tabs fade at the edge, snap, and keep the open tab in view.
 - **Fixed:** The reaction "+" is gone on touch and quieter with a mouse; a toast no longer follows you to another page.
 - **Fixed:** The rail shows the Maidan mark, board empty states are left-aligned, the channel select is capped at 320px, Turn off only appears when this device is subscribed, and Connect snippets scroll sideways with a fade.
+- **Fixed:** The channel picker on a phone takes its own row, so the channel name shows in full instead of a bare `#`.
