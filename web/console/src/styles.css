@@ -509,8 +509,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
   background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
   background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
 }
-.channel-pick { flex: 1; min-width: 0; max-width: 320px; }
-.channel-pick select { flex: 1; min-width: 0; }
+/* On a phone the picker takes its own row so a channel's name fits; wider,
+   it sits beside the summary. The select never shrinks below a short name. */
+.channel-pick { flex: 1 1 100%; min-width: 0; }
+.channel-pick select { flex: 1; min-width: 12ch; width: 100%; text-overflow: ellipsis; }
+@media (min-width: 640px) { .channel-pick { flex: 0 1 320px; } }
 
 /* Empty lanes: say what is going on, offer the next move. */
 .cards .empty:has(.empty-state) { text-align: left; padding: 0; }
@@ -537,3 +540,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .sign-in { display: grid; gap: 12px; max-width: 480px; }
 .sign-in-token { display: grid; gap: 6px; }
 .sign-in-token input { min-width: 0; }
+
+
+@media (hover: none) { .msg:has(.reacts.none) { padding-right: 36px; } }
+
+/* Needs you: the evidence an approval signs, shown before Approve. */
+.need-evidence { margin: 0.7rem 0 0.2rem; padding: 0.7rem 0.8rem; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); font-size: 0.86rem; }
+.need-evidence .ev-head { margin: 0 0 0.4rem; font-weight: 600; }
+.need-evidence code { font-family: var(--mono); font-size: 0.78rem; overflow-wrap: anywhere; }
+.need-evidence .ev-warn { margin: 0.3rem 0 0.5rem; padding: 0.45rem 0.6rem; border-radius: 10px; background: color-mix(in srgb, var(--signal) 12%, var(--paper)); color: var(--ink); }
+.need-evidence .ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.need-evidence .ev-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.5rem; }
+.need-evidence .ev-kind { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.need-evidence .ev-name { font-weight: 500; overflow-wrap: anywhere; }
+.need-evidence .ev-tier { padding: 0 0.45rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.74rem; color: var(--muted); }
+.need-evidence .ev-tier.tier-verified { color: #1f5f2e; border-color: #1f5f2e; }
+.need-evidence .ev-unlinked { color: color-mix(in srgb, var(--signal) 70%, #000); }
+.need-evidence .ev-open { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); font-weight: 500; }

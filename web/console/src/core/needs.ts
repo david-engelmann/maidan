@@ -31,6 +31,87 @@ export type GateView = {
   model_request?: ModelRequest | null;
 };
 
+/** GET /threads/{id}/review-packet: what a task was handed to review with. */
+export type AttestationTier = "verified" | "attached" | "self_reported";
+export type Attestation = { kind: "result" | "artifact" | "land_gate"; sha256?: string | null; tier: AttestationTier | string; attested_by: string };
+export type ReviewPacket = {
+  thread_version?: number;
+  requested_by?: string;
+  evidence_root: string;
+  self_reported_only: boolean;
+  manifest: { result?: { sha256: string; produced_by: string } | null; artifacts?: string[]; attestations?: Attestation[] };
+};
+export type ArtifactMeta = { filename?: string | null; kind?: string | null; size_bytes?: number | null; uploaded_by?: string | null };
+export type ArtifactLink = { sha256: string; linked_by?: string | null; linked_at?: string | null };
+
+/** A packet read: one was handed over, none was, or the read failed and says why. */
+export type PacketRead = { state: "ready"; packet: ReviewPacket } | { state: "none" } | { state: "error"; why: string };
+
+/** One line of evidence as a row shows it. */
+export type EvidenceItem = {
+  kind: "result" | "artifact" | "land_gate";
+  label: string;
+  sha: string | null;
+  by: string | null;
+  tier: { word: string; title: string; wire: string } | null;
+  unlinked: boolean;
+};
+
+const TIER_TEXT: Record<string, [string, string]> = {
+  verified: ["verified", "A land-gate pass the close gate accepts"],
+  attached: ["attached", "Linked by a member who never worked the task"],
+  self_reported: ["self-reported", "The work's own account: from a member who worked the task"],
+};
+
+function tierOf(a: Attestation | undefined): EvidenceItem["tier"] {
+  if (!a || !a.tier) return null;
+  const [word, title] = TIER_TEXT[a.tier] ?? [String(a.tier), ""];
+  return { word, title, wire: String(a.tier) };
+}
+
+export function formatBytes(n: number | null | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * The evidence a review row shows before Approve: the result, each linked
+ * artifact and each land-gate pass, with the tier the server gave it at the
+ * hand-off. An artifact the packet pinned that the task no longer links is
+ * flagged, since approving that packet is refused. `links` null means the
+ * read failed, so nothing is flagged.
+ */
+export function evidenceItems(packet: ReviewPacket, metas: Map<string, ArtifactMeta | null>, links: Map<string, ArtifactLink> | null): EvidenceItem[] {
+  const m = packet.manifest ?? {};
+  const att = m.attestations ?? [];
+  const of = (k: Attestation["kind"]) => att.filter((a) => a.kind === k);
+  const out: EvidenceItem[] = [];
+  if (m.result) out.push({ kind: "result", label: "result", sha: m.result.sha256, by: m.result.produced_by, tier: tierOf(of("result")[0]), unlinked: false });
+  const arts = of("artifact");
+  (m.artifacts ?? []).forEach((sha, i) => {
+    const meta = metas.get(sha) ?? null;
+    const size = formatBytes(meta?.size_bytes);
+    const name = meta ? `${meta.filename || "unnamed"}${size ? ` · ${size}` : ""}` : "artifact (details unavailable)";
+    const link = links?.get(sha);
+    out.push({
+      kind: "artifact",
+      label: name,
+      sha,
+      by: link?.linked_by ?? meta?.uploaded_by ?? null,
+      tier: tierOf(arts.find((a) => a.sha256 === sha) ?? arts[i]),
+      unlinked: links !== null && !link,
+    });
+  });
+  for (const g of of("land_gate")) out.push({ kind: "land_gate", label: "land-gate pass", sha: g.sha256 ?? null, by: g.attested_by, tier: tierOf(g), unlinked: false });
+  return out;
+}
+
+export function shortHash(h: string | null | undefined): string {
+  return h ? `${h.slice(0, 12)}…` : "";
+}
+
 export type ReviewStatus = { approvals: number; required_count: number; approvals_met: boolean };
 
 export type GroupId = "decision" | "action" | "question";
@@ -219,10 +300,39 @@ export class NeedsApi {
     }
   }
 
-  /** The evidence an approval signs, or null when nothing was handed over. */
-  async reviewRoot(threadId: string): Promise<string | null> {
-    const p = await this.read<{ evidence_root?: string | null } | null>(apiPath(this.creds(), `/threads/${threadId}/review-packet`), null);
-    return p?.evidence_root ?? null;
+  /** The packet a review approves: its root is what Approve signs. */
+  async reviewPacket(threadId: string): Promise<PacketRead> {
+    let res: Response;
+    try {
+      res = await this.fetchFn(apiPath(this.creds(), `/threads/${threadId}/review-packet`), { headers: headers(this.creds()), credentials: "include" });
+    } catch {
+      return { state: "error", why: "Could not load the evidence: the server did not answer" };
+    }
+    if (res.status === 404) return { state: "none" };
+    if (!res.ok) return { state: "error", why: `Could not load the evidence (${res.status})` };
+    try {
+      return { state: "ready", packet: (await res.json()) as ReviewPacket };
+    } catch {
+      return { state: "error", why: "Could not load the evidence: the server sent something unreadable" };
+    }
+  }
+
+  /** Who linked each artifact to the task, by hash; null when the read failed. */
+  async threadLinks(threadId: string): Promise<Map<string, ArtifactLink> | null> {
+    try {
+      const rows = await this.read<ArtifactLink[]>(apiPath(this.creds(), `/threads/${threadId}/artifacts`));
+      return Array.isArray(rows) ? new Map(rows.filter((r) => r && r.sha256).map((r) => [r.sha256, r])) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async artifactMeta(sha: string): Promise<ArtifactMeta | null> {
+    try {
+      return await this.read<ArtifactMeta>(uiPath(this.creds(), `/artifacts/${encodeURIComponent(sha)}/meta`));
+    } catch {
+      return null;
+    }
   }
 
   async reviewStatus(threadId: string): Promise<ReviewStatus | null> {

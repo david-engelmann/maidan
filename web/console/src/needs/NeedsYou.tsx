@@ -8,14 +8,18 @@ import {
   NOTE_ASK,
   NeedsApi,
   approvedLine,
+  evidenceItems,
   groupNeeds,
   kindLabel,
   modelRequestLine,
   needKey,
+  shortHash,
   splitBlocked,
   splitQuestion,
   waitingFor,
   type Ask,
+  type EvidenceItem,
+  type PacketRead,
   type GateView,
   type ConfirmLink,
   parseConfirmLink,
@@ -171,21 +175,33 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
   const reduce = Boolean(useReducedMotion());
   const [state, setState] = useState<RowState>({ phase: "idle" });
   const [note, setNote] = useState("");
-  const [root, setRoot] = useState<{ loaded: boolean; value: string | null }>({ loaded: false, value: null });
+  // The packet this row shows. Approve signs its root and nothing else.
+  const [packet, setPacket] = useState<PacketRead | null>(null);
+  const [items, setItems] = useState<EvidenceItem[] | null>(null);
   const [owner, setOwner] = useState<{ owns: boolean; required: number | null }>({ owns: false, required: null });
   const tid = item.thread_id ?? null;
   const isReview = item.kind === "review_request" || item.kind === "unassigned_review";
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
   const rowRef = useRef<HTMLLIElement | null>(null);
 
-  // A review can only be approved against the evidence it was handed.
+  // A review can only be approved against the evidence it was handed, and
+  // the person approving sees that evidence first.
+  const loadEvidence = useCallback(async () => {
+    if (!tid) return;
+    setPacket(null);
+    setItems(null);
+    const read = await api.reviewPacket(tid);
+    setPacket(read);
+    if (read.state !== "ready") return;
+    const shas = read.packet.manifest?.artifacts ?? [];
+    const [links, metas] = await Promise.all([api.threadLinks(tid), Promise.all(shas.map((sha) => api.artifactMeta(sha)))]);
+    setItems(evidenceItems(read.packet, new Map(shas.map((sha, i) => [sha, metas[i]])), links));
+  }, [api, tid]);
+
   useEffect(() => {
     if (!isReview || !tid) return;
     let live = true;
-    api
-      .reviewRoot(tid)
-      .then((value) => live && setRoot({ loaded: true, value }))
-      .catch(() => live && setRoot({ loaded: true, value: null }));
+    void loadEvidence();
     if (item.kind === "unassigned_review" && me)
       void Promise.all([api.ownerOf(tid), api.reviewStatus(tid)]).then(([o, rs]) => {
         if (live) setOwner({ owns: o === me, required: rs ? rs.required_count : null });
@@ -193,7 +209,9 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
     return () => {
       live = false;
     };
-  }, [api, tid, isReview, item.kind, me]);
+  }, [api, tid, isReview, item.kind, me, loadEvidence]);
+
+  const root = packet?.state === "ready" ? packet.packet.evidence_root : null;
 
   useEffect(() => {
     if (state.phase === "note") noteRef.current?.focus();
@@ -219,7 +237,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
       try {
         if (ask === "approve" || ask === "approve_note") {
           if (!tid) throw new Error("This review has no task");
-          await api.review(tid, "approve", words, root.value);
+          await api.review(tid, "approve", words, root);
           const rs = await api.reviewStatus(tid);
           setState({ phase: "done", text: approvedLine(rs), tone: "ok", closable: Boolean(rs?.approvals_met) });
         } else if (ask === "request_changes") {
@@ -244,7 +262,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
         setState({ phase: "error", message: e instanceof Error ? e.message : "That did not go through" });
       }
     },
-    [api, gate, hold, item, root.value, tid],
+    [api, gate, hold, item, root, tid],
   );
 
   const start = useCallback(
@@ -265,7 +283,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
 
   // The yes and the no a swipe stands for, when the row has them.
   const yes: Ask | null =
-    item.kind === "open_gate" ? (gate ? "accept" : null) : item.kind === "blocked" ? "unblock" : isReview && !ownerOnly && root.value ? "approve" : null;
+    item.kind === "open_gate" ? (gate ? "accept" : null) : item.kind === "blocked" ? "unblock" : isReview && !ownerOnly && root && items ? "approve" : null;
   const no: Ask | null = item.kind === "open_gate" ? (gate ? "decline" : null) : isReview ? "request_changes" : null;
 
   const onDragEnd = (_e: unknown, info: PanInfo) => {
@@ -308,7 +326,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
         {lines.map((l) => (
           <p key={l} className="need-line">{l}</p>
         ))}
-        {isReview && root.loaded && !root.value && <p className="need-line warn">Nothing was handed over to review yet.</p>}
+        {isReview && tid && <EvidenceBlock read={packet} items={items} retry={() => void loadEvidence()} taskHref={convHash({ kind: "task", id: tid })} />}
         {ownerOnly && owner.required !== 0 && <p className="need-line warn">Your approval does not count on your own task: name a reviewer.</p>}
 
         <div className="need-state" aria-live="polite">
@@ -367,8 +385,8 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
             {isReview && !ownerOnly && (
               <>
                 <button type="button" className="btn" onClick={() => start("request_changes")}>Send back</button>
-                <button type="button" className="btn" disabled={!root.value} onClick={() => start("approve_note")}>Add a note</button>
-                <button type="button" className="btn go" disabled={!root.value} onClick={() => start("approve")}>Approve</button>
+                <button type="button" className="btn" disabled={!root || !items} onClick={() => start("approve_note")}>Add a note</button>
+                <button type="button" className="btn go" disabled={!root || !items} onClick={() => start("approve")}>Approve</button>
               </>
             )}
             {ownerOnly && (
@@ -435,5 +453,61 @@ function ConfirmPanel({ api, link, workspaceId, onDone }: { api: NeedsApi; link:
         <button className="button ghost" disabled={busy} onClick={onDone}>Not now</button>
       </div>
     </div>
+  );
+}
+
+/**
+ * What an approval signs, shown before Approve: the evidence root, the
+ * server's self-reported-only warning, each item with its tier, and a way to
+ * the result and the transcript.
+ */
+function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | null; items: EvidenceItem[] | null; retry: () => void; taskHref: string }) {
+  if (!read || (read.state === "ready" && !items))
+    return (
+      <div className="need-evidence" aria-busy="true">
+        <p className="muted small">Loading the evidence…</p>
+      </div>
+    );
+  if (read.state === "none")
+    return (
+      <div className="need-evidence" data-state="none">
+        <p className="need-line warn">Nothing was handed to review yet, so there is no evidence to approve.</p>
+      </div>
+    );
+  if (read.state === "error")
+    return (
+      <div className="need-evidence" data-state="error">
+        <p className="need-line warn" role="alert">{read.why}.</p>
+        <button type="button" className="btn" onClick={retry}>Retry</button>
+      </div>
+    );
+  const p = read.packet;
+  return (
+    <section className="need-evidence" data-state="ready" aria-label="Evidence">
+      <p className="ev-head">
+        Evidence <code className="ev-root" title={p.evidence_root} data-root={p.evidence_root}>{shortHash(p.evidence_root)}</code>
+      </p>
+      {p.self_reported_only && (
+        <p className="ev-warn" role="note">
+          Self-reported only: all of this evidence comes from the task's own workers. Nothing was attached by anyone else or verified by a land gate.
+        </p>
+      )}
+      {items && items.length ? (
+        <ul className="ev-list">
+          {items.map((e, i) => (
+            <li key={`${e.kind}-${e.sha ?? i}`} className="ev-item" data-ev={e.kind}>
+              <span className="ev-kind">{e.kind === "artifact" ? "file" : e.label}</span>
+              {e.kind === "artifact" && <span className="ev-name">{e.label}</span>}
+              {e.sha && <code className="ev-hash" title={e.sha}>{shortHash(e.sha)}</code>}
+              {e.tier && <span className={`ev-tier tier-${e.tier.wire}`} data-tier={e.tier.wire} title={e.tier.title}>{e.tier.word}</span>}
+              {e.unlinked && <span className="ev-unlinked">no longer linked to the task</span>}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="need-line warn">No evidence was handed over: no result and no linked artifacts.</p>
+      )}
+      <a className="ev-open" href={taskHref}>Read the result and transcript</a>
+    </section>
   );
 }
