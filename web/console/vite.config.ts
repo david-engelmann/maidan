@@ -28,8 +28,11 @@ export default defineConfig({
     // browser has modulepreload). scripts/check-csp.mjs holds the build to it.
     modulePreload: { polyfill: false },
     rollupOptions: {
+      // The service worker is its own entry so it lands at /console/sw.js,
+      // where its scope covers the whole console.
+      input: { app: "index.html", sw: "src/pwa/sw.ts" },
       output: {
-        entryFileNames: "app.js",
+        entryFileNames: (chunk) => (chunk.name === "sw" ? "sw.js" : "app.js"),
         chunkFileNames: "[name].js",
         assetFileNames(info) {
           const name = info.names?.[0] ?? "";

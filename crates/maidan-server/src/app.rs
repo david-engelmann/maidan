@@ -1361,6 +1361,16 @@ pub fn router(state: AppState) -> Router {
                 "image/png",
                 include_bytes!("../static/console/dist/icon.png"),
             ),
+            // Install manifest and service worker (web/console/src/pwa). The
+            // worker caches only these static files, never an API answer.
+            "manifest.webmanifest" => (
+                "application/manifest+json",
+                include_bytes!("../static/console/dist/manifest.webmanifest"),
+            ),
+            "sw.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/sw.js"),
+            ),
             _ => return Err(axum::http::StatusCode::NOT_FOUND),
         };
         Ok(landing_body(

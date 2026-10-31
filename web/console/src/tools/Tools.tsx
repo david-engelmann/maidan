@@ -29,6 +29,8 @@ import {
 import type { Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
+import { consolePushManager, installStore, promptInstall } from "../pwa/install.ts";
+import { PUSH_WORDS, disablePush, enablePush, type PushOutcome } from "../pwa/push.ts";
 import { SecretOnce } from "./SecretOnce.tsx";
 
 export const TOOL_TABS = [
@@ -41,6 +43,7 @@ export const TOOL_TABS = [
   { id: "explore", title: "Explore" },
   { id: "operator", title: "Operator" },
   { id: "recent", title: "Recent" },
+  { id: "device", title: "This device" },
 ] as const;
 type ToolTab = (typeof TOOL_TABS)[number]["id"];
 
@@ -85,6 +88,7 @@ export function Tools() {
       {tab === "explore" ? <Explore api={api} ws={ws} /> : null}
       {tab === "operator" ? <Operator api={api} ws={ws} /> : null}
       {tab === "recent" ? <Recent /> : null}
+      {tab === "device" ? <Device api={api} me={me} /> : null}
     </div>
   );
 }
@@ -682,5 +686,49 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
         ) : null}
       </Panel>
     </div>
+  );
+}
+
+function Device({ api, me }: { api: ToolsApi; me: string | null }) {
+  const install = useSyncExternalStore(installStore.subscribe, installStore.getSnapshot);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+  const deps = {
+    permission: () => (typeof Notification === "undefined" ? "denied" : Notification.permission),
+    requestPermission: () => Notification.requestPermission(),
+    pushManager: consolePushManager,
+    vapidKey: () => api.vapidKey(),
+    save: (m: string, sub: { endpoint: string; keys: Record<string, string> }) => api.savePush(m, sub),
+  };
+  const run = async (fn: () => Promise<PushOutcome>) => {
+    setBusy(true);
+    try {
+      const out = await fn();
+      setNote(PUSH_WORDS[out.reason] ?? out.reason);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Panel title="Install">
+        {install.installed ? (
+          <p className="muted">The console is installed on this device.</p>
+        ) : install.canPrompt ? (
+          <button type="button" className="steel" onClick={() => void promptInstall()}>Install the console</button>
+        ) : (
+          <p className="muted">To install, use your browser's Install or Add to Home Screen option.</p>
+        )}
+      </Panel>
+      <Panel title="Notifications">
+        <p className="muted small">Browser permission: {permission}.</p>
+        <div className="edit-actions">
+          <button type="button" className="steel" disabled={busy || !me} onClick={() => void run(() => enablePush(me, deps))}>Turn on</button>
+          <button type="button" disabled={busy} onClick={() => void run(() => disablePush(deps, (ep) => (me ? api.forgetPush(me, ep) : Promise.resolve())))}>Turn off</button>
+        </div>
+        {note ? <p className="small" role="status">{note}</p> : null}
+      </Panel>
+    </>
   );
 }

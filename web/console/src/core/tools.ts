@@ -188,6 +188,23 @@ export class ToolsApi {
     return (await res.json()) as T;
   }
 
+  /** The server's VAPID key; `public_key` is null when push is not set up. */
+  vapidKey(): Promise<{ public_key?: string | null; reason?: string | null } | null> {
+    return this.maybe("/web-push/vapid-public-key");
+  }
+
+  /** Store a browser push subscription for this member. */
+  async savePush(member: string, sub: { endpoint: string; keys: Record<string, string> }): Promise<void> {
+    await this.send("POST", `/members/${member}/push-subscriptions`, sub);
+  }
+
+  /** Remove the server copy of a subscription. Bearer only, so it skips quietly for a session. */
+  async forgetPush(member: string, endpoint: string): Promise<void> {
+    if (bearerRefusal(this.creds())) return;
+    const subs = await this.bearerGet<Array<{ id: string; endpoint?: string }>>(`/members/${member}/push-subscriptions`);
+    for (const s of subs.filter((x) => x.endpoint === endpoint)) await this.send("DELETE", `/members/${member}/push-subscriptions/${s.id}`, undefined, true);
+  }
+
   private async send<T>(method: string, path: string, body?: unknown, bearerOnly = false): Promise<T | null> {
     const c = this.creds();
     if (bearerOnly) {
