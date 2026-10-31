@@ -295,7 +295,9 @@ a { color: inherit; }
 .msg { position: relative; }
 .reacts.none { margin: 0; height: 0; }
 .reacts.none .react.add { position: absolute; right: 0; top: 4px; opacity: 0; }
-@media (hover: none) { .reacts.none .react.add:not(:focus-visible) { width: 1px; height: 1px; min-width: 0; min-height: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); } }
+.reacts.none .react.add { z-index: 1; }
+/* No hover on touch: keep the message actions reachable, but quiet. */
+@media (hover: none) { .reacts.none .react.add { opacity: 0.55; min-height: 28px; min-width: 32px; } }
 .msg:hover .react.add, .msg:focus-within .react.add, .react.add[aria-expanded="true"] { opacity: 1; }
 .react { min-height: 30px; min-width: 36px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 13px; }
 .react.on { border-color: color-mix(in srgb, var(--signal) 55%, var(--line)); background: color-mix(in srgb, var(--signal) 10%, var(--card)); }
@@ -465,3 +467,18 @@ a { color: inherit; }
 .toast span { flex: 1; }
 .toast.error { background: var(--danger); }
 .toast-x { min-width: 32px; min-height: 32px; border: 0; border-radius: 999px; background: transparent; color: inherit; font-size: 18px; cursor: pointer; }
+
+/* ---- Pins and edits ---- */
+.pins { padding: 6px var(--pad); border-bottom: 1px solid var(--line); background: var(--paper-2); font-size: 14px; }
+.pins summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; font-weight: 600; }
+.pins ul { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; gap: 4px; max-height: 30vh; overflow: auto; }
+.pins .link-btn { text-decoration: none; overflow-wrap: anywhere; }
+.msg.pinned { box-shadow: inset 3px 0 0 var(--signal); }
+.react.word { font-size: 13px; padding: 0 12px; }
+.edit-box { display: grid; gap: 6px; margin: 2px 0; }
+.edit-box textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); resize: vertical; }
+.edit-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.edit-history { margin: 4px 0; padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--paper-2); }
+.edit-history ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.edit-history p { margin: 0; overflow-wrap: anywhere; }
+@media (hover: none) { .msg:has(.reacts.none) { padding-right: 36px; } }

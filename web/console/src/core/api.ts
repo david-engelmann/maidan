@@ -11,6 +11,8 @@ export type Credentials = {
   tokenSession: boolean;
   /** The member a signed-in session is pinned to, if any. */
   sessionMemberId: string | null;
+  /** The token a token-made session runs on, so the console can say "this page" by it. Never the secret. */
+  sessionTokenId?: string | null;
 };
 
 export const STORAGE = {

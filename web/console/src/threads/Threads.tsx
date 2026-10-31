@@ -15,8 +15,10 @@ import {
   dmConversation,
   groupConversation,
   groupRefusal,
+  editRefusal,
   keyboardInset,
   nameOf,
+  pinnedMessages,
   onNewMessages,
   parseConv,
   sameRef,
@@ -26,9 +28,13 @@ import {
   visibleMessages,
   type ConvRef,
   type Conversation,
+  type Edit,
+  type TaskFacts,
+  evidenceLine,
   type Message,
   type Reaction,
 } from "../core/threads.ts";
+import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
@@ -256,7 +262,35 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
 }
 
 function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member> }) {
-  const { data, send, react } = useConversation(api, conv.threadId, me);
+  const { data, send, react, refresh } = useConversation(api, conv.threadId, me);
+  const [pins, setPins] = useState<{ thread: string; ids: ReadonlySet<string> }>({ thread: conv.threadId, ids: new Set() });
+  const pinned = pins.thread === conv.threadId ? pins.ids : EMPTY_PINS;
+  const loadPins = useCallback(() => {
+    const thread = conv.threadId;
+    api.pins(thread).then(
+      (ids) => setPins({ thread, ids: new Set(ids) }),
+      () => undefined,
+    );
+  }, [api, conv.threadId]);
+  useEffect(() => {
+    const t = setTimeout(loadPins, 0);
+    return () => clearTimeout(t);
+  }, [loadPins]);
+  const togglePin = async (id: string, on: boolean) => {
+    try {
+      await api.pin(conv.threadId, id, on);
+      say(on ? "Pinned" : "Unpinned");
+    } catch (e) {
+      sayError(e, on ? "Could not pin that message" : "Could not unpin that message");
+    } finally {
+      loadPins();
+    }
+  };
+  const saveEdit = async (m: Message, body: string) => {
+    await api.edit(m, body);
+    say("Message edited");
+    await refresh();
+  };
   const [title, setTitle] = useState<string | null>(null);
   const messages = useMemo(() => visibleMessages(data.messages), [data.messages]);
   const scroller = useRef<HTMLDivElement>(null);
@@ -341,6 +375,25 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
           {conv.detail && <p>{conv.detail}</p>}
         </div>
       </header>
+      {conv.ref.kind === "task" && <TaskFactsPanel api={api} threadId={conv.threadId} members={members} />}
+      {pinnedMessages(messages, pinned).length > 0 && (
+        <details className="pins">
+          <summary>Pinned ({pinnedMessages(messages, pinned).length})</summary>
+          <ul>
+            {pinnedMessages(messages, pinned).map((m) => (
+              <li key={m.id}>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
+                >
+                  <b>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {data.staleSince && <p className="conv-stale" role="status">Offline since {clockTime(new Date(data.staleSince).toISOString())}. Retrying.</p>}
       <div className="messages" ref={scroller} onScroll={remember} aria-live="polite" aria-relevant="additions">
         {data.status === "loading" || data.status === "idle" ? (
@@ -352,7 +405,19 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
         ) : (
           <ol className="msg-list">
             {messages.map((m, i) => (
-              <MessageRow key={m.id} m={m} head={startsGroup(messages[i - 1], m)} members={members} mine={m.author_id === me} reactions={data.reactions[m.id] ?? []} onReact={react} />
+              <MessageRow
+                key={m.id}
+                m={m}
+                head={startsGroup(messages[i - 1], m)}
+                members={members}
+                mine={m.author_id === me}
+                reactions={data.reactions[m.id] ?? []}
+                onReact={react}
+                pinned={pinned.has(m.id)}
+                onPin={conv.ref.kind === "task" ? togglePin : null}
+                onEdit={saveEdit}
+                api={api}
+              />
             ))}
           </ol>
         )}
@@ -373,8 +438,33 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
   );
 }
 
-function MessageRow({ m, head, members, mine, reactions, onReact }: { m: Message; head: boolean; members: Map<string, Member>; mine: boolean; reactions: Reaction[]; onReact: (id: string, emoji: string, on: boolean) => Promise<void> }) {
+const EMPTY_PINS: ReadonlySet<string> = new Set();
+
+type RowProps = {
+  m: Message;
+  head: boolean;
+  members: Map<string, Member>;
+  mine: boolean;
+  reactions: Reaction[];
+  onReact: (id: string, emoji: string, on: boolean) => Promise<void>;
+  pinned: boolean;
+  onPin: ((id: string, on: boolean) => Promise<void>) | null;
+  onEdit: (m: Message, body: string) => Promise<void>;
+  api: ThreadsApi;
+};
+
+function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin, onEdit, api }: RowProps) {
   const [picking, setPicking] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [history, setHistory] = useState<Edit[] | "loading" | string | null>(null);
+  const openHistory = () => {
+    if (history) return setHistory(null);
+    setHistory("loading");
+    api.edits(m.id).then(
+      (rows) => setHistory(rows),
+      () => setHistory("Could not load the edit history."),
+    );
+  };
   const who = nameOf(members, m.author_id);
   const slash = slashResult(m.metadata);
   const toggle = (emoji: string, on: boolean) => {
@@ -382,15 +472,19 @@ function MessageRow({ m, head, members, mine, reactions, onReact }: { m: Message
     void onReact(m.id, emoji, on).catch(() => undefined);
   };
   return (
-    <li className={`msg${head ? " head" : ""}${mine ? " mine" : ""}`} data-mid={m.id}>
+    <li className={`msg${head ? " head" : ""}${mine ? " mine" : ""}${pinned ? " pinned" : ""}`} data-mid={m.id}>
       {head ? <span className="avatar" aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
       <div className="msg-main">
         {head && (
           <p className="msg-meta">
             <strong>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
             {m.edited_at && <span className="edited"> edited</span>}
+            {pinned && <span className="edited"> pinned</span>}
           </p>
         )}
+        {editing ? (
+          <EditBox m={m} onCancel={() => setEditing(false)} onSave={async (body) => { await onEdit(m, body); setEditing(false); }} />
+        ) : (
         <p
           className="msg-body"
           onClick={() => {
@@ -400,6 +494,25 @@ function MessageRow({ m, head, members, mine, reactions, onReact }: { m: Message
         >
           {m.body}
         </p>
+        )}
+        {!head && (m.edited_at || pinned) && !editing && (
+          <p className="msg-meta">{m.edited_at && <span className="edited">edited </span>}{pinned && <span className="edited">pinned</span>}</p>
+        )}
+        {history && (
+          <div className="edit-history">
+            {history === "loading" ? <p className="muted small">Loading history…</p> : typeof history === "string" ? <p className="err small">{history}</p> : !history.length ? <p className="muted small">No earlier versions.</p> : (
+              <ol>
+                {history.map((e, k) => (
+                  <li key={k}>
+                    <p className="muted small">{clockTime(e.edited_at)} · {nameOf(members, e.editor_id)}</p>
+                    <p className="small"><del>{e.body_before}</del></p>
+                    <p className="small">{e.body_after}</p>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
         {slash && (
           <div className={`slash tone-${slash.tone}`}>
             <p className="slash-head">{slash.head}</p>
@@ -422,9 +535,54 @@ function MessageRow({ m, head, members, mine, reactions, onReact }: { m: Message
                 <span aria-hidden="true">{e}</span>
               </button>
             ))}
+          {picking && onPin && (
+            <button className="react word" onClick={() => { setPicking(false); void onPin(m.id, !pinned); }}>{pinned ? "Unpin" : "Pin"}</button>
+          )}
+          {picking && mine && !m.tombstoned_at && (
+            <button className="react word" onClick={() => { setPicking(false); setEditing(true); }}>Edit</button>
+          )}
+          {picking && m.edited_at && (
+            <button className="react word" aria-expanded={Boolean(history)} onClick={() => { setPicking(false); openHistory(); }}>History</button>
+          )}
         </div>
       </div>
     </li>
+  );
+}
+
+function EditBox({ m, onSave, onCancel }: { m: Message; onSave: (body: string) => Promise<void>; onCancel: () => void }) {
+  const [draft, setDraft] = useState(m.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const why = editRefusal(m.body, draft);
+  return (
+    <form
+      className="edit-box"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (busy || why) return;
+        setBusy(true);
+        setError(null);
+        onSave(draft).then(
+          () => setBusy(false),
+          (err: unknown) => {
+            setBusy(false);
+            setError(err instanceof Error && err.message ? err.message : "Could not save the edit. Your text is still here.");
+          },
+        );
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+    >
+      <label className="visually-hidden" htmlFor={`edit-${m.id}`}>Edit message</label>
+      <textarea id={`edit-${m.id}`} value={draft} rows={2} autoFocus onChange={(e) => setDraft(e.target.value)} />
+      {error && <p className="conv-error" role="alert">{error}</p>}
+      <div className="edit-actions">
+        <button type="button" className="chip-btn" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="chip-btn confirm" disabled={busy || Boolean(why)}>{busy ? "Saving" : "Save"}</button>
+      </div>
+    </form>
   );
 }
 
@@ -482,5 +640,43 @@ function Composer({ label, onSend }: { label: string; onSend: (body: string) => 
         </button>
       </div>
     </form>
+  );
+}
+
+function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId: string; members: Map<string, Member> }) {
+  const [facts, setFacts] = useState<{ thread: string; value: TaskFacts } | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open || facts?.thread === threadId) return;
+    let live = true;
+    void api.facts(threadId).then((value) => {
+      if (live) setFacts({ thread: threadId, value });
+    });
+    return () => {
+      live = false;
+    };
+  }, [api, threadId, open, facts?.thread]);
+  const f = facts?.thread === threadId ? facts.value : null;
+  const name = (id: string | undefined) => (id ? members.get(id)?.name || id : "someone");
+  const deps = f?.deps?.dependencies ?? [];
+  const entries = f?.evidence?.entries ?? [];
+  return (
+    <details className="pins facts-panel" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary>Result and evidence</summary>
+      {!f ? (
+        <p className="muted small">Loading…</p>
+      ) : (
+        <div className="small">
+          <p><b>Result</b>: {f.result ? <><code>{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : "none recorded yet"}</p>
+          <p><b>Depends on</b>: {deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : "nothing"}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</p>
+          {f.evidence?.evidence_changed_since_review ? <p className="err">Evidence changed since the last review.</p> : null}
+          {entries.length ? (
+            <ol className="edit-history">
+              {entries.map((e, i) => <li key={i}><time dateTime={e.at}>{new Date(e.at).toLocaleString()}</time> · {evidenceLine(e, name)}</li>)}
+            </ol>
+          ) : <p className="muted">No evidence recorded yet.</p>}
+        </div>
+      )}
+    </details>
   );
 }

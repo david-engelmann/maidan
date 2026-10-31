@@ -15,6 +15,7 @@ export const ROUTES = [
 export type RouteId = (typeof ROUTES)[number]["id"];
 
 export function parseRoute(hash: string): RouteId {
+  if (/^#\/?confirm-approval=/.test(hash)) return "needs";
   const id = hash.replace(/^#\/?/, "").split("/")[0];
   return ROUTES.find((r) => r.id === id)?.id ?? "board";
 }

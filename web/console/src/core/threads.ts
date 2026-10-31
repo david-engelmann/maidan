@@ -191,6 +191,56 @@ export function groupRefusal(me: string, picked: string[]): string | null {
   return ids.size < 3 ? GROUP_MIN : null;
 }
 
+export type Edit = { edited_at: string; editor_id: string; body_before: string; body_after: string };
+
+/** Pinned messages in the order they appear in the thread; pins whose message is not loaded are left out. */
+export function pinnedMessages(rows: Message[], pinned: ReadonlySet<string>): Message[] {
+  return rows.filter((m) => pinned.has(m.id) && !m.tombstoned_at);
+}
+
+export const EDIT_UNCHANGED = "Nothing changed.";
+
+/** Why an edit cannot go out, or null when it can. */
+export function editRefusal(before: string, after: string): string | null {
+  if (!after.trim()) return BODY_REQUIRED;
+  if (after.trim() === before.trim()) return EDIT_UNCHANGED;
+  return null;
+}
+
+export type TaskResult = { result: unknown; produced_by?: string | null };
+export type Dependencies = { dependencies?: Array<{ depends_on_thread_id: string }>; ready?: boolean };
+export type EvidenceEntry = {
+  kind: string;
+  at: string;
+  artifact?: { sha256?: string; linked_by?: string };
+  sha256?: string;
+  produced_by?: string;
+  verdict?: { status?: string; decision?: string; reviewer_id?: string; note?: string | null };
+  packet?: { requested_by?: string; thread_version?: number; evidence_root?: string; self_reported_only?: boolean };
+};
+export type Evidence = { entries?: EvidenceEntry[]; evidence_changed_since_review?: boolean };
+export type TaskFacts = { result: TaskResult | null; deps: Dependencies | null; evidence: Evidence | null };
+
+const short = (h: string | undefined) => (h ? `${h.slice(0, 12)}…` : "");
+
+/** One evidence entry in words, with member ids named by `name`. */
+export function evidenceLine(e: EvidenceEntry, name: (id: string | undefined) => string): string {
+  switch (e.kind) {
+    case "artifact_linked":
+      return `Artifact ${short(e.artifact?.sha256)} linked by ${name(e.artifact?.linked_by)}`;
+    case "result_recorded":
+      return `Result ${short(e.sha256)} recorded by ${name(e.produced_by)}`.replace("Result  ", "Result ");
+    case "land_gate_verdict":
+      return `Land gate: ${e.verdict?.status ?? "unknown"}`;
+    case "review_requested":
+      return `Handed to review by ${name(e.packet?.requested_by)} at version ${e.packet?.thread_version ?? "?"}, evidence root ${short(e.packet?.evidence_root)}${e.packet?.self_reported_only ? " (self-reported only)" : ""}`;
+    case "review_verdict":
+      return `Review: ${String(e.verdict?.decision ?? "").replace(/_/g, " ")} by ${name(e.verdict?.reviewer_id)}${e.verdict?.note ? `: ${e.verdict.note}` : ""}`;
+    default:
+      return e.kind;
+  }
+}
+
 export class ThreadsError extends Error {}
 
 async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
@@ -223,6 +273,25 @@ export class ThreadsApi {
     return (await res.json()) as T;
   }
 
+  /** A read where a missing record (404) or any failure is just "nothing to show". */
+  private async soft<T>(path: string): Promise<T | null> {
+    try {
+      return await this.get<T>(path);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Result, dependencies and evidence for a task; each part is optional. */
+  async facts(threadId: string): Promise<TaskFacts> {
+    const [result, deps, evidence] = await Promise.all([
+      this.soft<TaskResult>(`/threads/${threadId}/result`),
+      this.soft<Dependencies>(`/threads/${threadId}/dependencies`),
+      this.soft<Evidence>(`/threads/${threadId}/evidence`),
+    ]);
+    return { result, deps, evidence };
+  }
+
   private async send<T>(method: string, path: string, body: unknown): Promise<T | null> {
     const c = this.creds();
     const res = await this.fetchFn(apiPath(c, path), writeInit({ method, headers: headers(c, true), credentials: "include", body: JSON.stringify(body) }));
@@ -245,6 +314,27 @@ export class ThreadsApi {
 
   async react(messageId: string, emoji: string, on: boolean): Promise<void> {
     await this.send(on ? "POST" : "DELETE", `/messages/${messageId}/reactions`, { emoji });
+  }
+
+  async pins(threadId: string): Promise<string[]> {
+    const rows = await this.get<Array<{ message_id?: string }>>(`/threads/${threadId}/pins`);
+    return rows.map((r) => String(r.message_id ?? "")).filter(Boolean);
+  }
+
+  async pin(threadId: string, messageId: string, on: boolean): Promise<void> {
+    await this.send(on ? "POST" : "DELETE", `/threads/${threadId}/pins`, { message_id: messageId });
+  }
+
+  /** Edits your own message; the server keeps the old body in the history. */
+  async edit(m: Pick<Message, "id" | "body">, body: string): Promise<Message | null> {
+    const why = editRefusal(m.body, body);
+    if (why) throw new ThreadsError(why);
+    return this.send<Message>("PATCH", `/messages/${m.id}`, { body: body.trim() });
+  }
+
+  /** Newest first, as the server sends them. */
+  edits(messageId: string): Promise<Edit[]> {
+    return this.get<Edit[]>(`/messages/${messageId}/edits?limit=50`);
   }
 
   dms(workspaceId: string, me: string): Promise<Dm[]> {

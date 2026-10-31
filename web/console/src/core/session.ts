@@ -108,7 +108,7 @@ export class SessionStore {
       const res = await this.fetchFn(`${this.base}/auth/session`, { credentials: "include" });
       if (gen !== this.gen) return this.state;
       if (!res.ok) {
-        const creds = { ...this.state.credentials, tokenSession: false, sessionMemberId: null };
+        const creds = { ...this.state.credentials, tokenSession: false, sessionMemberId: null, sessionTokenId: null };
         const signedIn = Boolean(creds.pastedToken);
         this.set({ credentials: creds, status: signedIn ? "signed-in" : "signed-out", memberId: signedIn ? this.state.memberId : null, displayName: null });
         if (signedIn) await this.readMe(gen);
@@ -119,7 +119,7 @@ export class SessionStore {
       const shown = typeof body.display_name === "string" ? body.display_name.trim() : "";
       this.set({
         status: "signed-in",
-        credentials: { ...this.state.credentials, tokenSession: Boolean(body.token_id), sessionMemberId: body.member_id },
+        credentials: { ...this.state.credentials, tokenSession: Boolean(body.token_id), sessionMemberId: body.member_id, sessionTokenId: typeof body.token_id === "string" ? body.token_id : null },
         memberId: body.member_id,
         displayName: shown || null,
         workspaceId: this.state.workspaceId ?? body.workspace_id,

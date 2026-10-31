@@ -2,14 +2,23 @@
 // Needs you already answers. Inbox and Preferences are the signed-in
 // member's own; Deliveries and Commands are the workspace's; Explore reads
 // queues, schedules, events and peers; Operator is audit and reindexing;
+// Search finds messages; Workspace renames, switches, and adds channels,
+// tasks, agents and peers, and reads apps and the workspace audit.
 // Recent is every notice this tab has shown.
 import { type FormEvent, type ReactNode, useState, useSyncExternalStore } from "react";
 import { ago } from "../core/board.ts";
+import { convHash } from "../core/threads.ts";
 import { notices, say, sayError } from "../core/notices.ts";
 import {
   DELIVERY_KINDS,
   EVENT_KINDS,
   HANDLER_KINDS,
+  HANDLE_REQUIRED,
+  SEARCH_MODES,
+  handleRefusal,
+  peerRefusal,
+  searchQuery,
+  switchHref,
   NOTIFICATION_KINDS,
   deliveryState,
   scheduleCadence,
@@ -27,6 +36,8 @@ export const TOOL_TABS = [
   { id: "prefs", title: "Preferences" },
   { id: "deliveries", title: "Deliveries" },
   { id: "commands", title: "Commands" },
+  { id: "search", title: "Search" },
+  { id: "workspace", title: "Workspace" },
   { id: "explore", title: "Explore" },
   { id: "operator", title: "Operator" },
   { id: "recent", title: "Recent" },
@@ -69,6 +80,8 @@ export function Tools() {
       {tab === "prefs" ? <Prefs api={api} me={me} /> : null}
       {tab === "deliveries" ? <Deliveries api={api} ws={ws} /> : null}
       {tab === "commands" ? <Commands api={api} ws={ws} /> : null}
+      {tab === "search" ? <Search api={api} ws={ws} /> : null}
+      {tab === "workspace" ? <Workspace api={api} ws={ws} /> : null}
       {tab === "explore" ? <Explore api={api} ws={ws} /> : null}
       {tab === "operator" ? <Operator api={api} ws={ws} /> : null}
       {tab === "recent" ? <Recent /> : null}
@@ -502,5 +515,172 @@ function Recent() {
         <p className="muted">Nothing yet. What you do here, and what goes wrong, shows up in this list.</p>
       )}
     </Panel>
+  );
+}
+
+// ---- Search --------------------------------------------------------------
+
+function Search({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  const [q, setQ] = useState("");
+  const [mode, setMode] = useState<string>(SEARCH_MODES[0]);
+  const [author, setAuthor] = useState("");
+  const [ran, setRan] = useState<string | null>(null);
+  const hits = useLoad(ws && ran ? ran : null, () => api.search(ws ?? "", ran ?? ""));
+  if (!ws) return <Panel title="Search">{SELF_ONLY}</Panel>;
+  return (
+    <div className="tool-grid">
+      <Panel title="Search messages">
+        <form className="row-form" role="search" onSubmit={(e: FormEvent) => { e.preventDefault(); if (q.trim()) setRan(searchQuery(q, mode, "", author)); }}>
+          <label className="field grow">Words<input type="search" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+          <label className="field">Mode<select value={mode} onChange={(e) => setMode(e.target.value)}>{SEARCH_MODES.map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
+          <label className="field">Author id<input value={author} onChange={(e) => setAuthor(e.target.value)} spellCheck={false} /></label>
+          <button className="button steel" disabled={!q.trim()}>Search</button>
+        </form>
+        {ran ? (
+          <State loaded={hits}>
+            {(rows) =>
+              rows.length ? (
+                <ul className="tool-list">
+                  {rows.map((h, i) => (
+                    <li key={h.message_id ?? h.id ?? i} className="tool-row">
+                      <div className="grow">
+                        <p>{h.snippet || h.body || "(no text)"}</p>
+                        {h.thread_id ? <a className="muted small" href={convHash({ kind: "task", id: h.thread_id })}>Open the thread</a> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="muted">No messages match.</p>
+            }
+          </State>
+        ) : null}
+      </Panel>
+    </div>
+  );
+}
+
+// ---- Workspace -----------------------------------------------------------
+
+function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
+  const { session } = useSession();
+  const { busy, act } = useAct();
+  const [name, setName] = useState("");
+  const [channel, setChannel] = useState("");
+  const [task, setTask] = useState({ channel: "", title: "" });
+  const [peer, setPeer] = useState({ name: "", url: "" });
+  const [agent, setAgent] = useState({ handle: "", display: "" });
+  const [dropping, setDropping] = useState<string | null>(null);
+  const [auditOn, setAuditOn] = useState(false);
+  const channels = useLoad(ws, () => api.channels(ws ?? ""));
+  const peers = useLoad(ws, () => api.peers(ws ?? ""));
+  const installs = useLoad(ws, () => api.appInstallations(ws ?? ""));
+  const audit = useLoad(ws && auditOn ? ws : null, () => api.workspaceAudit(ws ?? "", 100));
+  const spaces = useLoad("switchable", () => api.switchable());
+  if (!ws) return <Panel title="Workspace">{SELF_ONLY}</Panel>;
+  const base = session.status === "signed-in" ? session.credentials.base : "";
+  const cid = task.channel || channels.value?.[0]?.id || "";
+  const peerWhy = peerRefusal(peer.name, peer.url);
+  const agentWhy = agent.handle ? handleRefusal(agent.handle) : HANDLE_REQUIRED;
+  return (
+    <div className="tool-grid">
+      <Panel title="Name">
+        <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); void act("rename", () => api.renameWorkspace(ws, name), "Workspace renamed", "Could not rename the workspace"); }}>
+          <label className="field grow">New name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} /></label>
+          <button className="button steel" disabled={busy !== null || !name.trim()}>Rename</button>
+        </form>
+        {spaces.value && spaces.value.length > 1 ? (
+          <>
+            <h3 className="small">Switch workspace</h3>
+            <ul className="tool-list">
+              {spaces.value.map((w) => (
+                <li key={w.workspace_id} className="tool-row">
+                  <div className="grow"><b>{w.name}</b></div>
+                  {w.current ? <span className="state-chip">Current</span> : <a className="chip-btn" href={switchHref(base, w.workspace_id)}>Switch</a>}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </Panel>
+      <Panel title="Channels and tasks">
+        <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); void act("chan", async () => { await api.createChannel(ws, channel); setChannel(""); await channels.reload(); }, "Channel created", "Could not create the channel"); }}>
+          <label className="field grow">New channel<input value={channel} onChange={(e) => setChannel(e.target.value)} /></label>
+          <button className="button steel" disabled={busy !== null || !channel.trim()}>Create</button>
+        </form>
+        <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); void act("task", async () => { await api.createThread(cid, task.title); setTask({ ...task, title: "" }); }, "Task created", "Could not create the task"); }}>
+          <label className="field">In<select value={cid} onChange={(e) => setTask({ ...task, channel: e.target.value })}>{(channels.value ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label className="field grow">New task<input value={task.title} onChange={(e) => setTask({ ...task, title: e.target.value })} /></label>
+          <button className="button steel" disabled={busy !== null || !cid || !task.title.trim()}>Create</button>
+        </form>
+      </Panel>
+      <Panel title="Agents">
+        <p className="muted small">Adds an agent member. Needs a pasted token with token:admin. Mint its token from People afterwards.</p>
+        <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); if (agentWhy) return; void act("agent", async () => { await api.createAgent(ws, agent.handle, agent.display); setAgent({ handle: "", display: "" }); }, "Agent added", "Could not add the agent. It may exist already: check People before trying again"); }}>
+          <label className="field">Handle<input value={agent.handle} onChange={(e) => setAgent({ ...agent, handle: e.target.value })} spellCheck={false} autoCapitalize="none" /></label>
+          <label className="field grow">Display name<input value={agent.display} onChange={(e) => setAgent({ ...agent, display: e.target.value })} /></label>
+          <button className="button steel" disabled={busy !== null || agentWhy !== null}>Add</button>
+        </form>
+        {agent.handle && agentWhy ? <p className="err small">{agentWhy}</p> : null}
+      </Panel>
+      <Panel title="Peers">
+        <State loaded={peers}>
+          {(rows) =>
+            rows.length ? (
+              <ul className="tool-list">
+                {rows.map((p) => (
+                  <li key={p.id} className="tool-row">
+                    <div className="grow"><b>{p.name || p.id}</b><p className="muted small">{p.base_url}</p></div>
+                    {dropping === p.id ? (
+                      <>
+                        <button type="button" className="chip-btn danger" disabled={busy !== null} onClick={() => void act("drop", async () => { await api.removePeer(ws, p.id); setDropping(null); await peers.reload(); }, "Peer removed", "Could not remove the peer")}>Remove</button>
+                        <button type="button" className="chip-btn" onClick={() => setDropping(null)}>Keep</button>
+                      </>
+                    ) : <button type="button" className="chip-btn" onClick={() => setDropping(p.id)}>Remove…</button>}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="muted">No peers yet.</p>
+          }
+        </State>
+        <form className="row-form" onSubmit={(e: FormEvent) => { e.preventDefault(); if (peerWhy) return; void act("peer", async () => { await api.addPeer(ws, peer.name, peer.url); setPeer({ name: "", url: "" }); await peers.reload(); }, "Peer added", "Could not add the peer"); }}>
+          <label className="field">Name<input value={peer.name} onChange={(e) => setPeer({ ...peer, name: e.target.value })} /></label>
+          <label className="field grow">Base URL<input type="url" value={peer.url} onChange={(e) => setPeer({ ...peer, url: e.target.value })} spellCheck={false} /></label>
+          <button className="button steel" disabled={busy !== null || peerWhy !== null}>Add</button>
+        </form>
+      </Panel>
+      <Panel title="App installations">
+        <State loaded={installs}>
+          {(rows) =>
+            rows.length ? (
+              <ul className="tool-list">
+                {rows.map((r) => (
+                  <li key={r.id} className={`tool-row${r.revoked_at ? " read" : ""}`}>
+                    <div className="grow"><b>{r.app_id}</b><p className="muted small">Install {r.id}{r.revoked_at ? " · revoked" : ""}</p></div>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="muted">No apps installed.</p>
+          }
+        </State>
+      </Panel>
+      <Panel title="Workspace audit" action={<button type="button" className="chip-btn" onClick={() => (auditOn ? void audit.reload() : setAuditOn(true))}>{auditOn ? "Refresh" : "Load"}</button>}>
+        <p className="muted small">The last 100 audited actions in this workspace.</p>
+        {auditOn ? (
+          <State loaded={audit}>
+            {(rows) =>
+              rows.length ? (
+                <ul className="tool-list">
+                  {rows.map((a, i) => (
+                    <li key={i} className="tool-row">
+                      <div className="grow"><b>{a.action}</b><p className="muted small">{new Date(a.occurred_at).toLocaleString()}{a.target_kind ? ` · ${a.target_kind}` : ""}</p></div>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="muted">Nothing audited yet.</p>
+            }
+          </State>
+        ) : null}
+      </Panel>
+    </div>
   );
 }
