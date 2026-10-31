@@ -3,8 +3,8 @@
 // screen. Safe-area insets come from viewport-fit=cover in index.html.
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { liveBus } from "../core/bus.ts";
-import type { EventFrame } from "../core/live.ts";
+import { controlBus, liveBus } from "../core/bus.ts";
+import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { Icon } from "./icons.tsx";
@@ -15,6 +15,7 @@ import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
 const NO_FILTER = {};
 const TO_BUS = {
   onEvent: (frame: EventFrame) => liveBus.emit({ type: "event", frame }),
+  onControl: (frame: ControlFrame) => controlBus.emit(frame),
   onPoll: () => liveBus.emit({ type: "resync" }),
   onRecovered: () => liveBus.emit({ type: "resync" }),
 };
