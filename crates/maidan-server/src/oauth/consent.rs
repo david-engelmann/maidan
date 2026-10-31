@@ -25,7 +25,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::app::BOARD_UI_CSP;
+use crate::app::OAUTH_PAGE_CSP;
 use crate::error::ApiError;
 use crate::extract::{ApiForm, ApiQuery};
 use crate::oauth::registry::resolve_client;
@@ -89,7 +89,7 @@ pub async fn consent_page(
     // navigates to the client's redirect URI. `form-action 'self'` alone
     // would block that navigation, so allow the redirect target's origin.
     let redirect_origin = redirect_origin_for_csp(&pending.redirect_uri);
-    let csp = BOARD_UI_CSP.replacen(
+    let csp = OAUTH_PAGE_CSP.replacen(
         "form-action 'self'",
         &format!("form-action 'self' {redirect_origin}"),
         1,

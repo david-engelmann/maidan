@@ -29,6 +29,15 @@ COPY web/landing/ ./
 ENV LANDING_OUT=/landing-dist
 RUN npm run build
 
+# The console (web/console, served at /ui) is built the same way, beside the landing.
+FROM node:22-bookworm-slim AS console
+WORKDIR /web
+COPY web/console/package.json web/console/package-lock.json ./
+RUN npm ci
+COPY web/console/ ./
+ENV CONSOLE_OUT=/console-dist
+RUN npm run build
+
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_CODENAME} AS chef
 WORKDIR /app
 RUN cargo install cargo-chef --version 0.1.71 --locked
@@ -62,6 +71,7 @@ COPY --from=cacher /app/target target
 COPY --from=cacher $CARGO_HOME $CARGO_HOME
 COPY . .
 COPY --from=landing /landing-dist crates/maidan-server/static/landing/dist
+COPY --from=console /console-dist crates/maidan-server/static/console/dist
 ENV MAIDAN_SKIP_LANDING_BUILD=1
 RUN apt-get update \
  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
