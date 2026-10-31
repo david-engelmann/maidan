@@ -1800,8 +1800,14 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/", get(console_index))
         .route("/ui/{name}", get(console_asset))
         // The console's preview address before it took over /ui.
-        .route("/console", get(|| async { axum::response::Redirect::permanent("/ui/") }))
-        .route("/console/", get(|| async { axum::response::Redirect::permanent("/ui/") }))
+        .route(
+            "/console",
+            get(|| async { axum::response::Redirect::permanent("/ui/") }),
+        )
+        .route(
+            "/console/",
+            get(|| async { axum::response::Redirect::permanent("/ui/") }),
+        )
         // OAuth 2.1 consent page: the member approves or denies a pending
         // authorization request. Signed-in session only (never a bearer);
         // the handler checks `SessionContext::token.is_none()`.

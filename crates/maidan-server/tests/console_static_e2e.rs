@@ -68,7 +68,10 @@ async fn console_index_is_the_built_shell_under_a_strict_csp() {
         let body = resp.text().await.expect("body");
         assert!(body.contains(r#"src="/ui/app.js""#), "{body}");
         assert!(body.contains(r#"href="/ui/style.css""#), "{body}");
-        assert!(body.contains(r#"href="/ui/manifest.webmanifest""#), "{body}");
+        assert!(
+            body.contains(r#"href="/ui/manifest.webmanifest""#),
+            "{body}"
+        );
         assert!(!body.contains("<style"), "inline style element in {body}");
     }
     // The preview address points at /ui.
