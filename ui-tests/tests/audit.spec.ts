@@ -82,7 +82,7 @@ test("keyboard only: pick a channel, reach Approve, open a task, with a visible 
   await expect(page.locator("#board-title")).toHaveText("# build");
   await expect(page.locator("#needs-you-list .ny-item").first()).toBeVisible();
 
-  const path = await tabUntil(`#board .card[data-id="${fx.board_review_thread_id}"]`, 120);
+  const path = await tabUntil(`#board .card[data-id="${fx.board_review_thread_id}"] .card-open`, 120);
   expect(path, "Approve in Needs you is on the way").toContain("Approve");
   const ring = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineStyle);
   expect(ring).not.toBe("none");
