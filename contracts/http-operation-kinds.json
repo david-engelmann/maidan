@@ -69,6 +69,7 @@
   {"method":"GET","path":"/landing/{name}","kind":"reads"},
   {"method":"GET","path":"/llms.txt","kind":"reads"},
   {"method":"POST","path":"/mcp","kind":"changes"},
+  {"method":"POST","path":"/mcp/coordinator","kind":"changes"},
   {"method":"GET","path":"/mcp/notifications","kind":"reads"},
   {"method":"POST","path":"/mcp/reviewer","kind":"changes"},
   {"method":"GET","path":"/mcp/stream","kind":"changes","reason":"A stream that names a consumer_id advances that consumer's durable delivery cursor as it sends. Delivery bookkeeping: it writes no event and no audit row."},
