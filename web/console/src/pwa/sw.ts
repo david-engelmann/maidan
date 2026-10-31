@@ -56,7 +56,7 @@ sw.addEventListener("fetch", (e: FetchEvt) => {
 sw.addEventListener("push", (e: PushEvt) => {
   const d = e.data;
   const p = pushPayload(d ? () => d.json() : null, d ? () => d.text() : null);
-  e.waitUntil(sw.registration.showNotification(p.title, { body: p.body, icon: `${SHELL_SCOPE}icon.png`, data: { log_id: p.log_id, kind: p.kind } }));
+  e.waitUntil(sw.registration.showNotification(p.title, { body: p.body, icon: `${SHELL_SCOPE}icon-192.png`, data: { log_id: p.log_id, kind: p.kind } }));
 });
 
 sw.addEventListener("notificationclick", (e: ClickEvt) => {

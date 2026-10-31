@@ -220,6 +220,22 @@ export class ToolsApi {
     return text ? (JSON.parse(text) as T) : null;
   }
 
+  /** Erase a file from the store for good. Admin token only. */
+  async eraseArtifact(sha: string): Promise<void> {
+    await this.send("DELETE", `/artifacts/${sha}`, undefined, true);
+  }
+
+  /**
+   * Mint the first admin token for this signed-in session. The secret comes
+   * back once; the caller shows it with SecretOnce and never logs it.
+   */
+  async mintAdmin(): Promise<{ secret: string }> {
+    const c = this.creds();
+    const res = await this.fetchFn(`${trimBase(c.base)}/auth/session/mint`, writeInit({ method: "POST", headers: headers(c, false), credentials: "include" }));
+    if (!res.ok) return fail(res, this.mode());
+    return (await res.json()) as { secret: string };
+  }
+
   // Inbox
   notifications(member: string, unreadOnly: boolean): Promise<Notification[]> {
     return this.get(`/members/${member}/notifications?unread_only=${unreadOnly}&limit=50`);

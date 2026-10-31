@@ -1,5 +1,6 @@
 // The toasts. A notice shows for five seconds, or until dismissed; the
-// recent list on Tools keeps it after that.
+// recent list on Tools keeps it after that. Moving to another page clears
+// what was showing: a toast speaks about the page it was raised on.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { notices } from "../core/notices.ts";
 
@@ -9,10 +10,22 @@ export function Toasts() {
   const list = useSyncExternalStore(notices.subscribe, notices.snapshot);
   const [gone, setGone] = useState<ReadonlySet<number>>(() => new Set());
   const [now, setNow] = useState(() => Date.now());
+  const [navAt, setNavAt] = useState(0);
+  useEffect(() => {
+    const page = () => window.location.hash.split("/").slice(0, 2).join("/");
+    let last = page();
+    const on = () => {
+      const next = page();
+      if (next !== last) setNavAt(Date.now());
+      last = next;
+    };
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
   // A notice newer than the last tick is judged from its own time, so a stale
   // "now" never hides or stretches it.
   const at = Math.max(now, list[0]?.at ?? 0);
-  const live = list.filter((n) => !gone.has(n.id) && at - n.at < TOAST_MS).slice(0, 3);
+  const live = list.filter((n) => !gone.has(n.id) && n.at >= navAt && at - n.at < TOAST_MS).slice(0, 3);
   const busy = live.length > 0;
   useEffect(() => {
     if (!busy) return;

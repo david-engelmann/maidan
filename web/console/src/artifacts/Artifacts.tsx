@@ -45,6 +45,18 @@ export function Artifacts() {
       setBusy(false);
     }
   };
+  const erase = async (s: string) => {
+    setBusy(true);
+    try {
+      await api.eraseArtifact(s);
+      say("File erased from the store");
+      setLooked("");
+    } catch (e) {
+      sayError(e, "Could not erase that file");
+    } finally {
+      setBusy(false);
+    }
+  };
   const linkOp = async (op: "link" | "unlink", s: string) => {
     if (!threadOn || busy) return;
     setBusy(true);
@@ -71,7 +83,7 @@ export function Artifacts() {
           <input type="file" className="visually-hidden" disabled={busy} onChange={(e) => void upload(e.target.files?.[0])} />
         </label>
         {looked ? (
-          meta.status === "loading" ? <p className="muted">Looking up…</p> : meta.value ? <ArtifactCard api={api} sha={looked} meta={meta.value} onLink={threadOn ? () => void linkOp("link", looked) : null} /> : meta.error ? <p className="err" role="alert">{meta.error}</p> : <p className="muted">Not found, or not in this workspace.</p>
+          meta.status === "loading" ? <p className="muted">Looking up…</p> : meta.value ? <ArtifactCard api={api} sha={looked} meta={meta.value} onLink={threadOn ? () => void linkOp("link", looked) : null} onErase={() => void erase(looked)} /> : meta.error ? <p className="err" role="alert">{meta.error}</p> : <p className="muted">Not found, or not in this workspace.</p>
         ) : null}
       </section>
       <section className="card tool-panel">
@@ -99,7 +111,8 @@ export function Artifacts() {
   );
 }
 
-function ArtifactCard({ api, sha, meta, onLink }: { api: ToolsApi; sha: string; meta: ArtifactMeta; onLink: (() => void) | null }) {
+function ArtifactCard({ api, sha, meta, onLink, onErase }: { api: ToolsApi; sha: string; meta: ArtifactMeta; onLink: (() => void) | null; onErase: () => void }) {
+  const [armed, setArmed] = useState<string | null>(null);
   const [url, setUrl] = useState<{ sha: string; url: string } | null>(null);
   const show = previewable(meta.mime_type);
   useEffect(() => {
@@ -143,7 +156,16 @@ function ArtifactCard({ api, sha, meta, onLink }: { api: ToolsApi; sha: string; 
       <div className="row-form">
         <button type="button" className="button steel" onClick={() => void download()}>Download</button>
         {onLink ? <button type="button" className="button ghost" onClick={onLink}>Link to the open task</button> : null}
+        {armed === sha ? (
+          <>
+            <button type="button" className="button danger" onClick={() => { setArmed(null); onErase(); }}>Erase for good</button>
+            <button type="button" className="button ghost" onClick={() => setArmed(null)}>Keep it</button>
+          </>
+        ) : (
+          <button type="button" className="button ghost" onClick={() => setArmed(sha)}>Erase…</button>
+        )}
       </div>
+      {armed === sha ? <p className="muted small" role="status">Erasing removes the bytes for every task that links them. It needs an admin token and cannot be undone.</p> : null}
     </div>
   );
 }

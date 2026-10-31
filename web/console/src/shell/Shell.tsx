@@ -7,7 +7,7 @@ import { controlBus, liveBus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
-import { Icon } from "./icons.tsx";
+import { Icon, Mark } from "./icons.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { Palette, type Command } from "./Palette.tsx";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
@@ -62,7 +62,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
     <div className="shell">
       <nav className="rail" aria-label="Places">
         <a className="brand" href="#/board" aria-label="Maidan console">
-          <span className="mark steel" aria-hidden="true" />
+          <Mark className="mark" />
           <span>Maidan</span>
         </a>
         <Tabs route={route} reduce={Boolean(reduce)} layoutId="rail-pill" />

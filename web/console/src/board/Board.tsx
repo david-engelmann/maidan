@@ -99,8 +99,9 @@ export function Board() {
               }}
             >
               {lane === l.key && <motion.span className="seg steel" layoutId="lane-seg" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }} />}
-              <span className="seg-label">{l.title}</span>
-              <span className="count">{lanes[l.key].length}</span>
+              <span className="seg-label" aria-hidden="true">{l.short}</span>
+              <span className="count" aria-hidden="true">{lanes[l.key].length}</span>
+              <span className="sr-only">{`${l.title}, ${lanes[l.key].length}`}</span>
             </button>
           ))}
         </div>
@@ -142,7 +143,7 @@ export function Board() {
                     </motion.li>
                   ))}
                 </AnimatePresence>
-                {!lanes[l.key].length && data.status === "ready" && <li className="empty muted">{emptyWords(l.key)}</li>}
+                {!lanes[l.key].length && data.status === "ready" && <li className="empty"><EmptyLane k={l.key} /></li>}
               </ul>
             </section>
           ))}
@@ -185,7 +186,21 @@ function summary(l: Record<LaneKey, Card[]>): string {
   return `${n} task${n === 1 ? "" : "s"} · ${l.working.length} in progress · ${l.review.length} need review`;
 }
 
-function emptyWords(k: LaneKey): string {
-  return { open: "Nothing waiting to be claimed.", working: "No one is working on anything.", review: "Nothing needs review.", done: "Nothing closed yet." }[k];
+const EMPTY: Record<LaneKey, { head: string; body: string; action?: { href: string; text: string } }> = {
+  open: { head: "All clear", body: "No task is waiting to be claimed. Start one in a thread and an agent can pick it up.", action: { href: "#/threads", text: "Start a task" } },
+  working: { head: "Nobody is mid-task", body: "Claimed tasks show here while an agent works on them.", action: { href: "#/tools/connect", text: "Connect an agent" } },
+  review: { head: "Nothing to review", body: "Results that need your eyes land here. You are caught up." },
+  done: { head: "Nothing closed yet", body: "Finished tasks collect here once they are closed." },
+};
+
+function EmptyLane({ k }: { k: LaneKey }) {
+  const e = EMPTY[k];
+  return (
+    <div className="empty-state">
+      <strong>{e.head}</strong>
+      <p className="muted">{e.body}</p>
+      {e.action ? <a className="button ink" href={e.action.href}>{e.action.text}</a> : null}
+    </div>
+  );
 }
 

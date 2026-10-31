@@ -1,7 +1,7 @@
 // Threads and DMs: a task's conversation, one-to-one DMs and group DMs. A
 // port of the classic board's thread.js and dm.js with the DOM taken out.
 // Fetch is passed in, so it is tested.
-import { apiPath, headers, humanError, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { apiPath, bearerRefusal, headers, humanError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Member, Thread } from "./board.ts";
 
 export type Message = {
@@ -323,6 +323,15 @@ export class ThreadsApi {
 
   async pin(threadId: string, messageId: string, on: boolean): Promise<void> {
     await this.send(on ? "POST" : "DELETE", `/threads/${threadId}/pins`, { message_id: messageId });
+  }
+
+  /** Delete (tombstone) a message, or purge its body for good (admin). Token only. */
+  async remove(id: string, purge = false): Promise<void> {
+    const c = this.creds();
+    const why = bearerRefusal(c);
+    if (why) throw new ThreadsError(why);
+    const res = await this.fetchFn(`${trimBase(c.base)}/messages/${id}${purge ? "/purge" : ""}`, writeInit({ method: "DELETE", headers: headers(c, false), credentials: "include" }));
+    if (!res.ok) await fail(res, this.mode());
   }
 
   /** Edits your own message; the server keeps the old body in the history. */

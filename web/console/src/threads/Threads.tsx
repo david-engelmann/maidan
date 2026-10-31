@@ -286,6 +286,15 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
       loadPins();
     }
   };
+  const removeMessage = async (m: Message, purge: boolean) => {
+    try {
+      await api.remove(m.id, purge);
+      say(purge ? "Message purged" : "Message deleted");
+      await refresh();
+    } catch (e) {
+      sayError(e, purge ? "Could not purge that message" : "Could not delete that message");
+    }
+  };
   const saveEdit = async (m: Message, body: string) => {
     await api.edit(m, body);
     say("Message edited");
@@ -416,6 +425,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 pinned={pinned.has(m.id)}
                 onPin={conv.ref.kind === "task" ? togglePin : null}
                 onEdit={saveEdit}
+                onRemove={removeMessage}
                 api={api}
               />
             ))}
@@ -450,10 +460,13 @@ type RowProps = {
   pinned: boolean;
   onPin: ((id: string, on: boolean) => Promise<void>) | null;
   onEdit: (m: Message, body: string) => Promise<void>;
+  onRemove: (m: Message, purge: boolean) => Promise<void>;
   api: ThreadsApi;
 };
 
-function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin, onEdit, api }: RowProps) {
+function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
+  // Destructive moves take two taps: the first arms, the second does it.
+  const [armed, setArmed] = useState<"delete" | "purge" | null>(null);
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState<Edit[] | "loading" | string | null>(null);
@@ -543,6 +556,16 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
           )}
           {picking && m.edited_at && (
             <button className="react word" aria-expanded={Boolean(history)} onClick={() => { setPicking(false); openHistory(); }}>History</button>
+          )}
+          {picking && mine && !m.tombstoned_at && (
+            armed === "delete"
+              ? <button className="react word danger" onClick={() => { setPicking(false); setArmed(null); void onRemove(m, false); }}>Delete? Tap again</button>
+              : <button className="react word" onClick={() => setArmed("delete")}>Delete</button>
+          )}
+          {picking && m.tombstoned_at && (
+            armed === "purge"
+              ? <button className="react word danger" onClick={() => { setPicking(false); setArmed(null); void onRemove(m, true); }}>Purge for good? Tap again</button>
+              : <button className="react word" onClick={() => setArmed("purge")}>Purge</button>
           )}
         </div>
       </div>

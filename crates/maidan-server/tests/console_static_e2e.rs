@@ -90,6 +90,8 @@ async fn console_assets_are_pinned_names_only() {
         ("style.css", "text/css"),
         ("geist.woff2", "font/woff2"),
         ("icon.png", "image/png"),
+        ("icon-192.png", "image/png"),
+        ("icon-512.png", "image/png"),
         ("manifest.webmanifest", "application/manifest+json"),
         ("sw.js", "text/javascript"),
     ] {
