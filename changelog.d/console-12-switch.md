@@ -6,3 +6,4 @@
 - **Changed:** `ui-tests` drives the console: a new `console.spec.ts` (CSP, the redirect, sign-in, the board, needs you) and the kept `oauth-consent.spec.ts`; the old board's specs are deleted. `npm run capture` shoots the console, and the old board's connect, error, refused-close and thread screenshots are removed.
 
 - **Added:** Browser tests for what the classic specs promised: a hostile attachment name renders as text, a pasted token is never stored, put in a URL or echoed, a token for another workspace cannot open this one's board, the board works from the keyboard with a visible focus ring, Needs you and the board pass axe (WCAG A/AA, serious and critical), and phone targets are at least 44px. `console_fetch_openapi_contract` holds every console API path to the OpenAPI document, and a CSS test fails on styles nothing uses (the dead `.splash` rules are gone).
+- **Fixed:** The signed-out token field uses the console field style and is 44px tall.
