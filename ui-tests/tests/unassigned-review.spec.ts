@@ -53,7 +53,7 @@ test("the owner of a review nobody was named for can close it, and the board say
   await page.click(`#channel-list li[data-id="${fx.triage_channel_id}"]`);
   const card = page.locator(`#board .board-col[data-column="done"] .card[data-id="${fx.triage_owned_thread_id}"]`);
   await expect(card.locator(".card-state")).toHaveText("closed without review");
-  await expect(card).toHaveAttribute("aria-label", /closed without review$/);
+  await expect(card.locator(".card-open")).toHaveAttribute("aria-label", /closed without review$/);
   await card.click();
   await expect(page.locator("#thread-facts .fact", { hasText: "closed by" })).toHaveCount(1);
   await expect(page.locator("#thread-facts .fact", { hasText: "completed by" })).toHaveCount(0);

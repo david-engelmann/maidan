@@ -11,7 +11,7 @@ use maidan_types::*;
 use super::{cap, ensure_workspace, publish_stored, requested_member, ApiResult};
 use crate::dto::*;
 use crate::error::ApiError;
-use crate::extract::{ApiJson, ApiPath};
+use crate::extract::{ApiOptionalJson, ApiPath};
 use crate::state::AppState;
 
 /// Resolve the target member and authorize the caller for their workspace.
@@ -27,7 +27,7 @@ pub async fn freeze_member(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
-    ApiJson(body): ApiJson<FreezeMember>,
+    ApiOptionalJson(body): ApiOptionalJson<FreezeMember>,
 ) -> ApiResult<Json<FreezeResult>> {
     cap(&auth, TOKEN_ADMIN)?;
     let member_id = MemberId(id);
