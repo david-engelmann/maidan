@@ -204,7 +204,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .need-meta { display: flex; justify-content: space-between; gap: 10px; margin: 0 0 6px; font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .need-meta .overdue { color: var(--danger); }
 .need-kind { color: var(--ink); }
-.kind-open_gate { color: var(--signal); }
+.kind-open_gate { color: color-mix(in srgb, var(--signal) 70%, #000); }
 .kind-blocked { color: var(--danger); }
 .need-title { margin: 0 0 4px; font-size: 18px; line-height: 1.3; font-weight: 600; overflow-wrap: anywhere; }
 .need-line { margin: 2px 0 0; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
