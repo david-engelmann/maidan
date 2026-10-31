@@ -20,6 +20,7 @@ import {
   type Need,
   type RowState,
 } from "../core/needs.ts";
+import { convHash } from "../core/threads.ts";
 import { useNeeds } from "../hooks/useNeeds.ts";
 import { useSession } from "../hooks/useSession.ts";
 
@@ -385,7 +386,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
               ))}
             {item.kind === "blocked" && <button type="button" className="btn go" onClick={() => start("unblock")}>Unblock</button>}
             {item.kind === "question" && (
-              <a className="btn go" href="/ui/">Answer on the classic board</a>
+              <a className="btn go" href={tid ? convHash({ kind: "task", id: tid }) : "/ui/"}>{tid ? "Answer in the thread" : "Answer on the classic board"}</a>
             )}
           </div>
         )}
