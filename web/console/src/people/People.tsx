@@ -22,6 +22,7 @@ import {
   saveSeats,
   seat,
   seatRefusal,
+  WORKER_PRESET,
   tokenState,
   unseat,
   type Pause,
@@ -31,7 +32,11 @@ import {
   type RosterRow,
   type Seats,
 } from "../core/people.ts";
+import { hasToken } from "../core/api.ts";
+import { say, sayError } from "../core/notices.ts";
 import { convHash } from "../core/threads.ts";
+import { parseCaps } from "../core/tools.ts";
+import { SecretOnce } from "../tools/SecretOnce.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -162,7 +167,7 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
       {open ? (
         <section className="member-detail card" aria-label="Member details">
           <a className="back" href="#/people">People</a>
-          {selected ? <MemberDetail row={selected} api={api} /> : loaded.status === "ready" ? <p className="muted">That member is not in this workspace.</p> : <p className="muted">Loading…</p>}
+          {selected ? <MemberDetail key={selected.person.id} row={selected} api={api} /> : loaded.status === "ready" ? <p className="muted">That member is not in this workspace.</p> : <p className="muted">Loading…</p>}
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
@@ -175,9 +180,40 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
 
 function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
   const { session } = useSession();
-  const tokens = useTokens(session, api, row.person.id);
+  const [version, setVersion] = useState(0);
+  const tokens = useTokens(session, api, row.person.id, version);
   const [now] = useState(() => Date.now());
+  // A secret the server just sent. It lives here only: the panel closing,
+  // another member opening, or "I have it" drops it. It is never logged.
+  const [secret, setSecret] = useState<{ title: string; value: string } | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; op: "rotate" | "revoke" } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const workspace = session.status === "signed-in" ? session.workspaceId : null;
+  const canWrite = session.status === "signed-in" && hasToken(session.credentials);
   const p = row.person;
+  const run = async (what: () => Promise<void>, done: string, fallback: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await what();
+      say(done);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      sayError(e, fallback);
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+    }
+  };
+  const tokenAct = (id: string, op: "rotate" | "revoke") => {
+    if (!confirm || confirm.id !== id || confirm.op !== op) return setConfirm({ id, op });
+    if (op === "revoke") void run(() => api.revoke(id), "Token revoked", "Could not revoke that token");
+    else
+      void run(async () => {
+        const out = await api.rotate(id);
+        setSecret({ title: "New token. The old one no longer works.", value: out.secret });
+      }, "Token rotated", "Could not rotate that token");
+  };
   return (
     <div className="detail-body">
       <div className="detail-head">
@@ -193,12 +229,14 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
         <div><dt>Holds</dt><dd>{row.task ? <a href={convHash({ kind: "task", id: row.task.id })}>{row.task.title || "untitled"}</a> : "Nothing right now"}</dd></div>
       </dl>
       <h3>Tokens</h3>
+      {secret ? <SecretOnce title={secret.title} secret={secret.value} onDone={() => setSecret(null)} /> : null}
       {tokens.status === "loading" ? <p className="muted">Loading tokens…</p> : null}
       {tokens.status === "error" ? <p className="err" role="alert">{tokens.error}</p> : null}
       {tokens.status === "ready" && !tokens.value?.length ? <p className="muted">No tokens for this member.</p> : null}
       <ul className="tokens">
         {(tokens.value ?? []).map((t) => {
           const state = tokenState(t, now);
+          const asking = confirm?.id === t.id ? confirm.op : null;
           return (
             <li key={t.id} className={`token ${state}`}>
               <div className="token-head">
@@ -209,12 +247,48 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
               <ul className="caps" aria-label="Capabilities">
                 {t.capabilities.map((c) => <li key={c}><code>{c}</code></li>)}
               </ul>
+              {state === "active" && canWrite ? (
+                <div className="token-actions">
+                  <button type="button" className={`chip-btn${asking === "rotate" ? " confirm" : ""}`} disabled={busy} onClick={() => tokenAct(t.id, "rotate")}>{asking === "rotate" ? "Rotate: sure?" : "Rotate"}</button>
+                  <button type="button" className={`chip-btn danger${asking === "revoke" ? " confirm" : ""}`} disabled={busy} onClick={() => tokenAct(t.id, "revoke")}>{asking === "revoke" ? "Revoke: sure?" : "Revoke"}</button>
+                  {asking ? <span className="muted small">If this page signed in with it, you will need to sign in again.</span> : null}
+                </div>
+              ) : null}
             </li>
           );
         })}
       </ul>
-      <p className="muted small">Minting, rotating and revoking tokens stay on the <a href="/ui/">classic board</a> for now.</p>
+      {canWrite && workspace ? (
+        <MintForm busy={busy} onMint={(req) => void run(async () => {
+          const out = await api.mint(workspace, p.id, req);
+          setSecret({ title: `New token for ${p.name}`, value: out.secret });
+        }, "Token minted", "Could not mint the token")} />
+      ) : (
+        <p className="muted small">Minting, rotating and revoking need a bearer token with token:admin. A signed-in session cannot.</p>
+      )}
     </div>
+  );
+}
+
+function MintForm({ busy, onMint }: { busy: boolean; onMint: (req: { label: string; capabilities: string[]; preset: string | null }) => void }) {
+  const [label, setLabel] = useState("");
+  const [caps, setCaps] = useState("");
+  const [preset, setPreset] = useState(true);
+  return (
+    <form
+      className="stack-form mint"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onMint({ label, capabilities: parseCaps(caps), preset: preset ? WORKER_PRESET : null });
+      }}
+    >
+      <h3>Mint a token</h3>
+      <label className="field">Label<input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="What it is for" /></label>
+      <label className="check"><input type="checkbox" checked={preset} onChange={(e) => setPreset(e.target.checked)} /> Agent worker preset</label>
+      {!preset ? <label className="field">Capabilities<input value={caps} onChange={(e) => setCaps(e.target.value)} placeholder="thread:read, message:write" spellCheck={false} autoCapitalize="off" /></label> : null}
+      <button className="button steel" disabled={busy}>Mint</button>
+      <p className="muted small">A token cannot hold more than the token you act with.</p>
+    </form>
   );
 }
 

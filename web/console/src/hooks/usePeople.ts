@@ -48,10 +48,10 @@ export function usePeople(session: SessionState, api: PeopleApi) {
 }
 
 /** One member's tokens, read when their details open. */
-export function useTokens(session: SessionState, api: PeopleApi, member: string | null): Loaded<Token[]> {
+export function useTokens(session: SessionState, api: PeopleApi, member: string | null, version = 0): Loaded<Token[]> {
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const [data, setData] = useState<{ key: string; value: Loaded<Token[]> } | null>(null);
-  const key = `${workspace}|${member}`;
+  const key = `${workspace}|${member}|${version}`;
   useEffect(() => {
     if (!workspace || !member) return;
     let live = true;
