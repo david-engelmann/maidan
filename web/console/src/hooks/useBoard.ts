@@ -15,11 +15,14 @@ export type BoardData = {
   refusals: Map<string, string>;
   /** Ids whose card changed in the last live refresh, so it can flash once. */
   fresh: Set<string>;
+  /** When the board last loaded, and when refreshes started failing. */
+  loadedAt: number | null;
+  failedSince: number | null;
 };
 
 const CHANNEL_KEY = "maidan_console_channel";
 
-const EMPTY: BoardData = { status: "idle", error: null, channels: [], channelId: null, threads: [], gates: {}, members: new Map(), refusals: new Map(), fresh: new Set() };
+const EMPTY: BoardData = { status: "idle", error: null, channels: [], channelId: null, threads: [], gates: {}, members: new Map(), refusals: new Map(), fresh: new Set(), loadedAt: null, failedSince: null };
 
 function sig(th: Thread): string {
   return `${th.state}|${th.assignee_id ?? ""}|${th.work_started_at ?? ""}|${th.updated_at ?? ""}`;
@@ -52,11 +55,11 @@ export function useBoard(session: SessionState, api: BoardApi) {
           next.set(th.id, s);
         }
         seen.current = next;
-        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), refusals, fresh });
+        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), refusals, fresh, loadedAt: Date.now(), failedSince: null });
       } catch (e) {
         if (mine !== gen.current) return;
         const message = e instanceof Error ? e.message : "Could not load the board";
-        setData((d) => (quiet && d.status === "ready" ? { ...d, error: `Last refresh failed: ${message}` } : { ...d, status: "error", error: message }));
+        setData((d) => (quiet && d.status === "ready" ? { ...d, error: `Last refresh failed: ${message}`, failedSince: d.failedSince ?? Date.now() } : { ...d, status: "error", error: message }));
       }
     },
     [workspace, api],

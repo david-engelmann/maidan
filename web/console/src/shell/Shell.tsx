@@ -3,7 +3,7 @@
 // screen. Safe-area insets come from viewport-fit=cover in index.html.
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { controlBus, liveBus } from "../core/bus.ts";
+import { controlBus, liveBus, liveStatus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -31,6 +31,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const live = useLive(session, NO_FILTER, TO_BUS);
   // A refused socket (a revoked or narrowed token) sends no more events, so
   // ask every screen to read once more: each then shows the refusal it gets.
+  useEffect(() => liveStatus.set(live), [live]);
   const refused = live.kind === "refused";
   useEffect(() => {
     if (refused) liveBus.emit({ type: "resync" });

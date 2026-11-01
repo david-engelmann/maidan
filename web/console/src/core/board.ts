@@ -158,6 +158,30 @@ export function boardHealth(threads: Thread[], now: number): Array<{ key: Health
   return out;
 }
 
+/** Past this, data on a board with no live connection is called old. */
+export const STALE_AFTER_MS = 2 * 60 * 1000;
+
+function hhmm(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * The stale-data banner's sentence, or null when the board is current. It
+ * shows when the last refresh failed, or when live updates are down
+ * (reconnecting, refused or closed) so the board no longer follows changes.
+ */
+export function staleBanner(live: { kind: string }, loadedAt: number | null, failedSince: number | null, now: number): string | null {
+  if (loadedAt === null) return null;
+  const at = hhmm(loadedAt);
+  if (failedSince !== null) return `Refresh failing. Showing the board as of ${at}.`;
+  const down = live.kind === "reconnecting" || live.kind === "refused" || live.kind === "closed";
+  if (!down) return null;
+  if (live.kind === "refused") return `Live updates were refused. Showing the board as of ${at}.`;
+  return now - loadedAt > STALE_AFTER_MS
+    ? `Live updates are down and this board is from ${at}. It may be out of date.`
+    : `Live updates are down. Reconnecting; the board is from ${at}.`;
+}
+
 type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
 export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
 

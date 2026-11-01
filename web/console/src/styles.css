@@ -581,3 +581,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .health-chip[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
 .health-stalled, .health-blocked, .health-ending { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 .health-clear { color: var(--muted); }
+
+/* Stale-data banner: the board stopped following live changes. */
+.stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: 14px; }
+.stale-banner .chip-btn { min-height: 44px; }

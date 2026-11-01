@@ -2,7 +2,8 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BoardApi, LANES, boardHealth, cardAriaLabel, cardWhen, chips, healthMatch, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { BoardApi, LANES, boardHealth, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { liveStatus } from "../core/bus.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
@@ -47,6 +48,8 @@ export function Board() {
   const reduce = Boolean(useReducedMotion());
   const [lane, setLane] = useState<LaneKey>("open");
   const [openId, setOpenId] = useState<string | null>(null);
+  const live = useSyncExternalStore(liveStatus.subscribe, liveStatus.getSnapshot);
+  const stale = staleBanner(live, data.loadedAt, data.failedSince, now);
   const [focus, setFocus] = useState<HealthKey | null>(null);
   const health = useMemo(() => boardHealth(data.threads, now), [data.threads, now]);
   // A filter whose signal has cleared falls away on its own.
@@ -76,6 +79,13 @@ export function Board() {
           {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes)}
         </p>
       </div>
+
+      {stale && (
+        <div className="stale-banner" role="status">
+          <span>{stale}</span>
+          <button type="button" className="chip-btn" onClick={() => void refresh()}>Refresh now</button>
+        </div>
+      )}
 
       {health.length > 0 && (
         <div className="health" role="group" aria-label="Board health">
