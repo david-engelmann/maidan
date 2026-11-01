@@ -107,7 +107,7 @@ export type EnqueueRequest = { pull_number: number; repo: string; };
 export type EnqueueResponse = { applied: boolean; label: string; number: number; reason?: string | null; };
 export type EraseWorkspace = { confirm_workspace_id: string; };
 export type EscalationPolicy = "notify" | "park";
-export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "usage_over_allowance" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
+export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "usage_over_allowance" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
 export type EventLink = { content_hash: string; id: number; lsn: number; prev_hash: string; };
 export type EvidenceAttestation = { attested_by: MemberId; kind: EvidenceKind; sha256?: string | null; tier: AttestationTier; };
 export type EvidenceKind = "result" | "artifact" | "land_gate";
@@ -198,6 +198,7 @@ export type MessageBacklinks = { message_id: MessageId; pins: Pin[]; reactions: 
 export type MessageEdit = { body_after: string; body_before: string; edited_at: string; editor_id: MemberId; id: number; message_id: MessageId; };
 export type MessageEditView = { body_after?: string | null; body_before?: string | null; edited_at: string; editor_id: MemberId; id: number; message_id: MessageId; };
 export type MessageId = string;
+export type MessageVotes = { ack: number; approve: number; message_id: string; request_changes: number; votes: Vote[]; };
 export type MeterUsage = { allowance?: number | null; meter: UsageMeter; over: boolean; quantity: number; };
 export type MintApiToken = { capabilities?: string[]; capability_set?: string | null; expires_at?: string | null; label?: string | null; quotas?: TokenQuota[]; };
 export type MintApiTokenResponse = { capabilities: string[]; expires_at?: string | null; id: ApiTokenId; member_id: MemberId; quotas: TokenQuota[]; secret: string; workspace_id: WorkspaceId; };
@@ -403,6 +404,7 @@ export type ThreadSteer = { steer: string; steered_at: string; steered_by: Membe
 export type ThreadTransition = { actor_id: MemberId; from_state: ThreadState; id: string; occurred_at: string; thread_id: ThreadId; to_state: ThreadState; };
 export type ThreadUnclaimable = { marked_at: string; marked_by: MemberId; reason: string; thread_id: ThreadId; };
 export type ThreadVersion = { thread_id: ThreadId; version: number; };
+export type ThreadVotes = { messages: MessageVotes[]; thread_id: string; };
 export type ThreadWait = { created_at: string; created_by: MemberId; fired_at?: string | null; on_timeout: EscalationPolicy; reason?: string | null; thread_id: ThreadId; wait_until: string; };
 export type ThreadWithheld = { reason: string; thread?: null | ThreadId; };
 export type TierRollup = SliceNumbers & { tier: TaskTier; };
@@ -617,6 +619,7 @@ export type ApiRoute =
   | "GET /threads/{id}/version"
   | "GET /threads/{id}/wait"
   | "GET /threads/{tid}/messages"
+  | "GET /threads/{tid}/votes"
   | "GET /ui/api/channels/{cid}/threads"
   | "GET /ui/api/members/{id}"
   | "GET /ui/api/messages/{mid}/edits"

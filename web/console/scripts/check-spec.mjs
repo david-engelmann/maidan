@@ -13,7 +13,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(here, "../src");
 
 /** Routes the console calls before the spec documents them, each with the PR that adds it. */
-export const PENDING = new Map([["GET /threads/{}/votes", "#1838: the console falls back to per-message votes on 404"]]);
+export const PENDING = new Map();
 
 const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me)(\/|$|\?)/;
 const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/;
