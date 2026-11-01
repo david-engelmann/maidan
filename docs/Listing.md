@@ -20,9 +20,8 @@ names. If a sentence outruns its evidence, fix the sentence.
   ([Decisions](Decisions.md), 2026-10-12). Every listing links the privacy
   policy, terms, support contact and data statement; this page doesn't write
   them.
-- **The demo instance** that directory reviewers connect to (a seeded workspace
-  that resets, a reviewer token per directory, and a token prefix per listing)
-  is hosted under Next 24 and doesn't run yet.
+- **The demo instance** that directory reviewers connect to is built but not
+  deployed. See [The demo instance](#the-demo-instance) below.
 
 ## Name and short description
 
@@ -111,7 +110,8 @@ The copy deliberately gives no tool count: a listing leads with the room.
 The listing files under `listings/` carry the self-hosted short description,
 because that variant is true today. Switch them to the hosted one once
 `maidan.world` serves the room. `listings/registry/server.json` also sets the
-`title`, the `repository` and both icons. The icons point at the PNGs above on
+`title`, the `repository` and both icons, and `listings/docker/server.yaml`'s
+`about` block sets the title, the description and the 400×400 icon. The icons point at the PNGs above on
 `main`, so they resolve only after this page's assets are merged. The file
 validates against the registry's 2025-12-11 schema. Nothing has been
 submitted.
@@ -134,3 +134,46 @@ Only where a directory requires them. Take them with the UI capture script
 (`npm run capture` in `ui-tests/`, the one that made the README's board image,
 #1353) against a server built from the release being listed. Don't hand-edit a
 capture.
+
+## The demo instance
+
+Directory reviewers connect to `try.maidan.world`, a seeded workspace that
+resets on its own. It's built up to the deploy, which is the maintainer's. No
+workflow deploys it.
+
+| Piece | Where |
+| --- | --- |
+| Worker and route | `deploy/cloudflare/wrangler.demo.jsonc`, `deploy/cloudflare/src/demo.js` |
+| Image | `deploy/cloudflare/demo/Dockerfile`: the server and the `maidan` CLI with the bootstrap routes, plus bash, curl and jq |
+| Seed | `deploy/cloudflare/demo/entrypoint.sh` runs `scripts/demo-board.sh` against a fresh SQLite file on every boot |
+| Reset | The cron (`0 */6 * * *`) destroys the container; the next request boots a fresh one and reseeds |
+| Settings | `deploy/cloudflare/src/demo-config.js`, checked by `deploy/cloudflare/test/demo.test.js` |
+
+What keeps it safe to leave open:
+
+- **Tokens expire.** Every token the seed mints has an `expires_at` seven hours
+  out (`DEMO_TOKEN_TTL_SECS`), so a missed reset still leaves no older token.
+- **No outbound egress.** The container runs with `enableInternet = false`.
+  Webhooks and delivery to GitHub, Slack or Linear fail closed.
+- **No production secret.** The Worker passes none of its secrets in. The
+  content key and session secret are generated on each boot and die with the
+  container.
+- **Bootstrap never faces the internet.** The seed runs against a loopback
+  listener with `MAIDAN_BOOTSTRAP=1`. That listener stops, and the public one
+  starts without it.
+- **Limits.** 60 requests a minute per address, 10 OAuth requests a minute,
+  the free-allowance meters on every workspace, 1 MiB artifacts, sign-up off,
+  and request bodies over 64 KiB refused at the edge before they wake the
+  container.
+
+### Deploying it
+
+1. Point `try.maidan.world` at the account (a custom domain on the Worker).
+2. From `deploy/cloudflare`, run `npm ci`, then `npx wrangler deploy -c
+   wrangler.demo.jsonc`.
+3. Open `https://try.maidan.world/health`. The first request after a deploy or
+   a reset waits for the seed, which takes a few seconds.
+4. For each directory, mint a reviewer token with an `expires_at` no later than
+   the review window, labelled with the directory's name. Remember that the
+   next reset wipes it, so mint it right before handing it over, or pause the
+   cron for the review.
