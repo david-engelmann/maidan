@@ -2,14 +2,16 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BoardApi, LANES, boardHealth, byAgent, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { BoardApi, LANES, boardHealth, byAgent, presenceStrip, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
 import { liveStatus } from "../core/bus.ts";
 import { useBoard } from "../hooks/useBoard.ts";
+import { usePresence } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
 
 const WIDE = "(min-width: 900px)";
 const VIEW_KEY = "maidan_console_board_view";
+const PRESENCE_SHOWN = 8;
 function useWide(): boolean {
   return useSyncExternalStore(
     (fn) => {
@@ -49,6 +51,8 @@ export function Board() {
   const reduce = Boolean(useReducedMotion());
   const [lane, setLane] = useState<LaneKey>("open");
   const [openId, setOpenId] = useState<string | null>(null);
+  const presence = usePresence();
+  const here = useMemo(() => presenceStrip(data.members, presence, data.threads), [data.members, presence, data.threads]);
   const live = useSyncExternalStore(liveStatus.subscribe, liveStatus.getSnapshot);
   const stale = staleBanner(live, data.loadedAt, data.failedSince, now);
   const [focus, setFocus] = useState<HealthKey | null>(null);
@@ -95,6 +99,22 @@ export function Board() {
         <div className="stale-banner" role="status">
           <span>{stale}</span>
           <button type="button" className="chip-btn" onClick={() => void refresh()}>Refresh now</button>
+        </div>
+      )}
+
+      {here.length > 0 && (
+        <div className="presence-strip" role="group" aria-label="Who is here">
+          <ul>
+            {here.slice(0, PRESENCE_SHOWN).map((p) => (
+              <li key={p.id} className={`here here-${p.status}`} title={`${p.name}: ${p.status}${p.holding ? `, holding ${p.holding} task${p.holding === 1 ? "" : "s"}` : ", free"}`}>
+                <span className="dot" aria-hidden="true" />
+                <span>{p.name}</span>
+                <span className="sr-only">{`, ${p.status}${p.holding ? `, holding ${p.holding}` : ", free"}`}</span>
+                {p.holding > 0 && <span className="count" aria-hidden="true">{p.holding}</span>}
+              </li>
+            ))}
+          </ul>
+          {here.length > PRESENCE_SHOWN && <a href="#/people" className="muted small">{`+${here.length - PRESENCE_SHOWN} more`}</a>}
         </div>
       )}
 
