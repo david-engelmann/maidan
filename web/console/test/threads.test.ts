@@ -9,6 +9,9 @@ import {
   ThreadsApi,
   ThreadsError,
   aggregateReactions,
+  attachKind,
+  attachName,
+  pastedFiles,
   atBottom,
   convHash,
   dmConversation,
@@ -176,4 +179,34 @@ test("reactions toggle with POST and DELETE", async () => {
   await api.react("m", "👍", true);
   await api.react("m", "👍", false);
   assert.deepEqual(calls.map((c) => `${c.init?.method} ${c.url}`), ["POST http://h/ui/api/messages/m/reactions", "DELETE http://h/ui/api/messages/m/reactions"]);
+});
+
+test("a pasted file keeps only its name, and an image is a screenshot", () => {
+  assert.equal(attachName("../../etc/evil.png", "image/png"), "evil.png");
+  assert.equal(attachName("C:\\Users\\me\\shot.png", "image/png"), "shot.png");
+  assert.equal(attachName("", "image/png"), "pasted.png");
+  assert.equal(attachName("..", "text/plain"), "pasted");
+  assert.equal(attachKind("image/png"), "screenshot");
+  assert.equal(attachKind("application/pdf"), "attachment");
+});
+
+test("a paste with no files is left as text", () => {
+  const text = { items: [{ kind: "string", getAsFile: () => null }] } as unknown as DataTransfer;
+  assert.deepEqual(pastedFiles(text), []);
+  assert.deepEqual(pastedFiles(null), []);
+  const f = new File(["x"], "a.png", { type: "image/png" });
+  const withFile = { items: [{ kind: "string", getAsFile: () => null }, { kind: "file", getAsFile: () => f }] } as unknown as DataTransfer;
+  assert.deepEqual(pastedFiles(withFile), [f]);
+});
+
+test("attach stores the file by name only, then links it to the thread", async () => {
+  const { api, calls } = fake([{ status: 201, body: { sha256: "ab", filename: "evil.png" } }, { body: {} }]);
+  const out = await api.attach("t", new File(["x"], "../../etc/evil.png", { type: "image/png" }));
+  assert.deepEqual(out, { sha256: "ab", filename: "evil.png" });
+  const up = new URL(calls[0].url);
+  assert.equal(up.pathname, "/ui/api/artifacts");
+  assert.equal(up.searchParams.get("filename"), "evil.png");
+  assert.equal(up.searchParams.get("kind"), "screenshot");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.equal(`${calls[1].init?.method} ${calls[1].url}`, "PUT http://h/ui/api/threads/t/artifacts/ab");
 });
