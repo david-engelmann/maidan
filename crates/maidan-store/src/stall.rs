@@ -9,7 +9,7 @@
 //! store's, so the store reports the instant and the server judges it.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{Thread, ThreadState};
+use maidan_types::{ClaimStallReason, Thread, ThreadState};
 
 /// Columns a board read selects beside the thread row, with the thread
 /// aliased `t`: the holder's latest message on the thread and its active
@@ -44,4 +44,63 @@ pub(crate) fn set_last_progress(
             .into(),
         _ => None,
     };
+}
+
+/// The holder's active declaration beside the thread row, aliased like
+/// [`PROGRESS_COLUMNS`]: a holder that said it is waiting is not stalled.
+pub(crate) const HOLDER_STATUS_COLUMN: &str = "
+                (SELECT s.status FROM maidan_thread_status s
+                 WHERE s.thread_id = t.id AND s.declared_by = t.assignee_id) AS holder_status";
+
+/// A candidate row read by `report_stalled_claims` on either backend.
+pub(crate) struct StallCandidate {
+    pub work_started_at: Option<DateTime<Utc>>,
+    pub holder_posted_at: Option<DateTime<Utc>>,
+    pub holder_declared_at: Option<DateTime<Utc>>,
+    pub holder_status: Option<String>,
+}
+
+impl StallCandidate {
+    /// When the holder last showed progress: its acknowledgement, own message
+    /// or own declaration. `None` while the claim is unacknowledged.
+    pub fn last_progress_at(&self) -> Option<DateTime<Utc>> {
+        self.work_started_at.map(|started| {
+            [self.holder_posted_at, self.holder_declared_at]
+                .into_iter()
+                .flatten()
+                .fold(started, DateTime::max)
+        })
+    }
+
+    /// Whether this live claim is due a `ClaimStalled` for `reason`. The SQL
+    /// already kept leases that lapse before `cutoff` for
+    /// [`ClaimStallReason::LeaseLapsing`]; [`ClaimStallReason::NoProgress`]
+    /// needs progress older than `cutoff` and no declared wait.
+    pub fn is_due(&self, reason: ClaimStallReason, cutoff: DateTime<Utc>) -> bool {
+        match reason {
+            ClaimStallReason::LeaseLapsing => true,
+            ClaimStallReason::NoProgress => {
+                let quiet = self
+                    .last_progress_at()
+                    .is_some_and(|progress| progress < cutoff);
+                let waiting = self
+                    .holder_status
+                    .as_deref()
+                    .is_some_and(|status| status != "working");
+                quiet && !waiting
+            }
+        }
+    }
+}
+
+/// The per-claim fencing-token column that records `reason` was reported, and
+/// the extra filter its scan adds (bound to the cutoff).
+pub(crate) fn stall_scan(reason: ClaimStallReason) -> (&'static str, &'static str) {
+    match reason {
+        ClaimStallReason::NoProgress => (
+            "stall_reported_lease_id",
+            "t.work_started_at IS NOT NULL AND t.work_started_at < ",
+        ),
+        ClaimStallReason::LeaseLapsing => ("lapse_warned_lease_id", "t.assignment_expires_at < "),
+    }
 }

@@ -267,6 +267,17 @@ fn sample_event(kind: EventKind) -> Event {
             claimed_at: occurred_at - chrono::Duration::seconds(120),
             thread: thread(),
         },
+        EventKind::ClaimStalled => Event::ClaimStalled {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            reason: maidan_types::ClaimStallReason::NoProgress,
+            last_progress_at: Some(occurred_at - chrono::Duration::seconds(900)),
+            lease_expires_at: occurred_at + chrono::Duration::seconds(60),
+            thread: thread(),
+        },
         EventKind::ClaimFailed => Event::ClaimFailed {
             occurred_at,
             workspace_id,
@@ -597,6 +608,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::StatusDeclared
             | EventKind::ClaimExpired
             | EventKind::ClaimUnacknowledged
+            | EventKind::ClaimStalled
             | EventKind::ClaimFailed
             | EventKind::UsageReported
             | EventKind::ThreadLanded
