@@ -600,3 +600,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .here .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .here-online .dot { background: var(--ok); }
 .here-away { color: var(--muted); }
+
+/* Long lanes: off-screen cards skip layout and paint until scrolled near. */
+.cards > li { content-visibility: auto; contain-intrinsic-size: auto 84px; }
+.more-cards { width: 100%; min-height: 44px; margin-top: 8px; }
