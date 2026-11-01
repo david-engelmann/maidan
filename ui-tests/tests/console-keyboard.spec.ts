@@ -22,9 +22,12 @@ async function walk(page: Page, steps: number): Promise<string[]> {
   return stops;
 }
 
-/** Body stops that are not the walk wrapping past the last control to the first. */
+/** Body stops that are not the walk wrapping past the last control to the
+ * first. The click that starts the walk can land past the skip link, so a wrap
+ * may come back to the skip link rather than to the walk's first stop. */
 function holes(stops: string[]): number[] {
-  return stops.flatMap((s, i) => (s === "NONE" || (s === "BODY" && stops[i + 1] !== stops[0] && i + 1 < stops.length) ? [i] : []));
+  const wraps = (next: string | undefined) => next === undefined || next === stops[0] || /class="skip-link"/.test(next);
+  return stops.flatMap((s, i) => (s === "NONE" || (s === "BODY" && !wraps(stops[i + 1])) ? [i] : []));
 }
 
 for (const hash of SCREENS) {

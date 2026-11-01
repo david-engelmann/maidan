@@ -120,6 +120,7 @@ test("the palette opens on the keyboard and goes where Enter says", async ({ pag
 test("the member picker finds people by handle and says who is an agent", async ({ page }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/threads");
+  await page.getByRole("tab", { name: "Direct" }).click();
   await page.getByRole("button", { name: "New message" }).click();
   const list = page.getByRole("list", { name: "People" });
   await expect(list.locator("li").first()).toBeVisible();
