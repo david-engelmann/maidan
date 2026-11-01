@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liveBus } from "../core/bus.ts";
-import { ThreadsApi, ThreadsError, movesList, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction } from "../core/threads.ts";
+import { ThreadsApi, ThreadsError, movesList, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction, type VoteTally } from "../core/threads.ts";
 import type { SessionState } from "../core/session.ts";
 import { backoff } from "./useNeeds.ts";
 
@@ -52,12 +52,14 @@ export type ConversationData = {
   status: "idle" | "loading" | "ready" | "error";
   messages: Message[];
   reactions: Record<string, Reaction[]>;
+  /** Votes on each message, by kind; live through vote_cast / vote_retracted. */
+  votes: Record<string, VoteTally[]>;
   /** The last read failed: what is shown is from this time. */
   staleSince: number | null;
   error: string | null;
 };
 
-const EMPTY: ConversationData = { status: "idle", messages: [], reactions: {}, staleSince: null, error: null };
+const EMPTY: ConversationData = { status: "idle", messages: [], reactions: {}, votes: {}, staleSince: null, error: null };
 
 /** One conversation's messages and reactions, refreshed when its thread moves. */
 export function useConversation(api: ThreadsApi, threadId: string | null, me: string | null) {
@@ -82,9 +84,18 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
           }
         }),
       );
+      const votePairs = await Promise.all(
+        messages.map(async (m) => {
+          try {
+            return [m.id, await api.votes(m.id, me)] as const;
+          } catch {
+            return [m.id, [] as VoteTally[]] as const;
+          }
+        }),
+      );
       if (mine !== gen.current) return;
       failures.current = 0;
-      setData({ status: "ready", messages, reactions: Object.fromEntries(pairs), staleSince: null, error: null });
+      setData({ status: "ready", messages, reactions: Object.fromEntries(pairs), votes: Object.fromEntries(votePairs), staleSince: null, error: null });
     } catch (e) {
       if (mine !== gen.current) return;
       failures.current += 1;
