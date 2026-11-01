@@ -24,6 +24,7 @@
 #
 #   MAIDAN_TOKEN=… MAIDAN_WORKSPACE=… ./scripts/demo-board.sh
 #
+# DEMO_TOKEN_TTL_SECS (seconds) puts an expires_at on every minted token.
 # DEMO_PAUSE (seconds, default 0) spaces the live steps out for a recording;
 # DEMO_GO_FILE, when set, holds the live steps until that file exists.
 # The human's token (workspace:read + event:subscribe, for /ui) is written to
@@ -103,7 +104,19 @@ mcp_refused() { # mcp_refused <token> <tool> <json-args> <expected> -> refusal t
 
 member() { rest "$ADMIN" POST "/workspaces/$WS/members" \
   "$(jq -nc --arg h "$1" --arg d "$2" --arg k "$3" '{handle:$h,display_name:$d,kind:$k}')" | jq -r .id; }
-token()  { rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "{\"capabilities\":$2}" | jq -r .secret; }
+# DEMO_TOKEN_TTL_SECS, when set, gives every token the script mints an
+# expires_at that many seconds out, so a public demo's tokens die on their own
+# even if a reset is missed.
+token()  { # token <member> <capabilities json>
+  local body
+  if [ -n "${DEMO_TOKEN_TTL_SECS:-}" ]; then
+    body=$(jq -nc --argjson c "$2" --argjson ttl "$DEMO_TOKEN_TTL_SECS" \
+      '{capabilities:$c, expires_at:(now + $ttl | floor | todate)}')
+  else
+    body="{\"capabilities\":$2}"
+  fi
+  rest "$ADMIN" POST "/workspaces/$WS/members/$1/tokens" "$body" | jq -r .secret
+}
 agent_caps='["workspace:read","workspace:write","message:post","thread:transition"]'
 human_caps='["workspace:read","message:post","thread:transition","event:subscribe"]'
 

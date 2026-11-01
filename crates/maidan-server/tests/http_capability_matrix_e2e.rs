@@ -835,7 +835,7 @@ fn apply_route_defaults(
     // the capability check. The matrix skips the MCP surface today.
     if matches!(
         path,
-        "/mcp" | "/mcp/worker" | "/mcp/reviewer" | "/mcp/streamable"
+        "/mcp" | "/mcp/worker" | "/mcp/reviewer" | "/mcp/coordinator" | "/mcp/streamable"
     ) && method == "POST"
     {
         return b.json(&json!({

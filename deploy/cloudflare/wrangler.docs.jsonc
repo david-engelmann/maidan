@@ -1,0 +1,17 @@
+// docs.maidan.world: the mdBook site, as static assets on a Worker with no
+// code. The docs workflow builds it with site-url "/" and deploys it from
+// `main` once the repository variable DOCS_DOMAIN is "true", which is set
+// after the docs.maidan.world DNS record exists. The runbook is
+// docs/Production.md, "The docs site".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maidan-docs",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "docs.maidan.world", "custom_domain": true }],
+  "assets": {
+    "directory": "../../book/build/html",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

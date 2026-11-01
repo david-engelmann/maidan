@@ -40,6 +40,7 @@ async fn member_workspace_in_tx(
 /// hold (drop leases) and append `MemberFrozen`, in one transaction. Returns
 /// the freeze, the number of threads released and the event. Re-freezing
 /// refreshes `frozen_by`/`reason`/`frozen_at`.
+#[cfg(feature = "test-support")]
 pub async fn freeze(
     pool: &PgPool,
     member_id: MemberId,
@@ -92,6 +93,7 @@ pub(crate) async fn freeze_on(
 
 /// Lift a freeze and append `MemberUnfrozen`, together. `None` when the member
 /// was not frozen: nothing changed, so nothing is appended.
+#[cfg(feature = "test-support")]
 pub async fn unfreeze(
     pool: &PgPool,
     member_id: MemberId,
