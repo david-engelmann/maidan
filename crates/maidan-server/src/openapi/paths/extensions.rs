@@ -1543,3 +1543,74 @@ pub fn enqueue_status() {}
     )
 )]
 pub fn dequeue_pull() {}
+
+/// Propose an intake item
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/intake",
+    tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateIntakeItem,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, body = IntakeItem, description = "The proposed item"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn create_intake_item() {}
+
+/// List a workspace's intake items
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/intake",
+    tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id"), ListIntakeQuery),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = Vec<IntakeItem>, description = "Items newest first"),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn list_intake_items() {}
+
+/// Get an intake item
+#[utoipa::path(
+    get,
+    path = "/workspaces/{wid}/intake/{id}",
+    tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Intake item id")
+    ),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = IntakeItem),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    )
+)]
+pub fn get_intake_item() {}
+
+/// Accept or reject a proposed intake item
+#[utoipa::path(
+    post,
+    path = "/workspaces/{wid}/intake/{id}/triage",
+    tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("id" = Uuid, Path, description = "Intake item id")
+    ),
+    request_body = TriageIntakeItem,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = IntakeItem, description = "The triaged item"),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+        (status = 409, response = Conflict),
+    )
+)]
+pub fn triage_intake_item() {}
