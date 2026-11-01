@@ -64,6 +64,7 @@ fn stage(event: &Event) -> Option<&'static str> {
         } => "release",
         Event::ClaimExpired { .. } => "claim_expired",
         Event::ClaimUnacknowledged { .. } => "claim_unacknowledged",
+        Event::ClaimStalled { .. } => "claim_stalled",
         Event::ClaimFailed { .. } => "claim_failed",
         Event::ThreadResultSet { .. } => "result",
         Event::ReviewSubmitted { .. } => "review",
