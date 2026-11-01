@@ -1,0 +1,64 @@
+name: clean-machine install
+
+# Next 14's clean-machine install, on a fresh runner against what a release
+# publishes: no checkout, no Rust toolchain, no source build. The runner fetches
+# scripts/clean-machine-install.sh at the release tag and runs it with STRICT=1,
+# so a quickstart pinned to a different release fails. Report-only: it is not a
+# required check, and it never runs on pull requests.
+
+on:
+  release:
+    types: [published]
+  schedule:
+    # Mondays 05:41 UTC: catches a release asset or image that went missing.
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to install (default: the latest release)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clean-install-${{ github.event.release.tag_name || inputs.tag || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  install:
+    name: install from the release on a fresh runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG_INPUT: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: resolve the tag
+        run: |
+          set -euo pipefail
+          tag="${TAG_INPUT:-}"
+          if [ -z "$tag" ]; then
+            tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)
+          fi
+          case "$tag" in (*[!A-Za-z0-9._-]*|"") echo "bad tag: $tag" >&2; exit 1;; esac
+          echo "MAIDAN_TAG=$tag" >> "$GITHUB_ENV"
+      - name: fetch the install script at the tag (no checkout)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o clean-machine-install.sh \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${MAIDAN_TAG}/scripts/clean-machine-install.sh"
+      - name: install, seed, run the two-agent demo, check /health
+        run: STRICT=1 MAIDAN_REPO="${GITHUB_REPOSITORY}" bash clean-machine-install.sh 2>&1 | tee install.log
+        shell: bash -o pipefail {0}
+      - name: summary
+        if: always()
+        run: |
+          {
+            echo "### Clean-machine install: ${MAIDAN_TAG:-unknown}"
+            echo
+            echo '```'
+            tail -n 40 install.log 2>/dev/null || echo "no log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
