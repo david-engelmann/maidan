@@ -383,6 +383,23 @@ pub async fn reviewer(
     .await
 }
 
+/// `POST /mcp/coordinator`: the coordinator profile's fixed tool list.
+pub async fn coordinator(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    headers: HeaderMap,
+    ApiBytes(body): ApiBytes,
+) -> Response {
+    json_rpc(
+        state,
+        auth,
+        headers,
+        body,
+        Some(maidan_mcp::Profile::Coordinator),
+    )
+    .await
+}
+
 async fn json_rpc(
     state: AppState,
     auth: AuthContext,

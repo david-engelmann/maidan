@@ -25,6 +25,7 @@ fn row_to_secret(row: &sqlx::postgres::PgRow) -> Secret {
 
 /// Create or rotate a secret. Re-creating an existing name replaces the value
 /// (`updated_at` bumps) — the rotation path. Returns metadata only.
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &PgPool, new: NewSecret) -> Result<Secret, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -79,6 +80,7 @@ pub async fn list(pool: &PgPool, workspace_id: WorkspaceId) -> Result<Vec<Secret
     Ok(rows.iter().map(row_to_secret).collect())
 }
 
+#[cfg(feature = "test-support")]
 pub async fn delete(
     pool: &PgPool,
     workspace_id: WorkspaceId,

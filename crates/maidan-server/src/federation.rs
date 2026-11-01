@@ -522,6 +522,29 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             claimed_at,
             thread,
         },
+        // Non-federatable (judged on this deployment's clock) — never
+        // actually ingested/remapped, but the exhaustive match must classify it.
+        ClaimStalled {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            member_id,
+            reason,
+            last_progress_at,
+            lease_expires_at,
+            thread,
+        } => ClaimStalled {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            member_id,
+            reason,
+            last_progress_at,
+            lease_expires_at,
+            thread,
+        },
         // Non-federatable (a locally-derived budget-exhaustion / run failure) —
         // never actually ingested/remapped, but the exhaustive match must classify it.
         ClaimFailed {
