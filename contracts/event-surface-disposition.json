@@ -73,6 +73,24 @@
     "note": "Appended with the PATCH /members/{id} change and its audit row in one transaction."
   },
   {
+    "kind": "intake_proposed",
+    "disposition": "rest_only",
+    "rest_evidence": "crates/maidan-server/tests/intake_rest_e2e.rs#intake_is_proposed_triaged_announced_and_audited",
+    "note": "Intake is triaged over HTTP for now; MCP propose/triage tools are a follow-up."
+  },
+  {
+    "kind": "intake_accepted",
+    "disposition": "rest_only",
+    "rest_evidence": "crates/maidan-server/tests/intake_rest_e2e.rs#intake_is_proposed_triaged_announced_and_audited",
+    "note": "Intake is triaged over HTTP for now; MCP propose/triage tools are a follow-up."
+  },
+  {
+    "kind": "intake_rejected",
+    "disposition": "rest_only",
+    "rest_evidence": "crates/maidan-server/tests/intake_rest_e2e.rs#intake_is_proposed_triaged_announced_and_audited",
+    "note": "Intake is triaged over HTTP for now; MCP propose/triage tools are a follow-up."
+  },
+  {
     "kind": "memory_block_updated",
     "disposition": "both",
     "rest_evidence": "crates/maidan-server/tests/memory_block_rest_e2e.rs#memory_blocks_over_http",

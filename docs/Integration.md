@@ -1974,6 +1974,37 @@ a link to a thread that has none is fine.
 
 ---
 
+## Intake
+
+Intake holds incoming work proposals that are not tasks yet. An agent, a
+human or an integration proposes an item; a member triages it once.
+
+| Method | Path | Capability |
+|---|---|---|
+| `POST` | `/workspaces/{wid}/intake` | `workspace:write` |
+| `GET` | `/workspaces/{wid}/intake?state=&limit=&cursor=` | `workspace:read` |
+| `GET` | `/workspaces/{wid}/intake/{id}` | `workspace:read` |
+| `POST` | `/workspaces/{wid}/intake/{id}/triage` | `workspace:write` |
+
+- **Propose** with `{"title", "body"?, "source"?}`. `source` is `agent`,
+  `human` or `integration`; omitted, it is `integration` for an app
+  installation's token, `agent` for an agent member and `human` otherwise.
+  The item starts `proposed` and `intake_proposed` is announced.
+- **List** returns items newest first. `state` filters to `proposed`,
+  `accepted` or `rejected`; `limit` defaults to 50 (max 200); `cursor` is the
+  previous page's last `id`.
+- **Accept** with `{"decision": "accept", "thread_id"}` to link an existing
+  thread in the workspace, or `{"decision": "accept", "channel_id"}` to create
+  a thread in that channel from the item's title and body. Give exactly one.
+  `intake_accepted` is announced with the thread id.
+- **Reject** with `{"decision": "reject", "reason"}`. The reason is required
+  and stored on the item; `intake_rejected` is announced.
+
+Triage is audited in the workspace (`intake.accept`, `intake.reject`). An
+item already accepted or rejected answers `409`; another workspace's item,
+thread or channel answers `404`. The intake events are workspace-local and
+are not federated. There are no MCP tools for intake yet; use REST.
+
 ## Slash commands
 
 A workspace registers `/name` handlers over

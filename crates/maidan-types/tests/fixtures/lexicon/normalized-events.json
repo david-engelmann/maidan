@@ -122,6 +122,34 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.intake_accepted/1": {
+    "$type": "maidan.event.intake_accepted/1",
+    "intake_id": "00000000-0000-0000-0000-00000000000e",
+    "kind": "intake_accepted",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "triaged_by": "00000000-0000-0000-0000-00000000000d",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.intake_proposed/1": {
+    "$type": "maidan.event.intake_proposed/1",
+    "intake_id": "00000000-0000-0000-0000-00000000000e",
+    "kind": "intake_proposed",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "proposed_by": "00000000-0000-0000-0000-000000000002",
+    "source": "agent",
+    "title": "Add a retry budget",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "maidan.event.intake_rejected/1": {
+    "$type": "maidan.event.intake_rejected/1",
+    "intake_id": "00000000-0000-0000-0000-00000000000e",
+    "kind": "intake_rejected",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "duplicate",
+    "triaged_by": "00000000-0000-0000-0000-00000000000d",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.member_display_name_changed/1": {
     "$type": "maidan.event.member_display_name_changed/1",
     "display_name": "Ada Lovelace",

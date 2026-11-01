@@ -188,6 +188,9 @@ pub enum EventKind {
     MemberFrozen,
     MemberUnfrozen,
     MemberDisplayNameChanged,
+    IntakeProposed,
+    IntakeAccepted,
+    IntakeRejected,
     UsageOverAllowance,
     MessagePosted,
     MessageEdited,
@@ -238,6 +241,9 @@ impl EventKind {
             Self::MemberFrozen => "member_frozen",
             Self::MemberUnfrozen => "member_unfrozen",
             Self::MemberDisplayNameChanged => "member_display_name_changed",
+            Self::IntakeProposed => "intake_proposed",
+            Self::IntakeAccepted => "intake_accepted",
+            Self::IntakeRejected => "intake_rejected",
             Self::UsageOverAllowance => "usage_over_allowance",
             Self::MessagePosted => "message_posted",
             Self::MessageEdited => "message_edited",
@@ -288,6 +294,9 @@ impl EventKind {
             "member_frozen" => Some(Self::MemberFrozen),
             "member_unfrozen" => Some(Self::MemberUnfrozen),
             "member_display_name_changed" => Some(Self::MemberDisplayNameChanged),
+            "intake_proposed" => Some(Self::IntakeProposed),
+            "intake_accepted" => Some(Self::IntakeAccepted),
+            "intake_rejected" => Some(Self::IntakeRejected),
             "usage_over_allowance" => Some(Self::UsageOverAllowance),
             "message_posted" => Some(Self::MessagePosted),
             "message_edited" => Some(Self::MessageEdited),
@@ -363,6 +372,9 @@ impl EventKind {
         Self::MemberFrozen,
         Self::MemberUnfrozen,
         Self::MemberDisplayNameChanged,
+        Self::IntakeProposed,
+        Self::IntakeAccepted,
+        Self::IntakeRejected,
         Self::UsageOverAllowance,
         Self::MessagePosted,
         Self::MessageEdited,
@@ -479,6 +491,9 @@ impl EventKind {
             // A display name is this deployment's member record, set by the
             // member themself; a peer has no standing to rename one.
             Self::MemberDisplayNameChanged => false,
+            // Intake is this deployment's triage queue; a peer has no
+            // standing to propose into it or to triage it.
+            Self::IntakeProposed | Self::IntakeAccepted | Self::IntakeRejected => false,
             // An allowance crossing reads this deployment's meters against its
             // own allowance; a peer has no standing to report one.
             Self::UsageOverAllowance => false,
@@ -963,6 +978,34 @@ pub enum Event {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         display_name: Option<String>,
     },
+    /// A work proposal entered a workspace's intake queue. Appended in the
+    /// same transaction as the item. Workspace-scoped: not federatable.
+    IntakeProposed {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        intake_id: uuid::Uuid,
+        title: String,
+        source: crate::intake::IntakeSource,
+        proposed_by: MemberId,
+    },
+    /// A proposed intake item was accepted and linked to a thread, new or
+    /// existing. Appended with the triage and its audit row.
+    IntakeAccepted {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        intake_id: uuid::Uuid,
+        thread_id: ThreadId,
+        triaged_by: MemberId,
+    },
+    /// A proposed intake item was rejected, with the reason. Appended with
+    /// the triage and its audit row.
+    IntakeRejected {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        intake_id: uuid::Uuid,
+        reason: String,
+        triaged_by: MemberId,
+    },
     /// A workspace went past the instance's free allowance on a meter for a
     /// UTC month. Appended once per workspace, meter and month, in the same
     /// transaction as the mark and its admins' notifications. Workspace-scoped
@@ -1123,6 +1166,9 @@ impl Event {
             Self::MemberFrozen { .. } => EventKind::MemberFrozen,
             Self::MemberUnfrozen { .. } => EventKind::MemberUnfrozen,
             Self::MemberDisplayNameChanged { .. } => EventKind::MemberDisplayNameChanged,
+            Self::IntakeProposed { .. } => EventKind::IntakeProposed,
+            Self::IntakeAccepted { .. } => EventKind::IntakeAccepted,
+            Self::IntakeRejected { .. } => EventKind::IntakeRejected,
             Self::UsageOverAllowance { .. } => EventKind::UsageOverAllowance,
             Self::MessagePosted { .. } => EventKind::MessagePosted,
             Self::MessageEdited { .. } => EventKind::MessageEdited,
@@ -1173,6 +1219,9 @@ impl Event {
             | Self::MemberFrozen { occurred_at, .. }
             | Self::MemberUnfrozen { occurred_at, .. }
             | Self::MemberDisplayNameChanged { occurred_at, .. }
+            | Self::IntakeProposed { occurred_at, .. }
+            | Self::IntakeAccepted { occurred_at, .. }
+            | Self::IntakeRejected { occurred_at, .. }
             | Self::UsageOverAllowance { occurred_at, .. }
             | Self::MessagePosted { occurred_at, .. }
             | Self::MessageEdited { occurred_at, .. }
@@ -1223,6 +1272,9 @@ impl Event {
             | Self::MemberFrozen { workspace_id, .. }
             | Self::MemberUnfrozen { workspace_id, .. }
             | Self::MemberDisplayNameChanged { workspace_id, .. }
+            | Self::IntakeProposed { workspace_id, .. }
+            | Self::IntakeAccepted { workspace_id, .. }
+            | Self::IntakeRejected { workspace_id, .. }
             | Self::UsageOverAllowance { workspace_id, .. }
             | Self::MessagePosted { workspace_id, .. }
             | Self::MessageEdited { workspace_id, .. }
@@ -1733,6 +1785,9 @@ mod kind_tests {
                 | EventKind::MemberFrozen
                 | EventKind::MemberUnfrozen
                 | EventKind::MemberDisplayNameChanged
+                | EventKind::IntakeProposed
+                | EventKind::IntakeAccepted
+                | EventKind::IntakeRejected
                 | EventKind::UsageOverAllowance
                 | EventKind::MessagePosted
                 | EventKind::MessageEdited
@@ -1825,6 +1880,9 @@ mod kind_tests {
             EventKind::MemberFrozen,
             EventKind::MemberUnfrozen,
             EventKind::MemberDisplayNameChanged,
+            EventKind::IntakeProposed,
+            EventKind::IntakeAccepted,
+            EventKind::IntakeRejected,
             EventKind::UsageOverAllowance,
             EventKind::MemoryBlockUpdated,
             EventKind::UsageReported,

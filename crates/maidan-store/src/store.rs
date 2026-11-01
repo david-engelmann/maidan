@@ -939,6 +939,42 @@ pub trait ApprovalGateStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait IntakeStore: Send + Sync {
+    /// Record an incoming work proposal and its `IntakeProposed` event in
+    /// one transaction.
+    async fn create_intake_item(
+        &self,
+        new: maidan_types::NewIntakeItem,
+    ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError>;
+    async fn get_intake_item(
+        &self,
+        workspace_id: WorkspaceId,
+        id: uuid::Uuid,
+    ) -> Result<Option<maidan_types::IntakeItem>, StoreError>;
+    /// A workspace's intake items, newest first, optionally in one state.
+    /// `cursor` is the prior page's last id (exclusive).
+    async fn list_intake_items(
+        &self,
+        workspace_id: WorkspaceId,
+        state: Option<maidan_types::IntakeState>,
+        cursor: Option<uuid::Uuid>,
+        limit: i64,
+    ) -> Result<Vec<maidan_types::IntakeItem>, StoreError>;
+    /// Accept or reject a proposed item once. The state change, `event`'s
+    /// audit row and the `IntakeAccepted` / `IntakeRejected` event commit
+    /// together. `NotFound` when the item is not in the workspace;
+    /// `Conflict` when it was already triaged.
+    async fn triage_intake_item_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: uuid::Uuid,
+        triaged_by: MemberId,
+        decision: maidan_types::IntakeDecision,
+        event: NewAuditEvent,
+    ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError>;
+}
+
+#[async_trait]
 pub trait GlossaryStore: Send + Sync {
     /// A workspace's shared glossary: `set` upserts a canonical `term ->
     /// definition` (+ aliases) keyed on `(workspace_id, term)`, `get` fetches
@@ -5033,6 +5069,7 @@ pub trait Store:
     + UsageLedgerStore
     + ApprovalGateStore
     + GlossaryStore
+    + IntakeStore
     + NotificationStore
     + FollowStore
     + MailStore
@@ -5094,6 +5131,7 @@ impl<
             + UsageLedgerStore
             + ApprovalGateStore
             + GlossaryStore
+            + IntakeStore
             + NotificationStore
             + FollowStore
             + MailStore

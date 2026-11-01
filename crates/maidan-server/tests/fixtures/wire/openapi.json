@@ -2130,6 +2130,34 @@
         ],
         "type": "object"
       },
+      "CreateIntakeItem": {
+        "description": "Propose an intake item: incoming work that is not a task yet. `source`\ndefaults from the caller: an app installation is `integration`, an agent\nmember is `agent`, anyone else is `human`.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IntakeSource"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
       "CreateMember": {
         "properties": {
           "display_name": {
@@ -3011,6 +3039,9 @@
           "member_frozen",
           "member_unfrozen",
           "member_display_name_changed",
+          "intake_proposed",
+          "intake_accepted",
+          "intake_rejected",
           "usage_over_allowance",
           "message_posted",
           "message_edited",
@@ -4082,6 +4113,111 @@
           }
         },
         "type": "object"
+      },
+      "IntakeItem": {
+        "description": "An incoming work proposal in a workspace.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "proposed_by": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "reject_reason": {
+            "description": "Why a rejected item was turned down.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/IntakeSource"
+          },
+          "state": {
+            "$ref": "#/components/schemas/IntakeState"
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The thread an accepted item became or was linked to."
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "triaged_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triaged_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberId"
+              }
+            ]
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "title",
+          "source",
+          "proposed_by",
+          "state",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "IntakeSource": {
+        "description": "Who or what proposed an intake item.",
+        "enum": [
+          "agent",
+          "human",
+          "integration"
+        ],
+        "type": "string"
+      },
+      "IntakeState": {
+        "description": "Where an intake item is in triage. `proposed` is the only state that\ncan change; `accepted` and `rejected` are final.",
+        "enum": [
+          "proposed",
+          "accepted",
+          "rejected"
+        ],
+        "type": "string"
+      },
+      "IntakeTriageDecision": {
+        "description": "The two triage outcomes.",
+        "enum": [
+          "accept",
+          "reject"
+        ],
+        "type": "string"
       },
       "InviteMintedView": {
         "properties": {
@@ -11667,6 +11803,38 @@
         },
         "required": [
           "action"
+        ],
+        "type": "object"
+      },
+      "TriageIntakeItem": {
+        "description": "Triage a proposed intake item once. `accept` links `thread_id` (an\nexisting thread in the workspace) or creates a thread in `channel_id`\nfrom the item's title and body; give exactly one. `reject` needs a\nnon-empty `reason`.",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decision": {
+            "$ref": "#/components/schemas/IntakeTriageDecision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "decision"
         ],
         "type": "object"
       },
@@ -40008,6 +40176,358 @@
         "summary": "Open a group direct-message conversation",
         "tags": [
           "dm"
+        ]
+      }
+    },
+    "/workspaces/{wid}/intake": {
+      "get": {
+        "operationId": "list_intake_items",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only items in this state.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IntakeState"
+            }
+          },
+          {
+            "description": "Max items to return (default 50, clamped 1..=200).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Exclusive keyset cursor: the prior page's last item id.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntakeItem"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Items newest first"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a workspace's intake items",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "operationId": "create_intake_item",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntakeItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            },
+            "description": "The proposed item"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Propose an intake item",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{wid}/intake/{id}": {
+      "get": {
+        "operationId": "get_intake_item",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Intake item id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get an intake item",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{wid}/intake/{id}/triage": {
+      "post": {
+        "operationId": "triage_intake_item",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Intake item id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageIntakeItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            },
+            "description": "The triaged item"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Accept or reject a proposed intake item",
+        "tags": [
+          "workspaces"
         ]
       }
     },

@@ -2019,3 +2019,50 @@ pub struct SessionWorkspace {
 pub struct SessionWorkspaces {
     pub workspaces: Vec<SessionWorkspace>,
 }
+
+/// Propose an intake item: incoming work that is not a task yet. `source`
+/// defaults from the caller: an app installation is `integration`, an agent
+/// member is `agent`, anyone else is `human`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateIntakeItem {
+    pub title: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub source: Option<maidan_types::IntakeSource>,
+}
+
+/// Filter and page a workspace's intake items, newest first.
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListIntakeQuery {
+    /// Only items in this state.
+    pub state: Option<maidan_types::IntakeState>,
+    /// Max items to return (default 50, clamped 1..=200).
+    pub limit: Option<i64>,
+    /// Exclusive keyset cursor: the prior page's last item id.
+    pub cursor: Option<uuid::Uuid>,
+}
+
+/// The two triage outcomes.
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum IntakeTriageDecision {
+    Accept,
+    Reject,
+}
+
+/// Triage a proposed intake item once. `accept` links `thread_id` (an
+/// existing thread in the workspace) or creates a thread in `channel_id`
+/// from the item's title and body; give exactly one. `reject` needs a
+/// non-empty `reason`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TriageIntakeItem {
+    pub decision: IntakeTriageDecision,
+    #[serde(default)]
+    pub thread_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub channel_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
