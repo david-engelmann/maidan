@@ -1321,6 +1321,25 @@ Worker secrets ([Bootstrap](#bootstrap)).
   files; the Worker answers paths no Maidan route serves with 404 itself
   (`src/scanner.js`), so those probes never reach the container.
 
+## The docs site
+
+`docs.maidan.world` serves the docs on the domain layout (Decisions,
+2026-10-12). It is the mdBook site as static assets on its own Worker with no
+code, `maidan-docs` (`deploy/cloudflare/wrangler.docs.jsonc`), built with
+`site-url` `/` and the response headers in `deploy/cloudflare/docs-headers`.
+GitHub Pages keeps serving the same site at `/maidan/` until the domain is live.
+
+The `docs.maidan.world` job in `.github/workflows/docs.yml` builds and deploys
+it on every push to `main`, but only while the repository variable
+`DOCS_DOMAIN` is `true`. To turn it on:
+
+1. Add `docs.maidan.world` to the `maidan.world` zone. The custom-domain route
+   in the config creates the DNS record and certificate on the first deploy.
+2. Set the repository variable `DOCS_DOMAIN` to `true` and run the docs
+   workflow on `main`.
+3. Check `https://docs.maidan.world/` answers with HSTS, then point the
+   README's and the landing page's docs links at it.
+
 ## Helm (production)
 
 Charts under `helm/maidan` (server) and `helm/maidan-stack` (the server plus an optional
