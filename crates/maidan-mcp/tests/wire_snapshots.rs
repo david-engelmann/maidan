@@ -66,3 +66,12 @@ fn the_reviewer_tools_list_result_is_pinned() {
     );
     assert_snapshot("tools_list_reviewer.json", &result);
 }
+
+#[test]
+fn the_coordinator_tools_list_result_is_pinned() {
+    let result = with_hint(
+        json!({ "tools": Profile::Coordinator.catalog() }),
+        PROFILE_TOOLS_LIST,
+    );
+    assert_snapshot("tools_list_coordinator.json", &result);
+}

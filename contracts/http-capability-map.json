@@ -2237,6 +2237,12 @@
   },
   {
     "method": "POST",
+    "path": "/mcp/coordinator",
+    "capability": "per-tool",
+    "surface": "mcp"
+  },
+  {
+    "method": "POST",
     "path": "/mcp/reviewer",
     "capability": "per-tool",
     "surface": "mcp"
