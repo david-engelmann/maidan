@@ -44,6 +44,7 @@ fn row_to_review(row: &sqlx::sqlite::SqliteRow) -> Result<ThreadReview, StoreErr
 
 const REVIEW_COLS: &str = "thread_id, reviewer_id, decision, note, created_at, updated_at, actor_id, dismissed_at, evidence_root, head_sha";
 
+#[cfg(feature = "test-support")]
 pub async fn set_requirement(
     pool: &SqlitePool,
     thread_id: ThreadId,
@@ -96,6 +97,7 @@ pub(crate) async fn get_requirement_on(
     Ok(row.as_ref().map(row_to_req))
 }
 
+#[cfg(feature = "test-support")]
 pub async fn clear_requirement(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, StoreError> {
     let mut conn = pool.acquire().await?;
     clear_requirement_on(&mut conn, thread_id).await
@@ -130,6 +132,7 @@ pub async fn add_reviewer(
     Ok(done.rows_affected() > 0)
 }
 
+#[cfg(feature = "test-support")]
 pub async fn remove_reviewer(
     pool: &SqlitePool,
     thread_id: ThreadId,

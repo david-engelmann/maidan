@@ -1858,6 +1858,19 @@ pub fn cast_vote() {}
     ))]
 pub fn list_votes() {}
 
+/// Votes on a thread's messages in one read: per message, a count of each kind
+/// and the vote rows. Only messages holding a vote appear; the newest 500
+/// messages are read.
+#[utoipa::path(get, path = "/threads/{tid}/votes", tag = "messages",
+    params(("tid" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, body = ThreadVotes),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_thread_votes() {}
+
 /// Take back your vote
 #[utoipa::path(delete, path = "/messages/{id}/votes", tag = "messages",
     params(("id" = Uuid, Path, description = "Message id")),

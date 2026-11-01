@@ -88,7 +88,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -107,6 +109,14 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
+      - name: console typecheck, lint, tests and CSP-checked build
+        working-directory: web/console
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
@@ -195,7 +205,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -239,7 +251,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -266,7 +280,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -298,7 +314,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -330,7 +348,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -385,7 +405,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: osv-scanner
@@ -410,7 +432,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: install cargo-vet
@@ -438,7 +462,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -464,6 +490,36 @@ jobs:
         run: scripts/sdk-test.sh go
       - name: rust
         run: scripts/sdk-test.sh rust
+
+  mcp-sdk-clients:
+    name: mcp sdk clients (report-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The official third-party MCP SDKs, TypeScript (@modelcontextprotocol/sdk)
+    # and Python (mcp), each pinned in scripts/mcp-sdk-clients/, run as clients
+    # of a source-built server seeded with `maidan init` (auth enabled), over
+    # /mcp/streamable and /mcp (scripts/mcp-sdk-clients.sh). Report-only and NOT
+    # a required check: the behavior is gated by the required Rust e2e tests,
+    # and a new SDK release should be triaged, not block a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: scripts/mcp-sdk-clients/typescript/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: typescript and python SDK clients
+        run: scripts/mcp-sdk-clients.sh typescript python
 
   integration:
     name: integration (testcontainers)
@@ -505,7 +561,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -530,16 +588,6 @@ jobs:
             echo "::error::under ${floor_gib}G free after the test build; MinIO and Postgres need room to write"
             exit 1
           fi
-      - name: fetch the TypeScript the board checks pin
-        # ui_js_checks runs it with --prefer-offline, so the registry is hit
-        # here, with retries, and not inside a test's timeout.
-        timeout-minutes: 5
-        run: |
-          for i in 1 2 3; do
-            npm exec --yes --package typescript@5.9.3 -- tsc --version && exit 0
-            sleep 10
-          done
-          exit 1
       - name: integration tests
         if: needs.changes.outputs.code == 'true'
         run: cargo nextest run --workspace --tests --profile ci
@@ -587,7 +635,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -622,7 +672,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -685,7 +737,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -704,16 +758,6 @@ jobs:
         # all uncovered, which pulled maidan-store from 88.5% to 81.4% on a
         # stale cache.
         run: cargo llvm-cov clean --workspace
-      - name: fetch the TypeScript the board checks pin
-        # ui_js_checks runs it with --prefer-offline, so the registry is hit
-        # here, with retries, and not inside a test's timeout.
-        timeout-minutes: 5
-        run: |
-          for i in 1 2 3; do
-            npm exec --yes --package typescript@5.9.3 -- tsc --version && exit 0
-            sleep 10
-          done
-          exit 1
       - name: run instrumented test suite
         run: cargo llvm-cov nextest --workspace --profile ci --no-report
       - name: lcov + html
@@ -1053,7 +1097,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
@@ -1120,10 +1166,9 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Real headless-Chromium coverage of the /ui console. The example harness
+    # Real headless-Chromium coverage of the console at /ui. The example harness
     # (crates/maidan-server/examples/ui_test_server.rs) seeds an in-memory server
-    # and serves the real /ui; Playwright drives it in a browser. This catches
-    # DOM / render / event-wiring bugs the static ui_js_contract check cannot.
+    # and serves the built console; Playwright drives it in a browser.
     # See ui-tests/README.md.
     steps:
       - uses: actions/checkout@v4
@@ -1131,7 +1176,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/landing/package-lock.json
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
       - name: install rust
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo

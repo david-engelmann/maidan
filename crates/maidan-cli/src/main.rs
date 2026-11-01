@@ -330,16 +330,34 @@ async fn run_init(
         .context("create admin member")?;
 
     let secret = maidan_auth::TokenSecret::generate();
+    // The unaudited `create_api_token` exists only under maidan-store's
+    // `test-support` feature (D-A), so the bootstrap mint is audited too.
+    let actor = member.id;
     store
-        .create_api_token(maidan_types::NewApiToken {
-            workspace_id: workspace.id,
-            member_id: member.id,
-            app_installation_id: None,
-            token_hash: maidan_auth::hash_secret(secret.as_str()),
-            label: Some("maidan init (admin)".to_string()),
-            capabilities: maidan_auth::capability::all(),
-            expires_at: None,
-        })
+        .create_api_token_audited(
+            maidan_types::NewApiToken {
+                workspace_id: workspace.id,
+                member_id: member.id,
+                app_installation_id: None,
+                token_hash: maidan_auth::hash_secret(secret.as_str()),
+                label: Some("maidan init (admin)".to_string()),
+                capabilities: maidan_auth::capability::all(),
+                expires_at: None,
+            },
+            Box::new(move |record| maidan_types::NewAuditEvent {
+                scope: maidan_types::AuditScope::Workspace(record.workspace_id),
+                actor_id: Some(actor),
+                action: "token.mint".into(),
+                target_kind: Some("api_token".into()),
+                target_id: Some(record.id.0),
+                metadata: serde_json::json!({
+                    "workspace_id": record.workspace_id.0,
+                    "subject_member_id": record.member_id.0,
+                    "capabilities": record.capabilities.clone(),
+                    "source": "maidan-init",
+                }),
+            }),
+        )
         .await
         .context("mint admin token")?;
 

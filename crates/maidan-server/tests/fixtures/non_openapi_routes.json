@@ -18,12 +18,15 @@
     "/a2a/v1/tasks/{id}",
     "/a2a/v1/tasks/{id}/pushNotificationConfigs",
     "/a2a/v1/tasks/{id}/pushNotificationConfigs/{config_id}",
+    "/console",
+    "/console/",
     "/integrations/deploys/events",
     "/integrations/github/events",
     "/integrations/slack/events",
     "/landing/{name}",
     "/llms.txt",
     "/mcp",
+    "/mcp/coordinator",
     "/mcp/reviewer",
     "/mcp/worker",
     "/metrics",
@@ -90,7 +93,7 @@
     "/ui/api/workspaces/{wid}/usage-meters",
     "/ui/oauth/consent",
     "/ui/oauth/grants",
-    "/ui/static/{name}",
+    "/ui/{name}",
     "/workspaces/{id}/audit"
   ]
 }

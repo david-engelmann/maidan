@@ -20,6 +20,7 @@ const COLS: &str = "id, workspace_id, surface, selector, created_at";
 /// Bless a destination. Idempotent: re-blessing returns the existing entry
 /// (original `created_at` intact) rather than adding a second row, so the list
 /// stays the operator's "what may we post to" with nothing to reconcile.
+#[cfg(feature = "test-support")]
 pub async fn allow(pool: &PgPool, new: NewEgressTarget) -> Result<AllowedEgressTarget, StoreError> {
     let mut conn = pool.acquire().await?;
     allow_on(&mut conn, new).await
@@ -65,6 +66,7 @@ pub async fn list(
 
 /// Revoke a blessing. Scoped to the workspace, so one workspace's admin cannot
 /// revoke another's entry by guessing an id. `false` when no such entry exists.
+#[cfg(feature = "test-support")]
 pub async fn revoke(
     pool: &PgPool,
     workspace_id: WorkspaceId,

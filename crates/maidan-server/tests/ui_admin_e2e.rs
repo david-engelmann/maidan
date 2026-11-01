@@ -70,10 +70,10 @@ async fn ui_v4_admin_shell_and_session_audit_api() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-tab="admin""#));
-    assert!(html.contains("load-audit"));
-    assert!(html.contains("purge-workspace"));
-    assert!(html.contains("revoke-token"));
+    // The console draws this panel in the browser; the served shell is its
+    // React root, and the browser specs pin the panel itself.
+    assert!(html.contains(r#"id="root""#), "{html}");
+    assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
     let ws = store
         .create_workspace(NewWorkspace {

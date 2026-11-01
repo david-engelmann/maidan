@@ -57,10 +57,10 @@ async fn ui_v2_shell_lists_channels_via_session_api() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"id="shell""#));
-    assert!(html.contains(r#"id="channel-list""#));
-    assert!(html.contains(r#"id="live-feed""#));
-    assert!(html.contains(">Reconnect</button>"));
+    // `/ui/` is the console; its channel list is drawn by the app, so the
+    // session API below is what this test holds.
+    assert!(html.contains(r#"id="root""#), "{html}");
+    assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
     let ws: serde_json::Value = client
         .post(format!("{base}/workspaces"))

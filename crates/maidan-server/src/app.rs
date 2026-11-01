@@ -49,21 +49,16 @@ use crate::{
     trace_context, trace_redaction, webhooks, ws,
 };
 
-/// Content-Security-Policy for the board (`/ui`, `/ui/`) and `/ui/static/*`.
-///
-/// The document loads one script, `/ui/static/main.js`, which imports the
-/// other modules beside it. Nothing on the page is an inline script and the
-/// modules do not call `eval`, so `script-src` is `'self'` with no
-/// `'unsafe-inline'`. Styles are `/ui/static/board.css` only: the mint banner
-/// is shown with a class, and avatar hues are classes, because `style-src`
-/// does not allow `'unsafe-inline'`.
+/// Content-Security-Policy for the server-rendered OAuth pages
+/// (`/ui/oauth/consent`, `/ui/oauth/grants`). No inline script, and
+/// `style-src` does not allow `'unsafe-inline'`.
 ///
 /// `img-src` allows `data:` (the favicon) and `blob:` (raster attachment
 /// previews). `connect-src` is `'self'`, `https:` and `wss:`. The API base
 /// defaults to this page's origin, and `'self'` already covers that origin's
 /// `http` and `ws`; another host is reached over TLS. Sign-out posts to that
 /// same default origin, which is what `form-action 'self'` allows.
-pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+pub const OAUTH_PAGE_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 /// Content-Security-Policy for the public waitlist page at `/`. Stricter than
 /// the board's: the page loads one stylesheet and one module from this
@@ -74,26 +69,34 @@ pub const BOARD_UI_CSP: &str = "default-src 'self'; script-src 'self'; style-src
 /// elements. Scripts stay external: there is no `unsafe-inline` in `script-src`.
 pub const LANDING_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
-/// [`BOARD_UI_CSP`] on an instance that runs Turnstile: the widget's script
-/// and its frame may load from Cloudflare's challenge origin, and nothing
-/// else changes.
-pub const BOARD_UI_CSP_TURNSTILE: &str = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
-
 /// [`LANDING_CSP`] on an instance that runs Turnstile, widened the same
-/// narrow way as [`BOARD_UI_CSP_TURNSTILE`].
+/// narrow way as [`CONSOLE_CSP_TURNSTILE`].
 pub const LANDING_CSP_TURNSTILE: &str = "default-src 'none'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
-/// The board's CSP for this instance: Cloudflare's challenge origin appears
+/// Content-Security-Policy for the React console at `/ui`. The OAuth pages'
+/// policy, plus `style-src-attr 'unsafe-inline'` because the console's motion
+/// runtime sets transform and opacity on elements (as the landing's does),
+/// and `manifest-src 'self'` for the install manifest. Style *elements* and
+/// scripts stay on `'self'`; the build fails on an inline one
+/// (web/console/scripts/check-csp.mjs).
+pub const CONSOLE_CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/// [`CONSOLE_CSP`] on an instance that runs Turnstile: the widget's script
+/// and its frame may load from Cloudflare's challenge origin, and nothing
+/// else changes.
+pub const CONSOLE_CSP_TURNSTILE: &str = "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https: wss:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/// The console's CSP for this instance: Cloudflare's challenge origin appears
 /// only when Turnstile is on.
-pub fn board_ui_csp(state: &AppState) -> &'static str {
+pub fn console_csp(state: &AppState) -> &'static str {
     if state.turnstile.is_some() {
-        BOARD_UI_CSP_TURNSTILE
+        CONSOLE_CSP_TURNSTILE
     } else {
-        BOARD_UI_CSP
+        CONSOLE_CSP
     }
 }
 
-/// The waitlist page's CSP for this instance, as [`board_ui_csp`] chooses.
+/// The waitlist page's CSP for this instance, as [`console_csp`] chooses.
 pub fn landing_csp(state: &AppState) -> &'static str {
     if state.turnstile.is_some() {
         LANDING_CSP_TURNSTILE
@@ -117,6 +120,21 @@ fn landing_headers(
         (header::REFERRER_POLICY, "no-referrer"),
     ]
 }
+
+/// What `/` lists when sign-up is off: key, path, label.
+pub const ROUTE_INDEX: &[(&str, &str, &str)] = &[
+    ("openapi", "/openapi.json", "REST API description (OpenAPI)"),
+    ("mcp", "/mcp", "MCP endpoint"),
+    ("mcp_worker", "/mcp/worker", "MCP worker profile"),
+    ("mcp_reviewer", "/mcp/reviewer", "MCP reviewer profile"),
+    ("health", "/health", "health check"),
+    ("docs", "/llms.txt", "docs for agents"),
+    ("console", "/ui", "console"),
+];
+
+/// The route index page loads nothing, so its CSP allows nothing.
+pub const ROUTE_INDEX_CSP: &str =
+    "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 /// Every load of the board page or an asset revalidates: `no-cache` lets the
 /// browser keep a copy, and the ETag below turns an unchanged one into a 304
@@ -214,6 +232,7 @@ pub fn router(state: AppState) -> Router {
         .route("/mcp", post(mcp::handler))
         .route("/mcp/worker", post(mcp::worker))
         .route("/mcp/reviewer", post(mcp::reviewer))
+        .route("/mcp/coordinator", post(mcp::coordinator))
         .route("/mcp/streamable", post(mcp_streamable::streamable))
         .route("/mcp/streamable", get(mcp_streamable::stream_get))
         .route("/mcp/streamable", delete(mcp_streamable::close_session))
@@ -842,6 +861,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/dependents",
             get(routes::list_thread_dependents),
         )
+        .route("/threads/{tid}/votes", get(routes::list_thread_votes))
         .route(
             "/threads/{tid}/messages",
             post(routes::post_message).merge(get(routes::list_messages)),
@@ -1236,15 +1256,14 @@ pub fn router(state: AppState) -> Router {
             share_consumer::middleware,
         ));
 
-    // The public waitlist page. It is part of sign-up, like the form's POST:
-    // an instance that never turned sign-up on keeps answering 404 at `/`.
+    // The public waitlist page. It is part of sign-up, like the form's POST.
+    // An instance without sign-up answers `/` with a route index instead.
     async fn landing_page(
         axum::extract::State(state): axum::extract::State<AppState>,
         headers: axum::http::HeaderMap,
     ) -> axum::response::Response {
-        use axum::response::IntoResponse as _;
         if crate::routes::require_signup(&state).is_err() {
-            return crate::error::ApiError::NotFound.into_response();
+            return route_index(&headers);
         }
         let page = include_str!("../static/landing/dist/index.html").replace(
             "<!-- policy-links -->",
@@ -1256,6 +1275,45 @@ pub fn router(state: AppState) -> Router {
             "text/html; charset=utf-8",
             page.as_bytes(),
         )
+    }
+
+    /// `/` without sign-up: where to go next. JSON unless the client asks for
+    /// HTML and not JSON; the HTML has no script or style, under a CSP that
+    /// allows neither.
+    fn route_index(headers: &axum::http::HeaderMap) -> axum::response::Response {
+        use axum::http::header;
+        use axum::response::IntoResponse as _;
+        let accept = headers
+            .get(header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let html = accept.contains("text/html") && !accept.contains("application/json");
+        if !html {
+            let routes: serde_json::Map<String, serde_json::Value> = ROUTE_INDEX
+                .iter()
+                .map(|(key, path, _)| ((*key).to_string(), serde_json::json!(path)))
+                .collect();
+            return (
+                [(header::CACHE_CONTROL, "no-cache")],
+                axum::Json(serde_json::json!({ "name": "maidan", "routes": routes })),
+            )
+                .into_response();
+        }
+        let items: String = ROUTE_INDEX
+            .iter()
+            .map(|(_, path, label)| format!("<li><a href=\"{path}\">{path}</a> {label}</li>"))
+            .collect();
+        let page = format!(
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+             <title>maidan</title></head><body><h1>maidan</h1><ul>{items}</ul></body></html>"
+        );
+        (
+            landing_headers("text/html; charset=utf-8", ROUTE_INDEX_CSP),
+            [(header::CACHE_CONTROL, "no-cache")],
+            page,
+        )
+            .into_response()
     }
 
     async fn landing_asset(
@@ -1299,6 +1357,75 @@ pub fn router(state: AppState) -> Router {
         ))
     }
 
+    // The React console at /ui. Static and public: the API calls it makes
+    // carry the auth.
+    async fn console_index(
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> axum::response::Response {
+        landing_body(
+            &headers,
+            console_csp(&state),
+            "text/html; charset=utf-8",
+            include_bytes!("../static/console/dist/index.html"),
+        )
+    }
+
+    async fn console_asset(
+        crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
+        axum::extract::State(state): axum::extract::State<AppState>,
+        headers: axum::http::HeaderMap,
+    ) -> Result<axum::response::Response, axum::http::StatusCode> {
+        // Names are pinned by the Vite build (see web/console/vite.config.ts).
+        let (content_type, body): (&str, &[u8]) = match name.as_str() {
+            "app.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/app.js"),
+            ),
+            "vendor.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/vendor.js"),
+            ),
+            "style.css" => (
+                "text/css; charset=utf-8",
+                include_bytes!("../static/console/dist/style.css"),
+            ),
+            "geist.woff2" => (
+                "font/woff2",
+                include_bytes!("../static/console/dist/geist.woff2"),
+            ),
+            "icon.png" => (
+                "image/png",
+                include_bytes!("../static/console/dist/icon.png"),
+            ),
+            "icon-192.png" => (
+                "image/png",
+                include_bytes!("../static/console/dist/icon-192.png"),
+            ),
+            "icon-512.png" => (
+                "image/png",
+                include_bytes!("../static/console/dist/icon-512.png"),
+            ),
+            // Install manifest and service worker (web/console/src/pwa). The
+            // worker caches only these static files, never an API answer.
+            "manifest.webmanifest" => (
+                "application/manifest+json",
+                include_bytes!("../static/console/dist/manifest.webmanifest"),
+            ),
+            "sw.js" => (
+                "text/javascript; charset=utf-8",
+                include_bytes!("../static/console/dist/sw.js"),
+            ),
+            _ => return Err(axum::http::StatusCode::NOT_FOUND),
+        };
+        Ok(landing_body(
+            &headers,
+            console_csp(&state),
+            content_type,
+            body,
+        ))
+    }
+
     fn landing_body(
         headers: &axum::http::HeaderMap,
         csp: &'static str,
@@ -1321,140 +1448,6 @@ pub fn router(state: AppState) -> Router {
             body.to_vec(),
         )
             .into_response()
-    }
-
-    async fn ui_index(
-        axum::extract::State(state): axum::extract::State<AppState>,
-        headers: axum::http::HeaderMap,
-    ) -> axum::response::Response {
-        let csp = board_ui_csp(&state);
-        use axum::response::IntoResponse as _;
-        const BODY: &str = include_str!("../static/index.html");
-        // The body is a compile-time constant a few dozen kilobytes long;
-        // hashing it per request is noise next to the round trip.
-        let etag = strong_etag(BODY.as_bytes());
-        if if_none_match_fresh(&headers, &etag) {
-            return (
-                axum::http::StatusCode::NOT_MODIFIED,
-                [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
-                ui_cache_headers(&etag),
-            )
-                .into_response();
-        }
-        (
-            [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
-            ui_cache_headers(&etag),
-            axum::response::Html(BODY),
-        )
-            .into_response()
-    }
-
-    // Board modules next to the page. The name must be one of these files.
-    // Anything else is a 404. cargo build does not run a bundler.
-    async fn ui_asset(
-        crate::extract::ApiPath(name): crate::extract::ApiPath<String>,
-        axum::extract::State(state): axum::extract::State<AppState>,
-        headers: axum::http::HeaderMap,
-    ) -> Result<axum::response::Response, axum::http::StatusCode> {
-        let csp = board_ui_csp(&state);
-        use axum::response::IntoResponse as _;
-        let (content_type, body) = match name.as_str() {
-            "board.css" => (
-                "text/css; charset=utf-8",
-                include_str!("../static/ui/board.css"),
-            ),
-            "main.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/main.js"),
-            ),
-            "state.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/state.js"),
-            ),
-            "client.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/client.js"),
-            ),
-            "api.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/api.js"),
-            ),
-            "feedback.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/feedback.js"),
-            ),
-            "people.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/people.js"),
-            ),
-            "session.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/session.js"),
-            ),
-            "board.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/board.js"),
-            ),
-            "needs.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/needs.js"),
-            ),
-            "thread.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/thread.js"),
-            ),
-            "dm.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/dm.js"),
-            ),
-            "artifacts.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/artifacts.js"),
-            ),
-            "tools.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/tools.js"),
-            ),
-            "swarm.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/swarm.js"),
-            ),
-            "palette.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/palette.js"),
-            ),
-            "realtime.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/realtime.js"),
-            ),
-            "push.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/push.js"),
-            ),
-            "sw.js" => (
-                "text/javascript; charset=utf-8",
-                include_str!("../static/ui/sw.js"),
-            ),
-            _ => return Err(axum::http::StatusCode::NOT_FOUND),
-        };
-        let etag = strong_etag(body.as_bytes());
-        if if_none_match_fresh(&headers, &etag) {
-            return Ok((
-                axum::http::StatusCode::NOT_MODIFIED,
-                [(axum::http::header::CONTENT_SECURITY_POLICY, csp)],
-                ui_cache_headers(&etag),
-            )
-                .into_response());
-        }
-        Ok((
-            [
-                (axum::http::header::CONTENT_TYPE, content_type),
-                (axum::http::header::CONTENT_SECURITY_POLICY, csp),
-            ],
-            ui_cache_headers(&etag),
-            body,
-        )
-            .into_response())
     }
 
     // The agent-facing index (llmstxt.org): how to connect and the work loop,
@@ -1858,9 +1851,18 @@ pub fn router(state: AppState) -> Router {
         .route("/metrics", get(metrics::scrape))
         .route("/", get(landing_page))
         .route("/landing/{name}", get(landing_asset))
-        .route("/ui", get(ui_index))
-        .route("/ui/", get(ui_index))
-        .route("/ui/static/{name}", get(ui_asset))
+        .route("/ui", get(console_index))
+        .route("/ui/", get(console_index))
+        .route("/ui/{name}", get(console_asset))
+        // The console's preview address before it took over /ui.
+        .route(
+            "/console",
+            get(|| async { axum::response::Redirect::permanent("/ui/") }),
+        )
+        .route(
+            "/console/",
+            get(|| async { axum::response::Redirect::permanent("/ui/") }),
+        )
         // OAuth 2.1 consent page: the member approves or denies a pending
         // authorization request. Signed-in session only (never a bearer);
         // the handler checks `SessionContext::token.is_none()`.

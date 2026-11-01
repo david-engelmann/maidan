@@ -55,8 +55,10 @@ async fn maidan_operator_gate_surfaces_respond() {
     let ui = client.get(format!("{base}/ui/")).send().await.unwrap();
     assert_eq!(ui.status(), StatusCode::OK);
     let html = ui.text().await.unwrap();
-    assert!(html.contains("ws-preset"));
-    assert!(html.contains("token-list"));
+    // The console draws this panel in the browser; the served shell is its
+    // React root, and the browser specs pin the panel itself.
+    assert!(html.contains(r#"id="root""#), "{html}");
+    assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
     for path in [
         "/health",
