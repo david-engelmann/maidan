@@ -465,6 +465,36 @@ jobs:
       - name: rust
         run: scripts/sdk-test.sh rust
 
+  mcp-sdk-clients:
+    name: mcp sdk clients (report-only)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The official third-party MCP SDKs, TypeScript (@modelcontextprotocol/sdk)
+    # and Python (mcp), each pinned in scripts/mcp-sdk-clients/, run as clients
+    # of a source-built server seeded with `maidan init` (auth enabled), over
+    # /mcp/streamable and /mcp (scripts/mcp-sdk-clients.sh). Report-only and NOT
+    # a required check: the behavior is gated by the required Rust e2e tests,
+    # and a new SDK release should be triaged, not block a merge.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: scripts/mcp-sdk-clients/typescript/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: typescript and python SDK clients
+        run: scripts/mcp-sdk-clients.sh typescript python
+
   integration:
     name: integration (testcontainers)
     needs: changes
