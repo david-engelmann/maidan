@@ -187,6 +187,7 @@ pub async fn standing(
     standing_for(pool, thread_id).await
 }
 
+#[cfg(feature = "test-support")]
 pub async fn clear(pool: &SqlitePool, thread_id: ThreadId) -> Result<bool, StoreError> {
     let mut conn = pool.acquire().await?;
     clear_on(&mut conn, thread_id).await

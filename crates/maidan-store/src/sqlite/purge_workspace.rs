@@ -1,11 +1,14 @@
 use chrono::Utc;
 use maidan_types::{ContentKeyring, WorkspaceId, WorkspacePurgeResult, WrappedKey};
 use sqlx::Row;
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::SqliteConnection;
+#[cfg(feature = "test-support")]
+use sqlx::SqlitePool;
 
 use crate::embeddings_purge;
 use crate::error::StoreError;
 
+#[cfg(feature = "test-support")]
 pub async fn purge(
     pool: &SqlitePool,
     keys: &ContentKeyring,
