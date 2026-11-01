@@ -2,7 +2,7 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BoardApi, LANES, cardAriaLabel, cardWhen, chips, toLanes, type Card, type LaneKey, type Member } from "../core/board.ts";
+import { BoardApi, LANES, boardHealth, cardAriaLabel, cardWhen, chips, healthMatch, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
@@ -47,7 +47,15 @@ export function Board() {
   const reduce = Boolean(useReducedMotion());
   const [lane, setLane] = useState<LaneKey>("open");
   const [openId, setOpenId] = useState<string | null>(null);
-  const lanes = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
+  const [focus, setFocus] = useState<HealthKey | null>(null);
+  const health = useMemo(() => boardHealth(data.threads, now), [data.threads, now]);
+  // A filter whose signal has cleared falls away on its own.
+  const active = focus && health.some((h) => h.key === focus) ? focus : null;
+  const shownThreads = useMemo(
+    () => (active ? data.threads.filter((t) => healthMatch(t, active, now)) : data.threads),
+    [data.threads, active, now],
+  );
+  const lanes = useMemo(() => toLanes(shownThreads, data.gates), [shownThreads, data.gates]);
   const opened = data.threads.find((t) => t.id === openId) ?? null;
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
@@ -68,6 +76,26 @@ export function Board() {
           {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes)}
         </p>
       </div>
+
+      {health.length > 0 && (
+        <div className="health" role="group" aria-label="Board health">
+          {health.map((h) => (
+            <button
+              key={h.key}
+              type="button"
+              className={`health-chip health-${h.key}`}
+              aria-pressed={active === h.key}
+              title={`${h.title}. ${active === h.key ? "Show every task" : "Show only these"}`}
+              onClick={() => setFocus(active === h.key ? null : h.key)}
+            >
+              {h.text}
+            </button>
+          ))}
+          {active && (
+            <button type="button" className="health-chip health-clear" onClick={() => setFocus(null)}>Show all</button>
+          )}
+        </div>
+      )}
 
       {!wide && (
         <div className="lane-pick" role="tablist" aria-label="Lanes">

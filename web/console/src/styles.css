@@ -574,3 +574,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .no-workspace { margin: 0; }
 @media (max-width: 520px) { .mode-chip { display: none; } }
 .chip-refused { color: var(--signal); border-color: var(--signal); }
+
+/* Board health strip: live tasks that may need a look, each a filter. */
+.health { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.health-chip { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.health-chip[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.health-stalled, .health-blocked, .health-ending { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.health-clear { color: var(--muted); }
