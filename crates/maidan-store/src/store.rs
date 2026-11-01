@@ -2925,6 +2925,25 @@ pub trait AssignmentStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// Report up to `limit` live claims that look stuck before their lease
+    /// lapses, appending a `ClaimStalled` for each in the same transaction.
+    /// For [`maidan_types::ClaimStallReason::NoProgress`], an acknowledged
+    /// claim whose holder last showed progress (acknowledgement, own message,
+    /// own declaration) before `cutoff` and has not declared a wait; for
+    /// [`maidan_types::ClaimStallReason::LeaseLapsing`], a claim whose lease
+    /// lapses before `cutoff`. Only open, live threads whose lease is still
+    /// running at `now` count, and each claim is reported once per reason:
+    /// its fencing token is recorded, and a new claim mints a new one. The
+    /// claim itself is not changed. Returns the appended events, soonest
+    /// lapsing lease first.
+    async fn report_stalled_claims(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        reason: maidan_types::ClaimStallReason,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Return to the queue up to `limit` threads whose holder declared
     /// `needs_input` or `needs_review` before `declared_before` and is still
     /// waiting: an open, live thread on a lease running at `now` that the

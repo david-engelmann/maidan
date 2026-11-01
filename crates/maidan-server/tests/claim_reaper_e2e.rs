@@ -539,3 +539,140 @@ async fn rest_claims_are_leased_by_default_and_leases_are_bounded() {
         serde_json::from_value(body["assignment_expires_at"].clone()).unwrap();
     assert!(renewed > expires);
 }
+
+async fn reaper_reports_a_stalled_claim_once_per_reason(
+    store: Arc<dyn Store>,
+    search: Arc<dyn maidan_search::Search>,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let bus = Arc::new(InMemoryBus::with_capacity(64));
+    let state = AppState::for_tests(
+        store.clone(),
+        Arc::new(LocalFsStore::new(dir.path())),
+        bus.clone(),
+        search,
+    );
+    let r = room(store.as_ref()).await;
+    let owner = store
+        .create_member(NewMember {
+            workspace_id: r.workspace,
+            handle: "owner".into(),
+            display_name: None,
+            kind: MemberKind::Human,
+        })
+        .await
+        .unwrap();
+    new_thread(store.as_ref(), r.channel, "hung").await;
+    let hung = store
+        .claim_next_thread(r.channel, r.holder, Some(3600), None)
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .set_thread_owner(hung.id, Some(owner.id))
+        .await
+        .unwrap();
+    store
+        .acknowledge_claim(hung.id, r.holder, hung.claim_lease_id.unwrap())
+        .await
+        .unwrap();
+
+    let mut stream = bus
+        .subscribe(EventFilter {
+            workspace_id: Some(r.workspace),
+            kinds: Some(HashSet::from([EventKind::ClaimStalled])),
+            ..EventFilter::default()
+        })
+        .await
+        .unwrap();
+
+    // Turned off, nothing is reported.
+    assert_eq!(
+        claim_reaper::report_stalled_once(&state, None, None).await,
+        0
+    );
+    // Not yet quiet for an hour, nor an hour's lease lapsing within a minute.
+    assert_eq!(
+        claim_reaper::report_stalled_once(
+            &state,
+            Some(Duration::from_secs(3600)),
+            Some(Duration::from_secs(60)),
+        )
+        .await,
+        0
+    );
+
+    // A zero stall window: the acknowledgement is the last progress, past it.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        claim_reaper::report_stalled_once(&state, Some(Duration::ZERO), None).await,
+        1
+    );
+    let (log_id, event) = match tokio::time::timeout(Duration::from_secs(2), stream.next()).await {
+        Ok(Some(BusItem::Event(env))) => (env.log_id, env.event),
+        other => panic!("no ClaimStalled on the bus: {other:?}"),
+    };
+    match &event {
+        Event::ClaimStalled {
+            thread_id,
+            member_id,
+            reason,
+            last_progress_at,
+            ..
+        } => {
+            assert_eq!(*thread_id, hung.id);
+            assert_eq!(*member_id, r.holder);
+            assert_eq!(*reason, maidan_types::ClaimStallReason::NoProgress);
+            assert!(last_progress_at.is_some());
+        }
+        other => panic!("expected ClaimStalled, got {other:?}"),
+    }
+
+    // The lease pre-warning is its own report; each fires once per claim.
+    let two_hours = Some(Duration::from_secs(7200));
+    assert_eq!(
+        claim_reaper::report_stalled_once(&state, Some(Duration::ZERO), two_hours).await,
+        1
+    );
+    match tokio::time::timeout(Duration::from_secs(2), stream.next()).await {
+        Ok(Some(BusItem::Event(env))) => match env.event {
+            Event::ClaimStalled { reason, .. } => {
+                assert_eq!(reason, maidan_types::ClaimStallReason::LeaseLapsing)
+            }
+            other => panic!("expected ClaimStalled, got {other:?}"),
+        },
+        other => panic!("no lapse warning on the bus: {other:?}"),
+    }
+    assert_eq!(
+        claim_reaper::report_stalled_once(&state, Some(Duration::ZERO), two_hours).await,
+        0
+    );
+    let kept = store.get_thread(hung.id).await.unwrap();
+    assert_eq!(kept.assignee_id, Some(r.holder), "the claim is left alone");
+    assert_eq!(kept.claim_lease_id, hung.claim_lease_id);
+
+    // The owner is told the work is stuck.
+    notification_router::route_event(&state, log_id, &event)
+        .await
+        .unwrap();
+    let notes = store.list_notifications(owner.id, false, 10).await.unwrap();
+    assert_eq!(notes.len(), 1, "the owner is notified");
+    assert_eq!(notes[0].kind, EventKind::ClaimStalled);
+    assert_eq!(notes[0].thread_id, Some(hung.id));
+}
+
+#[tokio::test]
+async fn reaper_reports_a_stalled_claim_once_per_reason_sqlite() {
+    let (store, search) = sqlite().await;
+    reaper_reports_a_stalled_claim_once_per_reason(store, search).await;
+}
+
+#[tokio::test]
+async fn reaper_reports_a_stalled_claim_once_per_reason_postgres() {
+    let Some((_container, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
+    reaper_reports_a_stalled_claim_once_per_reason(store, search).await;
+}

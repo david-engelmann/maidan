@@ -2996,6 +2996,7 @@
           "status_declared",
           "claim_expired",
           "claim_unacknowledged",
+          "claim_stalled",
           "claim_failed",
           "usage_reported",
           "thread_landed",

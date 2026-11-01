@@ -3315,6 +3315,16 @@ macro_rules! store_delegations {
                 threads::report_unacknowledged_claims(self.pool(), now, claimed_before, limit).await
             }
 
+            async fn report_stalled_claims(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                reason: maidan_types::ClaimStallReason,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                threads::report_stalled_claims(self.pool(), now, reason, cutoff, limit).await
+            }
+
             async fn return_human_timeouts(
                 &self,
                 now: chrono::DateTime<chrono::Utc>,
