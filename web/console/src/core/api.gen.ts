@@ -68,6 +68,7 @@ export type CreateChannel = { name: string; private?: boolean; topic?: string | 
 export type CreatedAgentResponse = { member: Member; token: MintApiTokenResponse; };
 export type CreateDelegationGrant = { capabilities: string[]; delegate_id: string; expires_at: string; purpose: string; subject_id: string; };
 export type CreateFsmHook = { from_state?: string | null; handler_kind: string; handler_target: string; label?: string | null; to_state?: string | null; };
+export type CreateIntakeItem = { body?: string | null; source?: null | IntakeSource; title: string; };
 export type CreateMember = { display_name?: string | null; handle: string; kind: MemberKind; };
 export type CreateMemoryBlock = { char_limit?: number | null; description?: string | null; label: string; read_only?: boolean; value?: string | null; };
 export type CreateMention = { member_id: string; };
@@ -107,7 +108,7 @@ export type EnqueueRequest = { pull_number: number; repo: string; };
 export type EnqueueResponse = { applied: boolean; label: string; number: number; reason?: string | null; };
 export type EraseWorkspace = { confirm_workspace_id: string; };
 export type EscalationPolicy = "notify" | "park";
-export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "usage_over_allowance" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
+export type EventKind = "workspace_created" | "member_joined" | "channel_created" | "thread_created" | "thread_state_changed" | "thread_assignment_changed" | "thread_ready" | "thread_result_set" | "thread_cancelled" | "thread_attributes_set" | "approval_requested" | "thread_blocked" | "blocked_resolved" | "status_declared" | "claim_expired" | "claim_unacknowledged" | "claim_stalled" | "claim_failed" | "usage_reported" | "thread_landed" | "thread_notice" | "thread_handoff" | "result_delivery_failed" | "review_submitted" | "approval_dismissed" | "wait_timed_out" | "schedule_skipped" | "thread_spawn_denied" | "projector_misconfigured" | "member_frozen" | "member_unfrozen" | "member_display_name_changed" | "intake_proposed" | "intake_accepted" | "intake_rejected" | "usage_over_allowance" | "message_posted" | "message_edited" | "message_tombstoned" | "mention_recorded" | "vote_cast" | "vote_retracted" | "reaction_added" | "reaction_removed" | "message_pinned" | "message_unpinned" | "reference_added" | "artifact_upserted" | "memory_block_updated";
 export type EventLink = { content_hash: string; id: number; lsn: number; prev_hash: string; };
 export type EvidenceAttestation = { attested_by: MemberId; kind: EvidenceKind; sha256?: string | null; tier: AttestationTier; };
 export type EvidenceKind = "result" | "artifact" | "land_gate";
@@ -148,6 +149,10 @@ export type InboxItemKind = "mention";
 export type IngestSummary = { ingested: number; refused?: number; skipped: number; };
 export type InstallApp = { granted_capabilities?: string[]; };
 export type InstantiateRecipe = { params?: Record<string, unknown>; };
+export type IntakeItem = { body?: string | null; created_at: string; id: string; proposed_by: MemberId; reject_reason?: string | null; source: IntakeSource; state: IntakeState; thread_id?: null | ThreadId; title: string; triaged_at?: string | null; triaged_by?: null | MemberId; workspace_id: WorkspaceId; };
+export type IntakeSource = "agent" | "human" | "integration";
+export type IntakeState = "proposed" | "accepted" | "rejected";
+export type IntakeTriageDecision = "accept" | "reject";
 export type InviteMintedView = { entry: WaitlistEntryView; invite_expires_at: string; invite_token: string; signup_path: string; };
 export type JoinWaitlistRequest = { consent: boolean; email: string; turnstile_token?: string | null; use_case: string; website?: string | null; };
 export type KindCensus = { channel_id?: null | ChannelId; counts: KindCount[]; thread_id?: null | ThreadId; total: number; workspace_id: WorkspaceId; };
@@ -418,6 +423,7 @@ export type ToolCallResult = { author_id: MemberId; content: string; is_error: b
 export type ToolTranscript = { entries: ToolCallEntry[]; orphan_results?: OrphanToolResult[]; thread_id: ThreadId; };
 export type TransitionAction = "start_review" | "close" | "archive";
 export type TransitionThread = { action: TransitionAction; };
+export type TriageIntakeItem = { channel_id?: string | null; decision: IntakeTriageDecision; reason?: string | null; thread_id?: string | null; };
 export type UnassignThread = Record<string, unknown>;
 export type UnreadCount = { count: number; };
 export type UsageEvidence = { batch?: boolean; cache_key?: string | null; cache_miss_reason?: string | null; effort?: string | null; harness?: string | null; harness_version?: string | null; pack_sha256?: string[]; provider?: string | null; service_tier?: string | null; standard_price?: null | PriceSnapshot; };
@@ -688,6 +694,8 @@ export type ApiRoute =
   | "GET /workspaces/{wid}/glossary"
   | "GET /workspaces/{wid}/glossary/{term}"
   | "GET /workspaces/{wid}/group-dms"
+  | "GET /workspaces/{wid}/intake"
+  | "GET /workspaces/{wid}/intake/{id}"
   | "GET /workspaces/{wid}/members"
   | "GET /workspaces/{wid}/members/{mid}/tokens"
   | "GET /workspaces/{wid}/memory-blocks"
@@ -805,6 +813,8 @@ export type ApiRoute =
   | "POST /workspaces/{wid}/fsm-hooks"
   | "POST /workspaces/{wid}/github-links"
   | "POST /workspaces/{wid}/group-dms"
+  | "POST /workspaces/{wid}/intake"
+  | "POST /workspaces/{wid}/intake/{id}/triage"
   | "POST /workspaces/{wid}/members"
   | "POST /workspaces/{wid}/members/{mid}/tokens"
   | "POST /workspaces/{wid}/memory-blocks"
