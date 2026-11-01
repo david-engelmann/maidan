@@ -861,6 +861,7 @@ pub fn router(state: AppState) -> Router {
             "/threads/{id}/dependents",
             get(routes::list_thread_dependents),
         )
+        .route("/threads/{tid}/votes", get(routes::list_thread_votes))
         .route(
             "/threads/{tid}/messages",
             post(routes::post_message).merge(get(routes::list_messages)),

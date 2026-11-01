@@ -280,6 +280,7 @@
   {"method":"PUT","path":"/threads/{id}/wait","kind":"changes"},
   {"method":"GET","path":"/threads/{tid}/messages","kind":"reads"},
   {"method":"POST","path":"/threads/{tid}/messages","kind":"changes"},
+  {"method":"GET","path":"/threads/{tid}/votes","kind":"reads"},
   {"method":"POST","path":"/tokens/attenuate","kind":"changes"},
   {"method":"POST","path":"/tokens/delegate","kind":"changes"},
   {"method":"DELETE","path":"/tokens/{id}","kind":"changes"},
