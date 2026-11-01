@@ -35,6 +35,10 @@ including the optional
 `request_approval` human gate, is written up as the waiter loop in
 [docs/Integration.md](../docs/Integration.md).
 
+## Connect a chat assistant (claude.ai, Perplexity, grok.com, Gemini)
+
+OAuth recipes in [`connect/`](connect/README.md).
+
 ## Compose recipes: a coding agent and a gated deploy
 
 One command each, in [`recipes/`](recipes/): Maidan built from this checkout, a

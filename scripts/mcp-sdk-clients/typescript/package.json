@@ -1,0 +1,9 @@
+{
+  "name": "maidan-mcp-sdk-client-check",
+  "private": true,
+  "type": "module",
+  "description": "The official MCP TypeScript SDK as a client of a seeded Maidan (scripts/mcp-sdk-clients.sh).",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
+}
