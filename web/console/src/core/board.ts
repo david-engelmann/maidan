@@ -114,6 +114,50 @@ export function chips(th: Thread, lane: LaneKey): Array<{ kind: string; text: st
   return out;
 }
 
+/** A board-health signal: a live task that may need a person to look. */
+export type HealthKey = "stalled" | "ending" | "blocked" | "waiting" | "unclaimed";
+
+/** How soon a claim's lease must end to count as "lease ending". */
+export const LEASE_WARN_MS = 10 * 60 * 1000;
+
+export const HEALTH: ReadonlyArray<{ key: HealthKey; one: string; many: string; title: string }> = [
+  { key: "stalled", one: "stalled", many: "stalled", title: "Claimed, with no recent progress from its agent" },
+  { key: "ending", one: "lease ending", many: "leases ending", title: "The claim runs out within 10 minutes" },
+  { key: "blocked", one: "blocked", many: "blocked", title: "Its agent reported it blocked" },
+  { key: "waiting", one: "waiting on a person", many: "waiting on a person", title: "Waiting on, or overdue on, a human answer" },
+  { key: "unclaimed", one: "unclaimed", many: "unclaimed", title: "Open with nobody on it" },
+];
+
+/** Whether a task shows a health signal. Done tasks never do. */
+export function healthMatch(th: Thread, key: HealthKey, now: number): boolean {
+  if (th.state === "closed" || th.state === "archived") return false;
+  switch (key) {
+    case "stalled":
+      return Boolean(th.stalled);
+    case "ending": {
+      if (!th.assignee_id || !th.assignment_expires_at) return false;
+      const at = Date.parse(th.assignment_expires_at);
+      return Number.isFinite(at) && at - now <= LEASE_WARN_MS;
+    }
+    case "blocked":
+      return Boolean(th.block);
+    case "waiting":
+      return th.human_wait?.state === "waiting" || th.human_wait?.state === "overdue";
+    case "unclaimed":
+      return !th.assignee_id && th.state !== "in_review";
+  }
+}
+
+/** The non-zero health signals across the board, in strip order. */
+export function boardHealth(threads: Thread[], now: number): Array<{ key: HealthKey; count: number; text: string; title: string }> {
+  const out: Array<{ key: HealthKey; count: number; text: string; title: string }> = [];
+  for (const h of HEALTH) {
+    const count = threads.filter((t) => healthMatch(t, h.key, now)).length;
+    if (count) out.push({ key: h.key, count, text: `${count} ${count === 1 ? h.one : h.many}`, title: h.title });
+  }
+  return out;
+}
+
 type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
 export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
 
