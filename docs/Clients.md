@@ -149,12 +149,13 @@ Keep it private.
 
 ### claude.ai custom connector
 
-Add a custom connector in claude.ai's connector settings with the dev
-instance's URL, and choose No sign in. Anthropic's servers make the requests,
-so the instance needs a public HTTPS address, and a firewall in front of it
-must allow Anthropic's published egress range `160.79.104.0/21`. The
-connector's fixed-credentials option, which would send a token, is not yet
-verified against Maidan.
+Add a custom connector in claude.ai with the instance's
+`/mcp/streamable` URL and sign in with OAuth: claude.ai identifies itself
+with a client metadata document, so the instance needs
+`MAIDAN_OAUTH_CLIENT_METADATA_HOSTS=claude.ai` and nothing pre-registered.
+Anthropic's servers make the requests, so a firewall in front of the instance
+must allow `160.79.104.0/21`. Step by step, with Perplexity, grok.com and the
+Gemini app: [examples/connect](../examples/connect/README.md).
 
 ### ChatGPT developer mode
 
