@@ -21,6 +21,7 @@ fn row_to_scim(row: &sqlx::postgres::PgRow) -> ScimUser {
 
 const COLS: &str = "member_id, workspace_id, external_id, active, created_at, updated_at";
 
+#[cfg(feature = "test-support")]
 pub async fn create(
     pool: &PgPool,
     member_id: MemberId,
@@ -75,6 +76,7 @@ pub async fn list(pool: &PgPool, workspace_id: WorkspaceId) -> Result<Vec<ScimUs
     Ok(rows.iter().map(row_to_scim).collect())
 }
 
+#[cfg(feature = "test-support")]
 pub async fn update(
     pool: &PgPool,
     member_id: MemberId,
@@ -104,6 +106,7 @@ pub(crate) async fn update_on(
     Ok(row.as_ref().map(row_to_scim))
 }
 
+#[cfg(feature = "test-support")]
 pub async fn delete(pool: &PgPool, member_id: MemberId) -> Result<bool, StoreError> {
     let mut conn = pool.acquire().await?;
     delete_on(&mut conn, member_id).await

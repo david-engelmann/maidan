@@ -7,8 +7,12 @@
 //! calls the unaudited form, which would quietly bring back the best-effort
 //! write.
 //!
-//! The unaudited forms stay on the trait for tests, fixtures and the offline
-//! `maidan init` bootstrap, none of which runs as a request.
+//! The unaudited forms are compiled only under maidan-store's `test-support`
+//! feature, which only dev-dependencies enable. A non-test build of the
+//! server, the MCP tools or the CLI cannot name them, so CI's
+//! `cargo build --workspace --lib --bins` fails on a request-path call before
+//! the scan below runs. `unaudited_forms_are_pinned_behind_test_support` keeps a new unaudited
+//! method from skipping that gate.
 //!
 //! Test items are skipped one at a time. This used to stop reading a file at
 //! its first `#[cfg(test)]`, which left 1,693 lines of real code in six files
@@ -89,4 +93,37 @@ fn authority_changes_are_audited_in_their_transaction() {
         offenders.is_empty(),
         "an authority change outside its audit transaction: {offenders:?}"
     );
+}
+
+/// Every unaudited authority method, on the trait and on the backend
+/// delegation, is compiled only under `test-support`, so it is a compile error
+/// to call one from non-test code.
+#[test]
+fn unaudited_forms_are_pinned_behind_test_support() {
+    let store = Path::new(env!("CARGO_MANIFEST_DIR")).join("../maidan-store/src");
+    for file in ["store.rs", "delegate.rs"] {
+        let source = std::fs::read_to_string(store.join(file)).unwrap();
+        let lines: Vec<&str> = source.lines().collect();
+        for call in UNAUDITED {
+            let name = call.trim_start_matches('.').trim_end_matches('(');
+            let decl = format!("async fn {name}(");
+            let at: Vec<usize> = lines
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| l.trim_start().starts_with(&decl))
+                .map(|(i, _)| i)
+                .collect();
+            assert_eq!(
+                at.len(),
+                1,
+                "{file}: expected one `{decl}`, found {}",
+                at.len()
+            );
+            let above = lines[at[0] - 1].trim();
+            assert_eq!(
+                above, "#[cfg(feature = \"test-support\")]",
+                "{file}: `{name}` is reachable outside tests; gate it behind test-support"
+            );
+        }
+    }
 }
