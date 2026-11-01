@@ -717,7 +717,10 @@ async fn records_are_added_listed_and_merged_into_the_timeline() {
     )
     .await;
     assert_eq!(s, StatusCode::OK, "{timeline}");
-    assert_eq!(kinds(&timeline), vec!["evidence_recorded", "evidence_recorded"]);
+    assert_eq!(
+        kinds(&timeline),
+        vec!["evidence_recorded", "evidence_recorded"]
+    );
     assert_eq!(timeline["entries"][0]["record"]["id"], ci["id"]);
 
     let added: Vec<_> = store
@@ -807,7 +810,14 @@ async fn evidence_record_tools_add_and_list() {
     .await;
     assert!(refused.get("error").is_some(), "{refused}");
 
-    let listed = text(&rpc("list_evidence_records", json!({"thread_id": t}), token.clone()).await);
+    let listed = text(
+        &rpc(
+            "list_evidence_records",
+            json!({"thread_id": t}),
+            token.clone(),
+        )
+        .await,
+    );
     assert_eq!(listed.as_array().map(Vec::len), Some(1), "{listed}");
     assert_eq!(listed[0]["id"], record["id"]);
 
@@ -820,6 +830,14 @@ async fn evidence_record_tools_add_and_list() {
         .count();
     assert_eq!(added, 1, "the tool appended evidence_added");
 
-    let other = rpc("list_evidence_records", json!({"thread_id": t}), other_token).await;
-    assert!(other.get("error").is_some() || other["result"]["isError"] == json!(true), "{other}");
+    let other = rpc(
+        "list_evidence_records",
+        json!({"thread_id": t}),
+        other_token,
+    )
+    .await;
+    assert!(
+        other.get("error").is_some() || other["result"]["isError"] == json!(true),
+        "{other}"
+    );
 }

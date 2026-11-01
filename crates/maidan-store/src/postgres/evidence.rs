@@ -126,8 +126,9 @@ fn row_to_record(row: &sqlx::postgres::PgRow) -> Result<EvidenceRecord, StoreErr
     Ok(EvidenceRecord {
         id: row.get::<Uuid, _>("id"),
         thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
-        kind: EvidenceRecordKind::parse(&kind)
-            .ok_or_else(|| StoreError::InvalidInput(format!("stored evidence record kind {kind}")))?,
+        kind: EvidenceRecordKind::parse(&kind).ok_or_else(|| {
+            StoreError::InvalidInput(format!("stored evidence record kind {kind}"))
+        })?,
         source: row.get("source"),
         url: row.get("url"),
         sha256: row.get("sha256"),

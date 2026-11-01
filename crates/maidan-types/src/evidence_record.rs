@@ -157,7 +157,9 @@ impl NewEvidenceRecord {
             Some(n) if n.is_empty() => None,
             Some(n) => {
                 if n.chars().count() > EVIDENCE_NOTE_MAX {
-                    return Err(format!("note must be at most {EVIDENCE_NOTE_MAX} characters"));
+                    return Err(format!(
+                        "note must be at most {EVIDENCE_NOTE_MAX} characters"
+                    ));
                 }
                 Some(n)
             }
@@ -234,7 +236,13 @@ mod tests {
 
     #[test]
     fn bad_urls_digests_and_sources_are_refused() {
-        for url in ["ftp://x", "javascript:alert(1)", "https://", "https:///x", "https://a b"] {
+        for url in [
+            "ftp://x",
+            "javascript:alert(1)",
+            "https://",
+            "https:///x",
+            "https://a b",
+        ] {
             let mut r = new(EvidenceRecordKind::CiRun);
             r.url = Some(url.into());
             assert!(r.normalized().is_err(), "{url}");
@@ -255,7 +263,7 @@ mod tests {
         assert!(shot.normalized().is_err());
         let mut note = new(EvidenceRecordKind::Note);
         note.url = Some("https://example.com".into());
-        assert!(note.normalized().is_err());
+        assert!(note.clone().normalized().is_err());
         note.note = Some("checked by hand".into());
         assert!(note.normalized().is_ok());
     }
