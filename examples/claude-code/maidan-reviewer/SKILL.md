@@ -42,6 +42,8 @@ For each thread:
    `acceptance` attribute: that is what you check against.
 3. `get_thread_result` for the result, and `list_thread_artifacts` then
    `get_artifact` (or `get_artifact_metadata` for size first) for the evidence.
+   `list_evidence_records` lists the CI runs, test runs and other records the
+   worker reported; open each link rather than trusting the summary.
    `get_tool_transcript` shows the tool calls the worker made, when it matters
    how the result was reached.
 4. `list_reviews` and `list_review_history` for earlier verdicts;
@@ -109,7 +111,8 @@ requires, so do them only when the person running the review asks.
 
 `whoami`, `get_waiting_inbox`, `wait_for_notification`, `get_review_packet`,
 `get_thread_context`, `get_thread_result`, `get_thread_version`,
-`list_thread_artifacts`, `get_artifact`, `get_artifact_metadata`,
+`list_thread_artifacts`, `list_evidence_records`, `get_artifact`,
+`get_artifact_metadata`,
 `get_tool_transcript`, `list_reviews`, `list_review_history`, `list_reviewers`,
 `get_review_status`, `list_references`, `submit_review`, `post_message`,
 `cast_vote`, `retract_vote`, `list_votes`, `transition_thread`,
