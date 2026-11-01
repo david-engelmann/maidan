@@ -1572,7 +1572,8 @@ than one server setting.
 **Decision.** `dev` is the default branch, and every PR targets it, gated by
 the same eight required checks. `main` is what maidan.world runs. maidan-ca
 promotes by fast-forwarding `main` to a `dev` commit whose required checks
-passed and which the swarm stack has run for a day. It then tags that commit
+passed (the newest green one: the maintainer dropped the day-long swarm soak
+on 2026-10-30). It then tags that commit
 and deploys the release to maidan.world without asking again. The
 maintainer chose this on 2026-10-27, with maidan-ca promoting.
 dev.maidan.world and the swarm stack run `dev`.

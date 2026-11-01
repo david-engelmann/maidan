@@ -67,8 +67,8 @@ change.
   admin-merge is the standard workflow ([`docs/Operations.md`](docs/Operations.md)).
 - **Branches:** `main` is prod and `dev` is the default branch (the
   maintainer, 2026-10-27). Every PR targets `dev`. Only maidan-ca moves
-  `main`: it fast-forwards `main` to a `dev` commit that is green and has run
-  on the swarm stack for a day, then tags it and deploys it to maidan.world.
+  `main`: it fast-forwards `main` to the newest green `dev` commit (no soak
+  wait, the maintainer, 2026-10-30), then tags it and deploys it to maidan.world.
   dev.maidan.world and the swarm stack run `dev`.
 - **CI:** GitHub Actions. Eight checks are required on `main` and `dev`:
   `lint (fmt + clippy + deny)`, `secrets scan`, `unit tests`,
