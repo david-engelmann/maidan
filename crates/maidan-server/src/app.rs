@@ -121,6 +121,21 @@ fn landing_headers(
     ]
 }
 
+/// What `/` lists when sign-up is off: key, path, label.
+pub const ROUTE_INDEX: &[(&str, &str, &str)] = &[
+    ("openapi", "/openapi.json", "REST API description (OpenAPI)"),
+    ("mcp", "/mcp", "MCP endpoint"),
+    ("mcp_worker", "/mcp/worker", "MCP worker profile"),
+    ("mcp_reviewer", "/mcp/reviewer", "MCP reviewer profile"),
+    ("health", "/health", "health check"),
+    ("docs", "/llms.txt", "docs for agents"),
+    ("console", "/ui", "console"),
+];
+
+/// The route index page loads nothing, so its CSP allows nothing.
+pub const ROUTE_INDEX_CSP: &str =
+    "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
 /// Every load of the board page or an asset revalidates: `no-cache` lets the
 /// browser keep a copy, and the ETag below turns an unchanged one into a 304
 /// with no body. A max-age would let a browser run cached modules from before a
@@ -1240,15 +1255,14 @@ pub fn router(state: AppState) -> Router {
             share_consumer::middleware,
         ));
 
-    // The public waitlist page. It is part of sign-up, like the form's POST:
-    // an instance that never turned sign-up on keeps answering 404 at `/`.
+    // The public waitlist page. It is part of sign-up, like the form's POST.
+    // An instance without sign-up answers `/` with a route index instead.
     async fn landing_page(
         axum::extract::State(state): axum::extract::State<AppState>,
         headers: axum::http::HeaderMap,
     ) -> axum::response::Response {
-        use axum::response::IntoResponse as _;
         if crate::routes::require_signup(&state).is_err() {
-            return crate::error::ApiError::NotFound.into_response();
+            return route_index(&headers);
         }
         let page = include_str!("../static/landing/dist/index.html").replace(
             "<!-- policy-links -->",
@@ -1260,6 +1274,45 @@ pub fn router(state: AppState) -> Router {
             "text/html; charset=utf-8",
             page.as_bytes(),
         )
+    }
+
+    /// `/` without sign-up: where to go next. JSON unless the client asks for
+    /// HTML and not JSON; the HTML has no script or style, under a CSP that
+    /// allows neither.
+    fn route_index(headers: &axum::http::HeaderMap) -> axum::response::Response {
+        use axum::http::header;
+        use axum::response::IntoResponse as _;
+        let accept = headers
+            .get(header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let html = accept.contains("text/html") && !accept.contains("application/json");
+        if !html {
+            let routes: serde_json::Map<String, serde_json::Value> = ROUTE_INDEX
+                .iter()
+                .map(|(key, path, _)| ((*key).to_string(), serde_json::json!(path)))
+                .collect();
+            return (
+                [(header::CACHE_CONTROL, "no-cache")],
+                axum::Json(serde_json::json!({ "name": "maidan", "routes": routes })),
+            )
+                .into_response();
+        }
+        let items: String = ROUTE_INDEX
+            .iter()
+            .map(|(_, path, label)| format!("<li><a href=\"{path}\">{path}</a> {label}</li>"))
+            .collect();
+        let page = format!(
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+             <title>maidan</title></head><body><h1>maidan</h1><ul>{items}</ul></body></html>"
+        );
+        (
+            landing_headers("text/html; charset=utf-8", ROUTE_INDEX_CSP),
+            [(header::CACHE_CONTROL, "no-cache")],
+            page,
+        )
+            .into_response()
     }
 
     async fn landing_asset(

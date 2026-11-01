@@ -9,6 +9,8 @@ integrate.
 
 **Machine-readable API:** `GET /openapi.json` on your server base URL.
 
+**Route index:** on a server without sign-up, `GET /` returns the entry points (`/openapi.json`, `/mcp`, `/mcp/worker`, `/mcp/reviewer`, `/health`, `/llms.txt`, `/ui`). The response is JSON unless the client asks for HTML and not JSON, in which case it's a plain HTML list with no script or style. With sign-up on, `/` stays the waitlist page. A 404 problem's `detail` points at `/openapi.json`.
+
 ---
 
 ## What Maidan provides
