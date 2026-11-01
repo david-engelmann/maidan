@@ -9,4 +9,5 @@
   Perplexity, grok.com and the Gemini app, with a `MAIDAN_OAUTH_CLIENTS`
   example. Only the claude.ai flow has been run end to end; the others say so.
 - **Changed:** docs/Clients.md's claude.ai section describes the OAuth flow
-  instead of the no-sign-in dev instance.
+  instead of the no-sign-in dev instance, and the client matrix
+  (`contracts/mcp-clients.json`) gains an `oauth` auth mode for it.
