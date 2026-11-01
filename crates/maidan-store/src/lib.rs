@@ -233,9 +233,9 @@ pub use workspace_export::build_workspace_export;
 pub use store::{
     A2aStore, AppStore, ArtifactMetaStore, AssignmentStore, AutomationStore, ChannelStore,
     DelegationGrantStore, DeliveryCursorStore, DmStore, EventStore, FollowStore, FsmHookStore,
-    GlossaryStore, IdempotencyStore, IntakeStore, IntegrityStore, MailStore, McpSubscriptionStore, MemberStore,
-    MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore, PeerStore,
-    PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
+    GlossaryStore, IdempotencyStore, IntakeStore, IntegrityStore, MailStore, McpSubscriptionStore,
+    MemberStore, MentionInboxStore, MessageStore, MetaStore, NotificationStore, OAuthCodeStore,
+    PeerStore, PresenceDigestStore, ProjectorLinkStore, ReferenceStore, ReindexStore, RewrapPass,
     SessionStore, ShareTicketStore, SkillStore, SlashCommandStore, SocialStore, StraySweep,
     TaskScheduleStore, ThreadDepStore, ThreadLineageStore, ThreadResultStore, ThreadStore,
     TokenStore, UsageLedgerStore, WebhookStore, WorkspaceStore,
