@@ -592,3 +592,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .view-pick .chip-btn[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
 .agents { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: 12px; }
 .agent-group { min-width: 0; }
+
+/* Presence strip: who is online or away, and how many tasks each holds. */
+.presence-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; }
+.presence-strip ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.here { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; }
+.here .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.here-online .dot { background: var(--ok); }
+.here-away { color: var(--muted); }

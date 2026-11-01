@@ -205,6 +205,22 @@ export function byAgent(threads: Thread[], gates: Record<string, Gate>, members:
   return [...groups.values()].sort((a, b) => (a.id === null ? 1 : b.id === null ? -1 : a.name.localeCompare(b.name)));
 }
 
+export type PresenceWord = "online" | "away" | "offline";
+export type PresenceEntry = { id: string; name: string; status: "online" | "away"; agent: boolean; holding: number };
+
+/** Who is here now: online before away, agents before people, then by name. Offline members are left out. */
+export function presenceStrip(members: ReadonlyMap<string, Member>, presence: ReadonlyMap<string, PresenceWord>, threads: Thread[]): PresenceEntry[] {
+  const held = new Map<string, number>();
+  for (const t of threads) if (t.assignee_id && t.state !== "closed" && t.state !== "archived") held.set(t.assignee_id, (held.get(t.assignee_id) ?? 0) + 1);
+  const out: PresenceEntry[] = [];
+  for (const [id, status] of presence) {
+    if (status === "offline") continue;
+    const m = members.get(id);
+    out.push({ id, name: m?.name ?? id.slice(0, 8), status, agent: m?.kind === "agent", holding: held.get(id) ?? 0 });
+  }
+  return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "online" ? -1 : 1) || (a.agent === b.agent ? 0 : a.agent ? -1 : 1) || a.name.localeCompare(b.name));
+}
+
 type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
 export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
 
