@@ -182,6 +182,29 @@ export function staleBanner(live: { kind: string }, loadedAt: number | null, fai
     : `Live updates are down. Reconnecting; the board is from ${at}.`;
 }
 
+export type AgentGroup = { id: string | null; name: string; cards: Card[] };
+
+/**
+ * Live tasks grouped by who holds them: named holders A to Z, then the
+ * unclaimed. Done tasks are left out; the lane view still has them.
+ */
+export function byAgent(threads: Thread[], gates: Record<string, Gate>, members: ReadonlyMap<string, Member>): AgentGroup[] {
+  const lanes = toLanes(threads, gates);
+  const groups = new Map<string | null, AgentGroup>();
+  for (const key of ["review", "working", "open"] as const) {
+    for (const card of lanes[key]) {
+      const id = card.thread.assignee_id ?? null;
+      let g = groups.get(id);
+      if (!g) {
+        g = { id, name: id ? (members.get(id)?.name ?? id.slice(0, 8)) : "Unclaimed", cards: [] };
+        groups.set(id, g);
+      }
+      g.cards.push(card);
+    }
+  }
+  return [...groups.values()].sort((a, b) => (a.id === null ? 1 : b.id === null ? -1 : a.name.localeCompare(b.name)));
+}
+
 type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
 export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
 
