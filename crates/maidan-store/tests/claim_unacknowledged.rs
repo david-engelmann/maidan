@@ -292,6 +292,8 @@ async fn report_unacknowledged_claims_postgres() {
 // and the progress clock starts at the acknowledgement this file is about.
 #[path = "claim_unacknowledged/app_clock.rs"]
 mod app_clock;
+#[path = "claim_unacknowledged/claim_stalled.rs"]
+mod claim_stalled;
 #[path = "claim_unacknowledged/human_timeout.rs"]
 mod human_timeout;
 #[path = "claim_unacknowledged/thread_progress.rs"]

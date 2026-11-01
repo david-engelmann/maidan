@@ -9,6 +9,7 @@ use sqlx::{PgConnection, PgPool};
 
 use crate::error::StoreError;
 
+#[cfg(feature = "test-support")]
 pub async fn import_workspace(
     pool: &PgPool,
     b: &WorkspaceImport,

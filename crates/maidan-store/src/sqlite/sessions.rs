@@ -23,6 +23,7 @@ fn member_cannot_sign_in() -> StoreError {
     StoreError::Conflict("member is deleted or deactivated".into())
 }
 
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &SqlitePool, new: NewMaidanSession) -> Result<MaidanSession, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -91,6 +92,7 @@ pub async fn get(pool: &SqlitePool, id: SessionId) -> Result<MaidanSession, Stor
     row_to_session(&row)
 }
 
+#[cfg(feature = "test-support")]
 pub async fn delete(pool: &SqlitePool, id: SessionId) -> Result<(), StoreError> {
     let result = sqlx::query("DELETE FROM maidan_sessions WHERE id = ?")
         .bind(id.0)

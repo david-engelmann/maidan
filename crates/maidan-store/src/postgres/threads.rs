@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use maidan_types::{
-    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, DeclaredStatus, Event, MemberId,
-    NewThread, QueueDepth, SpawnAxis, SpawnDenial, StoredEvent, Thread, ThreadClaimResult,
-    ThreadId, ThreadState, WorkspaceId, DM_CHANNEL_NAME,
+    ChannelId, ChannelOccupancy, ChildThreadSummary, ClaimLeaseId, ClaimStallReason,
+    DeclaredStatus, Event, MemberId, NewThread, QueueDepth, SpawnAxis, SpawnDenial, StoredEvent,
+    Thread, ThreadClaimResult, ThreadId, ThreadState, WorkspaceId, DM_CHANNEL_NAME,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -1175,6 +1175,89 @@ async fn append_claim_unacknowledged_event(
         thread: thread.clone(),
     };
     events::append_in_tx(tx, &event).await
+}
+
+/// Report live claims due a `ClaimStalled` for `reason`, once per claim per
+/// reason. See [`Store::report_stalled_claims`]. The no-progress clock is
+/// judged in Rust ([`crate::stall::StallCandidate`]) so both backends share
+/// it; each report is a guarded update on the same fencing token, so a claim
+/// released, renewed onto a new token or reported since the read is skipped.
+pub async fn report_stalled_claims(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    reason: ClaimStallReason,
+    cutoff: DateTime<Utc>,
+    limit: i64,
+) -> Result<Vec<StoredEvent>, StoreError> {
+    let (column, filter) = crate::stall::stall_scan(reason);
+    let mut tx = pool.begin().await?;
+    let candidates = sqlx::query(&format!(
+        "SELECT t.id, t.claim_lease_id, t.work_started_at,{progress},{status}
+         FROM maidan_threads t
+         WHERE t.claim_lease_id IS NOT NULL AND t.assignee_id IS NOT NULL
+           AND t.assignment_expires_at IS NOT NULL AND t.assignment_expires_at >= $1
+           AND t.{column} IS DISTINCT FROM t.claim_lease_id
+           AND t.tombstoned_at IS NULL AND t.state = 'open'
+           AND {filter}$2
+         ORDER BY t.assignment_expires_at ASC, t.id ASC",
+        progress = crate::stall::PROGRESS_COLUMNS,
+        status = crate::stall::HOLDER_STATUS_COLUMN,
+    ))
+    .bind(now)
+    .bind(cutoff)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut events = Vec::new();
+    for candidate in &candidates {
+        if events.len() as i64 >= limit {
+            break;
+        }
+        let seen = crate::stall::StallCandidate {
+            work_started_at: candidate.get("work_started_at"),
+            holder_posted_at: candidate.get("holder_posted_at"),
+            holder_declared_at: candidate.get("holder_declared_at"),
+            holder_status: candidate.get("holder_status"),
+        };
+        if !seen.is_due(reason, cutoff) {
+            continue;
+        }
+        let id: Uuid = candidate.get("id");
+        let lease: Uuid = candidate.get("claim_lease_id");
+        let Some(row) = sqlx::query(&format!(
+            "UPDATE maidan_threads SET {column} = claim_lease_id
+             WHERE id = $1 AND claim_lease_id = $2 AND {column} IS DISTINCT FROM claim_lease_id
+             RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by"
+        ))
+        .bind(id)
+        .bind(lease)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            continue;
+        };
+        let thread = row_to_thread(&row)?;
+        let member_id = thread
+            .assignee_id
+            .ok_or_else(|| StoreError::InvalidInput("a stalled claim has no holder".into()))?;
+        let lease_expires_at = thread
+            .assignment_expires_at
+            .ok_or_else(|| StoreError::InvalidInput("a stalled claim has no lease".into()))?;
+        let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread.id).await?;
+        let event = Event::ClaimStalled {
+            occurred_at: Utc::now(),
+            workspace_id,
+            channel_id,
+            thread_id: thread.id,
+            member_id,
+            reason,
+            last_progress_at: seen.last_progress_at(),
+            lease_expires_at,
+            thread,
+        };
+        events.push(events::append_in_tx(&mut tx, &event).await?);
+    }
+    tx.commit().await?;
+    Ok(events)
 }
 
 /// Extend a claim's lease (heartbeat), only for the current assignee.

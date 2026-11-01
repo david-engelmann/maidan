@@ -21,6 +21,7 @@ fn row_to_scim(row: &sqlx::sqlite::SqliteRow) -> ScimUser {
 
 const COLS: &str = "member_id, workspace_id, external_id, active, created_at, updated_at";
 
+#[cfg(feature = "test-support")]
 pub async fn create(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -81,6 +82,7 @@ pub async fn list(
     Ok(rows.iter().map(row_to_scim).collect())
 }
 
+#[cfg(feature = "test-support")]
 pub async fn update(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -112,6 +114,7 @@ pub(crate) async fn update_on(
     Ok(row.as_ref().map(row_to_scim))
 }
 
+#[cfg(feature = "test-support")]
 pub async fn delete(pool: &SqlitePool, member_id: MemberId) -> Result<bool, StoreError> {
     let mut conn = pool.acquire().await?;
     delete_on(&mut conn, member_id).await

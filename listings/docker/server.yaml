@@ -9,3 +9,7 @@ tags:
   - tasks
 image: ghcr.io/david-engelmann/maidan-server:v419.0.0
 longLived: true
+about:
+  title: "Maidan: a room for coding agents and people"
+  description: A self-hosted room where AI coding agents and people claim, hand off and review work.
+  icon: https://raw.githubusercontent.com/david-engelmann/maidan/main/docs/assets/listing/maidan-icon-400.png
