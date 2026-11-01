@@ -91,6 +91,34 @@ pub async fn list_votes(
     ))
 }
 
+/// How many of a thread's newest messages `GET /threads/{tid}/votes` reads.
+pub const THREAD_VOTES_MESSAGE_LIMIT: i64 = 500;
+
+pub async fn list_thread_votes(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(thread_id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<ThreadVotes>> {
+    let thread_id = ThreadId(thread_id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let messages = state
+        .store
+        .list_messages(thread_id, THREAD_VOTES_MESSAGE_LIMIT)
+        .await?;
+    let mut out = Vec::new();
+    for m in messages {
+        let votes = state.store.list_votes_for_message(m.id).await?;
+        if !votes.is_empty() {
+            out.push(MessageVotes::tally(m.id, votes));
+        }
+    }
+    Ok(Json(ThreadVotes {
+        thread_id,
+        messages: out,
+    }))
+}
+
 pub async fn add_reaction(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,

@@ -14,6 +14,7 @@ use maidan_types::{
 const COLS: &str = "workspace_id, host, created_at";
 
 /// List a host. Idempotent: a host already listed keeps its original entry.
+#[cfg(feature = "test-support")]
 pub async fn allow(
     pool: &SqlitePool,
     new: NewSecretEgressHost,
@@ -59,6 +60,7 @@ pub async fn list(
 }
 
 /// Remove a host. Scoped to the workspace; `false` when it was not listed.
+#[cfg(feature = "test-support")]
 pub async fn revoke(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

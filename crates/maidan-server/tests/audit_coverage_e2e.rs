@@ -108,6 +108,8 @@ async fn token_mint_revoke_and_membership_grants_are_audited() {
                 capability::TOKEN_ADMIN.into(),
                 capability::CHANNEL_ADMIN.into(),
                 capability::WORKSPACE_READ.into(),
+                // A minted token is a subset of the minter's grant.
+                capability::MESSAGE_POST.into(),
             ],
             expires_at: None,
         })

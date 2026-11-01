@@ -27,6 +27,7 @@ fn event_kinds_match_contract_file() {
         EventKind::ClaimExpired,
         EventKind::ClaimFailed,
         EventKind::ClaimUnacknowledged,
+        EventKind::ClaimStalled,
         EventKind::UsageReported,
         EventKind::ThreadLanded,
         EventKind::ThreadNotice,

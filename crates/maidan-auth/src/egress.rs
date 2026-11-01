@@ -121,26 +121,154 @@ pub fn private_egress_explicitly_allowed() -> bool {
         && std::env::var("MAIDAN_ALLOW_PRIVATE_EGRESS").as_deref() == Ok("1")
 }
 
-pub fn validate_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
-    if private_egress_explicitly_allowed() {
-        let url = Url::parse(raw).map_err(|_| EgressTargetError::InvalidUrl)?;
-        if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
-            return Err(EgressTargetError::InvalidUrl);
-        }
-        if !url.username().is_empty() || url.password().is_some() {
-            return Err(EgressTargetError::Credentials);
-        }
-        Ok(url)
-    } else {
-        parse_egress_target(raw)
+/// The environment variable naming the peers that may live on a private
+/// network.
+pub const PRIVATE_EGRESS_HOSTS_ENV: &str = "MAIDAN_PRIVATE_EGRESS_HOSTS";
+
+/// Parses a comma-separated list of hostnames or address literals. Entries
+/// are trimmed and lowercased; an IPv6 literal may be bracketed. An entry that
+/// carries a scheme, a port, a path or a wildcard is dropped, because it
+/// would never match a URL's host and a partial match is not allowed.
+pub fn parse_private_egress_hosts(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|entry| entry.trim().to_ascii_lowercase())
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            entry
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+                .map(str::to_string)
+                .unwrap_or(entry)
+        })
+        .filter(|entry| {
+            entry.parse::<IpAddr>().is_ok()
+                || entry
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+        })
+        .collect()
+}
+
+/// The peers this instance may reach on a private network
+/// (`MAIDAN_PRIVATE_EGRESS_HOSTS`). Unlike `MAIDAN_ALLOW_PRIVATE_EGRESS`, which
+/// opens the whole guard in development, this names each host, holds in
+/// production, and never opens link-local addresses (cloud metadata).
+pub fn private_egress_hosts() -> Vec<String> {
+    std::env::var(PRIVATE_EGRESS_HOSTS_ENV)
+        .map(|raw| parse_private_egress_hosts(&raw))
+        .unwrap_or_default()
+}
+
+fn url_host_key(url: &Url) -> Option<String> {
+    match url.host()? {
+        Host::Domain(host) => Some(host.trim_end_matches('.').to_ascii_lowercase()),
+        Host::Ipv4(ip) => Some(ip.to_string()),
+        Host::Ipv6(ip) => Some(ip.to_string()),
     }
+}
+
+fn host_is_listed(url: &Url, hosts: &[String]) -> bool {
+    url_host_key(url).is_some_and(|key| {
+        hosts.iter().any(|entry| {
+            entry.trim_end_matches('.') == key
+                || entry
+                    .parse::<IpAddr>()
+                    .ok()
+                    .zip(key.parse::<IpAddr>().ok())
+                    .is_some_and(|(a, b)| a == b)
+        })
+    })
+}
+
+/// Whether `ip` is link-local (IPv4 169.254/16, IPv6 fe80::/10, or an IPv4
+/// mapped link-local), which a listed private peer still may not resolve to.
+fn is_link_local(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => ip.is_link_local(),
+        IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
+            Some(mapped) => mapped.is_link_local(),
+            None => (ip.segments()[0] & 0xffc0) == 0xfe80,
+        },
+    }
+}
+
+/// How far the address guard opens for one target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PrivateAccess {
+    /// Public addresses only.
+    None,
+    /// A listed peer: private addresses, but never link-local.
+    ListedPeer,
+    /// The development escape hatch: anything.
+    Everything,
+}
+
+fn validate_scheme_and_credentials(raw: &str) -> Result<Url, EgressTargetError> {
+    if raw.len() > MAX_EGRESS_URL_LEN || raw.trim() != raw {
+        return Err(EgressTargetError::InvalidUrl);
+    }
+    let url = Url::parse(raw).map_err(|_| EgressTargetError::InvalidUrl)?;
+    if url.as_str().len() > MAX_EGRESS_URL_LEN {
+        return Err(EgressTargetError::InvalidUrl);
+    }
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return Err(EgressTargetError::InvalidUrl);
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(EgressTargetError::Credentials);
+    }
+    Ok(url)
+}
+
+fn validate_with(raw: &str, hosts: &[String]) -> Result<(Url, PrivateAccess), EgressTargetError> {
+    match parse_egress_target(raw) {
+        Ok(url) => {
+            let access = if host_is_listed(&url, hosts) {
+                PrivateAccess::ListedPeer
+            } else {
+                PrivateAccess::None
+            };
+            Ok((url, access))
+        }
+        Err(EgressTargetError::NonPublic) => {
+            let url = validate_scheme_and_credentials(raw)?;
+            let literal_link_local = match url.host() {
+                Some(Host::Ipv4(ip)) => is_link_local(IpAddr::V4(ip)),
+                Some(Host::Ipv6(ip)) => is_link_local(IpAddr::V6(ip)),
+                _ => false,
+            };
+            if host_is_listed(&url, hosts) && !literal_link_local {
+                Ok((url, PrivateAccess::ListedPeer))
+            } else {
+                Err(EgressTargetError::NonPublic)
+            }
+        }
+        Err(other) => Err(other),
+    }
+}
+
+pub fn validate_egress_target(raw: &str) -> Result<Url, EgressTargetError> {
+    if !private_egress_explicitly_allowed() {
+        return validate_with(raw, &private_egress_hosts()).map(|(url, _)| url);
+    }
+    let url = Url::parse(raw).map_err(|_| EgressTargetError::InvalidUrl)?;
+    if !matches!(url.scheme(), "http" | "https") || url.host().is_none() {
+        return Err(EgressTargetError::InvalidUrl);
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(EgressTargetError::Credentials);
+    }
+    Ok(url)
 }
 
 /// Resolves `raw`, giving the DNS lookup [`EGRESS_RESOLUTION_TIMEOUT`]. A
 /// stalled resolver is [`EgressTargetError::ResolutionTimedOut`], not a hang.
 pub async fn resolve_egress_target(raw: &str) -> Result<ResolvedEgressTarget, EgressTargetError> {
-    let allow_private = private_egress_explicitly_allowed();
-    let url = validate_egress_target(raw)?;
+    let (url, access) = if private_egress_explicitly_allowed() {
+        (validate_egress_target(raw)?, PrivateAccess::Everything)
+    } else {
+        validate_with(raw, &private_egress_hosts())?
+    };
     let host = url
         .host_str()
         .ok_or(EgressTargetError::InvalidUrl)?
@@ -153,7 +281,7 @@ pub async fn resolve_egress_target(raw: &str) -> Result<ResolvedEgressTarget, Eg
         EGRESS_RESOLUTION_TIMEOUT,
     )
     .await?;
-    ensure_public_addresses(&addresses, allow_private)?;
+    ensure_allowed_addresses(&addresses, access)?;
     Ok(ResolvedEgressTarget {
         url,
         host,
@@ -183,14 +311,32 @@ where
     }
 }
 
+fn ensure_allowed_addresses(
+    addresses: &[SocketAddr],
+    access: PrivateAccess,
+) -> Result<(), EgressTargetError> {
+    let refused = match access {
+        PrivateAccess::Everything => false,
+        PrivateAccess::ListedPeer => addresses.iter().any(|addr| is_link_local(addr.ip())),
+        PrivateAccess::None => addresses.iter().any(|addr| !is_public_ip(addr.ip())),
+    };
+    if refused {
+        return Err(EgressTargetError::NonPublic);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn ensure_public_addresses(
     addresses: &[SocketAddr],
     allow_private: bool,
 ) -> Result<(), EgressTargetError> {
-    if !allow_private && addresses.iter().any(|addr| !is_public_ip(addr.ip())) {
-        return Err(EgressTargetError::NonPublic);
-    }
-    Ok(())
+    let access = if allow_private {
+        PrivateAccess::Everything
+    } else {
+        PrivateAccess::None
+    };
+    ensure_allowed_addresses(addresses, access)
 }
 
 #[cfg(test)]
@@ -266,6 +412,91 @@ mod tests {
             Err(EgressTargetError::NonPublic)
         ));
         assert!(ensure_public_addresses(&addresses, true).is_ok());
+    }
+
+    fn hosts(raw: &str) -> Vec<String> {
+        parse_private_egress_hosts(raw)
+    }
+
+    #[test]
+    fn the_peer_list_keeps_only_bare_hosts_and_literals() {
+        assert_eq!(
+            hosts(" Peer.Internal , [fd00::7], 10.0.0.5, https://x.y, a.b:80, *.corp, ,"),
+            vec!["peer.internal", "fd00::7", "10.0.0.5"]
+        );
+    }
+
+    #[test]
+    fn a_listed_peer_may_be_private_and_nothing_else_opens() {
+        let list = hosts("peer.internal,10.0.0.5,fd00::7");
+        assert_eq!(
+            validate_with("https://10.0.0.5/a2a", &list)
+                .map(|(_, a)| a)
+                .ok(),
+            Some(PrivateAccess::ListedPeer)
+        );
+        assert_eq!(
+            validate_with("http://[fd00::7]:9000/x", &list)
+                .map(|(_, a)| a)
+                .ok(),
+            Some(PrivateAccess::ListedPeer)
+        );
+        assert_eq!(
+            validate_with("https://PEER.internal./x", &list)
+                .map(|(_, a)| a)
+                .ok(),
+            Some(PrivateAccess::ListedPeer)
+        );
+        for refused in [
+            "https://10.0.0.6/a2a",
+            "http://127.0.0.1/x",
+            "http://localhost/x",
+            "https://other.internal.peer.internal.evil/x",
+        ] {
+            let result = validate_with(refused, &list);
+            if refused.contains("evil") {
+                // A public-looking name is accepted at parse time but gets no
+                // private access, so its DNS answer must be public.
+                assert_eq!(result.map(|(_, a)| a).ok(), Some(PrivateAccess::None));
+            } else {
+                assert!(
+                    matches!(result, Err(EgressTargetError::NonPublic)),
+                    "opened {refused}"
+                );
+            }
+        }
+        assert!(matches!(
+            validate_with("https://u:p@10.0.0.5/x", &list),
+            Err(EgressTargetError::Credentials)
+        ));
+    }
+
+    #[test]
+    fn a_listed_link_local_literal_stays_closed() {
+        let list = hosts("169.254.169.254,fe80::1");
+        assert!(matches!(
+            validate_with("http://169.254.169.254/latest/meta-data", &list),
+            Err(EgressTargetError::NonPublic)
+        ));
+        assert!(matches!(
+            validate_with("http://[fe80::1]/x", &list),
+            Err(EgressTargetError::NonPublic)
+        ));
+    }
+
+    #[test]
+    fn a_listed_peer_resolving_to_link_local_is_refused() {
+        let private: [SocketAddr; 1] = ["10.0.0.5:443".parse().expect("private address")];
+        let metadata: [SocketAddr; 2] = [
+            "10.0.0.5:443".parse().expect("private address"),
+            "169.254.169.254:80".parse().expect("metadata address"),
+        ];
+        let mapped: [SocketAddr; 1] = ["[::ffff:169.254.1.1]:80".parse().expect("mapped")];
+        assert!(ensure_allowed_addresses(&private, PrivateAccess::ListedPeer).is_ok());
+        assert!(ensure_allowed_addresses(&private, PrivateAccess::None).is_err());
+        assert!(ensure_allowed_addresses(&metadata, PrivateAccess::ListedPeer).is_err());
+        assert!(ensure_allowed_addresses(&mapped, PrivateAccess::ListedPeer).is_err());
+        assert!(ensure_allowed_addresses(&metadata, PrivateAccess::Everything).is_ok());
     }
 
     #[test]

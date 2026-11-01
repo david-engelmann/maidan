@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::error::StoreError;
 
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &PgPool, new: NewApiToken) -> Result<ApiToken, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -43,6 +44,7 @@ pub(crate) async fn create_on(
 /// is built at 109 sites, 100 of them tests, and only the attenuation path has
 /// a parent. Adding a field there would have been a hundred mechanical edits
 /// for one caller.
+#[cfg(feature = "test-support")]
 pub async fn create_attenuated(
     pool: &PgPool,
     new: NewApiToken,
@@ -82,6 +84,7 @@ pub(crate) async fn create_attenuated_on(
     row_to_token(&row)
 }
 
+#[cfg(feature = "test-support")]
 pub async fn create_delegated(
     pool: &PgPool,
     new: NewApiToken,
@@ -270,6 +273,7 @@ pub async fn list_for_member(
 /// Already-revoked rows are left alone, so their original revocation time
 /// survives. `NotFound` if the root was already revoked or does not exist —
 /// unchanged from before.
+#[cfg(feature = "test-support")]
 pub async fn revoke(pool: &PgPool, id: ApiTokenId) -> Result<ApiToken, StoreError> {
     let mut tx = pool.begin().await?;
     let token = revoke_on(&mut tx, id).await?;

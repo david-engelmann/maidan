@@ -80,6 +80,13 @@ pub async fn mint_api_token(
         )
         .map_err(ApiError::BadRequest)?
     };
+    // A minted token is a subset of the minting credential's own grant:
+    // token:admin lets a caller hand out what it holds, never more.
+    if let Some(cap) = capabilities.iter().find(|c| !auth.has_capability(c)) {
+        return Err(ApiError::Forbidden(format!(
+            "capability '{cap}' is not held by the minting credential"
+        )));
+    }
     crate::quota::validate_token_quotas(&body.quotas, &capabilities)?;
 
     let secret = TokenSecret::generate();
