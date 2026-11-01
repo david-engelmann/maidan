@@ -16,6 +16,7 @@ fn row_to_member(row: &sqlx::postgres::PgRow) -> Result<ChannelMember, StoreErro
     })
 }
 
+#[cfg(feature = "test-support")]
 pub async fn add(
     pool: &PgPool,
     channel_id: ChannelId,
@@ -46,6 +47,7 @@ pub(crate) async fn add_on(
     row_to_member(&row)
 }
 
+#[cfg(feature = "test-support")]
 pub async fn remove(
     pool: &PgPool,
     channel_id: ChannelId,
