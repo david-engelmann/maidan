@@ -297,5 +297,12 @@
     "disposition": "internal_only",
     "internal_evidence": "crates/maidan-store/tests/pull_ci.rs#a_push_says_each_dismissed_approval_on_sqlite",
     "note": "Appended by the CI watch's pull_ci read when a moved head dismisses a standing approval; ci_watch publishes it. No REST or MCP call dismisses approvals directly."
+  },
+  {
+    "kind": "evidence_added",
+    "disposition": "both",
+    "rest_evidence": "crates/maidan-server/tests/thread_evidence_e2e.rs#records_are_added_listed_and_merged_into_the_timeline",
+    "mcp_evidence": "crates/maidan-server/tests/thread_evidence_e2e.rs#evidence_record_tools_add_and_list",
+    "note": "REST and MCP both call add_evidence_record_with_event, which appends the event in the record's transaction."
   }
 ]

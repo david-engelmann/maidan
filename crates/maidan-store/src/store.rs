@@ -2016,6 +2016,21 @@ pub trait ThreadStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Vec<ThreadArtifact>, StoreError>;
+    /// Attach an evidence record to a thread and append `evidence_added` in
+    /// the same transaction. The caller normalizes `record`
+    /// ([`NewEvidenceRecord::normalized`]). `NotFound` for no such thread.
+    /// Records are append-only and do not move the thread version.
+    async fn add_evidence_record_with_event(
+        &self,
+        thread_id: ThreadId,
+        record: &NewEvidenceRecord,
+        recorded_by: MemberId,
+    ) -> Result<(EvidenceRecord, StoredEvent), StoreError>;
+    /// A thread's evidence records, oldest first.
+    async fn list_evidence_records(
+        &self,
+        thread_id: ThreadId,
+    ) -> Result<Vec<EvidenceRecord>, StoreError>;
     /// The thread's latest review packet: what its current review was handed,
     /// recorded by `start_review`. `None` before any.
     async fn latest_review_packet(

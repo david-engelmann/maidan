@@ -1,13 +1,17 @@
 //! Evidence a reviewer is shown: a thread's version, which the database
 //! bumps on every write to the thread's content (migration 0144), and the
-//! artifacts linked to the thread.
+//! artifacts linked to the thread, and the evidence records attached to it.
 
 use chrono::{DateTime, Utc};
-use maidan_types::{MemberId, ThreadArtifact, ThreadId};
+use maidan_types::{
+    Event, EvidenceRecord, EvidenceRecordKind, MemberId, NewEvidenceRecord, StoredEvent,
+    ThreadArtifact, ThreadId,
+};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::StoreError;
+use crate::sqlite::events;
 
 fn row_to_artifact(row: &sqlx::sqlite::SqliteRow) -> ThreadArtifact {
     ThreadArtifact {
@@ -113,4 +117,88 @@ pub async fn list(
     .fetch_all(pool)
     .await?;
     Ok(rows.iter().map(row_to_artifact).collect())
+}
+
+fn row_to_record(row: &sqlx::sqlite::SqliteRow) -> Result<EvidenceRecord, StoreError> {
+    let kind: String = row.get("kind");
+    Ok(EvidenceRecord {
+        id: row.get::<Uuid, _>("id"),
+        thread_id: ThreadId(row.get::<Uuid, _>("thread_id")),
+        kind: EvidenceRecordKind::parse(&kind)
+            .ok_or_else(|| StoreError::InvalidInput(format!("stored evidence record kind {kind}")))?,
+        source: row.get("source"),
+        url: row.get("url"),
+        sha256: row.get("sha256"),
+        note: row.get("note"),
+        recorded_by: MemberId(row.get::<Uuid, _>("recorded_by")),
+        recorded_at: row.get::<DateTime<Utc>, _>("recorded_at"),
+    })
+}
+
+/// Attach an evidence record to a thread and append `evidence_added` in the
+/// same transaction. `record` is already normalized by the caller.
+/// `NotFound` for no such thread. Records are not part of the thread
+/// version: adding one does not move it.
+pub async fn add_record_with_event(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+    record: &NewEvidenceRecord,
+    recorded_by: MemberId,
+) -> Result<(EvidenceRecord, StoredEvent), StoreError> {
+    let mut tx = pool.begin().await?;
+    let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
+    let stored = EvidenceRecord {
+        id: Uuid::new_v4(),
+        thread_id,
+        kind: record.kind,
+        source: record.source.clone(),
+        url: record.url.clone(),
+        sha256: record.sha256.clone(),
+        note: record.note.clone(),
+        recorded_by,
+        recorded_at: Utc::now(),
+    };
+    sqlx::query(
+        "INSERT INTO maidan_thread_evidence_records
+             (id, thread_id, kind, source, url, sha256, note, recorded_by, recorded_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+    )
+    .bind(stored.id)
+    .bind(thread_id.0)
+    .bind(stored.kind.as_str())
+    .bind(&stored.source)
+    .bind(&stored.url)
+    .bind(&stored.sha256)
+    .bind(&stored.note)
+    .bind(recorded_by.0)
+    .bind(stored.recorded_at)
+    .execute(&mut *tx)
+    .await?;
+    let event = Event::EvidenceAdded {
+        occurred_at: stored.recorded_at,
+        workspace_id,
+        channel_id,
+        thread_id,
+        record: stored.clone(),
+    };
+    let appended = events::append_in_tx(&mut tx, &event).await?;
+    tx.commit().await?;
+    Ok((stored, appended))
+}
+
+/// A thread's evidence records, oldest first.
+pub async fn list_records(
+    pool: &SqlitePool,
+    thread_id: ThreadId,
+) -> Result<Vec<EvidenceRecord>, StoreError> {
+    let rows = sqlx::query(
+        "SELECT id, thread_id, kind, source, url, sha256, note, recorded_by, recorded_at
+         FROM maidan_thread_evidence_records
+         WHERE thread_id = ?1
+         ORDER BY recorded_at, id",
+    )
+    .bind(thread_id.0)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(row_to_record).collect()
 }

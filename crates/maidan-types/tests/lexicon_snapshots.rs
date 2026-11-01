@@ -392,6 +392,23 @@ fn sample_event(kind: EventKind) -> Event {
             approved_head: "a".repeat(40),
             head_sha: "b".repeat(40),
         },
+        EventKind::EvidenceAdded => Event::EvidenceAdded {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            record: maidan_types::EvidenceRecord {
+                id: id(14),
+                thread_id,
+                kind: maidan_types::EvidenceRecordKind::CiRun,
+                source: "ci".into(),
+                url: Some("https://ci.example.com/runs/1".into()),
+                sha256: None,
+                note: None,
+                recorded_by: member_id,
+                recorded_at: occurred_at,
+            },
+        },
         EventKind::WaitTimedOut => Event::WaitTimedOut {
             occurred_at,
             workspace_id,
@@ -605,6 +622,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ResultDeliveryFailed
             | EventKind::ReviewSubmitted
             | EventKind::ApprovalDismissed
+            | EventKind::EvidenceAdded
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped
             | EventKind::ThreadSpawnDenied

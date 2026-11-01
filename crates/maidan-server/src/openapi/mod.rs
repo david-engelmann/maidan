@@ -495,6 +495,8 @@ fn requires_credential(op: &Operation) -> bool {
         paths::get_thread_version,
         paths::get_review_packet,
         paths::get_evidence_timeline,
+        paths::add_evidence_record,
+        paths::list_evidence_records,
         paths::list_thread_artifacts,
         paths::get_thread_digest,
         paths::link_thread_artifact,

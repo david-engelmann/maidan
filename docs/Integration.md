@@ -1532,6 +1532,28 @@ hash another workspace uploaded is not found. `list_thread_artifacts` (REST
 `GET /threads/:id/artifacts`) reads the links, and `unlink_thread_artifact`
 (REST `DELETE`) removes one.
 
+#### Evidence records
+
+Evidence that is not a stored artifact gets a record: `add_evidence_record
+{thread_id, kind, source, url?, sha256?, note?}` (REST `POST
+/threads/:id/evidence-records`, `workspace:write`). `kind` is one of
+`test_run`, `ci_run`, `diff`, `review_verdict`, `screenshot` or `note`, and
+`source` says where it came from (`cargo test`, `github-actions`), 1 to 200
+characters. Give at least one of `url` (`http` or `https`, at most 2048 bytes),
+`sha256` (64 hex characters, stored lowercase) or `note` (at most 4000
+characters). A `screenshot` needs a `url`, and a `note` needs a `note`. Blank
+fields count as absent. The server stamps `recorded_by` with the caller and
+`recorded_at` with the time, and returns `201` with the record.
+
+`list_evidence_records {thread_id}` (REST `GET /threads/:id/evidence-records`,
+`workspace:read`) returns the records oldest first. `GET /threads/:id/evidence`
+merges them into the timeline as `evidence_recorded` entries, ordered by time
+with the reviews, results and artifact links.
+
+Each record appends and publishes an `evidence_added` event. Records are
+append-only. They do not move the thread's version, are not pinned in a review
+packet, and do not change the timeline's review flag.
+
 ### Summarize once: thread digests
 
 Write a thread's summary once and let every later reader fetch it by hash.

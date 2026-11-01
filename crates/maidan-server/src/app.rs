@@ -812,6 +812,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/threads/{id}/evidence", get(routes::get_evidence_timeline))
         .route(
+            "/threads/{id}/evidence-records",
+            post(routes::add_evidence_record).merge(get(routes::list_evidence_records)),
+        )
+        .route(
             "/threads/{id}/artifacts",
             get(routes::list_thread_artifacts),
         )

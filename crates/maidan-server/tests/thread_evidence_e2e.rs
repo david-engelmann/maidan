@@ -627,3 +627,199 @@ async fn the_evidence_timeline_shows_every_hand_off_and_stays_in_its_workspace()
         );
     }
 }
+
+async fn post_record(
+    client: &reqwest::Client,
+    url: String,
+    token: &str,
+    body: Value,
+) -> (StatusCode, Value) {
+    let resp = client
+        .post(url)
+        .header("Authorization", token)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    (status, resp.json().await.unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn records_are_added_listed_and_merged_into_the_timeline() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (ws, worker, token, thread) = tenant(store.as_ref(), "a").await;
+    let (_, _, other_token, _) = tenant(store.as_ref(), "b").await;
+    let t = thread.0;
+    let records = format!("{base}/threads/{t}/evidence-records");
+    let version_before = store.thread_version(thread).await.unwrap();
+
+    let (s, ci) = post_record(
+        &client,
+        records.clone(),
+        &token,
+        json!({
+            "kind": "ci_run",
+            "source": " github-actions ",
+            "url": "https://ci.example.com/runs/1",
+            "sha256": "AB".repeat(32),
+        }),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CREATED, "{ci}");
+    assert_eq!(ci["kind"], "ci_run");
+    assert_eq!(ci["source"], "github-actions");
+    assert_eq!(ci["sha256"], "ab".repeat(32));
+    assert_eq!(ci["recorded_by"], json!(worker.0));
+    assert_eq!(ci["thread_id"], json!(t));
+    assert!(ci.get("note").is_none(), "{ci}");
+
+    let (s, note) = post_record(
+        &client,
+        records.clone(),
+        &token,
+        json!({"kind": "note", "source": "reviewer", "note": "checked the board by hand"}),
+    )
+    .await;
+    assert_eq!(s, StatusCode::CREATED, "{note}");
+
+    for bad in [
+        json!({"kind": "test_run", "source": "cargo test"}),
+        json!({"kind": "screenshot", "source": "ui", "note": "no url"}),
+        json!({"kind": "diff", "source": "git", "url": "ftp://example.com/x"}),
+        json!({"kind": "diff", "source": "git", "sha256": "nothex"}),
+        json!({"kind": "note", "source": "", "note": "x"}),
+    ] {
+        let (s, body) = post_record(&client, records.clone(), &token, bad.clone()).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST, "{bad} -> {body}");
+    }
+
+    let (s, listed) = call(&client, Method::GET, records.clone(), &token).await;
+    assert_eq!(s, StatusCode::OK, "{listed}");
+    let ids: Vec<&Value> = listed
+        .as_array()
+        .map(|a| a.iter().map(|r| &r["id"]).collect())
+        .unwrap_or_default();
+    assert_eq!(ids, vec![&ci["id"], &note["id"]], "oldest first");
+
+    assert_eq!(
+        store.thread_version(thread).await.unwrap(),
+        version_before,
+        "records are not pinned, so they do not move the version"
+    );
+
+    let (s, timeline) = call(
+        &client,
+        Method::GET,
+        format!("{base}/threads/{t}/evidence"),
+        &token,
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK, "{timeline}");
+    assert_eq!(kinds(&timeline), vec!["evidence_recorded", "evidence_recorded"]);
+    assert_eq!(timeline["entries"][0]["record"]["id"], ci["id"]);
+
+    let added: Vec<_> = store
+        .list_events_after(ws, 0, 1_000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == maidan_types::EventKind::EvidenceAdded)
+        .collect();
+    assert_eq!(added.len(), 2, "one event per record");
+    assert_eq!(added[0].thread_id, Some(thread));
+    assert_eq!(added[0].payload["record"]["id"], ci["id"]);
+
+    // Another workspace's caller reaches neither the list nor the write.
+    let (s, _) = call(&client, Method::GET, records.clone(), &other_token).await;
+    assert!(
+        s == StatusCode::NOT_FOUND || s == StatusCode::FORBIDDEN,
+        "cross-workspace read: {s}"
+    );
+    let (s, _) = post_record(
+        &client,
+        records,
+        &other_token,
+        json!({"kind": "note", "source": "x", "note": "x"}),
+    )
+    .await;
+    assert!(
+        s == StatusCode::NOT_FOUND || s == StatusCode::FORBIDDEN,
+        "cross-workspace write: {s}"
+    );
+    assert_eq!(store.list_evidence_records(thread).await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn evidence_record_tools_add_and_list() {
+    let (addr, client, store) = spawn().await;
+    let base = format!("http://{addr}");
+    let (ws, worker, token, thread) = tenant(store.as_ref(), "a").await;
+    let (_, _, other_token, _) = tenant(store.as_ref(), "b").await;
+    let t = thread.0;
+    let rpc = |name: &'static str, arguments: Value, token: String| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let resp: Value = client
+                .post(format!("{base}/mcp"))
+                .header("Authorization", &token)
+                .json(&json!({
+                    "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                    "params": {"name": name, "arguments": arguments}
+                }))
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            resp
+        }
+    };
+    let text = |resp: &Value| -> Value {
+        let text = resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{resp}"));
+        serde_json::from_str(text).unwrap()
+    };
+
+    let added = rpc(
+        "add_evidence_record",
+        json!({
+            "thread_id": t,
+            "kind": "test_run",
+            "source": "cargo test",
+            "note": "412 passed",
+        }),
+        token.clone(),
+    )
+    .await;
+    let record = text(&added);
+    assert_eq!(record["kind"], "test_run");
+    assert_eq!(record["recorded_by"], json!(worker.0));
+
+    let refused = rpc(
+        "add_evidence_record",
+        json!({"thread_id": t, "kind": "screenshot", "source": "ui"}),
+        token.clone(),
+    )
+    .await;
+    assert!(refused.get("error").is_some(), "{refused}");
+
+    let listed = text(&rpc("list_evidence_records", json!({"thread_id": t}), token.clone()).await);
+    assert_eq!(listed.as_array().map(Vec::len), Some(1), "{listed}");
+    assert_eq!(listed[0]["id"], record["id"]);
+
+    let added = store
+        .list_events_after(ws, 0, 1_000)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.kind == maidan_types::EventKind::EvidenceAdded)
+        .count();
+    assert_eq!(added, 1, "the tool appended evidence_added");
+
+    let other = rpc("list_evidence_records", json!({"thread_id": t}), other_token).await;
+    assert!(other.get("error").is_some() || other["result"]["isError"] == json!(true), "{other}");
+}

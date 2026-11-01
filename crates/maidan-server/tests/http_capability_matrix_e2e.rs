@@ -378,6 +378,13 @@ fn apply_route_defaults(
             "title": "cap matrix",
         }));
     }
+    if path.ends_with("/evidence-records") && method == "POST" {
+        return b.json(&json!({
+            "kind": "note",
+            "source": "cap matrix",
+            "note": "cap matrix",
+        }));
+    }
     if path.ends_with("/group-dms/{id}/messages") && method == "POST" {
         return b.json(&json!({
             "body": "cap matrix",

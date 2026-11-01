@@ -122,6 +122,23 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.evidence_added/1": {
+    "$type": "maidan.event.evidence_added/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "evidence_added",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "record": {
+      "id": "00000000-0000-0000-0000-00000000000e",
+      "kind": "ci_run",
+      "recorded_at": "2023-11-14T22:13:20Z",
+      "recorded_by": "00000000-0000-0000-0000-000000000002",
+      "source": "ci",
+      "thread_id": "00000000-0000-0000-0000-000000000004",
+      "url": "https://ci.example.com/runs/1"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.member_display_name_changed/1": {
     "$type": "maidan.event.member_display_name_changed/1",
     "display_name": "Ada Lovelace",

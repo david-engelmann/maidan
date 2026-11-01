@@ -2199,6 +2199,22 @@ macro_rules! store_delegations {
                 evidence::list(self.read_pool(), thread_id).await
             }
 
+            async fn add_evidence_record_with_event(
+                &self,
+                thread_id: ThreadId,
+                record: &NewEvidenceRecord,
+                recorded_by: MemberId,
+            ) -> Result<(EvidenceRecord, StoredEvent), StoreError> {
+                evidence::add_record_with_event(self.pool(), thread_id, record, recorded_by).await
+            }
+
+            async fn list_evidence_records(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<EvidenceRecord>, StoreError> {
+                evidence::list_records(self.read_pool(), thread_id).await
+            }
+
             async fn latest_review_packet(
                 &self,
                 thread_id: ThreadId,

@@ -182,6 +182,7 @@ pub enum EventKind {
     ReviewSubmitted,
     ApprovalDismissed,
     WaitTimedOut,
+    EvidenceAdded,
     ScheduleSkipped,
     ThreadSpawnDenied,
     ProjectorMisconfigured,
@@ -231,6 +232,7 @@ impl EventKind {
             Self::ResultDeliveryFailed => "result_delivery_failed",
             Self::ReviewSubmitted => "review_submitted",
             Self::ApprovalDismissed => "approval_dismissed",
+            Self::EvidenceAdded => "evidence_added",
             Self::WaitTimedOut => "wait_timed_out",
             Self::ScheduleSkipped => "schedule_skipped",
             Self::ThreadSpawnDenied => "thread_spawn_denied",
@@ -281,6 +283,7 @@ impl EventKind {
             "result_delivery_failed" => Some(Self::ResultDeliveryFailed),
             "review_submitted" => Some(Self::ReviewSubmitted),
             "approval_dismissed" => Some(Self::ApprovalDismissed),
+            "evidence_added" => Some(Self::EvidenceAdded),
             "wait_timed_out" => Some(Self::WaitTimedOut),
             "schedule_skipped" => Some(Self::ScheduleSkipped),
             "thread_spawn_denied" => Some(Self::ThreadSpawnDenied),
@@ -357,6 +360,7 @@ impl EventKind {
         Self::ReviewSubmitted,
         Self::ApprovalDismissed,
         Self::WaitTimedOut,
+        Self::EvidenceAdded,
         Self::ScheduleSkipped,
         Self::ThreadSpawnDenied,
         Self::ProjectorMisconfigured,
@@ -460,6 +464,9 @@ impl EventKind {
             // a verdict nobody gave here.
             Self::ReviewSubmitted => false,
             Self::ApprovalDismissed => false,
+            // A record is attached by a member of *this* deployment; a peer
+            // must not inject evidence onto a local thread.
+            Self::EvidenceAdded => false,
             // A wait timeout is fired by *this* deployment's sweeper (this
             // clock); a peer must not inject one.
             Self::WaitTimedOut => false,
@@ -847,6 +854,15 @@ pub enum Event {
         /// The head the change moved to.
         head_sha: String,
     },
+    /// An evidence record was attached to a thread: a test run, a CI run, a
+    /// diff, an outside review verdict, a screenshot or a note.
+    EvidenceAdded {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        record: crate::evidence_record::EvidenceRecord,
+    },
     /// A thread's wait timer lapsed. Fired by *this* deployment's wait sweeper
     /// when a wait passed its deadline unsatisfied. The escalation `policy`
     /// names what the sweeper did (`notify` reaches the owner; `park`
@@ -1116,6 +1132,7 @@ impl Event {
             Self::ResultDeliveryFailed { .. } => EventKind::ResultDeliveryFailed,
             Self::ReviewSubmitted { .. } => EventKind::ReviewSubmitted,
             Self::ApprovalDismissed { .. } => EventKind::ApprovalDismissed,
+            Self::EvidenceAdded { .. } => EventKind::EvidenceAdded,
             Self::WaitTimedOut { .. } => EventKind::WaitTimedOut,
             Self::ScheduleSkipped { .. } => EventKind::ScheduleSkipped,
             Self::ThreadSpawnDenied { .. } => EventKind::ThreadSpawnDenied,
@@ -1166,6 +1183,7 @@ impl Event {
             | Self::ResultDeliveryFailed { occurred_at, .. }
             | Self::ReviewSubmitted { occurred_at, .. }
             | Self::ApprovalDismissed { occurred_at, .. }
+            | Self::EvidenceAdded { occurred_at, .. }
             | Self::WaitTimedOut { occurred_at, .. }
             | Self::ScheduleSkipped { occurred_at, .. }
             | Self::ThreadSpawnDenied { occurred_at, .. }
@@ -1216,6 +1234,7 @@ impl Event {
             | Self::ResultDeliveryFailed { workspace_id, .. }
             | Self::ReviewSubmitted { workspace_id, .. }
             | Self::ApprovalDismissed { workspace_id, .. }
+            | Self::EvidenceAdded { workspace_id, .. }
             | Self::WaitTimedOut { workspace_id, .. }
             | Self::ScheduleSkipped { workspace_id, .. }
             | Self::ThreadSpawnDenied { workspace_id, .. }
@@ -1260,6 +1279,7 @@ impl Event {
             | Self::ResultDeliveryFailed { channel_id, .. }
             | Self::ReviewSubmitted { channel_id, .. }
             | Self::ApprovalDismissed { channel_id, .. }
+            | Self::EvidenceAdded { channel_id, .. }
             | Self::WaitTimedOut { channel_id, .. }
             | Self::ScheduleSkipped { channel_id, .. }
             | Self::ThreadSpawnDenied { channel_id, .. }
@@ -1297,6 +1317,7 @@ impl Event {
             Self::ResultDeliveryFailed { thread_id, .. } => Some(*thread_id),
             Self::ReviewSubmitted { thread_id, .. } => Some(*thread_id),
             Self::ApprovalDismissed { thread_id, .. } => Some(*thread_id),
+            Self::EvidenceAdded { thread_id, .. } => Some(*thread_id),
             Self::WaitTimedOut { thread_id, .. } => Some(*thread_id),
             Self::ThreadSpawnDenied { thread_id, .. } => Some(*thread_id),
             Self::ProjectorMisconfigured { thread_id, .. } => Some(*thread_id),
@@ -1348,6 +1369,7 @@ impl Event {
             | Self::MemberDisplayNameChanged { member_id, .. } => Some(*member_id),
             Self::ReviewSubmitted { reviewer_id, .. } => Some(*reviewer_id),
             Self::ApprovalDismissed { reviewer_id, .. } => Some(*reviewer_id),
+            Self::EvidenceAdded { record, .. } => Some(record.recorded_by),
             Self::UsageReported { stamp, .. } => Some(stamp.reporter),
             Self::ThreadSpawnDenied { member_id, .. } => *member_id,
             Self::MentionRecorded { member_id, .. }
@@ -1726,6 +1748,7 @@ mod kind_tests {
                 | EventKind::ResultDeliveryFailed
                 | EventKind::ReviewSubmitted
                 | EventKind::ApprovalDismissed
+                | EventKind::EvidenceAdded
                 | EventKind::WaitTimedOut
                 | EventKind::ScheduleSkipped
                 | EventKind::ThreadSpawnDenied
@@ -1819,6 +1842,7 @@ mod kind_tests {
             EventKind::ReviewSubmitted,
             EventKind::ApprovalDismissed,
             EventKind::WaitTimedOut,
+            EventKind::EvidenceAdded,
             EventKind::ScheduleSkipped,
             EventKind::ThreadSpawnDenied,
             EventKind::ProjectorMisconfigured,
