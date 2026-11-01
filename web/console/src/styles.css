@@ -617,3 +617,10 @@ main.content:focus { outline: none; }
 .vote-approve { border-color: #2e7d32; color: #2e7d32; }
 .vote-request_changes { border-color: #c62828; color: #c62828; }
 .vote.mine { font-weight: 600; }
+
+/* Activity stream (console-20). */
+.activity { padding: 16px; }
+.activity-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.activity-head h1 { margin: 0 auto 0 0; font-size: 18px; }
+.activity-list { list-style: none; margin: 0; padding: 0; }
+.activity-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line, #e5e5e5); content-visibility: auto; contain-intrinsic-size: auto 32px; }
