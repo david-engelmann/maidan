@@ -23,6 +23,7 @@ fn row_to_hold(row: &sqlx::sqlite::SqliteRow) -> LegalHold {
 
 const COLS: &str = "id, workspace_id, reason, placed_by, placed_at";
 
+#[cfg(feature = "test-support")]
 pub async fn place(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,
@@ -55,6 +56,7 @@ pub(crate) async fn place_on(
     Ok(row_to_hold(&row))
 }
 
+#[cfg(feature = "test-support")]
 pub async fn lift(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

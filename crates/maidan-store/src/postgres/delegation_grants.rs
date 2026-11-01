@@ -8,6 +8,7 @@ use crate::{delegation_grants, StoreError};
 
 const COLUMNS: &str = "id, workspace_id, subject_id, delegate_id, capabilities, purpose, authorized_by, expires_at, revoked_at, created_at";
 
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &PgPool, new: NewDelegationGrant) -> Result<DelegationGrant, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -75,6 +76,7 @@ pub async fn list(
     rows.iter().map(row_to_grant).collect()
 }
 
+#[cfg(feature = "test-support")]
 pub async fn revoke(
     pool: &PgPool,
     workspace_id: WorkspaceId,
@@ -157,6 +159,7 @@ pub(crate) async fn get_policy_on(
 /// Set the workspace's grant ceiling, or return it to the default with `None`.
 /// Existing grants keep the expiry they were issued with; revoke one to end it
 /// sooner.
+#[cfg(feature = "test-support")]
 pub async fn set_policy(
     pool: &PgPool,
     workspace_id: WorkspaceId,

@@ -1,9 +1,12 @@
 use maidan_types::{ContentKeyring, WorkspaceEraseResult, WorkspaceId};
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::SqliteConnection;
+#[cfg(feature = "test-support")]
+use sqlx::SqlitePool;
 
 use crate::error::StoreError;
 use crate::sqlite::purge_workspace;
 
+#[cfg(feature = "test-support")]
 pub async fn erase(
     pool: &SqlitePool,
     keys: &ContentKeyring,

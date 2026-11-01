@@ -248,6 +248,7 @@ pub trait WorkspaceStore: Send + Sync {
     /// remapping (fresh workspace vs same-id restore) and the already-exists
     /// guard are the caller's job.
     /// Insert `import` as a new workspace of `origin`.
+    #[cfg(feature = "test-support")]
     async fn import_workspace(
         &self,
         import: &WorkspaceImport,
@@ -287,6 +288,7 @@ pub trait WorkspaceStore: Send + Sync {
     /// stands, the workspace's events are exempt from retention pruning, audit
     /// pruning is frozen, purge/erase is refused, and withdrawn messages keep
     /// their words. A second matter is a second hold.
+    #[cfg(feature = "test-support")]
     async fn place_legal_hold(
         &self,
         workspace_id: WorkspaceId,
@@ -295,6 +297,7 @@ pub trait WorkspaceStore: Send + Sync {
     ) -> Result<LegalHold, StoreError>;
     /// Lift one of the workspace's holds. `true` when that hold existed. What
     /// the holds kept is disposed of when the last one is lifted.
+    #[cfg(feature = "test-support")]
     async fn lift_legal_hold(
         &self,
         workspace_id: WorkspaceId,
@@ -370,6 +373,7 @@ pub trait WorkspaceStore: Send + Sync {
     ) -> Result<DelegationPolicy, StoreError>;
     /// Set the grant ceiling in days (1–3650), or restore the default with
     /// `None`. Applies to grants issued afterwards.
+    #[cfg(feature = "test-support")]
     async fn set_delegation_policy(
         &self,
         workspace_id: WorkspaceId,
@@ -498,6 +502,7 @@ pub trait MemberStore: Send + Sync {
     async fn list_members(&self, workspace_id: WorkspaceId) -> Result<Vec<Member>, StoreError>;
 
     /// Create the SCIM provisioning link for a member.
+    #[cfg(feature = "test-support")]
     async fn create_scim_user(
         &self,
         member_id: MemberId,
@@ -512,6 +517,7 @@ pub trait MemberStore: Send + Sync {
         -> Result<Vec<ScimUser>, StoreError>;
     /// Update a SCIM link's `external_id` + `active` and bump `updated_at`.
     /// `None` when the member has no SCIM link.
+    #[cfg(feature = "test-support")]
     async fn update_scim_user(
         &self,
         member_id: MemberId,
@@ -519,6 +525,7 @@ pub trait MemberStore: Send + Sync {
         active: bool,
     ) -> Result<Option<ScimUser>, StoreError>;
     /// Remove a member's SCIM link — `true` when one existed.
+    #[cfg(feature = "test-support")]
     async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError>;
     /// A SCIM group and its members, or `None` when the workspace has no such
     /// group.
@@ -1335,6 +1342,7 @@ pub trait EgressStore: Send + Sync {
     /// cannot revoke another workspace's entry by guessing an id.
     /// `is_egress_target_allowed` takes the allowlist grain, i.e.
     /// `EgressTarget::allowlist_selector()`.
+    #[cfg(feature = "test-support")]
     async fn allow_egress_target(
         &self,
         new: NewEgressTarget,
@@ -1343,6 +1351,7 @@ pub trait EgressStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<AllowedEgressTarget>, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn revoke_egress_target(
         &self,
         workspace_id: WorkspaceId,
@@ -1665,14 +1674,16 @@ pub trait SessionStore: Send + Sync {
         session_audit: crate::AuditFor<MaidanSession>,
     ) -> Result<OidcSignupOutcome, StoreError>;
 
+    #[cfg(feature = "test-support")]
     async fn create_session(&self, new: NewMaidanSession) -> Result<MaidanSession, StoreError>;
     async fn get_session(&self, id: SessionId) -> Result<MaidanSession, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn delete_session(&self, id: SessionId) -> Result<(), StoreError>;
 
     // D-A: a browser session is a credential, so signing in and signing out
     // write their audit row in the session write's transaction. Request
-    // handlers use these; `authority_changes_are_audited_in_their_transaction`
-    // fails if one calls the unaudited form above.
+    // handlers use these. The unaudited forms exist only under the
+    // `test-support` feature, so non-test code cannot call them.
 
     /// [`Self::create_session`] with its audit row in the same transaction.
     async fn create_session_audited(
@@ -1709,12 +1720,14 @@ pub trait ChannelStore: Send + Sync {
     /// Per-channel membership. Public channels are open to the workspace and
     /// need no rows; these gate private channels. `add` is an idempotent upsert
     /// of the role.
+    #[cfg(feature = "test-support")]
     async fn add_channel_member(
         &self,
         channel_id: ChannelId,
         member_id: MemberId,
         role: ChannelMemberRole,
     ) -> Result<ChannelMember, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn remove_channel_member(
         &self,
         channel_id: ChannelId,
@@ -2106,6 +2119,7 @@ pub trait SecretStore: Send + Sync {
     /// holds the key); `get_secret_ciphertext` is the only read that returns
     /// it, and `list_secrets` returns metadata only. `create_secret` upserts on
     /// `(workspace_id, name)` — re-creating a name rotates its value.
+    #[cfg(feature = "test-support")]
     async fn create_secret(&self, new: NewSecret) -> Result<Secret, StoreError>;
     async fn get_secret_ciphertext(
         &self,
@@ -2113,6 +2127,7 @@ pub trait SecretStore: Send + Sync {
         name: &str,
     ) -> Result<Option<String>, StoreError>;
     async fn list_secrets(&self, workspace_id: WorkspaceId) -> Result<Vec<Secret>, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn delete_secret(
         &self,
         workspace_id: WorkspaceId,
@@ -2127,6 +2142,7 @@ pub trait SecretStore: Send + Sync {
     /// `revoke_secret_egress_host` is scoped to the workspace. Both reads stay
     /// on the primary: a revoked host must stop receiving values at once, and
     /// a lagging replica would still report it listed.
+    #[cfg(feature = "test-support")]
     async fn allow_secret_egress_host(
         &self,
         new: NewSecretEgressHost,
@@ -2135,6 +2151,7 @@ pub trait SecretStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<SecretEgressHost>, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn revoke_secret_egress_host(
         &self,
         workspace_id: WorkspaceId,
@@ -2155,6 +2172,7 @@ pub trait MemberFreezeStore: Send + Sync {
     /// returning the freeze, the number of threads released and the event to
     /// publish; `claim_next` refuses a frozen member. Re-freezing refreshes the
     /// record and appends another event.
+    #[cfg(feature = "test-support")]
     async fn freeze_member(
         &self,
         member_id: MemberId,
@@ -2163,6 +2181,7 @@ pub trait MemberFreezeStore: Send + Sync {
     ) -> Result<(MemberFreeze, u64, StoredEvent), StoreError>;
     /// Lift a freeze, appending `MemberUnfrozen` with it. `None` when the
     /// member was not frozen.
+    #[cfg(feature = "test-support")]
     async fn unfreeze_member(
         &self,
         member_id: MemberId,
@@ -2235,6 +2254,7 @@ pub trait ReviewStore: Send + Sync {
     /// **qualifying** approvals — decision = approve, the reviewer is neither
     /// the thread's owner nor its assignee (separation of duties), and, when a
     /// named set exists, is in it — which the FSM close-gate (375.2) reads.
+    #[cfg(feature = "test-support")]
     async fn set_review_requirement(
         &self,
         thread_id: ThreadId,
@@ -2244,12 +2264,14 @@ pub trait ReviewStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<Option<ThreadReviewRequirement>, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn clear_review_requirement(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
     async fn add_reviewer(
         &self,
         thread_id: ThreadId,
         member_id: MemberId,
     ) -> Result<bool, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn remove_reviewer(
         &self,
         thread_id: ThreadId,
@@ -2331,6 +2353,7 @@ pub trait LandGateStore: Send + Sync {
         &self,
         thread_id: ThreadId,
     ) -> Result<LandGateStanding, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError>;
     /// Every land-gate verdict recorded on the thread, oldest first.
     /// `set_land_gate_pointer` appends one per recorded pointer, in its
@@ -2925,6 +2948,25 @@ pub trait AssignmentStore: Send + Sync {
         limit: i64,
     ) -> Result<Vec<StoredEvent>, StoreError>;
 
+    /// Report up to `limit` live claims that look stuck before their lease
+    /// lapses, appending a `ClaimStalled` for each in the same transaction.
+    /// For [`maidan_types::ClaimStallReason::NoProgress`], an acknowledged
+    /// claim whose holder last showed progress (acknowledgement, own message,
+    /// own declaration) before `cutoff` and has not declared a wait; for
+    /// [`maidan_types::ClaimStallReason::LeaseLapsing`], a claim whose lease
+    /// lapses before `cutoff`. Only open, live threads whose lease is still
+    /// running at `now` count, and each claim is reported once per reason:
+    /// its fencing token is recorded, and a new claim mints a new one. The
+    /// claim itself is not changed. Returns the appended events, soonest
+    /// lapsing lease first.
+    async fn report_stalled_claims(
+        &self,
+        now: chrono::DateTime<chrono::Utc>,
+        reason: maidan_types::ClaimStallReason,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<StoredEvent>, StoreError>;
+
     /// Return to the queue up to `limit` threads whose holder declared
     /// `needs_input` or `needs_review` before `declared_before` and is still
     /// waiting: an open, live thread on a lease running at `now` that the
@@ -3324,15 +3366,18 @@ pub trait MessageStore: Send + Sync {
     ) -> Result<StoredEvent, StoreError>;
     /// Hard-delete a tombstoned message (GDPR erasure). Fails if not
     /// tombstoned; `Conflict` under legal hold.
+    #[cfg(feature = "test-support")]
     async fn purge_message(&self, id: MessageId) -> Result<(), StoreError>;
     /// Tombstone then hard-delete all messages in a workspace (GDPR erasure),
     /// in one transaction. `Conflict` under legal hold.
+    #[cfg(feature = "test-support")]
     async fn purge_workspace_messages(
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<WorkspacePurgeResult, StoreError>;
     /// Deep purge then delete the workspace row and CASCADE-owned data, in
     /// one transaction. `Conflict` under legal hold.
+    #[cfg(feature = "test-support")]
     async fn erase_workspace(
         &self,
         workspace_id: WorkspaceId,
@@ -3870,6 +3915,7 @@ pub trait AppStore: Send + Sync {
     async fn create_app(&self, new: NewApp) -> Result<App, StoreError>;
     async fn get_app(&self, id: AppId) -> Result<App, StoreError>;
     async fn list_apps(&self, workspace_id: WorkspaceId) -> Result<Vec<App>, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn create_app_installation(
         &self,
         new: NewAppInstallation,
@@ -3882,6 +3928,7 @@ pub trait AppStore: Send + Sync {
         &self,
         workspace_id: WorkspaceId,
     ) -> Result<Vec<AppInstallation>, StoreError>;
+    #[cfg(feature = "test-support")]
     async fn revoke_app_installation(
         &self,
         id: AppInstallationId,
@@ -4201,6 +4248,7 @@ pub trait ReindexStore: Send + Sync {
 
 #[async_trait]
 pub trait TokenStore: Send + Sync {
+    #[cfg(feature = "test-support")]
     async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError>;
     async fn get_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
     async fn get_active_api_token_by_hash(&self, token_hash: &str) -> Result<ApiToken, StoreError>;
@@ -4210,6 +4258,7 @@ pub trait TokenStore: Send + Sync {
     /// Separate from `create_api_token` rather than a field on `NewApiToken`:
     /// that struct is built at 109 sites, 100 of them tests, and only the
     /// attenuation path has a parent.
+    #[cfg(feature = "test-support")]
     async fn create_attenuated_api_token(
         &self,
         new: NewApiToken,
@@ -4219,6 +4268,7 @@ pub trait TokenStore: Send + Sync {
     /// verifies that the grant is live, belongs to the delegate/workspace, and
     /// outlives the token. `parent_token_id` links bearer exchanges into the
     /// existing revocation tree; sessions pass `None`.
+    #[cfg(feature = "test-support")]
     async fn create_delegated_api_token(
         &self,
         new: NewApiToken,
@@ -4231,12 +4281,13 @@ pub trait TokenStore: Send + Sync {
     ///
     /// A derived token inherits the parent's app installation and quotas, because re-issuing was otherwise a way to shed a bound.
     /// Revocation is the ultimate limit and was the dimension still leaking.
+    #[cfg(feature = "test-support")]
     async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError>;
 
     // D-A (2026-09-23): changing authority writes its audit row inside the
     // change's own transaction, so a failed write aborts the change. Request
-    // handlers use these; `authority_changes_are_audited_in_their_transaction`
-    // fails if one calls the unaudited form above.
+    // handlers use these. The unaudited forms exist only under the
+    // `test-support` feature, so non-test code cannot call them.
 
     /// [`Self::create_api_token`] with its audit row in the same transaction.
     async fn create_api_token_audited(
@@ -4312,6 +4363,7 @@ pub trait ShareTicketStore: Send + Sync {
     /// Atomically create the ticket and its explicit artifact allowlist. The
     /// channel, owner, creator, and every artifact ref must belong to the same
     /// workspace. The plaintext secret never crosses this interface.
+    #[cfg(feature = "test-support")]
     async fn create_share_ticket(&self, new: NewShareTicket) -> Result<ShareTicket, StoreError>;
     async fn get_share_ticket(&self, id: ShareTicketId) -> Result<ShareTicket, StoreError>;
     async fn list_share_tickets(
@@ -4327,6 +4379,7 @@ pub trait ShareTicketStore: Send + Sync {
     ) -> Result<ShareTicket, StoreError>;
     /// Revoke an active ticket in its workspace. Returns whether this call
     /// changed state.
+    #[cfg(feature = "test-support")]
     async fn revoke_share_ticket(
         &self,
         workspace_id: WorkspaceId,
@@ -4368,6 +4421,7 @@ pub trait DelegationGrantStore: Send + Sync {
     /// Persist a reviewable grant after validating its members, capability
     /// subset, purpose, and expiry. This storage foundation does not itself
     /// authorize requests or mint delegated credentials.
+    #[cfg(feature = "test-support")]
     async fn create_delegation_grant(
         &self,
         new: NewDelegationGrant,
@@ -4381,6 +4435,7 @@ pub trait DelegationGrantStore: Send + Sync {
         workspace_id: WorkspaceId,
     ) -> Result<Vec<DelegationGrant>, StoreError>;
     /// Revoke a grant in its workspace. Returns whether this call changed it.
+    #[cfg(feature = "test-support")]
     async fn revoke_delegation_grant(
         &self,
         workspace_id: WorkspaceId,

@@ -284,6 +284,7 @@ pub async fn list_after(
     rows.iter().map(row_to_message).collect()
 }
 
+#[cfg(feature = "test-support")]
 pub async fn purge(pool: &SqlitePool, id: MessageId) -> Result<(), StoreError> {
     let mut conn = pool.acquire().await?;
     purge_on(&mut conn, id).await

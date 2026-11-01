@@ -246,6 +246,10 @@ pub fn init() {
             "Leased claims reported as never acknowledged (each with a ClaimUnacknowledged)"
         );
         describe_counter!(
+            "maidan_claims_stalled_total",
+            "Live claims reported as stalled before they lapse (each with a ClaimStalled), by reason (no_progress/lease_lapsing)"
+        );
+        describe_counter!(
             "maidan_human_waits_returned_total",
             "Threads returned to the queue because their agent's wait on a person went unanswered (each with a WaitTimedOut, policy return_to_queue)"
         );
