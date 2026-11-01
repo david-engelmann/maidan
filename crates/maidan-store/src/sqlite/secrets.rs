@@ -21,6 +21,7 @@ fn row_to_secret(row: &sqlx::sqlite::SqliteRow) -> Secret {
     }
 }
 
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &SqlitePool, new: NewSecret) -> Result<Secret, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -76,6 +77,7 @@ pub async fn list(pool: &SqlitePool, workspace_id: WorkspaceId) -> Result<Vec<Se
     Ok(rows.iter().map(row_to_secret).collect())
 }
 
+#[cfg(feature = "test-support")]
 pub async fn delete(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

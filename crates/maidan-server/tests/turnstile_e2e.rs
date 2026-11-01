@@ -387,7 +387,7 @@ async fn with_turnstile_unset_nothing_asks_for_a_token_and_the_csp_is_unchanged(
     let res = client().get(format!("{base}/ui/")).send().await.unwrap();
     assert_eq!(
         res.headers()["content-security-policy"].to_str().unwrap(),
-        maidan_server::app::BOARD_UI_CSP
+        maidan_server::app::CONSOLE_CSP
     );
 }
 

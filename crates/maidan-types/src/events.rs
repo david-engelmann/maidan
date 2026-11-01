@@ -173,6 +173,7 @@ pub enum EventKind {
     StatusDeclared,
     ClaimExpired,
     ClaimUnacknowledged,
+    ClaimStalled,
     ClaimFailed,
     UsageReported,
     ThreadLanded,
@@ -224,6 +225,7 @@ impl EventKind {
             Self::StatusDeclared => "status_declared",
             Self::ClaimExpired => "claim_expired",
             Self::ClaimUnacknowledged => "claim_unacknowledged",
+            Self::ClaimStalled => "claim_stalled",
             Self::ClaimFailed => "claim_failed",
             Self::UsageReported => "usage_reported",
             Self::ThreadLanded => "thread_landed",
@@ -275,6 +277,7 @@ impl EventKind {
             "status_declared" => Some(Self::StatusDeclared),
             "claim_expired" => Some(Self::ClaimExpired),
             "claim_unacknowledged" => Some(Self::ClaimUnacknowledged),
+            "claim_stalled" => Some(Self::ClaimStalled),
             "claim_failed" => Some(Self::ClaimFailed),
             "usage_reported" => Some(Self::UsageReported),
             "thread_landed" => Some(Self::ThreadLanded),
@@ -351,6 +354,7 @@ impl EventKind {
         Self::StatusDeclared,
         Self::ClaimExpired,
         Self::ClaimUnacknowledged,
+        Self::ClaimStalled,
         Self::ClaimFailed,
         Self::UsageReported,
         Self::ThreadLanded,
@@ -442,6 +446,9 @@ impl EventKind {
             // An unacknowledged claim is measured on this deployment's clock;
             // a peer must not inject one.
             Self::ClaimUnacknowledged => false,
+            // A stalled claim is judged on this deployment's clock and lease
+            // book; a peer must not inject one.
+            Self::ClaimStalled => false,
             // A budget-exhaustion / run failure is a locally-derived signal
             // (this deployment's budget accounting); a peer must not inject one.
             Self::ClaimFailed => false,
@@ -492,6 +499,25 @@ impl EventKind {
             // A memory-block update is a locally-derived signal over local
             // shared state; a peer must not inject one.
             Self::MemoryBlockUpdated => false,
+        }
+    }
+}
+
+/// Why the claim reaper reported a live claim as [`Event::ClaimStalled`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaimStallReason {
+    /// The holder has shown no progress for the server's stall window.
+    NoProgress,
+    /// The lease lapses within the server's warning window.
+    LeaseLapsing,
+}
+
+impl ClaimStallReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoProgress => "no_progress",
+            Self::LeaseLapsing => "lease_lapsing",
         }
     }
 }
@@ -673,6 +699,29 @@ pub enum Event {
         member_id: MemberId,
         /// When the claim was taken.
         claimed_at: DateTime<Utc>,
+        thread: Thread,
+    },
+    /// A live claim looks stuck, reported before the claim reaper lapses it.
+    /// `reason` says which signal fired: the holder has shown no progress for
+    /// the server's stall window (`MAIDAN_STALL_SECS`, the same policy that
+    /// marks a board card `stalled`), or the lease is about to lapse
+    /// (`MAIDAN_CLAIM_LAPSE_WARN_SECS`). Emitted by the claim reaper at most
+    /// once per claim per reason; the claim itself is left alone. A
+    /// locally-derived signal (this deployment's clock): not federatable.
+    ClaimStalled {
+        occurred_at: DateTime<Utc>,
+        workspace_id: WorkspaceId,
+        channel_id: ChannelId,
+        thread_id: ThreadId,
+        /// The holder of the stalled claim.
+        member_id: MemberId,
+        reason: ClaimStallReason,
+        /// When the holder last showed progress (acknowledgement, its own
+        /// message or declaration); `None` if it never acknowledged.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        last_progress_at: Option<DateTime<Utc>>,
+        /// When the lease lapses unless renewed.
+        lease_expires_at: DateTime<Utc>,
         thread: Thread,
     },
     /// A claimed run was stopped because it exceeded its budget envelope — a
@@ -1124,6 +1173,7 @@ impl Event {
             Self::StatusDeclared { .. } => EventKind::StatusDeclared,
             Self::ClaimExpired { .. } => EventKind::ClaimExpired,
             Self::ClaimUnacknowledged { .. } => EventKind::ClaimUnacknowledged,
+            Self::ClaimStalled { .. } => EventKind::ClaimStalled,
             Self::ClaimFailed { .. } => EventKind::ClaimFailed,
             Self::UsageReported { .. } => EventKind::UsageReported,
             Self::ThreadLanded { .. } => EventKind::ThreadLanded,
@@ -1175,6 +1225,7 @@ impl Event {
             | Self::StatusDeclared { occurred_at, .. }
             | Self::ClaimExpired { occurred_at, .. }
             | Self::ClaimUnacknowledged { occurred_at, .. }
+            | Self::ClaimStalled { occurred_at, .. }
             | Self::ClaimFailed { occurred_at, .. }
             | Self::UsageReported { occurred_at, .. }
             | Self::ThreadLanded { occurred_at, .. }
@@ -1226,6 +1277,7 @@ impl Event {
             | Self::StatusDeclared { workspace_id, .. }
             | Self::ClaimExpired { workspace_id, .. }
             | Self::ClaimUnacknowledged { workspace_id, .. }
+            | Self::ClaimStalled { workspace_id, .. }
             | Self::ClaimFailed { workspace_id, .. }
             | Self::UsageReported { workspace_id, .. }
             | Self::ThreadLanded { workspace_id, .. }
@@ -1271,6 +1323,7 @@ impl Event {
             | Self::BlockedResolved { channel_id, .. }
             | Self::ClaimExpired { channel_id, .. }
             | Self::ClaimUnacknowledged { channel_id, .. }
+            | Self::ClaimStalled { channel_id, .. }
             | Self::ClaimFailed { channel_id, .. }
             | Self::UsageReported { channel_id, .. }
             | Self::ThreadLanded { channel_id, .. }
@@ -1309,6 +1362,7 @@ impl Event {
             Self::BlockedResolved { thread_id, .. } => Some(*thread_id),
             Self::ClaimExpired { thread_id, .. } => Some(*thread_id),
             Self::ClaimUnacknowledged { thread_id, .. } => Some(*thread_id),
+            Self::ClaimStalled { thread_id, .. } => Some(*thread_id),
             Self::ClaimFailed { thread_id, .. } => Some(*thread_id),
             Self::UsageReported { thread_id, .. } => Some(*thread_id),
             Self::ThreadLanded { thread_id, .. } => Some(*thread_id),
@@ -1363,6 +1417,7 @@ impl Event {
             Self::BlockedResolved { resolved_by, .. } => Some(*resolved_by),
             Self::ClaimExpired { member_id, .. } => Some(*member_id),
             Self::ClaimUnacknowledged { member_id, .. } => Some(*member_id),
+            Self::ClaimStalled { member_id, .. } => Some(*member_id),
             Self::ClaimFailed { member_id, .. } => Some(*member_id),
             Self::MemberFrozen { member_id, .. }
             | Self::MemberUnfrozen { member_id, .. }
@@ -1644,6 +1699,7 @@ pub fn reconstruct_thread_through(events: &[StoredEvent]) -> Option<Thread> {
             | Event::ThreadReady { thread: row, .. }
             | Event::ClaimExpired { thread: row, .. }
             | Event::ClaimUnacknowledged { thread: row, .. }
+            | Event::ClaimStalled { thread: row, .. }
             | Event::ClaimFailed { thread: row, .. } => thread = Some(row),
             _ => {}
         }
@@ -1740,6 +1796,7 @@ mod kind_tests {
                 | EventKind::BlockedResolved
                 | EventKind::ClaimExpired
                 | EventKind::ClaimUnacknowledged
+                | EventKind::ClaimStalled
                 | EventKind::ClaimFailed
                 | EventKind::UsageReported
                 | EventKind::ThreadLanded
@@ -1834,6 +1891,7 @@ mod kind_tests {
             EventKind::BlockedResolved,
             EventKind::ClaimExpired,
             EventKind::ClaimUnacknowledged,
+            EventKind::ClaimStalled,
             EventKind::ClaimFailed,
             EventKind::ThreadLanded,
             EventKind::ThreadNotice,

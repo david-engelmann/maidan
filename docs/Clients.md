@@ -22,7 +22,7 @@ can send no token reads a dev instance anonymously instead (see
 | Cursor | Bearer header | Supported | Yes, because its token handling is unreliable |
 | Gemini CLI | Bearer header | None | No |
 | GitHub Copilot CLI | Bearer header | Supported (form since 0.0.421, URL since 0.0.423) | No |
-| claude.ai custom connector | None, against a dev instance | Unverified | Yes |
+| claude.ai custom connector | OAuth, by its client metadata document | Unverified | Yes |
 | ChatGPT developer mode | None, against a dev instance | None | Yes |
 
 Each row's facts come from the client's own documentation as read on
@@ -149,12 +149,13 @@ Keep it private.
 
 ### claude.ai custom connector
 
-Add a custom connector in claude.ai's connector settings with the dev
-instance's URL, and choose No sign in. Anthropic's servers make the requests,
-so the instance needs a public HTTPS address, and a firewall in front of it
-must allow Anthropic's published egress range `160.79.104.0/21`. The
-connector's fixed-credentials option, which would send a token, is not yet
-verified against Maidan.
+Add a custom connector in claude.ai with the instance's
+`/mcp/streamable` URL and sign in with OAuth: claude.ai identifies itself
+with a client metadata document, so the instance needs
+`MAIDAN_OAUTH_CLIENT_METADATA_HOSTS=claude.ai` and nothing pre-registered.
+Anthropic's servers make the requests, so a firewall in front of the instance
+must allow `160.79.104.0/21`. Step by step, with Perplexity, grok.com and the
+Gemini app: [examples/connect](../examples/connect/README.md).
 
 ### ChatGPT developer mode
 
@@ -193,8 +194,9 @@ About five minutes, by a person, before each release.
 1. In Cursor, connect with a token, list the tools, and call `whoami`. Restart
    Cursor and call `whoami` again. Its token handling is unreliable, so a
    connection that worked once is not taken to work after a restart.
-2. In ChatGPT developer mode and in a claude.ai custom connector, add the dev
-   instance, list the tools, and read a channel.
+2. In ChatGPT developer mode, add the dev instance, list the tools, and read a
+   channel. In a claude.ai custom connector, connect to the instance with
+   OAuth, list the tools, and call `whoami`.
 3. Check that a person completes a contested approval correctly from ChatGPT,
    Gemini CLI and claude.ai, which have no elicitation. The agent opens an
    approval gate, the client shows the link to Maidan's console, and the person

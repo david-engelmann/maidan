@@ -14,6 +14,8 @@ Cargo.lock.bak
 /build/
 web/landing/node_modules/
 crates/maidan-server/static/landing/dist/
+web/console/node_modules/
+crates/maidan-server/static/console/dist/
 
 # mdBook (generated): build output + docs staged in by book/sync-docs.sh
 /book/build/

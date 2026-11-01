@@ -56,6 +56,7 @@ async fn llms_txt_is_public_markdown_that_names_the_work_loop() {
         "renew_claim",
         "acknowledge_claim",
         "ClaimUnacknowledged",
+        "ClaimStalled",
         "max_wall_secs",
         "release_claim",
         "get_waiting_inbox",

@@ -1,6 +1,7 @@
-//! Builds the public landing (web/landing) into static/landing/dist so the
-//! binary can embed it. Docker sets MAIDAN_SKIP_LANDING_BUILD after its own
-//! Node stage has already produced that directory.
+//! Builds the public landing (web/landing) and the console (web/console)
+//! into static/<name>/dist so the binary can embed them. Docker sets
+//! MAIDAN_SKIP_LANDING_BUILD after its own Node stages have already produced
+//! those directories.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -16,8 +17,16 @@ fn main() {
         Ok(dir) => PathBuf::from(dir),
         Err(err) => panic!("CARGO_MANIFEST_DIR is not set: {err}"),
     };
-    let web = manifest.join("../../web/landing");
-    let dist = manifest.join("static/landing/dist");
+    // The public landing and the React console are both Vite apps, built the
+    // same way into static/<name>/dist.
+    for name in ["landing", "console"] {
+        build_web(&manifest, name);
+    }
+}
+
+fn build_web(manifest: &Path, name: &str) {
+    let web = manifest.join("../../web").join(name);
+    let dist = manifest.join("static").join(name).join("dist");
     println!("cargo:rerun-if-changed={}", web.join("src").display());
     println!(
         "cargo:rerun-if-changed={}",
@@ -54,21 +63,21 @@ fn main() {
             .arg("ci")
             .current_dir(&web)
             .status()
-            .unwrap_or_else(|err| panic!("could not run npm ci in web/landing: {err}"));
+            .unwrap_or_else(|err| panic!("could not run npm ci in web/{name}: {err}"));
         if !status.success() {
-            panic!("npm ci failed in web/landing");
+            panic!("npm ci failed in web/{name}");
         }
     }
     let status = Command::new(npm)
         .args(["run", "build"])
         .current_dir(&web)
         .status()
-        .unwrap_or_else(|err| panic!("could not run npm run build in web/landing: {err}"));
+        .unwrap_or_else(|err| panic!("could not run npm run build in web/{name}: {err}"));
     if !status.success() {
-        panic!("the landing build failed");
+        panic!("the {name} build failed");
     }
     if let Err(err) = std::fs::write(&stamp, hash) {
-        panic!("could not write the landing source hash: {err}");
+        panic!("could not write the {name} source hash: {err}");
     }
 }
 

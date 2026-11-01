@@ -101,6 +101,29 @@
     "thread_id": "00000000-0000-0000-0000-000000000004",
     "workspace_id": "00000000-0000-0000-0000-000000000001"
   },
+  "maidan.event.claim_stalled/1": {
+    "$type": "maidan.event.claim_stalled/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
+    "kind": "claim_stalled",
+    "last_progress_at": "2023-11-14T21:58:20Z",
+    "lease_expires_at": "2023-11-14T22:14:20Z",
+    "member_id": "00000000-0000-0000-0000-000000000002",
+    "occurred_at": "2023-11-14T22:13:20Z",
+    "reason": "no_progress",
+    "thread": {
+      "assignee_id": null,
+      "channel_id": "00000000-0000-0000-0000-000000000003",
+      "created_at": "2023-11-14T22:13:20Z",
+      "id": "00000000-0000-0000-0000-000000000004",
+      "parent_thread_id": null,
+      "state": "open",
+      "title": "task",
+      "tombstoned_at": null,
+      "updated_at": "2023-11-14T22:13:20Z"
+    },
+    "thread_id": "00000000-0000-0000-0000-000000000004",
+    "workspace_id": "00000000-0000-0000-0000-000000000001"
+  },
   "maidan.event.claim_unacknowledged/1": {
     "$type": "maidan.event.claim_unacknowledged/1",
     "channel_id": "00000000-0000-0000-0000-000000000003",

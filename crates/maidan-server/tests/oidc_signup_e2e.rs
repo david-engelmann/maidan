@@ -808,6 +808,8 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         assert_eq!(res.status(), StatusCode::OK, "{asset}");
         assert_eq!(res.headers()["x-content-type-options"], "nosniff");
     }
+    // Without sign-up, `/` is a route index: JSON by default, HTML for a
+    // browser, and no script or style either way.
     let off = spawn(false, vec![]).await;
     let res = off
         .client
@@ -815,7 +817,53 @@ async fn the_waitlist_page_is_served_with_a_strict_policy_only_where_sign_up_is_
         .send()
         .await
         .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let index: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(index["routes"]["openapi"], "/openapi.json");
+    assert_eq!(index["routes"]["mcp_worker"], "/mcp/worker");
+    assert_eq!(index["routes"]["health"], "/health");
+    assert_eq!(index["routes"]["console"], "/ui");
+    let res = off
+        .client
+        .get(format!("{}/", off.base))
+        .header("accept", "application/json, text/html")
+        .send()
+        .await
+        .unwrap();
+    assert!(res.headers()["content-type"]
+        .to_str()
+        .unwrap()
+        .starts_with("application/json"));
+    let res = off
+        .client
+        .get(format!("{}/", off.base))
+        .header("accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()["content-security-policy"].to_str().unwrap(),
+        maidan_server::app::ROUTE_INDEX_CSP
+    );
+    let html = res.text().await.unwrap();
+    for (_, path, _) in maidan_server::app::ROUTE_INDEX {
+        assert!(html.contains(&format!("href=\"{path}\"")), "{path}: {html}");
+    }
+    assert!(!html.contains("<script") && !html.contains("<style") && !has_inline_handler(&html));
+    // Unknown paths still 404, and the problem points at the API description.
+    let res = off
+        .client
+        .get(format!("{}/no-such-route", off.base))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    let problem: serde_json::Value = res.json().await.unwrap();
+    assert!(problem["detail"]
+        .as_str()
+        .unwrap()
+        .contains("/openapi.json"));
 }
 
 #[tokio::test]

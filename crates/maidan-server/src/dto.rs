@@ -2019,3 +2019,39 @@ pub struct SessionWorkspace {
 pub struct SessionWorkspaces {
     pub workspaces: Vec<SessionWorkspace>,
 }
+
+/// One message's votes inside `GET /threads/{tid}/votes`: a count per kind,
+/// then every vote row (who voted, which kind, when, optional confidence).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MessageVotes {
+    #[schema(value_type = uuid::Uuid)]
+    pub message_id: maidan_types::MessageId,
+    pub approve: u32,
+    pub request_changes: u32,
+    pub ack: u32,
+    pub votes: Vec<maidan_types::Vote>,
+}
+
+/// `GET /threads/{tid}/votes`: the votes on a thread's messages in one read.
+/// Only messages that hold at least one vote appear, oldest message first.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadVotes {
+    #[schema(value_type = uuid::Uuid)]
+    pub thread_id: ThreadId,
+    pub messages: Vec<MessageVotes>,
+}
+
+impl MessageVotes {
+    pub fn tally(message_id: maidan_types::MessageId, votes: Vec<maidan_types::Vote>) -> Self {
+        let count = |k: VoteKind| {
+            u32::try_from(votes.iter().filter(|v| v.kind == k).count()).unwrap_or(u32::MAX)
+        };
+        Self {
+            message_id,
+            approve: count(VoteKind::Approve),
+            request_changes: count(VoteKind::RequestChanges),
+            ack: count(VoteKind::Ack),
+            votes,
+        }
+    }
+}

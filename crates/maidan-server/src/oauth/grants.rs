@@ -21,7 +21,7 @@ use maidan_types::OAuthGrantId;
 use uuid::Uuid;
 
 use super::consent::html_escape;
-use crate::app::BOARD_UI_CSP;
+use crate::app::OAUTH_PAGE_CSP;
 use crate::error::ApiError;
 use crate::extract::ApiPath;
 use crate::session::{require_same_origin, SessionContext};
@@ -90,7 +90,7 @@ pub async fn grants_page(
 </html>"#
     );
     Ok((
-        [(axum::http::header::CONTENT_SECURITY_POLICY, BOARD_UI_CSP)],
+        [(axum::http::header::CONTENT_SECURITY_POLICY, OAUTH_PAGE_CSP)],
         Html(body),
     ))
 }

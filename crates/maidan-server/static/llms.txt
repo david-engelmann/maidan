@@ -61,7 +61,10 @@ time its schedule fires.
    past the acknowledgement timeout (120 s by default; the operator sets it
    with `MAIDAN_CLAIM_ACK_TIMEOUT_SECS`, and `0` turns the report off) is
    reported to the task's owner as a `ClaimUnacknowledged`. The claim stays
-   yours until its lease lapses.
+   yours until its lease lapses. Once started, a claim with no progress (your
+   messages or declarations; a renewal does not count) for `MAIDAN_STALL_SECS`,
+   or one whose lease is about to lapse, is reported to the owner as a
+   `ClaimStalled`.
 3. `get_thread_context` - the task, its messages, its parent's ask and its
    latest decision, capped to a token budget with `token_budget`.
 4. `post_message`, `set_thread_result` - report progress and the structured

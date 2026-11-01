@@ -1,4 +1,4 @@
-//! ETag revalidation on the board page and its assets: a first answer
+//! ETag revalidation on the console page and its assets: a first answer
 //! carries a strong ETag and a short cache lifetime; a revalidation with
 //! that tag answers 304 with no body, and a stale tag gets the full body
 //! again. Before this, every board load re-downloaded every module.
@@ -114,12 +114,12 @@ async fn assert_revalidates(client: &reqwest::Client, url: &str) -> String {
 }
 
 #[tokio::test]
-async fn the_board_page_and_its_assets_revalidate_by_etag() {
+async fn the_console_page_and_its_assets_revalidate_by_etag() {
     let base = spawn().await;
     let client = reqwest::Client::new();
     assert_revalidates(&client, &format!("{base}/ui/")).await;
-    let script_tag = assert_revalidates(&client, &format!("{base}/ui/static/main.js")).await;
-    let style_tag = assert_revalidates(&client, &format!("{base}/ui/static/board.css")).await;
+    let script_tag = assert_revalidates(&client, &format!("{base}/ui/app.js")).await;
+    let style_tag = assert_revalidates(&client, &format!("{base}/ui/style.css")).await;
     assert_ne!(script_tag, style_tag, "each body carries its own tag");
 }
 
@@ -127,7 +127,7 @@ async fn the_board_page_and_its_assets_revalidate_by_etag() {
 async fn an_unknown_asset_still_answers_404() {
     let base = spawn().await;
     let response = reqwest::Client::new()
-        .get(format!("{base}/ui/static/nope.js"))
+        .get(format!("{base}/ui/nope.js"))
         .send()
         .await
         .unwrap();

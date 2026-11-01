@@ -1,0 +1,22 @@
+[
+  {
+    "client_id": "perplexity",
+    "name": "Perplexity",
+    "redirect_uris": ["https://www.perplexity.ai/rest/connections/oauth_callback"],
+    "client_secret_hash": "REPLACE_WITH_SHA256_HEX_OF_THE_SECRET",
+    "allowed_scopes": ["workspace:read", "workspace:write"]
+  },
+  {
+    "client_id": "grok",
+    "name": "Grok",
+    "redirect_uris": ["https://grok.com/connectors-oauth-exchange-code/"],
+    "allowed_scopes": ["workspace:read", "workspace:write"]
+  },
+  {
+    "client_id": "gemini",
+    "name": "Gemini",
+    "redirect_uris": ["REPLACE_WITH_THE_REDIRECT_URI_FROM_THE_FIRST_ATTEMPT"],
+    "client_secret_hash": "REPLACE_WITH_SHA256_HEX_OF_THE_SECRET",
+    "allowed_scopes": ["workspace:read", "workspace:write"]
+  }
+]

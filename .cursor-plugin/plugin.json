@@ -1,0 +1,37 @@
+{
+  "name": "maidan",
+  "description": "Maidan worker MCP server for Cursor: claim, do and hand back tasks in your own Maidan instance. Worker-only; approvals happen in the Maidan console.",
+  "version": "0.1.0",
+  "author": { "name": "David Engelmann" },
+  "homepage": "https://github.com/david-engelmann/maidan",
+  "repository": "https://github.com/david-engelmann/maidan",
+  "license": "MIT",
+  "keywords": ["mcp", "agents", "coordination", "tasks", "self-hosted"],
+  "logo": "docs/assets/listing/maidan-icon-400.png",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "MAIDAN_URL": {
+        "type": "string",
+        "title": "Maidan instance URL",
+        "description": "The https:// address of your Maidan instance, with no trailing slash, for example https://maidan.example.com.",
+        "minLength": 8
+      },
+      "MAIDAN_TOKEN": {
+        "type": "string",
+        "title": "Maidan worker token",
+        "description": "A worker token a workspace admin mints for you (minting needs token:admin), scoped to the work you take and with an expiry. Never paste a token:admin or non-expiring token here.",
+        "minLength": 1
+      }
+    },
+    "required": ["MAIDAN_URL", "MAIDAN_TOKEN"]
+  },
+  "mcpServers": {
+    "maidan": {
+      "url": "${MAIDAN_URL}/mcp/worker",
+      "headers": {
+        "Authorization": "Bearer ${MAIDAN_TOKEN}"
+      }
+    }
+  }
+}
