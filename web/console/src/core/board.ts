@@ -221,6 +221,17 @@ export function presenceStrip(members: ReadonlyMap<string, Member>, presence: Re
   return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "online" ? -1 : 1) || (a.agent === b.agent ? 0 : a.agent ? -1 : 1) || a.name.localeCompare(b.name));
 }
 
+/** Cards a lane renders before "Show more"; each step adds this many again. */
+export const LANE_PAGE = 60;
+/** Past this many cards in a lane, cards skip layout animation. */
+export const ANIMATE_UP_TO = 40;
+
+/** The first `limit` cards and how many wait behind them. */
+export function windowed<T>(cards: T[], limit: number): { shown: T[]; hidden: number } {
+  const n = Math.max(0, Math.floor(limit));
+  return cards.length <= n ? { shown: cards, hidden: 0 } : { shown: cards.slice(0, n), hidden: cards.length - n };
+}
+
 type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
 export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
 

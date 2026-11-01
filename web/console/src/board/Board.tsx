@@ -1,8 +1,8 @@
 // The board, iPhone first: a lane picker over one lane of cards on a phone,
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BoardApi, LANES, boardHealth, byAgent, presenceStrip, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
 import { liveStatus } from "../core/bus.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePresence } from "../hooks/usePeople.ts";
@@ -64,6 +64,15 @@ export function Board() {
     [data.threads, active, now],
   );
   const lanes = useMemo(() => toLanes(shownThreads, data.gates), [shownThreads, data.gates]);
+  // How many cards each lane or group renders; a channel switch starts over.
+  const [limits, setLimits] = useState<Record<string, number>>({});
+  const [limitsFor, setLimitsFor] = useState(data.channelId);
+  if (limitsFor !== data.channelId) {
+    setLimitsFor(data.channelId);
+    setLimits({});
+  }
+  const limitOf = (k: string) => limits[k] ?? LANE_PAGE;
+  const more = (k: string) => setLimits((m) => ({ ...m, [k]: (m[k] ?? LANE_PAGE) + LANE_PAGE }));
   const [view, setViewState] = useState<"lanes" | "agents">(() => (localStorage.getItem(VIEW_KEY) === "agents" ? "agents" : "lanes"));
   const setView = (v: "lanes" | "agents") => {
     localStorage.setItem(VIEW_KEY, v);
@@ -182,12 +191,13 @@ export function Board() {
                 <span className="count">{g.cards.length}</span>
               </h2>
               <ul className="cards">
-                {g.cards.map((c) => (
+                {windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).shown.map((c) => (
                   <li key={c.thread.id}>
                     <TaskCard card={c} now={now} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
                   </li>
                 ))}
               </ul>
+              <MoreCards hidden={windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).hidden} onMore={() => more(`ag-${g.id ?? ""}`)} />
             </section>
           ))}
           {!groups.length && data.status === "ready" && <p className="muted">No live tasks in this channel.</p>}
@@ -210,10 +220,10 @@ export function Board() {
               )}
               <ul className="cards">
                 <AnimatePresence initial={false}>
-                  {lanes[l.key].map((c) => (
+                  {windowed(lanes[l.key], limitOf(l.key)).shown.map((c) => (
                     <motion.li
                       key={c.thread.id}
-                      layout={!reduce}
+                      layout={!reduce && lanes[l.key].length <= ANIMATE_UP_TO}
                       initial={reduce ? false : { opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97 }}
@@ -225,6 +235,7 @@ export function Board() {
                 </AnimatePresence>
                 {!lanes[l.key].length && data.status === "ready" && <li className="empty"><EmptyLane k={l.key} /></li>}
               </ul>
+              <MoreCards hidden={windowed(lanes[l.key], limitOf(l.key)).hidden} onMore={() => more(l.key)} />
             </section>
           ))}
         </div>
@@ -257,6 +268,30 @@ function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; n
         {member && <span className="who">{member.name}</span>}
         <span className="when">{cardWhen(card, now)}</span>
       </span>
+    </button>
+  );
+}
+
+/** "Show N more" under a long lane; it also loads more on its own as it scrolls into view. */
+function MoreCards({ hidden, onMore }: { hidden: number; onMore: () => void }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const latest = useRef(onMore);
+  useEffect(() => {
+    latest.current = onMore;
+  });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) latest.current();
+    }, { rootMargin: "400px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hidden]);
+  if (!hidden) return null;
+  return (
+    <button ref={ref} type="button" className="chip-btn more-cards" onClick={onMore}>
+      {`Show ${Math.min(hidden, LANE_PAGE)} more of ${hidden}`}
     </button>
   );
 }
