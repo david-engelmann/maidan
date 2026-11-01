@@ -2996,6 +2996,7 @@
           "status_declared",
           "claim_expired",
           "claim_unacknowledged",
+          "claim_stalled",
           "claim_failed",
           "usage_reported",
           "thread_landed",
@@ -5331,6 +5332,44 @@
       "MessageId": {
         "format": "uuid",
         "type": "string"
+      },
+      "MessageVotes": {
+        "description": "One message's votes inside `GET /threads/{tid}/votes`: a count per kind,\nthen every vote row (who voted, which kind, when, optional confidence).",
+        "properties": {
+          "ack": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "approve": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "message_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "request_changes": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "votes": {
+            "items": {
+              "$ref": "#/components/schemas/Vote"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "message_id",
+          "approve",
+          "request_changes",
+          "ack",
+          "votes"
+        ],
+        "type": "object"
       },
       "MeterUsage": {
         "description": "A workspace's month on one meter, against the allowance.",
@@ -11333,6 +11372,26 @@
         "required": [
           "thread_id",
           "version"
+        ],
+        "type": "object"
+      },
+      "ThreadVotes": {
+        "description": "`GET /threads/{tid}/votes`: the votes on a thread's messages in one read.\nOnly messages that hold at least one vote appear, oldest message first.",
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageVotes"
+            },
+            "type": "array"
+          },
+          "thread_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "messages"
         ],
         "type": "object"
       },
@@ -30300,6 +30359,65 @@
           }
         ],
         "summary": "Post a message to a thread",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/threads/{tid}/votes": {
+      "get": {
+        "operationId": "list_thread_votes",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "tid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadVotes"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Votes on a thread's messages in one read: per message, a count of each kind\nand the vote rows. Only messages holding a vote appear; the newest 500\nmessages are read.",
         "tags": [
           "messages"
         ]

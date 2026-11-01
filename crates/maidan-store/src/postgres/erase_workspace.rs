@@ -1,9 +1,12 @@
 use maidan_types::{ContentKeyring, WorkspaceEraseResult, WorkspaceId};
-use sqlx::{PgConnection, PgPool};
+use sqlx::PgConnection;
+#[cfg(feature = "test-support")]
+use sqlx::PgPool;
 
 use crate::error::StoreError;
 use crate::postgres::purge_workspace;
 
+#[cfg(feature = "test-support")]
 pub async fn erase(
     pool: &PgPool,
     keys: &ContentKeyring,

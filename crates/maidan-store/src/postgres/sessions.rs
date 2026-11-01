@@ -10,6 +10,7 @@ use crate::error::StoreError;
 const SESSION_COLUMNS: &str =
     "id, workspace_id, member_id, api_token_id, oidc_identity_id, created_at, expires_at";
 
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &PgPool, new: NewMaidanSession) -> Result<MaidanSession, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -100,6 +101,7 @@ pub async fn get(pool: &PgPool, id: SessionId) -> Result<MaidanSession, StoreErr
     row_to_session(&row)
 }
 
+#[cfg(feature = "test-support")]
 pub async fn delete(pool: &PgPool, id: SessionId) -> Result<(), StoreError> {
     let result = sqlx::query("DELETE FROM maidan_sessions WHERE id = $1")
         .bind(id.0)
