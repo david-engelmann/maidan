@@ -1600,11 +1600,35 @@ pub fn get_review_packet() {}
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, description = "Everything recorded as the thread's evidence, oldest first: linked artifacts, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only.", body = EvidenceTimeline),
+        (status = 200, description = "Everything recorded as the thread's evidence, oldest first: linked artifacts, evidence records, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only.", body = EvidenceTimeline),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]
 pub fn get_evidence_timeline() {}
+
+/// Attach an evidence record to a thread
+#[utoipa::path(post, path = "/threads/{id}/evidence-records", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    request_body = NewEvidenceRecord,
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 201, description = "The record as stored. Emits evidence_added. Records are append-only and are not pinned at a review hand-off.", body = EvidenceRecord),
+        (status = 400, response = BadRequest),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn add_evidence_record() {}
+
+/// A thread's evidence records
+#[utoipa::path(get, path = "/threads/{id}/evidence-records", tag = "threads",
+    params(("id" = Uuid, Path, description = "Thread id")),
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "The thread's evidence records, oldest first", body = Vec<EvidenceRecord>),
+        (status = 403, response = Forbidden),
+        (status = 404, response = NotFound),
+    ))]
+pub fn list_evidence_records() {}
 
 /// A thread's linked artifacts
 #[utoipa::path(get, path = "/threads/{id}/artifacts", tag = "threads",

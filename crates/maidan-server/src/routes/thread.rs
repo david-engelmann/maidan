@@ -1488,7 +1488,7 @@ pub async fn get_review_packet(
 }
 
 /// `GET /threads/:id/evidence`: the thread's evidence timeline, oldest
-/// first: linked artifacts, the standing result, land-gate verdicts, every
+/// first: linked artifacts, evidence records, the standing result, land-gate verdicts, every
 /// review hand-off with its packet, and every review verdict, with whether
 /// the evidence moved since the latest hand-off. A read of what was
 /// recorded; it decides nothing. `workspace:read` + thread access.
@@ -1504,6 +1504,7 @@ pub async fn get_evidence_timeline(
     let thread_version = store.thread_version(thread_id).await?;
     let sources = maidan_types::EvidenceSources {
         artifacts: store.list_thread_artifacts(thread_id).await?,
+        records: store.list_evidence_records(thread_id).await?,
         result: store.get_thread_result(thread_id).await?,
         land_gate: store.list_land_gate_history(thread_id).await?,
         packets: store.list_review_packets(thread_id).await?,
@@ -1514,6 +1515,42 @@ pub async fn get_evidence_timeline(
         thread_version,
         sources,
     )))
+}
+
+/// `POST /threads/:id/evidence-records`: attach an evidence record (a test
+/// run, a CI run, a diff, an outside review verdict, a screenshot by URL, or
+/// a note) to the thread. `201` with the record; emits `evidence_added`.
+/// `400` for a record that points at nothing or a malformed URL or digest.
+/// `workspace:write` + thread access.
+pub async fn add_evidence_record(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+    ApiJson(body): ApiJson<maidan_types::NewEvidenceRecord>,
+) -> ApiResult<(StatusCode, Json<maidan_types::EvidenceRecord>)> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_WRITE)?;
+    let record = body.normalized().map_err(ApiError::BadRequest)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let (record, stored) = state
+        .store
+        .add_evidence_record_with_event(thread_id, &record, auth.member_id)
+        .await?;
+    publish_stored(&state, stored).await;
+    Ok((StatusCode::CREATED, Json(record)))
+}
+
+/// `GET /threads/:id/evidence-records`: the thread's evidence records,
+/// oldest first. `workspace:read` + thread access.
+pub async fn list_evidence_records(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    ApiPath(id): ApiPath<uuid::Uuid>,
+) -> ApiResult<Json<Vec<maidan_types::EvidenceRecord>>> {
+    let thread_id = ThreadId(id);
+    cap(&auth, WORKSPACE_READ)?;
+    maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    Ok(Json(state.store.list_evidence_records(thread_id).await?))
 }
 
 /// A sha256 path segment in its one stored form, lowercase hex. A malformed

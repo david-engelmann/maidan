@@ -418,6 +418,19 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             approved_head,
             head_sha,
         },
+        EvidenceAdded {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            record,
+        } => EvidenceAdded {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            record,
+        },
         // Non-federatable local human-control state.
         ApprovalRequested {
             occurred_at,
