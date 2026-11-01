@@ -31,6 +31,7 @@ macro_rules! store_delegations {
     ($store:ty, WorkspaceStore) => {
         #[::async_trait::async_trait]
         impl WorkspaceStore for $store {
+            #[cfg(feature = "test-support")]
             async fn import_workspace(
                 &self,
                 i: &WorkspaceImport,
@@ -85,6 +86,7 @@ macro_rules! store_delegations {
                 workspaces::usage(self.read_pool(), id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn place_legal_hold(
                 &self,
                 workspace_id: WorkspaceId,
@@ -95,6 +97,7 @@ macro_rules! store_delegations {
                 legal_hold::place(self.pool(), workspace_id, reason, placed_by).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn lift_legal_hold(
                 &self,
                 workspace_id: WorkspaceId,
@@ -185,6 +188,7 @@ macro_rules! store_delegations {
                 delegation_grants::get_policy(self.pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn set_delegation_policy(
                 &self,
                 workspace_id: WorkspaceId,
@@ -347,6 +351,7 @@ macro_rules! store_delegations {
                 members::create_agent_with_token(self.pool(), new, member_audit, token_audit).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn create_scim_user(
                 &self,
                 member_id: MemberId,
@@ -371,6 +376,7 @@ macro_rules! store_delegations {
                 scim_users::list(self.read_pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn update_scim_user(
                 &self,
                 member_id: MemberId,
@@ -380,6 +386,7 @@ macro_rules! store_delegations {
                 scim_users::update(self.pool(), member_id, external_id, active).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn delete_scim_user(&self, member_id: MemberId) -> Result<bool, StoreError> {
                 scim_users::delete(self.pool(), member_id).await
             }
@@ -1430,6 +1437,7 @@ macro_rules! store_delegations {
                 egress_outbox::requeue_dead(self.pool(), workspace_id, id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn allow_egress_target(
                 &self,
                 new: NewEgressTarget,
@@ -1448,6 +1456,7 @@ macro_rules! store_delegations {
                 egress_targets::list(self.pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn revoke_egress_target(
                 &self,
                 workspace_id: WorkspaceId,
@@ -1819,6 +1828,7 @@ macro_rules! store_delegations {
                 oidc::complete_signup(self.pool(), new, signup_audit, session_audit).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn create_session(
                 &self,
                 new: NewMaidanSession,
@@ -1830,6 +1840,7 @@ macro_rules! store_delegations {
                 sessions::get(self.pool(), id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn delete_session(&self, id: SessionId) -> Result<(), StoreError> {
                 sessions::delete(self.pool(), id).await
             }
@@ -1880,6 +1891,7 @@ macro_rules! store_delegations {
                 channels::list(self.read_pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn add_channel_member(
                 &self,
                 channel_id: ChannelId,
@@ -1889,6 +1901,7 @@ macro_rules! store_delegations {
                 channel_members::add(self.pool(), channel_id, member_id, role).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn remove_channel_member(
                 &self,
                 channel_id: ChannelId,
@@ -2352,6 +2365,7 @@ macro_rules! store_delegations {
     ($store:ty, SecretStore) => {
         #[::async_trait::async_trait]
         impl SecretStore for $store {
+            #[cfg(feature = "test-support")]
             async fn create_secret(&self, new: NewSecret) -> Result<Secret, StoreError> {
                 secrets::create(self.pool(), new).await
             }
@@ -2371,6 +2385,7 @@ macro_rules! store_delegations {
                 secrets::list(self.read_pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn delete_secret(
                 &self,
                 workspace_id: WorkspaceId,
@@ -2379,6 +2394,7 @@ macro_rules! store_delegations {
                 secrets::delete(self.pool(), workspace_id, name).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn allow_secret_egress_host(
                 &self,
                 new: NewSecretEgressHost,
@@ -2393,6 +2409,7 @@ macro_rules! store_delegations {
                 secret_egress_hosts::list(self.pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn revoke_secret_egress_host(
                 &self,
                 workspace_id: WorkspaceId,
@@ -2456,6 +2473,7 @@ macro_rules! store_delegations {
     ($store:ty, ReviewStore) => {
         #[::async_trait::async_trait]
         impl ReviewStore for $store {
+            #[cfg(feature = "test-support")]
             async fn set_review_requirement(
                 &self,
                 thread_id: ThreadId,
@@ -2471,6 +2489,7 @@ macro_rules! store_delegations {
                 reviews::get_requirement(self.read_pool(), thread_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn clear_review_requirement(
                 &self,
                 thread_id: ThreadId,
@@ -2486,6 +2505,7 @@ macro_rules! store_delegations {
                 reviews::add_reviewer(self.pool(), thread_id, member_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn remove_reviewer(
                 &self,
                 thread_id: ThreadId,
@@ -2606,6 +2626,7 @@ macro_rules! store_delegations {
                 land_gate::standing(self.read_pool(), thread_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn clear_land_gate(&self, thread_id: ThreadId) -> Result<bool, StoreError> {
                 land_gate::clear(self.pool(), thread_id).await
             }
@@ -2689,6 +2710,7 @@ macro_rules! store_delegations {
     ($store:ty, MemberFreezeStore) => {
         #[::async_trait::async_trait]
         impl MemberFreezeStore for $store {
+            #[cfg(feature = "test-support")]
             async fn freeze_member(
                 &self,
                 member_id: MemberId,
@@ -2698,6 +2720,7 @@ macro_rules! store_delegations {
                 member_freezes::freeze(self.pool(), member_id, frozen_by, reason).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn unfreeze_member(
                 &self,
                 member_id: MemberId,
@@ -3355,6 +3378,16 @@ macro_rules! store_delegations {
                 threads::report_unacknowledged_claims(self.pool(), now, claimed_before, limit).await
             }
 
+            async fn report_stalled_claims(
+                &self,
+                now: chrono::DateTime<chrono::Utc>,
+                reason: maidan_types::ClaimStallReason,
+                cutoff: chrono::DateTime<chrono::Utc>,
+                limit: i64,
+            ) -> Result<Vec<StoredEvent>, StoreError> {
+                threads::report_stalled_claims(self.pool(), now, reason, cutoff, limit).await
+            }
+
             async fn return_human_timeouts(
                 &self,
                 now: chrono::DateTime<chrono::Utc>,
@@ -3822,10 +3855,12 @@ macro_rules! store_delegations {
                 messages::tombstone_with_event(self.pool(), id, dm_conversation_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn purge_message(&self, id: MessageId) -> Result<(), StoreError> {
                 messages::purge(self.pool(), id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn purge_workspace_messages(
                 &self,
                 workspace_id: WorkspaceId,
@@ -3833,6 +3868,7 @@ macro_rules! store_delegations {
                 purge_workspace::purge(self.pool(), self.content_keys(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn erase_workspace(
                 &self,
                 workspace_id: WorkspaceId,
@@ -4470,6 +4506,7 @@ macro_rules! store_delegations {
                 apps::list_apps(self.pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn create_app_installation(
                 &self,
                 new: NewAppInstallation,
@@ -4491,6 +4528,7 @@ macro_rules! store_delegations {
                 apps::list_installations(self.pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn revoke_app_installation(
                 &self,
                 id: AppInstallationId,
@@ -4816,6 +4854,7 @@ macro_rules! store_delegations {
     ($store:ty, TokenStore) => {
         #[::async_trait::async_trait]
         impl TokenStore for $store {
+            #[cfg(feature = "test-support")]
             async fn create_api_token(&self, new: NewApiToken) -> Result<ApiToken, StoreError> {
                 tokens::create(self.pool(), new).await
             }
@@ -4831,6 +4870,7 @@ macro_rules! store_delegations {
                 tokens::get_active_by_hash(self.pool(), token_hash).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn create_attenuated_api_token(
                 &self,
                 new: NewApiToken,
@@ -4839,6 +4879,7 @@ macro_rules! store_delegations {
                 tokens::create_attenuated(self.pool(), new, parent_token_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn create_delegated_api_token(
                 &self,
                 new: NewApiToken,
@@ -4850,6 +4891,7 @@ macro_rules! store_delegations {
                     .await
             }
 
+            #[cfg(feature = "test-support")]
             async fn revoke_api_token(&self, id: ApiTokenId) -> Result<ApiToken, StoreError> {
                 tokens::revoke(self.pool(), id).await
             }
@@ -4957,6 +4999,7 @@ macro_rules! store_delegations {
     ($store:ty, ShareTicketStore) => {
         #[::async_trait::async_trait]
         impl ShareTicketStore for $store {
+            #[cfg(feature = "test-support")]
             async fn create_share_ticket(
                 &self,
                 new: NewShareTicket,
@@ -4983,6 +5026,7 @@ macro_rules! store_delegations {
                 share_tickets::resolve(self.read_pool(), token_hash, now).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn revoke_share_ticket(
                 &self,
                 workspace_id: WorkspaceId,
@@ -5028,6 +5072,7 @@ macro_rules! store_delegations {
     ($store:ty, DelegationGrantStore) => {
         #[::async_trait::async_trait]
         impl DelegationGrantStore for $store {
+            #[cfg(feature = "test-support")]
             async fn create_delegation_grant(
                 &self,
                 new: NewDelegationGrant,
@@ -5051,6 +5096,7 @@ macro_rules! store_delegations {
                 delegation_grants::list(self.read_pool(), workspace_id).await
             }
 
+            #[cfg(feature = "test-support")]
             async fn revoke_delegation_grant(
                 &self,
                 workspace_id: WorkspaceId,

@@ -28,9 +28,9 @@ behaviour.
 | Sessions | `crates/maidan-server/src/session/` | A `maidan_sessions` row has a workspace, a member and, for a session made from a token, the token's id. The signed `maidan_session` cookie names the row. `SessionContext` carries `session_id`, `member_id`, `workspace_id` and the token's authority, if any. Nothing on the row says which identity signed in. |
 | Session authority | `crates/maidan-server/src/auth.rs` | An OIDC session gets fixed capabilities on the `/ui/api` routes: `OIDC_READ_CAPABILITIES` (read, subscribe, search) and `OIDC_WRITE_CAPABILITIES` (adds write, post, transition, upload). It never holds `token:admin`. A session made from a token holds exactly that token's authority. |
 | First admin | `crates/maidan-server/src/session/handlers.rs` | `POST /auth/session/mint` lets an OIDC session mint the workspace's first `token:admin`, only while none is live and `MAIDAN_OIDC_FIRST_ADMIN` allows it. |
-| Console sign-in | `crates/maidan-server/static/ui/main.js` | The **Sign in** button needs the workspace id typed in first ("Enter the workspace ID first.") and sends it to `/auth/oidc/login`. |
+| Console sign-in | `web/console/src/shell/SignIn.tsx` | Signed out, every place shows **Sign in**, which sends the browser to `/auth/oidc/login?return_to=/ui/` with no workspace id (the callback picks the most recently used workspace), and a token field that trades a pasted token for a session. |
 | A second workspace | `crates/maidan-server/src/routes/workspace.rs` | `POST /operator/workspaces` (`operator:global`, #1208) creates a workspace, its first human admin and a one-time admin token in one transaction, without `MAIDAN_BOOTSTRAP`. |
-| Connect an agent | `crates/maidan-server/static/ui/main.js` | The sheet (#1144) creates an agent member with `POST /workspaces/{wid}/members` and mints a `maidan.agent.worker` token with `POST /workspaces/{wid}/members/{mid}/tokens` (`token:admin`). |
+| Connect an agent | `web/console/src/tools/Connect.tsx` | Tools > Connect shows the MCP and HTTP snippets to paste into an agent; its token is minted in People. |
 | SCIM | `crates/maidan-server/src/scim.rs` | `token:admin` creates and updates human members at `/scim/v2/Users`. `active: false` revokes the member's tokens and releases its claims. |
 
 [OIDC](OIDC.md) has the whole sign-in flow and its configuration. The
@@ -225,7 +225,7 @@ get them:
 **Proposed:** a switch is a fresh sign-in to the target workspace. The console
 sends the browser to `GET
 /auth/oidc/login?workspace_id={target}&return_to=/ui/`, the route it already
-uses (`static/ui/main.js`). With a live provider session, the provider often answers
+uses (`web/console/src/tools/` for a workspace switch). With a live provider session, the provider often answers
 without a prompt, and the person sees only a redirect. That isn't guaranteed:
 the request doesn't set `prompt=none`, so the provider may still ask for a
 login, consent or another step, depending on its own policy. The

@@ -50,9 +50,9 @@ async fn ui_search_panel_is_present_in_static_shell() {
         .text()
         .await
         .unwrap();
-    assert!(html.contains(r#"data-tab="search""#));
-    assert!(html.contains(r#"id="panel-search""#));
-    assert!(html.contains(r#"id="run-search""#));
-    assert!(html.contains(r#"id="search-results""#));
+    // The console draws this panel in the browser; the served shell is its
+    // React root, and the browser specs pin the panel itself.
+    assert!(html.contains(r#"id="root""#), "{html}");
+    assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
     server.abort();
 }

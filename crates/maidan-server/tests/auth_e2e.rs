@@ -230,7 +230,12 @@ async fn mint_and_revoke_token_roundtrip() {
         h.store.as_ref(),
         workspace_id,
         member_id,
-        vec![capability::TOKEN_ADMIN.to_string()],
+        // A minted token is a subset of the minter's grant, the default included.
+        [
+            vec![capability::TOKEN_ADMIN.to_string()],
+            capability::default_minted(),
+        ]
+        .concat(),
     )
     .await;
     let ws = workspace_id.0.to_string();
@@ -287,7 +292,12 @@ async fn list_api_tokens_returns_metadata_without_secret() {
         h.store.as_ref(),
         workspace_id,
         member_id,
-        vec![capability::TOKEN_ADMIN.to_string()],
+        // A minted token is a subset of the minter's grant, the default included.
+        [
+            vec![capability::TOKEN_ADMIN.to_string()],
+            capability::default_minted(),
+        ]
+        .concat(),
     )
     .await;
     let ws = workspace_id.0.to_string();

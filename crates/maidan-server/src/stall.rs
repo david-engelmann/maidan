@@ -11,9 +11,10 @@
 //! (`needs_input`, `needs_review`, `blocked`, `done`) is not stalled: it said
 //! why it is quiet, and the board shows that declaration instead.
 //!
-//! It is judged at read time, so no loop and no stored flag go stale; a
-//! notice to the owner when a thread stalls would need a record of who was
-//! told, and is not part of this.
+//! It is judged at read time, so no stored flag goes stale. The push is the
+//! claim reaper's: it reports the same condition once per claim as a
+//! `ClaimStalled` (`no_progress`), recording the claim it told the owner
+//! about ([`crate::claim_reaper::report_stalled_once`]).
 
 use std::time::Duration;
 

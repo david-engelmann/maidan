@@ -231,8 +231,10 @@ async fn ui_ws_subscribe_accepts_session_cookie_and_resume_token() {
         .text()
         .await
         .expect("html");
-    assert!(html.contains("ws-preset"));
-    assert!(html.contains("ws-auto-reconnect"));
+    // The console draws this panel in the browser; the served shell is its
+    // React root, and the browser specs pin the panel itself.
+    assert!(html.contains(r#"id="root""#), "{html}");
+    assert!(html.contains(r#"src="/ui/app.js""#), "{html}");
 
     h.server.abort();
 }

@@ -7,6 +7,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::error::StoreError;
 
+#[cfg(feature = "test-support")]
 pub async fn import_workspace(
     pool: &SqlitePool,
     b: &WorkspaceImport,

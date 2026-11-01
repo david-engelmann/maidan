@@ -1,0 +1,3 @@
+### The console's typed core: session and live hooks
+
+- **Added:** the console's `useSession` and `useLive` hooks over a typed core ported from the board (`web/console/src/core`): the bearer and `/ui/api` path split, idempotent writes, the token-for-session exchange (a token never stays in the page when the server can hold a session), credential modes and refusal wording, and the live socket with its stored resume token, backoff from 1.5 s to 30 s, polling while down, and a stop on a policy close. The board's helper tests that cover these are ported, with new ones for the socket rules (`npm test` in `web/console`).

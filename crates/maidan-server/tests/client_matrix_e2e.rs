@@ -131,6 +131,9 @@ fn every_client_has_a_recipe_a_matrix_row_and_its_release_step() {
                     {
                         found.push(format!("{name}: its recipe sends no bearer header"));
                     }
+                    Some("oauth") if !recipe.contains("OAuth") => {
+                        found.push(format!("{name}: its recipe does not sign in with OAuth"));
+                    }
                     Some("anonymous-dev") if !recipe.contains("dev instance") => {
                         found.push(format!("{name}: its recipe does not use a dev instance"));
                     }
@@ -466,6 +469,9 @@ async fn every_client_connects_the_way_the_matrix_says() {
                     "{name}: reads the synthetic workspace: {read}"
                 );
             }
+            // The OAuth flow needs a public origin, a sign-in and a consent;
+            // the oauth_*_e2e tests drive it end to end.
+            Some("oauth") => {}
             other => panic!("{name}: unknown auth mode {other:?}"),
         }
     }

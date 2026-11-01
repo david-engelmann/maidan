@@ -80,3 +80,51 @@ jobs:
       - name: deploy pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # docs.maidan.world (deploy/cloudflare/wrangler.docs.jsonc). Off until the
+  # repository variable DOCS_DOMAIN is "true", which is set once the DNS record
+  # exists (docs/Production.md, "The docs site"). The site is rebuilt with
+  # site-url "/" because the domain serves it from the root, not /maidan/.
+  docs-domain:
+    name: docs.maidan.world
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DOCS_DOMAIN == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: prod
+      url: https://docs.maidan.world
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MDBOOK_OUTPUT__HTML__SITE_URL: /
+    steps:
+      - uses: actions/checkout@v4
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/maidan-mcp
+      - name: generate MCP reference
+        run: cargo run -p maidan-mcp --bin gen-mcp-reference -- book/src/mcp-reference.md
+      - uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "0.4.40"
+      - name: install mdBook renderers
+        run: |
+          cargo install mdbook-linkcheck --locked --version 0.7.7
+          cargo install mdbook-mermaid --locked --version 0.14.1
+          mdbook-mermaid install book
+      - name: build site for the domain root
+        run: bash book/sync-docs.sh && mdbook build book
+      - name: add response headers
+        run: cp deploy/cloudflare/docs-headers book/build/html/_headers
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: deploy/cloudflare/package-lock.json
+      - name: deploy
+        working-directory: deploy/cloudflare
+        run: npm ci && npx wrangler deploy -c wrangler.docs.jsonc

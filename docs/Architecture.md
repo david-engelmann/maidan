@@ -160,7 +160,7 @@ flowchart LR
 | Automation | webhooks, slash commands, FSM hooks, delivery DLQ | Signed HTTP; durable queue + replay |
 | Auth | Bearer capability tokens, OIDC session routes, app OAuth | See [Capability Map](Capability%20Map.md) |
 | Ops | `/health/{live,ready}`, `/metrics`, `/openapi.json`, signed workspace export/usage/audit | Probes + Prometheus + OTLP + OpenAPI |
-| UI | `GET /ui/` | The board: channels, tasks, and the open thread. More tools holds the other panels. Same binary |
+| UI | `GET /ui/` | The console (`web/console`): board, needs you, threads, people, tools and files. `/console` redirects here. Same binary |
 
 ## Subsystems (current state)
 

@@ -21,6 +21,7 @@ fn row_to_member(row: &sqlx::sqlite::SqliteRow) -> Result<ChannelMember, StoreEr
     })
 }
 
+#[cfg(feature = "test-support")]
 pub async fn add(
     pool: &SqlitePool,
     channel_id: ChannelId,
@@ -61,6 +62,7 @@ pub(crate) async fn add_on(
     row_to_member(&row)
 }
 
+#[cfg(feature = "test-support")]
 pub async fn remove(
     pool: &SqlitePool,
     channel_id: ChannelId,

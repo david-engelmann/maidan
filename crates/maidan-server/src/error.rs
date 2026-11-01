@@ -127,7 +127,10 @@ impl ApiError {
 
     pub(crate) fn detail(&self) -> String {
         match self {
-            Self::NotFound => "the requested resource does not exist".to_string(),
+            Self::NotFound => {
+                "the requested resource does not exist; GET /openapi.json lists the routes"
+                    .to_string()
+            }
             Self::MethodNotAllowed => {
                 "the route does not accept this method; see the Allow header".to_string()
             }

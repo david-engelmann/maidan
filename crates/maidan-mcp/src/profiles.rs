@@ -1,5 +1,5 @@
 //! Tool profiles: a short, fixed `tools/list` on its own endpoint
-//! (`POST /mcp/worker`, `POST /mcp/reviewer`).
+//! (`POST /mcp/worker`, `POST /mcp/reviewer`, `POST /mcp/coordinator`).
 //!
 //! The catalog on `POST /mcp` is filtered by the token, so two agents with
 //! different tokens get different lists and cannot share a cached prompt
@@ -19,6 +19,9 @@ pub enum Profile {
     Worker,
     /// Read what is waiting, decide, and close an approved thread.
     Reviewer,
+    /// File, find, track, steer and cancel tasks; read results and
+    /// deliveries; catch up and reply; decide gates.
+    Coordinator,
 }
 
 /// The worker profile, in name order. The waiter loop and nothing else:
@@ -70,13 +73,57 @@ pub const REVIEWER_TOOLS: &[&str] = &[
     "whoami",
 ];
 
+/// The coordinator profile, in name order: the dispatcher, inbox and
+/// approver loops. Filing, finding, tracking, steering and cancelling a task,
+/// its results and deliveries, catching up and replying, reviews, and gate
+/// decisions.
+pub const COORDINATOR_TOOLS: &[&str] = &[
+    "add_reviewer",
+    "approval_decide",
+    "assign_thread",
+    "cancel_thread",
+    "create_thread",
+    "find_thread",
+    "find_threads",
+    "get_approval_gate",
+    "get_inbox",
+    "get_review_status",
+    "get_thread_context",
+    "get_thread_result",
+    "get_thread_status",
+    "get_thread_steer",
+    "get_waiting_inbox",
+    "get_workspace_context",
+    "list_channels",
+    "list_child_threads",
+    "list_messages",
+    "list_notifications",
+    "list_recently_active_threads",
+    "list_result_deliveries",
+    "list_reviews",
+    "list_thread_results",
+    "list_threads",
+    "mark_inbox_read",
+    "mark_notification_read",
+    "post_message",
+    "search_messages",
+    "set_priority",
+    "set_thread_attributes",
+    "set_thread_steer",
+    "transition_thread",
+    "wait_for_notification",
+    "wait_for_result",
+    "whoami",
+];
+
 impl Profile {
-    pub const ALL: [Profile; 2] = [Profile::Worker, Profile::Reviewer];
+    pub const ALL: [Profile; 3] = [Profile::Worker, Profile::Reviewer, Profile::Coordinator];
 
     pub fn name(self) -> &'static str {
         match self {
             Profile::Worker => "worker",
             Profile::Reviewer => "reviewer",
+            Profile::Coordinator => "coordinator",
         }
     }
 
@@ -85,6 +132,7 @@ impl Profile {
         match self {
             Profile::Worker => "/mcp/worker",
             Profile::Reviewer => "/mcp/reviewer",
+            Profile::Coordinator => "/mcp/coordinator",
         }
     }
 
@@ -92,6 +140,7 @@ impl Profile {
         match self {
             Profile::Worker => WORKER_TOOLS,
             Profile::Reviewer => REVIEWER_TOOLS,
+            Profile::Coordinator => COORDINATOR_TOOLS,
         }
     }
 
