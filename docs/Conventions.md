@@ -251,6 +251,10 @@ The nightly jobs report them; they are findings, not failures.
 
 ### Nightly fuzzing
 
+- **The nightly toolchain is dated.** The job runs `FUZZ_TOOLCHAIN`
+  (`nightly-2026-10-31`), not the newest nightly, since a nightly can fail to
+  build a dependency (2026-11-01: sqlx-core, E0391). Move it forward on purpose
+  and run the job (`jobs: fuzz`) when you do.
 - **Every target runs.** The job builds every target in `cargo +nightly fuzz
   list`, then fuzzes each for `FUZZ_SECONDS` (300) with its seeds and
   `fuzz/json.dict`. A target that fails does not stop the others.
