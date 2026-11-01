@@ -2,7 +2,8 @@
   "about": "The MCP clients Maidan is tested against and how each one authenticates to it. client_matrix_e2e reads this file. It connects to a real server the way each client does, and checks that docs/Clients.md has each client's recipe. Each row's facts come from the client's own documentation on the date in checked. Re-read them each quarter, and when a client ships a release that changes how it does MCP.",
   "auth_modes": {
     "bearer-header": "A static Authorization: Bearer header carrying a token minted for the agent. The client sends it on every request.",
-    "anonymous-dev": "No credential. Only a dev instance with MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE answers, read-only, on one synthetic workspace."
+    "anonymous-dev": "No credential. Only a dev instance with MAIDAN_DEV_ANONYMOUS_MCP_WORKSPACE answers, read-only, on one synthetic workspace.",
+    "oauth": "OAuth 2.1 sign-in on /mcp/streamable (docs/OAuth.md): the client identifies itself by a client metadata document or a pre-registered client, and the person consents. The flow is proven by the oauth_*_e2e tests, not here."
   },
   "elicitation_values": ["supported", "none", "unverified"],
   "clients": [
@@ -53,13 +54,13 @@
     {
       "id": "claude-ai",
       "name": "claude.ai custom connector",
-      "auth": "anonymous-dev",
+      "auth": "oauth",
       "endpoint": "/mcp/streamable",
       "elicitation": "unverified",
       "release_check": true,
-      "note": "Added with No sign in. Its fixed-credentials option is not yet verified against Maidan.",
-      "source": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
-      "checked": "2026-10-06"
+      "note": "Signs in with OAuth, identified by its client metadata document on claude.ai (MAIDAN_OAUTH_CLIENT_METADATA_HOSTS=claude.ai). Recipe: examples/connect/claude.md.",
+      "source": "https://claude.com/docs/connectors/building/authentication",
+      "checked": "2026-10-31"
     },
     {
       "id": "chatgpt-developer-mode",

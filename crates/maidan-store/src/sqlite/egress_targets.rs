@@ -12,6 +12,7 @@ use maidan_types::{
 
 const COLS: &str = "id, workspace_id, surface, selector, created_at";
 
+#[cfg(feature = "test-support")]
 pub async fn allow(
     pool: &SqlitePool,
     new: NewEgressTarget,
@@ -60,6 +61,7 @@ pub async fn list(
     Ok(rows.iter().map(row_to_target).collect())
 }
 
+#[cfg(feature = "test-support")]
 pub async fn revoke(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

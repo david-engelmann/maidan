@@ -41,6 +41,12 @@
     "note": "Usage reporting can exhaust a claimed thread over REST or MCP."
   },
   {
+    "kind": "claim_stalled",
+    "disposition": "internal_only",
+    "internal_evidence": "crates/maidan-server/tests/claim_reaper_e2e.rs#reaper_reports_a_stalled_claim_once_per_reason_sqlite",
+    "note": "The claim reaper and this deployment's clock derive it from a live claim with no progress or a lease about to lapse."
+  },
+  {
     "kind": "claim_unacknowledged",
     "disposition": "internal_only",
     "internal_evidence": "crates/maidan-server/tests/claim_reaper_e2e.rs#reaper_reports_an_unacknowledged_claim_once_sqlite",

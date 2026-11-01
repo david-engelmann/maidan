@@ -234,3 +234,43 @@ async fn a_profile_refuses_a_tool_the_token_cannot_call_and_one_it_does_not_list
         assert_ne!(body["workspace_id"], json!(foreign.0));
     }
 }
+
+#[tokio::test]
+async fn the_coordinator_profile_files_tracks_and_decides_but_does_not_claim() {
+    let (server, store) = mk_server().await;
+    let (workspace, member) = tenant(&store, "alpha").await;
+    let reader = token(workspace, member, &[WORKSPACE_READ]);
+
+    let names = Profile::Coordinator.tool_names();
+    for needed in [
+        "approval_decide",
+        "cancel_thread",
+        "create_thread",
+        "find_threads",
+        "get_thread_result",
+        "get_waiting_inbox",
+        "list_result_deliveries",
+        "post_message",
+        "set_thread_steer",
+    ] {
+        assert!(names.contains(&needed), "coordinator lacks {needed}");
+    }
+    assert!(names.len() <= 40, "coordinator lists {} tools", names.len());
+    assert_eq!(Profile::Coordinator.path(), "/mcp/coordinator");
+
+    let outside = profile_call(
+        &server,
+        &reader,
+        Profile::Coordinator,
+        "tools/call",
+        json!({ "name": "claim_next_thread", "arguments": {} }),
+    )
+    .await;
+    let err = outside.error.expect("profile refusal");
+    assert_eq!(err.code, -32003);
+    assert!(
+        err.message.contains("not on the coordinator profile"),
+        "{}",
+        err.message
+    );
+}
