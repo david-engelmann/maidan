@@ -134,3 +134,49 @@ Only where a directory requires them. Take them with the UI capture script
 (`npm run capture` in `ui-tests/`, the one that made the README's board image,
 #1353) against a server built from the release being listed. Don't hand-edit a
 capture.
+
+## The Cursor package
+
+`.cursor-plugin/plugin.json` at the repository root is the Cursor Plugin
+manifest (Open Work Next 16), in the same shape as the Copilot CLI package
+(Next 10): one MCP server, the instance and the token filled in from
+variables, no host of its own. It follows the
+[Cursor plugins reference](https://cursor.com/docs/reference/plugins). It is
+**prepared, not submitted**: the submission at
+`cursor.com/marketplace/publish` is the maintainer's, after the checks under
+"Before any of this is used".
+
+**Identity: a declared worker-only listing.** The package connects to
+`POST /mcp/worker` and nothing else. One token, one duty: the worker claims,
+does and hands back tasks. Approving is not in the package; a person approves
+in the Maidan console. There is no reviewer or admin server in the manifest,
+so no single token is asked to both do the work and approve it.
+
+**Auth, stated plainly.** Cursor asks for two variables at install
+(Plugins, Configure): `MAIDAN_URL` and `MAIDAN_TOKEN`. The package stores no
+secret. The token is:
+
+- minted for each user by a workspace admin, because minting needs
+  `token:admin`; the user never holds that scope;
+- scoped to the worker's work, never `token:admin`;
+- expiring: the admin sets `expires_at` when minting. A non-expiring token or
+  an admin token must not be configured;
+- named with the listing's prefix, `cursor-` (for example `cursor-alice`), so
+  the console's token list shows which listing each token came from and an
+  admin can find and revoke them (`DELETE /tokens/{id}`).
+
+Use an `https://` address for any instance that is not on your own machine;
+the manifest cannot refuse plain http.
+
+**Trust model.** Cursor 2.6 renders MCP Apps inline, so an approval card may
+appear inside Cursor. Provider-rendered approval UI is untrusted display, the
+Maidan console is the trust root, and an approval whose evidence the human did
+not see in the console is provisional.
+
+**Terms.** Maidan is free to its users, and Maidan does not train on user
+content. The listing links the same privacy policy, terms, support contact and
+data statement as every other listing here (see "Before any of this is used");
+they are the maintainer's and are not in this repository.
+
+**Logo.** `docs/assets/listing/maidan-icon-400.png`, by relative path, as the
+reference prefers.
