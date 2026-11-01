@@ -1,13 +1,11 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "maidan",
-  "description": "Maidan MCP server for GitHub Copilot CLI",
+  "description": "Maidan worker and reviewer skills for GitHub Copilot CLI: claim, do and hand back tasks, and review them, in your own Maidan instance. Free; production is self-hosted. Add the MCP server with copilot mcp add; approvals happen in the Maidan console.",
   "version": "0.1.0",
-  "mcpServers": {
-    "maidan": {
-      "url": "${MAIDAN_URL}",
-      "headers": {
-        "Authorization": "Bearer ${MAIDAN_TOKEN}"
-      }
-    }
-  }
+  "author": { "name": "David Engelmann" },
+  "homepage": "https://github.com/david-engelmann/maidan",
+  "repository": "https://github.com/david-engelmann/maidan",
+  "license": "MIT",
+  "keywords": ["mcp", "agents", "coordination", "tasks", "self-hosted"]
 }
