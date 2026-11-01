@@ -34,6 +34,7 @@ async fn member_workspace_in_tx(
     Ok(WorkspaceId(row.get::<Uuid, _>("workspace_id")))
 }
 
+#[cfg(feature = "test-support")]
 pub async fn freeze(
     pool: &SqlitePool,
     member_id: MemberId,
@@ -88,6 +89,7 @@ pub(crate) async fn freeze_on(
 
 /// Postgres twin: `None` when the member was not frozen, and nothing is
 /// appended.
+#[cfg(feature = "test-support")]
 pub async fn unfreeze(
     pool: &SqlitePool,
     member_id: MemberId,

@@ -6,6 +6,7 @@ use crate::{share_tickets, StoreError};
 
 const COLUMNS: &str = "id, workspace_id, channel_id, owner_id, created_by, token_hash, expires_at, revoked_at, created_at";
 
+#[cfg(feature = "test-support")]
 pub async fn create(pool: &SqlitePool, new: NewShareTicket) -> Result<ShareTicket, StoreError> {
     let mut conn = pool.acquire().await?;
     create_on(&mut conn, new).await
@@ -128,6 +129,7 @@ pub async fn resolve(
     Ok(row_to_ticket(&row))
 }
 
+#[cfg(feature = "test-support")]
 pub async fn revoke(
     pool: &SqlitePool,
     workspace_id: WorkspaceId,

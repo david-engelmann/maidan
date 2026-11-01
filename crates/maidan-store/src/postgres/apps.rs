@@ -56,6 +56,7 @@ pub async fn list_apps(pool: &PgPool, workspace_id: WorkspaceId) -> Result<Vec<A
     rows.iter().map(row_to_app).collect()
 }
 
+#[cfg(feature = "test-support")]
 pub async fn create_installation(
     pool: &PgPool,
     new: NewAppInstallation,
@@ -213,6 +214,7 @@ pub async fn list_installations(
     rows.iter().map(row_to_installation).collect()
 }
 
+#[cfg(feature = "test-support")]
 pub async fn revoke_installation(
     pool: &PgPool,
     id: AppInstallationId,

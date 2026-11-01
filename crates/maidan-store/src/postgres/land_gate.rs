@@ -172,6 +172,7 @@ pub async fn standing(pool: &PgPool, thread_id: ThreadId) -> Result<LandGateStan
     standing_for(pool, thread_id).await
 }
 
+#[cfg(feature = "test-support")]
 pub async fn clear(pool: &PgPool, thread_id: ThreadId) -> Result<bool, StoreError> {
     let mut conn = pool.acquire().await?;
     clear_on(&mut conn, thread_id).await
