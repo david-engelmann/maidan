@@ -2,13 +2,14 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BoardApi, LANES, boardHealth, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { BoardApi, LANES, boardHealth, byAgent, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
 import { liveStatus } from "../core/bus.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
 
 const WIDE = "(min-width: 900px)";
+const VIEW_KEY = "maidan_console_board_view";
 function useWide(): boolean {
   return useSyncExternalStore(
     (fn) => {
@@ -59,6 +60,12 @@ export function Board() {
     [data.threads, active, now],
   );
   const lanes = useMemo(() => toLanes(shownThreads, data.gates), [shownThreads, data.gates]);
+  const [view, setViewState] = useState<"lanes" | "agents">(() => (localStorage.getItem(VIEW_KEY) === "agents" ? "agents" : "lanes"));
+  const setView = (v: "lanes" | "agents") => {
+    localStorage.setItem(VIEW_KEY, v);
+    setViewState(v);
+  };
+  const groups = useMemo(() => (view === "agents" ? byAgent(shownThreads, data.gates, data.members) : []), [view, shownThreads, data.gates, data.members]);
   const opened = data.threads.find((t) => t.id === openId) ?? null;
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
@@ -75,6 +82,10 @@ export function Board() {
             ))}
           </select>
         </label>
+        <div className="view-pick" role="group" aria-label="Board view">
+          <button type="button" className="chip-btn" aria-pressed={view === "lanes"} onClick={() => setView("lanes")}>Lanes</button>
+          <button type="button" className="chip-btn" aria-pressed={view === "agents"} onClick={() => setView("agents")}>By agent</button>
+        </div>
         <p className="board-summary" role="status" aria-live="polite">
           {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes)}
         </p>
@@ -107,7 +118,7 @@ export function Board() {
         </div>
       )}
 
-      {!wide && (
+      {!wide && view === "lanes" && (
         <div className="lane-pick" role="tablist" aria-label="Lanes">
           {LANES.map((l) => (
             <button
@@ -141,6 +152,25 @@ export function Board() {
         <div className="card">
           <p>{data.error}</p>
           <button className="button steel" onClick={() => void refresh()}>Try again</button>
+        </div>
+      ) : view === "agents" ? (
+        <div className="agents">
+          {groups.map((g) => (
+            <section key={g.id ?? "unclaimed"} className="agent-group" aria-labelledby={`ag-${g.id ?? "unclaimed"}`}>
+              <h2 id={`ag-${g.id ?? "unclaimed"}`} className="lane-head">
+                <span>{g.name}</span>
+                <span className="count">{g.cards.length}</span>
+              </h2>
+              <ul className="cards">
+                {g.cards.map((c) => (
+                  <li key={c.thread.id}>
+                    <TaskCard card={c} now={now} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          {!groups.length && data.status === "ready" && <p className="muted">No live tasks in this channel.</p>}
         </div>
       ) : (
         <div className={wide ? "lanes wide" : "lanes"}>

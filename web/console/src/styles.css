@@ -585,3 +585,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 /* Stale-data banner: the board stopped following live changes. */
 .stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: 14px; }
 .stale-banner .chip-btn { min-height: 44px; }
+
+/* Board view toggle and the by-agent view. */
+.view-pick { display: inline-flex; gap: 6px; }
+.view-pick .chip-btn { min-height: 44px; }
+.view-pick .chip-btn[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.agents { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin-top: 12px; }
+.agent-group { min-width: 0; }
