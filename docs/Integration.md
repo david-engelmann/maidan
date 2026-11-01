@@ -2309,6 +2309,12 @@ same state as `GET /messages/{id}/votes`. Take a vote back with
 your own vote is removed, a second retract removes nothing and appends no event, and the
 answer is 204 either way (MCP returns `{"removed": bool}`).
 
+To read every vote in a thread at once, call `GET /threads/{tid}/votes`
+(`workspace:read`). It answers `{"thread_id", "messages": [...]}` where each entry is
+`{"message_id", "approve", "request_changes", "ack", "votes": [Vote]}`, oldest message
+first, listing only messages that hold a vote (the thread's newest 500 messages are read).
+A board can badge cards from this one call instead of one call per message.
+
 An **`ack` vote** (`POST /messages/{id}/votes` with `kind: "ack"`) is a grounding act: the
 voter asserts "I have read and stand on this message **as it is now**." Add an optional
 `confidence` to weight it. An ack is **version-pinned by time**: it grounds the
