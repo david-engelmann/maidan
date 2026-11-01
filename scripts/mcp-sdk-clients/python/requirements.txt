@@ -1,2 +1,5 @@
 # The official MCP Python SDK, pinned to the version verified.
 mcp==2.3.0
+# python-multipart is a transitive dependency of mcp; pinned past its
+# advisories so the OSV scan of this file resolves a fixed version.
+python-multipart==0.0.33
