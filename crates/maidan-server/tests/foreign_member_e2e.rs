@@ -79,7 +79,7 @@ const EXPECTED: &[(&str, &str)] = &[
 ];
 
 const NOT_FOUND: &str =
-    "404 Not Found https://maidan.dev/problems/not-found the requested resource does not exist";
+    "404 Not Found https://maidan.dev/problems/not-found the requested resource does not exist; GET /openapi.json lists the routes";
 const MCP_NOT_FOUND: &str = "error -32004 \"resource not found\"";
 
 /// A request with [`SENTINEL`] where a member id goes.
