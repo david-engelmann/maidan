@@ -188,7 +188,8 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
   const [filter, setFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const others = [...members.values()].filter((m) => m.id !== me && m.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  const q = filter.trim().replace(/^@/, "").toLowerCase();
+  const others = [...members.values()].filter((m) => m.id !== me && (m.name.toLowerCase().includes(q) || (m.handle ?? "").toLowerCase().includes(q)));
   const group = picked.length > 1;
 
   const start = async () => {
@@ -221,7 +222,7 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
     >
       <label className="field">
         <span>To</span>
-        <input type="search" placeholder="Find a person or agent" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input type="search" placeholder="Find a person or agent" aria-label="Find a person or agent by name or handle" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </label>
       <ul className="pick-list" aria-label="People">
         {others.map((m) => (
@@ -233,7 +234,8 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
                 onChange={(e) => setPicked((p) => (e.target.checked ? [...p, m.id] : p.filter((x) => x !== m.id)))}
               />
               <span>{m.name}</span>
-              {m.kind === "agent" && <span className="tag">Agent</span>}
+              {m.handle && m.handle !== m.name ? <span className="muted small">@{m.handle}</span> : null}
+              <span className="tag">{m.kind === "agent" ? "Agent" : "Person"}</span>
             </label>
           </li>
         ))}
