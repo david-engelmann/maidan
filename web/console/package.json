@@ -7,7 +7,9 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build && node scripts/check-csp.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
-    "test": "node --experimental-strip-types --no-warnings --test scripts/*.test.mjs test/*.test.ts"
+    "test": "node --experimental-strip-types --no-warnings --test scripts/*.test.mjs test/*.test.ts",
+    "gen:api": "node scripts/gen-api-types.mjs",
+    "check:spec": "node scripts/check-spec.mjs && tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "motion": "12.23.24",

@@ -109,13 +109,14 @@ jobs:
           npm ci
           npm run typecheck
           npm run lint
-      - name: console typecheck, lint, tests and CSP-checked build
+      - name: console typecheck, lint, tests, spec check and CSP-checked build
         working-directory: web/console
         run: |
           npm ci
           npm run typecheck
           npm run lint
           npm test
+          npm run check:spec
           npm run build
       - name: fmt
         run: cargo fmt --all --check
