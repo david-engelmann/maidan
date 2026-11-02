@@ -1,7 +1,7 @@
 // The console's sign-in state, as a small store the useSession hook reads.
 // A port of the board's session.js: discovery, the cookie session, the
 // token-for-session exchange, and /me, without touching the DOM.
-import { SIGNED_OUT, apiPath, credentialMode, onAuthLost, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
+import { SIGNED_OUT, apiPath, bumpAuthEpoch, signOutPostsLogout, credentialMode, onAuthLost, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
 
 export type Discovery = {
   /** False when discovery has not been answered yet (unreachable, 5xx, 429). */
@@ -181,6 +181,7 @@ export class SessionStore {
    */
   async signInWithToken(secret: string): Promise<{ ok: boolean; error?: string }> {
     this.epoch++;
+    bumpAuthEpoch();
     const gen = ++this.gen;
     if (this.state.error) this.set({ error: null });
     let res: Response;
@@ -231,9 +232,24 @@ export class SessionStore {
     this.set({ workspaceId });
   }
 
-  /** Forget this tab's credentials; the caller posts /auth/logout when due. */
+  /** Sign out for real: post /auth/logout when the session cookie is ours, then forget the tab's credentials. */
+  async logout(): Promise<void> {
+    const s = this.state;
+    const c = s.credentials;
+    try {
+      if (signOutPostsLogout(s.discovery.sessions, c.sessionMemberId)) {
+        await this.fetchFn(`${c.base}/auth/logout`, writeInit({ method: "POST", credentials: "include" }));
+      }
+    } catch {
+      /* the tab forgets its credential either way */
+    }
+    this.signOut();
+  }
+
+  /** Forget this tab's credentials; logout() posts /auth/logout when due. */
   signOut(): void {
     this.epoch++;
+    bumpAuthEpoch();
     this.gen++;
     this.set({
       status: "signed-out",
@@ -242,6 +258,7 @@ export class SessionStore {
       displayName: null,
       mode: null,
       grant: null,
+      workspaceId: null,
     });
   }
 }

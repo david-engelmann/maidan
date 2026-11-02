@@ -1,7 +1,7 @@
 // Needs you: the reviews, approval gates, blocks and questions waiting on the
 // signed-in member. A port of the classic board's needs.js and the gate half
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
-import { guarded, apiPath, headers, failure, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, headers, failure, keepAuth, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
 
 export type NeedKind = "review_request" | "unassigned_review" | "open_gate" | "blocked" | "question";
@@ -370,6 +370,7 @@ export class NeedsApi {
       body: JSON.stringify({ gate_id: link.gateId, token: link.token }),
     });
     const res = await this.fetchFn(`${c.base}/auth/approval-confirmations/confirm`, init);
+    if (res.status === 401 && c.pastedToken.trim() && !c.tokenSession) keepAuth(res);
     if (!res.ok) await fail(res, this.mode());
   }
 

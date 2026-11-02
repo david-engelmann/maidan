@@ -153,7 +153,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .palette { width: min(640px, 100%); background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow-3); }
 .palette-field { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); border-bottom: 1px solid var(--line); }
 .palette-input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: var(--text-lg); padding: var(--space-4) 0; color: var(--ink); }
-.palette-input:focus-visible { outline: none; }
 .palette-input::placeholder { color: var(--muted); }
 .palette-list { list-style: none; margin: 0; padding: var(--space-2); max-height: min(60dvh, 540px); overflow: auto; scroll-padding: var(--space-2); }
 .palette-list [role="option"] { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: var(--space-2) var(--space-3); border-radius: var(--r-sm); cursor: pointer; }
@@ -650,12 +649,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--ink); }
   transition: background-color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), box-shadow var(--dur-2) var(--ease), transform var(--dur-1) var(--ease);
 }
 @media (hover: hover) {
-  .icon-btn:hover, .conv:not(.on):hover, .button.ghost:hover, .btn:not(.go):not([disabled]):hover { background: var(--hover); }
+  .icon-btn:hover, .conv:not(.on):hover, .button.ghost:not([disabled]):hover, .btn:not(.go):not([disabled]):hover { background: var(--hover); }
   .seg a:not([aria-selected="true"]):hover, .seg button:not(.on):hover, .tabs a:not([aria-current="page"]):hover { color: var(--ink); }
   .button.ink:not([disabled]):hover, .btn.go:not([disabled]):hover { background: color-mix(in srgb, var(--ink) 86%, var(--paper)); }
   .task:hover { border-color: var(--line-strong); box-shadow: var(--shadow-2); }
 }
 .button:focus-visible, .btn:focus-visible, .conv:focus-visible, .seg a:focus-visible, .seg button:focus-visible, .task:focus-visible, .lane-pick button:focus-visible, .channel-pick select:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.seg a:focus-visible, .seg button:focus-visible { outline-offset: -2px; }
 /* Disabled reads as disabled without dropping text below AA. */
 .button[disabled], .btn[disabled], .btn.send:disabled { opacity: 1; background: transparent; color: var(--muted); border-color: var(--line); box-shadow: none; cursor: not-allowed; }
 .seg { flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
@@ -684,13 +684,13 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .content:has(.board) { padding-right: var(--pad); }
 .board { gap: var(--space-4); }
 .board-bar { gap: var(--space-3); }
-.channel-pick { position: relative; flex: none; gap: 0; font-size: var(--text-sm); color: var(--ink); }
+.channel-pick { position: relative; flex: 0 1 auto; min-width: 0; gap: 0; font-size: var(--text-sm); color: var(--ink); }
 .channel-pick .channel-hash { position: absolute; left: 12px; color: var(--muted); pointer-events: none; }
 .channel-pick svg { position: absolute; right: 8px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
-.channel-pick select, .content .channel-pick select { appearance: none; -webkit-appearance: none; width: auto; min-width: 0; min-height: 34px; padding: 0 30px 0 24px; border-radius: var(--r-md); background: transparent; border-color: transparent; font-size: var(--text-sm); font-weight: 600; background-image: none; cursor: pointer; transition: background-color .15s, border-color .15s; }
+.channel-pick select, .content .channel-pick select { appearance: none; -webkit-appearance: none; width: auto; max-width: 100%; min-width: 0; min-height: 34px; padding: 0 30px 0 24px; text-overflow: ellipsis; border-radius: var(--r-md); background: transparent; border-color: transparent; font-size: var(--text-sm); font-weight: 600; background-image: none; cursor: pointer; transition: background-color .15s, border-color .15s; }
 .channel-pick select:hover { background: var(--paper-2); border-color: var(--line); }
 .board-summary { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-@media (min-width: 720px) { .channel-pick { flex: none; } }
+@media (min-width: 720px) { .channel-pick { flex: 0 1 auto; } }
 
 .lanes.wide { grid-template-columns: repeat(4, minmax(220px, 1fr)); align-items: stretch; gap: var(--space-3); min-height: calc(100dvh - 290px); overflow-x: auto; padding-bottom: var(--space-2); }
 .lanes.wide .lane { display: flex; flex-direction: column; background: color-mix(in srgb, var(--ink) 3%, transparent); border: 1px solid color-mix(in srgb, var(--line) 60%, transparent); border-radius: var(--r-lg); padding: var(--space-2); }
@@ -747,7 +747,6 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .state-text::first-letter { text-transform: uppercase; }
 
 /* Tools tabs: one underlined nav; on phones it scrolls under an edge fade. */
-@media (min-width: 720px) { .seg-wrap::after { display: none; } }
 @media all {
   .seg-wrap { border-bottom: 1px solid var(--line); margin-bottom: var(--space-4); }
   .seg-wrap::after { border-radius: 0; bottom: 1px; }
@@ -773,6 +772,7 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .tool-panel .button, .artifact .button { min-height: 38px; padding: 0 14px; border-radius: var(--r-md); font-size: var(--text-sm); font-weight: 500; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
 .tool-panel .button:hover, .artifact .button:hover { border-color: color-mix(in srgb, var(--ink) 22%, var(--line)); }
 .tool-panel .button.danger, .artifact .button.danger { color: var(--danger); }
+.tool-panel .button[disabled], .artifact .button[disabled] { background: transparent; color: var(--muted); border-color: var(--line); box-shadow: none; cursor: not-allowed; }
 .tool-panel .row-form .button { align-self: end; min-height: 44px; }
 @media (prefers-reduced-motion: reduce) { .pins.facts-panel summary::before { transition: none; } }
 
@@ -931,6 +931,7 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
   }
   .need, .tool-panel, .content .card { background: var(--elev-1); border-color: var(--hairline); }
   .sheet, .toast { background: var(--elev-2); border-color: var(--hairline); }
+  .toast:not(.error) { color: var(--ink); }
   .palette { background: var(--elev-3); border-color: var(--hairline); }
   .rail { border-color: var(--hairline); }
 }
