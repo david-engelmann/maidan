@@ -1,16 +1,18 @@
 //! `GET /tools` is the caller's `tools/list`, over REST. Both read
 //! `maidan_mcp::tools::catalog_for`, and this pins that they stay one list:
 //! a capability-scoped token gets the same tools, with the same schemas, from
-//! each surface.
+//! each surface. The console's session-authed `GET /ui/api/tools` serves the
+//! same handler, so a signed-in person reads that one list too.
 
 mod seeded_workspace;
 
 use std::collections::BTreeMap;
 
 use maidan_auth::capability;
-use maidan_types::{MemberKind, NewWorkspace};
+use maidan_store::prelude::*;
+use maidan_types::{MemberKind, NewMaidanSession, NewWorkspace};
 use reqwest::{Method, StatusCode};
-use seeded_workspace::{member, spawn, token};
+use seeded_workspace::{member, spawn, spawn_with, token};
 use serde_json::{json, Value};
 
 fn by_name(tools: &Value) -> BTreeMap<String, Value> {
@@ -85,4 +87,102 @@ async fn the_rest_tool_catalog_is_the_mcp_tools_list() {
 
     let refused = h.send(Method::GET, "/tools", "not-a-token", None).await;
     assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+}
+
+const SESSION_SECRET: &[u8] = b"tool-catalog-e2e-session-secret-32b!";
+
+#[tokio::test]
+async fn the_console_session_reads_the_same_tool_catalog() {
+    let h = spawn_with(|state| {
+        state.sessions = Some(maidan_server::session::SessionSettings {
+            secret: std::sync::Arc::from(SESSION_SECRET),
+            ttl_secs: 3600,
+            cookie_secure: false,
+        });
+    })
+    .await;
+    let ws = h
+        .store
+        .create_workspace(NewWorkspace {
+            name: "tools-ui".into(),
+        })
+        .await
+        .unwrap()
+        .id;
+    let m = member(h.store.as_ref(), ws, "person", MemberKind::Human).await;
+    let caps = vec![
+        capability::WORKSPACE_READ.to_string(),
+        capability::SEARCH_QUERY.to_string(),
+    ];
+    let bearer = token(h.store.as_ref(), ws, m, caps).await;
+
+    // The bearer gets one list from both paths: one handler, no second copy.
+    let rest: Value = h
+        .send(Method::GET, "/tools", &bearer, None)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let ui = h.send(Method::GET, "/ui/api/tools", &bearer, None).await;
+    assert_eq!(ui.status(), StatusCode::OK);
+    let ui: Value = ui.json().await.unwrap();
+    assert_eq!(
+        by_name(&rest["tools"]),
+        by_name(&ui["tools"]),
+        "GET /ui/api/tools is GET /tools"
+    );
+
+    // A signed-in session with no token behind it, as after an OIDC sign-in.
+    let session = h
+        .store
+        .create_session(NewMaidanSession {
+            workspace_id: ws,
+            member_id: m,
+            api_token_id: None,
+            oidc_identity_id: None,
+            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+        })
+        .await
+        .unwrap();
+    let mut headers = axum::http::HeaderMap::new();
+    maidan_server::session::set_session_cookie(
+        &mut headers,
+        session.id,
+        3600,
+        false,
+        SESSION_SECRET,
+    )
+    .unwrap();
+    let cookie = headers
+        .get(axum::http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let signed_in = h
+        .client
+        .get(h.url("/ui/api/tools"))
+        .header("Cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(signed_in.status(), StatusCode::OK);
+    let signed_in: Value = signed_in.json().await.unwrap();
+    let signed_in = by_name(&signed_in["tools"]);
+    assert!(!signed_in.is_empty(), "a signed-in member lists some tools");
+    let registry = by_name(&Value::Array(maidan_mcp::tools::catalog()));
+    for (name, tool) in &signed_in {
+        for field in ["title", "description", "inputSchema", "annotations"] {
+            assert_eq!(
+                tool[field], registry[name][field],
+                "{name}.{field} differs between GET /ui/api/tools and the registry"
+            );
+        }
+    }
+
+    let anonymous = h.client.get(h.url("/ui/api/tools")).send().await.unwrap();
+    assert_eq!(anonymous.status(), StatusCode::UNAUTHORIZED);
 }

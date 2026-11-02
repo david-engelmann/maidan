@@ -680,6 +680,7 @@ fn requires_credential(op: &Operation) -> bool {
         paths::ui_list_threads,
         paths::ui_list_messages,
         paths::ui_list_reviews,
+        paths::ui_list_tool_catalog,
         paths::ui_list_thread_artifacts,
         paths::ui_list_thread_transitions,
         paths::ui_get_member,

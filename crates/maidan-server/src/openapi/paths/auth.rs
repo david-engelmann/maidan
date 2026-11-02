@@ -483,6 +483,22 @@ pub fn ui_list_messages() {}
 )]
 pub fn ui_list_reviews() {}
 
+/// List the tools the caller's MCP tools/list returns (console)
+#[utoipa::path(
+    get,
+    path = "/ui/api/tools",
+    tag = "auth",
+    security(
+        ("bearerAuth" = []),
+        ("sessionCookie" = []),
+    ),
+    responses(
+        (status = 200, description = "`{ tools: [...] }`: the caller's tools/list catalog, each tool's name, title, description, inputSchema (JSON Schema) and annotations", body = serde_json::Value),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn ui_list_tool_catalog() {}
+
 /// List a thread's linked artifacts (console)
 ///
 /// The bearer tree's `GET /threads/{id}/artifacts` for the console: who linked
