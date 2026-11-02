@@ -57,10 +57,10 @@ test("a refused close is visible on its card, with the server's sentence", async
 
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.desk_channel_id);
-  const card = page.locator("button.task", { has: page.locator(".chip-refused") });
+  const card = page.locator("button.task", { has: page.locator(".flag-refused") });
   await expect(card).toHaveCount(1);
-  await expect(card.locator(".chip-refused")).toHaveText("Close refused");
-  await expect(card.locator(".chip-refused")).toHaveAttribute("title", note.body);
+  await expect(card.locator(".flag-refused")).toHaveText("Close refused");
+  await expect(card.locator(".flag-refused")).toHaveAttribute("title", note.body);
   await expect(card).toHaveAttribute("aria-label", /close refused$/);
   const after = await (await request.get(`/threads/${fx.desk_waiting_thread_id}`, { headers: bearer(fx.review_token) })).json();
   expect(after.state).toBe("in_review");
@@ -122,7 +122,8 @@ test("the owner closes a review nobody was named for, and the board says closed 
   expect(thread.closed_without_review).toBe(true);
   await page.goto("/ui/#/board");
   const card = page.locator("button.task", { has: page.locator(".task-title", { hasText: thread.title }) });
-  await expect(card.locator(".state")).toHaveText("closed without review");
+  await expect(card.locator(".state-text")).toHaveText("Unreviewed");
+  await expect(card.locator(".state")).toHaveAttribute("title", "Closed without review");
   await card.click();
   await expect(page.getByRole("dialog")).toContainText("Closed by");
   await expect(page.getByRole("dialog")).not.toContainText("Completed by");
