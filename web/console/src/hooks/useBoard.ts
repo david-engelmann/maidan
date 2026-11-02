@@ -11,6 +11,8 @@ export type BoardData = {
   threads: Thread[];
   gates: Record<string, Gate>;
   members: Map<string, Member>;
+  /** The member read has finished, even if it failed; names can fall back to ids. */
+  membersRead: boolean;
   /** The server's sentence for each in-review task whose close it refused. */
   refusals: Map<string, string>;
   /** Ids whose card changed in the last live refresh, so it can flash once. */
@@ -19,7 +21,7 @@ export type BoardData = {
 
 const CHANNEL_KEY = "maidan_console_channel";
 
-const EMPTY: BoardData = { status: "idle", error: null, channels: [], channelId: null, threads: [], gates: {}, members: new Map(), refusals: new Map(), fresh: new Set() };
+const EMPTY: BoardData = { status: "idle", error: null, channels: [], channelId: null, threads: [], gates: {}, members: new Map(), membersRead: false, refusals: new Map(), fresh: new Set() };
 
 function sig(th: Thread): string {
   return `${th.state}|${th.assignee_id ?? ""}|${th.work_started_at ?? ""}|${th.updated_at ?? ""}`;
@@ -54,7 +56,7 @@ export function useBoard(session: SessionState, api: BoardApi, linked: string | 
           next.set(th.id, s);
         }
         seen.current = next;
-        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), refusals, fresh });
+        setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), membersRead: true, refusals, fresh });
         return true;
       } catch (e) {
         if (mine !== gen.current) return false;

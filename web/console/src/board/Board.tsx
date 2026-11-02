@@ -276,6 +276,7 @@ export function Board() {
         thread={opened}
         gate={opened ? data.gates[opened.id] : undefined}
         members={data.members}
+        membersRead={data.membersRead}
         api={api}
         now={now}
         onClose={() => setOpenId(null)}

@@ -16,6 +16,8 @@ type Props = {
   thread: Thread | null;
   gate?: Gate;
   members: Map<string, Member>;
+  /** The member read has finished, even if it failed. */
+  membersRead?: boolean;
   api: BoardApi;
   now: number;
   onClose: () => void;
@@ -60,14 +62,16 @@ export function TaskSheet(props: Props) {
   );
 }
 
-function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: Props & { thread: Thread }) {
+function SheetBody({ thread: th, gate, members, membersRead, api, now, onClose, onChanged }: Props & { thread: Thread }) {
   const { session } = useSession();
   const box = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<"claim" | "close" | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [facts, setFacts] = useState<CloseFacts | null>(null);
+  // Bumped by an in-sheet action, so the Result and evidence read again.
+  const [rev, setRev] = useState(0);
   const chrome = chromeFor(th, gate);
-  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? (members.size ? id.slice(0, 8) : "…")) : "");
+  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? ((membersRead ?? members.size > 0) ? id.slice(0, 8) : "…")) : "");
   const terminal = th.state === "closed" || th.state === "archived";
   const can = actionsFor(th, session.memberId, hasToken(session.credentials));
 
@@ -188,10 +192,13 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       )}
       {th.status?.note && <p className="muted">{th.status.note}</p>}
 
-      <SheetContext tid={th.id} />
+      <SheetContext tid={th.id} rev={rev} />
       <a className="ev-open" href={convHash({ kind: "task", id: th.id })}>Open full thread</a>
 
-      <SheetActions th={th} api={api} can={can} claimWhy={claimWhy} busy={busy} act={act} onChanged={onChanged} setNote={setNote} />
+      <SheetActions th={th} api={api} can={can} claimWhy={claimWhy} busy={busy} act={act} onChanged={() => {
+        setRev((r) => r + 1);
+        onChanged();
+      }} setNote={setNote} />
       <p className="sheet-note" role="status" aria-live="polite">{note}</p>
     </div>
   );
@@ -372,7 +379,7 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
 }
 
 /** The task's evidence and latest messages, as the review pane shows them. */
-function SheetContext({ tid }: { tid: string }) {
+function SheetContext({ tid, rev }: { tid: string; rev: number }) {
   const tools = useToolsApi();
   const [shas, setShas] = useState<{ tid: string; list: string[] } | null>(null);
   useEffect(() => {
@@ -384,6 +391,6 @@ function SheetContext({ tid }: { tid: string }) {
     return () => {
       live = false;
     };
-  }, [tools, tid]);
-  return <div className="sheet-context"><ReviewContext tid={tid} shas={shas?.tid === tid ? shas.list : []} /></div>;
+  }, [tools, tid, rev]);
+  return <div className="sheet-context"><ReviewContext tid={tid} rev={rev} shas={shas?.tid === tid ? shas.list : []} /></div>;
 }

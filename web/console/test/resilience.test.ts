@@ -86,3 +86,10 @@ test("a 401 while signed out leaves the sign-in card alone", async () => {
   assert.equal(store.getSnapshot().error, null);
   unwatch();
 });
+
+test("a task's result: none recorded is null, a failed read throws", async () => {
+  const none = new ThreadsApi(async () => json(404, { error: "not found" }), creds, () => "session");
+  assert.equal(await none.result("t1"), null);
+  const down = new ThreadsApi(async () => json(500, { error: "boom" }), creds, () => "session");
+  await assert.rejects(down.result("t1"));
+});

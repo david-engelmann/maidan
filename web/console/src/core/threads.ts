@@ -52,8 +52,9 @@ export function dmOther(dm: Dm, me: string): string {
 
 /** A member's name. Until the member list has loaded this is "", so screens
  * show a placeholder rather than flashing a raw id. */
-export function nameOf(members: Map<string, Member>, id: string): string {
-  return members.get(id)?.name ?? (members.size === 0 ? "" : id.slice(0, 8));
+/** A member's name; once the member read has finished, an unknown id shows its prefix. */
+export function nameOf(members: Map<string, Member>, id: string, read = members.size > 0): string {
+  return members.get(id)?.name ?? (read ? id.slice(0, 8) : "");
 }
 
 export function dmConversation(dm: Dm, me: string, members: Map<string, Member>): Conversation {
@@ -442,6 +443,19 @@ export class ThreadsApi {
       return await this.get<T>(path);
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * The task's result, null when none is recorded (404). Any other failure
+   * throws, so a reader can tell "could not read" from "nothing yet".
+   */
+  async result(threadId: string): Promise<TaskResult | null> {
+    try {
+      return await this.get<TaskResult>(`/threads/${threadId}/result`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
     }
   }
 

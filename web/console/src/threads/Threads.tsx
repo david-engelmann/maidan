@@ -274,7 +274,7 @@ export function Threads() {
       </section>
       {open ? (
         current ? (
-          <ConversationView key={`${current.ref.kind}:${current.ref.id}`} api={deps.threads} conv={current} me={me} members={board.members} />
+          <ConversationView key={`${current.ref.kind}:${current.ref.id}`} api={deps.threads} conv={current} me={me} members={board.members} membersRead={board.membersRead} />
         ) : (
           <section className="conv-open" aria-label="Conversation">
             <header className="conv-head">
@@ -367,7 +367,7 @@ function NewConversation({ api, me, workspaceId, members, onOpened }: { api: Thr
   );
 }
 
-function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member> }) {
+function ConversationView({ api, conv, me, members, membersRead }: { api: ThreadsApi; conv: Conversation; me: string | null; members: Map<string, Member>; membersRead: boolean }) {
   const { data, send, react, refresh } = useConversation(api, conv.threadId, me);
   const [pins, setPins] = useState<{ thread: string; ids: ReadonlySet<string> }>({ thread: conv.threadId, ids: new Set() });
   const pinned = pins.thread === conv.threadId ? pins.ids : EMPTY_PINS;
@@ -502,7 +502,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                   className="link-btn"
                   onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
                 >
-                  <b className={members.size ? undefined : "name-pending"}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                  <b className={membersRead ? undefined : "name-pending"}>{nameOf(members, m.author_id, membersRead)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
               </li>
             ))}
@@ -527,6 +527,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 m={m}
                 head={startsGroup(messages[i - 1], m)}
                 members={members}
+                membersRead={membersRead}
                 mine={m.author_id === me}
                 reactions={data.reactions[m.id] ?? []}
                 onReact={react}
@@ -567,6 +568,7 @@ type RowProps = {
   m: Message;
   head: boolean;
   members: Map<string, Member>;
+  membersRead: boolean;
   mine: boolean;
   reactions: Reaction[];
   onReact: (id: string, emoji: string, on: boolean) => Promise<void>;
@@ -577,7 +579,7 @@ type RowProps = {
   api: ThreadsApi;
 };
 
-function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
+function MessageRow({ m, head, members, membersRead, mine, reactions, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
   // Destructive moves take two taps: the first arms, the second does it.
   const [armed, setArmed] = useState<"delete" | "purge" | null>(null);
   const [picking, setPicking] = useState(false);
@@ -591,7 +593,7 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
       () => setHistory("Could not load the edit history."),
     );
   };
-  const who = nameOf(members, m.author_id);
+  const who = nameOf(members, m.author_id, membersRead);
   const slash = slashResult(m.metadata);
   const toggle = (emoji: string, on: boolean) => {
     setPicking(false);
@@ -630,7 +632,7 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
               <ol>
                 {history.map((e, k) => (
                   <li key={k}>
-                    <p className="muted small">{clockTime(e.edited_at)} · {nameOf(members, e.editor_id)}</p>
+                    <p className="muted small">{clockTime(e.edited_at)} · {nameOf(members, e.editor_id, membersRead)}</p>
                     <p className="small"><del>{e.body_before}</del></p>
                     <p className="small">{e.body_after}</p>
                   </li>

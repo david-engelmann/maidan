@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Credentials } from "../src/core/api.ts";
 import {
+  nameOf,
   BODY_REQUIRED,
   CHOOSE_WHO,
   GROUP_MIN,
@@ -243,4 +244,10 @@ test("unread compares instants, whatever fractional digits each side carries", (
   // As strings "…00Z" sorts after "…00.000Z" ("Z" > "."), though they are the same instant.
   assert.equal(isUnread(c, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.000Z" } }), false);
   assert.equal(isUnread({ ...c, updatedAt: "2026-11-02T10:00:01Z" }, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.900Z" } }), true);
+});
+
+test("names: an unknown id shows its prefix once the member read has finished, even empty", () => {
+  const none = new Map();
+  assert.equal(nameOf(none, "0123456789abcdef"), "");
+  assert.equal(nameOf(none, "0123456789abcdef", true), "01234567");
 });

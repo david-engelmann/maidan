@@ -43,7 +43,8 @@ export function imageType(meta: ArtifactMeta): string | null {
   return IMAGE_EXT[(meta.filename ?? "").split(".").pop()?.toLowerCase() ?? ""] ?? null;
 }
 
-export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
+/** `rev` changes after an action in the sheet, so the result and messages read again. */
+export function ReviewContext({ tid, shas, rev = 0 }: { tid: string; shas: string[]; rev?: number }) {
   const { store, session } = useSession();
   const tools = useToolsApi();
   const apis = useMemo(() => {
@@ -52,24 +53,27 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
     const mode = () => store.getSnapshot().mode;
     return { threads: new ThreadsApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
-  const [result, setResult] = useState<{ tid: string; text: string | null } | null>(null);
-  const [recent, setRecent] = useState<{ tid: string; rows: Message[] } | null>(null);
+  // `failed` means the read did not go through, which is not the same as empty.
+  const [result, setResult] = useState<{ tid: string; text: string | null; failed: boolean } | null>(null);
+  const [recent, setRecent] = useState<{ tid: string; rows: Message[]; failed: boolean } | null>(null);
+  const [retry, setRetry] = useState(0);
   const [members, setMembers] = useState<Map<string, Member>>(new Map());
 
   useEffect(() => {
     let live = true;
-    void apis.threads.facts(tid).then(
-      (f) => live && setResult({ tid, text: resultText(f.result?.result) }),
-      () => live && setResult({ tid, text: null }),
+    void apis.threads.result(tid).then(
+      (r) => live && setResult({ tid, text: resultText(r?.result), failed: false }),
+      () => live && setResult({ tid, text: null, failed: true }),
     );
     void apis.threads.messages(tid).then(
-      (ms) => live && setRecent({ tid, rows: ms.filter((m) => !m.tombstoned_at && m.body.trim()).slice(-RECENT) }),
-      () => live && setRecent({ tid, rows: [] }),
+      (ms) => live && setRecent({ tid, rows: ms.filter((m) => !m.tombstoned_at && m.body.trim()).slice(-RECENT), failed: false }),
+      () => live && setRecent({ tid, rows: [], failed: true }),
     );
     return () => {
       live = false;
     };
-  }, [apis, tid]);
+  }, [apis, tid, rev, retry]);
+  const again = <button type="button" className="btn text" onClick={() => setRetry((n) => n + 1)}>Try again</button>;
 
   useEffect(() => {
     if (!session.workspaceId) return;
@@ -91,6 +95,8 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
         <h4 className="rc-head">Result</h4>
         {!res ? (
           <p className="muted small">Loading the result…</p>
+        ) : res.failed ? (
+          <p className="err small">Could not read the result. {again}</p>
         ) : res.text ? (
           <div className="rc-body msg-body">
             <MessageBody body={res.text} />
@@ -113,6 +119,8 @@ export function ReviewContext({ tid, shas }: { tid: string; shas: string[] }) {
         <h4 className="rc-head">Recent messages</h4>
         {!msgs ? (
           <p className="muted small">Loading…</p>
+        ) : recent?.failed ? (
+          <p className="err small">Could not read the messages. {again}</p>
         ) : msgs.length ? (
           <ol className="rc-msgs">
             {msgs.map((m) => (
