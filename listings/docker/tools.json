@@ -241,6 +241,14 @@
       "name": "unlink_thread_artifact"
     },
     {
+      "description": "Record evidence on a thread: a test_run, ci_run, diff, review_verdict, screenshot (by URL) or note, with where it came from. Give at least one of url, sha256 or note; a screenshot needs a url and a note needs a note. Publishes evidence_added. Does not move the thread's version. Requires workspace:write.",
+      "name": "add_evidence_record"
+    },
+    {
+      "description": "The evidence recorded on the thread, oldest first, each with its kind, source, who recorded it and when. Requires workspace:read.",
+      "name": "list_evidence_records"
+    },
+    {
       "description": "Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.",
       "name": "set_wip_limit"
     },

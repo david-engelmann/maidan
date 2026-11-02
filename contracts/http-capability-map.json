@@ -721,6 +721,18 @@
   },
   {
     "method": "GET",
+    "path": "/threads/{id}/evidence-records",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "POST",
+    "path": "/threads/{id}/evidence-records",
+    "capability": "workspace:write",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/threads/{id}/digest",
     "capability": "workspace:read",
     "surface": "http"

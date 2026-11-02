@@ -3034,6 +3034,7 @@
           "review_submitted",
           "approval_dismissed",
           "wait_timed_out",
+          "evidence_added",
           "schedule_skipped",
           "thread_spawn_denied",
           "projector_misconfigured",
@@ -3159,6 +3160,75 @@
         ],
         "type": "object"
       },
+      "EvidenceRecord": {
+        "description": "One evidence record on a thread.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvidenceRecordKind"
+          },
+          "note": {
+            "description": "What it shows, in words.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recorded_by": {
+            "$ref": "#/components/schemas/MemberId",
+            "description": "The member whose token recorded it."
+          },
+          "sha256": {
+            "description": "The sha256 of its content, lowercase hex.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the evidence came from, such as `github-actions`, `cargo test`\nor `pr-review`. Free text, as the recorder names it.",
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "url": {
+            "description": "Where to look at it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "kind",
+          "source",
+          "recorded_by",
+          "recorded_at"
+        ],
+        "type": "object"
+      },
+      "EvidenceRecordKind": {
+        "description": "What a record is evidence of.",
+        "enum": [
+          "test_run",
+          "ci_run",
+          "diff",
+          "review_verdict",
+          "screenshot",
+          "note"
+        ],
+        "type": "string"
+      },
       "EvidenceTimeline": {
         "description": "A thread's evidence, oldest first.",
         "properties": {
@@ -3214,6 +3284,30 @@
             "required": [
               "at",
               "artifact",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Someone attached an evidence record: a test run, a CI run, a diff,\nan outside review verdict, a screenshot or a note. Records are not\npinned at a hand-off, so adding one does not change\n`evidence_changed_since_review`.",
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "evidence_recorded"
+                ],
+                "type": "string"
+              },
+              "record": {
+                "$ref": "#/components/schemas/EvidenceRecord"
+              }
+            },
+            "required": [
+              "at",
+              "record",
               "kind"
             ],
             "type": "object"
@@ -5881,6 +5975,45 @@
         "required": [
           "part_number",
           "etag"
+        ],
+        "type": "object"
+      },
+      "NewEvidenceRecord": {
+        "additionalProperties": false,
+        "description": "A record to add: `POST /threads/{id}/evidence-records` and the\n`add_thread_evidence` tool.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EvidenceRecordKind"
+          },
+          "note": {
+            "description": "At most 4000 characters. Required for a `note`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "description": "A sha256, 64 hex characters; stored lowercase.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the evidence came from, 1 to 200 characters.",
+            "type": "string"
+          },
+          "url": {
+            "description": "An `http` or `https` URL, at most 2048 bytes.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source"
         ],
         "type": "object"
       },
@@ -25856,7 +25989,7 @@
                 }
               }
             },
-            "description": "Everything recorded as the thread's evidence, oldest first: linked artifacts, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only."
+            "description": "Everything recorded as the thread's evidence, oldest first: linked artifacts, evidence records, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -25886,6 +26019,158 @@
           }
         ],
         "summary": "A thread's evidence timeline",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/evidence-records": {
+      "get": {
+        "operationId": "list_evidence_records",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceRecord"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "The thread's evidence records, oldest first"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "A thread's evidence records",
+        "tags": [
+          "threads"
+        ]
+      },
+      "post": {
+        "operationId": "add_evidence_record",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEvidenceRecord"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceRecord"
+                }
+              }
+            },
+            "description": "The record as stored. Emits evidence_added. Records are append-only and are not pinned at a review hand-off."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Attach an evidence record to a thread",
         "tags": [
           "threads"
         ]

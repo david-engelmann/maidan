@@ -12,6 +12,7 @@
     "maidan.event.claim_failed/1",
     "maidan.event.claim_stalled/1",
     "maidan.event.claim_unacknowledged/1",
+    "maidan.event.evidence_added/1",
     "maidan.event.intake_accepted/1",
     "maidan.event.intake_proposed/1",
     "maidan.event.intake_rejected/1",

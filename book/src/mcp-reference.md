@@ -2069,6 +2069,81 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 }
 ```
 
+### `add_evidence_record`
+
+**Add evidence record.** Record evidence on a thread: a test_run, ci_run, diff, review_verdict, screenshot (by URL) or note, with where it came from. Give at least one of url, sha256 or note; a screenshot needs a url and a note needs a note. Publishes evidence_added. Does not move the thread's version. Requires workspace:write.
+
+**Capability:** `workspace:write`
+
+**Hints:** `readOnlyHint: false`, `destructiveHint: false`, `idempotentHint: false`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "kind": {
+      "enum": [
+        "test_run",
+        "ci_run",
+        "diff",
+        "review_verdict",
+        "screenshot",
+        "note"
+      ],
+      "type": "string"
+    },
+    "note": {
+      "description": "at most 4000 characters",
+      "type": "string"
+    },
+    "sha256": {
+      "description": "a sha256, 64 hex characters",
+      "type": "string"
+    },
+    "source": {
+      "description": "where the evidence came from, 1 to 200 characters",
+      "type": "string"
+    },
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "url": {
+      "description": "an http or https URL",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id",
+    "kind",
+    "source"
+  ],
+  "type": "object"
+}
+```
+
+### `list_evidence_records`
+
+**List evidence records.** The evidence recorded on the thread, oldest first, each with its kind, source, who recorded it and when. Requires workspace:read.
+
+**Capability:** `workspace:read`
+
+**Hints:** `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: false`
+
+```json
+{
+  "properties": {
+    "thread_id": {
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "thread_id"
+  ],
+  "type": "object"
+}
+```
+
 ### `set_wip_limit`
 
 **Set WIP limit.** Set or clear this workspace's WIP limit (G11): the max concurrent live claims any one member may hold. limit >= 0 caps it (0 freezes claiming); omit or null clears it (unlimited). Applies to your own workspace. Requires workspace:write.
