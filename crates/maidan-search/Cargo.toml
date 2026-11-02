@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Full-text + vector search over Maidan messages and artifacts."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [dependencies]
 maidan-types = { path = "../maidan-types" }
@@ -56,3 +59,7 @@ required-features = ["sqlite-vec"]
 [[bench]]
 name = "search_hot"
 harness = false
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
