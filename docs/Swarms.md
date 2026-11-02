@@ -318,12 +318,15 @@ typed:
 |---|---|---|
 | Close, as `duplicate`, `superseded` or `abandoned` | `POST /threads/{id}/close-abandoned` with `{"reason": "duplicate", "duplicate_of": "<id>"}` | `close_abandoned_thread` |
 
-The thread must be open or in review. Its producer, its claim holder or a
-maintainer may close it, and the close is audited as `thread.close_abandoned`.
+The thread must be open or in review. The call needs `thread:transition`
+and access to the thread; with it the thread's producer, its claim holder or a
+maintainer (`token:admin`) may close it. Anyone else gets `403`. The close is
+audited as `thread.close_abandoned`, with the reason.
 A thread that has a result keeps every landing gate; one with no result skips
-the review gates, since there is nothing to review. A `duplicate` must name
-`duplicate_of` and records a `duplicates` reference to it; a `superseded`
-close may name it and records `duplicate_of supersedes` the thread.
+the review gates, since there is nothing to review. `duplicate_of` must be a live
+thread you can read in the same workspace. A `duplicate` must name it and
+records a `duplicates` reference to it; a `superseded` close may name it and
+records `duplicate_of supersedes` the thread; an `abandoned` close refuses it.
 
 Nothing landed, so a dependency on the closed thread is not met. What happens
 to its dependents depends on the reason:
@@ -337,8 +340,10 @@ to its dependents depends on the reason:
   dependency and gets `{"notice": "dependency_repoint_refused"}` instead. The
   audit row lists `repointed_dependents` and `kept_dependents`.
 - **`abandoned`, or `superseded` with no `duplicate_of`:** dependents keep
-  waiting. A plan child's dependents are blocked with a notice and the plan is
-  told; re-plan the work or remove the dependency.
+  waiting; re-plan the work or remove the dependency.
+
+When the closed thread is a plan child, any dependent still waiting on it
+after that is blocked with a notice, and the plan is told once.
 
 ## Task attributes
 
