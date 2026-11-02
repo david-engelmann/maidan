@@ -9,7 +9,6 @@ use maidan_store::workspace_invites::{INVITE_ALREADY_MEMBER, INVITE_NOT_VALID};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations, StoreError};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -327,7 +326,7 @@ async fn assert_one_winner(store: &dyn Store) {
 
 async fn sqlite_file_store(dir: &tempfile::TempDir) -> SqliteStore {
     let url = format!("sqlite://{}?mode=rwc", dir.path().join("inv.db").display());
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .after_connect(|conn, _| {
             Box::pin(async move {
