@@ -4965,7 +4965,7 @@
       "title": "Close abandoned thread",
       "readOnlyHint": {
         "value": false,
-        "reason": "close_abandoned_thread UPDATEs state to closed, INSERTs maidan_thread_transitions and maidan_thread_unlanded_closes, may INSERT a maidan_thread_references row, and appends ThreadStateChanged and an audit row"
+        "reason": "close_abandoned_thread UPDATEs state to closed, INSERTs maidan_thread_transitions and maidan_thread_unlanded_closes, may INSERT a maidan_references row, and appends ThreadStateChanged and an audit row"
       },
       "destructiveHint": {
         "value": true,
