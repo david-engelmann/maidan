@@ -26,15 +26,17 @@ function sig(th: Thread): string {
 }
 
 /** The board for the signed-in workspace, kept current by the live bus. */
-export function useBoard(session: SessionState, api: BoardApi) {
+/** `linked` is the channel a link names; the first read opens on it. */
+export function useBoard(session: SessionState, api: BoardApi, linked: string | null = null) {
   const [data, setData] = useState<BoardData>(EMPTY);
   const workspace = session.status === "signed-in" ? session.workspaceId : null;
   const seen = useRef(new Map<string, string>());
   const gen = useRef(0);
+  const linkedRef = useRef(linked);
 
   const load = useCallback(
-    async (channelId: string | null, quiet: boolean) => {
-      if (!workspace) return;
+    async (channelId: string | null, quiet: boolean): Promise<boolean> => {
+      if (!workspace) return false;
       const mine = ++gen.current;
       if (!quiet) setData((d) => ({ ...d, status: "loading", error: null }));
       try {
@@ -43,7 +45,7 @@ export function useBoard(session: SessionState, api: BoardApi) {
         const pick = channelId ?? (stored && channels.some((c) => c.id === stored) ? stored : (channels[0]?.id ?? null));
         const [threads, gates] = pick ? await Promise.all([api.threads(pick), api.gates(workspace)]) : [[], {}];
         const refusals = pick ? await api.refusals(workspace, pick, threads) : new Map<string, string>();
-        if (mine !== gen.current) return;
+        if (mine !== gen.current) return false;
         const fresh = new Set<string>();
         const next = new Map<string, string>();
         for (const th of threads) {
@@ -53,10 +55,12 @@ export function useBoard(session: SessionState, api: BoardApi) {
         }
         seen.current = next;
         setData({ status: "ready", error: null, channels, channelId: pick, threads, gates, members: new Map(members.map((m) => [m.id, m])), refusals, fresh });
+        return true;
       } catch (e) {
-        if (mine !== gen.current) return;
+        if (mine !== gen.current) return false;
         const message = e instanceof Error ? e.message : "Could not load the board";
         setData((d) => (quiet && d.status === "ready" ? { ...d, error: `Last refresh failed: ${message}` } : { ...d, status: "error", error: message }));
+        return false;
       }
     },
     [workspace, api],
@@ -64,7 +68,7 @@ export function useBoard(session: SessionState, api: BoardApi) {
 
   // The first read for this workspace, on the next tick.
   useEffect(() => {
-    const t = setTimeout(() => void load(null, false), 0);
+    const t = setTimeout(() => void load(linkedRef.current, false), 0);
     return () => clearTimeout(t);
   }, [load]);
 

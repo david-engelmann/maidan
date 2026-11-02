@@ -1,10 +1,10 @@
 // The board's view in the hash, so a filtered board or an open task is a link:
-// #/board?task=<id>&agent=<member id>&state=<lane>&q=<text>.
+// #/board?channel=<id>&task=<id>&agent=<member id>&state=<lane>&q=<text>.
 import { LANES, type Card, type LaneKey } from "./board.ts";
 
-export type BoardQuery = { task: string | null; agent: string | null; state: LaneKey | null; q: string };
+export type BoardQuery = { channel: string | null; task: string | null; agent: string | null; state: LaneKey | null; q: string };
 
-export const EMPTY_QUERY: BoardQuery = { task: null, agent: null, state: null, q: "" };
+export const EMPTY_QUERY: BoardQuery = { channel: null, task: null, agent: null, state: null, q: "" };
 
 export function readQuery(hash: string): BoardQuery {
   const i = hash.indexOf("?");
@@ -12,6 +12,7 @@ export function readQuery(hash: string): BoardQuery {
   const p = new URLSearchParams(hash.slice(i + 1));
   const s = p.get("state");
   return {
+    channel: p.get("channel") || null,
     task: p.get("task") || null,
     agent: p.get("agent") || null,
     state: LANES.some((l) => l.key === s) ? (s as LaneKey) : null,
@@ -21,6 +22,7 @@ export function readQuery(hash: string): BoardQuery {
 
 export function writeQuery(q: BoardQuery): string {
   const p = new URLSearchParams();
+  if (q.channel) p.set("channel", q.channel);
   if (q.agent) p.set("agent", q.agent);
   if (q.state) p.set("state", q.state);
   if (q.q.trim()) p.set("q", q.q);

@@ -69,14 +69,20 @@ export function Board() {
       ),
     [store],
   );
-  const { data, selectChannel, refresh } = useBoard(session, api);
+  const [query, setQuery] = useQuery();
+  const { data, selectChannel, refresh } = useBoard(session, api, query.channel);
   const wide = useWide();
   const now = useNow();
   const reduce = Boolean(useReducedMotion());
   const [lane, setLane] = useState<LaneKey>("open");
-  const [query, setQuery] = useQuery();
   const openId = query.task;
-  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task });
+  // A task link carries its channel, so it opens from another channel too.
+  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task, channel: task ? data.channelId : null });
+  useEffect(() => {
+    const want = query.channel;
+    if (data.status !== "ready" || !want || want === data.channelId || !data.channels.some((c) => c.id === want)) return;
+    selectChannel(want);
+  }, [query.channel, data.status, data.channelId, data.channels, selectChannel]);
   const [composing, setComposing] = useState(false);
   const all = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
   const lanes = useMemo(() => {
@@ -85,9 +91,17 @@ export function Board() {
     return out;
   }, [all, query]);
   const opened = data.threads.find((t) => t.id === openId) ?? null;
-  // The board narrows beside the drawer; keep the chosen card in view.
+  // The board narrows beside the drawer; keep the chosen card in view. A
+  // deep link waits for the threads to arrive, then scrolls once.
+  const scrolled = useRef<string | null>(null);
+  const present = Boolean(opened);
   useEffect(() => {
-    if (!openId) return;
+    if (!openId) {
+      scrolled.current = null;
+      return;
+    }
+    if (!present || scrolled.current === openId) return;
+    scrolled.current = openId;
     // Only the lanes scroll sideways; the page itself never moves.
     const t = window.setTimeout(() => {
       const card = document.querySelector<HTMLElement>(".task.selected");
@@ -99,7 +113,7 @@ export function Board() {
       else if (c.left < l.left) lanes.scrollLeft -= l.left - c.left + 12;
     }, 220);
     return () => window.clearTimeout(t);
-  }, [openId]);
+  }, [openId, present]);
   const agents = useMemo(() => {
     const held = new Set(data.threads.map((t) => t.assignee_id).filter(Boolean));
     return [...data.members.values()].filter((m) => held.has(m.id) || (m.kind && m.kind !== "human")).sort((a, b) => a.name.localeCompare(b.name));
@@ -129,7 +143,11 @@ export function Board() {
         <label className="channel-pick">
           <span className="visually-hidden">Channel</span>
           <span className="channel-hash" aria-hidden="true">#</span>
-          <select value={data.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!data.channels.length}>
+          <select value={data.channelId ?? ""} onChange={(e) => {
+            // Picking a channel drops a link's channel and task.
+            if (query.channel || query.task) setQuery({ ...readQuery(window.location.hash), channel: null, task: null });
+            selectChannel(e.target.value);
+          }} disabled={!data.channels.length}>
             {data.channels.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
@@ -151,8 +169,15 @@ export function Board() {
           onDone={(id) => {
             setComposing(false);
             if (id) {
-              void refresh();
+              // The id goes in the link now; the drawer opens once a board
+              // read includes the task, so a failed read is tried again.
               setOpenId(id);
+              void (async () => {
+                for (const wait of [0, 1000, 3000]) {
+                  if (wait) await new Promise((r) => setTimeout(r, wait));
+                  if (await refresh()) return;
+                }
+              })();
             }
           }}
         />

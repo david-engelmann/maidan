@@ -11,16 +11,16 @@ const card = (o: { id: string; title: string; lane: Card["chrome"]["lane"]; who?
 });
 
 test("the board query round-trips through the hash and drops unknown states", () => {
-  const h = writeQuery({ task: "t1", agent: "m1", state: "review", q: "login fix" });
+  const h = writeQuery({ channel: null, task: "t1", agent: "m1", state: "review", q: "login fix" });
   assert.equal(h, "#/board?agent=m1&state=review&q=login+fix&task=t1");
-  assert.deepEqual(readQuery(h), { task: "t1", agent: "m1", state: "review", q: "login fix" });
+  assert.deepEqual(readQuery(h), { channel: null, task: "t1", agent: "m1", state: "review", q: "login fix" });
   assert.equal(readQuery("#/board?state=nope").state, null);
-  assert.equal(writeQuery({ task: null, agent: null, state: null, q: "  " }), "#/board");
+  assert.equal(writeQuery({ channel: null, task: null, agent: null, state: null, q: "  " }), "#/board");
 });
 
 test("a card matches only when every filter set agrees", () => {
   const c = card({ id: "abc123", title: "Fix the Login race", lane: "working", who: "m1" });
-  const none = { task: null, agent: null, state: null, q: "" };
+  const none = { channel: null, task: null, agent: null, state: null, q: "" };
   assert.ok(matches(c, none));
   assert.ok(matches(c, { ...none, q: "login" }));
   assert.ok(matches(c, { ...none, q: "abc" }));
@@ -28,4 +28,11 @@ test("a card matches only when every filter set agrees", () => {
   assert.ok(matches(c, { ...none, agent: "m1", state: "working" }));
   assert.ok(!matches(c, { ...none, agent: "m2" }));
   assert.ok(!matches(c, { ...none, state: "open" }));
+});
+
+test("board query: a task link carries its channel", () => {
+  const h = writeQuery({ channel: "c9", task: "t1", agent: null, state: null, q: "" });
+  assert.equal(h, "#/board?channel=c9&task=t1");
+  assert.equal(readQuery(h).channel, "c9");
+  assert.equal(readQuery("#/board?task=t1").channel, null);
 });
