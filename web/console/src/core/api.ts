@@ -128,6 +128,7 @@ export function humanError(status: number, detail: string | null, mode: Credenti
   if (status === 409) return "Refused";
   if (status === 413) return "That is too large for the server to accept";
   if (status === 429) return "Too many requests. Wait a moment, then try again";
+  if (status === 0) return OFFLINE;
   if (status >= 500) return "The server hit an error. Try again; if it keeps failing, check the server log";
   return "The request was not accepted";
 }
@@ -157,4 +158,79 @@ export function signOutPostsLogout(sessions: boolean | null | undefined, cachedM
   if (sessions === true) return true;
   if (sessions === false) return Boolean(cachedMemberId);
   return true;
+}
+
+export const OFFLINE = "Could not reach the server. Check your connection, then try again";
+export const SIGNED_OUT = "Your sign-in ended or was revoked. Sign in again to carry on.";
+
+/** A refused or failed request, with the status and any Retry-After kept for the caller. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly retryAfter: number | null;
+  constructor(message: string, status = 0, retryAfter: number | null = null) {
+    super(message);
+    this.status = status;
+    this.retryAfter = retryAfter;
+  }
+}
+
+/** Seconds to wait from a Retry-After header (seconds or an HTTP date), or null. */
+export function retryAfterSeconds(value: string | null | undefined, now = Date.now()): number | null {
+  if (!value) return null;
+  const t = value.trim();
+  if (/^\d+$/.test(t)) return Number(t);
+  const at = Date.parse(t);
+  return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000));
+}
+
+function waitWords(secs: number): string {
+  if (secs < 60) return `${secs} second${secs === 1 ? "" : "s"}`;
+  const m = Math.ceil(secs / 60);
+  return `${m} minute${m === 1 ? "" : "s"}`;
+}
+
+/** Heard when the server says this tab's credential no longer works (any 401). */
+const authLost = new Set<() => void>();
+export function onAuthLost(fn: () => void): () => void {
+  authLost.add(fn);
+  return () => authLost.delete(fn);
+}
+
+/**
+ * The one way a screen's request fails. It reads the server's detail, keeps
+ * Retry-After, words the refusal, and on a 401 tells the session so the page
+ * goes back to sign-in. `own` returns the server's sentence where a module
+ * shows it (a refused move), or null for the standard words.
+ */
+export async function failure(
+  res: Response,
+  mode: CredentialMode | null,
+  Err: new (message: string, status?: number, retryAfter?: number | null) => ApiError = ApiError,
+  own: (status: number, detail: string | null) => string | null = () => null,
+): Promise<never> {
+  let detail: string | null = null;
+  try {
+    const body = (await res.json()) as { error?: string; message?: string; detail?: string };
+    detail = body.message ?? body.detail ?? body.error ?? null;
+  } catch {
+    detail = null;
+  }
+  if (res.status === 401) authLost.forEach((fn) => fn());
+  const retry = res.status === 429 || res.status === 503 ? retryAfterSeconds(res.headers.get("Retry-After")) : null;
+  const mine = own(res.status, typeof detail === "string" ? detail : null);
+  let text = mine ?? humanError(res.status, detail, mode);
+  if (retry !== null && retry > 0) text = res.status === 429 ? `Too many requests. Try again in ${waitWords(retry)}` : `${text}. Try again in ${waitWords(retry)}`;
+  throw new Err(text, res.status, retry);
+}
+
+/** A fetch that never rejects with a raw TypeError: an unreachable server reads as OFFLINE. */
+export function guarded(fetchFn: (url: string, init?: RequestInit) => Promise<Response>, Err: new (message: string, status?: number) => ApiError = ApiError) {
+  return async (url: string, init?: RequestInit): Promise<Response> => {
+    try {
+      return await fetchFn(url, init);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      throw new Err(OFFLINE, 0);
+    }
+  };
 }

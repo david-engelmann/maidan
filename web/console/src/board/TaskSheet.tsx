@@ -105,6 +105,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   }, [api, th, terminal]);
 
   const act = async (kind: "claim" | "close") => {
+    if (busy) return;
     setBusy(kind);
     setNote(null);
     try {
@@ -188,6 +189,7 @@ function MoreActions({ th, api, onChanged, setNote }: { th: Thread; api: BoardAp
   const [busy, setBusy] = useState(false);
   const tokenWhy = bearerRefusal(session.credentials);
   const go = async (fn: () => Promise<unknown>, done: string) => {
+    if (busy) return;
     setBusy(true);
     setNote(null);
     try {

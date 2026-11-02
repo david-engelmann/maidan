@@ -169,7 +169,7 @@ test("opening a DM or group refuses bad picks before the network", async () => {
 
 test("a refused write shows the server's own sentence; other failures stay plain", async () => {
   const r = fake([{ status: 422, body: { message: "body too long" } }]);
-  await assert.rejects(r.api.post({ kind: "dm", id: "d" }, "x"), new ThreadsError("body too long"));
+  await assert.rejects(r.api.post({ kind: "dm", id: "d" }, "x"), new ThreadsError("body too long", 422));
   const s = fake([{ status: 500, body: {} }]);
   await assert.rejects(s.api.messages("t"), (e: unknown) => e instanceof ThreadsError && !/body/.test((e as Error).message));
 });

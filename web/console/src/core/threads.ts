@@ -1,7 +1,7 @@
 // Threads and DMs: a task's conversation, one-to-one DMs and group DMs. A
 // port of the classic board's thread.js and dm.js with the DOM taken out.
 // Fetch is passed in, so it is tested.
-import { apiPath, bearerRefusal, headers, humanError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Member, Thread } from "./board.ts";
 
 export type Message = {
@@ -241,19 +241,10 @@ export function evidenceLine(e: EvidenceEntry, name: (id: string | undefined) =>
   }
 }
 
-export class ThreadsError extends Error {}
+export class ThreadsError extends ApiError {}
 
-async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
-  let detail: string | null = null;
-  try {
-    const body = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = body.message ?? body.detail ?? body.error ?? null;
-  } catch {
-    detail = null;
-  }
-  if ((res.status === 400 || res.status === 409 || res.status === 422) && detail) throw new ThreadsError(detail);
-  throw new ThreadsError(humanError(res.status, detail, mode));
-}
+const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
+  failure(res, mode, ThreadsError, (status, detail) => ((status === 400 || status === 409 || status === 422) && detail ? detail : null));
 
 /** The files on a paste, if any. A paste of text alone returns none, so it stays text. */
 export function pastedFiles(data: Pick<DataTransfer, "items"> | null | undefined): File[] {
@@ -286,7 +277,7 @@ export class ThreadsApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    this.fetchFn = guarded(fetchFn, ThreadsError);
     this.creds = creds;
     this.mode = mode;
   }

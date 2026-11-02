@@ -35,6 +35,7 @@ export function Artifacts() {
     }
   };
   const erase = async (s: string) => {
+    if (busy) return;
     setBusy(true);
     try {
       await api.eraseArtifact(s);

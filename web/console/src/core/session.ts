@@ -1,7 +1,7 @@
 // The console's sign-in state, as a small store the useSession hook reads.
 // A port of the board's session.js: discovery, the cookie session, the
 // token-for-session exchange, and /me, without touching the DOM.
-import { apiPath, credentialMode, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
+import { SIGNED_OUT, apiPath, credentialMode, onAuthLost, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
 
 export type Discovery = {
   /** False when discovery has not been answered yet (unreachable, 5xx, 429). */
@@ -83,6 +83,18 @@ export class SessionStore {
   constructor(base: string, fetchFn: Fetch) {
     this.state = initialSession(base);
     this.fetchFn = fetchFn;
+  }
+
+  /** Go back to sign-in, with a reason, when any screen's request gets a 401. */
+  watchAuth(): () => void {
+    return onAuthLost(() => this.expire());
+  }
+
+  /** The credential stopped working: forget it and say why on the sign-in card. */
+  expire(): void {
+    if (this.state.status !== "signed-in") return;
+    this.signOut();
+    this.set({ error: SIGNED_OUT });
   }
 
   getSnapshot = (): SessionState => this.state;
@@ -170,6 +182,7 @@ export class SessionStore {
   async signInWithToken(secret: string): Promise<{ ok: boolean; error?: string }> {
     this.epoch++;
     const gen = ++this.gen;
+    if (this.state.error) this.set({ error: null });
     let res: Response;
     try {
       res = await this.fetchFn(

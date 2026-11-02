@@ -1,7 +1,7 @@
 // Needs you: the reviews, approval gates, blocks and questions waiting on the
 // signed-in member. A port of the classic board's needs.js and the gate half
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
-import { apiPath, headers, humanError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, headers, failure, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
 
 export type NeedKind = "review_request" | "unassigned_review" | "open_gate" | "blocked" | "question";
@@ -242,19 +242,10 @@ export const NOTE_ASK: Record<"approve_note" | "request_changes" | "decline", { 
   decline: { prompt: "Why decline? Optional. The agent reads this.", required: false, send: "Decline" },
 };
 
-export class NeedsError extends Error {}
+export class NeedsError extends ApiError {}
 
-async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
-  let detail: string | null = null;
-  try {
-    const b = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = b.message ?? b.detail ?? b.error ?? null;
-  } catch {
-    detail = null;
-  }
-  if (res.status === 409) throw new NeedsError(detail ? `Refused: ${detail}` : "Someone already answered this");
-  throw new NeedsError(humanError(res.status, detail, mode));
-}
+const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
+  failure(res, mode, NeedsError, (status, detail) => (status === 409 ? (detail ? `Refused: ${detail}` : "Someone already answered this") : null));
 
 /** The reads and writes behind Needs you. */
 export class NeedsApi {
@@ -263,7 +254,7 @@ export class NeedsApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    this.fetchFn = guarded(fetchFn, NeedsError);
     this.creds = creds;
     this.mode = mode;
   }
