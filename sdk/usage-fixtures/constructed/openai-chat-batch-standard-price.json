@@ -1,0 +1,46 @@
+{
+  "name": "openai-chat-batch-standard-price",
+  "provider": "openai-chat",
+  "source": "https://platform.openai.com/docs/guides/batch",
+  "recorded": "constructed",
+  "note": "A call sent through the batch API has no batch service tier in its body; options.batch marks it, and the standard price rides along.",
+  "options": {
+    "batch": true,
+    "standard_price": {
+      "input_usd_micros_per_million": 1250000,
+      "output_usd_micros_per_million": 10000000,
+      "cache_read_usd_micros_per_million": 125000,
+      "cache_write_5m_usd_micros_per_million": 0,
+      "cache_write_1h_usd_micros_per_million": 0
+    }
+  },
+  "response": {
+    "model": "gpt-6-astra",
+    "usage": {
+      "prompt_tokens": 1000,
+      "completion_tokens": 100,
+      "total_tokens": 1100
+    }
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 1000,
+      "output": 100,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai",
+      "batch": true,
+      "standard_price": {
+        "input_usd_micros_per_million": 1250000,
+        "output_usd_micros_per_million": 10000000,
+        "cache_read_usd_micros_per_million": 125000,
+        "cache_write_5m_usd_micros_per_million": 0,
+        "cache_write_1h_usd_micros_per_million": 0
+      }
+    }
+  }
+}

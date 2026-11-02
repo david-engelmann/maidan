@@ -146,6 +146,7 @@ pub const READ_ONLY_TOOLS: &[&str] = &[
     "list_delegation_grants",
     "list_dlq",
     "list_dm_conversations",
+    "list_evidence_records",
     "list_frozen_members",
     "list_fsm_hooks",
     "list_github_issue_links",
@@ -325,6 +326,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "get_thread_version"
         | "get_review_packet"
         | "list_thread_artifacts"
+        | "list_evidence_records"
         | "get_wait"
         | "get_priority"
         | "list_thread_dependencies"
@@ -424,6 +426,7 @@ pub fn required_capability(name: &str) -> Result<&'static str, McpError> {
         | "remove_reaction"
         | "link_thread_artifact"
         | "unlink_thread_artifact"
+        | "add_evidence_record"
         | "pin_message"
         | "unpin_message"
         | "add_reference"
@@ -862,6 +865,8 @@ async fn enforce_channel_access(
         | "list_thread_artifacts"
         | "link_thread_artifact"
         | "unlink_thread_artifact"
+        | "add_evidence_record"
+        | "list_evidence_records"
         | "set_wait"
         | "cancel_wait"
         | "get_wait"
@@ -1017,6 +1022,8 @@ pub async fn dispatch(
         "list_thread_artifacts" => thread::list_thread_artifacts(store, args).await,
         "link_thread_artifact" => thread::link_thread_artifact(store, auth, args).await,
         "unlink_thread_artifact" => thread::unlink_thread_artifact(store, args).await,
+        "add_evidence_record" => thread::add_evidence_record(server, auth, args).await,
+        "list_evidence_records" => thread::list_evidence_records(store, args).await,
         "set_wait" => thread::set_wait(store, auth, args).await,
         "cancel_wait" => thread::cancel_wait(store, args).await,
         "get_wait" => thread::get_wait(store, args).await,

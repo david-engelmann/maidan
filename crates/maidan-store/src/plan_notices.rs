@@ -81,3 +81,40 @@ pub(crate) fn landing_from_payload(payload: &Value) -> Option<(String, i64)> {
     let pr = payload.get("pr_number")?.as_i64()?;
     Some((repo, pr))
 }
+
+/// On a dependent whose dependency closed as a duplicate or superseded, when
+/// its edge moved to the thread that replaces it (#1754).
+pub(crate) fn repointed_body(closed: ThreadId, replacement: ThreadId) -> String {
+    format!(
+        "This task depended on {}, which closed without landing because {} covers it. \
+         It now depends on {} instead and becomes ready when that one lands.",
+        closed.0, replacement.0, replacement.0
+    )
+}
+
+pub(crate) fn repointed_metadata(closed: ThreadId, replacement: ThreadId) -> Value {
+    json!({
+        "notice": "dependency_repointed",
+        "from_thread_id": closed.0,
+        "depends_on_thread_id": replacement.0,
+    })
+}
+
+/// On a dependent whose edge could not move because the replacement already
+/// waits on it: moving the edge would close a cycle (#1754).
+pub(crate) fn repoint_refused_body(closed: ThreadId, replacement: ThreadId) -> String {
+    format!(
+        "This task depends on {}, which closed without landing because {} covers it. \
+         The dependency was not moved to {}, because that thread already waits on this one. \
+         Remove or change the dependency by hand.",
+        closed.0, replacement.0, replacement.0
+    )
+}
+
+pub(crate) fn repoint_refused_metadata(closed: ThreadId, replacement: ThreadId) -> Value {
+    json!({
+        "notice": "dependency_repoint_refused",
+        "depends_on_thread_id": closed.0,
+        "replacement_thread_id": replacement.0,
+    })
+}
