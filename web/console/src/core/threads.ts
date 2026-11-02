@@ -97,7 +97,10 @@ export function dayKey(ts: string): string {
 export function dayLabel(ts: string, now: number): string {
   const key = dayKey(ts);
   if (key === dayKey(new Date(now).toISOString())) return "Today";
-  if (key === dayKey(new Date(now - 864e5).toISOString())) return "Yesterday";
+  // The calendar day before, not 24 hours before: a DST day is 23 or 25 hours.
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (key === dayKey(yesterday.toISOString())) return "Yesterday";
   const d = new Date(ts);
   const sameYear = d.getFullYear() === new Date(now).getFullYear();
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
@@ -110,7 +113,12 @@ export type SeenState = { baseline: string; opened: Record<string, string> };
 export function isUnread(c: Conversation, seen: SeenState): boolean {
   if (!c.updatedAt) return false;
   const mark = seen.opened[c.threadId] ?? seen.baseline;
-  return c.updatedAt > mark;
+  // As instants: the server's fractional digits differ from the browser's,
+  // so string order is not time order within a second.
+  const at = Date.parse(c.updatedAt);
+  const seenAt = Date.parse(mark);
+  if (Number.isNaN(at) || Number.isNaN(seenAt)) return c.updatedAt > mark;
+  return at > seenAt;
 }
 
 export function markOpened(seen: SeenState, threadId: string, at: string): SeenState {

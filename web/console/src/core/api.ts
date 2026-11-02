@@ -178,7 +178,10 @@ export class ApiError extends Error {
 export function retryAfterSeconds(value: string | null | undefined, now = Date.now()): number | null {
   if (!value) return null;
   const t = value.trim();
-  if (/^\d+$/.test(t)) return Number(t);
+  if (/^\d+$/.test(t)) {
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
   const at = Date.parse(t);
   return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - now) / 1000));
 }
@@ -201,6 +204,11 @@ export function bumpAuthEpoch(): void {
 export function keepAuth(res: Response): void {
   sentUnder.set(res, -1);
 }
+/** A 401 for this tab's current credential signs the tab out. For a module
+ * that words its own failures instead of going through `failure()`. */
+export function noteAuthLost(res: Response): void {
+  if (res.status === 401 && (sentUnder.get(res) ?? authEpoch) === authEpoch) authLost.forEach((fn) => fn());
+}
 export function onAuthLost(fn: () => void): () => void {
   authLost.add(fn);
   return () => authLost.delete(fn);
@@ -218,6 +226,9 @@ export async function failure(
   Err: new (message: string, status?: number, retryAfter?: number | null) => ApiError = ApiError,
   own: (status: number, detail: string | null) => string | null = () => null,
 ): Promise<never> {
+  // The status alone says the credential is gone; a body that never finishes
+  // must not keep the tab signed in.
+  noteAuthLost(res);
   let detail: string | null = null;
   try {
     const body = (await res.json()) as { error?: string; message?: string; detail?: string };
@@ -225,7 +236,6 @@ export async function failure(
   } catch {
     detail = null;
   }
-  if (res.status === 401 && (sentUnder.get(res) ?? authEpoch) === authEpoch) authLost.forEach((fn) => fn());
   const retry = res.status === 429 || res.status === 503 ? retryAfterSeconds(res.headers.get("Retry-After")) : null;
   const mine = own(res.status, typeof detail === "string" ? detail : null);
   let text = mine ?? humanError(res.status, detail, mode);

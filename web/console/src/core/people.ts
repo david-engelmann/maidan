@@ -1,7 +1,7 @@
 // People and Swarm: the roster with presence, a member's details, the
 // workspace's footprint lists, and the swarm builder's role circuit.
 // Everything here is plain data in, plain data out, so it can be tested.
-import { apiPath, bearerRefusal, headers, humanError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { apiPath, bearerRefusal, headers, humanError, noteAuthLost, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Thread } from "./board.ts";
 import type { ControlFrame } from "./live.ts";
 
@@ -222,6 +222,7 @@ export function nextWell(role: Role, key: string): Role {
 export class PeopleError extends Error {}
 
 async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
+  noteAuthLost(res);
   let detail: string | null = null;
   try {
     const body = (await res.json()) as { error?: string; message?: string; detail?: string };

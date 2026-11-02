@@ -1,7 +1,7 @@
 // Needs you: the reviews, approval gates, blocks and questions waiting on the
 // signed-in member. A port of the classic board's needs.js and the gate half
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
-import { guarded, apiPath, headers, failure, keepAuth, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, headers, failure, keepAuth, noteAuthLost, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
 
 export type NeedKind = "review_request" | "unassigned_review" | "open_gate" | "blocked" | "question";
@@ -300,6 +300,7 @@ export class NeedsApi {
       return { state: "error", why: "Could not load the evidence: the server did not answer" };
     }
     if (res.status === 404) return { state: "none" };
+    noteAuthLost(res);
     if (!res.ok) return { state: "error", why: `Could not load the evidence (${res.status})` };
     try {
       return { state: "ready", packet: (await res.json()) as ReviewPacket };

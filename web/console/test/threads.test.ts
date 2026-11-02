@@ -237,3 +237,10 @@ test("toggling a reaction counts it once and can be undone", () => {
   assert.deepEqual(toggleReaction(added, "👍", false), []);
   assert.equal(toggleReaction(added, "👍", true), added);
 });
+
+test("unread compares instants, whatever fractional digits each side carries", () => {
+  const c = { threadId: "t", updatedAt: "2026-11-02T10:00:00Z" } as Parameters<typeof isUnread>[0];
+  // As strings "…00Z" sorts after "…00.000Z" ("Z" > "."), though they are the same instant.
+  assert.equal(isUnread(c, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.000Z" } }), false);
+  assert.equal(isUnread({ ...c, updatedAt: "2026-11-02T10:00:01Z" }, { baseline: "2026-11-01T00:00:00.000Z", opened: { t: "2026-11-02T10:00:00.900Z" } }), true);
+});

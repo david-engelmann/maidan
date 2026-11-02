@@ -5,7 +5,7 @@ import { MessageBody } from "./MessageBody.tsx";
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
-import { BoardApi, chromeFor, stateLabel, type Member, type Thread } from "../core/board.ts";
+import { BoardApi, chromeFor, stateLabel, type Gate, type Member, type Thread } from "../core/board.ts";
 import {
   QUICK_REACTIONS,
   REACTION_NAMES,
@@ -107,9 +107,10 @@ function saveSeen(key: string | null, v: SeenState): void {
 }
 
 /** The list tile for a task: the board's state dot, in the board's words. */
-function taskTone(th: Thread | undefined): { tone: string; word: string } | null {
+/** The list's state for a task, the same lane and word the board shows. */
+function taskTone(th: Thread | undefined, gate?: Gate | null): { tone: string; word: string } | null {
   if (!th) return null;
-  const chrome = chromeFor(th);
+  const chrome = chromeFor(th, gate);
   return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
 }
 
@@ -238,7 +239,7 @@ export function Threads() {
             {list.map((c) => {
               const on = sameRef(c.ref, open);
               const unread = !on && isUnread(c, reads.value);
-              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id)) : null;
+              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id), board.gates[c.ref.id]) : null;
               const th = c.ref.kind === "task" ? threadById.get(c.ref.id) : undefined;
               const who = th?.assignee_id ? board.members.get(th.assignee_id) : undefined;
               return (

@@ -74,7 +74,7 @@ test("Needs you keeps its rows and says it is stale when the server stops answer
   const before = await rows.count();
   await page.route("**/waiting*", (route) => route.abort("connectionrefused"));
   const done = await pokeUntil(request, page.locator(".needs-stale"));
-  await expect(page.locator(".needs-stale")).toContainText(/Stale since .*Reconnecting/);
+  await expect(page.locator(".needs-stale")).toContainText(/Could not reach the server\. Showing what was loaded at .*Reconnecting/);
   expect(await rows.count(), "the rows stay while it reconnects").toBe(before);
   await page.unroute("**/waiting*");
   await done();

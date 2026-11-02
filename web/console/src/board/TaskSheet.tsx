@@ -261,8 +261,12 @@ function SheetActions({ th, api, can, claimWhy, busy, act, onChanged, setNote }:
   };
   const approve = () =>
     go("approve", async () => {
+      // An approval signs the evidence it was handed; without a packet there
+      // is nothing to sign, so say why instead of sending a null root.
       const p = await needs.reviewPacket(th.id);
-      await needs.review(th.id, "approve", "", p.state === "ready" ? p.packet.evidence_root : null);
+      if (p.state === "error") throw new Error(p.why);
+      if (p.state !== "ready") throw new Error("Nothing was handed to review yet, so there is no evidence to approve.");
+      await needs.review(th.id, "approve", "", p.packet.evidence_root);
     }, "Approved.");
   const sendBack = () => {
     if (!words.trim()) return setNote("Say what should change: the agent reads this.");

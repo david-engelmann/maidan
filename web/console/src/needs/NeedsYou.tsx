@@ -127,7 +127,7 @@ export function NeedsYou() {
       {data.status === "ready" && <p className="needs-count">{shown.length ? `${shown.length} waiting on you` : "Nothing waiting"}</p>}
       {data.staleSince !== null && (
         <p className="needs-stale" role="status">
-          {data.error ?? `Stale since ${clock(data.staleSince)}. Reconnecting…`}
+          {data.error ?? `Could not reach the server. Showing what was loaded at ${clock(data.staleSince)}. Reconnecting…`}
         </p>
       )}
       {data.status === "loading" && <p className="muted">Loading what needs you…</p>}

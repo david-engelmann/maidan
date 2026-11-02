@@ -295,11 +295,11 @@ function TaskCard({ card, now, member, fresh, refusal, selected, onOpen }: { car
 /** The one flag worth a card's space: a refusal, a block, a stall, or a wait. */
 function cardFlag(th: Thread, lane: LaneKey, refusal?: string): { kind: string; text: string; title?: string } | null {
   if (refusal !== undefined) return { kind: "refused", text: "Close refused", title: refusal || "The server refused this close" };
-  const order = ["blocked", "stalled", "wait-overdue", "wait-waiting", "wait-returned_to_queue"];
+  const order = ["blocked", "status-blocked", "stalled", "wait-overdue", "wait-waiting", "wait-returned_to_queue"];
   const all = chips(th, lane);
   for (const k of order) {
     const c = all.find((x) => x.kind === k);
-    if (c) return { kind: k.startsWith("wait") ? "wait" : k, text: c.text, title: c.title ?? c.text };
+    if (c) return { kind: k.startsWith("wait") ? "wait" : k === "status-blocked" ? "blocked" : k, text: c.text, title: c.title ?? c.text };
   }
   return null;
 }
@@ -359,6 +359,8 @@ function FilterBar({ query, agents, onChange, total, visible }: { query: BoardQu
         <select value={query.agent ?? ""} onChange={(e) => onChange({ ...query, agent: e.target.value || null })}>
           <option value="">Anyone</option>
           {agents.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          {/* A link can name an agent no longer listed; the select still says which filter is on. */}
+          {query.agent && !agents.some((m) => m.id === query.agent) ? <option value={query.agent}>{query.agent.slice(0, 8)}</option> : null}
         </select>
         <Icon name="chevron" />
       </label>
@@ -401,7 +403,7 @@ function Composer({ channelId, onDone }: { channelId: string; onDone: (id: strin
     }
   };
   return (
-    <form className="composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onDone(null); } }} aria-label="New task">
+    <form className="composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape" && !busy) { e.preventDefault(); onDone(null); } }} aria-label="New task">
       <label className="composer-field">
         <span className="visually-hidden">Task title</span>
         <input ref={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" maxLength={200} disabled={busy} />

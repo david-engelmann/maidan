@@ -18,7 +18,10 @@ export function resultText(r: unknown): string | null {
   if (typeof r === "string") return r;
   if (typeof r === "object") {
     const o = r as Record<string, unknown>;
-    for (const k of ["body", "summary", "text", "output", "message"]) if (typeof o[k] === "string" && o[k]) return o[k] as string;
+    // A one-line summary can read as clean when the status says otherwise,
+    // so the status leads, and a rendered review body wins over the summary.
+    const status = typeof o.status === "string" && o.status ? `Status: ${o.status}\n\n` : "";
+    for (const k of ["rendered", "body", "summary", "text", "output", "message"]) if (typeof o[k] === "string" && o[k]) return status + (o[k] as string);
   }
   return "```\n" + JSON.stringify(r, null, 2) + "\n```";
 }

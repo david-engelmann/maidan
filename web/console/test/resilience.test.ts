@@ -4,6 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ApiError, OFFLINE, SIGNED_OUT, retryAfterSeconds, type Credentials } from "../src/core/api.ts";
 import { BoardApi, BoardError } from "../src/core/board.ts";
+import { NeedsApi } from "../src/core/needs.ts";
+import { PeopleApi } from "../src/core/people.ts";
 import { ThreadsApi } from "../src/core/threads.ts";
 import { ToolsApi } from "../src/core/tools.ts";
 import { SessionStore } from "../src/core/session.ts";
@@ -51,6 +53,28 @@ test("a 401 from any screen sends a signed-in page back to sign-in with a reason
   assert.equal(store.getSnapshot().status, "signed-out");
   assert.equal(store.getSnapshot().error, SIGNED_OUT);
   unwatch();
+});
+
+test("a 401 on a People read or a review packet also sends the page back to sign-in", async () => {
+  for (const read of [
+    (f: typeof fetch, s: SessionStore) => new PeopleApi(f, () => s.getSnapshot().credentials, () => s.getSnapshot().mode).people("w1").catch(() => null),
+    (f: typeof fetch, s: SessionStore) => new NeedsApi(f, () => s.getSnapshot().credentials, () => s.getSnapshot().mode).reviewPacket("t1"),
+  ]) {
+    let authed = true;
+    const fetchFn = async (url: string) => {
+      if (url.endsWith("/auth/session")) return authed ? json(200, { member_id: "m1", workspace_id: "w1" }) : json(401, {});
+      if (url.endsWith("/me")) return json(200, { member_id: "m1", workspace_id: "w1", is_bearer: false });
+      return json(401, { error: "expired" });
+    };
+    const store = new SessionStore("https://m.example", fetchFn);
+    const unwatch = store.watchAuth();
+    await store.refresh();
+    assert.equal(store.getSnapshot().status, "signed-in");
+    authed = false;
+    await read(fetchFn as typeof fetch, store);
+    assert.equal(store.getSnapshot().status, "signed-out");
+    unwatch();
+  }
 });
 
 test("a 401 while signed out leaves the sign-in card alone", async () => {
