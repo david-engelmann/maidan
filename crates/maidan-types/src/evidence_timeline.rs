@@ -11,6 +11,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::evidence_record::EvidenceRecord;
 use crate::ids::{MemberId, ThreadId};
 use crate::land_gate::LandGateVerdict;
 use crate::models::{ThreadArtifact, ThreadResult};
@@ -25,6 +26,14 @@ pub enum EvidenceTimelineEntry {
     ArtifactLinked {
         at: DateTime<Utc>,
         artifact: ThreadArtifact,
+    },
+    /// Someone attached an evidence record: a test run, a CI run, a diff,
+    /// an outside review verdict, a screenshot or a note. Records are not
+    /// pinned at a hand-off, so adding one does not change
+    /// `evidence_changed_since_review`.
+    EvidenceRecorded {
+        at: DateTime<Utc>,
+        record: EvidenceRecord,
     },
     /// The thread's current result was recorded. A result is overwritten
     /// when re-set, so only the standing one is on the timeline; a review
@@ -58,6 +67,7 @@ impl EvidenceTimelineEntry {
     pub fn at(&self) -> DateTime<Utc> {
         match self {
             Self::ArtifactLinked { at, .. }
+            | Self::EvidenceRecorded { at, .. }
             | Self::ResultRecorded { at, .. }
             | Self::LandGateVerdict { at, .. }
             | Self::ReviewRequested { at, .. }
@@ -70,10 +80,11 @@ impl EvidenceTimelineEntry {
     fn rank(&self) -> u8 {
         match self {
             Self::ArtifactLinked { .. } => 0,
-            Self::ResultRecorded { .. } => 1,
-            Self::LandGateVerdict { .. } => 2,
-            Self::ReviewRequested { .. } => 3,
-            Self::ReviewVerdict { .. } => 4,
+            Self::EvidenceRecorded { .. } => 1,
+            Self::ResultRecorded { .. } => 2,
+            Self::LandGateVerdict { .. } => 3,
+            Self::ReviewRequested { .. } => 4,
+            Self::ReviewVerdict { .. } => 5,
         }
     }
 }
@@ -98,6 +109,7 @@ pub struct EvidenceTimeline {
 #[derive(Debug, Clone, Default)]
 pub struct EvidenceSources {
     pub artifacts: Vec<ThreadArtifact>,
+    pub records: Vec<EvidenceRecord>,
     pub result: Option<ThreadResult>,
     pub land_gate: Vec<LandGateVerdict>,
     pub packets: Vec<ReviewPacket>,
@@ -136,6 +148,12 @@ impl EvidenceTimeline {
             EvidenceTimelineEntry::ArtifactLinked {
                 at: artifact.linked_at,
                 artifact,
+            }
+        }));
+        entries.extend(sources.records.into_iter().map(|record| {
+            EvidenceTimelineEntry::EvidenceRecorded {
+                at: record.recorded_at,
+                record,
             }
         }));
         entries.extend(
@@ -274,6 +292,43 @@ mod tests {
             ]
         );
         assert_eq!(timeline.thread_version, 7);
+        assert_eq!(timeline.evidence_changed_since_review, Some(false));
+    }
+
+    #[test]
+    fn records_merge_by_time_and_do_not_move_the_review_flag() {
+        let thread = ThreadId(uuid::Uuid::new_v4());
+        let record = |at: i64| crate::evidence_record::EvidenceRecord {
+            id: uuid::Uuid::new_v4(),
+            thread_id: thread,
+            kind: crate::evidence_record::EvidenceRecordKind::CiRun,
+            source: "ci".into(),
+            url: Some("https://ci.example.com/runs/1".into()),
+            sha256: None,
+            note: None,
+            recorded_by: member(),
+            recorded_at: t(at),
+        };
+        let timeline = EvidenceTimeline::assemble(
+            thread,
+            2,
+            EvidenceSources {
+                artifacts: vec![artifact(thread, "aa", 10)],
+                records: vec![record(5), record(10), record(40)],
+                packets: vec![packet(thread, &["aa"], None, 20)],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            kinds(&timeline),
+            [
+                "evidence_recorded",
+                "artifact_linked",
+                "evidence_recorded",
+                "review_requested",
+                "evidence_recorded"
+            ]
+        );
         assert_eq!(timeline.evidence_changed_since_review, Some(false));
     }
 

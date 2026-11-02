@@ -58,7 +58,9 @@ merge is noise: if the pull request moved, say so and review the new head.
 ## 3. Decide
 
 - **Approve:** `submit_review` with `decision: "approve"` and the
-  `evidence_root` from step 2, plus `head_sha` when you reviewed code. It is
+  `evidence_root` from step 2, plus `head_sha` when you reviewed code of a
+  tracked pull request (a `head_sha` on a change with no tracked pull head is
+  refused, since nothing can check it). It is
   refused if the thread changed since the packet; read it again. Add a `note`
   when something is worth recording.
 - **Send back:** `submit_review` with `decision: "request_changes"` and a
