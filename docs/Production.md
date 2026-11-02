@@ -1220,7 +1220,7 @@ which clients reconnect.
 | Front door | The `maidan-dev` Worker on the `dev.maidan.world` custom domain | TLS at Cloudflare; the Worker sets `X-Forwarded-For` to the connecting address, and the server trusts one hop |
 | Postgres | Neon project `maidan-dev`, Postgres 17 with pgvector | Direct connection, not the pooler, because the bus `LISTEN`s |
 | Artifacts | R2 bucket `maidan-artifacts-dev` | `ARTIFACT_BACKEND=s3`, `S3_REGION=auto` |
-| Scheduled work | An hourly cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake |
+| Scheduled work | A daily cron trigger wakes the container | Schedules, retries and sweeps run only while it is awake; an hourly cron kept an idle instance billed about a quarter of the day |
 
 | Instance | Worker and config | Runs | Postgres | Artifacts |
 |----------|-------------------|------|----------|-----------|
@@ -1318,7 +1318,9 @@ Worker secrets ([Bootstrap](#bootstrap)).
   15 minutes after the last one does. An agent that stays connected keeps its
   instance running, and is billed as running.
 - Work a sleeping server would have done waits for the next request or the
-  hourly cron.
+  daily cron (09:17 UTC). Each wake costs 15 minutes of container and Neon
+  compute, so the cron is daily on purpose: cost comes first while the
+  instance is mostly idle.
 - Any request wakes it, a crawler's too. Scanners find a new domain within
   hours of its certificate and probe for `/.env`, `/.git/config` and PHP
   files; the Worker answers paths no Maidan route serves with 404 itself

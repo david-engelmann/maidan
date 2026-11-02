@@ -90,7 +90,8 @@ export default {
   },
 
   // Schedules, retries and sweeps run only while the container is awake. The
-  // cron wakes it so they are at most an hour late on an idle instance.
+  // daily cron wakes it so they are at most a day late on an idle instance;
+  // an hourly one kept an idle instance awake a quarter of the day.
   async scheduled(_controller, env, ctx) {
     ctx.waitUntil(getContainer(env.MAIDAN).fetch("http://maidan/health"));
   },
