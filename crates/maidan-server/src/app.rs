@@ -419,6 +419,7 @@ pub fn router(state: AppState) -> Router {
             put(routes::set_spawn_budget).merge(get(routes::get_spawn_budget)),
         )
         .route("/me", get(routes::get_me))
+        .route("/tools", get(server_card::tool_catalog))
         .route(
             "/workspaces/{wid}/glossary",
             get(routes::list_glossary_terms),

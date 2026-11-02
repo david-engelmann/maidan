@@ -60,6 +60,19 @@ pub fn oauth_authorization_server_metadata() {}
 )]
 pub fn mcp_server_card() {}
 
+/// List the tools the caller's MCP tools/list returns
+#[utoipa::path(
+    get,
+    path = "/tools",
+    tag = "workspaces",
+    security(("bearerAuth" = [])),
+    responses(
+        (status = 200, description = "`{ tools: [...] }`: the caller's tools/list catalog, each tool's name, title, description, inputSchema (JSON Schema) and annotations", body = serde_json::Value),
+        (status = 403, response = Forbidden),
+    )
+)]
+pub fn list_tool_catalog() {}
+
 /// Get a workspace's room card
 #[utoipa::path(
     get,
