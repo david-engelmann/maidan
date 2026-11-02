@@ -10,7 +10,8 @@ export type Inline =
 
 export type Block = { kind: "para"; parts: Inline[] } | { kind: "code"; lang: string; text: string };
 
-const FENCE = /^```([\w+-]*)[ \t]*$/;
+// Quote characters are written as \x escapes so source scanners that pair quotes stay in step.
+const FENCE = /^\x60{3}([\w+-]*)[ \t]*$/;
 
 /** Splits a body into paragraphs and fenced code blocks. An unclosed fence runs to the end. */
 export function parseBlocks(body: string): Block[] {
@@ -35,7 +36,7 @@ export function parseBlocks(body: string): Block[] {
 }
 
 // A link ends before trailing punctuation a sentence would put after it.
-const TOKEN = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]])/g;
+const TOKEN = /(\x60[^\x60\n]+\x60)|(\*\*[^*\n]+\*\*)|(https?:\/\/[^\s<>\x22\x27\x60]+[^\s<>\x22\x27\x60.,;:!?)\]])/g;
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
