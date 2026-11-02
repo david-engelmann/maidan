@@ -13,7 +13,6 @@ use maidan_types::{
     ChannelId, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewUsageLedgerEntry,
     NewWorkspace, PriceSnapshot, Thread, ThreadId, TokenUsage, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 /// Raw access to the store's database, to backdate rows and add the recipe
@@ -58,7 +57,7 @@ impl Db {
 }
 
 async fn sqlite() -> (SqliteStore, Db) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

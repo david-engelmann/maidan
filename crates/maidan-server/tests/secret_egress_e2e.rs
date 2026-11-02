@@ -23,7 +23,7 @@ use maidan_server::{router, AppState, FederationRuntime, SlashRuntime, WebhookRu
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace};
 use serde_json::{json, Value};
-use sqlx::{sqlite::SqlitePoolOptions, Row, SqlitePool};
+use sqlx::{sqlite::Row, SqlitePool};
 
 /// A value that needs JSON escaping, around a marker that does not, so a scan
 /// finds it whether it was stored raw or escaped.
@@ -107,7 +107,7 @@ async fn spawn() -> H {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_ALLOW_PRIVATE_EGRESS", "1") };
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

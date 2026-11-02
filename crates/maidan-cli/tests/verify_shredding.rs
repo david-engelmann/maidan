@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn verify(url: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_maidan"))
@@ -22,7 +21,7 @@ async fn verify_shredding_reports_words_a_withdrawal_left() {
         "sqlite://{}?mode=rwc",
         dir.path().join("verify.db").display()
     );
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect(&url)
         .await

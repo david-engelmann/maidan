@@ -4,7 +4,6 @@ use std::process::Command;
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -13,7 +12,7 @@ async fn reindex_embeddings_cli_processes_live_messages() {
     let db_path = dir.path().join("reindex.db");
     let database_url = format!("sqlite://{}?mode=rwc", db_path.display());
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect(&database_url)
         .await

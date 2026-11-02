@@ -6,7 +6,6 @@ use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
 use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir) {
     unsafe {
@@ -14,7 +13,7 @@ async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir)
         std::env::set_var("MAIDAN_RATE_LIMIT_WINDOW_SECS", "60");
     }
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

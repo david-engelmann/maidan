@@ -11,7 +11,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewApiToken, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> (
     SocketAddr,
@@ -19,7 +18,7 @@ async fn spawn() -> (
     tokio::task::JoinHandle<()>,
     Arc<dyn Store>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -105,7 +104,7 @@ async fn well_known_and_workspace_context_respond() {
 
 #[tokio::test]
 async fn mcp_tool_call_without_capability_is_rejected_when_auth_enabled() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

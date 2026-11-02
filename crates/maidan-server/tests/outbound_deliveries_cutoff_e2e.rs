@@ -23,7 +23,6 @@ use maidan_server::{automation_worker, router, AppState, FederationRuntime, Slas
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::*;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Backend {
     store: Arc<dyn Store>,
@@ -32,7 +31,7 @@ struct Backend {
 }
 
 async fn sqlite() -> Backend {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

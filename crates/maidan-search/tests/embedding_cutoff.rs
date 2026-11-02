@@ -16,7 +16,7 @@ use maidan_types::{
     Event, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace, UsageMeter,
     WorkspaceId,
 };
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -131,7 +131,7 @@ async fn run_suite(store: Arc<dyn Store>, search: Arc<dyn Search>) {
 
 #[tokio::test]
 async fn a_cut_off_workspace_is_not_embedded_while_another_is_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

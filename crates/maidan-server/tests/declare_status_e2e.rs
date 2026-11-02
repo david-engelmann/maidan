@@ -22,7 +22,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn workspace_with_agent(store: &Arc<dyn Store>, name: &str) -> (Workspace, MemberId, String) {
     let ws = store
@@ -56,7 +55,7 @@ async fn workspace_with_agent(store: &Arc<dyn Store>, name: &str) -> (Workspace,
 
 #[tokio::test]
 async fn a_declared_status_is_read_back_logged_and_superseded_and_stays_in_its_workspace() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -278,7 +277,7 @@ async fn a_declared_status_is_read_back_logged_and_superseded_and_stays_in_its_w
 /// nothing.
 #[tokio::test]
 async fn a_stranger_cannot_declare_status_on_anothers_thread() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -407,7 +406,7 @@ async fn a_stranger_cannot_declare_status_on_anothers_thread() {
 /// it was doing, and the human's reply supersedes it.
 #[tokio::test]
 async fn a_human_response_clears_the_declared_status() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -535,7 +534,7 @@ async fn a_human_response_clears_the_declared_status() {
 /// DM post paths were missing the human-clear the channel post paths have.
 #[tokio::test]
 async fn a_human_dm_reply_clears_the_declared_status() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -650,7 +649,7 @@ async fn a_human_dm_reply_clears_the_declared_status() {
 /// thread, mirroring the DM post path.
 #[tokio::test]
 async fn a_human_group_dm_reply_clears_the_declared_status() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

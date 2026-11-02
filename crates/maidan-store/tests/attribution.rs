@@ -8,10 +8,9 @@ use maidan_types::{
     Attribution, AuditScope, DelegationGrantId, MemberKind, NewAuditEvent, NewChannel, NewMember,
     NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

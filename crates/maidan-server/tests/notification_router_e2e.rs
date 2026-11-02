@@ -9,11 +9,10 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{notification_router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn router_writes_a_notification_per_mention_and_dedups() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -290,7 +289,7 @@ async fn router_writes_a_notification_per_mention_and_dedups() {
 
 #[tokio::test]
 async fn member_followers_receive_lifecycle_notifications_subject_to_access_and_mutes() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -589,7 +588,7 @@ impl maidan_server::mail::MailTransport for RecordingMailer {
 
 #[tokio::test]
 async fn email_delivery_when_configured_and_address_present() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -671,7 +670,7 @@ async fn email_delivery_when_configured_and_address_present() {
 /// notifies no one.
 #[tokio::test]
 async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -789,7 +788,7 @@ async fn router_notifies_the_owner_when_an_owned_task_gets_stuck() {
 /// owner and its followers; a non-follower gets nothing.
 #[tokio::test]
 async fn router_notifies_owner_and_followers_when_a_thread_lands() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -880,7 +879,7 @@ async fn router_notifies_owner_and_followers_when_a_thread_lands() {
 /// breakthrough). A thread mute is stronger — it suppresses even a mention.
 #[tokio::test]
 async fn channel_mute_suppresses_firehose_but_mention_breaks_through() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

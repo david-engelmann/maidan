@@ -4,7 +4,6 @@ use maidan_auth::{hash_secret, TokenSecret};
 use maidan_search::{EmbeddingProvider, HashV1Provider, Search, SqliteSearch};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 async fn seed_workspace(
     store: &SqliteStore,
     search: &SqliteSearch,
@@ -109,7 +108,7 @@ async fn seed_workspace(
 
 #[tokio::test]
 async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -148,7 +147,7 @@ async fn deep_purge_removes_messages_embeddings_references_tokens_and_events() {
 
 #[tokio::test]
 async fn list_audit_for_workspace_returns_the_rows_stamped_with_it() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

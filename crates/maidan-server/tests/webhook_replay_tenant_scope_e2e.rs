@@ -21,7 +21,6 @@ use maidan_types::{
     MemberKind, NewApiToken, NewMember, NewWebhookSubscription, NewWorkspace,
     WebhookSubscriptionId, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     base: String,
@@ -68,7 +67,7 @@ async fn spawn(store: Arc<dyn Store>, search: Arc<dyn maidan_search::Search>) ->
 }
 
 async fn sqlite_harness() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

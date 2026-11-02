@@ -13,11 +13,10 @@ use maidan_types::{
     AuditScope, EventFilter, EventKind, MemberKind, NewAuditEvent, NewChannel, NewMember,
     NewRecipe, NewTaskSchedule, NewWorkspace, RecipeChild, RecipeSpec, TaskEngine,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn sweep_fires_due_schedule_and_creates_thread() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -104,7 +103,7 @@ async fn sweep_fires_due_schedule_and_creates_thread() {
 
 #[tokio::test]
 async fn sweep_instantiates_a_recipe_and_skips_when_a_prior_run_is_in_flight() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -221,7 +220,7 @@ async fn sweep_instantiates_a_recipe_and_skips_when_a_prior_run_is_in_flight() {
 
 #[tokio::test]
 async fn a_scheduled_thread_is_routed_to_the_workspace_default_engine() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

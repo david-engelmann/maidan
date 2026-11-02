@@ -12,7 +12,6 @@ use maidan_types::{
     NewDlqEntry, NewMember, NewMessage, NewThread, NewWorkspace, RetentionDays, ThreadId,
     WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Room {
     workspace: WorkspaceId,
@@ -345,7 +344,7 @@ where
 }
 
 async fn sqlite() -> (SqliteStore, sqlx::SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

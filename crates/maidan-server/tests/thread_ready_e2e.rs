@@ -11,11 +11,10 @@ use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, EventFilter, EventKind};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn closing_last_dependency_publishes_thread_ready() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -8,7 +8,6 @@ use std::time::Duration;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations, StoreError};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -345,7 +344,7 @@ async fn assert_dependents_stay_waiting(store: &dyn Store) {
 
 #[tokio::test]
 async fn only_its_producer_holder_or_a_maintainer_closes_an_abandoned_thread_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -388,7 +387,7 @@ async fn only_its_producer_holder_or_a_maintainer_closes_an_abandoned_thread_on_
 
 #[tokio::test]
 async fn a_dependent_of_a_thread_closed_without_landing_stays_waiting_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

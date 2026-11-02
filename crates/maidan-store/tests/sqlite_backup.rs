@@ -5,11 +5,10 @@
 
 use maidan_store::{configure_sqlite_pool, prelude::*, run_sqlite_migrations};
 use maidan_types::{NewChannel, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
 async fn open(path: &std::path::Path) -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect(&format!("sqlite://{}?mode=rwc", path.display()))
         .await

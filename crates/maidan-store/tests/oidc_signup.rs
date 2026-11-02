@@ -9,7 +9,6 @@ use chrono::Utc;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations, StoreError};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -256,7 +255,7 @@ async fn assert_signup(store: &dyn Store) {
 
 #[tokio::test]
 async fn waitlist_and_signup_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -360,7 +359,7 @@ async fn concurrent_signups_for_one_identity_make_one_workspace_sqlite() {
         "sqlite://{}?mode=rwc",
         dir.path().join("signup.db").display()
     );
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .after_connect(|conn, _| {
             Box::pin(async move {

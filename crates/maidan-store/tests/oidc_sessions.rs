@@ -32,7 +32,7 @@ async fn seed_human(store: &SqliteStore, workspace_id: WorkspaceId) -> maidan_ty
 
 #[tokio::test]
 async fn oidc_identity_upsert_and_lookup_roundtrip() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("pool");
@@ -66,7 +66,7 @@ async fn oidc_identity_upsert_and_lookup_roundtrip() {
 
 #[tokio::test]
 async fn oidc_pending_is_single_use() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("pool");
@@ -103,7 +103,7 @@ async fn oidc_pending_is_single_use() {
 
 #[tokio::test]
 async fn session_create_get_and_delete() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("pool");
@@ -137,7 +137,7 @@ async fn session_create_get_and_delete() {
 
 #[tokio::test]
 async fn get_member_by_handle_resolves_workspace_member() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("pool");

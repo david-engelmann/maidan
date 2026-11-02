@@ -23,7 +23,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// Whole seconds, so `overdue` (half) lands at one second and the return at
 /// two, both short enough to wait out.
@@ -144,7 +143,7 @@ async fn an_unanswered_wait_on_a_person_returns_the_thread_and_stays_in_its_work
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_HUMAN_TIMEOUT_SECS", TIMEOUT_SECS.to_string()) };
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -31,7 +31,6 @@ use maidan_types::{
     WorkspaceId,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// Longer than the server's gap between two checks of a stream's credential.
 const PAST_RECHECK_GAP: Duration = Duration::from_millis(1200);
@@ -49,7 +48,7 @@ struct Env {
 }
 
 async fn spawn() -> Env {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

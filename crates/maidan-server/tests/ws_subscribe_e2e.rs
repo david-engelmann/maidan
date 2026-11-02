@@ -13,7 +13,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::EventKind;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -25,7 +24,7 @@ async fn spawn_server() -> (
     tokio::task::JoinHandle<()>,
     tempfile::TempDir,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -269,7 +268,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
 
     maidan_server::metrics::init();
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -377,7 +376,7 @@ async fn subscribe_emits_replay_hint_when_bus_subscriber_lags() {
 
 #[tokio::test]
 async fn subscribe_auto_replays_from_event_log_when_bus_lags_with_workspace_filter() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -786,7 +785,7 @@ impl maidan_bus::EventBus for GatedSubscribeBus {
 
 #[tokio::test]
 async fn a_resume_keeps_events_published_while_the_server_subscribes() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -1019,7 +1018,7 @@ async fn subscribe_emits_replay_truncated_when_event_log_exceeds_replay_limit() 
 async fn at_least_once_subscribe_delivers_in_order_then_cursor_floors_reconnect() {
     // Deterministic, fast reconcile via AppState config (no process-wide env, which
     // would race other tests): no stability delay, tight poll.
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
