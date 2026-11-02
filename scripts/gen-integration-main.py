@@ -52,7 +52,11 @@ fn it_declares_every_test_file() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
     let main = include_str!("main.rs");
     let mut missing = Vec::new();
-    for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(err) => panic!("cannot read {}: {err}", dir.display()),
+    };
+    for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "rs") {
             let name = entry.file_name().to_string_lossy().into_owned();
