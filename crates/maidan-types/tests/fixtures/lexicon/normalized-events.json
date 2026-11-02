@@ -164,6 +164,7 @@
   },
   "maidan.event.intake_accepted/1": {
     "$type": "maidan.event.intake_accepted/1",
+    "channel_id": "00000000-0000-0000-0000-000000000003",
     "intake_id": "00000000-0000-0000-0000-00000000000e",
     "kind": "intake_accepted",
     "occurred_at": "2023-11-14T22:13:20Z",

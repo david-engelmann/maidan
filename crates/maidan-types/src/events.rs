@@ -1060,6 +1060,8 @@ pub enum Event {
         workspace_id: WorkspaceId,
         intake_id: uuid::Uuid,
         thread_id: ThreadId,
+        /// The linked thread's channel, so channel gates apply to the event.
+        channel_id: ChannelId,
         triaged_by: MemberId,
     },
     /// A proposed intake item was rejected, with the reason. Appended with
@@ -1366,6 +1368,7 @@ impl Event {
         match self {
             Self::ChannelCreated { channel, .. } => Some(channel.id),
             Self::ThreadCreated { channel_id, .. }
+            | Self::IntakeAccepted { channel_id, .. }
             | Self::ThreadStateChanged { channel_id, .. }
             | Self::ThreadAssignmentChanged { channel_id, .. }
             | Self::ThreadReady { channel_id, .. }

@@ -488,6 +488,7 @@ fn sample_event(kind: EventKind) -> Event {
             workspace_id,
             intake_id: id(14),
             thread_id: maidan_types::ThreadId(id(4)),
+            channel_id: maidan_types::ChannelId(id(3)),
             triaged_by: maidan_types::MemberId(id(13)),
         },
         EventKind::IntakeRejected => Event::IntakeRejected {

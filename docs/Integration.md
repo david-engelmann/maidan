@@ -2030,7 +2030,7 @@ human or an integration proposes an item; a member triages it once.
 - **Accept** with `{"decision": "accept", "thread_id"}` to link an existing
   thread in the workspace, or `{"decision": "accept", "channel_id"}` to create
   a thread in that channel from the item's title and body. Give exactly one.
-  `intake_accepted` is announced with the thread id.
+  `intake_accepted` is announced with the thread id and its channel, so channel gates apply to it.
 - **Reject** with `{"decision": "reject", "reason"}`. The reason is required
   and stored on the item; `intake_rejected` is announced.
 
