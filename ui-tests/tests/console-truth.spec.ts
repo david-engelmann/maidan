@@ -170,7 +170,7 @@ test("evidence shows each item's tier, and warns when it is all self-reported", 
   await expect(attached.locator(".ev-warn")).toHaveCount(0);
 
   const verified = needRow(page, fx.tiers_verified_thread_id).locator(".need-evidence");
-  await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-kind')).toHaveText("automated check");
+  await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-kind')).toHaveText("Automated check");
   await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-tier')).toHaveAttribute("data-tier", "verified");
 
   const self = needRow(page, fx.tiers_self_thread_id).locator(".need-evidence");
@@ -183,7 +183,7 @@ test("evidence shows each item's tier, and warns when it is all self-reported", 
   const row = needRow(page, fx.tiers_attached_thread_id);
   const order = await row.evaluate((li) => {
     const ev = li.querySelector(".need-evidence");
-    const ok = [...li.querySelectorAll("button")].find((b) => b.textContent === "Approve");
+    const ok = [...li.querySelectorAll("button")].find((b) => b.firstChild?.textContent === "Approve");
     return ev && ok ? ev.compareDocumentPosition(ok) & Node.DOCUMENT_POSITION_FOLLOWING : 0;
   });
   expect(order).toBeTruthy();

@@ -89,4 +89,4 @@ export function listStep(current: number, length: number, key: string): number |
 }
 
 /** The rows j and k move between, in screen order. */
-export const LIST_ROWS = ".convs .conv, .person-row, .need-card, .lane .task";
+export const LIST_ROWS = ".convs .conv, .person-row, .need-pick, .need-card, .lane .task";

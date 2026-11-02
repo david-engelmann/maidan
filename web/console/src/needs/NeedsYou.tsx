@@ -30,6 +30,7 @@ import { convHash } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useNeeds } from "../hooks/useNeeds.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { Icon } from "../shell/icons.tsx";
 
 const SWIPE = 96;
 
@@ -73,6 +74,10 @@ export function NeedsYou() {
     return [...data.items, ...[...held.values()].filter((it) => !keys.has(needKey(it)))];
   }, [data.items, held]);
   const { groups, headings } = useMemo(() => groupNeeds(shown), [shown]);
+  // The row under review: the wide layout shows it in the right pane, and
+  // a and r act on it. It falls back to the first row when it leaves.
+  const [sel, setSel] = useState<string | null>(null);
+  const selected = sel !== null && shown.some((it) => needKey(it) === sel) ? sel : shown[0] ? needKey(shown[0]) : null;
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
@@ -109,6 +114,8 @@ export function NeedsYou() {
                   key={needKey(it)}
                   item={it}
                   primary={it === shown[0]}
+                  selected={needKey(it) === selected}
+                  onSelect={() => setSel(needKey(it))}
                   gate={it.gate_id ? data.gates.get(it.gate_id) : undefined}
                   me={session.memberId}
                   api={api}
@@ -127,6 +134,8 @@ export function NeedsYou() {
 type RowProps = {
   item: Need;
   primary: boolean;
+  selected: boolean;
+  onSelect: () => void;
   gate: GateView | undefined;
   me: string | null;
   api: NeedsApi;
@@ -171,7 +180,7 @@ const CONFIRM: Partial<Record<Ask, string>> = {
   close: "Close this task?",
 };
 
-function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
+function NeedRow({ item, primary, selected, onSelect, gate, me, api, hold, onSettled }: RowProps) {
   const reduce = Boolean(useReducedMotion());
   const [state, setState] = useState<RowState>({ phase: "idle" });
   const [note, setNote] = useState("");
@@ -301,19 +310,43 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
 
   const { title, lines } = rowText(item, gate);
   const label = kindLabel(item.kind);
+  // a approves and r sends back the selected row, as its buttons would.
+  const keyYes: Ask | null = state.phase !== "idle" ? null : isReview && !ownerOnly ? (root && items ? "approve" : null) : item.kind === "open_gate" && gate ? "accept" : null;
+  const keyNo: Ask | null = state.phase !== "idle" ? null : isReview ? "request_changes" : item.kind === "open_gate" && gate ? "decline" : null;
+  useEffect(() => {
+    if (!selected || (!keyYes && !keyNo)) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || document.querySelector("[aria-modal='true']")) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const ask = e.key === "a" ? keyYes : e.key === "r" ? keyNo : null;
+      if (!ask) return;
+      e.preventDefault();
+      start(ask);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, keyYes, keyNo, start]);
   const canSwipe = !reduce && state.phase === "idle" && Boolean(yes || no);
 
   return (
     <motion.li
       ref={rowRef}
       layout={!reduce}
-      className={`need ${primary ? "primary" : ""} need-${item.kind} phase-${state.phase}`}
+      className={`need ${primary ? "primary" : ""} ${selected ? "selected" : ""} need-${item.kind} phase-${state.phase}`}
       data-kind={item.kind}
       data-thread-id={tid ?? undefined}
       initial={reduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={reduce ? { opacity: 0 } : { opacity: 0, x: state.phase === "done" && state.tone === "no" ? -40 : 40, transition: { duration: 0.38 } }}
     >
+      <button type="button" className="need-pick" aria-current={selected ? "true" : undefined} onClick={onSelect} onFocus={onSelect}>
+        <span className="need-pick-title">{title}</span>
+        <span className="need-pick-meta">
+          <span className={`need-pick-kind kind-${item.kind}`}>{label}</span>
+          <span className={item.overdue ? "overdue" : ""}>{waitingFor(item.age_secs)}</span>
+        </span>
+      </button>
       {canSwipe && (
         <div className="need-under" aria-hidden="true">
           <span className="yes">{yes ? (yes === "unblock" ? "Unblock" : "Approve") : ""}</span>
@@ -395,22 +428,22 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
           <div className="need-actions">
             {isReview && !ownerOnly && (
               <>
-                <button type="button" className="btn" onClick={() => start("request_changes")}>Send back</button>
-                <button type="button" className="btn" disabled={!root || !items} onClick={() => start("approve_note")}>Add a note</button>
-                <button type="button" className="btn go" disabled={!root || !items} onClick={() => start("approve")}>Approve</button>
+                <button type="button" className="btn text" disabled={!root || !items} onClick={() => start("approve_note")}>Add a note</button>
+                <button type="button" className="btn" aria-keyshortcuts="r" title="Send back (R)" onClick={() => start("request_changes")}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                <button type="button" className="btn go" aria-keyshortcuts="a" title="Approve (A)" disabled={!root || !items} onClick={() => start("approve")}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
               </>
             )}
             {ownerOnly && (
               <>
-                <button type="button" className="btn" onClick={() => start("request_changes")}>Send back</button>
+                <button type="button" className="btn" aria-keyshortcuts="r" title="Send back (R)" onClick={() => start("request_changes")}>Send back<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
                 {owner.required === 0 && <button type="button" className="btn go" onClick={() => start("close")}>Close without review</button>}
               </>
             )}
             {item.kind === "open_gate" &&
               (gate ? (
                 <>
-                  <button type="button" className="btn stop" onClick={() => start("decline")}>Decline</button>
-                  <button type="button" className="btn go" onClick={() => start("accept")}>Approve</button>
+                  <button type="button" className="btn stop" aria-keyshortcuts="r" title="Decline (R)" onClick={() => start("decline")}>Decline<kbd className="kbd-hint" aria-hidden="true">R</kbd></button>
+                  <button type="button" className="btn go" aria-keyshortcuts="a" title="Approve (A)" onClick={() => start("accept")}>Approve<kbd className="kbd-hint" aria-hidden="true">A</kbd></button>
                 </>
               ) : tid ? (
                 <a className="btn" href={convHash({ kind: "task", id: tid })}>Open the thread</a>
@@ -499,15 +532,16 @@ function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | nu
         Evidence <code className="ev-root" title={p.evidence_root} data-root={p.evidence_root}>{shortHash(p.evidence_root)}</code>
       </p>
       {p.self_reported_only && (
-        <p className="ev-warn" role="note">
-          Self-reported only: all of this evidence comes from the task's own workers. Nobody else attached anything, and no automated check has verified it.
-        </p>
+        <details className="ev-warn" role="note">
+          <summary><Icon name="caution" /><span>Self-reported only</span></summary>
+          <p>All of this evidence comes from the task's own workers. Nobody else attached anything, and no automated check has verified it.</p>
+        </details>
       )}
       {items && items.length ? (
         <ul className="ev-list">
           {items.map((e, i) => (
             <li key={`${e.kind}-${e.sha ?? i}`} className="ev-item" data-ev={e.kind}>
-              <span className="ev-kind">{e.kind === "artifact" ? "file" : e.label}</span>
+              <span className="ev-kind">{e.kind === "artifact" ? "File" : sentence(e.label)}</span>
               {e.kind === "artifact" && <span className="ev-name">{e.label}</span>}
               {e.sha && <code className="ev-hash" title={e.sha}>{shortHash(e.sha)}</code>}
               {e.tier && <span className={`ev-tier tier-${e.tier.wire}`} data-tier={e.tier.wire} title={e.tier.title}>{e.tier.word}</span>}
@@ -521,4 +555,9 @@ function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | nu
       <a className="ev-open" href={taskHref}>Read the result and transcript</a>
     </section>
   );
+}
+
+/** "automated check" reads "Automated check" as a label. */
+function sentence(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
 }

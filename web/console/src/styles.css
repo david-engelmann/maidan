@@ -797,11 +797,11 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .need-card { border-radius: var(--r-lg, 16px); padding: 14px 16px; box-shadow: var(--shadow-1); transition: box-shadow .18s, transform .18s; }
 .need.primary .need-card { border-color: var(--line); box-shadow: inset 3px 0 0 var(--signal), var(--shadow-1); }
 .need-meta { align-items: center; margin-bottom: 6px; }
-.need-kind { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
-.need-kind::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.need-kind.kind-review_request { color: #4a55c9; }
-@media (prefers-color-scheme: dark) { .need-kind.kind-review_request { color: #8f9bff; } }
-.need-kind.kind-review_request, .need-kind.kind-open_gate, .need-kind.kind-blocked { font-weight: 500; }
+.need-kind, .need-pick-kind { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+:is(.need-kind, .need-pick-kind)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+:is(.need-kind, .need-pick-kind).kind-review_request { color: #4a55c9; }
+@media (prefers-color-scheme: dark) { :is(.need-kind, .need-pick-kind).kind-review_request { color: #8f9bff; } }
+:is(.need-kind, .need-pick-kind).kind-review_request, :is(.need-kind, .need-pick-kind).kind-open_gate, :is(.need-kind, .need-pick-kind).kind-blocked { font-weight: 500; }
 .need-title { font-size: var(--text-md); letter-spacing: -0.01em; }
 .need-evidence { border-radius: var(--r-md); background: transparent; }
 .need-evidence[data-state="none"] { border-style: dashed; }
@@ -978,3 +978,50 @@ h1, h2, h3, strong, b { font-weight: 600; }
   * { animation: none !important; transition: none !important; }
 }
 
+
+/* Review: one flat surface per card, sections split by space and a hairline. */
+.need-pick { display: none; }
+.need-evidence, .need-evidence[data-state="none"] { margin: 12px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--hairline); border-radius: 0; background: none; }
+.need-evidence .ev-head { font-weight: 500; color: var(--muted); font-size: var(--text-sm); }
+.need-evidence .ev-head code { color: var(--ink); }
+.need-evidence .ev-item { gap: 0.25rem 0.6rem; }
+.need-evidence .ev-kind { font-family: inherit; font-size: var(--text-sm); letter-spacing: 0; text-transform: none; color: var(--muted); min-width: 7.5em; }
+.need-evidence .ev-warn { margin: 0 0 10px; padding: 0; border-radius: 0; background: none; color: var(--muted); }
+.ev-warn summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; color: var(--signal-ink, var(--ink)); font-weight: 500; font-size: var(--text-sm); }
+.ev-warn summary::-webkit-details-marker { display: none; }
+.ev-warn summary .icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.ev-warn summary::after { content: "Why"; margin-left: 4px; color: var(--muted); font-weight: 400; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.ev-warn[open] summary::after { content: "Hide"; }
+.ev-warn p { margin: 6px 0 0 21px; font-size: var(--text-sm); line-height: 1.45; }
+.need-actions { border-top: 1px solid var(--hairline); padding-top: 12px; }
+.need-actions .btn.text { background: none; border-color: transparent; box-shadow: none; color: var(--muted); }
+.need-actions .btn.text:hover:not([disabled]) { color: var(--ink); border-color: transparent; background: var(--hover); }
+.need-actions .btn:not(.go):not(.text):not(.stop) { background: transparent; box-shadow: none; border-color: var(--line-strong); }
+.need-actions .btn.go { font-weight: 600; box-shadow: var(--shadow-1); }
+.kbd-hint { display: none; margin-left: 8px; padding: 0 5px; min-width: 1.4em; border-radius: 5px; border: 1px solid currentColor; font: 500 var(--text-2xs)/1.5 var(--font, inherit); opacity: .55; }
+@media (hover: hover) { .need-actions .btn:hover .kbd-hint, .need-actions .btn:focus-visible .kbd-hint { display: inline-block; } }
+
+/* Wide: a review queue on the left, the selected item's evidence on the right. */
+@media (min-width: 1440px) {
+  .content:has(.needs) { max-width: var(--content-max); }
+  .needs { max-width: none; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); column-gap: 28px; row-gap: 0; align-items: start; }
+  .needs > * { grid-column: 1; margin-bottom: 8px; }
+  .needs-group, .needs-list { display: contents; }
+  .needs-group-head { grid-column: 1; margin: 10px 2px 6px; }
+  .need { grid-column: 1; background: none; box-shadow: none; border: 0; }
+  .need-pick:not([aria-current="true"]) { background: transparent; }
+  .need:not(.selected) > .need-card, .need > .need-under { display: none; }
+  .need.selected { display: contents; }
+  .need.selected > .need-card { grid-column: 2; grid-row: 1 / span 400; align-self: start; position: sticky; top: 76px; padding: 20px 24px; box-shadow: var(--shadow-1); }
+  .need.selected > .need-card .need-title { font-size: var(--text-xl); }
+  .need-pick { grid-column: 1; display: grid; gap: 4px; width: 100%; margin: 0 0 6px; padding: 10px 12px; text-align: left; font: inherit; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: var(--r-md, 10px); cursor: pointer; }
+  .need-pick:hover { background: var(--hover); }
+  .need-pick[aria-current="true"] { background: var(--elev-1); border-color: var(--hairline); box-shadow: inset 3px 0 0 var(--signal); }
+  .need-pick:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .need-pick-title { font-weight: 500; font-size: var(--text-base); line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .need-pick-meta { display: flex; justify-content: space-between; gap: 12px; font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .need-pick-meta .overdue { color: var(--danger); }
+  .need.selected .need-actions { display: flex; justify-content: flex-end; }
+  .need.selected .need-actions .btn { min-width: 112px; }
+  .top { max-width: var(--content-max); width: 100%; }
+}
