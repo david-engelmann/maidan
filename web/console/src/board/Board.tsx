@@ -93,7 +93,7 @@ export function Board() {
               {lane === l.key && <motion.span className="seg steel" layoutId="lane-seg" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }} />}
               <span className="seg-label" aria-hidden="true">{l.short}</span>
               <span className="count" aria-hidden="true">{lanes[l.key].length}</span>
-              <span className="sr-only">{`${l.title}, ${lanes[l.key].length}`}</span>
+              <span className="visually-hidden">{`${l.title}, ${lanes[l.key].length}`}</span>
             </button>
           ))}
         </div>
@@ -120,6 +120,12 @@ export function Board() {
                   <span className="count">{lanes[l.key].length}</span>
                 </h2>
               )}
+              {data.status === "loading" && !data.threads.length ? (
+                <div aria-hidden="true">
+                  <span className="skeleton task-sk" />
+                  <span className="skeleton task-sk" />
+                </div>
+              ) : null}
               <ul className="cards">
                 <AnimatePresence initial={false}>
                   {lanes[l.key].map((c) => (

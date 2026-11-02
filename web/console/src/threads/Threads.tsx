@@ -141,7 +141,11 @@ export function Threads() {
         )}
         {listError && <p className="conv-error" role="alert">{listError}</p>}
         {listLoading && !list.length ? (
-          <p className="muted">Loading…</p>
+          <div role="status" aria-label="Loading">
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+          </div>
         ) : !list.length ? (
           <p className="muted conv-empty">{tab === "tasks" ? "No tasks in this channel yet." : "No conversations yet. Start one with New message."}</p>
         ) : (
