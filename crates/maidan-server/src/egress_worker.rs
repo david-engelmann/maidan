@@ -1279,6 +1279,18 @@ async fn record_result_gave_up(
             return;
         }
     }
+    // The event reaches a relay; the operator channel hears it too, naming
+    // the thread and where the result was going (#1649), so a stored result
+    // nobody received does not wait for someone to notice by hand.
+    let reason: String = error.chars().take(200).collect();
+    crate::ops_alert::alert(
+        &format!("result-delivery-failed:{}:{target}", entry.thread_id),
+        &format!(
+            "A task result was not delivered: thread {} to {target} gave up after its retries ({reason}). The result is stored; replay it with POST /threads/{}/deliveries/{}/replay once the cause is fixed.",
+            entry.thread_id, entry.thread_id, row.id
+        ),
+    )
+    .await;
     crate::metrics::record_result_delivery(target.surface().as_str(), "failed");
 }
 
