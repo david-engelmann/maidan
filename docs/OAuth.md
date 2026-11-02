@@ -131,6 +131,38 @@ P3 shipped. These are its controls and what each one does.
   limit, a 404 and a 429 stay problems: they come from layers in front of the
   handler.
 
+## P6 validation record
+
+`scripts/oauth-p6-record.py` runs the flow a remote MCP client runs and writes
+a JSON record of each step, named by the commit it ran against:
+
+1. Discovery. An unauthenticated `POST /mcp/streamable` must answer 401 with a
+   `resource_metadata` challenge. The resource document must name
+   `<origin>/mcp/streamable` and an authorization server, and the RFC 8414
+   document must offer PKCE S256 only, client metadata documents, and no
+   registration endpoint.
+2. Consent. The script opens the authorize URL and waits up to ten minutes on
+   a loopback redirect. The redirect must carry the same `state` and an `iss`
+   equal to the issuer (RFC 9207).
+3. Token. The code is exchanged with the PKCE verifier and the resource
+   (RFC 8707). The response must be `no-store` and carry a refresh token.
+4. `tools/list`. The access token must initialize `/mcp/streamable` and list
+   at least one tool, and `/mcp` must refuse it with 401.
+
+The script then revokes the refresh token. The record holds tokens only as
+SHA-256 prefixes. Run it from a machine with a browser signed in to the
+instance:
+
+```sh
+python3 scripts/oauth-p6-record.py --origin https://<instance> \
+  --client-id https://<client-metadata-host>/client.json
+```
+
+`--commit` names the commit when the instance's `/health` version has no
+`v<version>` tag. The script exits non-zero when any check fails, and still
+writes the record. `scripts/test-oauth-p6-record.py` runs the checks against
+the documents in `scripts/fixtures/oauth-p6`, in the coverage job.
+
 ## Configuration
 
 `MAIDAN_PUBLIC_ORIGIN` is the instance's public origin, for example
