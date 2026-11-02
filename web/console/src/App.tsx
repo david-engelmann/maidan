@@ -7,6 +7,7 @@ import { Threads } from "./threads/Threads.tsx";
 import { People } from "./people/People.tsx";
 import { Tools } from "./tools/Tools.tsx";
 import { Artifacts } from "./artifacts/Artifacts.tsx";
+import { Activity } from "./activity/Activity.tsx";
 import { Shell } from "./shell/Shell.tsx";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
           needs: <NeedsYou />,
           threads: <Threads />,
           people: <People />,
+          activity: <Activity />,
           tools: <Tools />,
           artifacts: <Artifacts />,
         }}
