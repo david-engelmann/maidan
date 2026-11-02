@@ -768,14 +768,13 @@ pub async fn get_member_email(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
-) -> ApiResult<Json<MemberEmail>> {
+) -> ApiResult<Json<Option<MemberEmail>>> {
     cap(&auth, WORKSPACE_READ)?;
     requested_member(&state, &auth, MemberId(id)).await?;
     ensure_own_personal_state(&auth, MemberId(id))?;
-    match state.store.get_member_email(MemberId(id)).await? {
-        Some(e) => Ok(Json(e)),
-        None => Err(ApiError::NotFound),
-    }
+    // No address set is an ordinary answer, `null`, not a missing resource:
+    // a fresh member has none, and a 404 read as an error to every client.
+    Ok(Json(state.store.get_member_email(MemberId(id)).await?))
 }
 
 /// Clear a member's delivery email — opting out. Self-only; `404` if none was

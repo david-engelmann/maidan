@@ -9,7 +9,11 @@ use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 fn server(dir: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_maidan-server"));
+    let mut cmd = Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan-server")
+            .or_else(|| std::env::var_os("NEXTEST_BIN_EXE_maidan_server"))
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan-server").into()),
+    );
     for (name, _) in std::env::vars() {
         if name.starts_with("MAIDAN_") || name.starts_with("DATABASE_URL") {
             cmd.env_remove(name);

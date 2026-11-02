@@ -249,7 +249,8 @@ export class ToolsApi {
     await this.send("PUT", `/members/${member}/delivery-mode`, { mode });
   }
   async email(member: string): Promise<string | null> {
-    return (await this.maybe<{ email: string }>(`/members/${member}/email`))?.email ?? null;
+    // 200 with null when no address is set; an older server answers 404.
+    return (await this.maybe<{ email: string } | null>(`/members/${member}/email`))?.email ?? null;
   }
   async setEmail(member: string, email: string): Promise<void> {
     const why = emailRefusal(email);

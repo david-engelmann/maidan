@@ -10,7 +10,7 @@ mod common;
 use std::time::Duration;
 
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -40,7 +40,7 @@ async fn parity_between_postgres_and_sqlite() {
     run_postgres_migrations(&pg_pool).await.expect("pg migrate");
     let pg = PostgresStore::for_tests(pg_pool);
 
-    let sqlite_pool = SqlitePoolOptions::new()
+    let sqlite_pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

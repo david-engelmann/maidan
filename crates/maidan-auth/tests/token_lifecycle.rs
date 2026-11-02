@@ -11,7 +11,7 @@ use maidan_types::{
 };
 
 async fn store_with_member() -> (SqliteStore, WorkspaceId, MemberId) {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

@@ -44,7 +44,7 @@ async fn spawn(signup: bool, domains: Vec<String>) -> Env {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_TRUSTED_PROXY_HOPS", "1") };
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -33,7 +33,6 @@ use maidan_types::{
     NewEgressOutbox, NewFsmHook, NewMailOutbox, NewThread, NewWebhookSubscription, NewWorkspace,
     SlashHandlerKind, ThreadState, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The budget every suite runs under: three retries per host, and a clock
 /// that never moves, so nothing refills during the pass.
@@ -50,7 +49,7 @@ struct Backend {
 }
 
 async fn sqlite() -> Backend {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -1,6 +1,6 @@
 // The Worker for try.maidan.world, the public demo directory reviewers
-// connect to. See docs/Demo.md for the runbook; the deploy is the
-// maintainer's.
+// connect to. The runbook is docs/Deploy.md "try.maidan.world"; the
+// deploy-demo workflow deploys it.
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
@@ -10,7 +10,8 @@ import { tooLarge } from "./demo-config.js";
 
 export class MaidanDemo extends Container {
   defaultPort = 8080;
-  sleepAfter = "30m";
+  // Cost: an idle demo sleeps after 15 minutes.
+  sleepAfter = "15m";
   // No outbound egress: webhooks, delivery to GitHub, Slack or Linear, and
   // OAuth metadata fetches all fail closed inside the demo.
   enableInternet = false;
@@ -18,6 +19,12 @@ export class MaidanDemo extends Container {
   constructor(ctx, env) {
     super(ctx, env);
     this.envVars = demoEnv(env[DEMO_PUBLIC_ORIGIN_VAR]);
+  }
+
+  // The cron's reset. It destroys a running container and never starts one:
+  // a sleeping demo stays asleep until a visitor wakes it.
+  async reset() {
+    if (this.ctx.container.running) await this.destroy();
   }
 }
 
@@ -45,6 +52,6 @@ export default {
   // The reset: destroy the container and its SQLite file. The next request
   // boots a fresh one, whose entrypoint reseeds from scripts/demo-board.sh.
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(getContainer(env.MAIDAN_DEMO).destroy());
+    ctx.waitUntil(getContainer(env.MAIDAN_DEMO).reset());
   },
 };

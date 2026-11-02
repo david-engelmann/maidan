@@ -24,6 +24,9 @@ import {
   seatRefusal,
   WORKER_PRESET,
   tokenState,
+  inviteState,
+  type Invite,
+  type InviteRole,
   unseat,
   type Pause,
   type Person,
@@ -155,6 +158,7 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
             </li>
           ))}
         </ul>
+        <Invites api={api} />
       </section>
       {open ? (
         <section className="member-detail card" aria-label="Member details">
@@ -170,11 +174,22 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
   );
 }
 
+// The clock a screen compares expiries and leases against, moved on every
+// 15 s so a token or invite that lapses while the page is open says so.
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
 function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
   const { session, store } = useSession();
   const [version, setVersion] = useState(0);
   const tokens = useTokens(session, api, row.person.id, version);
-  const [now] = useState(() => Date.now());
+  const now = useNow();
   // A secret the server just sent. It lives here only: the panel closing,
   // another member opening, or "I have it" drops it. It is never logged.
   const [secret, setSecret] = useState<{ title: string; value: string } | null>(null);
@@ -293,6 +308,94 @@ function MintForm({ busy, held, onMint }: { busy: boolean; held: string[] | null
   );
 }
 
+// ---- Invites ---------------------------------------------------------------
+// A person joins by an invite link an admin sends them. The link is shown
+// once, here only, and goes when "I have it" is pressed or the page closes.
+
+function Invites({ api }: { api: PeopleApi }) {
+  const { session } = useSession();
+  const workspace = session.status === "signed-in" ? session.workspaceId : null;
+  const canWrite = session.status === "signed-in" && hasToken(session.credentials);
+  const [version, setVersion] = useState(0);
+  const [list, setList] = useState<{ value: Invite[] | null; error: string | null }>({ value: null, error: null });
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<InviteRole>("member");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [link, setLink] = useState<{ title: string; value: string } | null>(null);
+  const now = useNow();
+  useEffect(() => {
+    if (!canWrite || !workspace) return;
+    let live = true;
+    api.invites(workspace).then(
+      (value) => live && setList({ value, error: null }),
+      (e: unknown) => live && setList((l) => ({ value: l.value, error: e instanceof Error ? e.message : "Could not load invites" })),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, workspace, canWrite, version]);
+  if (!workspace) return null;
+  if (!canWrite) return <p className="muted small invite-note">Inviting people needs a bearer token with workspace:admin. A signed-in session cannot.</p>;
+  async function run(f: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await f();
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That did not go through");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="invites">
+      <form
+        className="stack-form invite-form"
+        aria-label="Invite a person"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => {
+            const out = await api.invite(workspace, { email, role });
+            setLink({ title: `Invite link for ${email.trim()}`, value: out.link });
+            setEmail("");
+            say("Invite made");
+          });
+        }}
+      >
+        <h3>Invite a person</h3>
+        <label className="field">Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" autoCapitalize="off" spellCheck={false} /></label>
+        <label className="field">Role
+          <select value={role} onChange={(e) => setRole(e.target.value === "viewer" ? "viewer" : "member")}>
+            <option value="member">Member</option>
+            <option value="viewer">Viewer (read only)</option>
+          </select>
+        </label>
+        {error ? <p className="err small" role="alert">{error}</p> : null}
+        <button className="button steel" disabled={busy}>{busy ? "Inviting…" : "Invite"}</button>
+        <p className="muted small">The person signs in with this email to join. The link works once and expires in 7 days. An invite cannot grant more than you hold.</p>
+      </form>
+      {link ? <SecretOnce title={link.title} secret={link.value} onDone={() => setLink(null)} /> : null}
+      {list.error ? <p className={list.value ? "stale" : "err"} role="alert">{list.error}</p> : null}
+      {list.value?.length ? (
+        <ul className="swarm-list invite-list" aria-label="Invites">
+          {list.value.map((i) => {
+            const state = inviteState(i, now);
+            return (
+              <li key={i.id} className="swarm-row">
+                <span className="grow">{i.email} <span className="muted">· {i.role} · {state === "pending" ? `expires ${new Date(i.expiresAt).toLocaleDateString()}` : state}</span></span>
+                {state === "pending" ? <button type="button" className="chip-btn danger" disabled={busy} onClick={() => void run(() => api.revokeInvite(workspace, i.id))}>Revoke</button> : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 // ---- Swarm -----------------------------------------------------------------
 
 function Swarm({ rows, people, api, workspace, presence }: { rows: RosterRow[]; people: Person[]; api: PeopleApi; workspace: string | null; presence: Map<string, Presence> }) {
@@ -300,11 +403,7 @@ function Swarm({ rows, people, api, workspace, presence }: { rows: RosterRow[]; 
   const { data, pause, resume } = useSwarm(session, api);
   const names = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people]);
   const name = (id: string) => names.get(id) ?? `member ${id.slice(0, 8)}`;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(t);
-  }, []);
+  const now = useNow();
   return (
     <div className="swarm">
       <Builder rows={rows} people={people} workspace={workspace} presence={presence} />

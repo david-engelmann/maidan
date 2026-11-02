@@ -12,11 +12,10 @@ use maidan_types::{
     NewThread, NewWorkspace, RefSide, STATUS_REVIEWED, WAITER_RESULT_SCHEMA,
 };
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -170,7 +169,7 @@ async fn thread_context_includes_messages_refs_artifacts_and_fsm() {
 
 #[tokio::test]
 async fn thread_context_edit_bodies_are_opt_in() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -315,7 +314,7 @@ async fn thread_context_edit_bodies_are_opt_in() {
 
 #[tokio::test]
 async fn token_budget_folds_the_middle_and_records_elision() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -470,7 +469,7 @@ async fn token_budget_folds_the_middle_and_records_elision() {
 
 #[tokio::test]
 async fn child_thread_context_grounds_on_its_parent() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -625,7 +624,7 @@ async fn child_thread_context_grounds_on_its_parent() {
 
 #[tokio::test]
 async fn thread_context_lists_in_channel_accepted_decisions() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -925,7 +924,7 @@ async fn thread_context_lists_in_channel_accepted_decisions() {
 
 #[tokio::test]
 async fn context_pack_is_cache_stable_and_the_same_bytes_on_rest_and_mcp() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

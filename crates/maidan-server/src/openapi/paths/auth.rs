@@ -19,10 +19,12 @@ use maidan_types::{
 
 /// Start an OIDC login
 ///
-/// With `workspace_id`, signs in to that workspace. The id is not looked up
+/// With `invite`, a workspace invite, signs in (or up) into the invite's
+/// workspace; the invite is looked up first, and a dead one is refused. With
+/// `workspace_id`, signs in to that workspace. The id is not looked up
 /// before the redirect: an unknown id redirects like a real one and the
 /// callback refuses it with the same 403 as a workspace the person has no
-/// member in. Without it (the front door), the callback signs in to the
+/// member in. With neither (the front door), the callback signs in to the
 /// identity's most recently used workspace, adds `choose_workspace=1` to the
 /// return path when there are more, and creates no session (adding
 /// `no_workspace=1`) when there are none.
@@ -42,12 +44,16 @@ pub fn oidc_login() {}
 
 /// Start an invited sign-up
 ///
-/// Creates a workspace for someone who is not a member anywhere yet. The
-/// `invite` names the waitlist invite the operator minted; without one, the
+/// Two kinds of `invite`. A workspace invite (`maid_inv_…`) joins the
+/// identity to the invite's existing workspace, creates no workspace, and
+/// works whether or not sign-up is enabled. Otherwise this creates a
+/// workspace for someone who is not a member anywhere yet: the `invite`
+/// names the waitlist invite the operator minted, and without one the
 /// address the identity provider later verifies must sit in the instance's
 /// sign-up domain list. The callback consumes the pending sign-up and
 /// creates the workspace, its first member, the identity and the session in
-/// one transaction. 404 unless sign-up is enabled on the instance.
+/// one transaction. Without a workspace invite, 404 unless sign-up is
+/// enabled on the instance.
 #[utoipa::path(
     get,
     path = "/auth/oidc/signup",

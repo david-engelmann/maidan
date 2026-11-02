@@ -11,12 +11,12 @@
 //!
 //! ```sh
 //! # in-process server (SQLite), 8 workers × 50 iterations:
-//! cargo test --release -p maidan-server --test loadgen -- --ignored --nocapture
+//! cargo test --release -p maidan-server --test it loadgen:: -- --ignored --nocapture
 //!
 //! # tune via env, or point at a live/scaled deployment:
 //! MAIDAN_LOADGEN_CONCURRENCY=32 MAIDAN_LOADGEN_DURATION_SECS=30 \
 //!   MAIDAN_LOADGEN_URL=http://localhost:8080 MAIDAN_LOADGEN_BEARER=... \
-//!   cargo test --release -p maidan-server --test loadgen -- --ignored --nocapture
+//!   cargo test --release -p maidan-server --test it loadgen:: -- --ignored --nocapture
 //! ```
 //!
 //! `scripts/loadgen.sh` wraps the env knobs. The percentile math is pure and
@@ -36,7 +36,6 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -113,7 +112,7 @@ async fn spawn_in_process() -> (InProcess, String) {
     // connections would measure a configuration Maidan does not ship.
     // `min_connections(1)` keeps the single `sqlite::memory:` connection (and
     // its in-memory database) alive for the whole run.
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(maidan_store::DEFAULT_SQLITE_MAX_CONNECTIONS)
         .min_connections(1)
         .connect("sqlite::memory:")

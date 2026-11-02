@@ -5,7 +5,8 @@ use std::process::{Command, Stdio};
 
 #[test]
 fn mcp_stdio_initialize_roundtrip() {
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let mut child = Command::new(bin)
         .arg("mcp-stdio")
         // No token here, so the unrestricted context has to be asked for.
@@ -46,7 +47,8 @@ fn mcp_stdio_initialize_roundtrip() {
 /// writes a request-log line, so a log that reaches stdout fails this.
 #[test]
 fn every_line_on_stdout_is_a_json_rpc_message() {
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let mut child = Command::new(bin)
         .arg("mcp-stdio")
         .arg("--allow-insecure-no-auth")
@@ -90,7 +92,8 @@ fn every_line_on_stdout_is_a_json_rpc_message() {
 /// requirement went away.
 #[test]
 fn mcp_stdio_refuses_to_serve_unauthenticated_unless_asked() {
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let output = Command::new(bin)
         .arg("mcp-stdio")
         .env("DATABASE_URL", "sqlite::memory:")

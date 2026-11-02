@@ -36,7 +36,6 @@ use reqwest::{redirect::Policy, StatusCode as ClientStatus};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -421,7 +420,7 @@ async fn real_loopback_oidc_checks_validation_provisioning_session_and_logout() 
     .await
     .expect("discover loopback provider");
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -808,7 +807,7 @@ async fn a_missing_email_verified_counts_only_when_the_operator_vouches_and_neve
         .expect("HTTP client");
 
     for emails_verified in [false, true] {
-        let pool = SqlitePoolOptions::new()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(1)
             .connect("sqlite::memory:")
             .await

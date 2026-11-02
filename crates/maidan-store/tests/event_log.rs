@@ -2,11 +2,10 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, EventKind, MemberKind, NewChannel, NewMember, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn append_and_replay_events_in_order() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -78,7 +77,7 @@ async fn append_and_replay_events_in_order() {
 
 #[tokio::test]
 async fn list_events_after_stable_gates_on_insert_time() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -154,7 +153,7 @@ async fn list_events_after_stable_gates_on_insert_time() {
 
 #[tokio::test]
 async fn get_stored_event_returns_row_and_missing_is_not_found() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -201,7 +200,7 @@ async fn get_stored_event_returns_row_and_missing_is_not_found() {
 #[tokio::test]
 async fn create_with_event_commits_row_and_event() {
     use maidan_types::NewThread;
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -265,7 +264,7 @@ async fn create_with_event_commits_row_and_event() {
 #[tokio::test]
 async fn social_with_event_appends_atomically() {
     use maidan_types::{MemberId, NewReaction, NewThread, NewVote, VoteKind};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -371,7 +370,7 @@ async fn social_with_event_appends_atomically() {
 #[tokio::test]
 async fn pins_and_mentions_with_event_append_atomically() {
     use maidan_types::{MemberId, NewMessage, NewPin, NewThread};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -484,7 +483,7 @@ async fn pins_and_mentions_with_event_append_atomically() {
 async fn transition_with_event_appends_atomically() {
     use maidan_fsm::ThreadAction;
     use maidan_types::{MemberId, NewThread, ThreadState};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -561,7 +560,7 @@ async fn transition_with_event_appends_atomically() {
 #[tokio::test]
 async fn assignment_with_event_appends_atomically() {
     use maidan_types::{MemberId, NewThread};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -704,7 +703,7 @@ async fn assignment_with_event_appends_atomically() {
 #[tokio::test]
 async fn dm_post_with_event_appends_atomically() {
     use maidan_types::{DmConversationId, NewMessage, NewThread};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -798,7 +797,7 @@ async fn dm_post_with_event_appends_atomically() {
 #[tokio::test]
 async fn message_post_finalize_with_event_appends_atomically() {
     use maidan_types::{EditMessage, MemberId, NewMessage, NewThread};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -918,7 +917,7 @@ async fn message_post_finalize_with_event_appends_atomically() {
 #[tokio::test]
 async fn edit_and_tombstone_with_event_append_atomically() {
     use maidan_types::{EditMessage, MemberId, NewMessage, NewThread};
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -1023,7 +1022,7 @@ async fn edit_and_tombstone_with_event_append_atomically() {
 /// and its `WorkspaceCreated` / `MemberJoined` event in one tx.
 #[tokio::test]
 async fn create_workspace_and_member_with_event_append_atomically() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -1078,7 +1077,7 @@ async fn reference_and_artifact_with_event_append_atomically() {
     use maidan_types::{
         ArtifactKind, MemberId, NewArtifact, NewMessage, NewReference, NewThread, RefSide,
     };
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

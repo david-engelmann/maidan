@@ -8,7 +8,6 @@ use maidan_store::{
 };
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -120,7 +119,7 @@ async fn federation_style_consumer_ids_are_scoped_per_peer() {
 }
 
 async fn sqlite_pool() -> sqlx::SqlitePool {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect sqlite");

@@ -18,7 +18,7 @@ export {
 } from "./cache.js";
 
 /** The URI prefix of every problem `type` the server emits (RFC 9457). */
-export const PROBLEM_BASE = "https://maidan.dev/problems/";
+export const PROBLEM_BASE = "https://maidan.world/problems/";
 
 /**
  * A failed request. `type`, `title` and `detail` come from the server's RFC 9457

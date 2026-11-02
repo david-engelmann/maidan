@@ -28,7 +28,7 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewMember, NewOidcIdentity, NewWorkspace, WorkspaceId};
 use reqwest::{redirect::Policy, StatusCode};
 use serde_json::Value;
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::sqlite::SqlitePool;
 
 const SECRET: &[u8] = b"oidc-front-door-e2e-secret-32-bytes!!!!";
 const ISSUER: &str = "https://mock.idp.local";
@@ -48,7 +48,7 @@ async fn spawn() -> Env {
 /// A server on the mock provider, with auto-provisioning and link-by-email as
 /// given.
 async fn spawn_with(auto_provision: bool, link_email: bool) -> Env {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

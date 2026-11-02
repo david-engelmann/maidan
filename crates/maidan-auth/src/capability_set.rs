@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 use crate::capability::{
     self, ARTIFACT_UPLOAD, AUDIT_READ_GLOBAL, CHANNEL_ADMIN, EVENT_SUBSCRIBE, MESSAGE_POST,
     OPERATOR_GLOBAL, SEARCH_QUERY, SECRET_ADMIN, SECRET_READ, THREAD_TRANSITION, TOKEN_ADMIN,
-    WORKSPACE_READ, WORKSPACE_WRITE,
+    WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 
 /// Worker agent bundle — collaborate, not administer.
@@ -52,6 +52,7 @@ fn admin_caps() -> Vec<String> {
         SECRET_ADMIN.into(),
         AUDIT_READ_GLOBAL.into(),
         OPERATOR_GLOBAL.into(),
+        WORKSPACE_ADMIN.into(),
     ]);
     caps
 }

@@ -9,7 +9,14 @@
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
-import { edgeRedirect, isSitePage, SITE_CSP, withSecurityHeaders } from "./edge.js";
+import {
+  edgeRedirect,
+  isPageNavigation,
+  isSitePage,
+  NOT_FOUND_PAGE,
+  SITE_CSP,
+  withSecurityHeaders,
+} from "./edge.js";
 import { isStatusRequest, statusResponse } from "./status.js";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
@@ -92,9 +99,18 @@ export default {
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-for", request.headers.get("cf-connecting-ip") ?? "");
     headers.set("x-forwarded-proto", "https");
-    return withSecurityHeaders(
-      await getContainer(env.MAIDAN).fetch(new Request(request, { headers })),
-    );
+    const response = await getContainer(env.MAIDAN).fetch(new Request(request, { headers }));
+    // The server's 404 is a problem+json body, which a person who followed a
+    // bad link should not be shown.
+    if (hasSite && response.status === 404 && isPageNavigation(request)) {
+      const page = await env.ASSETS.fetch(new Request(new URL(NOT_FOUND_PAGE, request.url)));
+      if (page.ok) {
+        return withSecurityHeaders(new Response(page.body, { status: 404, headers: page.headers }), {
+          "content-security-policy": SITE_CSP,
+        });
+      }
+    }
+    return withSecurityHeaders(response);
   },
 
   // Schedules, retries and sweeps run only while the container is awake. The

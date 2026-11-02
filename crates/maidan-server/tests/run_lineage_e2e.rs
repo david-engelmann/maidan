@@ -19,7 +19,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const PRODUCER_RUN_ID: &str = "aa4dc966-0e09-44c3-b7a5-2d048b48b301";
 const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
@@ -46,7 +45,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
 
 #[tokio::test]
 async fn result_put_homes_fixture_run_id_and_nested_occupancy_is_attributed() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

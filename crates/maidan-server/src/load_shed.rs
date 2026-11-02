@@ -206,7 +206,7 @@ mod tests {
             .await
             .expect("body");
         let problem: serde_json::Value = serde_json::from_slice(&body).expect("json");
-        assert_eq!(problem["type"], "https://maidan.dev/problems/overloaded");
+        assert_eq!(problem["type"], "https://maidan.world/problems/overloaded");
         assert_eq!(problem["status"], 503);
     }
 }

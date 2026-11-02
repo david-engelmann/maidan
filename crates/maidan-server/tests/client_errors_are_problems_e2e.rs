@@ -13,7 +13,6 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::{header, header::HeaderMap, RequestBuilder, StatusCode};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The body-size cap every test here runs under.
 const MAX_BODY_BYTES: &str = "1024";
@@ -47,7 +46,7 @@ async fn spawn() -> Server {
     // SAFETY: test setup. Maidan reads this variable only through std,
     // whose environment lock serializes the read with this write.
     unsafe { std::env::set_var("MAIDAN_ARTIFACT_MAX_BODY_BYTES", MAX_BODY_BYTES) };
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -98,7 +97,7 @@ async fn assert_problem(request: RequestBuilder, status: StatusCode) -> HeaderMa
     assert!(
         problem["type"]
             .as_str()
-            .is_some_and(|t| t.starts_with("https://maidan.dev/problems/")),
+            .is_some_and(|t| t.starts_with("https://maidan.world/problems/")),
         "{url}: {problem}"
     );
     assert!(

@@ -16,7 +16,6 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tower::ServiceExt;
 
 #[derive(Clone, Default)]
@@ -51,7 +50,7 @@ async fn trace_spans_show_credential_headers_as_sensitive_and_leave_out_the_quer
     // a thread-local subscriber sees every span it makes.
     let _guard = tracing::subscriber::set_default(subscriber);
 
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

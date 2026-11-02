@@ -40,7 +40,7 @@ scaling assumed sufficient). See [[Remaining Work]].
 ## Re-verifying the gate
 
 ```sh
-cargo test -p maidan-server --test maidan_scale_gate_e2e   # gate surfaces
+cargo test -p maidan-server --test it maidan_scale_gate_e2e::   # gate surfaces
 cargo deny check                                           # deps clean (119)
 bash scripts/scale-out-smoke.sh                            # 2-replica smoke (needs Docker)
 # coverage floor + multi-replica + fairness run in CI (see .github/workflows/ci.yml)

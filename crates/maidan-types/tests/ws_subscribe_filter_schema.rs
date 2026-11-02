@@ -7,7 +7,7 @@ fn ws_subscribe_filter_schema_is_valid_json() {
     assert_eq!(v["title"], "Maidan WebSocket subscribe filter");
     assert_eq!(
         v["$id"],
-        "https://maidan.dev/schemas/ws-subscribe-filter.json"
+        "https://maidan.world/schemas/ws-subscribe-filter.json"
     );
     assert_eq!(v["x-maidan-required-capability"], "event:subscribe");
     let event_kinds_contract = v["x-maidan-event-kinds-contract"]

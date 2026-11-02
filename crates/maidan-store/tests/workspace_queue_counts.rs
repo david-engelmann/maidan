@@ -10,12 +10,11 @@ use maidan_types::{
     NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace, QueueDepth, ThreadId,
     UsageDelta, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 const LEASE_SECS: i64 = 600;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

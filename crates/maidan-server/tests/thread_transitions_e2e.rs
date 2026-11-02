@@ -22,7 +22,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const CAPS: &[&str] = &[
     capability::WORKSPACE_READ,
@@ -59,7 +58,7 @@ async fn mint(store: &Arc<dyn Store>, ws: WorkspaceId, member: MemberId) -> Stri
 }
 
 async fn world() -> World {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

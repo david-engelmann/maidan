@@ -34,7 +34,6 @@ use maidan_types::{
     WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const FIXTURE: &str = include_str!("../../maidan-types/tests/fixtures/waiter_result_v1.json");
 const HEAD_SHA: &str = "b5e54f94fd04d6ef7d6e1197ddd59ace70edb911";
@@ -200,7 +199,7 @@ struct Harness {
 }
 
 async fn harness(name: &str) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

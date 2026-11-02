@@ -9,7 +9,7 @@ import (
 )
 
 // ProblemBase is the URI prefix of every problem type the server emits (RFC 9457).
-const ProblemBase = "https://maidan.dev/problems/"
+const ProblemBase = "https://maidan.world/problems/"
 
 // APIError is a failed request. Type, Title and Detail come from the server's
 // problem body; Problem is that body as sent, unknown members included (nil

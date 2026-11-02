@@ -12,10 +12,9 @@ use maidan_types::{
     ChannelId, EventKind, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     ProjectorShape, ThreadId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -224,7 +223,7 @@ async fn list_events_matching_postgres() {
 #[tokio::test]
 async fn the_sqlite_filtered_read_uses_the_channel_kind_index() {
     use sqlx::Row as _;
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

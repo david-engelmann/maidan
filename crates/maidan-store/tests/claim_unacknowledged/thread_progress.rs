@@ -12,7 +12,6 @@ use maidan_store::store::ThreadPageQuery;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -318,7 +317,7 @@ async fn the_stalled_count_follows_the_progress_clock(store: Arc<dyn Store>) {
 }
 
 pub(super) async fn sqlite() -> Arc<dyn Store> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

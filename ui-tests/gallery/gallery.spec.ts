@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { basename, resolve } from "path";
 import { test, expect, type Page } from "@playwright/test";
 
 // The review gallery: the screens a person sees first, at a desktop and a
@@ -23,14 +23,18 @@ interface Capture {
 }
 
 const fx: Capture = JSON.parse(readFileSync(resolve(__dirname, "../.gallery.json"), "utf8"));
-// The server answers `/` with the landing only where sign-up is on, and the
-// capture seed leaves it off. The page is the one build.rs wrote; its assets
-// come from the server's /landing/ route as they do in production.
-const LANDING = resolve(__dirname, "../../crates/maidan-server/static/landing/dist/index.html");
+// The server answers `/` and its /landing/ assets only where sign-up is on,
+// and the capture seed leaves it off, so both come from the files build.rs
+// wrote. Served by the server instead, the assets 404ed and every landing
+// shot was the unstyled page.
+const LANDING_DIST = resolve(__dirname, "../../crates/maidan-server/static/landing/dist");
 async function openLanding(page: Page) {
   await page.clock.setFixedTime(new Date(fx.now));
   await page.route((url) => url.pathname === "/", (route) =>
-    route.fulfill({ path: LANDING, contentType: "text/html; charset=utf-8" }),
+    route.fulfill({ path: resolve(LANDING_DIST, "index.html"), contentType: "text/html; charset=utf-8" }),
+  );
+  await page.route((url) => url.pathname.startsWith("/landing/"), (route) =>
+    route.fulfill({ path: resolve(LANDING_DIST, basename(new URL(route.request().url()).pathname)) }),
   );
   await page.goto("/", { waitUntil: "networkidle" });
 }
@@ -87,6 +91,14 @@ for (const vp of VIEWPORTS) {
     test.beforeEach(({ page }) => {
       errors = [];
       page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+      // A stylesheet, script, font or image that fails leaves a page that
+      // throws nothing and looks broken.
+      page.on("response", (r) => {
+        const kind = r.request().resourceType();
+        if (r.status() >= 400 && ["stylesheet", "script", "font", "image"].includes(kind)) {
+          errors.push(`${kind} ${r.status()}: ${new URL(r.url()).pathname}`);
+        }
+      });
     });
 
     test(`landing, ${vp.tag}`, async ({ page }) => {

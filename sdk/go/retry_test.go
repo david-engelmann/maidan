@@ -111,7 +111,7 @@ func TestInFlight409RetriedPlain409Not(t *testing.T) {
 	if ch, err := c.Channels.Create("w", "n", false); err != nil || ch.ID != "c" || len(*calls) != 2 {
 		t.Fatalf("%v %v %d", ch, err, len(*calls))
 	}
-	c, calls, _ = fakeServer(t, []answer{{status: 409, body: M{"type": "https://maidan.dev/problems/conflict"}}})
+	c, calls, _ = fakeServer(t, []answer{{status: 409, body: M{"type": "https://maidan.world/problems/conflict"}}})
 	if _, err := c.Channels.Create("w", "n", false); err == nil || len(*calls) != 1 {
 		t.Fatalf("%v %d", err, len(*calls))
 	}

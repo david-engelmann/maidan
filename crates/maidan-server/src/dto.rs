@@ -14,6 +14,7 @@ use maidan_types::{
     TaskEngine, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind, WaitlistEntry,
     WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
+use maidan_types::{ResultDelivery, ThreadResult};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -1891,6 +1892,29 @@ pub struct MintShareTicketResponse {
     pub secret: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateWorkspaceInvite {
+    /// The address the invite is bound to. The identity that accepts it must
+    /// present this email, verified by the identity provider.
+    pub email: String,
+    /// `viewer` or `member`. Never above the inviter's own role.
+    pub role: maidan_types::WorkspaceInviteRole,
+    /// Defaults to seven days from now; at most thirty.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintWorkspaceInviteResponse {
+    pub invite: maidan_types::WorkspaceInvite,
+    /// Returned once. Only its SHA-256 hash is persisted.
+    pub secret: String,
+    /// The path to send the invitee: sign in (or up) with the identity
+    /// provider and join this workspace. Shown once, like `secret`.
+    pub accept_path: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcLoginQuery {
@@ -1900,6 +1924,10 @@ pub struct OidcLoginQuery {
     /// real one and is refused at the callback.
     pub workspace_id: Option<uuid::Uuid>,
     pub return_to: Option<String>,
+    /// A workspace invite secret (`maid_inv_…`). The callback joins the
+    /// identity to the invite's workspace when its verified email matches.
+    /// Takes the place of `workspace_id`.
+    pub invite: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -1914,8 +1942,10 @@ pub struct OidcCallbackQuery {
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcSignupQuery {
-    /// The invite token from the operator's invite link. Optional: an
-    /// address in the instance's sign-up domain list needs none.
+    /// The invite token from the operator's invite link, or a workspace
+    /// invite secret (`maid_inv_…`), which joins an existing workspace
+    /// instead of creating one. Optional: an address in the instance's
+    /// sign-up domain list needs none.
     pub invite: Option<String>,
     pub return_to: Option<String>,
 }
@@ -2100,5 +2130,55 @@ impl MessageVotes {
             ack: count(VoteKind::Ack),
             votes,
         }
+    }
+}
+
+/// A thread's stored result and where it went (#1719): `GET /threads/{id}/result`.
+/// The result fields are the stored [`ThreadResult`]; `delivery_state` and
+/// `deliveries` say whether it reached its `deliver_to` targets, so a claimant
+/// sees a result that is stored but not delivered without a second request.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadResultView {
+    pub thread_id: ThreadId,
+    #[schema(value_type = Object)]
+    pub result: serde_json::Value,
+    pub produced_by: MemberId,
+    pub produced_at: DateTime<Utc>,
+    /// One word for every target together: `failed` when any target failed,
+    /// else `pending` when any is still armed, else `delivered` when any
+    /// arrived, else `skipped` when every target was refused, and
+    /// `not_routable` when the result names no target at all.
+    pub delivery_state: String,
+    /// Each target's row, as `GET /threads/{id}/deliveries` lists them.
+    pub deliveries: Vec<ResultDelivery>,
+}
+
+impl ThreadResultView {
+    pub fn new(result: ThreadResult, deliveries: Vec<ResultDelivery>) -> Self {
+        Self {
+            thread_id: result.thread_id,
+            result: result.result,
+            produced_by: result.produced_by,
+            produced_at: result.produced_at,
+            delivery_state: delivery_state(&deliveries).to_string(),
+            deliveries,
+        }
+    }
+}
+
+/// The roll-up [`ThreadResultView::delivery_state`] documents.
+pub fn delivery_state(deliveries: &[ResultDelivery]) -> &'static str {
+    use maidan_types::status;
+    let any = |s: &str| deliveries.iter().any(|d| d.status == s);
+    if deliveries.is_empty() {
+        "not_routable"
+    } else if any(status::FAILED) {
+        "failed"
+    } else if any(status::PENDING) {
+        "pending"
+    } else if any(status::DELIVERED) {
+        "delivered"
+    } else {
+        "skipped"
     }
 }

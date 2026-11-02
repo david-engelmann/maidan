@@ -46,6 +46,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the newest tagged release
+bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```
@@ -80,6 +81,13 @@ change.
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
   not required, and the report-only ones run on the push to `dev` after a
   merge rather than on PRs, so required jobs never queue behind them.
+  A feature PR runs only the fast jobs (lint, unit tests, Playwright, the
+  contracts) and lands through an integration batch, a `batch/*` branch whose
+  PR runs integration and the smokes once for every PR it carries: our own
+  merge queue, since GitHub's needs an organization-owned repository. The
+  `full-ci` label gives a feature PR the full run. A code PR that is not a
+  batch must not be merged on its own: its required heavy checks were
+  skipped, not passed.
 
 ## Current state (2026-11-02)
 

@@ -5,11 +5,10 @@ mod common;
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadState};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn transition_thread_advances_state_and_logs_row() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
