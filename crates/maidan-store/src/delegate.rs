@@ -947,7 +947,7 @@ macro_rules! store_delegations {
                 triaged_by: MemberId,
                 decision: maidan_types::IntakeDecision,
                 event: NewAuditEvent,
-            ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError> {
+            ) -> Result<(maidan_types::IntakeItem, Vec<StoredEvent>), StoreError> {
                 intake::triage(self.pool(), workspace_id, id, triaged_by, &decision, event).await
             }
         }
