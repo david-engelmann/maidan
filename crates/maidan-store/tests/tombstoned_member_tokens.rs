@@ -1,7 +1,8 @@
-//! A removed (tombstoned) member's API tokens and agent keys stop resolving
-//! at the bearer lookup, whatever tombstoned it (an import or a SCIM delete),
-//! and another tenant's tokens keep working. A token whose member belongs to
-//! another workspace does not resolve either. Two tenants, both backends.
+//! A removed (tombstoned) or SCIM-deactivated member's API tokens and agent
+//! keys stop resolving at the bearer lookup, whatever removed it (an import or
+//! a SCIM delete or deactivation), and another tenant's tokens keep working. A
+//! token whose member belongs to another workspace does not resolve either.
+//! Two tenants, both backends.
 
 use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
@@ -276,4 +277,73 @@ async fn a_tombstoned_members_tokens_stop_resolving_and_the_other_tenants_do_not
         .await
         .unwrap();
     check(&store, &a, &b, &cross).await;
+}
+
+// A member deactivated over SCIM (`active = false`) but not deleted: the
+// lookup itself refuses the token, even one the SCIM update never revoked
+// (#1706). The row is inserted directly, so no revoke ran.
+
+async fn deactivate_sqlite(pool: &sqlx::SqlitePool, workspace: WorkspaceId, member: MemberId) {
+    let now = chrono::Utc::now();
+    sqlx::query(
+        "INSERT INTO maidan_scim_users (member_id, workspace_id, active, created_at, updated_at)
+         VALUES (?, ?, 0, ?, ?)",
+    )
+    .bind(member.0)
+    .bind(workspace.0)
+    .bind(now)
+    .bind(now)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn deactivate_postgres(pool: &sqlx::PgPool, workspace: WorkspaceId, member: MemberId) {
+    sqlx::query(
+        "INSERT INTO maidan_scim_users (member_id, workspace_id, active) VALUES ($1, $2, FALSE)",
+    )
+    .bind(member.0)
+    .bind(workspace.0)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_scim_deactivated_members_tokens_stop_resolving_and_the_other_tenants_do_not_on_sqlite() {
+    let (pool, store) = sqlite_store().await;
+    let (a, b, cross) = setup(&store).await;
+    deactivate_sqlite(&pool, a.workspace, a.member).await;
+    check(&store, &a, &b, &cross).await;
+}
+
+#[tokio::test]
+async fn a_scim_deactivated_delegates_delegated_token_stops_resolving_on_sqlite() {
+    let (pool, store) = sqlite_store().await;
+    let (a, b, _) = setup(&store).await;
+    let (delegate, hash) = delegated(&store, &a).await;
+    deactivate_sqlite(&pool, a.workspace, delegate).await;
+    check_delegate_removed(&store, &a, &b, &hash).await;
+}
+
+#[tokio::test]
+async fn a_scim_deactivated_members_tokens_stop_resolving_and_the_other_tenants_do_not_on_postgres()
+{
+    let Some((_c, pool, store)) = postgres_store().await else {
+        return;
+    };
+    let (a, b, cross) = setup(&store).await;
+    deactivate_postgres(&pool, a.workspace, a.member).await;
+    check(&store, &a, &b, &cross).await;
+}
+
+#[tokio::test]
+async fn a_scim_deactivated_delegates_delegated_token_stops_resolving_on_postgres() {
+    let Some((_c, pool, store)) = postgres_store().await else {
+        return;
+    };
+    let (a, b, _) = setup(&store).await;
+    let (delegate, hash) = delegated(&store, &a).await;
+    deactivate_postgres(&pool, a.workspace, delegate).await;
+    check_delegate_removed(&store, &a, &b, &hash).await;
 }

@@ -230,6 +230,11 @@ export const USAGE_PROVIDERS = Object.freeze(Object.keys(READERS));
  * economic part of a `report_usage` body. `options.model` names the model when
  * the response does not (Bedrock Converse); `options.provider` overrides the
  * evidence provider name (a Chat Completions shape served by Azure).
+ * `options.batch` marks a call sent through a provider's batch API, and
+ * `options.standardPrice` (or `standard_price`) is the standard-tier price
+ * snapshot for a call in a cheaper lane (batch, or a `batch` or `flex` service
+ * tier), so the ledger can report what the lane saved. It is refused on any
+ * other call, as the server refuses it.
  */
 export function normalizeUsage(provider, response, options = {}) {
   const reader = READERS[provider];
@@ -243,6 +248,15 @@ export function normalizeUsage(provider, response, options = {}) {
   const evidence = { provider: options.provider ?? reader.name };
   if (got.serviceTier) evidence.service_tier = got.serviceTier;
   if (got.cacheMissReason) evidence.cache_miss_reason = got.cacheMissReason;
+  if (options.batch) evidence.batch = true;
+  const standard = options.standardPrice ?? options.standard_price;
+  if (standard !== undefined && standard !== null) {
+    const tier = (got.serviceTier ?? "").trim().toLowerCase();
+    if (!options.batch && tier !== "batch" && tier !== "flex") {
+      throw new UsageError("standard_price is for a call in a cheaper lane: set batch, or a batch or flex service_tier");
+    }
+    evidence.standard_price = { ...standard };
+  }
   return { model, tokens: got.tokens, evidence };
 }
 

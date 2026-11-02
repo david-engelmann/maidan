@@ -23,6 +23,9 @@ export function Join({
   const widget = useRef<string | null>(null);
   const token = useRef("");
   const wasOpen = useRef(false);
+  const opener = useRef<HTMLElement | null>(null);
+  const sheet = useRef<HTMLElement>(null);
+  const thanks = useRef<HTMLDivElement>(null);
   const controls = useDragControls();
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
   const [status, setStatus] = useState("");
@@ -76,7 +79,29 @@ export function Join({
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
+      if (event.key === "Escape") {
+        onOpenChange(false);
+        return;
+      }
+      // aria-modal alone doesn't keep Tab inside: wrap focus at the sheet's ends.
+      if (event.key !== "Tab" || !sheet.current) return;
+      const items = Array.from(
+        sheet.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), a[href], [tabindex="0"]',
+        ),
+      ).filter((el) => !el.closest("[hidden]") && !el.closest(".hp"));
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      const inside = active instanceof Node && sheet.current.contains(active);
+      if (event.shiftKey && (active === first || !inside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !inside)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -88,14 +113,23 @@ export function Join({
   useEffect(() => {
     if (open) {
       wasOpen.current = true;
-      const id = window.setTimeout(() => email.current?.focus(), 280);
+      // Focus goes back to whichever control opened the sheet, not always the header button.
+      const active = document.activeElement;
+      opener.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      const id = window.setTimeout(() => (thanks.current ?? email.current)?.focus(), reduce ? 0 : 280);
       return () => window.clearTimeout(id);
     }
     if (wasOpen.current) {
-      document.querySelector<HTMLButtonElement>(".join-btn")?.focus();
+      const back = opener.current?.isConnected ? opener.current : document.querySelector<HTMLButtonElement>(".join-btn");
+      back?.focus();
     }
     return undefined;
-  }, [open]);
+  }, [open, reduce]);
+
+  // The form unmounts on success; move focus to the confirmation so it is read and Tab still works.
+  useEffect(() => {
+    if (done) thanks.current?.focus();
+  }, [done]);
 
   function validate(): Field | null {
     const next: Partial<Record<Field, string>> = {};
@@ -193,6 +227,7 @@ export function Join({
       ) : null}
       <motion.section
         className={open ? "sheet is-open" : "sheet"}
+        ref={sheet}
         id="join"
         role="dialog"
         aria-modal={open}
@@ -220,7 +255,7 @@ export function Join({
         </div>
         <div className="card">
           {done ? (
-            <div className="done" tabIndex={-1}>
+            <div className="done" tabIndex={-1} ref={thanks} role="status">
               <h2>You&apos;re on the list.</h2>
               <p>We&apos;ll email you when your invite is ready. Nothing else, ever.</p>
             </div>
