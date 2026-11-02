@@ -1,0 +1,3 @@
+event: message
+data: {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"post_message","inputSchema":{"type":"object"}},{"name":"claim_next_thread","inputSchema":{"type":"object"}}]}}
+
