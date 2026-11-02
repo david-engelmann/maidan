@@ -238,13 +238,19 @@ def normalize_usage(
     *,
     model: str | None = None,
     evidence_provider: str | None = None,
+    batch: bool = False,
+    standard_price: dict | None = None,
 ) -> dict:
     """Turn one provider response into ``{"model", "tokens", "evidence"}``.
 
     That is the economic part of a ``report_usage`` body. ``model`` names the
     model when the response does not (Bedrock Converse); ``evidence_provider``
     overrides the evidence provider name (a Chat Completions shape served by
-    Azure).
+    Azure). ``batch`` marks a call sent through a provider's batch API, and
+    ``standard_price`` is the standard-tier price snapshot for a call in a
+    cheaper lane (batch, or a ``batch`` or ``flex`` service tier), so the
+    ledger can report what the lane saved. It is refused on any other call,
+    as the server refuses it.
     """
     if provider not in _READERS:
         raise UsageError(f"unknown provider {provider}")
@@ -255,11 +261,18 @@ def normalize_usage(
     chosen = (model if model is not None else got.get("model") or "").strip()
     if not chosen:
         raise UsageError("model is required: the response names none, so pass model=")
-    evidence: dict[str, str] = {"provider": evidence_provider or name}
+    evidence: dict = {"provider": evidence_provider or name}
     if got.get("service_tier"):
         evidence["service_tier"] = got["service_tier"]
     if got.get("cache_miss_reason"):
         evidence["cache_miss_reason"] = got["cache_miss_reason"]
+    if batch:
+        evidence["batch"] = True
+    if standard_price is not None:
+        tier = (got.get("service_tier") or "").strip().lower()
+        if not batch and tier not in ("batch", "flex"):
+            raise UsageError("standard_price is for a call in a cheaper lane: set batch, or a batch or flex service_tier")
+        evidence["standard_price"] = dict(standard_price)
     return {"model": chosen, "tokens": got["tokens"], "evidence": evidence}
 
 
