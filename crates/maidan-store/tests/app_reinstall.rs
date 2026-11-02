@@ -14,7 +14,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations, AuditFor, InstalledApp, St
 use maidan_types::{
     AppId, MemberKind, NewApp, NewAuditEvent, NewMember, NewWorkspace, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn audit(action: &'static str) -> AuditFor<InstalledApp> {
     Box::new(move |installed| NewAuditEvent {
@@ -212,7 +211,7 @@ where
 
 #[tokio::test]
 async fn a_revoked_app_reinstalls_onto_its_bot_member_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

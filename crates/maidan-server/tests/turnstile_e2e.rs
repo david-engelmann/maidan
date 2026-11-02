@@ -74,7 +74,7 @@ async fn spawn(turnstile: Option<TurnstileSettings>) -> String {
         std::env::set_var("MAIDAN_SIGNUP_RATE_LIMIT_MAX", "1000");
         std::env::set_var("MAIDAN_WAITLIST_DOMAIN_RATE_LIMIT_MAX", "1000");
     }
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -17,5 +17,6 @@ tracing.workspace = true
 
 [dev-dependencies]
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
+maidan-search = { path = "../maidan-search", default-features = false }
 sqlx = { workspace = true, features = ["runtime-tokio", "sqlite"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

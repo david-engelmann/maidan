@@ -2,11 +2,10 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn purge_workspace_tombstones_then_deletes_all_messages() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

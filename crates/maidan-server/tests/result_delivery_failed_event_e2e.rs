@@ -23,7 +23,6 @@ use maidan_types::{
     WorkspaceId, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_stream::StreamExt;
 
 const SLACK_CHANNEL: &str = "C0123ABCDEF";
@@ -116,7 +115,7 @@ async fn tenant(store: &dyn Store, name: &str) -> Tenant {
 }
 
 async fn harness(slack: Option<FakeSlack>) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

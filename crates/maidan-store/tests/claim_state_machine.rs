@@ -16,7 +16,6 @@ use maidan_types::{
     ThreadId,
 };
 use proptest::prelude::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const THREADS: usize = 3;
 const MEMBERS: usize = 3;
@@ -104,7 +103,7 @@ struct World {
 }
 
 async fn world() -> World {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

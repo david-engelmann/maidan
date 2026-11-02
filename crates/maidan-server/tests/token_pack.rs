@@ -26,7 +26,6 @@ use maidan_types::{
     estimate_tokens, EditMessage, MemberKind, Message, NewChannel, NewMember, NewMessage,
     NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 // The token estimator (`chars/4`) lives in `maidan_types::pack` so the budget
 // fold and this evidence harness share one definition. Its own math is
@@ -43,7 +42,7 @@ fn reduction_ratio(naive: usize, pack: usize) -> f64 {
 #[tokio::test]
 #[ignore = "measurement tool, not a CI gate; run with --ignored --nocapture"]
 async fn token_pack_evidence() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

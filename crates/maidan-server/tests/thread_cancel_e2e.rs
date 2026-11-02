@@ -19,13 +19,12 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const PRODUCER: &[&str] = &[capability::WORKSPACE_READ, capability::WORKSPACE_WRITE];
 const WORKER: &[&str] = &[capability::WORKSPACE_READ, capability::THREAD_TRANSITION];
 
 async fn spawn() -> (String, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

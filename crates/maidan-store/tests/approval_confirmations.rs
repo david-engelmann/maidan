@@ -8,7 +8,6 @@ use maidan_types::{
     ApprovalGateState, ApprovalRisk, ClientIdentitySource, ConfirmOutcome, GateDecisionVia,
     MemberKind, NewApprovalConfirmation, NewApprovalGate, NewMember, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 /// An audit row for a write that must record one.
@@ -24,7 +23,7 @@ fn audit<T>(action: &'static str, ws: maidan_types::WorkspaceId) -> maidan_store
 }
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

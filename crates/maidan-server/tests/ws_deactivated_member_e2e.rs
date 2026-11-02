@@ -23,7 +23,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{AuditScope, MemberId, NewApiToken, NewAuditEvent, NewWorkspace, WorkspaceId};
 use reqwest::redirect::Policy;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async,
@@ -45,7 +44,7 @@ struct Env {
 }
 
 async fn spawn() -> Env {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

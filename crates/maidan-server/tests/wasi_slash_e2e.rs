@@ -13,7 +13,6 @@ use maidan_server::{router, AppState, FederationRuntime, SlashRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn test_key() -> Option<Arc<[u8; 32]>> {
     Some(Arc::new([7u8; 32]))
@@ -97,7 +96,7 @@ struct Ctx {
 }
 
 async fn spawn() -> Ctx {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

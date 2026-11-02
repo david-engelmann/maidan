@@ -4,7 +4,6 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewAuditEvent, NewMember, NewWorkspace, TokenQuota};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn run_suite(store: &dyn Store) {
     let ws = store
@@ -109,7 +108,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn rotation_keeps_authority_quotas_and_derived_tokens_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

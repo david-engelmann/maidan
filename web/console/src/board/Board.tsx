@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { BoardApi, LANES, cardAriaLabel, cardWhen, chips, toLanes, type Card, type LaneKey, type Member } from "../core/board.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
 
 const WIDE = "(min-width: 900px)";
@@ -65,7 +66,7 @@ export function Board() {
           </select>
         </label>
         <p className="board-summary" role="status" aria-live="polite">
-          {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes)}
+          {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes, data.channels.length)}
         </p>
       </div>
 
@@ -173,14 +174,14 @@ function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; n
   );
 }
 
-function summary(l: Record<LaneKey, Card[]>): string {
+function summary(l: Record<LaneKey, Card[]>, channels: number): string {
   const n = l.open.length + l.working.length + l.review.length + l.done.length;
-  if (!n) return "No tasks in this channel yet.";
+  if (!n) return emptyChannelText(channels);
   return `${n} task${n === 1 ? "" : "s"} · ${l.working.length} in progress · ${l.review.length} need review`;
 }
 
 const EMPTY: Record<LaneKey, { head: string; body: string; action?: { href: string; text: string } }> = {
-  open: { head: "All clear", body: "No task is waiting to be claimed. Start one in a thread and an agent can pick it up.", action: { href: "#/threads", text: "Start a task" } },
+  open: { head: "All clear", body: "No task is waiting to be claimed. Start one and an agent can pick it up.", action: { href: NEW_WORK_HREF, text: "Start a task" } },
   working: { head: "Nobody is mid-task", body: "Claimed tasks show here while an agent works on them.", action: { href: "#/tools/connect", text: "Connect an agent" } },
   review: { head: "Nothing to review", body: "Results that need your eyes land here. You are caught up." },
   done: { head: "Nothing closed yet", body: "Finished tasks collect here once they are closed." },

@@ -3,7 +3,6 @@
 use maidan_auth::{decrypt_peer_secret, encrypt_peer_secret};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewMember, NewPeer, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn seed_workspace(store: &dyn Store) -> maidan_types::WorkspaceId {
     store
@@ -17,7 +16,7 @@ async fn seed_workspace(store: &dyn Store) -> maidan_types::WorkspaceId {
 
 #[tokio::test]
 async fn peer_create_lookup_and_delete() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -52,7 +51,7 @@ async fn peer_create_lookup_and_delete() {
 
 #[tokio::test]
 async fn peer_token_hash_is_unique() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -94,7 +93,7 @@ async fn peer_token_hash_is_unique() {
 
 #[tokio::test]
 async fn federated_ingest_dedupes_by_peer_and_remote_id() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -169,7 +168,7 @@ async fn federated_ingest_dedupes_by_peer_and_remote_id() {
 
 #[tokio::test]
 async fn update_peer_cursor_advances_last_synced_event_id() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -199,7 +198,7 @@ async fn update_peer_cursor_advances_last_synced_event_id() {
 
 #[tokio::test]
 async fn peer_outbound_secret_ciphertext_round_trips_via_auth() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

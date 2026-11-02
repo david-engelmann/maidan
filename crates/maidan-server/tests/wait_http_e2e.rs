@@ -14,7 +14,7 @@ use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::{json, Value};
-use sqlx::{sqlite::SqlitePoolOptions, PgPool};
+use sqlx::PgPool;
 
 struct Harness {
     addr: SocketAddr,
@@ -29,7 +29,7 @@ impl Drop for Harness {
 
 /// One replica over SQLite with an in-memory bus.
 async fn spawn_sqlite() -> (Harness, Arc<dyn EventBus>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

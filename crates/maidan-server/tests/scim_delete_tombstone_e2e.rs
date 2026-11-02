@@ -15,14 +15,13 @@ use maidan_types::{
     AuditScope, MemberId, MemberKind, NewAuditEvent, NewMember, NewWorkspace, WorkspaceId,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const ISSUER: &str = "https://idp.example";
 const EMAIL: &str = "ada@example.com";
 const SUBJECT: &str = "sub-ada";
 
 async fn sqlite() -> Arc<dyn Store> {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

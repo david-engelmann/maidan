@@ -20,7 +20,6 @@ use maidan_types::{
     NewWorkspace,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct MockSender {
     sent: Mutex<Vec<(String, i64, String)>>,
@@ -79,7 +78,7 @@ impl GithubSender for MockSender {
 }
 
 async fn setup() -> (AppState, Arc<MockSender>, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

@@ -9,6 +9,8 @@ async fn configure_pool_enables_wal_on_file_database() {
     let path = dir.path().join("maidan.db");
     let url = format!("sqlite://{}?mode=rwc", path.display());
 
+    // `configure_sqlite_pool` is what this checks, so the pool starts bare.
+    // sqlite-pools: bare on purpose
     let pool = SqlitePoolOptions::new()
         .connect(&url)
         .await

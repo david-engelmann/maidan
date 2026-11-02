@@ -32,6 +32,7 @@ async fn semantic_search_succeeds_on_a_pool_whose_connection_predates_registrati
         .create_if_missing(true)
         .foreign_keys(true);
     // A bare pool, as a caller that skips `sqlite_pool_options` builds it.
+    // sqlite-pools: bare on purpose
     let pool = SqlitePoolOptions::new()
         .max_connections(2)
         .connect_with(options)

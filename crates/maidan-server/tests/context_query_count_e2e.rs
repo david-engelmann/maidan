@@ -12,7 +12,6 @@ use maidan_server::thread_context::{build_thread_context, ThreadContextLimits};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tracing::Subscriber;
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
@@ -94,7 +93,7 @@ async fn thread_context_query_count_is_independent_of_message_count() {
     // between the warm-up and the measured build is enough to trip it, which is
     // what made this an intermittent ±1 (`main` has gone red on it twice). One
     // connection also keeps `sqlite::memory:` to a single database.
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .test_before_acquire(false)
         .connect("sqlite::memory:")

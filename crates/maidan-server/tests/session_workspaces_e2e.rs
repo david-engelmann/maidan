@@ -27,7 +27,7 @@ use maidan_types::{
 };
 use reqwest::{redirect::Policy, StatusCode};
 use serde_json::Value;
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::sqlite::SqlitePool;
 
 const SECRET: &[u8] = b"session-workspaces-e2e-secret-32-bytes!";
 const ISSUER: &str = "https://mock.idp.local";
@@ -41,7 +41,7 @@ struct Env {
 }
 
 async fn spawn() -> Env {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -22,7 +22,6 @@ use maidan_types::{
     status, EgressKind, EgressSurface, EgressTarget, NewChannel, NewEgressTarget, NewThread,
     NewWorkspace, ResultDelivery, ResultDeliveryId, ThreadId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// A revision at the precision the schema actually stores.
 ///
@@ -42,7 +41,7 @@ fn revision() -> DateTime<Utc> {
 }
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

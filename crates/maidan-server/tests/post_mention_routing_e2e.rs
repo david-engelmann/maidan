@@ -13,7 +13,6 @@ use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, EventFilter, EventKind};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// Drain every event available within a short window and return them in order.
 async fn drain(
@@ -34,7 +33,7 @@ async fn drain(
 
 #[tokio::test]
 async fn post_message_routes_at_handles_and_skips_plain_posts() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

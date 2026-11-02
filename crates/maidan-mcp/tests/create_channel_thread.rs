@@ -14,10 +14,9 @@ use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::*;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn server() -> (McpServer, Arc<dyn Store>, WorkspaceId, MemberId) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
