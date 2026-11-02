@@ -564,6 +564,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          # Saved only from main and dev, like every other cargo cache here,
+          # so PR entries do not evict the ones PRs restore from.
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: install nextest
         uses: taiki-e/install-action@v2
         with:
