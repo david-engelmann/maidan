@@ -16,3 +16,22 @@ Every label on these metrics is a closed set. Thread, member and workspace ids
 are never labels; they live on the `maidan.thread` spans, one trace per thread.
 
 Usage carries no seat label, so "Dollars per stored result (all seats)" is a swarm-wide average. Per-seat cost belongs in the usage ledger and spans, not a metric label.
+
+## A local workbench with Grafana Alloy
+
+[`alloy/config.alloy`](alloy/config.alloy) takes maidan-server's OTLP push and
+scrapes its `/metrics`, so a review run shows up as a trace and the usage
+counters (`maidan_usage_tokens_total`, `maidan_usage_usd_micros_total`) land
+in Prometheus. Point the server at it:
+
+```sh
+OTLP_ENDPOINT=http://alloy:4317 OTLP_METRICS=1
+```
+
+Alloy reads `MAIDAN_METRICS_TARGET` (default `maidan:8080`),
+`TRACES_OTLP_ENDPOINT` (default `tempo:4317`) and `PROM_REMOTE_WRITE_URL`
+(default `http://prometheus:9090/api/v1/write`). Before export it deletes any
+`prompt`, `diff`, `rendered`, `body` or `content` span attribute, so no prompt or
+diff text leaves the workbench even if a span records one; `scripts/otlp-smoke.sh`
+also fails if the server exports one. Postgres stays the record: the traces and
+metrics are a view of it, and losing them loses nothing.

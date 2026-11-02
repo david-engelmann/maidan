@@ -80,7 +80,7 @@ test("Needs you keeps its rows and says it is stale when the server stops answer
   await done();
 });
 
-test("a revoked token keeps the rows and names the fix", async ({ page, request }) => {
+test("a revoked token sends the page back to sign-in and says why", async ({ page, request }) => {
   const minted = await (await request.post(`/workspaces/${fx.workspace_id}/members/${fx.member_id}/tokens`, {
     headers: bearer(fx.admin_token),
     data: { label: "needs-truth", capabilities: ["workspace:read", "thread:transition"] },
@@ -88,15 +88,14 @@ test("a revoked token keeps the rows and names the fix", async ({ page, request 
   await page.goto("/ui/#/needs");
   await page.getByLabel(/paste a token/i).fill(minted.secret);
   await page.getByRole("button", { name: "Sign in with token" }).click();
-  const rows = page.locator("li.need");
-  await expect(rows.first()).toBeVisible();
-  const before = await rows.count();
+  await expect(page.locator("li.need").first()).toBeVisible();
   expect((await request.delete(`/tokens/${minted.id}`, { headers: bearer(fx.admin_token) })).ok()).toBeTruthy();
-  const stale = page.locator(".needs-stale");
-  const done = await pokeUntil(request, stale);
-  await expect(stale).not.toHaveText(/^Stale since/);
-  await expect(stale).toContainText(/token|sign in/i);
-  expect(await rows.count()).toBe(before);
+  // A 401 on any request ends the page's sign-in; it does not keep showing
+  // rows the token can no longer read.
+  const field = page.getByLabel(/paste a token/i);
+  const done = await pokeUntil(request, field);
+  await expect(page.getByText(/sign-in ended or was revoked/i)).toBeVisible();
+  await expect(page.locator("li.need")).toHaveCount(0);
   await done();
 });
 

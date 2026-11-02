@@ -625,8 +625,10 @@ async fn a_live_token_whose_scim_link_is_inactive_ends_too() {
         .get_sse(&format!("/mcp/stream?workspace_id={}", b.0), &bob_token)
         .await;
 
-    // Mark the SCIM link inactive without revoking the token, so only the
-    // SCIM link check can end the stream.
+    // Mark the SCIM link inactive without revoking the token. Since #1871 the
+    // bearer lookup refuses a token whose member's SCIM link is inactive, so
+    // the token check ends the stream before the SCIM link check is reached,
+    // the same reason a full deactivation gives.
     env.store
         .update_scim_user(alice, None, false)
         .await
@@ -636,7 +638,7 @@ async fn a_live_token_whose_scim_link_is_inactive_ends_too() {
 
     env.create_channel(a, &carol_token, "after-alice").await;
     alice_stream
-        .assert_ended(Duration::from_secs(5), "member deactivated")
+        .assert_ended(Duration::from_secs(5), "token no longer valid")
         .await;
     env.create_channel(b, &bob_token, "bravo-news").await;
     bob_stream.assert_carries("bravo-news").await;

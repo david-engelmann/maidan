@@ -25,7 +25,7 @@ async fn review_gate_in_tx(
         "SELECT
            COALESCE((SELECT required_count FROM maidan_thread_review_reqs WHERE thread_id = ?), 0)
              AS required_count,
-           (SELECT COUNT(*) FROM maidan_thread_reviews r
+           (SELECT COUNT(DISTINCT COALESCE(r.actor_id, r.reviewer_id)) FROM maidan_thread_reviews r
               JOIN maidan_threads t ON t.id = r.thread_id
               JOIN maidan_channels c ON c.id = t.channel_id
               -- A removed member's approval no longer counts, nor one from
@@ -390,6 +390,90 @@ async fn land_in_tx(
     })
 }
 
+/// Move each live dependent of `closed` onto `replacement`, the thread a
+/// duplicate or superseded close names (#1754), and tell each one with a
+/// notice. The replacement's own edge to `closed` is dropped, since it cannot
+/// wait on its stand-in. An edge whose move would close a cycle (the
+/// replacement already waits on that dependent) stays where it is, and its
+/// dependent gets a notice saying so. Returns the moved and the kept
+/// dependents, and the notice events.
+async fn repoint_dependents_in_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    keys: &ContentKeyring,
+    closed: ThreadId,
+    replacement: ThreadId,
+    actor_id: MemberId,
+) -> Result<(Vec<ThreadId>, Vec<ThreadId>, Vec<StoredEvent>), StoreError> {
+    sqlx::query(
+        "DELETE FROM maidan_thread_dependencies WHERE thread_id = ? AND depends_on_thread_id = ?",
+    )
+    .bind(replacement.0)
+    .bind(closed.0)
+    .execute(&mut **tx)
+    .await?;
+    let dependents = sqlx::query_scalar::<_, Uuid>(
+        "SELECT t.id FROM maidan_thread_dependencies d
+         JOIN maidan_threads t ON t.id = d.thread_id
+         WHERE d.depends_on_thread_id = ? AND t.state IN ('open', 'in_review')
+           AND t.tombstoned_at IS NULL
+         ORDER BY t.id",
+    )
+    .bind(closed.0)
+    .fetch_all(&mut **tx)
+    .await?;
+    let (mut moved, mut kept, mut stored) = (Vec::new(), Vec::new(), Vec::new());
+    for dependent in dependents.into_iter().map(ThreadId) {
+        let cycle = sqlx::query(
+            "WITH RECURSIVE reachable(id) AS (
+                 SELECT depends_on_thread_id FROM maidan_thread_dependencies WHERE thread_id = ?
+                 UNION
+                 SELECT d.depends_on_thread_id
+                 FROM maidan_thread_dependencies d
+                 JOIN reachable r ON d.thread_id = r.id
+             )
+             SELECT 1 AS hit FROM reachable WHERE id = ? LIMIT 1",
+        )
+        .bind(replacement.0)
+        .bind(dependent.0)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let (body, metadata) = if cycle.is_some() {
+            kept.push(dependent);
+            (
+                crate::plan_notices::repoint_refused_body(closed, replacement),
+                crate::plan_notices::repoint_refused_metadata(closed, replacement),
+            )
+        } else {
+            sqlx::query(
+                "INSERT INTO maidan_thread_dependencies (thread_id, depends_on_thread_id, created_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(dependent.0)
+            .bind(replacement.0)
+            .bind(Utc::now())
+            .execute(&mut **tx)
+            .await?;
+            sqlx::query(
+                "DELETE FROM maidan_thread_dependencies WHERE thread_id = ? AND depends_on_thread_id = ?",
+            )
+            .bind(dependent.0)
+            .bind(closed.0)
+            .execute(&mut **tx)
+            .await?;
+            moved.push(dependent);
+            (
+                crate::plan_notices::repointed_body(closed, replacement),
+                crate::plan_notices::repointed_metadata(closed, replacement),
+            )
+        };
+        stored.push(
+            super::plans::post_notice_in_tx(tx, keys, dependent, actor_id, body, metadata).await?,
+        );
+    }
+    Ok((moved, kept, stored))
+}
+
 /// Close a thread that will not land (`close-abandoned`), in one transaction.
 ///
 /// The thread must be `open` or `in_review`; it moves straight to `closed`.
@@ -541,6 +625,14 @@ pub async fn close_abandoned(
     .bind(actor_id.0)
     .execute(&mut *tx)
     .await?;
+    let replacement = match (close.reason, close.duplicate_of) {
+        (CloseReason::Duplicate | CloseReason::Superseded, Some(other)) => Some(other),
+        _ => None,
+    };
+    let (moved, kept, notices) = match replacement {
+        Some(other) => repoint_dependents_in_tx(&mut tx, keys, thread_id, other, actor_id).await?,
+        None => (Vec::new(), Vec::new(), Vec::new()),
+    };
     let mut metadata = match std::mem::take(&mut audit.metadata) {
         serde_json::Value::Object(map) => map,
         _ => serde_json::Map::new(),
@@ -552,6 +644,21 @@ pub async fn close_abandoned(
             .duplicate_of
             .map_or(serde_json::Value::Null, |d| d.0.to_string().into()),
     );
+    metadata.insert(
+        "repointed_dependents".into(),
+        moved
+            .iter()
+            .map(|t| t.0.to_string())
+            .collect::<Vec<_>>()
+            .into(),
+    );
+    metadata.insert(
+        "kept_dependents".into(),
+        kept.iter()
+            .map(|t| t.0.to_string())
+            .collect::<Vec<_>>()
+            .into(),
+    );
     metadata.insert("had_result".into(), had_result.into());
     metadata.insert("from_state".into(), result.from_state.as_str().into());
     audit.metadata = serde_json::Value::Object(metadata);
@@ -562,6 +669,7 @@ pub async fn close_abandoned(
     )
     .await?;
     stored.push(state_changed_in_tx(&mut tx, actor_id, &result).await?);
+    stored.extend(notices);
     stored.extend(super::plans::after_close_in_tx(&mut tx, keys, thread_id, actor_id).await?);
     tx.commit().await?;
     Ok((result, stored))

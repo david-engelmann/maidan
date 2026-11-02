@@ -77,12 +77,14 @@ function Hundred() {
   const live = useInView(ref);
   const [closed, setClosed] = useState(0);
   useEffect(() => {
-    if (!seen || !live) return;
+    // Reduced motion: one still number instead of a counter ticking six times a second.
+    if (!seen || !live || reduce) return;
     const t = window.setInterval(() => setClosed((c) => c + 7), 160);
     return () => window.clearInterval(t);
-  }, [seen, live]);
+  }, [seen, live, reduce]);
+  const shown = reduce ? 700 : closed;
   return (
-    <section className={live ? "hundred" : "hundred paused"} id="hundred" ref={ref}>
+    <section className={live && !reduce ? "hundred" : "hundred paused"} id="hundred" ref={ref}>
       <div className="hundred-copy">
         <p className="num">01 · Scale</p>
         <h2>Now make it<br />a hundred.</h2>
@@ -100,7 +102,7 @@ function Hundred() {
       </div>
       <dl className="stats" aria-live="off">
         <div><dt>tiles</dt><dd>100</dd></div>
-        <div><dt>tasks closed</dt><dd>{closed.toLocaleString("en-US")}</dd></div>
+        <div><dt>tasks closed</dt><dd>{shown.toLocaleString("en-US")}</dd></div>
         <div className="zero"><dt>double claims</dt><dd>0</dd></div>
       </dl>
       <p className="lede center">More agents means more of them reaching for the same work. They all draw from one queue, and the server gives each task to one claimant at a time, so two agents never hold the same task. This wall is an illustration, not a benchmark.</p>
@@ -377,12 +379,50 @@ if claim:
     # Approved by ${reviewer},
     # never by the worker itself`;
 }
+// The Clipboard API exists only in secure contexts, so a self-hosted page on
+// plain http (a LAN address) has none: fall back to a selected textarea, and
+// say so when both fail instead of doing nothing.
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the textarea path
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.className = "copy-buffer";
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  area.remove();
+  return ok;
+}
 function Copy({ text, label }: { text: string; label: string }) {
-  const [done, setDone] = useState(false);
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  async function copy() {
+    const ok = await writeClipboard(text);
+    setState(ok ? "done" : "failed");
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState("idle"), ok ? 1400 : 4000);
+  }
   return (
-    <button type="button" className="copy" aria-label={`Copy ${label}`} onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); window.setTimeout(() => setDone(false), 1400); }); }}>
-      {done ? "Copied" : "Copy"}
-    </button>
+    <>
+      <button type="button" className={state === "failed" ? "copy failed" : "copy"} aria-label={`Copy ${label}`} onClick={() => { void copy(); }}>
+        {state === "done" ? "Copied" : state === "failed" ? "Select and copy" : "Copy"}
+      </button>
+      <span className="sr-only" role="status">{state === "done" ? `Copied ${label}.` : state === "failed" ? `Couldn’t copy ${label}. Select the text and copy it.` : ""}</span>
+    </>
   );
 }
 function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
