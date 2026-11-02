@@ -40,6 +40,13 @@ pub struct UsageEvidence {
     pub service_tier: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_miss_reason: Option<String>,
+    /// Set when the call went through a provider's batch API.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub batch: bool,
+    /// Standard-tier rates for a call in a cheaper lane, so the ledger can
+    /// report what the lane saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub standard_price: Option<PriceSnapshot>,
 }
 
 /// The economic part of a `report_usage` body.
@@ -52,11 +59,17 @@ pub struct NormalizedUsage {
 
 /// Fills what a response does not say. `model` names the model when the
 /// response does not (Bedrock Converse); `provider` overrides the evidence
-/// provider name (a Chat Completions shape served by Azure).
+/// provider name (a Chat Completions shape served by Azure). `batch` marks a
+/// call sent through a provider's batch API, and `standard_price` is the
+/// standard-tier snapshot for a call in a cheaper lane (batch, or a `batch` or
+/// `flex` service tier); it is refused on any other call, as the server
+/// refuses it.
 #[derive(Debug, Clone, Default)]
 pub struct UsageOptions {
     pub model: Option<String>,
     pub provider: Option<String>,
+    pub batch: bool,
+    pub standard_price: Option<PriceSnapshot>,
 }
 
 /// A usage object that cannot be read into the ledger's shape.
@@ -334,6 +347,15 @@ pub fn normalize_usage(
         .ok_or_else(|| {
             UsageError("model is required: the response names none, so pass options.model".into())
         })?;
+    if options.standard_price.is_some() {
+        let tier = got
+            .service_tier
+            .as_deref()
+            .map(|t| t.trim().to_ascii_lowercase());
+        if !options.batch && !matches!(tier.as_deref(), Some("batch" | "flex")) {
+            return err("standard_price is for a call in a cheaper lane: set batch, or a batch or flex service_tier");
+        }
+    }
     Ok(NormalizedUsage {
         model,
         tokens: got.tokens,
@@ -341,6 +363,8 @@ pub fn normalize_usage(
             provider: options.provider.clone().unwrap_or_else(|| name.to_owned()),
             service_tier: got.service_tier,
             cache_miss_reason: got.cache_miss_reason,
+            batch: options.batch,
+            standard_price: options.standard_price,
         },
     })
 }

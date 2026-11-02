@@ -560,6 +560,15 @@ pub const PROTECTED_BRANCHES: [&str; 5] = ["prod", "main", "master", "staging", 
 /// The base no change is ever opened against, whatever the allowlist says.
 pub const FORBIDDEN_CHANGE_BASE: &str = "prod";
 
+/// Whether `base` names [`FORBIDDEN_CHANGE_BASE`], alone or behind any
+/// remote-style prefix (`upstream/prod`, `fork/PROD`). GitHub reads such a
+/// name literally, but locally it is the remote's `prod`, so it is refused
+/// rather than left to confuse a reader (#1693).
+pub fn names_forbidden_base(base: &str) -> bool {
+    let last = base.rsplit('/').next().unwrap_or(base);
+    last.eq_ignore_ascii_case(FORBIDDEN_CHANGE_BASE)
+}
+
 /// Whether `branch` is `feature/agent-[a-z0-9][a-z0-9-]*`.
 pub fn is_change_branch(branch: &str) -> bool {
     let Some(slug) = branch.strip_prefix(CHANGE_BRANCH_PREFIX) else {
@@ -620,7 +629,7 @@ pub fn check_change_target(branch: &str, base: &str) -> Result<(), String> {
             "base `{base}` names a ref, not a branch; name the branch alone"
         ));
     }
-    if base.eq_ignore_ascii_case(FORBIDDEN_CHANGE_BASE) {
+    if names_forbidden_base(base) {
         return Err(format!(
             "base `{base}` is never allowed for a change pull request"
         ));
@@ -1172,6 +1181,38 @@ fn parse_deliver_target(entry: &Value) -> Option<DeliverTarget> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn prod_behind_any_remote_prefix_is_never_a_base() {
+        for base in ["prod", "PROD", "upstream/prod", "fork/Prod", "a/b/prod"] {
+            assert!(names_forbidden_base(base), "{base}");
+            assert!(
+                check_change_target("feature/agent-x", base).is_err(),
+                "{base}"
+            );
+            assert!(
+                crate::validate_allowlist_selector(
+                    crate::EgressSurface::GithubBranch,
+                    &format!("o/r@{base}")
+                )
+                .is_err(),
+                "{base}"
+            );
+        }
+        for base in ["production", "prod-fix", "release/prod-2"] {
+            assert!(!names_forbidden_base(base), "{base}");
+        }
+        for base in ["FETCH_HEAD", "ORIG_HEAD", "heads/dev", "origin/dev"] {
+            assert!(
+                crate::validate_allowlist_selector(
+                    crate::EgressSurface::GithubBranch,
+                    &format!("o/r@{base}")
+                )
+                .is_err(),
+                "{base}"
+            );
+        }
+    }
 
     #[test]
     fn an_unrecognized_envelope_is_inert() {

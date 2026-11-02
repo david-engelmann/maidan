@@ -76,8 +76,11 @@ pub async fn deprovision(
     event: NewAuditEvent,
 ) -> Result<bool, StoreError> {
     let mut tx = pool.begin().await?;
-    end_member_authority(&mut tx, workspace_id, member_id, "scim_deprovision").await?;
+    // Delete the SCIM row first: it waits behind a sign-in holding that row
+    // FOR SHARE, so the sessions ended below include the one that sign-in
+    // commits. Ending them first could miss it and leave an orphan (#1716).
     let deleted = scim_users::delete_on(&mut tx, member_id).await?;
+    end_member_authority(&mut tx, workspace_id, member_id, "scim_deprovision").await?;
     if deleted {
         // A deleted user is removed, not paused: tombstone the member and
         // detach its OIDC identities, so no sign-in resolves to it again.
