@@ -172,6 +172,17 @@ pub async fn sweep_once_with_batch(state: &AppState, batch: i64) -> u32 {
                 continue;
             }
         };
+        // A suspended workspace gets no digest, as the mail worker sends it no
+        // mail. The due page already leaves it out; this covers a suspension
+        // that lands between the page and the send. The watermark stays put.
+        if crate::suspension::held_back(state, workspace_id).await {
+            tracing::info!(
+                member = %member.member_id,
+                reason = "suspended",
+                "digest sweeper: skipped; workspace suspended"
+            );
+            continue;
+        }
         if state
             .usage_meters
             .is_cut_off(workspace_id, maidan_types::UsageMeter::Deliveries)
