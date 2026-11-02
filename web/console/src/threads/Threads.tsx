@@ -38,6 +38,7 @@ import {
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
 
 type Tab = "tasks" | "direct";
@@ -143,7 +144,11 @@ export function Threads() {
         {listLoading && !list.length ? (
           <p className="muted">Loading…</p>
         ) : !list.length ? (
-          <p className="muted conv-empty">{tab === "tasks" ? "No tasks in this channel yet." : "No conversations yet. Start one with New message."}</p>
+          <p className="muted conv-empty">
+            {tab === "tasks" ? (
+              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
+            ) : "No conversations yet. Start one with New message."}
+          </p>
         ) : (
           <ul className="convs">
             {list.map((c) => (
