@@ -11,6 +11,13 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 | `GET /health/ready` | Readiness  | `200` when DB, artifact store, indexer (if stale check enabled and no embedding errors), and Postgres `LISTEN` bus (when used) are healthy. |
 | `GET /health`       | Readiness  | Alias of `/health/ready`.                     |
 
+### Public status page
+
+On Cloudflare, the Worker serves `/status` to anyone: whether the database,
+artifact storage, live updates and search index are working, read from the
+container's `/health`, or a plain "not answering" when the container does not
+reply within eight seconds. It never shows the server's error text.
+
 ### Operator status
 
 `GET /operator/status` (`operator:global`) is the page to read before a deploy
