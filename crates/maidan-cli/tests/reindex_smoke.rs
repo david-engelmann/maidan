@@ -70,7 +70,8 @@ async fn reindex_embeddings_cli_processes_live_messages() {
         .await
         .unwrap();
 
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let output = Command::new(bin)
         .args(["reindex-embeddings", "--database-url", &database_url])
         .output()

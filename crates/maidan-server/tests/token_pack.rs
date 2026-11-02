@@ -15,7 +15,7 @@
 //! unit-tested in CI.
 //!
 //! ```sh
-//! cargo test -p maidan-server --test token_pack -- --ignored --nocapture
+//! cargo test -p maidan-server --test it token_pack:: -- --ignored --nocapture
 //! ```
 
 use std::sync::Arc;

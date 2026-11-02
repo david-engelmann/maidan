@@ -21,7 +21,8 @@ fn cleanup(db: &std::path::Path) {
 
 #[test]
 fn init_bootstraps_once_then_refuses() {
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let (db, url) = temp_db_url();
 
     // First init succeeds and prints a bearer token exactly once.
@@ -81,7 +82,8 @@ fn init_bootstraps_once_then_refuses() {
 /// protect real data because a variable was forgotten.
 #[test]
 fn init_refuses_without_a_content_kek() {
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let db = std::env::temp_dir().join(format!("maidan-init-nokek-{}.db", std::process::id()));
     cleanup(&db);
     let url = format!("sqlite://{}?mode=rwc", db.display());

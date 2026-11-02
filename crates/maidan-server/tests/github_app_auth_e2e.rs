@@ -332,7 +332,11 @@ async fn a_jwt_signed_with_another_key_is_refused_by_github() {
 // ---- boot ----
 
 fn server(dir: &Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_maidan-server"));
+    let mut cmd = Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan-server")
+            .or_else(|| std::env::var_os("NEXTEST_BIN_EXE_maidan_server"))
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan-server").into()),
+    );
     for (name, _) in std::env::vars() {
         if name.starts_with("MAIDAN_") || name.starts_with("DATABASE_URL") {
             cmd.env_remove(name);
