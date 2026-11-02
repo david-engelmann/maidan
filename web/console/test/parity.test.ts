@@ -127,7 +127,7 @@ test("handles and peers are checked before sending", () => {
 test("evidenceLine words each evidence kind like the old timeline", () => {
   const n = (id: string | undefined) => (id === "m1" ? "Ada" : "someone");
   assert.equal(evidenceLine({ kind: "artifact_linked", at: "", artifact: { sha256: "a".repeat(64), linked_by: "m1" } }, n), `Artifact ${"a".repeat(12)}… linked by Ada`);
-  assert.equal(evidenceLine({ kind: "land_gate_verdict", at: "", verdict: { status: "pass" } }, n), "Land gate: pass");
+  assert.equal(evidenceLine({ kind: "land_gate_verdict", at: "", verdict: { status: "pass" } }, n), "Automated check: pass");
   assert.equal(evidenceLine({ kind: "review_verdict", at: "", verdict: { decision: "changes_requested", reviewer_id: "m1", note: "fix" } }, n), "Review: changes requested by Ada: fix");
   assert.equal(evidenceLine({ kind: "weird", at: "" }, n), "weird");
 });

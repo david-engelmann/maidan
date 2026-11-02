@@ -14,7 +14,8 @@ import { Chooser } from "./Chooser.tsx";
 import { Icon, Mark } from "./icons.tsx";
 import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
-import { Palette, type Command } from "./Palette.tsx";
+import { Palette } from "./Palette.tsx";
+import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommands, type Command } from "./commands.ts";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
 
 // The shell owns the one live connection; screens hear it on the bus.
@@ -28,7 +29,8 @@ const TO_BUS = {
 
 export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const route = useRoute();
-  const { session } = useSession();
+  const { session, store } = useSession();
+  const signedIn = session.status === "signed-in";
   const live = useLive(session, NO_FILTER, TO_BUS);
   // A refused socket (a revoked or narrowed token) sends no more events, so
   // ask every screen to read once more: each then shows the refusal it gets.
@@ -48,11 +50,31 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   }, []);
 
   useEffect(() => {
+    let seq: { at: number } | null = null;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((o) => !o);
+        return;
       }
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTyping(e.target) || document.querySelector("[aria-modal='true']")) {
+        seq = null;
+        return;
+      }
+      if (!seq && (e.key === "j" || e.key === "k")) {
+        // j and k walk the rows of the list on screen, in reading order.
+        const rows = [...document.querySelectorAll<HTMLElement>(LIST_ROWS)].filter((r) => r.offsetParent !== null);
+        const at = listStep(rows.findIndex((r) => r === document.activeElement || r.contains(document.activeElement)), rows.length, e.key);
+        if (at !== null) {
+          e.preventDefault();
+          rows[at].focus();
+          rows[at].scrollIntoView({ block: "nearest" });
+        }
+        return;
+      }
+      const next = goSequence(seq, e.key, e.timeStamp);
+      seq = next.state;
+      if (next.go) navigate(next.go);
     };
     const onScroll = () => setScrolled(window.scrollY > 4);
     window.addEventListener("keydown", onKey);
@@ -65,12 +87,23 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
   const commands = useMemo<Command[]>(
     () => [
-      ...ROUTES.map((r) => ({ id: `go-${r.id}`, title: `Go to ${r.title}`, hint: r.hint, run: () => navigate(r.id) })),
+      ...routeCommands(navigate),
+      ...(signedIn
+        ? ([
+            { id: "new-message", title: "New message", hint: "Start a conversation with a person or agent", group: "Actions", run: () => { requestCompose(); navigate("threads"); } },
+            { id: "upload", title: "Upload a file", hint: "Files: add an artifact and link it to a task", group: "Actions", run: () => navigate("artifacts") },
+            { id: "refresh", title: "Refresh this screen", hint: "Read everything on this screen again", group: "Actions", run: () => liveBus.emit({ type: "resync" }) },
+            { id: "sign-out", title: "Sign out", hint: "Forget this page's sign-in", group: "Actions", run: () => void store.logout() },
+          ] satisfies Command[])
+        : []),
     ],
-    [],
+    [signedIn, store],
   );
 
   const current = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
+  useEffect(() => {
+    document.title = signedIn ? `${current.title} · Maidan` : "Sign in · Maidan";
+  }, [current.title, signedIn]);
   const who = session.status === "signed-in" ? (session.displayName ?? session.memberId) : null;
   // Signed out, every place is the sign-in card: no place tabs to wander
   // through before the token field, and no "Offline" for a server that is up.
@@ -102,13 +135,15 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       <header className={scrolled ? "top scrolled" : "top"}>
         <h1>{shellTitle(signedOut, current.title)}</h1>
         <div className="top-actions">
-          {session.status === "signed-in" && session.mode ? (
+          {session.status === "signed-in" && session.mode && session.mode !== "session" ? (
             <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
           ) : null}
-          <span className={`live live-${live.kind}`} title={who ? `Signed in as ${who}` : "Not signed in"}>
-            <span className="dot" aria-hidden="true" />
-            {word}
-          </span>
+          {live.kind !== "connected" ? (
+            <span className={`live live-${live.kind}`} role="status" title={`${word}${who ? ` · signed in as ${who}` : ""}`}>
+              <span className="dot" aria-hidden="true" />
+              <span className="visually-hidden">{word}</span>
+            </span>
+          ) : null}
           <button className="icon-btn" aria-label="Search and commands (⌘K)" onClick={() => setPaletteOpen(true)}>
             <Icon name="search" />
           </button>

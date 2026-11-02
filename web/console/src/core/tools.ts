@@ -1,7 +1,7 @@
 // Tools: the operator and self-service reads and writes the classic board
 // kept on its Tools tabs, minus the gates Needs you already covers. Plus the
 // artifact store. Everything here is plain data in, plain data out.
-import { apiPath, bearerRefusal, headers, humanError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch } from "./board.ts";
 
 export type Notification = { id: string; kind: string; thread_id?: string | null; read_at?: string | null; created_at?: string };
@@ -138,19 +138,10 @@ export function isSha(s: string): boolean {
 
 // ---- Reads and writes ----------------------------------------------------
 
-export class ToolsError extends Error {}
+export class ToolsError extends ApiError {}
 
-async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
-  let detail: string | null = null;
-  try {
-    const body = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = body.message ?? body.detail ?? body.error ?? null;
-  } catch {
-    detail = null;
-  }
-  if ((res.status === 400 || res.status === 409 || res.status === 422) && detail) throw new ToolsError(detail);
-  throw new ToolsError(humanError(res.status, detail, mode));
-}
+const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
+  failure(res, mode, ToolsError, (status, detail) => ((status === 400 || status === 409 || status === 422) && detail ? detail : null));
 
 export class ToolsApi {
   private readonly fetchFn: Fetch;
@@ -158,7 +149,7 @@ export class ToolsApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    this.fetchFn = guarded(fetchFn, ToolsError);
     this.creds = creds;
     this.mode = mode;
   }

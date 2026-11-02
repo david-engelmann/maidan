@@ -76,7 +76,7 @@ test("an empty Needs you is calm: one quiet card, no buttons", async ({ page }) 
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/needs");
   const empty = page.locator(".needs-empty");
-  await expect(empty).toContainText("All clear");
+  await expect(empty).toContainText("All caught up");
   await expect(page.locator(".needs-count")).toHaveText(/Nothing waiting/);
   await expect(empty.locator("button")).toHaveCount(0);
 });
@@ -96,7 +96,7 @@ test("Tab reaches a Needs you row's actions", async ({ page }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/needs");
   await expect(page.locator(".needs-count")).toBeVisible();
-  const first = page.locator(".need-actions button").first();
+  const first = page.locator(".need-actions button:not([disabled])").first();
   test.skip((await first.count()) === 0, "nothing waiting in this seed");
   await first.focus();
   await expect(first).toBeFocused();

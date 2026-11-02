@@ -1,8 +1,11 @@
 // Threads and DMs, iPhone first: a list of conversations, and one open
 // conversation that fills the screen with its composer above the keyboard.
 // On a wide screen the list and the conversation sit side by side.
+import { MessageBody } from "./MessageBody.tsx";
+import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { BoardApi, type Member } from "../core/board.ts";
+import { Icon } from "../shell/icons.tsx";
+import { BoardApi, chromeFor, stateLabel, type Gate, type Member, type Thread } from "../core/board.ts";
 import {
   QUICK_REACTIONS,
   REACTION_NAMES,
@@ -25,6 +28,11 @@ import {
   sameRef,
   slashResult,
   startsGroup,
+  dayKey,
+  dayLabel,
+  isUnread,
+  markOpened,
+  type SeenState,
   taskConversation,
   visibleMessages,
   type ConvRef,
@@ -69,6 +77,43 @@ function initials(name: string): string {
     .join("");
 }
 
+const SEEN_PREFIX = "maidan:seen:";
+
+function loadSeen(key: string | null): SeenState {
+  const fresh = { baseline: new Date().toISOString(), opened: {} };
+  if (!key) return fresh;
+  try {
+    const raw = window.localStorage.getItem(SEEN_PREFIX + key);
+    const v = raw ? (JSON.parse(raw) as Partial<SeenState>) : null;
+    if (v && typeof v.baseline === "string" && v.opened && typeof v.opened === "object") return { baseline: v.baseline, opened: v.opened };
+  } catch {
+    // A private window or a full disk: unread marks last for this visit only.
+  }
+  try {
+    window.localStorage.setItem(SEEN_PREFIX + key, JSON.stringify(fresh));
+  } catch {
+    // As above.
+  }
+  return fresh;
+}
+
+function saveSeen(key: string | null, v: SeenState): void {
+  if (!key) return;
+  try {
+    window.localStorage.setItem(SEEN_PREFIX + key, JSON.stringify(v));
+  } catch {
+    // As above.
+  }
+}
+
+/** The list tile for a task: the board's state dot, in the board's words. */
+/** The list's state for a task, the same lane and word the board shows. */
+function taskTone(th: Thread | undefined, gate?: Gate | null): { tone: string; word: string } | null {
+  if (!th) return null;
+  const chrome = chromeFor(th, gate);
+  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
+}
+
 export function Threads() {
   const { session, store } = useSession();
   const deps = useMemo(() => {
@@ -80,8 +125,18 @@ export function Threads() {
   const { data: board, selectChannel } = useBoard(session, deps.board);
   const { data: direct, refresh: refreshDirect } = useDirect(session, deps.threads);
   const open = useOpenRef();
-  const [tab, setTab] = useState<Tab>(() => (open && open.kind !== "task" ? "direct" : "tasks"));
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(takeCompose);
+  const [tab, setTab] = useState<Tab>(() => (composing || (open && open.kind !== "task") ? "direct" : "tasks"));
+  // The palette's "New message" opens the composer.
+  useEffect(() => {
+    const open = () => {
+      if (!takeCompose()) return;
+      setTab("direct");
+      setComposing(true);
+    };
+    window.addEventListener("maidan:compose", open);
+    return () => window.removeEventListener("maidan:compose", open);
+  }, []);
   // Opening a DM from a link shows it under Direct, a task under Tasks.
   const [seen, setSeen] = useState<ConvRef | null>(open);
   if (open !== seen && !sameRef(open, seen)) {
@@ -90,6 +145,10 @@ export function Threads() {
   }
   const me = session.status === "signed-in" ? session.memberId : null;
   useVisualViewport(keyboardInset);
+  const readsKey = session.status === "signed-in" ? `${session.workspaceId}:${session.memberId}` : null;
+  const [reads, setReads] = useState<{ key: string | null; value: SeenState }>(() => ({ key: readsKey, value: loadSeen(readsKey) }));
+  if (reads.key !== readsKey) setReads({ key: readsKey, value: loadSeen(readsKey) });
+  const threadById = useMemo(() => new Map(board.threads.map((t) => [t.id, t])), [board.threads]);
 
   const tasks = useMemo(() => board.threads.map(taskConversation).sort(byRecent), [board.threads]);
   const dms = useMemo(() => {
@@ -105,6 +164,19 @@ export function Threads() {
     if (open.kind === "task") return { ref: open, threadId: open.id, label: "Task", detail: "", updatedAt: null };
     return null;
   }, [open, tasks, dms]);
+
+  // Opening a conversation reads it, and so does staying in it as it moves.
+  const openedId = current?.threadId ?? null;
+  const openedAt = current?.updatedAt ?? null;
+  const markKey = openedId ? `${openedId}@${openedAt ?? ""}` : null;
+  const [marked, setMarked] = useState<string | null>(null);
+  if (openedId && markKey !== marked) {
+    setMarked(markKey);
+    const now = new Date().toISOString();
+    const value = markOpened(reads.value, openedId, openedAt && openedAt > now ? openedAt : now);
+    saveSeen(reads.key, value);
+    setReads({ ...reads, value });
+  }
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
@@ -124,11 +196,13 @@ export function Threads() {
           {tab === "tasks" ? (
             <label className="channel-pick">
               <span className="visually-hidden">Channel</span>
+              <span className="channel-hash" aria-hidden="true">#</span>
               <select value={board.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!board.channels.length}>
                 {board.channels.map((c) => (
-                  <option key={c.id} value={c.id}>#{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              <Icon name="chevron" />
             </label>
           ) : (
             <button className="btn small-btn" onClick={() => setComposing((v) => !v)} aria-expanded={composing}>{composing ? "Cancel" : "New message"}</button>
@@ -149,7 +223,11 @@ export function Threads() {
         )}
         {listError && <p className="conv-error" role="alert">{listError}</p>}
         {listLoading && !list.length ? (
-          <p className="muted">Loading…</p>
+          <div role="status" aria-label="Loading">
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+          </div>
         ) : !list.length ? (
           <p className="muted conv-empty">
             {tab === "tasks" ? (
@@ -158,18 +236,39 @@ export function Threads() {
           </p>
         ) : (
           <ul className="convs">
-            {list.map((c) => (
-              <li key={`${c.ref.kind}:${c.ref.id}`}>
-                <a className={sameRef(c.ref, open) ? "conv on" : "conv"} href={convHash(c.ref)} aria-current={sameRef(c.ref, open) ? "page" : undefined}>
-                  <span className={`avatar kind-${c.ref.kind}`} aria-hidden="true">{c.ref.kind === "task" ? "#" : initials(c.label)}</span>
-                  <span className="conv-text">
-                    <span className="conv-label">{c.label}</span>
-                    <span className="conv-detail">{c.detail}</span>
-                  </span>
-                  {c.updatedAt && <span className="conv-when">{clockTime(c.updatedAt)}</span>}
-                </a>
-              </li>
-            ))}
+            {list.map((c) => {
+              const on = sameRef(c.ref, open);
+              const unread = !on && isUnread(c, reads.value);
+              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id), board.gates[c.ref.id]) : null;
+              const th = c.ref.kind === "task" ? threadById.get(c.ref.id) : undefined;
+              const who = th?.assignee_id ? board.members.get(th.assignee_id) : undefined;
+              return (
+                <li key={`${c.ref.kind}:${c.ref.id}`}>
+                  <a className={`conv${on ? " on" : ""}${unread ? " unread" : ""}`} href={convHash(c.ref)} aria-current={on ? "page" : undefined}>
+                    {c.ref.kind === "task" ? (
+                      <span className={`conv-state state state-${tone?.tone ?? "open"}`} aria-hidden="true"><span className="state-dot" /></span>
+                    ) : (
+                      <span className={`avatar kind-${c.ref.kind}${c.ref.kind === "dm" && c.detail !== "Agent" ? " human" : ""}`} aria-hidden="true">{initials(c.label)}</span>
+                    )}
+                    <span className="conv-text">
+                      <span className={c.label ? "conv-label" : "conv-label name-pending"}>{c.label}{unread && <span className="visually-hidden">, unread</span>}</span>
+                      {tone ? (
+                        <span className={`conv-detail state state-${tone.tone}`}>
+                          <span className="state-text">{tone.word}</span>
+                          {who && <span className="conv-who">· {who.name}</span>}
+                        </span>
+                      ) : (
+                        <span className="conv-detail">{c.detail}</span>
+                      )}
+                    </span>
+                    <span className="conv-end">
+                      {c.updatedAt && <span className="conv-when">{clockTime(c.updatedAt)}</span>}
+                      {unread && <span className="unread-dot" aria-hidden="true" />}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -403,7 +502,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                   className="link-btn"
                   onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
                 >
-                  <b>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                  <b className={members.size ? undefined : "name-pending"}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
               </li>
             ))}
@@ -420,7 +519,9 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
           <p className="muted pad">{conv.ref.kind === "task" ? "No messages yet. Start the conversation below." : "No messages"}</p>
         ) : (
           <ol className="msg-list">
-            {messages.map((m, i) => (
+            {messages.flatMap((m, i) => {
+              const newDay = !messages[i - 1] || dayKey(messages[i - 1].posted_at) !== dayKey(m.posted_at);
+              const row = (
               <MessageRow
                 key={m.id}
                 m={m}
@@ -435,7 +536,11 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 onRemove={removeMessage}
                 api={api}
               />
-            ))}
+              );
+              return newDay
+                ? [<li key={`day-${dayKey(m.posted_at)}`} className="day-sep"><span>{dayLabel(m.posted_at, Date.now())}</span></li>, row]
+                : [row];
+            })}
           </ol>
         )}
       </div>
@@ -494,11 +599,11 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
   };
   return (
     <li className={`msg${head ? " head" : ""}${mine ? " mine" : ""}${pinned ? " pinned" : ""}`} data-mid={m.id}>
-      {head ? <span className="avatar" aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
+      {head ? <span className={`avatar${members.get(m.author_id)?.kind === "human" ? " human" : ""}`} aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
       <div className="msg-main">
         {head && (
           <p className="msg-meta">
-            <strong>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
+            <strong className={who ? undefined : "name-pending"}>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
             {m.edited_at && <span className="edited"> edited</span>}
             {pinned && <span className="edited"> pinned</span>}
           </p>
@@ -506,15 +611,15 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
         {editing ? (
           <EditBox m={m} onCancel={() => setEditing(false)} onSave={async (body) => { await onEdit(m, body); setEditing(false); }} />
         ) : (
-        <p
+        <div
           className="msg-body"
           onClick={() => {
             // A phone has no hover, so a tap on the message offers reactions.
             if (window.matchMedia("(hover: none)").matches && !window.getSelection()?.toString()) setPicking((v) => !v);
           }}
         >
-          {m.body}
-        </p>
+          <MessageBody body={m.body} />
+        </div>
         )}
         {!head && (m.edited_at || pinned) && !editing && (
           <p className="msg-meta">{m.edited_at && <span className="edited">edited </span>}{pinned && <span className="edited">pinned</span>}</p>
@@ -719,7 +824,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
     };
   }, [api, threadId, open, facts?.thread]);
   const f = facts?.thread === threadId ? facts.value : null;
-  const name = (id: string | undefined) => (id ? members.get(id)?.name || id : "someone");
+  const name = (id: string | undefined) => (id ? members.get(id)?.name || (members.size ? id : "…") : "someone");
   const deps = f?.deps?.dependencies ?? [];
   const entries = withRecords(f?.evidence?.entries ?? [], f?.records ?? null);
   const reload = () => setFacts(null);
@@ -729,18 +834,23 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
       {!f ? (
         <p className="muted small">Loading…</p>
       ) : (
-        <div className="small">
-          <p><b>Result</b>: {f.result ? <><code>{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : "none recorded yet"}</p>
-          <p><b>Depends on</b>: {deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : "nothing"}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</p>
-          {f.evidence?.evidence_changed_since_review ? <p className="err">Evidence changed since the last review.</p> : null}
+        <div className="facts-body small">
+          <dl className="fact-rows">
+            <div><dt>Result</dt><dd>{f.result ? <><pre className="fact-code fact-json" tabIndex={0}>{JSON.stringify(f.result.result, null, 2)}</pre> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
+            <div><dt>Depends on</dt><dd>{deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : <span className="muted">Nothing</span>}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</dd></div>
+          </dl>
+          {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}
           {entries.length ? (
-            <ol className="edit-history">
+            <ol className="ev-timeline" aria-label="Evidence">
               {entries.map((e, i) => {
                 const href = e.kind === "evidence_recorded" ? safeHref(e.record?.url) : null;
                 return (
                   <li key={e.record?.id ?? i}>
-                    <time dateTime={e.at}>{new Date(e.at).toLocaleString()}</time> · {evidenceLine(e, name)}
-                    {href ? <> · <a href={href} target="_blank" rel="noopener noreferrer">open</a></> : null}
+                    <span>
+                      {evidenceLine(e, name)}
+                      {href ? <> · <a href={href} target="_blank" rel="noopener noreferrer">open</a></> : null}
+                    </span>
+                    <time dateTime={e.at}>{clockTime(e.at)}</time>
                   </li>
                 );
               })}

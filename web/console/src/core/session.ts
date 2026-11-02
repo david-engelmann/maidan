@@ -1,7 +1,7 @@
 // The console's sign-in state, as a small store the useSession hook reads.
 // A port of the board's session.js: discovery, the cookie session, the
 // token-for-session exchange, and /me, without touching the DOM.
-import { apiPath, credentialMode, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
+import { SIGNED_OUT, apiPath, bumpAuthEpoch, signOutPostsLogout, credentialMode, onAuthLost, type CredentialMode, type Credentials, headers, writeInit } from "./api.ts";
 
 export type Discovery = {
   /** False when discovery has not been answered yet (unreachable, 5xx, 429). */
@@ -83,6 +83,18 @@ export class SessionStore {
   constructor(base: string, fetchFn: Fetch) {
     this.state = initialSession(base);
     this.fetchFn = fetchFn;
+  }
+
+  /** Go back to sign-in, with a reason, when any screen's request gets a 401. */
+  watchAuth(): () => void {
+    return onAuthLost(() => this.expire());
+  }
+
+  /** The credential stopped working: forget it and say why on the sign-in card. */
+  expire(): void {
+    if (this.state.status !== "signed-in") return;
+    this.signOut();
+    this.set({ error: SIGNED_OUT });
   }
 
   getSnapshot = (): SessionState => this.state;
@@ -169,7 +181,9 @@ export class SessionStore {
    */
   async signInWithToken(secret: string): Promise<{ ok: boolean; error?: string }> {
     this.epoch++;
+    bumpAuthEpoch();
     const gen = ++this.gen;
+    if (this.state.error) this.set({ error: null });
     let res: Response;
     try {
       res = await this.fetchFn(
@@ -218,9 +232,28 @@ export class SessionStore {
     this.set({ workspaceId });
   }
 
-  /** Forget this tab's credentials; the caller posts /auth/logout when due. */
+  /** Sign out for real: post /auth/logout when the session cookie is ours, then forget the tab's credentials. */
+  async logout(): Promise<void> {
+    const s = this.state;
+    const c = s.credentials;
+    const epoch = this.epoch;
+    try {
+      if (signOutPostsLogout(s.discovery.sessions, c.sessionMemberId)) {
+        // Bounded: a request that never settles must not keep the tab signed in.
+        await this.fetchFn(`${c.base}/auth/logout`, writeInit({ method: "POST", credentials: "include", signal: AbortSignal.timeout(5000) }));
+      }
+    } catch {
+      /* the tab forgets its credential either way */
+    }
+    // A sign-in that finished while the logout was out is not undone by it.
+    if (epoch !== this.epoch) return;
+    this.signOut();
+  }
+
+  /** Forget this tab's credentials; logout() posts /auth/logout when due. */
   signOut(): void {
     this.epoch++;
+    bumpAuthEpoch();
     this.gen++;
     this.set({
       status: "signed-out",
@@ -229,6 +262,7 @@ export class SessionStore {
       displayName: null,
       mode: null,
       grant: null,
+      workspaceId: null,
     });
   }
 }
