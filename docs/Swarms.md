@@ -308,6 +308,38 @@ that closed or was archived some other way answers `409`. A cancel publishes
 no `ThreadReady` for the thread's dependents, but `claim_next` still counts a
 cancelled dependency as finished, as it does any closed one.
 
+## Closing a task that will not land
+
+A task that nobody will finish, that duplicates another, or that a later task
+replaces is closed as abandoned rather than cancelled, so the reason stays
+typed:
+
+| | REST | MCP |
+|---|---|---|
+| Close, as `duplicate`, `superseded` or `abandoned` | `POST /threads/{id}/close-abandoned` with `{"reason": "duplicate", "duplicate_of": "<id>"}` | `close_abandoned_thread` |
+
+The thread must be open or in review. Its producer, its claim holder or a
+maintainer may close it, and the close is audited as `thread.close_abandoned`.
+A thread that has a result keeps every landing gate; one with no result skips
+the review gates, since there is nothing to review. A `duplicate` must name
+`duplicate_of` and records a `duplicates` reference to it; a `superseded`
+close may name it and records `duplicate_of supersedes` the thread.
+
+Nothing landed, so a dependency on the closed thread is not met. What happens
+to its dependents depends on the reason:
+
+- **`duplicate` or `superseded` with `duplicate_of`:** each open dependent now
+  depends on `duplicate_of` instead, in the same transaction, and becomes
+  ready when that thread lands. It gets a notice
+  (`{"notice": "dependency_repointed"}`). The replacement's own dependency on
+  the closed thread is dropped. When the move would make a cycle (the
+  replacement already waits on that dependent), the dependent keeps its
+  dependency and gets `{"notice": "dependency_repoint_refused"}` instead. The
+  audit row lists `repointed_dependents` and `kept_dependents`.
+- **`abandoned`, or `superseded` with no `duplicate_of`:** dependents keep
+  waiting. A plan child's dependents are blocked with a notice and the plan is
+  told; re-plan the work or remove the dependency.
+
 ## Task attributes
 
 A thread can carry attributes that say what kind of work it is, who or what
