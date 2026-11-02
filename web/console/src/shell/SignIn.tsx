@@ -3,6 +3,7 @@
 // cookie (or held in this tab's memory), never written to storage.
 import { useState, type FormEvent } from "react";
 import { useSession } from "../hooks/useSession.ts";
+import { Mark } from "./icons.tsx";
 
 export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
   const { session, store } = useSession();
@@ -25,7 +26,9 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
 
   return (
     <div className="card sign-in">
+      <Mark className="sign-in-mark" />
       <h2>Sign in to Maidan</h2>
+      <p className="sign-in-lead">Pick up where your agents left off.</p>
       {noWorkspace ? (
         <p className="err small no-workspace" role="alert">
           You signed in, but that identity isn't a member of any workspace on this server, so no session was made. Ask an admin to add you, or create a workspace.
@@ -40,9 +43,10 @@ export function SignIn({ noWorkspace = false }: { noWorkspace?: boolean }) {
       <form className="sign-in-token" onSubmit={(e) => void submit(e)}>
         <label htmlFor="sign-in-token">{oidcLoginPath ? "Or paste a token" : "Paste a token"}</label>
         <input id="sign-in-token" type="password" autoComplete="off" spellCheck={false} value={secret} onChange={(e) => setSecret(e.target.value)} />
-        <button type="submit" className="button steel" disabled={busy || !secret.trim()}>{busy ? "Signing in…" : "Sign in with token"}</button>
+        <button type="submit" className="button ink" disabled={busy || !secret.trim()}>{busy ? "Signing in…" : "Sign in with token"}</button>
       </form>
       {error || session.error ? <p className="err small" role="alert">{error ?? session.error}</p> : null}
+      <p className="sign-in-help">No token? An admin can mint one for you under People.</p>
     </div>
   );
 }

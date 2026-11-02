@@ -732,13 +732,15 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
       {!f ? (
         <p className="muted small">Loading…</p>
       ) : (
-        <div className="small">
-          <p><b>Result</b>: {f.result ? <><code>{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : "none recorded yet"}</p>
-          <p><b>Depends on</b>: {deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : "nothing"}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</p>
-          {f.evidence?.evidence_changed_since_review ? <p className="err">Evidence changed since the last review.</p> : null}
+        <div className="facts-body small">
+          <dl className="fact-rows">
+            <div><dt>Result</dt><dd>{f.result ? <><code>{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
+            <div><dt>Depends on</dt><dd>{deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : <span className="muted">Nothing</span>}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</dd></div>
+          </dl>
+          {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}
           {entries.length ? (
-            <ol className="edit-history">
-              {entries.map((e, i) => <li key={i}><time dateTime={e.at}>{new Date(e.at).toLocaleString()}</time> · {evidenceLine(e, name)}</li>)}
+            <ol className="ev-timeline" aria-label="Evidence">
+              {entries.map((e, i) => <li key={i}><span>{evidenceLine(e, name)}</span><time dateTime={e.at}>{clockTime(e.at)}</time></li>)}
             </ol>
           ) : <p className="muted">No evidence recorded yet.</p>}
         </div>
