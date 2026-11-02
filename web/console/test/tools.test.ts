@@ -92,6 +92,13 @@ test("a 404 on an optional read is nothing, not an error", async () => {
   assert.equal(await m.api.artifact(SHA), null);
 });
 
+test("no delivery email set is a 200 with null, read as no address", async () => {
+  const { api } = tools([{ status: 200, body: null }]);
+  assert.equal(await api.email("me"), null);
+  const set = tools([{ body: { member_id: "me", email: "a@b.co", updated_at: "2026-11-02T08:00:00Z" } }]);
+  assert.equal(await set.api.email("me"), "a@b.co");
+});
+
 test("writes carry an idempotency key and a 204 is fine", async () => {
   const { api, calls } = tools([{ status: 204 }]);
   await api.link("t1", SHA);

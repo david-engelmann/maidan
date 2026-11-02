@@ -1,5 +1,8 @@
 //! REST management of a member's delivery email — `PUT`/`GET`/`DELETE
-//! /members/:id/email`. Auth ENABLED with a minted bearer.
+//! /members/:id/email`. Auth ENABLED with a minted bearer. The lifecycle
+//! runs on SQLite and on Postgres.
+
+mod common;
 
 use std::{
     net::SocketAddr,
@@ -46,6 +49,20 @@ async fn set_get_delete_member_email() {
     run_sqlite_migrations(&pool).await.unwrap();
     let store: Arc<dyn Store> = Arc::new(SqliteStore::for_tests(pool.clone()));
     let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::SqliteSearch::new(pool));
+    email_lifecycle(store, search).await;
+}
+
+#[tokio::test]
+async fn set_get_delete_member_email_postgres() {
+    let Some((_container, pool)) = common::postgres_pool().await else {
+        return;
+    };
+    let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
+    email_lifecycle(store, search).await;
+}
+
+async fn email_lifecycle(store: Arc<dyn Store>, search: Arc<dyn maidan_search::Search>) {
     let dir = tempfile::tempdir().unwrap();
     let artifacts = Arc::new(LocalFsStore::new(dir.path()));
     let bus = Arc::new(InMemoryBus::with_capacity(16));
@@ -86,14 +103,15 @@ async fn set_get_delete_member_email() {
     let bearer = format!("Bearer {tok}");
     let mid = member.id.0;
 
-    // Unset → 404.
+    // Unset → 200 with null.
     let miss = client
         .get(format!("{base}/members/{mid}/email"))
         .header("Authorization", &bearer)
         .send()
         .await
         .unwrap();
-    assert_eq!(miss.status(), StatusCode::NOT_FOUND);
+    assert_eq!(miss.status(), StatusCode::OK);
+    assert_eq!(miss.json::<Value>().await.unwrap(), Value::Null);
 
     // A garbage address is rejected.
     let bad = client
@@ -129,7 +147,7 @@ async fn set_get_delete_member_email() {
         .unwrap();
     assert_eq!(got["email"], "me@example.com");
 
-    // DELETE clears it, then GET is 404 again.
+    // DELETE clears it, then GET is null again.
     let del = client
         .delete(format!("{base}/members/{mid}/email"))
         .header("Authorization", &bearer)
@@ -143,7 +161,8 @@ async fn set_get_delete_member_email() {
         .send()
         .await
         .unwrap();
-    assert_eq!(after.status(), StatusCode::NOT_FOUND);
+    assert_eq!(after.status(), StatusCode::OK);
+    assert_eq!(after.json::<Value>().await.unwrap(), Value::Null);
 }
 
 /// D-5 on the HTTP surface. Before the personal-state guard, only a session
