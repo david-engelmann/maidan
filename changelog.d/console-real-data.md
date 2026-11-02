@@ -1,1 +1,2 @@
 Console: message bodies render fenced code blocks, inline code, bold and links (as plain React elements, never HTML); a task result shows as indented JSON; a long assignee name in the thread list no longer cuts the state word.
+- Console interaction coverage: Playwright now checks the approve toast, a refused approve being put back, j/k through the thread list, and the unread dot appearing and clearing.
