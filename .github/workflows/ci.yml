@@ -831,7 +831,9 @@ jobs:
           tags: maidan-server:dev
           load: true
           cache-from: type=gha,scope=server-bootstrap-1
-          cache-to: type=gha,mode=max,scope=server-bootstrap-1
+          # Written only from main and dev: the 10 GB Actions cache is
+          # otherwise filled by PR-scoped entries no other PR can read.
+          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-1' || '' }}
       - name: build images
         run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       # `--wait` blocks on the services' own health checks, so this step is
@@ -910,7 +912,9 @@ jobs:
           tags: maidan-server:dev
           load: true
           cache-from: type=gha,scope=server-bootstrap-1
-          cache-to: type=gha,mode=max,scope=server-bootstrap-1
+          # Written only from main and dev: the 10 GB Actions cache is
+          # otherwise filled by PR-scoped entries no other PR can read.
+          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-1' || '' }}
       - name: two-replica scale-out smoke
         env:
           MAIDAN_SMOKE_PREBUILT: "1"
@@ -1088,7 +1092,9 @@ jobs:
           tags: maidan-server:dev
           load: true
           cache-from: type=gha,scope=server-bootstrap-0
-          cache-to: type=gha,mode=max,scope=server-bootstrap-0
+          # Written only from main and dev: the 10 GB Actions cache is
+          # otherwise filled by PR-scoped entries no other PR can read.
+          cache-to: ${{ (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') && 'type=gha,mode=max,scope=server-bootstrap-0' || '' }}
       - name: build images
         run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       - name: otlp end-to-end smoke
