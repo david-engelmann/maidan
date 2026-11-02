@@ -40,6 +40,11 @@ type UsageEvidence struct {
 	Provider        string `json:"provider"`
 	ServiceTier     string `json:"service_tier,omitempty"`
 	CacheMissReason string `json:"cache_miss_reason,omitempty"`
+	// Batch is set when the call went through a provider's batch API.
+	Batch bool `json:"batch,omitempty"`
+	// StandardPrice is the standard-tier rates for a call in a cheaper lane,
+	// so the ledger can report what the lane saved.
+	StandardPrice *PriceSnapshot `json:"standard_price,omitempty"`
 }
 
 // NormalizedUsage is the economic part of a report_usage body.
@@ -51,10 +56,15 @@ type NormalizedUsage struct {
 
 // UsageOptions fills what a response does not say. Model names the model when
 // the response does not (Bedrock Converse); Provider overrides the evidence
-// provider name (a Chat Completions shape served by Azure).
+// provider name (a Chat Completions shape served by Azure). Batch marks a call
+// sent through a provider's batch API, and StandardPrice is the standard-tier
+// snapshot for a call in a cheaper lane (batch, or a batch or flex service
+// tier); it is refused on any other call, as the server refuses it.
 type UsageOptions struct {
-	Model    string
-	Provider string
+	Model         string
+	Provider      string
+	Batch         bool
+	StandardPrice *PriceSnapshot
 }
 
 // UsageError is a usage object that cannot be read into the ledger's shape.
@@ -385,6 +395,15 @@ func NormalizeUsage(provider string, response []byte, opts UsageOptions) (Normal
 	evidence := UsageEvidence{Provider: reader.name, ServiceTier: got.serviceTier, CacheMissReason: got.cacheMissReason}
 	if opts.Provider != "" {
 		evidence.Provider = opts.Provider
+	}
+	evidence.Batch = opts.Batch
+	if opts.StandardPrice != nil {
+		tier := strings.ToLower(strings.TrimSpace(got.serviceTier))
+		if !opts.Batch && tier != "batch" && tier != "flex" {
+			return NormalizedUsage{}, usageErr("standard_price is for a call in a cheaper lane: set batch, or a batch or flex service_tier")
+		}
+		price := *opts.StandardPrice
+		evidence.StandardPrice = &price
 	}
 	return NormalizedUsage{Model: model, Tokens: got.tokens, Evidence: evidence}, nil
 }

@@ -44,7 +44,8 @@ export function useNeeds(session: SessionState, api: NeedsApi) {
       } catch (e) {
         if (mine !== gen.current) return;
         failures.current += 1;
-        const refused = e instanceof NeedsError;
+        // An unreachable server is status 0: rows stay and the line says stale, not refused.
+        const refused = e instanceof NeedsError && e.status !== 0;
         const message = e instanceof Error ? e.message : "Could not load what needs you";
         setData((d) =>
           d.status === "ready"
