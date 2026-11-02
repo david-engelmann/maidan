@@ -618,6 +618,11 @@ jobs:
     needs: [changes, integration-build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # ubuntu-26.04 mounts /tmp as a tmpfs sized to half the RAM. nextest
+    # unpacks the archive into the temp dir, and the test binaries outgrew it
+    # ("Disk quota exceeded", 2026-11-02), so the temp dir goes on the disk.
+    env:
+      TMPDIR: ${{ runner.temp }}
     strategy:
       fail-fast: false
       matrix:
