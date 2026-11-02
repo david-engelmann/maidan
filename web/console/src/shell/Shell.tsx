@@ -77,6 +77,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
   return (
     <div className="shell">
+      <a className="skip-link" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
       <nav className="rail" aria-label="Places">
         <a className="brand" href="#/board" aria-label="Maidan console">
           <Mark className="mark" />
@@ -91,7 +92,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           {session.status === "signed-in" && session.mode ? (
             <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
           ) : null}
-          <span className={`live live-${live.kind}`} title={who ? `Signed in as ${who}` : "Not signed in"}>
+          <span className={`live live-${live.kind}`} role="status" title={who ? `Signed in as ${who}` : "Not signed in"}>
             <span className="dot" aria-hidden="true" />
             {liveWord}
           </span>
@@ -101,7 +102,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         </div>
       </header>
 
-      <main className="content" id="main">
+      <main className="content" id="main" tabIndex={-1}>
         <motion.section
           key={route}
           initial={reduce ? false : { opacity: 0, y: 8 }}

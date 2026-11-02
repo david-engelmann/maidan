@@ -604,3 +604,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 /* Long lanes: off-screen cards skip layout and paint until scrolled near. */
 .cards > li { content-visibility: auto; contain-intrinsic-size: auto 84px; }
 .more-cards { width: 100%; min-height: 44px; margin-top: 8px; }
+
+/* Keyboard: a skip link that shows on focus; main takes focus with no ring. */
+.palette-body { display: contents; }
+.skip-link { position: absolute; left: 12px; top: -60px; z-index: 100; padding: 10px 14px; border-radius: 10px; background: var(--ink); color: var(--paper); text-decoration: none; }
+.skip-link:focus { top: calc(env(safe-area-inset-top) + 8px); }
+main.content:focus { outline: none; }

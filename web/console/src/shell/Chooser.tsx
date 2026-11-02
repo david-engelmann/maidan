@@ -3,6 +3,7 @@
 // more than one, this asks where to work. Continuing here closes it; another
 // workspace signs in there. Only this identity's workspaces are listed.
 import { useEffect, useRef, useState } from "react";
+import { useDialogFocus } from "./focus.ts";
 import { switchHref, type SwitchableWorkspace } from "../core/tools.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
@@ -19,13 +20,9 @@ export function Chooser({ onClose }: { onClose: () => void }) {
       live = false;
     };
   }, [api]);
+  // Once the list shows: focus in, Tab kept in, Escape closes, focus back after.
+  useDialogFocus(box, onClose, { active: Boolean(spaces && spaces.length > 1) });
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  useEffect(() => {
-    if (spaces && spaces.length > 1) box.current?.querySelector<HTMLElement>("button, a")?.focus();
     if (spaces && spaces.length <= 1) onClose();
   }, [spaces, onClose]);
   if (!spaces || spaces.length <= 1) return null;

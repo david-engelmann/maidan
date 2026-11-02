@@ -3,6 +3,7 @@
 // scrim, and gives focus back to the card that opened it.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { useDialogFocus } from "../shell/focus.ts";
 import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, type TransitionAction, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
 import { hasToken } from "../core/api.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -62,34 +63,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   const can = actionsFor(th, session.memberId, hasToken(session.credentials));
 
   // Focus moves in, Tab stays in, Escape closes, focus goes back on close.
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    box.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !box.current) return;
-      const f = Array.from(box.current.querySelectorAll<HTMLElement>("button:not([disabled]), a[href], [tabindex='0']"));
-      if (!f.length) return;
-      const first = f[0];
-      const last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      opener?.focus();
-    };
-  }, [onClose]);
+  useDialogFocus(box, onClose, { autofocus: "[data-autofocus]" });
 
   // A close clears the claim, so who closed it comes from its transitions.
   useEffect(() => {
