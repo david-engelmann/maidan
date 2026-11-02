@@ -3,6 +3,10 @@
 // One integration-test binary for this crate instead of one per tests/*.rs,
 // so the crate links once. Each file is a module named after it: run one with
 // `cargo nextest run -p maidan-store -E 'test(/^file_name::/)'`.
+//
+// Each file keeps its own `mod common;`, so the shared helpers compile once
+// per file that uses them, as they did when every file was its own binary.
+#![allow(clippy::duplicate_mod)]
 
 #[path = "../a2a_store.rs"]
 mod a2a_store;
