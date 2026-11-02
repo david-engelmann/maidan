@@ -21,6 +21,7 @@ import {
   pinnedMessages,
   onNewMessages,
   parseConv,
+  pastedFiles,
   sameRef,
   slashResult,
   startsGroup,
@@ -431,6 +432,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
       )}
       <Composer
         label={label}
+        onAttach={(file) => api.attach(conv.threadId, file)}
         onSend={async (body) => {
           sent.current = true;
           await send(conv.ref, body);
@@ -601,11 +603,35 @@ function EditBox({ m, onSave, onCancel }: { m: Message; onSave: (body: string) =
   );
 }
 
-function Composer({ label, onSend }: { label: string; onSend: (body: string) => Promise<void> }) {
+type ComposerProps = {
+  label: string;
+  onSend: (body: string) => Promise<void>;
+  onAttach: (file: File) => Promise<{ filename: string }>;
+};
+
+function Composer({ label, onSend, onAttach }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attached, setAttached] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
+
+  // A pasted file (a screenshot, usually) is stored and linked to this
+  // conversation's thread; pasted text is left alone.
+  const paste = async (files: File[]) => {
+    setError(null);
+    setAttached(null);
+    const names: string[] = [];
+    for (const f of files) {
+      try {
+        names.push((await onAttach(f)).filename);
+      } catch (e) {
+        setError(e instanceof ThreadsError ? e.message : "Could not attach that file.");
+        break;
+      }
+    }
+    if (names.length) setAttached(`Attached ${names.join(", ")}`);
+  };
 
   const submit = async () => {
     if (busy) return;
@@ -632,6 +658,7 @@ function Composer({ label, onSend }: { label: string; onSend: (body: string) => 
       }}
     >
       {error && <p className="conv-error" role="alert">{error}</p>}
+      <p className="composer-note" role="status">{attached ?? ""}</p>
       <div className="composer-row">
         <label className="visually-hidden" htmlFor="compose">Message {label}</label>
         <textarea
@@ -642,6 +669,12 @@ function Composer({ label, onSend }: { label: string; onSend: (body: string) => 
           placeholder="Message"
           enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
+          onPaste={(e) => {
+            const files = pastedFiles(e.clipboardData);
+            if (!files.length) return;
+            e.preventDefault();
+            void paste(files);
+          }}
           onKeyDown={(e) => {
             // A keyboard with a pointer sends on Enter; a phone keeps Enter for a new line.
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(pointer: fine)").matches) {
