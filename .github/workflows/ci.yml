@@ -84,6 +84,8 @@ jobs:
           fetch-depth: 0
       - name: install repository-script dependencies
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: integration binary roots are up to date
+        run: python3 scripts/gen-integration-main.py --check
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -521,27 +523,21 @@ jobs:
       - name: typescript and python SDK clients
         run: scripts/mcp-sdk-clients.sh typescript python
 
-  integration:
-    name: integration (testcontainers)
+  # The integration suite is three jobs. `integration build` compiles every
+  # test binary once and packs them with `cargo nextest archive`; three
+  # `integration shard` jobs each run a third of the tests (nextest's hash
+  # partition, so a test always lands on the same shard) against their own
+  # Postgres and MinIO containers; and `integration (testcontainers)` passes
+  # only when the build and every shard passed. That last job keeps the name
+  # the merge gate requires. In 2026-10 the single job took 29-42 minutes:
+  # 12-17 building and 14-22 running.
+  integration-build:
+    name: integration build
     needs: changes
     runs-on: ubuntu-latest
-    # Freeing disk costs about two minutes, and the first green run after it
-    # took 26m41s; at 30 a slow runner would be cut off and read as cancelled.
-    # The suite passed 3,300 tests in 2026-10; a full run on a slow runner
-    # took the whole 40 minutes and was cancelled with nothing failed.
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
-      # 2026-10-09); pull through Google's public mirror of it instead.
-      - name: pull Docker Hub images through mirror.gcr.io
-        run: |
-          # Merge into the runner's own daemon.json rather than replace it.
-          f=/etc/docker/daemon.json
-          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
-          sudo mv /tmp/daemon.json "$f"
-          sudo systemctl restart docker
-          docker info --format '{{.RegistryConfig.Mirrors}}'
       # The workspace's test binaries reach about 83G here, which left 871M of
       # the runner's disk. MinIO refuses writes below its free-drive floor, so
       # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
@@ -572,41 +568,111 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest
-      - name: build integration tests
-        if: needs.changes.outputs.code == 'true'
-        run: cargo nextest run --workspace --tests --profile ci --no-run
+      # A docs-only change still builds everything: its doc contract tests
+      # live in the same binaries.
+      - name: build and archive integration tests
+        run: cargo nextest archive --workspace --tests --profile ci --archive-file nextest-archive.tar.zst
+      - name: upload the test archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextest-archive
+          path: nextest-archive.tar.zst
+          retention-days: 1
+          compression-level: 0
+
+  integration-shard:
+    name: integration shard (${{ matrix.shard }}/3)
+    needs: [changes, integration-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      # Docker Hub rate-limits anonymous pulls (429s failed most jobs on
+      # 2026-10-09); pull through Google's public mirror of it instead.
+      - name: pull Docker Hub images through mirror.gcr.io
+        run: |
+          # Merge into the runner's own daemon.json rather than replace it.
+          f=/etc/docker/daemon.json
+          { sudo cat "$f" 2>/dev/null || echo '{}'; } | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          sudo mv /tmp/daemon.json "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The workspace's test binaries reach about 83G here, which left 871M of
+      # the runner's disk. MinIO refuses writes below its free-drive floor, so
+      # the S3 tests failed with XMinioStorageFull on 2026-10-16 while the
+      # coverage job, which frees this space first, passed them. The AWS KMS
+      # client (#1534) grew them past the 8G floor again on 2026-10-23, so the
+      # unused toolchains below go too.
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/local/.ghcup /usr/share/swift /usr/lib/jvm /opt/microsoft /opt/google /opt/az \
+            /usr/local/share/powershell /usr/local/share/chromium /usr/local/julia* \
+            /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
+          docker system prune -af --volumes >/dev/null
+          df -h /
+      - name: install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+      - name: download the test archive
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archive
       # A full disk shows up only as a storage error deep in one test, so
       # name it here, before the containers start writing.
       - name: disk left for the test containers
         if: needs.changes.outputs.code == 'true'
         run: |
           df -h /
-          du -sh target
           avail_kib=$(df --output=avail -k / | tail -1)
           floor_gib=8
           if [ "$avail_kib" -lt $((floor_gib * 1024 * 1024)) ]; then
-            echo "::error::under ${floor_gib}G free after the test build; MinIO and Postgres need room to write"
+            echo "::error::under ${floor_gib}G free after unpacking the tests; MinIO and Postgres need room to write"
             exit 1
           fi
       - name: integration tests
         if: needs.changes.outputs.code == 'true'
-        run: cargo nextest run --workspace --tests --profile ci
+        run: >-
+          cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
+          --profile ci --partition hash:${{ matrix.shard }}/3
       - name: doc contract tests (docs-only change)
         # The tests that read docs/, book/ or Markdown; nothing else can be
-        # affected by a docs-only change.
-        if: needs.changes.outputs.code != 'true'
+        # affected by a docs-only change. Shard 1 runs them all.
+        if: needs.changes.outputs.code != 'true' && matrix.shard == 1
         run: >-
-          cargo nextest run --workspace --tests --profile ci -E
-          'binary(docs_numbers_contract) | binary(mcp_reference_current) |
-          binary(alert_templates_contract) | binary(result_delivery_e2e) |
-          binary(token_pack) | binary(openapi_well_formed)'
+          cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
+          --profile ci -E
+          'test(/^(docs_numbers_contract|alert_templates_contract|result_delivery_e2e|token_pack|openapi_well_formed)::/) |
+          binary(mcp_reference_current)'
       - name: upload JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: junit-integration
+          name: junit-integration-${{ matrix.shard }}
           path: target/nextest/ci/junit.xml
           if-no-files-found: ignore
+
+  integration:
+    name: integration (testcontainers)
+    needs: [changes, integration-build, integration-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: the build and every shard passed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          BUILD: ${{ needs.integration-build.result }}
+          SHARDS: ${{ needs.integration-shard.result }}
+        run: |
+          echo "changes=$CHANGES build=$BUILD shards=$SHARDS"
+          [ "$CHANGES" = success ] && [ "$BUILD" = success ] && [ "$SHARDS" = success ]
 
   sqlite-vec:
     name: sqlite-vec (optional feature)
@@ -655,7 +721,7 @@ jobs:
       - name: test with sqlite-vec feature
         run: |
           cargo test -p maidan-search --features sqlite-vec
-          cargo test -p maidan-server --features sqlite-vec --test search_semantic_e2e -- sqlite_http_semantic
+          cargo test -p maidan-server --features sqlite-vec --test it search_semantic_e2e::sqlite_http_semantic
           cargo test -p maidan-cli --features sqlite-vec --bin maidan -- sqlite_pool_tests
 
   bootstrap-strip:
@@ -1113,8 +1179,8 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: LSN read-your-write routing tests (real streaming replication)
         run: |
-          cargo test -p maidan-store  --test replication    -- --ignored --nocapture
-          cargo test -p maidan-store  --test read_routing    -- --ignored --nocapture
+          cargo test -p maidan-store  --test it replication::    -- --ignored --nocapture
+          cargo test -p maidan-store  --test it read_routing::    -- --ignored --nocapture
           cargo test -p maidan-search --test replica_routing -- --ignored --nocapture
       - name: tear down the harness
         if: always()
