@@ -818,13 +818,22 @@ jobs:
           python3 -m py_compile examples/lease_demo/lease_demo.py examples/langchain_maidan.py examples/autogen_maidan.py examples/rest_maidan.py examples/claude-code/maidan-claimant/change_result.py examples/openrouter/claimant.py examples/seat-runner/seat_runner.py scripts/eval-land-gate-advisor.py
           python3 -m unittest discover -s examples/seat-runner/tests
           python3 -c "import json,sys; [json.load(open(f)) for f in ['examples/cursor-mcp.json','examples/claude-desktop-mcp.json','examples/claude-code/mcp.json','examples/cursor/mcp.json']]; import tomllib; tomllib.load(open('examples/codex/config.toml','rb')); tomllib.load(open('examples/seat-runner/seats.example.toml','rb')); print('mcp configs valid')"
+      # The server image builds through buildx with a GitHub Actions layer
+      # cache, so the cargo-chef dependency layer is reused across runs
+      # instead of compiled cold (about 12 minutes) in every smoke job.
+      - uses: docker/setup-buildx-action@v3
+      - name: build server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=1
+          tags: maidan-server:dev
+          load: true
+          cache-from: type=gha,scope=server-bootstrap-1
+          cache-to: type=gha,mode=max,scope=server-bootstrap-1
       - name: build images
-        run: |
-          docker build \
-            --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
-            -t maidan-server:dev \
-            -f crates/maidan-server/Dockerfile .
-          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+        run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       # `--wait` blocks on the services' own health checks, so this step is
       # also what proves those health checks work.
       - name: compose up
@@ -888,7 +897,23 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The server image builds through buildx with a GitHub Actions layer
+      # cache, so the cargo-chef dependency layer is reused across runs
+      # instead of compiled cold (about 12 minutes) in every smoke job.
+      - uses: docker/setup-buildx-action@v3
+      - name: build server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=1
+          tags: maidan-server:dev
+          load: true
+          cache-from: type=gha,scope=server-bootstrap-1
+          cache-to: type=gha,mode=max,scope=server-bootstrap-1
       - name: two-replica scale-out smoke
+        env:
+          MAIDAN_SMOKE_PREBUILT: "1"
         run: bash scripts/scale-out-smoke.sh
 
   pitr-drill:
@@ -1048,16 +1073,24 @@ jobs:
           sudo mv /tmp/daemon.json "$f"
           sudo systemctl restart docker
           docker info --format '{{.RegistryConfig.Mirrors}}'
+      # The production build args (no bootstrap), so the smoke proves the
+      # image that ships exports OTLP; it only needs /health and /metrics.
+      # The server image builds through buildx with a GitHub Actions layer
+      # cache, so the cargo-chef dependency layer is reused across runs
+      # instead of compiled cold (about 12 minutes) in every smoke job.
+      - uses: docker/setup-buildx-action@v3
+      - name: build server image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: crates/maidan-server/Dockerfile
+          build-args: MAIDAN_ENABLE_BOOTSTRAP=0
+          tags: maidan-server:dev
+          load: true
+          cache-from: type=gha,scope=server-bootstrap-0
+          cache-to: type=gha,mode=max,scope=server-bootstrap-0
       - name: build images
-        run: |
-          # The production build args (no bootstrap), so the smoke proves
-          # the image that ships exports OTLP; it only needs /health and
-          # /metrics, not the seed routes.
-          docker build \
-            --build-arg MAIDAN_ENABLE_BOOTSTRAP=0 \
-            -t maidan-server:dev \
-            -f crates/maidan-server/Dockerfile .
-          docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
+        run: docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
       - name: otlp end-to-end smoke
         run: bash scripts/otlp-smoke.sh
       - name: collector logs on failure
