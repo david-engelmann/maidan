@@ -618,11 +618,6 @@ jobs:
     needs: [changes, integration-build]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # ubuntu-26.04 mounts /tmp as a tmpfs sized to half the RAM. nextest
-    # unpacks the archive into the temp dir, and the test binaries outgrew it
-    # ("Disk quota exceeded", 2026-11-02), so the temp dir goes on the disk.
-    env:
-      TMPDIR: ${{ runner.temp }}
     strategy:
       fail-fast: false
       matrix:
@@ -674,8 +669,13 @@ jobs:
             echo "::error::under ${floor_gib}G free after unpacking the tests; MinIO and Postgres need room to write"
             exit 1
           fi
+      # ubuntu-26.04 mounts /tmp as a tmpfs sized to half the RAM. nextest
+      # unpacks the archive into the temp dir, and the test binaries outgrew it
+      # ("Disk quota exceeded", 2026-11-02), so the temp dir goes on the disk.
       - name: integration tests
         if: needs.changes.outputs.heavy == 'true'
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci --partition hash:${{ matrix.shard }}/3
@@ -683,6 +683,8 @@ jobs:
         # The tests that read docs/, book/ or Markdown; nothing else can be
         # affected by a docs-only change. Shard 1 runs them all.
         if: needs.changes.outputs.heavy != 'true' && matrix.shard == 1
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: >-
           cargo nextest run --archive-file nextest-archive.tar.zst --workspace-remap .
           --profile ci -E
