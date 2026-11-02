@@ -4,7 +4,7 @@
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
-import { BoardApi, type Member } from "../core/board.ts";
+import { BoardApi, chromeFor, stateLabel, type Member, type Thread } from "../core/board.ts";
 import {
   QUICK_REACTIONS,
   REACTION_NAMES,
@@ -27,6 +27,11 @@ import {
   sameRef,
   slashResult,
   startsGroup,
+  dayKey,
+  dayLabel,
+  isUnread,
+  markOpened,
+  type SeenState,
   taskConversation,
   visibleMessages,
   type ConvRef,
@@ -63,6 +68,42 @@ function initials(name: string): string {
     .join("");
 }
 
+const SEEN_PREFIX = "maidan:seen:";
+
+function loadSeen(key: string | null): SeenState {
+  const fresh = { baseline: new Date().toISOString(), opened: {} };
+  if (!key) return fresh;
+  try {
+    const raw = window.localStorage.getItem(SEEN_PREFIX + key);
+    const v = raw ? (JSON.parse(raw) as Partial<SeenState>) : null;
+    if (v && typeof v.baseline === "string" && v.opened && typeof v.opened === "object") return { baseline: v.baseline, opened: v.opened };
+  } catch {
+    // A private window or a full disk: unread marks last for this visit only.
+  }
+  try {
+    window.localStorage.setItem(SEEN_PREFIX + key, JSON.stringify(fresh));
+  } catch {
+    // As above.
+  }
+  return fresh;
+}
+
+function saveSeen(key: string | null, v: SeenState): void {
+  if (!key) return;
+  try {
+    window.localStorage.setItem(SEEN_PREFIX + key, JSON.stringify(v));
+  } catch {
+    // As above.
+  }
+}
+
+/** The list tile for a task: the board's state dot, in the board's words. */
+function taskTone(th: Thread | undefined): { tone: string; word: string } | null {
+  if (!th) return null;
+  const chrome = chromeFor(th);
+  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
+}
+
 export function Threads() {
   const { session, store } = useSession();
   const deps = useMemo(() => {
@@ -94,6 +135,10 @@ export function Threads() {
   }
   const me = session.status === "signed-in" ? session.memberId : null;
   useVisualViewport(keyboardInset);
+  const readsKey = session.status === "signed-in" ? `${session.workspaceId}:${session.memberId}` : null;
+  const [reads, setReads] = useState<{ key: string | null; value: SeenState }>(() => ({ key: readsKey, value: loadSeen(readsKey) }));
+  if (reads.key !== readsKey) setReads({ key: readsKey, value: loadSeen(readsKey) });
+  const threadById = useMemo(() => new Map(board.threads.map((t) => [t.id, t])), [board.threads]);
 
   const tasks = useMemo(() => board.threads.map(taskConversation).sort(byRecent), [board.threads]);
   const dms = useMemo(() => {
@@ -109,6 +154,19 @@ export function Threads() {
     if (open.kind === "task") return { ref: open, threadId: open.id, label: "Task", detail: "", updatedAt: null };
     return null;
   }, [open, tasks, dms]);
+
+  // Opening a conversation reads it, and so does staying in it as it moves.
+  const openedId = current?.threadId ?? null;
+  const openedAt = current?.updatedAt ?? null;
+  const markKey = openedId ? `${openedId}@${openedAt ?? ""}` : null;
+  const [marked, setMarked] = useState<string | null>(null);
+  if (openedId && markKey !== marked) {
+    setMarked(markKey);
+    const now = new Date().toISOString();
+    const value = markOpened(reads.value, openedId, openedAt && openedAt > now ? openedAt : now);
+    saveSeen(reads.key, value);
+    setReads({ ...reads, value });
+  }
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
@@ -164,18 +222,39 @@ export function Threads() {
           <p className="muted conv-empty">{tab === "tasks" ? "No tasks in this channel yet." : "No conversations yet. Start one with New message."}</p>
         ) : (
           <ul className="convs">
-            {list.map((c) => (
-              <li key={`${c.ref.kind}:${c.ref.id}`}>
-                <a className={sameRef(c.ref, open) ? "conv on" : "conv"} href={convHash(c.ref)} aria-current={sameRef(c.ref, open) ? "page" : undefined}>
-                  <span className={`avatar kind-${c.ref.kind}`} aria-hidden="true">{c.ref.kind === "task" ? "#" : initials(c.label)}</span>
-                  <span className="conv-text">
-                    <span className="conv-label">{c.label}</span>
-                    <span className="conv-detail">{c.detail}</span>
-                  </span>
-                  {c.updatedAt && <span className="conv-when">{clockTime(c.updatedAt)}</span>}
-                </a>
-              </li>
-            ))}
+            {list.map((c) => {
+              const on = sameRef(c.ref, open);
+              const unread = !on && isUnread(c, reads.value);
+              const tone = c.ref.kind === "task" ? taskTone(threadById.get(c.ref.id)) : null;
+              const th = c.ref.kind === "task" ? threadById.get(c.ref.id) : undefined;
+              const who = th?.assignee_id ? board.members.get(th.assignee_id) : undefined;
+              return (
+                <li key={`${c.ref.kind}:${c.ref.id}`}>
+                  <a className={`conv${on ? " on" : ""}${unread ? " unread" : ""}`} href={convHash(c.ref)} aria-current={on ? "page" : undefined}>
+                    {c.ref.kind === "task" ? (
+                      <span className={`conv-state state state-${tone?.tone ?? "open"}`} aria-hidden="true"><span className="state-dot" /></span>
+                    ) : (
+                      <span className={`avatar kind-${c.ref.kind}${c.ref.kind === "dm" && c.detail !== "Agent" ? " human" : ""}`} aria-hidden="true">{initials(c.label)}</span>
+                    )}
+                    <span className="conv-text">
+                      <span className="conv-label">{c.label}{unread && <span className="visually-hidden">, unread</span>}</span>
+                      {tone ? (
+                        <span className={`conv-detail state state-${tone.tone}`}>
+                          <span className="state-text">{tone.word}</span>
+                          {who && <span className="conv-who">· {who.name}</span>}
+                        </span>
+                      ) : (
+                        <span className="conv-detail">{c.detail}</span>
+                      )}
+                    </span>
+                    <span className="conv-end">
+                      {c.updatedAt && <span className="conv-when">{clockTime(c.updatedAt)}</span>}
+                      {unread && <span className="unread-dot" aria-hidden="true" />}
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -424,7 +503,9 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
           <p className="muted pad">{conv.ref.kind === "task" ? "No messages yet. Start the conversation below." : "No messages"}</p>
         ) : (
           <ol className="msg-list">
-            {messages.map((m, i) => (
+            {messages.flatMap((m, i) => {
+              const newDay = !messages[i - 1] || dayKey(messages[i - 1].posted_at) !== dayKey(m.posted_at);
+              const row = (
               <MessageRow
                 key={m.id}
                 m={m}
@@ -439,7 +520,11 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 onRemove={removeMessage}
                 api={api}
               />
-            ))}
+              );
+              return newDay
+                ? [<li key={`day-${dayKey(m.posted_at)}`} className="day-sep"><span>{dayLabel(m.posted_at, Date.now())}</span></li>, row]
+                : [row];
+            })}
           </ol>
         )}
       </div>
@@ -498,7 +583,7 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
   };
   return (
     <li className={`msg${head ? " head" : ""}${mine ? " mine" : ""}${pinned ? " pinned" : ""}`} data-mid={m.id}>
-      {head ? <span className="avatar" aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
+      {head ? <span className={`avatar${members.get(m.author_id)?.kind === "human" ? " human" : ""}`} aria-hidden="true">{initials(who)}</span> : <span className="avatar-gap" aria-hidden="true" />}
       <div className="msg-main">
         {head && (
           <p className="msg-meta">
@@ -734,7 +819,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
       ) : (
         <div className="facts-body small">
           <dl className="fact-rows">
-            <div><dt>Result</dt><dd>{f.result ? <><code>{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
+            <div><dt>Result</dt><dd>{f.result ? <><code className="fact-code">{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
             <div><dt>Depends on</dt><dd>{deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : <span className="muted">Nothing</span>}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</dd></div>
           </dl>
           {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}

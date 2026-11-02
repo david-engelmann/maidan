@@ -79,9 +79,50 @@ export function visibleMessages(rows: Message[]): Message[] {
 }
 
 /** Consecutive messages from one author within five minutes share a header. */
+/** One header per run: a new author or a new day starts a group. */
 export function startsGroup(prev: Message | undefined, m: Message): boolean {
   if (!prev || prev.author_id !== m.author_id) return true;
-  return Date.parse(m.posted_at) - Date.parse(prev.posted_at) > 5 * 60 * 1000;
+  return dayKey(prev.posted_at) !== dayKey(m.posted_at);
+}
+
+/** The local calendar day a timestamp falls on, as YYYY-MM-DD. */
+export function dayKey(ts: string): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** "Today", "Yesterday", or a short date for a day separator. */
+export function dayLabel(ts: string, now: number): string {
+  const key = dayKey(ts);
+  if (key === dayKey(new Date(now).toISOString())) return "Today";
+  if (key === dayKey(new Date(now - 864e5).toISOString())) return "Yesterday";
+  const d = new Date(ts);
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+}
+
+/** Last-opened times per thread, kept on this device. A first visit sets
+ *  the baseline, so nothing older than that reads as unread. */
+export type SeenState = { baseline: string; opened: Record<string, string> };
+
+export function isUnread(c: Conversation, seen: SeenState): boolean {
+  if (!c.updatedAt) return false;
+  const mark = seen.opened[c.threadId] ?? seen.baseline;
+  return c.updatedAt > mark;
+}
+
+export function markOpened(seen: SeenState, threadId: string, at: string): SeenState {
+  return { ...seen, opened: { ...seen.opened, [threadId]: at } };
+}
+
+/** Reactions with one toggled, the way the server will count it. */
+export function toggleReaction(cur: Reaction[], emoji: string, on: boolean): Reaction[] {
+  const found = cur.find((r) => r.emoji === emoji);
+  if (found) {
+    if (found.mine === on) return cur;
+    return cur.map((r) => (r.emoji === emoji ? { ...r, count: r.count + (on ? 1 : -1), mine: on } : r)).filter((r) => r.count > 0);
+  }
+  return on ? [...cur, { emoji, count: 1, mine: true }] : cur;
 }
 
 export function clockTime(ts: string): string {

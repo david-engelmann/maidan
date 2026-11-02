@@ -880,3 +880,22 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .lane-pick .seg.steel { background: var(--card); box-shadow: var(--shadow-1), inset 0 0 0 1px var(--line); }
 @media (max-width: 720px) { .fact-rows > div { grid-template-columns: 84px 1fr; gap: 8px; } }
 @media (max-width: 720px) { .member-detail.wide-only[aria-hidden="true"] { display: none; } }
+
+/* Interactions round: one focus ring, quiet unread, day breaks, a list that reads at a glance. */
+:root { --focus: var(--signal); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.composer-row:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent); }
+.sign-in-token input:focus-visible, .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 2px; }
+.need-card:focus-visible, .person-row:focus-visible, .lane .task:focus-visible, .conv:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.conv-state { flex: none; display: grid; place-items: center; width: 32px; height: 32px; }
+.conv-state .state-dot { width: 9px; height: 9px; }
+.conv-detail.state { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--muted); }
+.conv-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-end { flex: none; display: grid; justify-items: end; gap: 6px; }
+.unread-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); }
+.conv.unread .conv-label { font-weight: 700; color: var(--ink); }
+.conv.unread .conv-when { color: var(--ink); }
+.day-sep { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; color: var(--muted); font-size: var(--text-xs); font-weight: 600; letter-spacing: .02em; }
+.day-sep::before, .day-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+@media (hover: hover) { .reacts:not(.none) .react.add:not([aria-expanded="true"]) { opacity: 0; transition: opacity .15s; } .msg:hover .reacts .react.add, .msg:focus-within .reacts .react.add { opacity: 1; } }
+.fact-code { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }

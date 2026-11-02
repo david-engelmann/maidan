@@ -77,3 +77,16 @@ export function takeCompose(): boolean {
   composePending = false;
   return was;
 }
+
+/** j and k step through a list; returns the next index, clamped to the ends.
+ *  With nothing focused yet, j picks the first row and k the last. */
+export function listStep(current: number, length: number, key: string): number | null {
+  if (!length) return null;
+  const k = key.toLowerCase();
+  if (k !== "j" && k !== "k") return null;
+  if (current < 0) return k === "j" ? 0 : length - 1;
+  return Math.min(length - 1, Math.max(0, current + (k === "j" ? 1 : -1)));
+}
+
+/** The rows j and k move between, in screen order. */
+export const LIST_ROWS = ".convs .conv, .person-row, .need-card, .lane .task";

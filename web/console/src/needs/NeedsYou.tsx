@@ -27,7 +27,7 @@ import {
   type RowState,
 } from "../core/needs.ts";
 import { convHash } from "../core/threads.ts";
-import { say } from "../core/notices.ts";
+import { say, sayError } from "../core/notices.ts";
 import { useNeeds } from "../hooks/useNeeds.ts";
 import { useSession } from "../hooks/useSession.ts";
 
@@ -219,7 +219,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
 
   // A finished row leaves on its own; one that can still close the task waits.
   useEffect(() => {
-    if (state.phase !== "done" || state.closable) return;
+    if (state.phase !== "done" || state.closable || state.pending) return;
     const t = setTimeout(() => {
       hold(item, false);
       void onSettled();
@@ -233,33 +233,41 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
   const run = useCallback(
     async (ask: Ask, words: string) => {
       hold(item, true);
-      setState({ phase: "sending", ask });
+      // An approval shows as done at once and is put back if the server says no.
+      const optimistic = ask === "approve" || ask === "approve_note";
+      setState(optimistic ? { phase: "done", text: "Approved ✓", tone: "ok", closable: false, pending: true } : { phase: "sending", ask });
       try {
         if (ask === "approve" || ask === "approve_note") {
           if (!tid) throw new Error("This review has no task");
           await api.review(tid, "approve", words, root);
           const rs = await api.reviewStatus(tid);
           setState({ phase: "done", text: approvedLine(rs), tone: "ok", closable: Boolean(rs?.approvals_met) });
+          say("Approved");
         } else if (ask === "request_changes") {
           if (!tid) throw new Error("This review has no task");
           await api.review(tid, "request_changes", words, null);
           setState({ phase: "done", text: "Sent back ✓", tone: "no", closable: false });
+          say("Sent back");
         } else if (ask === "accept" || ask === "decline") {
           if (!gate) throw new Error("This approval is no longer pending");
           await api.answerGate(gate, ask, words);
           setState({ phase: "done", text: ask === "accept" ? "Approved ✓" : "Declined", tone: ask === "accept" ? "ok" : "no", closable: false });
+          say(ask === "accept" ? "Approved" : "Declined");
         } else if (ask === "unblock") {
           if (!tid) throw new Error("This block has no task");
           await api.unblock(tid);
           setState({ phase: "done", text: "Unblocked ✓", tone: "ok", closable: false });
+          say("Unblocked");
         } else if (ask === "close") {
           if (!tid) throw new Error("This review has no task");
           await api.close(tid);
           setState({ phase: "done", text: "Closed ✓", tone: "ok", closable: false });
+          say("Task closed");
         }
         setNote("");
       } catch (e) {
         setState({ phase: "error", message: e instanceof Error ? e.message : "That did not go through" });
+        sayError(e, "That did not go through");
       }
     },
     [api, gate, hold, item, root, tid],
@@ -314,6 +322,7 @@ function NeedRow({ item, primary, gate, me, api, hold, onSettled }: RowProps) {
       )}
       <motion.div
         className="need-card"
+        tabIndex={-1}
         drag={canSwipe ? "x" : false}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.5}

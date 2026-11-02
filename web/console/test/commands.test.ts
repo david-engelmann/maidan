@@ -53,3 +53,13 @@ test("New message is held for Threads until it mounts, then taken once", () => {
   assert.equal(takeCompose(), true);
   assert.equal(takeCompose(), false);
 });
+
+test("j and k step through a list and stop at the ends", async () => {
+  const { listStep } = await import("../src/shell/commands.ts");
+  assert.equal(listStep(-1, 3, "j"), 0);
+  assert.equal(listStep(-1, 3, "k"), 2);
+  assert.equal(listStep(2, 3, "j"), 2);
+  assert.equal(listStep(1, 3, "k"), 0);
+  assert.equal(listStep(0, 0, "j"), null);
+  assert.equal(listStep(0, 3, "x"), null);
+});

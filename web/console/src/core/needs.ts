@@ -232,7 +232,7 @@ export type RowState =
   | { phase: "confirm"; ask: Ask }
   | { phase: "note"; ask: "approve_note" | "request_changes" | "decline" }
   | { phase: "sending"; ask: Ask }
-  | { phase: "done"; text: string; tone: "ok" | "no"; closable: boolean }
+  | { phase: "done"; text: string; tone: "ok" | "no"; closable: boolean; pending?: boolean }
   | { phase: "error"; message: string };
 
 /** Which asks need words, and whether the words are required. */

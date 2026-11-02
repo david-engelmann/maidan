@@ -14,7 +14,7 @@ import { Icon, Mark } from "./icons.tsx";
 import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { Palette } from "./Palette.tsx";
-import { goSequence, isTyping, requestCompose, routeCommands, type Command } from "./commands.ts";
+import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommands, type Command } from "./commands.ts";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
 
 // The shell owns the one live connection; screens hear it on the bus.
@@ -57,6 +57,17 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTyping(e.target) || document.querySelector("[aria-modal='true']")) return;
+      if (!seq && (e.key === "j" || e.key === "k")) {
+        // j and k walk the rows of the list on screen, in reading order.
+        const rows = [...document.querySelectorAll<HTMLElement>(LIST_ROWS)].filter((r) => r.offsetParent !== null);
+        const at = listStep(rows.findIndex((r) => r === document.activeElement || r.contains(document.activeElement)), rows.length, e.key);
+        if (at !== null) {
+          e.preventDefault();
+          rows[at].focus();
+          rows[at].scrollIntoView({ block: "nearest" });
+        }
+        return;
+      }
       const next = goSequence(seq, e.key, e.timeStamp);
       seq = next.state;
       if (next.go) navigate(next.go);
