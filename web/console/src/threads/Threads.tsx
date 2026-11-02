@@ -3,6 +3,7 @@
 // On a wide screen the list and the conversation sit side by side.
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Icon } from "../shell/icons.tsx";
 import { BoardApi, type Member } from "../core/board.ts";
 import {
   QUICK_REACTIONS,
@@ -127,11 +128,13 @@ export function Threads() {
           {tab === "tasks" ? (
             <label className="channel-pick">
               <span className="visually-hidden">Channel</span>
+              <span className="channel-hash" aria-hidden="true">#</span>
               <select value={board.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!board.channels.length}>
                 {board.channels.map((c) => (
-                  <option key={c.id} value={c.id}>#{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              <Icon name="chevron" />
             </label>
           ) : (
             <button className="btn small-btn" onClick={() => setComposing((v) => !v)} aria-expanded={composing}>{composing ? "Cancel" : "New message"}</button>

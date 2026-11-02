@@ -1,8 +1,9 @@
 // The board, iPhone first: a lane picker over one lane of cards on a phone,
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { BoardApi, LANES, cardAriaLabel, cardWhen, chips, toLanes, type Card, type LaneKey, type Member } from "../core/board.ts";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { BoardApi, LANES, ago, cardAriaLabel, chips, leaseLeft, toLanes, type Card, type LaneKey, type Member, type Thread } from "../core/board.ts";
+import { Icon } from "../shell/icons.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
@@ -57,12 +58,14 @@ export function Board() {
     <div className="board">
       <div className="board-bar">
         <label className="channel-pick">
-          <span className="mono">Channel</span>
+          <span className="visually-hidden">Channel</span>
+          <span className="channel-hash" aria-hidden="true">#</span>
           <select value={data.channelId ?? ""} onChange={(e) => selectChannel(e.target.value)} disabled={!data.channels.length}>
             {data.channels.map((c) => (
-              <option key={c.id} value={c.id}>#{c.name}</option>
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          <Icon name="chevron" />
         </label>
         <p className="board-summary" role="status" aria-live="polite">
           {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes)}
@@ -121,9 +124,13 @@ export function Board() {
                 </h2>
               )}
               {data.status === "loading" && !data.threads.length ? (
-                <div aria-hidden="true">
-                  <span className="skeleton task-sk" />
-                  <span className="skeleton task-sk" />
+                <div className="cards" aria-hidden="true">
+                  {[0, 1].map((i) => (
+                    <span key={i} className="task task-sk">
+                      <span className="skeleton sk-title" />
+                      <span className="task-meta"><span className="skeleton sk-chip" /><span className="skeleton sk-time" /></span>
+                    </span>
+                  ))}
                 </div>
               ) : null}
               <ul className="cards">
@@ -163,20 +170,62 @@ export function Board() {
 
 function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; refusal?: string; onOpen: () => void }) {
   const th = card.thread;
+  const flag = cardFlag(th, card.chrome.lane, refusal);
+  const lease = card.chrome.lane === "working" ? leaseView(th.assignment_expires_at, now) : null;
+  const tone = th.closed_without_review ? "unreviewed" : card.chrome.lane;
   return (
     <button type="button" className={`task ${fresh ? "fresh" : ""}`} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}`} aria-haspopup="dialog" onClick={onOpen}>
       <span className="task-title">{card.title}</span>
-      <span className="task-foot">
-        <span className={`state state-${card.chrome.lane}`}>{card.label}</span>
-        {chips(th, card.chrome.lane).map((ch) => (
-          <span key={ch.kind} className={`chip chip-${ch.kind}`} title={ch.title}>{ch.text}</span>
-        ))}
-        {refusal !== undefined && <span className="chip chip-refused" title={refusal || "The server refused this close"}>Close refused</span>}
-        {member && <span className="who">{member.name}</span>}
-        <span className="when">{cardWhen(card, now)}</span>
+      <span className="task-meta">
+        <span className={`state state-${tone}`} title={th.closed_without_review ? "Closed without review" : th.status?.note || undefined}>
+          <span className="state-dot" aria-hidden="true" />
+          <span className="state-text">{th.closed_without_review ? "Unreviewed" : card.label}</span>
+        </span>
+        {flag ? <span className={`task-flag flag-${flag.kind}`} title={flag.title}>{flag.text}</span> : null}
+        <span className="task-end">
+          {member ? (
+            <span className={`avatar xs ${member.kind === "human" ? "human" : ""}`} title={member.name}>{initials(member.name)}</span>
+          ) : card.chrome.lane !== "done" ? (
+            <span className="avatar xs unclaimed" title="Unclaimed" />
+          ) : null}
+          <span className="when">{lease?.urgent ? lease.text : ago(th.updated_at, now)}</span>
+        </span>
       </span>
+      {lease ? (
+        <span className={`lease ${lease.urgent ? "urgent" : ""}`} title={lease.text} aria-hidden="true">
+          <span className="lease-fill" style={{ "--left": lease.frac } as CSSProperties} />
+        </span>
+      ) : null}
     </button>
   );
+}
+
+/** The one flag worth a card's space: a refusal, a block, a stall, or a wait. */
+function cardFlag(th: Thread, lane: LaneKey, refusal?: string): { kind: string; text: string; title?: string } | null {
+  if (refusal !== undefined) return { kind: "refused", text: "Close refused", title: refusal || "The server refused this close" };
+  const order = ["blocked", "stalled", "wait-overdue", "wait-waiting", "wait-returned_to_queue"];
+  const all = chips(th, lane);
+  for (const k of order) {
+    const c = all.find((x) => x.kind === k);
+    if (c) return { kind: k.startsWith("wait") ? "wait" : k, text: c.text, title: c.title ?? c.text };
+  }
+  return null;
+}
+
+const LEASE_WINDOW = 30 * 60;
+
+/** A claim's lease as a bar: shown only while worked, loud only when short. */
+function leaseView(ts: string | null | undefined, now: number): { frac: number; text: string; urgent: boolean } | null {
+  if (!ts) return null;
+  const at = Date.parse(ts);
+  if (Number.isNaN(at)) return null;
+  const secs = Math.round((at - now) / 1000);
+  return { frac: Math.max(0, Math.min(1, secs / LEASE_WINDOW)), text: leaseLeft(ts, now), urgent: secs < 300 };
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
 function summary(l: Record<LaneKey, Card[]>): string {

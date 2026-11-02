@@ -103,13 +103,15 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
       <header className={scrolled ? "top scrolled" : "top"}>
         <h1>{current.title}</h1>
         <div className="top-actions">
-          {session.status === "signed-in" && session.mode ? (
+          {session.status === "signed-in" && session.mode && session.mode !== "session" ? (
             <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
           ) : null}
-          <span className={`live live-${live.kind}`} title={who ? `Signed in as ${who}` : "Not signed in"}>
-            <span className="dot" aria-hidden="true" />
-            {liveWord}
-          </span>
+          {live.kind !== "connected" ? (
+            <span className={`live live-${live.kind}`} role="status" title={`${liveWord}${who ? ` · signed in as ${who}` : ""}`}>
+              <span className="dot" aria-hidden="true" />
+              <span className="visually-hidden">{liveWord}</span>
+            </span>
+          ) : null}
           <button className="icon-btn" aria-label="Search and commands (⌘K)" onClick={() => setPaletteOpen(true)}>
             <Icon name="search" />
           </button>

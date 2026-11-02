@@ -89,13 +89,6 @@ export function leaseLeft(ts: string | null | undefined, now: number): string {
   return secs < 120 ? `lease ${secs}s` : `lease ${Math.round(secs / 60)}m`;
 }
 
-/** The card's time: the lease while it is being worked, else its last change. */
-export function cardWhen(card: Card, now: number): string {
-  return card.chrome.lane === "working" && card.thread.assignment_expires_at
-    ? leaseLeft(card.thread.assignment_expires_at, now)
-    : ago(card.thread.updated_at, now);
-}
-
 const WAIT_WORDS: Record<string, string> = {
   waiting: "waiting on a person",
   overdue: "overdue on a person",
