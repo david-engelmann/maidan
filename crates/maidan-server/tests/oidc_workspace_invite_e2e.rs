@@ -243,6 +243,32 @@ impl Env {
             .unwrap()
             .status()
     }
+
+    async fn mint_first_admin(&self, cookie: &str) -> StatusCode {
+        self.client
+            .post(format!("{}/auth/session/mint", self.base))
+            .header(header::COOKIE, cookie)
+            .header(header::ORIGIN, &self.base)
+            .json(&json!({}))
+            .send()
+            .await
+            .unwrap()
+            .status()
+    }
+
+    /// Confirm an approval with a made-up gate and token. The write check
+    /// runs before the lookup, so a viewer gets 403 where a writer gets 404.
+    async fn confirm_unknown_gate(&self, cookie: &str) -> StatusCode {
+        self.client
+            .post(format!("{}/auth/approval-confirmations/confirm", self.base))
+            .header(header::COOKIE, cookie)
+            .header(header::ORIGIN, &self.base)
+            .json(&json!({"gate_id": uuid::Uuid::now_v7(), "token": "nope"}))
+            .send()
+            .await
+            .unwrap()
+            .status()
+    }
 }
 
 fn session_cookie(res: &reqwest::Response) -> String {
@@ -312,6 +338,13 @@ async fn member_invite_joins_once_and_only_with_the_matching_email() {
         .await
         .unwrap();
     assert_eq!(member.kind, MemberKind::Human);
+    // An invited member cannot mint the first admin token either, and a
+    // writer's confirmation passes the write check (then finds no gate).
+    assert_eq!(env.mint_first_admin(&cookie).await, StatusCode::FORBIDDEN);
+    assert_eq!(
+        env.confirm_unknown_gate(&cookie).await,
+        StatusCode::NOT_FOUND
+    );
 
     // Reuse: the link is dead at the start, for anyone.
     assert_eq!(
@@ -399,16 +432,13 @@ async fn an_invite_never_grants_above_the_inviter_and_never_crosses_workspaces()
     let held = caps(&me);
     assert!(held.iter().any(|c| c == "workspace:read"), "{me}");
     assert_eq!(env.create_channel(&cookie, ws).await, StatusCode::FORBIDDEN);
-    let mint = env
-        .client
-        .post(format!("{}/auth/session/mint", env.base))
-        .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, &env.base)
-        .json(&json!({}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(mint.status(), StatusCode::FORBIDDEN);
+    assert_eq!(env.mint_first_admin(&cookie).await, StatusCode::FORBIDDEN);
+    // Confirming a model's approval is a write: a viewer is refused before
+    // any lookup.
+    assert_eq!(
+        env.confirm_unknown_gate(&cookie).await,
+        StatusCode::FORBIDDEN
+    );
 }
 
 #[tokio::test]
