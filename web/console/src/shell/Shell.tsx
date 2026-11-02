@@ -9,6 +9,7 @@ import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { MODE_WORD } from "../core/api.ts";
 import { readFrontDoorHint } from "../core/session.ts";
+import { liveWord, shellTitle } from "../core/firstRun.ts";
 import { Chooser } from "./Chooser.tsx";
 import { Icon, Mark } from "./icons.tsx";
 import { SignIn } from "./SignIn.tsx";
@@ -71,8 +72,10 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
   const current = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
   const who = session.status === "signed-in" ? (session.displayName ?? session.memberId) : null;
-  const liveWord =
-    live.kind === "connected" ? "Live" : live.kind === "reconnecting" ? "Reconnecting" : live.kind === "refused" ? "Refused" : "Offline";
+  // Signed out, every place is the sign-in card: no place tabs to wander
+  // through before the token field, and no "Offline" for a server that is up.
+  const signedOut = session.status === "signed-out";
+  const word = liveWord(live.kind, signedOut);
 
   return (
     <div className="shell">
@@ -81,18 +84,18 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           <Mark className="mark" />
           <span>Maidan</span>
         </a>
-        <Tabs route={route} reduce={Boolean(reduce)} layoutId="rail-pill" />
+        {signedOut ? null : <Tabs route={route} reduce={Boolean(reduce)} layoutId="rail-pill" />}
       </nav>
 
       <header className={scrolled ? "top scrolled" : "top"}>
-        <h1>{current.title}</h1>
+        <h1>{shellTitle(signedOut, current.title)}</h1>
         <div className="top-actions">
           {session.status === "signed-in" && session.mode ? (
             <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
           ) : null}
           <span className={`live live-${live.kind}`} title={who ? `Signed in as ${who}` : "Not signed in"}>
             <span className="dot" aria-hidden="true" />
-            {liveWord}
+            {word}
           </span>
           <button className="icon-btn" aria-label="Search and commands (⌘K)" onClick={() => setPaletteOpen(true)}>
             <Icon name="search" />
@@ -106,15 +109,17 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           initial={reduce ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
-          aria-label={current.title}
+          aria-label={shellTitle(signedOut, current.title)}
         >
           {session.status === "signed-out" ? <SignIn noWorkspace={hint === "no-workspace"} /> : screens[route]}
         </motion.section>
       </main>
 
-      <nav className="tabbar" aria-label="Places">
-        <Tabs route={route} reduce={Boolean(reduce)} layoutId="tab-pill" />
-      </nav>
+      {signedOut ? null : (
+        <nav className="tabbar" aria-label="Places">
+          <Tabs route={route} reduce={Boolean(reduce)} layoutId="tab-pill" />
+        </nav>
+      )}
 
       {hint === "choose" && session.status === "signed-in" && !session.credentials.pastedToken && !session.credentials.tokenSession ? (
         <Chooser onClose={() => setHint(null)} />
