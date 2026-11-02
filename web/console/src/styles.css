@@ -899,3 +899,14 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .day-sep::before, .day-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 @media (hover: hover) { .reacts:not(.none) .react.add:not([aria-expanded="true"]) { opacity: 0; transition: opacity .15s; } .msg:hover .reacts .react.add, .msg:focus-within .reacts .react.add { opacity: 1; } }
 .fact-code { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
+
+/* Real data round: message bodies with code and links, long names in the list, structured results. */
+.msg-para { margin: 0; }
+.msg-para + .msg-para, .msg-pre + .msg-para, .msg-para + .msg-pre { margin-top: 8px; }
+.msg-pre { margin: 8px 0 0; padding: 10px 12px; max-width: 100%; overflow-x: auto; white-space: pre; overflow-wrap: normal; border: 1px solid var(--line); border-radius: 8px; background: var(--hover); font: 13px/1.5 var(--mono); scrollbar-width: thin; }
+.msg-code { padding: 1px 4px; border-radius: 4px; background: var(--hover); font: 0.88em var(--mono); overflow-wrap: anywhere; }
+.msg-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.msg-link:hover { color: var(--signal-ink); }
+.conv-detail.state .state-text { flex: none; }
+.conv-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fact-code.fact-json { margin: 0 0 4px; max-height: 220px; overflow: auto; white-space: pre; font: 12px/1.5 var(--mono); }

@@ -1,6 +1,7 @@
 // Threads and DMs, iPhone first: a list of conversations, and one open
 // conversation that fills the screen with its composer above the keyboard.
 // On a wide screen the list and the conversation sit side by side.
+import { MessageBody } from "./MessageBody.tsx";
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
@@ -595,15 +596,15 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
         {editing ? (
           <EditBox m={m} onCancel={() => setEditing(false)} onSave={async (body) => { await onEdit(m, body); setEditing(false); }} />
         ) : (
-        <p
+        <div
           className="msg-body"
           onClick={() => {
             // A phone has no hover, so a tap on the message offers reactions.
             if (window.matchMedia("(hover: none)").matches && !window.getSelection()?.toString()) setPicking((v) => !v);
           }}
         >
-          {m.body}
-        </p>
+          <MessageBody body={m.body} />
+        </div>
         )}
         {!head && (m.edited_at || pinned) && !editing && (
           <p className="msg-meta">{m.edited_at && <span className="edited">edited </span>}{pinned && <span className="edited">pinned</span>}</p>
@@ -819,7 +820,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
       ) : (
         <div className="facts-body small">
           <dl className="fact-rows">
-            <div><dt>Result</dt><dd>{f.result ? <><code className="fact-code">{JSON.stringify(f.result.result)}</code> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
+            <div><dt>Result</dt><dd>{f.result ? <><pre className="fact-code fact-json" tabIndex={0}>{JSON.stringify(f.result.result, null, 2)}</pre> by {name(f.result.produced_by ?? undefined)}</> : <span className="muted">None recorded yet</span>}</dd></div>
             <div><dt>Depends on</dt><dd>{deps.length ? deps.map((d) => d.depends_on_thread_id).join(", ") : <span className="muted">Nothing</span>}{f.deps ? ` · ${f.deps.ready ? "ready" : "not ready"}` : ""}</dd></div>
           </dl>
           {f.evidence?.evidence_changed_since_review ? <p className="fact-changed">Evidence changed since the last review.</p> : null}

@@ -1,0 +1,1 @@
+Console: message bodies render fenced code blocks, inline code, bold and links (as plain React elements, never HTML); a task result shows as indented JSON; a long assignee name in the thread list no longer cuts the state word.
