@@ -178,13 +178,22 @@ pub async fn triage(
     };
     let item = row_to_item(&row)?;
     let change = match (thread_id, decision) {
-        (Some(thread_id), _) => Event::IntakeAccepted {
-            occurred_at: now,
-            workspace_id,
-            intake_id: id,
-            thread_id,
-            triaged_by,
-        },
+        (Some(thread_id), _) => {
+            let channel_id: Uuid =
+                sqlx::query_scalar("SELECT channel_id FROM maidan_threads WHERE id = $1")
+                    .bind(thread_id.0)
+                    .fetch_optional(&mut *tx)
+                    .await?
+                    .ok_or(StoreError::NotFound)?;
+            Event::IntakeAccepted {
+                occurred_at: now,
+                workspace_id,
+                intake_id: id,
+                thread_id,
+                channel_id: maidan_types::ChannelId(channel_id),
+                triaged_by,
+            }
+        }
         (None, IntakeDecision::Reject { reason }) => Event::IntakeRejected {
             occurred_at: now,
             workspace_id,
