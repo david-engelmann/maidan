@@ -45,6 +45,14 @@ jobs:
     timeout-minutes: 100
     env:
       CARGO_PROFILE_DEV_DEBUG: 0
+      # A mutant that allocates without bound (a drain or gap loop whose
+      # bound was flipped) took the whole runner down before its 120 s
+      # timeout: "the runner has received a shutdown signal", bus 1/4 red on
+      # four of five nights to 2026-11-01, with no outcome recorded. Capping
+      # each test binary's address space makes that mutant abort, which
+      # cargo-mutants counts as caught. The cap is far above what the
+      # unmutated suites use, and the baseline run would show it if not.
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: prlimit --as=8589934592 --
     strategy:
       fail-fast: false
       matrix:
@@ -94,8 +102,12 @@ jobs:
         timeout-minutes: 85
         run: |
           set +e
+          # --caught and --unviable print every outcome as it lands, so a
+          # job that dies still shows the last mutant it finished.
           cargo mutants \
             --no-shuffle \
+            --caught \
+            --unviable \
             --timeout 120 \
             ${{ matrix.packages }} \
             ${{ matrix.shard }} \
@@ -238,10 +250,17 @@ jobs:
       # crate for `core`").
       FUZZ_TRIPLE: x86_64-unknown-linux-gnu
       FUZZ_SECONDS: 300
+      # A dated nightly, not the newest: nightly-2026-11-01 fails to compile
+      # sqlx-core 0.8.6 ("cycle detected when computing when `error::Error`
+      # needs async drop", E0391), which reddened the night of 2026-11-01.
+      # Move it forward deliberately, on a night the build is checked.
+      FUZZ_TOOLCHAIN: nightly-2026-10-31
     steps:
       - uses: actions/checkout@v4
       - name: install rust (nightly, for the sanitizer)
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.FUZZ_TOOLCHAIN }}
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
         with:
@@ -252,7 +271,7 @@ jobs:
           tool: cargo-fuzz
       - name: build every target
         working-directory: fuzz
-        run: cargo +nightly fuzz build --target "$FUZZ_TRIPLE"
+        run: cargo +"$FUZZ_TOOLCHAIN" fuzz build --target "$FUZZ_TRIPLE"
       # The corpus each night grows is restored the next night, so coverage
       # accumulates instead of restarting from the seeds every run. The key is
       # unique per run, and the prefix restores the newest saved corpus.
@@ -266,7 +285,7 @@ jobs:
         working-directory: fuzz
         run: |
           set +e
-          targets="$(cargo +nightly fuzz list)"
+          targets="$(cargo +"$FUZZ_TOOLCHAIN" fuzz list)"
           if [ -z "$targets" ]; then
             echo "::error title=fuzz::cargo fuzz list found no targets"
             exit 1
@@ -284,7 +303,7 @@ jobs:
             mkdir -p "corpus/$target"
             seeds=()
             if [ -d "seeds/$target" ]; then seeds=("seeds/$target"); fi
-            cargo +nightly fuzz run --target "$FUZZ_TRIPLE" "$target" "corpus/$target" "${seeds[@]}" -- \
+            cargo +"$FUZZ_TOOLCHAIN" fuzz run --target "$FUZZ_TRIPLE" "$target" "corpus/$target" "${seeds[@]}" -- \
               -dict=json.dict -max_total_time="$FUZZ_SECONDS" 2>&1 | tee "$log"
             code="${PIPESTATUS[0]}"
             echo "::endgroup::"

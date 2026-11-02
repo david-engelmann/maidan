@@ -255,6 +255,31 @@ async function fail(res: Response, mode: CredentialMode | null): Promise<never> 
   throw new ThreadsError(humanError(res.status, detail, mode));
 }
 
+/** The files on a paste, if any. A paste of text alone returns none, so it stays text. */
+export function pastedFiles(data: Pick<DataTransfer, "items"> | null | undefined): File[] {
+  if (!data) return [];
+  const out: File[] = [];
+  for (const item of Array.from(data.items)) {
+    if (item.kind !== "file") continue;
+    const f = item.getAsFile();
+    if (f) out.push(f);
+  }
+  return out;
+}
+
+/** The name a pasted file is stored under: its last path segment, never the path. */
+export function attachName(name: string | undefined, type: string): string {
+  const base = (name ?? "").split(/[\\/]/).pop()?.trim() ?? "";
+  if (base && base !== "." && base !== "..") return base;
+  const ext = type.startsWith("image/") ? `.${type.slice(6).split(/[+;]/)[0]}` : "";
+  return `pasted${ext}`;
+}
+
+/** An image is a screenshot; anything else is an attachment. */
+export function attachKind(type: string): "screenshot" | "attachment" {
+  return type.startsWith("image/") ? "screenshot" : "attachment";
+}
+
 export class ThreadsApi {
   private readonly fetchFn: Fetch;
   private readonly creds: () => Credentials;
@@ -298,6 +323,19 @@ export class ThreadsApi {
     if (!res.ok) return fail(res, this.mode());
     const text = await res.text();
     return text ? (JSON.parse(text) as T) : null;
+  }
+
+  /** Stores a pasted file as an artifact and links it to the thread. Returns the stored name. */
+  async attach(threadId: string, file: Blob & { name?: string }): Promise<{ sha256: string; filename: string }> {
+    const c = this.creds();
+    const filename = attachName(file.name, file.type);
+    const params = new URLSearchParams({ kind: attachKind(file.type), filename });
+    if (file.type) params.set("mime_type", file.type);
+    const res = await this.fetchFn(apiPath(c, `/artifacts?${params}`), writeInit({ method: "POST", headers: headers(c), credentials: "include", body: file }));
+    if (!res.ok) return fail(res, this.mode());
+    const out = (await res.json()) as { sha256: string; filename?: string | null };
+    await this.send("PUT", `/threads/${threadId}/artifacts/${encodeURIComponent(out.sha256)}`, {});
+    return { sha256: out.sha256, filename: out.filename || filename };
   }
 
   thread(id: string): Promise<Thread> {

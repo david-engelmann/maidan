@@ -32,6 +32,14 @@ jobs:
   # `if` (GitHub reports a job skipped by `if` as successful, so a required
   # check still passes), and integration runs only the tests that read the
   # docs. Pushes to main, manual runs and any code change run everything.
+  # Report-only jobs (the a2a TCK, loom, tla, the MCP conformance, Inspector
+  # and SDK-client runs, SDK interop, OSV, sqlite-vec, coverage, helm on kind,
+  # the PITR and SQLite backup drills, replica routing) run on the push to
+  # `dev` after a merge, not on pull requests. A code PR started about 30
+  # jobs against GitHub's 20 concurrent runners, so with two or three PRs open
+  # the required jobs sat queued behind them and a merge took an hour. They
+  # still run on every `dev` commit, and a red one there is a break to fix
+  # before the next promotion.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -148,6 +156,8 @@ jobs:
         run: python3 scripts/check-agent-skills.py
       - name: HOL Guard contributions match the tool tiers
         run: python3 scripts/gen-hol-guard.py --check
+      - name: listing example prompts name real tools
+        run: python3 scripts/listing-prompts.py --check
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
 
@@ -157,7 +167,7 @@ jobs:
   helm-kind:
     name: helm install (kind)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -237,7 +247,7 @@ jobs:
   a2a-tck:
     name: a2a tck
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs the official A2A TCK (pinned in scripts/a2a-tck.sh) against a
@@ -268,7 +278,7 @@ jobs:
   loom:
     name: loom
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Model-checks every interleaving of the sharded bus and the presence hub
@@ -297,7 +307,7 @@ jobs:
   mcp-inspector:
     name: mcp inspector (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     # Boots a source-built server with auth enabled and runs the official MCP
@@ -331,7 +341,7 @@ jobs:
   mcp-conformance:
     name: mcp conformance (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The official MCP conformance suite, run per revision against its frozen
@@ -373,7 +383,7 @@ jobs:
   tla:
     name: tla
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Model-checks the TLA+ specs in specs/tla with TLC (pinned in
@@ -391,7 +401,7 @@ jobs:
   osv-scan:
     name: osv scan (lockfiles outside cargo-deny)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # osv-scanner (pinned in scripts/osv-scan.sh) over every lockfile that
@@ -447,7 +457,7 @@ jobs:
   sdk-interop:
     name: sdk interop (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Boots a source-built server (SQLite, auth disabled) and runs each client
@@ -494,7 +504,7 @@ jobs:
   mcp-sdk-clients:
     name: mcp sdk clients (report-only)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The official third-party MCP SDKs, TypeScript (@modelcontextprotocol/sdk)
@@ -611,7 +621,7 @@ jobs:
   sqlite-vec:
     name: sqlite-vec (optional feature)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     # A job past its timeout ends "cancelled" and never saves its cache, so a
     # tight one starts every later run cold and fails again. At 15 minutes the
@@ -699,7 +709,7 @@ jobs:
   coverage:
     name: coverage (llvm-cov)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Coverage gates on the WHOLE test suite (unit + integration), so the
@@ -898,7 +908,7 @@ jobs:
     # docs/Production.md works. Not (yet) a required check.
     name: pitr drill
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -974,7 +984,7 @@ jobs:
     # Evidence for the SQLite procedure in docs/Production.md. Not required.
     name: sqlite backup drill
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1078,7 +1088,7 @@ jobs:
     # gap. Not a required check yet.
     name: replica routing (LSN)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: github.event_name != 'pull_request' && (needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
