@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { say, sayError } from "../core/notices.ts";
 import { formatBytes, isSha, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
+import { Library } from "./Library.tsx";
 
 export function Artifacts() {
   const api = useToolsApi();
@@ -62,6 +63,7 @@ export function Artifacts() {
   };
   return (
     <div className="tool-grid">
+      <Library />
       <section className="card tool-panel">
         <h2>Find a file</h2>
         <form className="row-form" onSubmit={lookup}>
