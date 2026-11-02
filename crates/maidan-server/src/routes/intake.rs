@@ -40,8 +40,8 @@ pub async fn create_intake_item(
     let source = match body.source {
         Some(source) => source,
         None if auth.app_installation_id.is_some() => IntakeSource::Integration,
-        None => match state.store.get_member(auth.member_id).await {
-            Ok(member) if member.kind == MemberKind::Agent => IntakeSource::Agent,
+        None => match state.store.get_member(auth.member_id).await?.kind {
+            MemberKind::Agent => IntakeSource::Agent,
             _ => IntakeSource::Human,
         },
     };
@@ -72,12 +72,15 @@ pub async fn list_intake_items(
     ensure_workspace(&auth, workspace_id)?;
     state.store.get_workspace(workspace_id).await?;
     let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
-    Ok(Json(
-        state
-            .store
-            .list_intake_items(workspace_id, q.state, q.cursor, limit)
-            .await?,
-    ))
+    let items = state
+        .store
+        .list_intake_items(workspace_id, q.state, q.cursor, limit)
+        .await?;
+    let mut visible = Vec::with_capacity(items.len());
+    for item in items {
+        visible.push(hide_unreadable_thread(&state, &auth, item).await?);
+    }
+    Ok(Json(visible))
 }
 
 /// `GET /workspaces/:wid/intake/:id` — one item, `404` if not in the workspace.
@@ -90,9 +93,24 @@ pub async fn get_intake_item(
     cap(&auth, WORKSPACE_READ)?;
     ensure_workspace(&auth, workspace_id)?;
     match state.store.get_intake_item(workspace_id, id).await? {
-        Some(item) => Ok(Json(item)),
+        Some(item) => Ok(Json(hide_unreadable_thread(&state, &auth, item).await?)),
         None => Err(ApiError::NotFound),
     }
+}
+
+/// An accepted item names its thread only to a caller who may read that
+/// thread, so the link does not reveal a thread in a private channel.
+async fn hide_unreadable_thread(
+    state: &AppState,
+    auth: &AuthContext,
+    mut item: IntakeItem,
+) -> ApiResult<IntakeItem> {
+    if let Some(thread_id) = item.thread_id
+        && !maidan_auth::can_access_thread(state.store.as_ref(), auth, thread_id).await?
+    {
+        item.thread_id = None;
+    }
+    Ok(item)
 }
 
 /// `POST /workspaces/:wid/intake/:id/triage` — accept or reject a proposed
