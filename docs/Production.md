@@ -1539,7 +1539,7 @@ minus replica replay LSN, shared by both). Complement with Postgres's own
 **Testing.** `scripts/replica-harness.sh up` stands up a local pgvector primary +
 streaming standby and prints `MAIDAN_PRIMARY_URL` / `MAIDAN_REPLICA_URL`; the
 `#[ignore]`d `read_routing` / `replication` store tests validate store routing and
-read-your-writes against it (`cargo test -p maidan-store --test read_routing --
+read-your-writes against it (`cargo test -p maidan-store --test it read_routing:: --
 --ignored`), and the `#[ignore]`d `replica_routing` search test proves the same for
 message search (`cargo test -p maidan-search --test replica_routing -- --ignored`).
 

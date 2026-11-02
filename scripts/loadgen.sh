@@ -34,4 +34,4 @@ cd "$(dirname "$0")/.."
 echo "=== maidan loadgen ==="
 echo "concurrency=${MAIDAN_LOADGEN_CONCURRENCY:-8} ops=${MAIDAN_LOADGEN_OPS:-50} duration_secs=${MAIDAN_LOADGEN_DURATION_SECS:-0} url=${MAIDAN_LOADGEN_URL:-<in-process>}"
 
-exec cargo test --release -p maidan-server --test loadgen -- --ignored --nocapture
+exec cargo test --release -p maidan-server --test it loadgen:: -- --ignored --nocapture

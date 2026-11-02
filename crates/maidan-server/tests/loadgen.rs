@@ -11,12 +11,12 @@
 //!
 //! ```sh
 //! # in-process server (SQLite), 8 workers × 50 iterations:
-//! cargo test --release -p maidan-server --test loadgen -- --ignored --nocapture
+//! cargo test --release -p maidan-server --test it loadgen:: -- --ignored --nocapture
 //!
 //! # tune via env, or point at a live/scaled deployment:
 //! MAIDAN_LOADGEN_CONCURRENCY=32 MAIDAN_LOADGEN_DURATION_SECS=30 \
 //!   MAIDAN_LOADGEN_URL=http://localhost:8080 MAIDAN_LOADGEN_BEARER=... \
-//!   cargo test --release -p maidan-server --test loadgen -- --ignored --nocapture
+//!   cargo test --release -p maidan-server --test it loadgen:: -- --ignored --nocapture
 //! ```
 //!
 //! `scripts/loadgen.sh` wraps the env knobs. The percentile math is pure and

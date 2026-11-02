@@ -101,20 +101,20 @@ tokenizer-independent to first order.
 
 ```sh
 # throughput + REST latency (default 8 workers × 50 iterations):
-cargo test --release -p maidan-server --test loadgen load_baseline -- --ignored --nocapture
+cargo test --release -p maidan-server --test it loadgen::load_baseline -- --ignored --nocapture
 
 # tune concurrency / switch to a timed soak:
 MAIDAN_LOADGEN_CONCURRENCY=32 MAIDAN_LOADGEN_OPS=100 \
-  cargo test --release -p maidan-server --test loadgen load_baseline -- --ignored --nocapture
+  cargo test --release -p maidan-server --test it loadgen::load_baseline -- --ignored --nocapture
 
 # post→observer latency (default 200 samples):
-cargo test --release -p maidan-server --test loadgen post_to_observer_latency -- --ignored --nocapture
+cargo test --release -p maidan-server --test it loadgen::post_to_observer_latency -- --ignored --nocapture
 
 # both, wrapped with the env knobs:
 scripts/loadgen.sh
 
 # context-pack token savings (bytes + estimated tokens + the ratio):
-cargo test -p maidan-server --test token_pack -- --ignored --nocapture
+cargo test -p maidan-server --test it token_pack:: -- --ignored --nocapture
 ```
 
 The `token_pack` estimator math is pure and unit-tested in CI; the measurement itself is
@@ -132,7 +132,7 @@ a bearer token, and the ids to drive:
 MAIDAN_LOADGEN_URL=http://localhost:8080 \
   MAIDAN_LOADGEN_BEARER=maid_... \
   MAIDAN_LOADGEN_IDS='<workspace>|<channel>|<thread>|<member>' \
-  cargo test --release -p maidan-server --test loadgen -- --ignored --nocapture
+  cargo test --release -p maidan-server --test it loadgen:: -- --ignored --nocapture
 ```
 
 This is how to benchmark a Postgres-backed deployment today. A first-class,

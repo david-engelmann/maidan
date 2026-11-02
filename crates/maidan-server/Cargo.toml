@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Maidan HTTP + WebSocket + MCP server."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [lib]
 path = "src/lib.rs"
@@ -120,3 +123,12 @@ tokio-tungstenite = "0.24"
 # Generates the throwaway GitHub App key the tests sign with, so no private key
 # is committed. Already in the tree through rustls.
 aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys", "alloc"] }
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+# Runs under --no-default-features (ci.yml), so it stays its own binary.
+[[test]]
+name = "bootstrap_absent_e2e"
+path = "tests/bootstrap_absent_e2e.rs"

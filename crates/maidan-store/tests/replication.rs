@@ -5,7 +5,7 @@
 //! streaming replication). Run it:
 //!
 //!   eval "$(scripts/replica-harness.sh up)"
-//!   cargo test -p maidan-store --test replication -- --ignored --nocapture
+//!   cargo test -p maidan-store --test it replication:: -- --ignored --nocapture
 //!   scripts/replica-harness.sh down
 //!
 //! The test connects via MAIDAN_PRIMARY_URL / MAIDAN_REPLICA_URL and skips
