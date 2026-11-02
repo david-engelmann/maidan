@@ -13,7 +13,8 @@ import { Chooser } from "./Chooser.tsx";
 import { Icon, Mark } from "./icons.tsx";
 import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
-import { Palette, type Command } from "./Palette.tsx";
+import { Palette } from "./Palette.tsx";
+import { goSequence, isTyping, requestCompose, routeCommands, type Command } from "./commands.ts";
 import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
 
 // The shell owns the one live connection; screens hear it on the bus.
@@ -27,7 +28,8 @@ const TO_BUS = {
 
 export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const route = useRoute();
-  const { session } = useSession();
+  const { session, store } = useSession();
+  const signedIn = session.status === "signed-in";
   const live = useLive(session, NO_FILTER, TO_BUS);
   // A refused socket (a revoked or narrowed token) sends no more events, so
   // ask every screen to read once more: each then shows the refusal it gets.
@@ -47,11 +49,17 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   }, []);
 
   useEffect(() => {
+    let seq: { at: number } | null = null;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((o) => !o);
+        return;
       }
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTyping(e.target) || document.querySelector("[aria-modal='true']")) return;
+      const next = goSequence(seq, e.key, e.timeStamp);
+      seq = next.state;
+      if (next.go) navigate(next.go);
     };
     const onScroll = () => setScrolled(window.scrollY > 4);
     window.addEventListener("keydown", onKey);
@@ -64,9 +72,17 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
   const commands = useMemo<Command[]>(
     () => [
-      ...ROUTES.map((r) => ({ id: `go-${r.id}`, title: `Go to ${r.title}`, hint: r.hint, run: () => navigate(r.id) })),
+      ...routeCommands(navigate),
+      ...(signedIn
+        ? ([
+            { id: "new-message", title: "New message", hint: "Start a conversation with a person or agent", group: "Actions", run: () => { requestCompose(); navigate("threads"); } },
+            { id: "upload", title: "Upload a file", hint: "Files: add an artifact and link it to a task", group: "Actions", run: () => navigate("artifacts") },
+            { id: "refresh", title: "Refresh this screen", hint: "Read everything on this screen again", group: "Actions", run: () => liveBus.emit({ type: "resync" }) },
+            { id: "sign-out", title: "Sign out", hint: "Forget this page's sign-in", group: "Actions", run: () => store.signOut() },
+          ] satisfies Command[])
+        : []),
     ],
-    [],
+    [signedIn, store],
   );
 
   const current = ROUTES.find((r) => r.id === route) ?? ROUTES[0];

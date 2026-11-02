@@ -1,6 +1,7 @@
 // Threads and DMs, iPhone first: a list of conversations, and one open
 // conversation that fills the screen with its composer above the keyboard.
 // On a wide screen the list and the conversation sit side by side.
+import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BoardApi, type Member } from "../core/board.ts";
 import {
@@ -72,8 +73,18 @@ export function Threads() {
   const { data: board, selectChannel } = useBoard(session, deps.board);
   const { data: direct, refresh: refreshDirect } = useDirect(session, deps.threads);
   const open = useOpenRef();
-  const [tab, setTab] = useState<Tab>(() => (open && open.kind !== "task" ? "direct" : "tasks"));
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(takeCompose);
+  const [tab, setTab] = useState<Tab>(() => (composing || (open && open.kind !== "task") ? "direct" : "tasks"));
+  // The palette's "New message" opens the composer.
+  useEffect(() => {
+    const open = () => {
+      if (!takeCompose()) return;
+      setTab("direct");
+      setComposing(true);
+    };
+    window.addEventListener("maidan:compose", open);
+    return () => window.removeEventListener("maidan:compose", open);
+  }, []);
   // Opening a DM from a link shows it under Direct, a task under Tasks.
   const [seen, setSeen] = useState<ConvRef | null>(open);
   if (open !== seen && !sameRef(open, seen)) {
