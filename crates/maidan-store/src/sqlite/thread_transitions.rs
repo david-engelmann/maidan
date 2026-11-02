@@ -25,7 +25,7 @@ async fn review_gate_in_tx(
         "SELECT
            COALESCE((SELECT required_count FROM maidan_thread_review_reqs WHERE thread_id = ?), 0)
              AS required_count,
-           (SELECT COUNT(*) FROM maidan_thread_reviews r
+           (SELECT COUNT(DISTINCT COALESCE(r.actor_id, r.reviewer_id)) FROM maidan_thread_reviews r
               JOIN maidan_threads t ON t.id = r.thread_id
               JOIN maidan_channels c ON c.id = t.channel_id
               -- A removed member's approval no longer counts, nor one from

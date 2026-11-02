@@ -443,7 +443,7 @@ pub async fn review_status(
     // Positional binds: thread_id is used three times (the row filter + the two
     // named-set EXISTS subqueries).
     let approvals: i64 = sqlx::query(
-        "SELECT COUNT(*) AS approvals FROM maidan_thread_reviews r
+        "SELECT COUNT(DISTINCT COALESCE(r.actor_id, r.reviewer_id)) AS approvals FROM maidan_thread_reviews r
          JOIN maidan_threads t ON t.id = r.thread_id
          WHERE r.thread_id = ?
            AND r.decision = 'approve'
