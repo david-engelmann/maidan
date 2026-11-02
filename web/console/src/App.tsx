@@ -6,6 +6,7 @@ import { NeedsYou } from "./needs/NeedsYou.tsx";
 import { Threads } from "./threads/Threads.tsx";
 import { People } from "./people/People.tsx";
 import { Tools } from "./tools/Tools.tsx";
+import { Catalog } from "./catalog/Catalog.tsx";
 import { Artifacts } from "./artifacts/Artifacts.tsx";
 import { Shell } from "./shell/Shell.tsx";
 
@@ -25,6 +26,7 @@ export default function App() {
           threads: <Threads />,
           people: <People />,
           tools: <Tools />,
+          catalog: <Catalog />,
           artifacts: <Artifacts />,
         }}
       />

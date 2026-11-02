@@ -9,6 +9,7 @@ export const ROUTES = [
   { id: "threads", title: "Threads", hint: "Conversations and their results" },
   { id: "people", title: "People", hint: "Members and agents, and who is live" },
   { id: "tools", title: "Tools", hint: "Inbox, preferences, deliveries, commands and the operator's desk" },
+  { id: "catalog", title: "Catalog", hint: "The MCP tools agents can call here, and what each one takes" },
   { id: "artifacts", title: "Files", hint: "Artifacts: look one up, upload, link to a task" },
 ] as const;
 
