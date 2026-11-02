@@ -97,6 +97,25 @@
         "reason": "store upsert + in-tx audit row only"
       }
     },
+    "add_evidence_record": {
+      "title": "Add evidence record",
+      "readOnlyHint": {
+        "value": false,
+        "reason": "inserts a maidan_thread_evidence_records row and appends evidence_added"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "additive: adds a record and overwrites nothing"
+      },
+      "idempotentHint": {
+        "value": false,
+        "reason": "each call inserts a new record with a fresh id"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
+      }
+    },
     "add_member_skill": {
       "title": "Add member skill",
       "readOnlyHint": {
@@ -2242,6 +2261,25 @@
       "openWorldHint": {
         "value": false,
         "reason": "store read only"
+      }
+    },
+    "list_evidence_records": {
+      "title": "List evidence records",
+      "readOnlyHint": {
+        "value": true,
+        "reason": "only SELECTs via store.list_evidence_records"
+      },
+      "destructiveHint": {
+        "value": false,
+        "reason": "read-only tool"
+      },
+      "idempotentHint": {
+        "value": true,
+        "reason": "read-only: repeating has no effect on state"
+      },
+      "openWorldHint": {
+        "value": false,
+        "reason": "confined to Maidan's database"
       }
     },
     "list_frozen_members": {

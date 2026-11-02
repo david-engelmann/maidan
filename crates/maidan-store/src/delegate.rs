@@ -912,6 +912,46 @@ macro_rules! store_delegations {
             }
         }
     };
+    ($store:ty, IntakeStore) => {
+        #[::async_trait::async_trait]
+        impl IntakeStore for $store {
+            async fn create_intake_item(
+                &self,
+                new: maidan_types::NewIntakeItem,
+            ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError> {
+                intake::create(self.pool(), &new).await
+            }
+
+            async fn get_intake_item(
+                &self,
+                workspace_id: WorkspaceId,
+                id: uuid::Uuid,
+            ) -> Result<Option<maidan_types::IntakeItem>, StoreError> {
+                intake::get(self.read_pool(), workspace_id, id).await
+            }
+
+            async fn list_intake_items(
+                &self,
+                workspace_id: WorkspaceId,
+                state: Option<maidan_types::IntakeState>,
+                cursor: Option<uuid::Uuid>,
+                limit: i64,
+            ) -> Result<Vec<maidan_types::IntakeItem>, StoreError> {
+                intake::list(self.read_pool(), workspace_id, state, cursor, limit).await
+            }
+
+            async fn triage_intake_item_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                id: uuid::Uuid,
+                triaged_by: MemberId,
+                decision: maidan_types::IntakeDecision,
+                event: NewAuditEvent,
+            ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError> {
+                intake::triage(self.pool(), workspace_id, id, triaged_by, &decision, event).await
+            }
+        }
+    };
     ($store:ty, GlossaryStore) => {
         #[::async_trait::async_trait]
         impl GlossaryStore for $store {
@@ -2210,6 +2250,22 @@ macro_rules! store_delegations {
                 thread_id: ThreadId,
             ) -> Result<Vec<ThreadArtifact>, StoreError> {
                 evidence::list(self.read_pool(), thread_id).await
+            }
+
+            async fn add_evidence_record_with_event(
+                &self,
+                thread_id: ThreadId,
+                record: &NewEvidenceRecord,
+                recorded_by: MemberId,
+            ) -> Result<(EvidenceRecord, StoredEvent), StoreError> {
+                evidence::add_record_with_event(self.pool(), thread_id, record, recorded_by).await
+            }
+
+            async fn list_evidence_records(
+                &self,
+                thread_id: ThreadId,
+            ) -> Result<Vec<EvidenceRecord>, StoreError> {
+                evidence::list_records(self.read_pool(), thread_id).await
             }
 
             async fn latest_review_packet(

@@ -67,6 +67,8 @@
     "list_thread_artifacts",
     "link_thread_artifact",
     "unlink_thread_artifact",
+    "add_evidence_record",
+    "list_evidence_records",
     "set_wip_limit",
     "set_delegation_policy",
     "get_delegation_policy",

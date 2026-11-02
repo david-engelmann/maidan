@@ -418,6 +418,19 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             approved_head,
             head_sha,
         },
+        EvidenceAdded {
+            occurred_at,
+            workspace_id: _,
+            channel_id,
+            thread_id,
+            record,
+        } => EvidenceAdded {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            record,
+        },
         // Non-federatable local human-control state.
         ApprovalRequested {
             occurred_at,
@@ -765,6 +778,47 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             workspace_id,
             member_id,
             display_name,
+        },
+        IntakeProposed {
+            occurred_at,
+            workspace_id: _,
+            intake_id,
+            title,
+            source,
+            proposed_by,
+        } => IntakeProposed {
+            occurred_at,
+            workspace_id,
+            intake_id,
+            title,
+            source,
+            proposed_by,
+        },
+        IntakeAccepted {
+            occurred_at,
+            workspace_id: _,
+            intake_id,
+            thread_id,
+            triaged_by,
+        } => IntakeAccepted {
+            occurred_at,
+            workspace_id,
+            intake_id,
+            thread_id,
+            triaged_by,
+        },
+        IntakeRejected {
+            occurred_at,
+            workspace_id: _,
+            intake_id,
+            reason,
+            triaged_by,
+        } => IntakeRejected {
+            occurred_at,
+            workspace_id,
+            intake_id,
+            reason,
+            triaged_by,
         },
         // Non-federatable (this deployment's allowance), classified like the
         // freeze above.

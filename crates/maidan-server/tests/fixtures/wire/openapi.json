@@ -2130,6 +2130,34 @@
         ],
         "type": "object"
       },
+      "CreateIntakeItem": {
+        "description": "Propose an intake item: incoming work that is not a task yet. `source`\ndefaults from the caller: an app installation is `integration`, an agent\nmember is `agent`, anyone else is `human`.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IntakeSource"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
       "CreateMember": {
         "properties": {
           "display_name": {
@@ -3006,12 +3034,16 @@
           "review_submitted",
           "approval_dismissed",
           "wait_timed_out",
+          "evidence_added",
           "schedule_skipped",
           "thread_spawn_denied",
           "projector_misconfigured",
           "member_frozen",
           "member_unfrozen",
           "member_display_name_changed",
+          "intake_proposed",
+          "intake_accepted",
+          "intake_rejected",
           "usage_over_allowance",
           "message_posted",
           "message_edited",
@@ -3128,6 +3160,75 @@
         ],
         "type": "object"
       },
+      "EvidenceRecord": {
+        "description": "One evidence record on a thread.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EvidenceRecordKind"
+          },
+          "note": {
+            "description": "What it shows, in words.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "recorded_by": {
+            "$ref": "#/components/schemas/MemberId",
+            "description": "The member whose token recorded it."
+          },
+          "sha256": {
+            "description": "The sha256 of its content, lowercase hex.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the evidence came from, such as `github-actions`, `cargo test`\nor `pr-review`. Free text, as the recorder names it.",
+            "type": "string"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          },
+          "url": {
+            "description": "Where to look at it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "thread_id",
+          "kind",
+          "source",
+          "recorded_by",
+          "recorded_at"
+        ],
+        "type": "object"
+      },
+      "EvidenceRecordKind": {
+        "description": "What a record is evidence of.",
+        "enum": [
+          "test_run",
+          "ci_run",
+          "diff",
+          "review_verdict",
+          "screenshot",
+          "note"
+        ],
+        "type": "string"
+      },
       "EvidenceTimeline": {
         "description": "A thread's evidence, oldest first.",
         "properties": {
@@ -3183,6 +3284,30 @@
             "required": [
               "at",
               "artifact",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Someone attached an evidence record: a test run, a CI run, a diff,\nan outside review verdict, a screenshot or a note. Records are not\npinned at a hand-off, so adding one does not change\n`evidence_changed_since_review`.",
+            "properties": {
+              "at": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "evidence_recorded"
+                ],
+                "type": "string"
+              },
+              "record": {
+                "$ref": "#/components/schemas/EvidenceRecord"
+              }
+            },
+            "required": [
+              "at",
+              "record",
               "kind"
             ],
             "type": "object"
@@ -4083,6 +4208,111 @@
           }
         },
         "type": "object"
+      },
+      "IntakeItem": {
+        "description": "An incoming work proposal in a workspace.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "proposed_by": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "reject_reason": {
+            "description": "Why a rejected item was turned down.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/IntakeSource"
+          },
+          "state": {
+            "$ref": "#/components/schemas/IntakeState"
+          },
+          "thread_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThreadId",
+                "description": "The thread an accepted item became or was linked to."
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "triaged_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "triaged_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberId"
+              }
+            ]
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "title",
+          "source",
+          "proposed_by",
+          "state",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "IntakeSource": {
+        "description": "Who or what proposed an intake item.",
+        "enum": [
+          "agent",
+          "human",
+          "integration"
+        ],
+        "type": "string"
+      },
+      "IntakeState": {
+        "description": "Where an intake item is in triage. `proposed` is the only state that\ncan change; `accepted` and `rejected` are final.",
+        "enum": [
+          "proposed",
+          "accepted",
+          "rejected"
+        ],
+        "type": "string"
+      },
+      "IntakeTriageDecision": {
+        "description": "The two triage outcomes.",
+        "enum": [
+          "accept",
+          "reject"
+        ],
+        "type": "string"
       },
       "InviteMintedView": {
         "properties": {
@@ -5745,6 +5975,45 @@
         "required": [
           "part_number",
           "etag"
+        ],
+        "type": "object"
+      },
+      "NewEvidenceRecord": {
+        "additionalProperties": false,
+        "description": "A record to add: `POST /threads/{id}/evidence-records` and the\n`add_thread_evidence` tool.",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/EvidenceRecordKind"
+          },
+          "note": {
+            "description": "At most 4000 characters. Required for a `note`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "description": "A sha256, 64 hex characters; stored lowercase.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "description": "Where the evidence came from, 1 to 200 characters.",
+            "type": "string"
+          },
+          "url": {
+            "description": "An `http` or `https` URL, at most 2048 bytes.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "source"
         ],
         "type": "object"
       },
@@ -11726,6 +11995,38 @@
         },
         "required": [
           "action"
+        ],
+        "type": "object"
+      },
+      "TriageIntakeItem": {
+        "description": "Triage a proposed intake item once. `accept` links `thread_id` (an\nexisting thread in the workspace) or creates a thread in `channel_id`\nfrom the item's title and body; give exactly one. `reject` needs a\nnon-empty `reason`.",
+        "properties": {
+          "channel_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decision": {
+            "$ref": "#/components/schemas/IntakeTriageDecision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "decision"
         ],
         "type": "object"
       },
@@ -25688,7 +25989,7 @@
                 }
               }
             },
-            "description": "Everything recorded as the thread's evidence, oldest first: linked artifacts, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only."
+            "description": "Everything recorded as the thread's evidence, oldest first: linked artifacts, evidence records, the standing result, land-gate verdicts, every review hand-off with its packet, and every review verdict, with whether the result or artifacts moved since the latest hand-off. Read-only."
           },
           "400": {
             "$ref": "#/components/responses/BadRequest"
@@ -25718,6 +26019,158 @@
           }
         ],
         "summary": "A thread's evidence timeline",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/threads/{id}/evidence-records": {
+      "get": {
+        "operationId": "list_evidence_records",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvidenceRecord"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "The thread's evidence records, oldest first"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "A thread's evidence records",
+        "tags": [
+          "threads"
+        ]
+      },
+      "post": {
+        "operationId": "add_evidence_record",
+        "parameters": [
+          {
+            "description": "Thread id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewEvidenceRecord"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceRecord"
+                }
+              }
+            },
+            "description": "The record as stored. Emits evidence_added. Records are append-only and are not pinned at a review hand-off."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Attach an evidence record to a thread",
         "tags": [
           "threads"
         ]
@@ -40126,6 +40579,358 @@
         "summary": "Open a group direct-message conversation",
         "tags": [
           "dm"
+        ]
+      }
+    },
+    "/workspaces/{wid}/intake": {
+      "get": {
+        "operationId": "list_intake_items",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only items in this state.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IntakeState"
+            }
+          },
+          {
+            "description": "Max items to return (default 50, clamped 1..=200).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Exclusive keyset cursor: the prior page's last item id.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntakeItem"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Items newest first"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List a workspace's intake items",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "operationId": "create_intake_item",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntakeItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            },
+            "description": "The proposed item"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Propose an intake item",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{wid}/intake/{id}": {
+      "get": {
+        "operationId": "get_intake_item",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Intake item id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get an intake item",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{wid}/intake/{id}/triage": {
+      "post": {
+        "operationId": "triage_intake_item",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Intake item id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageIntakeItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeItem"
+                }
+              }
+            },
+            "description": "The triaged item"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Accept or reject a proposed intake item",
+        "tags": [
+          "workspaces"
         ]
       }
     },

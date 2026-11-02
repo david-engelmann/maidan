@@ -403,6 +403,23 @@ fn sample_event(kind: EventKind) -> Event {
             approved_head: "a".repeat(40),
             head_sha: "b".repeat(40),
         },
+        EventKind::EvidenceAdded => Event::EvidenceAdded {
+            occurred_at,
+            workspace_id,
+            channel_id,
+            thread_id,
+            record: maidan_types::EvidenceRecord {
+                id: id(14),
+                thread_id,
+                kind: maidan_types::EvidenceRecordKind::CiRun,
+                source: "ci".into(),
+                url: Some("https://ci.example.com/runs/1".into()),
+                sha256: None,
+                note: None,
+                recorded_by: member_id,
+                recorded_at: occurred_at,
+            },
+        },
         EventKind::WaitTimedOut => Event::WaitTimedOut {
             occurred_at,
             workspace_id,
@@ -457,6 +474,28 @@ fn sample_event(kind: EventKind) -> Event {
             workspace_id,
             member_id,
             display_name: Some("Ada Lovelace".into()),
+        },
+        EventKind::IntakeProposed => Event::IntakeProposed {
+            occurred_at,
+            workspace_id,
+            intake_id: id(14),
+            title: "Add a retry budget".into(),
+            source: maidan_types::IntakeSource::Agent,
+            proposed_by: member_id,
+        },
+        EventKind::IntakeAccepted => Event::IntakeAccepted {
+            occurred_at,
+            workspace_id,
+            intake_id: id(14),
+            thread_id: maidan_types::ThreadId(id(4)),
+            triaged_by: maidan_types::MemberId(id(13)),
+        },
+        EventKind::IntakeRejected => Event::IntakeRejected {
+            occurred_at,
+            workspace_id,
+            intake_id: id(14),
+            reason: "duplicate".into(),
+            triaged_by: maidan_types::MemberId(id(13)),
         },
         EventKind::UsageOverAllowance => Event::UsageOverAllowance {
             occurred_at,
@@ -617,6 +656,7 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::ResultDeliveryFailed
             | EventKind::ReviewSubmitted
             | EventKind::ApprovalDismissed
+            | EventKind::EvidenceAdded
             | EventKind::WaitTimedOut
             | EventKind::ScheduleSkipped
             | EventKind::ThreadSpawnDenied
@@ -624,6 +664,9 @@ fn sample_event_kind_matches_and_is_exhaustive() {
             | EventKind::MemberFrozen
             | EventKind::MemberUnfrozen
             | EventKind::MemberDisplayNameChanged
+            | EventKind::IntakeProposed
+            | EventKind::IntakeAccepted
+            | EventKind::IntakeRejected
             | EventKind::UsageOverAllowance
             | EventKind::MessagePosted
             | EventKind::MessageEdited

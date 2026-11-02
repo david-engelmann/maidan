@@ -1544,6 +1544,28 @@ hash another workspace uploaded is not found. `list_thread_artifacts` (REST
 `GET /threads/:id/artifacts`) reads the links, and `unlink_thread_artifact`
 (REST `DELETE`) removes one.
 
+#### Evidence records
+
+Evidence that is not a stored artifact gets a record: `add_evidence_record
+{thread_id, kind, source, url?, sha256?, note?}` (REST `POST
+/threads/:id/evidence-records`, `workspace:write`). `kind` is one of
+`test_run`, `ci_run`, `diff`, `review_verdict`, `screenshot` or `note`, and
+`source` says where it came from (`cargo test`, `github-actions`), 1 to 200
+characters. Give at least one of `url` (`http` or `https`, at most 2048 bytes),
+`sha256` (64 hex characters, stored lowercase) or `note` (at most 4000
+characters). A `screenshot` needs a `url`, and a `note` needs a `note`. Blank
+fields count as absent. The server stamps `recorded_by` with the caller and
+`recorded_at` with the time, and returns `201` with the record.
+
+`list_evidence_records {thread_id}` (REST `GET /threads/:id/evidence-records`,
+`workspace:read`) returns the records oldest first. `GET /threads/:id/evidence`
+merges them into the timeline as `evidence_recorded` entries, ordered by time
+with the reviews, results and artifact links.
+
+Each record appends and publishes an `evidence_added` event. Records are
+append-only. They do not move the thread's version, are not pinned in a review
+packet, and do not change the timeline's review flag.
+
 ### Summarize once: thread digests
 
 Write a thread's summary once and let every later reader fetch it by hash.
@@ -1985,6 +2007,37 @@ issues. Re-linking the same issue to the same thread stays idempotent, and movin
 a link to a thread that has none is fine.
 
 ---
+
+## Intake
+
+Intake holds incoming work proposals that are not tasks yet. An agent, a
+human or an integration proposes an item; a member triages it once.
+
+| Method | Path | Capability |
+|---|---|---|
+| `POST` | `/workspaces/{wid}/intake` | `workspace:write` |
+| `GET` | `/workspaces/{wid}/intake?state=&limit=&cursor=` | `workspace:read` |
+| `GET` | `/workspaces/{wid}/intake/{id}` | `workspace:read` |
+| `POST` | `/workspaces/{wid}/intake/{id}/triage` | `workspace:write` |
+
+- **Propose** with `{"title", "body"?, "source"?}`. `source` is `agent`,
+  `human` or `integration`; omitted, it is `integration` for an app
+  installation's token, `agent` for an agent member and `human` otherwise.
+  The item starts `proposed` and `intake_proposed` is announced.
+- **List** returns items newest first. `state` filters to `proposed`,
+  `accepted` or `rejected`; `limit` defaults to 50 (max 200); `cursor` is the
+  previous page's last `id`.
+- **Accept** with `{"decision": "accept", "thread_id"}` to link an existing
+  thread in the workspace, or `{"decision": "accept", "channel_id"}` to create
+  a thread in that channel from the item's title and body. Give exactly one.
+  `intake_accepted` is announced with the thread id.
+- **Reject** with `{"decision": "reject", "reason"}`. The reason is required
+  and stored on the item; `intake_rejected` is announced.
+
+Triage is audited in the workspace (`intake.accept`, `intake.reject`). An
+item already accepted or rejected answers `409`; another workspace's item,
+thread or channel answers `404`. The intake events are workspace-local and
+are not federated. There are no MCP tools for intake yet; use REST.
 
 ## Slash commands
 

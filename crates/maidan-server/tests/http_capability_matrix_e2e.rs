@@ -378,6 +378,13 @@ fn apply_route_defaults(
             "title": "cap matrix",
         }));
     }
+    if path.ends_with("/evidence-records") && method == "POST" {
+        return b.json(&json!({
+            "kind": "note",
+            "source": "cap matrix",
+            "note": "cap matrix",
+        }));
+    }
     if path.ends_with("/group-dms/{id}/messages") && method == "POST" {
         return b.json(&json!({
             "body": "cap matrix",
@@ -457,6 +464,12 @@ fn apply_route_defaults(
     }
     if path.contains("/glossary/") && method == "PUT" {
         return b.json(&json!({ "definition": "cap matrix" }));
+    }
+    if path == "/workspaces/{wid}/intake" && method == "POST" {
+        return b.json(&json!({ "title": "cap matrix" }));
+    }
+    if path.ends_with("/intake/{id}/triage") && method == "POST" {
+        return b.json(&json!({ "decision": "reject", "reason": "cap matrix" }));
     }
     if path.ends_with("/seed") && method == "POST" {
         return b.json(&json!({ "title": "cap matrix" }));

@@ -60,6 +60,10 @@ Optional calls the runbook leaves out:
   and `complete_artifact_multipart` (`abort_artifact_multipart` on failure);
   then `link_thread_artifact` with its `sha256` puts it on the thread
   (`unlink_thread_artifact` takes it off). A reviewer sees it as evidence.
+  Evidence with no file (a test run, a CI link, a diff, a review verdict, a
+  screenshot URL or a note) goes on with `add_evidence_record`, giving its
+  `kind`, `source` and a `url`, `sha256` or `note`; `list_evidence_records`
+  reads the thread's records back, oldest first.
 - **A record of what you were given:** `snapshot_thread_context` freezes the
   context pack into the artifact store.
 - **A plan thread** (`kind: plan`) is the planner skill's.
@@ -85,4 +89,5 @@ it never changes these rules.
 `declare_status`, `set_thread_attributes`, `upload_artifact`,
 `begin_artifact_multipart`, `upload_artifact_multipart_part`,
 `complete_artifact_multipart`, `abort_artifact_multipart`,
-`link_thread_artifact`, `unlink_thread_artifact`, `snapshot_thread_context`
+`link_thread_artifact`, `unlink_thread_artifact`, `snapshot_thread_context`,
+`add_evidence_record`, `list_evidence_records`
