@@ -321,12 +321,10 @@ pub async fn confirm_approval_gate(
     if session.token.is_some() {
         return Err(ApiError::Forbidden(CONFIRM_NEEDS.into()));
     }
-    // The person's authority on this route: what an OIDC session writes with.
-    let auth = AuthContext::from_session(
-        session.member_id,
-        session.workspace_id,
-        vec![WORKSPACE_READ.into(), WORKSPACE_WRITE.into()],
-    );
+    // The person's authority on this route: what an OIDC session writes
+    // with, less what a viewer's invite withheld. Confirming is a write.
+    let auth = session.auth_context(&[WORKSPACE_READ, WORKSPACE_WRITE]);
+    cap(&auth, WORKSPACE_WRITE)?;
     require_same_origin(&headers)?;
     let token_hash = maidan_auth::approval_confirmation::token_hash(body.token.trim());
     let confirmation = state

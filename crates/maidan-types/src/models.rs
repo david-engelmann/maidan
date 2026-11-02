@@ -3603,6 +3603,9 @@ pub struct OidcPendingAuth {
     /// The waitlist entry whose invite gates this sign-up. Set only on a
     /// `SignUp` row that arrived by invite; a domain-listed sign-up has none.
     pub invite_entry_id: Option<WaitlistEntryId>,
+    /// The workspace invite this sign-in accepts. Set only on a `Workspace`
+    /// row started with `?invite=`; the callback accepts it in one commit.
+    pub workspace_invite_id: Option<crate::WorkspaceInviteId>,
 }
 
 #[derive(Debug, Clone)]
@@ -3615,6 +3618,8 @@ pub struct NewOidcPendingAuth {
     pub expires_at: DateTime<Utc>,
     /// See [`OidcPendingAuth::invite_entry_id`].
     pub invite_entry_id: Option<WaitlistEntryId>,
+    /// See [`OidcPendingAuth::workspace_invite_id`].
+    pub workspace_invite_id: Option<crate::WorkspaceInviteId>,
 }
 
 /// Where a waitlist entry stands. `waiting` until an operator invites it,

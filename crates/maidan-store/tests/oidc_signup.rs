@@ -246,6 +246,7 @@ async fn assert_signup(store: &dyn Store) {
             return_to: None,
             expires_at: Utc::now() + Duration::from_secs(600),
             invite_entry_id: Some(other.id),
+            workspace_invite_id: None,
         })
         .await
         .unwrap();

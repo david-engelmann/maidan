@@ -5029,6 +5029,65 @@ macro_rules! store_delegations {
             }
         }
     };
+    ($store:ty, WorkspaceInviteStore) => {
+        #[::async_trait::async_trait]
+        impl WorkspaceInviteStore for $store {
+            async fn create_workspace_invite_audited(
+                &self,
+                new: NewWorkspaceInvite,
+                audit: crate::AuditFor<WorkspaceInvite>,
+            ) -> Result<WorkspaceInvite, StoreError> {
+                workspace_invites::create_audited(self.pool(), new, audit).await
+            }
+
+            async fn list_workspace_invites(
+                &self,
+                workspace_id: WorkspaceId,
+            ) -> Result<Vec<WorkspaceInvite>, StoreError> {
+                workspace_invites::list(self.pool(), workspace_id).await
+            }
+
+            async fn get_workspace_invite(
+                &self,
+                id: WorkspaceInviteId,
+            ) -> Result<WorkspaceInvite, StoreError> {
+                workspace_invites::get(self.pool(), id).await
+            }
+
+            async fn find_live_workspace_invite(
+                &self,
+                token_hash: &str,
+                now: DateTime<Utc>,
+            ) -> Result<WorkspaceInvite, StoreError> {
+                workspace_invites::find_live(self.pool(), token_hash, now).await
+            }
+
+            async fn revoke_workspace_invite_audited(
+                &self,
+                workspace_id: WorkspaceId,
+                id: WorkspaceInviteId,
+                audit: NewAuditEvent,
+            ) -> Result<bool, StoreError> {
+                workspace_invites::revoke_audited(self.pool(), workspace_id, id, audit).await
+            }
+
+            async fn accept_workspace_invite(
+                &self,
+                accept: AcceptWorkspaceInvite,
+                invite_audit: crate::AuditFor<WorkspaceInviteAcceptance>,
+                session_audit: crate::AuditFor<MaidanSession>,
+            ) -> Result<WorkspaceInviteAcceptance, StoreError> {
+                workspace_invites::accept(self.pool(), accept, invite_audit, session_audit).await
+            }
+
+            async fn member_invite_role(
+                &self,
+                member_id: MemberId,
+            ) -> Result<Option<WorkspaceInviteRole>, StoreError> {
+                workspace_invites::member_role(self.pool(), member_id).await
+            }
+        }
+    };
     ($store:ty, DelegationGrantStore) => {
         #[::async_trait::async_trait]
         impl DelegationGrantStore for $store {

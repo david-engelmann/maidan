@@ -54,6 +54,7 @@ pub use token::mint_vocabulary;
 mod usage;
 mod waitlist;
 mod workspace;
+mod workspace_invite;
 
 pub use approval_gate::*;
 pub use artifact::*;
@@ -93,6 +94,7 @@ pub use usage::*;
 pub use usage_meters::*;
 pub use waitlist::*;
 pub use workspace::*;
+pub use workspace_invite::*;
 
 pub(crate) type ApiResult<T> = Result<T, ApiError>;
 

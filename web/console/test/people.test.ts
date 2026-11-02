@@ -19,6 +19,9 @@ import {
   seat,
   seatRefusal,
   tokenState,
+  inviteState,
+  emailRefusal,
+  EMAIL_REQUIRED,
   unseat,
   type Person,
 } from "../src/core/people.ts";
@@ -162,4 +165,41 @@ test("pausing checks the repo first and shows the server's own sentence on a con
   await r.api.resume("w", "o/r");
   assert.equal(r.calls[0].url, "http://h/workspaces/w/repo-pauses?repo=o%2Fr");
   assert.equal(r.calls[0].init?.method, "DELETE");
+});
+
+test("invite: posts email and role, joins the returned path to the base, keeps no secret", async () => {
+  const { api, calls } = fake([{ status: 201, body: { invite: { id: "i1" }, secret: "maid_inv_x", accept_path: "/auth/oidc/login?invite=maid_inv_x" } }], bearer);
+  const out = await api.invite("w", { email: " a@b.co ", role: "viewer" });
+  assert.deepEqual(out, { id: "i1", link: "http://h/auth/oidc/login?invite=maid_inv_x" });
+  assert.equal(calls[0].url, "http://h/workspaces/w/invites");
+  assert.equal(calls[0].init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { email: "a@b.co", role: "viewer" });
+});
+
+test("invite: a bad email is refused before any request; a session without a token cannot invite", async () => {
+  const { api, calls } = fake([], bearer);
+  await assert.rejects(api.invite("w", { email: "nope", role: "member" }), (e: unknown) => e instanceof PeopleError && e.message === EMAIL_REQUIRED);
+  assert.equal(calls.length, 0);
+  assert.equal(emailRefusal("a@b.co"), null);
+  const s = fake([]);
+  await assert.rejects(s.api.invite("w", { email: "a@b.co", role: "member" }), PeopleError);
+  assert.equal(s.calls.length, 0);
+});
+
+test("invite: the server's refusal reaches the form", async () => {
+  const { api } = fake([{ status: 400, body: { error: "an invite cannot grant the member role: it is above your own" } }], bearer);
+  await assert.rejects(api.invite("w", { email: "a@b.co", role: "member" }), /above your own/);
+});
+
+test("invites: list maps rows, revoke deletes by id", async () => {
+  const { api, calls } = fake([{ body: [{ id: "i1", email: "a@b.co", role: "member", created_at: "2026-01-01T00:00:00Z", expires_at: "2026-01-08T00:00:00Z" }] }, { status: 204 }], bearer);
+  const rows = await api.invites("w");
+  assert.equal(rows[0].email, "a@b.co");
+  assert.equal(inviteState(rows[0], Date.parse("2026-01-02T00:00:00Z")), "pending");
+  assert.equal(inviteState(rows[0], Date.parse("2026-01-09T00:00:00Z")), "expired");
+  assert.equal(inviteState({ ...rows[0], revokedAt: "x" }, 0), "revoked");
+  assert.equal(inviteState({ ...rows[0], acceptedAt: "x" }, 0), "accepted");
+  await api.revokeInvite("w", "i1");
+  assert.equal(calls[1].url, "http://h/workspaces/w/invites/i1");
+  assert.equal(calls[1].init?.method, "DELETE");
 });

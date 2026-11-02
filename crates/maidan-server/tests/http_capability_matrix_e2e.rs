@@ -705,6 +705,11 @@ fn apply_route_defaults(
     if path == "/workspaces/{wid}/secret-egress-hosts" && method == "POST" {
         return b.json(&json!({ "host": "hooks.example.com" }));
     }
+    if path == "/workspaces/{wid}/invites" && method == "POST" {
+        // A viewer invite: the probe token holds `workspace:admin` alone,
+        // which caps what it may grant at viewer.
+        return b.json(&json!({ "email": "cap-matrix@example.com", "role": "viewer" }));
+    }
     if path == "/workspaces/{wid}/share-tickets" && method == "POST" {
         return b.json(&json!({
             "channel_id": f.channel,

@@ -4417,6 +4417,55 @@ pub trait ShareTicketStore: Send + Sync {
 }
 
 #[async_trait]
+pub trait WorkspaceInviteStore: Send + Sync {
+    /// Mint an invite with its audit row in the same transaction. The
+    /// plaintext secret never crosses this interface.
+    async fn create_workspace_invite_audited(
+        &self,
+        new: NewWorkspaceInvite,
+        audit: crate::AuditFor<WorkspaceInvite>,
+    ) -> Result<WorkspaceInvite, StoreError>;
+    /// Every invite in the workspace, newest first, whatever its state.
+    async fn list_workspace_invites(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> Result<Vec<WorkspaceInvite>, StoreError>;
+    async fn get_workspace_invite(
+        &self,
+        id: WorkspaceInviteId,
+    ) -> Result<WorkspaceInvite, StoreError>;
+    /// Resolve only a live invite. Unknown, used, revoked and expired hashes
+    /// all return `NotFound`.
+    async fn find_live_workspace_invite(
+        &self,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<WorkspaceInvite, StoreError>;
+    /// Revoke an unused invite in its workspace with its audit row. Returns
+    /// whether this call changed state; nothing is recorded when it did not.
+    async fn revoke_workspace_invite_audited(
+        &self,
+        workspace_id: WorkspaceId,
+        id: WorkspaceInviteId,
+        audit: NewAuditEvent,
+    ) -> Result<bool, StoreError>;
+    /// Consume the invite and create the member, identity and session in one
+    /// commit. A used, revoked, expired or mismatched invite is a `Conflict`.
+    async fn accept_workspace_invite(
+        &self,
+        accept: AcceptWorkspaceInvite,
+        invite_audit: crate::AuditFor<WorkspaceInviteAcceptance>,
+        session_audit: crate::AuditFor<MaidanSession>,
+    ) -> Result<WorkspaceInviteAcceptance, StoreError>;
+    /// The role an accepted invite gave this member; `None` for a member
+    /// that did not join by invite.
+    async fn member_invite_role(
+        &self,
+        member_id: MemberId,
+    ) -> Result<Option<WorkspaceInviteRole>, StoreError>;
+}
+
+#[async_trait]
 pub trait DelegationGrantStore: Send + Sync {
     /// Persist a reviewable grant after validating its members, capability
     /// subset, purpose, and expiry. This storage foundation does not itself
@@ -5123,6 +5172,7 @@ pub trait Store:
     + ReindexStore
     + TokenStore
     + ShareTicketStore
+    + WorkspaceInviteStore
     + DelegationGrantStore
     + PeerStore
     + DeliveryCursorStore
@@ -5184,6 +5234,7 @@ impl<
             + ReindexStore
             + TokenStore
             + ShareTicketStore
+            + WorkspaceInviteStore
             + DelegationGrantStore
             + PeerStore
             + DeliveryCursorStore
