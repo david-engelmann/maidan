@@ -95,6 +95,10 @@ pub async fn members_due_for_digest(
          WHERE n.read_at IS NULL
            AND datetime(n.created_at) > datetime(COALESCE(d.last_digest_at, '1970-01-01 00:00:00'))
            {skip}
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_workspace_suspensions s
+             WHERE s.workspace_id = m.workspace_id
+           )
          GROUP BY n.member_id, e.email
          HAVING COUNT(*) > 0
          ORDER BY n.member_id

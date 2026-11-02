@@ -80,6 +80,10 @@ pub async fn members_due_for_digest(
          WHERE n.read_at IS NULL
            AND n.created_at > COALESCE(d.last_digest_at, 'epoch'::timestamptz)
            AND NOT (m.workspace_id = ANY($2))
+           AND NOT EXISTS (
+             SELECT 1 FROM maidan_workspace_suspensions s
+             WHERE s.workspace_id = m.workspace_id
+           )
          GROUP BY n.member_id, e.email
          HAVING COUNT(*) > 0
          ORDER BY n.member_id
