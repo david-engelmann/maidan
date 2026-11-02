@@ -35,6 +35,10 @@
     "S3_BUCKET": "maidan-artifacts-dev",
     "S3_REGION": "auto"
   },
-  "triggers": { "crons": ["0 * * * *"] },
+  // Once a day, not hourly: each wake keeps the container (and Neon's
+  // compute) running for the 15 minutes of sleepAfter, so an hourly cron kept
+  // an idle instance billed about a quarter of every day. Schedules, retries
+  // and sweeps on an idle instance wait up to a day; any request runs them.
+  "triggers": { "crons": ["17 9 * * *"] },
   "observability": { "enabled": true }
 }

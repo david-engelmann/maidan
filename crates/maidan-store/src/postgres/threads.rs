@@ -170,20 +170,18 @@ fn worked_secs(started: Option<DateTime<Utc>>, ended: DateTime<Utc>) -> Option<i
 }
 
 /// Charge the claim this thread still holds, from its acknowledgement to the
-/// database clock, before a write clears that claim. Locks the row. An
+/// app clock (the same clock that stamps acknowledgement and deadlines), before a write clears that claim. Locks the row. An
 /// unacknowledged claim is charged nothing. `NotFound` when the thread is gone.
 pub(crate) async fn charge_open_claim_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
 ) -> Result<(), StoreError> {
-    let row = sqlx::query(
-        "SELECT work_started_at, NOW() AS ended_at FROM maidan_threads WHERE id = $1 FOR UPDATE",
-    )
-    .bind(thread_id.0)
-    .fetch_optional(&mut **tx)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
+    let row = sqlx::query("SELECT work_started_at FROM maidan_threads WHERE id = $1 FOR UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    let worked = worked_secs(row.get("work_started_at"), crate::clock::db_now());
     budget::charge_wall_in_tx(tx, thread_id, worked).await?;
     Ok(())
 }
@@ -197,7 +195,7 @@ pub(crate) async fn release_member_claims_in_tx(
     member_id: MemberId,
 ) -> Result<u64, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, work_started_at, NOW() AS ended_at
+        "SELECT id, work_started_at
          FROM maidan_threads
          WHERE assignee_id = $1 AND tombstoned_at IS NULL
            AND state NOT IN ('closed', 'archived')
@@ -206,8 +204,9 @@ pub(crate) async fn release_member_claims_in_tx(
     .bind(member_id.0)
     .fetch_all(&mut **tx)
     .await?;
+    let ended = crate::clock::db_now();
     for row in &rows {
-        let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
+        let worked = worked_secs(row.get("work_started_at"), ended);
         budget::charge_wall_in_tx(tx, ThreadId(row.get("id")), worked).await?;
     }
     let released = sqlx::query(
@@ -252,7 +251,7 @@ async fn release_fenced_in_tx(
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT work_started_at, NOW() AS ended_at FROM maidan_threads
+        "SELECT work_started_at FROM maidan_threads
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          FOR UPDATE",
     )
@@ -262,7 +261,7 @@ async fn release_fenced_in_tx(
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
-    let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
+    let worked = worked_secs(row.get("work_started_at"), crate::clock::db_now());
     budget::charge_wall_in_tx(tx, thread_id, worked).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = $4
@@ -1300,13 +1299,14 @@ pub async fn acknowledge_claim(
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET work_started_at = COALESCE(work_started_at, NOW()), updated_at = NOW()
+        "UPDATE maidan_threads SET work_started_at = COALESCE(work_started_at, $4), updated_at = $4
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
+    .bind(crate::clock::db_now())
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;

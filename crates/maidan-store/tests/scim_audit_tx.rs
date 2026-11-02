@@ -437,3 +437,105 @@ async fn ending_a_member_ends_its_delegate_grants_and_sessions_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     delegate_suite(&PostgresStore::for_tests(pool)).await;
 }
+
+/// A SCIM delete that races a sign-in ends the session that sign-in commits
+/// (#1716). The sign-in is played by hand: one transaction locks the SCIM and
+/// member rows FOR SHARE, as `sessions::create_on` does, then inserts its
+/// session while the delete waits. Postgres only: SQLite serializes writers,
+/// so the two cannot interleave there.
+#[tokio::test]
+async fn scim_delete_ends_a_racing_sign_ins_session_postgres() {
+    use maidan_store::{run_postgres_migrations, PostgresStore};
+    use sqlx::postgres::PgPoolOptions;
+    use std::time::Duration;
+    use testcontainers::{runners::AsyncRunner, ImageExt};
+    use testcontainers_modules::postgres::Postgres;
+
+    let container = match Postgres::default()
+        .with_name("pgvector/pgvector")
+        .with_tag("pg17")
+        .start()
+        .await
+    {
+        Ok(container) => container,
+        Err(err) => {
+            maidan_store::test_support::docker::skip_start_failure(err).await;
+            return;
+        }
+    };
+    let host = container.get_host().await.expect("host");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
+    let url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .acquire_timeout(Duration::from_secs(15))
+        .connect(&url)
+        .await
+        .expect("connect");
+    run_postgres_migrations(&pool).await.expect("migrate");
+    let store = PostgresStore::for_tests(pool.clone());
+
+    let ws = store
+        .create_workspace(NewWorkspace {
+            name: "race".into(),
+        })
+        .await
+        .unwrap();
+    let (member, _) = store
+        .scim_provision_audited(
+            NewMember {
+                workspace_id: ws.id,
+                handle: "racer".into(),
+                display_name: None,
+                kind: MemberKind::Human,
+            },
+            None,
+            true,
+            Box::new(move |_| event(ws.id, "scim.user.create")),
+        )
+        .await
+        .unwrap();
+
+    let mut sign_in = pool.begin().await.unwrap();
+    sqlx::query("SELECT active FROM maidan_scim_users WHERE member_id = $1 FOR SHARE")
+        .bind(member.id.0)
+        .fetch_one(&mut *sign_in)
+        .await
+        .unwrap();
+    sqlx::query("SELECT 1 FROM maidan_members WHERE id = $1 FOR SHARE")
+        .bind(member.id.0)
+        .fetch_one(&mut *sign_in)
+        .await
+        .unwrap();
+
+    let deleter = store.clone();
+    let delete = tokio::spawn(async move {
+        deleter
+            .scim_deprovision_audited(ws.id, member.id, event(ws.id, "delete"))
+            .await
+    });
+    // Let the delete reach the SCIM row lock and wait there.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(!delete.is_finished(), "the delete waits behind the sign-in");
+
+    sqlx::query(
+        "INSERT INTO maidan_sessions (id, workspace_id, member_id, expires_at)
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(uuid::Uuid::new_v4())
+    .bind(ws.id.0)
+    .bind(member.id.0)
+    .bind(chrono::Utc::now() + chrono::Duration::hours(1))
+    .execute(&mut *sign_in)
+    .await
+    .unwrap();
+    sign_in.commit().await.unwrap();
+
+    assert!(delete.await.unwrap().unwrap(), "the SCIM user is deleted");
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM maidan_sessions WHERE member_id = $1")
+        .bind(member.id.0)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0, "no session outlives the deleted member");
+}
