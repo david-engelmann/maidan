@@ -473,6 +473,9 @@ mod oidc_loopback_e2e;
 #[path = "../oidc_signup_e2e.rs"]
 mod oidc_signup_e2e;
 
+#[path = "../oidc_workspace_invite_e2e.rs"]
+mod oidc_workspace_invite_e2e;
+
 #[path = "../openapi_e2e.rs"]
 mod openapi_e2e;
 

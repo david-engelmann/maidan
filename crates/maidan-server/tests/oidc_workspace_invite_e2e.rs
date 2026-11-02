@@ -32,7 +32,7 @@ struct Env {
 }
 
 async fn spawn() -> Env {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
