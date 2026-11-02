@@ -3085,7 +3085,7 @@ pub fn clear_slot_capacity() {}
     params(("id" = Uuid, Path, description = "Thread id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = ThreadResult),
+        (status = 200, body = ThreadResultView),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]
