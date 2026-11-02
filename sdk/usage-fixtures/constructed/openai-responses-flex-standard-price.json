@@ -1,0 +1,52 @@
+{
+  "name": "openai-responses-flex-standard-price",
+  "provider": "openai-responses",
+  "source": "https://platform.openai.com/docs/guides/flex-processing",
+  "recorded": "constructed",
+  "note": "A flex-tier call carries the standard-tier price the caller passes, so the ledger can report what the cheaper lane saved.",
+  "options": {
+    "standard_price": {
+      "input_usd_micros_per_million": 1250000,
+      "output_usd_micros_per_million": 10000000,
+      "cache_read_usd_micros_per_million": 125000,
+      "cache_write_5m_usd_micros_per_million": 0,
+      "cache_write_1h_usd_micros_per_million": 0
+    }
+  },
+  "response": {
+    "model": "gpt-6-astra",
+    "service_tier": "flex",
+    "usage": {
+      "input_tokens": 1000,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens": 100,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 1100
+    }
+  },
+  "expected": {
+    "model": "gpt-6-astra",
+    "tokens": {
+      "input": 1000,
+      "output": 100,
+      "cache_read": 0,
+      "cache_write_5m": 0,
+      "cache_write_1h": 0
+    },
+    "evidence": {
+      "provider": "openai",
+      "service_tier": "flex",
+      "standard_price": {
+        "input_usd_micros_per_million": 1250000,
+        "output_usd_micros_per_million": 10000000,
+        "cache_read_usd_micros_per_million": 125000,
+        "cache_write_5m_usd_micros_per_million": 0,
+        "cache_write_1h_usd_micros_per_million": 0
+      }
+    }
+  }
+}

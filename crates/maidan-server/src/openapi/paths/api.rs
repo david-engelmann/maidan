@@ -1326,7 +1326,10 @@ pub fn transition_thread() {}
 /// maintainer. A thread with a result keeps every landing gate; a thread
 /// with no result skips the review gates. A duplicate records a
 /// `duplicates` reference to `duplicate_of`; a superseded thread records
-/// `duplicate_of supersedes` it. Audited as `thread.close_abandoned`.
+/// `duplicate_of supersedes` it. Each open dependent of a duplicate or
+/// superseded thread then depends on `duplicate_of` instead and gets a
+/// notice, unless the move would make a cycle; an abandoned thread's
+/// dependents keep waiting. Audited as `thread.close_abandoned`.
 #[utoipa::path(post, path = "/threads/{id}/close-abandoned", tag = "threads",
     params(("id" = Uuid, Path, description = "Thread id")),
     request_body = CloseAbandonedThread,

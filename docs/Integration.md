@@ -1426,6 +1426,13 @@ object) needs the model passed in. A shape served by another host keeps its
 reader and takes an evidence-provider override: Azure's Chat Completions is
 `openai-chat` with `azure.ai.openai`.
 
+A call in a cheaper lane can carry the standard-tier price, so the ledger
+shows what the lane saved. Pass it as the `standard_price` option
+(`standardPrice` in TypeScript, `StandardPrice` in Go), and pass `batch` for a
+call sent through a batch API, whose response names no batch tier. Each SDK
+puts both in the evidence, and refuses `standard_price` unless `batch` is set
+or the response's service tier is `batch` or `flex`, as the server does.
+
 ```ts
 import { normalizeUsage, usdMicros } from "maidan";
 

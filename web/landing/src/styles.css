@@ -232,6 +232,9 @@ h2 { font-size: clamp(2.9rem, 13.5vw, 8rem); }
 .cmd-row { display: flex; align-items: center; gap: 0.8rem; padding: 0.4rem 0.4rem 0.4rem 1.2rem; border-radius: 14px; box-shadow: inset 0 0 0 1.5px var(--line); }
 .cmd-row .cmd { margin: 0; flex: 1; }
 .cmd-row .copy { box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink); }
+.copy.failed { min-width: 9rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.copy-buffer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 .cta.star { min-height: 56px; padding: 0 1.6rem; font-size: 1.05rem; background: var(--signal); color: #1d0c03; }
 .top.film .join-btn, .top.film .gh { visibility: hidden; }
 @media (min-width: 960px) {

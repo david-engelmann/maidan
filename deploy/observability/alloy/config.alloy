@@ -1,0 +1,96 @@
+// Grafana Alloy config for a local workbench: maidan-server pushes OTLP here
+// (OTLP_ENDPOINT=http://<alloy>:4317, OTLP_METRICS=1) and Alloy scrapes its
+// /metrics as well. Postgres stays the record; this is a view of it.
+//
+// Environment:
+//   MAIDAN_METRICS_TARGET  host:port of maidan-server (default maidan:8080)
+//   TRACES_OTLP_ENDPOINT   where traces go, e.g. tempo:4317 (default tempo:4317)
+//   PROM_REMOTE_WRITE_URL  Prometheus remote-write URL
+//                          (default http://prometheus:9090/api/v1/write)
+//
+// Span attributes are redacted before export: no prompt, diff or rendered
+// result text leaves the workbench, even if a future span records one.
+
+otelcol.receiver.otlp "maidan" {
+	grpc {
+		endpoint = "0.0.0.0:4317"
+	}
+
+	http {
+		endpoint = "0.0.0.0:4318"
+	}
+
+	output {
+		traces  = [otelcol.processor.attributes.redact.input]
+		metrics = [otelcol.processor.batch.default.input]
+	}
+}
+
+otelcol.processor.attributes "redact" {
+	action {
+		key    = "prompt"
+		action = "delete"
+	}
+
+	action {
+		key    = "diff"
+		action = "delete"
+	}
+
+	action {
+		key    = "rendered"
+		action = "delete"
+	}
+
+	action {
+		key    = "body"
+		action = "delete"
+	}
+
+	action {
+		key    = "content"
+		action = "delete"
+	}
+
+	output {
+		traces = [otelcol.processor.batch.default.input]
+	}
+}
+
+otelcol.processor.batch "default" {
+	output {
+		traces  = [otelcol.exporter.otlp.traces.input]
+		metrics = [otelcol.exporter.prometheus.default.input]
+	}
+}
+
+otelcol.exporter.otlp "traces" {
+	client {
+		endpoint = coalesce(sys.env("TRACES_OTLP_ENDPOINT"), "tempo:4317")
+
+		tls {
+			insecure = true
+		}
+	}
+}
+
+otelcol.exporter.prometheus "default" {
+	forward_to = [prometheus.remote_write.default.receiver]
+}
+
+// The usage counters (maidan_usage_tokens_total, maidan_usage_usd_micros_total)
+// and the rest of /metrics, scraped directly so they arrive without OTLP too.
+prometheus.scrape "maidan" {
+	targets = [{
+		__address__ = coalesce(sys.env("MAIDAN_METRICS_TARGET"), "maidan:8080"),
+		job         = "maidan-server",
+	}]
+	scrape_interval = "15s"
+	forward_to      = [prometheus.remote_write.default.receiver]
+}
+
+prometheus.remote_write "default" {
+	endpoint {
+		url = coalesce(sys.env("PROM_REMOTE_WRITE_URL"), "http://prometheus:9090/api/v1/write")
+	}
+}
