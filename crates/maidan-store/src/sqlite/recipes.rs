@@ -196,12 +196,16 @@ pub async fn instantiate(
     let now = Utc::now().to_rfc3339();
     let params_s = serde_json::to_string(&params)?;
     let snapshot = serde_json::to_string(&recipe.spec)?;
+    // The run id is stamped on the children this run creates, so the warm hold
+    // (`claim_next::shares_prefix`) groups only them; a sub-thread added to the
+    // parent by hand later carries no run id and is never held.
+    let run_id = Uuid::now_v7();
     let run_row = sqlx::query(&format!(
         "INSERT INTO maidan_recipe_runs (id, recipe_id, workspace_id, root_thread_id, params, spec_snapshot, created_by, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING {RUN_COLS}"
     ))
-    .bind(Uuid::now_v7())
+    .bind(run_id)
     .bind(recipe.id.0)
     .bind(recipe.workspace_id.0)
     .bind(parent.id.0)
@@ -212,6 +216,13 @@ pub async fn instantiate(
     .fetch_one(&mut *tx)
     .await?;
     let run = row_to_run(&run_row)?;
+    for child_id in child_ids.values() {
+        sqlx::query("INSERT INTO maidan_recipe_run_children (run_id, thread_id) VALUES (?, ?)")
+            .bind(run_id)
+            .bind(child_id.0)
+            .execute(&mut *tx)
+            .await?;
+    }
 
     tx.commit().await?;
     Ok((run, events_out))

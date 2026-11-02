@@ -12,11 +12,10 @@ use maidan_server::{router, subscribe_resume, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{ArtifactKind, MemberKind, NewApiToken, NewArtifact, NewMember, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn purge_workspace_deletes_uploaded_artifact_blob() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();
@@ -116,7 +115,7 @@ async fn purge_workspace_deletes_uploaded_artifact_blob() {
 /// not see it.
 #[tokio::test]
 async fn purging_one_workspace_never_destroys_another_workspaces_artifact() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

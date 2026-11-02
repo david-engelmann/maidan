@@ -18,7 +18,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberId, MemberKind, NewApiToken, NewMember, NewWorkspace, WorkspaceId};
 use reqwest::{header, StatusCode};
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const SESSION_SECRET: &[u8] = b"test-session-secret-32-bytes-min!";
 
@@ -41,7 +40,7 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

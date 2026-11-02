@@ -308,6 +308,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 
 @media (min-width: 900px) {
   .threads { display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 18px; height: calc(100dvh - 120px); }
+  /* The split view sizes itself to the window, so the reading screens' 3rem
+     bottom padding would push the page past it and scroll the whole shell. */
+  .content:has(.threads) { padding-bottom: 1rem; }
   .conv-list { overflow-y: auto; min-height: 0; }
   .threads.has-open .conv-list { visibility: visible; }
   .conv-open { position: relative; inset: auto; top: auto; height: auto; min-height: 0; z-index: auto; border: 1px solid var(--line); border-radius: 20px; background: var(--card); overflow: hidden; }
@@ -577,6 +580,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 @media (max-width: 520px) { .mode-chip { display: none; } }
 .chip-refused { color: var(--signal); border-color: var(--signal); }
 
+/* Add evidence: one field per line under the task's evidence timeline. */
+.add-evidence form { display: grid; gap: 6px; max-width: 32rem; }
+.add-evidence label { display: grid; gap: 2px; }
 /* ── Skip link: off screen until focused, then the first thing on the page ── */
 .skip-link { position: fixed; left: 12px; top: -100px; z-index: 100; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: var(--paper); font-weight: 600; text-decoration: none; }
 .skip-link:focus, .skip-link:focus-visible { top: calc(env(safe-area-inset-top, 0px) + 8px); }

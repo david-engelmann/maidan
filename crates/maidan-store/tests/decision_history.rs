@@ -8,7 +8,6 @@ use maidan_types::{
     LandColor, LandGateStatus, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     ReviewDecision, ThreadId, LAND_GATE_SKILL,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 const SQLITE_0121: &str = include_str!("../../../migrations/sqlite/0121_decision_history.sql");
 /// Columns later migrations add to the history table that re-running 0121
@@ -19,7 +18,7 @@ const DROP_HISTORY: &str = "DROP TABLE maidan_thread_review_verdicts;
      DROP TABLE maidan_thread_land_gate_verdicts;";
 
 async fn sqlite() -> (SqliteStore, sqlx::SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

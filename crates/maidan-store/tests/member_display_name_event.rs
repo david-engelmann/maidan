@@ -5,7 +5,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     AuditScope, EventKind, MemberKind, NewAuditEvent, NewMember, NewWorkspace, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn audit(scope: WorkspaceId, member: maidan_types::MemberId) -> NewAuditEvent {
     NewAuditEvent {
@@ -87,7 +86,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn a_rename_commits_with_its_event_and_audit_in_its_own_workspace_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

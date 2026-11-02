@@ -6,10 +6,9 @@ use maidan_types::{
     EventKind, MemberKind, NewChannel, NewMember, NewMessage, NewPin, NewReaction, NewReference,
     NewThread, NewVote, NewWorkspace, RefSide, RelationKind, TombstoneEntityKind, VoteKind,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

@@ -27,7 +27,6 @@ use maidan_types::{
     NewGithubIssueLink, NewMember, NewThread, NewWorkspace, ThreadId, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct GhComment {
     repo: String,
@@ -198,7 +197,7 @@ struct Harness {
 }
 
 async fn harness(name: &str) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

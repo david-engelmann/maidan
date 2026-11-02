@@ -8,7 +8,6 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{ArtifactKind, MemberKind, NewArtifact, NewMember, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn run_suite(store: &dyn Store) {
     let mut tenants = Vec::new();
@@ -72,7 +71,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn shared_artifacts_survive_a_purge_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

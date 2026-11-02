@@ -44,7 +44,6 @@ use maidan_types::{
     ResultDelivery, ThreadId, ThreadState, WorkspaceId, CHANGE_RESULT_KIND, WAITER_RESULT_SCHEMA,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const REPO: &str = "example/app";
 const BRANCH: &str = "feature/agent-fix-greeting-1a2b";
@@ -832,7 +831,7 @@ async fn harness() -> Harness {
 }
 
 async fn harness_with(linear: RecordingLinear) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

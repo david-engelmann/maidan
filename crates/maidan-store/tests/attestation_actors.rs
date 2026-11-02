@@ -15,10 +15,9 @@ use maidan_types::{
     NewApprovalGate, NewChannel, NewMember, NewThread, NewWorkspace, ReviewDecision,
     LAND_GATE_SKILL,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

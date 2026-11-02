@@ -28,7 +28,6 @@ use maidan_types::{
     MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace, WorkspaceId,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn echo_module() -> Vec<u8> {
     wat::parse_str(
@@ -53,7 +52,7 @@ struct Tenant {
 
 #[tokio::test]
 async fn a_handler_cannot_run_another_tenants_module() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

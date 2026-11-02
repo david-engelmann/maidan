@@ -12,10 +12,9 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use reqwest::{header::WWW_AUTHENTICATE, StatusCode};
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn(public_origin: Option<&str>) -> String {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

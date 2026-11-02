@@ -23,7 +23,6 @@ use maidan_types::{
     NewWorkspace, ThreadId, WorkspaceId,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tracing::Subscriber;
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::prelude::*;
@@ -110,7 +109,7 @@ async fn list_tasks_query_count_is_independent_of_hidden_tasks() {
 
     // One connection, never pinged on acquire: a pool-issued statement the
     // test does not control would count as a phantom query.
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .test_before_acquire(false)
         .connect("sqlite::memory:")

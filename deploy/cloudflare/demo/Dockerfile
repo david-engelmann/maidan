@@ -1,37 +1,27 @@
 # syntax=docker/dockerfile:1.7
 #
-# The try.maidan.world demo image: maidan-server and the maidan CLI built with
-# the bootstrap routes, plus what scripts/demo-board.sh needs (bash, curl, jq).
-# demo/entrypoint.sh seeds a fresh SQLite workspace on every boot. Not for any
-# other deployment: use crates/maidan-server/Dockerfile.
+# The try.maidan.world demo image. No compile: it layers the release's own
+# cosign-verified images, maidan-server:<tag>-demo (the only published build
+# with the bootstrap routes) and maidan-cli:<tag>, on Debian with what
+# scripts/demo-board.sh needs (bash, curl, jq). demo/entrypoint.sh seeds a
+# fresh SQLite workspace on every boot. .github/workflows/deploy-demo.yml
+# passes both images by digest. Not for any other deployment.
 
-ARG RUST_VERSION=1.99
+ARG SERVER_IMAGE
+ARG CLI_IMAGE
 
-FROM node:22-bookworm-slim AS landing
-WORKDIR /web
-COPY web/landing/package.json web/landing/package-lock.json ./
-RUN npm ci
-COPY web/landing/ ./
-ENV LANDING_OUT=/landing-dist
-RUN npm run build
+FROM ${SERVER_IMAGE} AS server
+FROM ${CLI_IMAGE} AS cli
 
-FROM rust:${RUST_VERSION}-slim-bookworm AS builder
-WORKDIR /app
-RUN apt-get update \
- && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-COPY . .
-COPY --from=landing /landing-dist crates/maidan-server/static/landing/dist
-ENV MAIDAN_SKIP_LANDING_BUILD=1
-RUN cargo build --release --bin maidan-server --bin maidan
-
+# bookworm is Debian 12, the base of both distroless images, so their glibc
+# binaries run here unchanged.
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends bash curl jq ca-certificates openssl \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 demo
-COPY --from=builder /app/target/release/maidan-server /usr/local/bin/maidan-server
-COPY --from=builder /app/target/release/maidan /usr/local/bin/maidan
+COPY --from=server /usr/local/bin/maidan-server /usr/local/bin/maidan-server
+COPY --from=cli /usr/local/bin/maidan /usr/local/bin/maidan
 COPY scripts/demo-board.sh /usr/local/bin/demo-board.sh
 COPY deploy/cloudflare/demo/entrypoint.sh /usr/local/bin/demo-entrypoint.sh
 USER demo

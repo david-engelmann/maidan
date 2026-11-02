@@ -6,10 +6,9 @@ use maidan_router::{
 };
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::*;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

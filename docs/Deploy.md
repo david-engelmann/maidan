@@ -179,7 +179,47 @@ values.
 | `maidan-server`  | `crates/maidan-server/Dockerfile.dev`       | Dev hot-reload.        |
 | `maidan-postgres`| `docker/Dockerfile.db`                      | Postgres + pgvector.   |
 | `maidan-cli`     | `docker/Dockerfile.cli`                     | The `maidan` CLI, pinned to the server's tag. |
+| `maidan-server:<tag>-demo` | `crates/maidan-server/Dockerfile` with `MAIDAN_ENABLE_BOOTSTRAP=1` | try.maidan.world only: the one build with the bootstrap routes. Signed and attested; never `latest`. |
 | (local only)     | `docker/Dockerfile.quickstart`              | Built by `compose.quickstart.yaml` from a pinned release binary; not published, not for production. |
+
+## try.maidan.world
+
+try.maidan.world is the public demo: one seeded SQLite workspace inside a
+Cloudflare container, which the reviewers in the directory listings connect to.
+The Worker and its config are `deploy/cloudflare/src/demo.js` and
+`deploy/cloudflare/wrangler.demo.jsonc`.
+
+**Images.** Each release publishes `maidan-server:<tag>-demo` beside the stock
+`maidan-server:<tag>`. It is the same Dockerfile built with
+`MAIDAN_ENABLE_BOOTSTRAP=1`, because the demo's seed creates its members through
+the bootstrap routes. It is signed, has an SBOM attestation, and passes the same
+trivy scan as the stock image. It is amd64 only and is never tagged `latest`.
+Every other image builds with bootstrap off, and
+`scripts/check-deploy-contract.sh` (CI `deployment contract`) fails if
+release.yml stops passing `MAIDAN_ENABLE_BOOTSTRAP=0` to a stock leg, or tags
+the demo image `latest`.
+
+**Deploy.** `.github/workflows/deploy-demo.yml` runs on a published release, or
+on a dispatch with a tag. It does nothing unless the repository variable
+`DEMO_DOMAIN` is `true`. It checks that the tag is on `main` and cosign-verifies
+`maidan-server:<tag>-demo` and `maidan-cli:<tag>`. It then builds
+`deploy/cloudflare/demo/Dockerfile`, which copies both binaries by digest onto
+Debian with bash, curl and jq and compiles nothing. It pushes the image with
+`wrangler containers push` and deploys `wrangler.demo.jsonc`, as
+`deploy-prod.yml` does for maidan.world. It reads `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` from the repository secrets. The container's keys are
+made fresh on each boot, so the demo stores no secret.
+
+**Boot and reset.** On every boot `demo/entrypoint.sh` seeds a fresh workspace
+with `scripts/demo-board.sh`. It does this on a loopback listener with
+bootstrap on, then restarts the server without bootstrap for the public
+listener. Once a day at 04:00 UTC the cron destroys a running container, which
+deletes its data. It never starts a stopped one, so the next visitor boots a
+freshly seeded demo. Seeded tokens expire after 30 hours.
+
+**Cost.** One `basic` instance (`max_instances: 1`) sleeps after 15 idle
+minutes. The cron runs once a day and only destroys. Nothing else runs on a
+timer. `deploy/cloudflare/test/cost.test.js` holds all of this.
 
 ## Migrations
 

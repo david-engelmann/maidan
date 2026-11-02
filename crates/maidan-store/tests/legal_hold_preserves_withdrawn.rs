@@ -13,7 +13,6 @@ use maidan_types::{
     EditMessage, MemberKind, MessageId, NewAuditEvent, NewChannel, NewMember, NewMessage,
     NewThread, NewWorkspace, ThreadId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
@@ -205,7 +204,7 @@ where
 
 #[tokio::test]
 async fn a_hold_keeps_what_is_withdrawn_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

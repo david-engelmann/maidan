@@ -3,11 +3,10 @@
 use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadState};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn child_cannot_advance_beyond_open_parent() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

@@ -23,7 +23,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
 
@@ -52,7 +51,7 @@ async fn mint(store: &dyn Store, ws: WorkspaceId, member: maidan_types::MemberId
 }
 
 async fn harness() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
