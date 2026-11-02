@@ -58,7 +58,9 @@ def check(data: dict, tools: set[str]) -> list[str]:
 
 
 def picked(output: str, tools: set[str]) -> list[str]:
-    words = set(re.findall(r"[a-z][a-z0-9_]+", output))
+    # Claude Code names MCP tools mcp__<server>__<tool>; keep the part after
+    # the last "__" so namespaced calls match the catalog name exactly.
+    words = {w.rsplit("__", 1)[-1] for w in re.findall(r"[a-z][a-z0-9_]+", output)}
     return sorted(words & tools)
 
 
