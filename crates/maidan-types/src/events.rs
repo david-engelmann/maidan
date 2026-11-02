@@ -1403,6 +1403,7 @@ impl Event {
 
     pub fn thread_id(&self) -> Option<ThreadId> {
         match self {
+            Self::IntakeAccepted { thread_id, .. } => Some(*thread_id),
             Self::ThreadCreated { thread, .. } => Some(thread.id),
             Self::ThreadStateChanged { thread_id, .. } => Some(*thread_id),
             Self::ThreadAssignmentChanged { thread_id, .. } => Some(*thread_id),
@@ -1459,6 +1460,10 @@ impl Event {
 
     pub fn member_id(&self) -> Option<MemberId> {
         match self {
+            Self::IntakeProposed { proposed_by, .. } => Some(*proposed_by),
+            Self::IntakeAccepted { triaged_by, .. } | Self::IntakeRejected { triaged_by, .. } => {
+                Some(*triaged_by)
+            }
             Self::MemberJoined { member, .. } => Some(member.id),
             Self::ThreadStateChanged { actor_id, .. } => Some(*actor_id),
             Self::ThreadAssignmentChanged { actor_id, .. } => Some(*actor_id),
