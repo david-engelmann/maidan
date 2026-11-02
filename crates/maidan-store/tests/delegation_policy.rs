@@ -11,7 +11,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     MemberKind, NewDelegationGrant, NewMember, NewWorkspace, DEFAULT_MAX_GRANT_DAYS,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn run_suite(store: &dyn Store) {
     let ws = store
@@ -86,7 +85,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn a_grant_cannot_outlive_its_workspace_ceiling_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

@@ -18,7 +18,6 @@ use maidan_types::{
     MemberKind, NewChannel, NewMember, NewSlackChannelLink, NewThread, NewWorkspace,
 };
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const SECRET: &str = "test-signing-secret";
 
@@ -30,7 +29,7 @@ async fn spawn(
     Arc<dyn Store>,
     tokio::task::JoinHandle<()>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

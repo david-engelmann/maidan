@@ -12,7 +12,6 @@ use maidan_types::{
     MemberKind, NewApiToken, NewAuditEvent, NewMember, NewScimGroup, NewWorkspace, ScimGroupChange,
     ScimMembersOp,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
@@ -206,7 +205,7 @@ where
 
 #[tokio::test]
 async fn scim_provisioning_needs_its_record_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -392,7 +391,7 @@ async fn delegate_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn ending_a_member_ends_its_delegate_grants_and_sessions_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

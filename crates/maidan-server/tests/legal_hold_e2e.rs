@@ -14,11 +14,10 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn legal_hold_blocks_purge_over_rest() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

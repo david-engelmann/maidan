@@ -8,11 +8,10 @@ use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn thread_context_pages_messages_by_cursor() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -116,7 +115,7 @@ async fn thread_context_pages_messages_by_cursor() {
 
 #[tokio::test]
 async fn mcp_get_thread_context_honors_message_cursor() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

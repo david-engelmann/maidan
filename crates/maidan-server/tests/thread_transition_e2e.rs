@@ -9,11 +9,10 @@ use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{Event, EventFilter, EventKind};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn transition_thread_publishes_thread_state_changed() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -133,7 +132,7 @@ async fn transition_thread_publishes_thread_state_changed() {
 /// `PUT /threads/:id/title` renames a thread; a blank title is a `400`.
 #[tokio::test]
 async fn rename_thread_via_rest_updates_title() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

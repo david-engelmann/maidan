@@ -7,7 +7,6 @@ use chrono::Utc;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -103,7 +102,7 @@ async fn assert_single_use_and_ttl(store: &dyn Store) {
 
 #[tokio::test]
 async fn oauth_codes_single_use_and_ttl_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

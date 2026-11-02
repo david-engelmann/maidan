@@ -19,7 +19,6 @@ use maidan_types::{
     CATCH_UP_TYPE, LOG_SNAPSHOT_TYPE,
 };
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Harness {
     addr: SocketAddr,
@@ -41,7 +40,7 @@ impl Harness {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

@@ -32,12 +32,20 @@ import {
   type Edit,
   type TaskFacts,
   evidenceLine,
+  evidenceRefusal,
+  safeHref,
+  withRecords,
+  EVIDENCE_KINDS,
+  EVIDENCE_KIND_WORD,
+  type EvidenceDraft,
+  type EvidenceKind,
   type Message,
   type Reaction,
 } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
 
 type Tab = "tasks" | "direct";
@@ -143,7 +151,11 @@ export function Threads() {
         {listLoading && !list.length ? (
           <p className="muted">Loading…</p>
         ) : !list.length ? (
-          <p className="muted conv-empty">{tab === "tasks" ? "No tasks in this channel yet." : "No conversations yet. Start one with New message."}</p>
+          <p className="muted conv-empty">
+            {tab === "tasks" ? (
+              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
+            ) : "No conversations yet. Start one with New message."}
+          </p>
         ) : (
           <ul className="convs">
             {list.map((c) => (
@@ -709,7 +721,8 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
   const f = facts?.thread === threadId ? facts.value : null;
   const name = (id: string | undefined) => (id ? members.get(id)?.name || id : "someone");
   const deps = f?.deps?.dependencies ?? [];
-  const entries = f?.evidence?.entries ?? [];
+  const entries = withRecords(f?.evidence?.entries ?? [], f?.records ?? null);
+  const reload = () => setFacts(null);
   return (
     <details className="pins facts-panel" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>Result and evidence</summary>
@@ -722,11 +735,72 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
           {f.evidence?.evidence_changed_since_review ? <p className="err">Evidence changed since the last review.</p> : null}
           {entries.length ? (
             <ol className="edit-history">
-              {entries.map((e, i) => <li key={i}><time dateTime={e.at}>{new Date(e.at).toLocaleString()}</time> · {evidenceLine(e, name)}</li>)}
+              {entries.map((e, i) => {
+                const href = e.kind === "evidence_recorded" ? safeHref(e.record?.url) : null;
+                return (
+                  <li key={e.record?.id ?? i}>
+                    <time dateTime={e.at}>{new Date(e.at).toLocaleString()}</time> · {evidenceLine(e, name)}
+                    {href ? <> · <a href={href} target="_blank" rel="noopener noreferrer">open</a></> : null}
+                  </li>
+                );
+              })}
             </ol>
           ) : <p className="muted">No evidence recorded yet.</p>}
+          <AddEvidence api={api} threadId={threadId} onAdded={reload} />
         </div>
       )}
+    </details>
+  );
+}
+
+const EMPTY_DRAFT: EvidenceDraft = { kind: "test_run", source: "", url: "", sha256: "", note: "" };
+
+/** Attach a test run, CI run, diff, outside review, screenshot or note to the task. */
+function AddEvidence({ api, threadId, onAdded }: { api: ThreadsApi; threadId: string; onAdded: () => void }) {
+  const [draft, setDraft] = useState<EvidenceDraft>(EMPTY_DRAFT);
+  const [busy, setBusy] = useState(false);
+  const why = evidenceRefusal(draft);
+  const set = (k: keyof EvidenceDraft) => (e: { currentTarget: { value: string } }) => {
+    const value = e.currentTarget.value;
+    setDraft((d) => ({ ...d, [k]: value }));
+  };
+  const submit = async () => {
+    if (why || busy) return;
+    setBusy(true);
+    try {
+      await api.addEvidence(threadId, draft);
+      say("Evidence recorded");
+      setDraft(EMPTY_DRAFT);
+      onAdded();
+    } catch (err) {
+      sayError(err, "Could not record the evidence");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <details className="add-evidence">
+      <summary>Add evidence</summary>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <label>
+          Kind{" "}
+          <select value={draft.kind} onChange={(e) => setDraft((d) => ({ ...d, kind: e.currentTarget.value as EvidenceKind }))}>
+            {EVIDENCE_KINDS.map((k) => <option key={k} value={k}>{EVIDENCE_KIND_WORD[k]}</option>)}
+          </select>
+        </label>
+        <label>Source <input value={draft.source} onChange={set("source")} placeholder="cargo test, github-actions" maxLength={200} /></label>
+        <label>URL <input type="url" value={draft.url} onChange={set("url")} placeholder="https://" /></label>
+        <label>sha256 <input value={draft.sha256} onChange={set("sha256")} spellCheck={false} /></label>
+        <label>Note <textarea value={draft.note} onChange={set("note")} rows={2} maxLength={4000} /></label>
+        {why && (draft.source || draft.url || draft.sha256 || draft.note) ? <p className="muted">{why}</p> : null}
+        <button type="submit" className="btn" disabled={busy || Boolean(why)}>{busy ? "Recording" : "Record"}</button>
+        <p className="muted">Records are kept as written; they cannot be edited or removed. Adding one needs a bearer token.</p>
+      </form>
     </details>
   );
 }

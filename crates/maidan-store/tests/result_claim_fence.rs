@@ -8,10 +8,9 @@ use maidan_types::{
     ThreadId,
 };
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

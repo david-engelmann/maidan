@@ -7,10 +7,10 @@ use std::collections::HashSet;
 
 use maidan_store::{catch_up_since, prelude::*, run_sqlite_migrations, CATCH_UP_LIMIT};
 use maidan_types::{Event, MemberKind, NewMember, NewWorkspace, WorkspaceId};
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::SqlitePool;
 
 async fn pool() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

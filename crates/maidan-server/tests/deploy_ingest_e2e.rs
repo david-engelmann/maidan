@@ -15,13 +15,12 @@ use maidan_types::{
     ThreadNoticeKind,
 };
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const SECRET: &str = "deploy-hook-secret";
 const URL_PATH: &str = "/integrations/deploys/events";
 
 async fn spawn(with_hook: bool) -> (SocketAddr, Arc<dyn Store>, tokio::task::JoinHandle<()>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

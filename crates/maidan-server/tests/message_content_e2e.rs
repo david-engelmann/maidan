@@ -9,7 +9,6 @@ use std::{net::SocketAddr, sync::Arc};
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Ctx {
     addr: SocketAddr,
@@ -25,7 +24,7 @@ impl Ctx {
 }
 
 async fn spawn() -> Ctx {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

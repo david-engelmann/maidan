@@ -5,10 +5,9 @@
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations, McpSubscriptionWatch, NewMcpSubscription};
 use maidan_types::{MemberId, MemberKind, NewMember, NewWorkspace, WorkspaceId};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

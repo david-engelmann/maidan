@@ -7,11 +7,10 @@ use maidan_bus::InMemoryBus;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations, AutomationDeliveryFilter};
 use maidan_types::{AutomationSourceKind, NewAutomationDelivery, NewWebhookSubscription};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn unified_deliveries_list_and_replay_webhook_and_automation() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

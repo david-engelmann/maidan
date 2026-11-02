@@ -9,7 +9,6 @@ use std::sync::Arc;
 use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -87,7 +86,7 @@ async fn run_live_claims(store: Arc<dyn Store>, set_expiry: SetExpiry) {
 
 #[tokio::test]
 async fn claim_writes_stamp_the_app_clock_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

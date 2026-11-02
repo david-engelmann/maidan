@@ -14,7 +14,6 @@ use maidan_server::{router, AppState, FederationRuntime};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::StatusCode;
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn token(store: &dyn Store, capabilities: &[&str]) -> String {
     let ws = store
@@ -48,7 +47,7 @@ async fn token(store: &dyn Store, capabilities: &[&str]) -> String {
 
 #[tokio::test]
 async fn operator_status_reports_phase_backfill_and_queues() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -15,7 +15,6 @@ use maidan_types::{
     AuditScope, BudgetLimits, BudgetPatch, ChannelId, EventKind, MemberId, MemberKind,
     NewAuditEvent, NewMember, NewThread, NewWorkspace, ThreadId, UsageDelta, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Room {
     channel: ChannelId,
@@ -414,7 +413,7 @@ async fn run_suite(store: Arc<dyn Store>) {
 
 #[tokio::test]
 async fn claim_wall_every_end_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

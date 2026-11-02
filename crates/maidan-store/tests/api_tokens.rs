@@ -27,7 +27,7 @@ async fn seed_member(store: &dyn Store) -> (WorkspaceId, maidan_types::MemberId)
 
 #[tokio::test]
 async fn api_token_create_lookup_and_revoke() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -72,7 +72,7 @@ async fn api_token_create_lookup_and_revoke() {
 
 #[tokio::test]
 async fn expired_api_token_is_not_active() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -106,7 +106,7 @@ async fn expired_api_token_is_not_active() {
 
 #[tokio::test]
 async fn api_token_hash_is_unique() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

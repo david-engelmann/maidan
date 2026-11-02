@@ -17,7 +17,7 @@ use maidan_types::{
     BusEnvelope, Event, MemberKind, Message, NewChannel, NewMember, NewMessage, NewThread,
     NewWorkspace, UsageMeter, WorkspaceId,
 };
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -330,7 +330,7 @@ async fn the_repair_sweep_skips_a_cut_off_workspace_and_meters_the_other_postgre
 
 #[tokio::test]
 async fn the_repair_sweep_embeds_and_meters_nothing_on_sqlite_where_it_does_not_run() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -402,7 +402,7 @@ async fn a_metered_reindex_skips_a_cut_off_workspace_and_meters_the_other_postgr
 
 #[tokio::test]
 async fn a_metered_reindex_skips_a_cut_off_workspace_and_meters_the_other_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

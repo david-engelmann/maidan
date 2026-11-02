@@ -28,7 +28,7 @@ use maidan_types::{
 use reqwest::Method;
 use serde_json::{json, Value};
 use sqlx::{
-    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions},
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool},
     Row,
 };
 use uuid::Uuid;
@@ -87,7 +87,7 @@ pub async fn spawn_with(configure: impl FnOnce(&mut AppState)) -> Harness {
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_secs(5))
         .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(8)
         .connect_with(options)
         .await

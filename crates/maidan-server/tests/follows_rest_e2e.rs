@@ -17,7 +17,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn mint(store: &dyn Store, ws: WorkspaceId, member: MemberId) -> String {
     mint_with(store, ws, member, vec![capability::WORKSPACE_READ.into()]).await
@@ -47,7 +46,7 @@ async fn mint_with(
 
 #[tokio::test]
 async fn follow_unfollow_and_list_channel() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -325,7 +324,7 @@ async fn follow_unfollow_and_list_channel() {
 /// Auth ENABLED with a minted bearer.
 #[tokio::test]
 async fn mute_and_unmute_thread() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
@@ -432,7 +431,7 @@ async fn mute_and_unmute_thread() {
 /// the caller. Auth ENABLED with a minted bearer.
 #[tokio::test]
 async fn mute_and_unmute_channel() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await
