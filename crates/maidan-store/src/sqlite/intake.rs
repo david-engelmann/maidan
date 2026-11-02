@@ -11,7 +11,7 @@ use maidan_types::{
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use super::{audit, events};
+use super::{audit, events, threads};
 use crate::audit_scope::AuditOwner;
 use crate::error::StoreError;
 
@@ -127,14 +127,28 @@ pub async fn triage(
     id: Uuid,
     triaged_by: MemberId,
     decision: &IntakeDecision,
-    event: NewAuditEvent,
-) -> Result<(IntakeItem, StoredEvent), StoreError> {
-    let (state, thread_id, reason) = match decision {
-        IntakeDecision::Accept { thread_id } => (IntakeState::Accepted, Some(thread_id.0), None),
-        IntakeDecision::Reject { reason } => (IntakeState::Rejected, None, Some(reason.as_str())),
-    };
+    mut event: NewAuditEvent,
+) -> Result<(IntakeItem, Vec<StoredEvent>), StoreError> {
+    if let IntakeDecision::AcceptNewThread { thread } = decision {
+        threads::precheck(pool, thread).await?;
+    }
     let now = Utc::now();
     let mut tx = pool.begin().await?;
+    let mut stored_events = Vec::new();
+    // A new thread is inserted in this transaction, before the guarded
+    // update: a losing concurrent accept rolls back with its thread.
+    let (state, thread_id, reason) = match decision {
+        IntakeDecision::Accept { thread_id } => (IntakeState::Accepted, Some(*thread_id), None),
+        IntakeDecision::AcceptNewThread { thread } => {
+            let (created, stored) = threads::insert_on(&mut tx, thread, None, None, None).await?;
+            stored_events.push(stored);
+            if let Some(metadata) = event.metadata.as_object_mut() {
+                metadata.insert("thread_id".into(), serde_json::json!(created.id.0));
+            }
+            (IntakeState::Accepted, Some(created.id), None)
+        }
+        IntakeDecision::Reject { reason } => (IntakeState::Rejected, None, Some(reason.as_str())),
+    };
     let row = sqlx::query(&format!(
         "UPDATE maidan_intake_items
             SET state = ?, thread_id = ?, reject_reason = ?, triaged_by = ?, triaged_at = ?
@@ -142,7 +156,7 @@ pub async fn triage(
           RETURNING {COLS}"
     ))
     .bind(state.as_str())
-    .bind(thread_id)
+    .bind(thread_id.map(|t| t.0))
     .bind(reason)
     .bind(triaged_by.0)
     .bind(now.to_rfc3339())
@@ -163,24 +177,29 @@ pub async fn triage(
         });
     };
     let item = row_to_item(&row)?;
-    let change = match decision {
-        IntakeDecision::Accept { thread_id } => Event::IntakeAccepted {
+    let change = match (thread_id, decision) {
+        (Some(thread_id), _) => Event::IntakeAccepted {
             occurred_at: now,
             workspace_id,
             intake_id: id,
-            thread_id: *thread_id,
+            thread_id,
             triaged_by,
         },
-        IntakeDecision::Reject { reason } => Event::IntakeRejected {
+        (None, IntakeDecision::Reject { reason }) => Event::IntakeRejected {
             occurred_at: now,
             workspace_id,
             intake_id: id,
             reason: reason.clone(),
             triaged_by,
         },
+        (None, _) => {
+            return Err(StoreError::InvalidInput(
+                "an accepted intake item needs a thread".into(),
+            ))
+        }
     };
-    let stored = events::append_in_tx(&mut tx, &change).await?;
+    stored_events.push(events::append_in_tx(&mut tx, &change).await?);
     audit::append_scoped(&mut tx, AuditOwner::Workspace(workspace_id), event).await?;
     tx.commit().await?;
-    Ok((item, stored))
+    Ok((item, stored_events))
 }

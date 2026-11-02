@@ -970,7 +970,10 @@ pub trait IntakeStore: Send + Sync {
     /// Accept or reject a proposed item once. The state change, `event`'s
     /// audit row and the `IntakeAccepted` / `IntakeRejected` event commit
     /// together. `NotFound` when the item is not in the workspace;
-    /// `Conflict` when it was already triaged.
+    /// `Conflict` when it was already triaged. An `AcceptNewThread` decision
+    /// creates its thread in the same transaction, so a losing concurrent
+    /// accept leaves no thread behind; its `ThreadCreated` event comes first
+    /// in the returned events.
     async fn triage_intake_item_audited(
         &self,
         workspace_id: WorkspaceId,
@@ -978,7 +981,7 @@ pub trait IntakeStore: Send + Sync {
         triaged_by: MemberId,
         decision: maidan_types::IntakeDecision,
         event: NewAuditEvent,
-    ) -> Result<(maidan_types::IntakeItem, StoredEvent), StoreError>;
+    ) -> Result<(maidan_types::IntakeItem, Vec<StoredEvent>), StoreError>;
 }
 
 #[async_trait]

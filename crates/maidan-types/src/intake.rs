@@ -105,10 +105,12 @@ pub struct NewIntakeItem {
 }
 
 /// A triage decision on a proposed item.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum IntakeDecision {
     /// Accept, linking the item to this thread.
     Accept { thread_id: ThreadId },
+    /// Accept into a new thread, created in the triage's own transaction.
+    AcceptNewThread { thread: crate::NewThread },
     /// Reject, with a non-empty reason.
     Reject { reason: String },
 }

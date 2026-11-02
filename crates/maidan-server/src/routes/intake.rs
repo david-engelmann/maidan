@@ -124,20 +124,24 @@ pub async fn triage_intake_item(
                 reason: reason.to_string(),
             }
         }
-        IntakeTriageDecision::Accept => IntakeDecision::Accept {
-            thread_id: accepted_thread(&state, &auth, workspace_id, &item, &body).await?,
-        },
+        IntakeTriageDecision::Accept => {
+            accepted_decision(&state, &auth, workspace_id, &item, &body).await?
+        }
     };
     let (action, metadata) = match &decision {
         IntakeDecision::Accept { thread_id } => (
             "intake.accept",
             serde_json::json!({ "thread_id": thread_id.0 }),
         ),
+        IntakeDecision::AcceptNewThread { thread } => (
+            "intake.accept",
+            serde_json::json!({ "channel_id": thread.channel_id.0 }),
+        ),
         IntakeDecision::Reject { reason } => {
             ("intake.reject", serde_json::json!({ "reason": reason }))
         }
     };
-    let (item, stored) = state
+    let triaged = state
         .store
         .triage_intake_item_audited(
             workspace_id,
@@ -153,20 +157,26 @@ pub async fn triage_intake_item(
                 metadata,
             },
         )
-        .await?;
-    publish_stored(&state, stored).await;
+        .await;
+    let actor = (!auth.bypass).then_some(auth.member_id);
+    let (item, stored) = observe_spawn_denial(&state, actor, triaged).await?;
+    for stored in stored {
+        publish_stored(&state, stored).await;
+    }
     Ok(Json(item))
 }
 
-/// The thread an accepted item links to: the named existing thread, which
-/// must be in the workspace, or a new thread in the named channel.
-async fn accepted_thread(
+/// The accept decision: link the named existing thread, which must be in
+/// the workspace, or create a new thread in the named channel. The new
+/// thread is created by the triage's own transaction, so a concurrent
+/// accept that loses the race leaves no orphan thread.
+async fn accepted_decision(
     state: &AppState,
     auth: &AuthContext,
     workspace_id: WorkspaceId,
     item: &IntakeItem,
     body: &TriageIntakeItem,
-) -> ApiResult<ThreadId> {
+) -> ApiResult<IntakeDecision> {
     match (body.thread_id, body.channel_id) {
         (Some(thread_id), None) => {
             let scope =
@@ -175,7 +185,9 @@ async fn accepted_thread(
             if scope.workspace_id != workspace_id {
                 return Err(ApiError::NotFound);
             }
-            Ok(scope.thread_id)
+            Ok(IntakeDecision::Accept {
+                thread_id: scope.thread_id,
+            })
         }
         (None, Some(channel_id)) => {
             let ctx = resolve_channel_context(state.store.as_ref(), ChannelId(channel_id)).await?;
@@ -183,25 +195,15 @@ async fn accepted_thread(
                 return Err(ApiError::NotFound);
             }
             maidan_auth::ensure_channel_access(state.store.as_ref(), auth, ctx.channel_id).await?;
-            let created = state
-                .store
-                .create_thread_with_footprint(
-                    NewThread {
-                        channel_id: ctx.channel_id,
-                        parent_thread_id: None,
-                        title: Some(item.title.clone()),
-                        description: item.body.clone(),
-                        created_by: auth.attribution().map(|a| a.subject_id),
-                    },
-                    None,
-                    None,
-                    None,
-                )
-                .await;
-            let actor = (!auth.bypass).then_some(auth.member_id);
-            let (thread, stored) = observe_spawn_denial(state, actor, created).await?;
-            publish_stored(state, stored).await;
-            Ok(thread.id)
+            Ok(IntakeDecision::AcceptNewThread {
+                thread: NewThread {
+                    channel_id: ctx.channel_id,
+                    parent_thread_id: None,
+                    title: Some(item.title.clone()),
+                    description: item.body.clone(),
+                    created_by: auth.attribution().map(|a| a.subject_id),
+                },
+            })
         }
         _ => Err(ApiError::BadRequest(
             "accepting needs exactly one of thread_id or channel_id".into(),
