@@ -291,40 +291,133 @@ async fn assert_dependents_stay_waiting(store: &dyn Store) {
     let open_a = channel(store, ws_a, "open-a", false).await;
     let open_b = channel(store, ws_b, "open-b", false).await;
 
-    let covering = task(store, open_a, alice, "the thread that covers it").await;
-    for reason in [
-        CloseReason::Abandoned,
-        CloseReason::Duplicate,
-        CloseReason::Superseded,
-    ] {
+    let deps_of = |t: ThreadId| async move {
+        store
+            .list_thread_dependencies(t)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|d| d.depends_on_thread_id)
+            .collect::<Vec<_>>()
+    };
+
+    // An abandoned close names no replacement, so its dependent stays waiting.
+    let dep = task(store, open_a, alice, "will not land").await;
+    let dependent = task(store, open_a, alice, "waits on it").await;
+    store.add_thread_dependency(dependent, dep).await.unwrap();
+    store
+        .close_abandoned_thread(
+            dep,
+            alice,
+            false,
+            &close(CloseReason::Abandoned, None),
+            audit(ws_a, alice, dep),
+        )
+        .await
+        .unwrap();
+    assert!(!store
+        .thread_dependencies_satisfied(dependent)
+        .await
+        .unwrap());
+    assert_eq!(deps_of(dependent).await, vec![dep]);
+    assert!(store.newly_ready_dependents(dep).await.unwrap().is_empty());
+
+    // A duplicate or superseded close moves each dependent onto the thread
+    // that covers it (#1754): it waits on that one and is ready when it lands.
+    for reason in [CloseReason::Duplicate, CloseReason::Superseded] {
+        let covering = task(store, open_a, alice, "the thread that covers it").await;
         let dep = task(store, open_a, alice, "will not land").await;
         let dependent = task(store, open_a, alice, "waits on it").await;
         store.add_thread_dependency(dependent, dep).await.unwrap();
-        let duplicate_of = match reason {
-            CloseReason::Abandoned => None,
-            _ => Some(covering),
-        };
+        // The replacement's own edge to its stand-in is dropped.
+        store.add_thread_dependency(covering, dep).await.unwrap();
         let (result, _) = store
             .close_abandoned_thread(
                 dep,
                 alice,
                 false,
-                &close(reason, duplicate_of),
+                &close(reason, Some(covering)),
                 audit(ws_a, alice, dep),
             )
             .await
             .unwrap();
         assert_eq!(result.thread.state, ThreadState::Closed);
-        assert!(
-            !store
-                .thread_dependencies_satisfied(dependent)
-                .await
-                .unwrap(),
-            "a dependent of a {} close is not ready",
+        assert_eq!(
+            deps_of(dependent).await,
+            vec![covering],
+            "{}",
             reason.as_str()
         );
-        assert!(store.newly_ready_dependents(dep).await.unwrap().is_empty());
+        assert!(deps_of(covering).await.is_empty(), "{}", reason.as_str());
+        assert!(!store
+            .thread_dependencies_satisfied(dependent)
+            .await
+            .unwrap());
+        let rows = store.list_audit_for_workspace(ws_a, 100).await.unwrap();
+        let row = rows
+            .iter()
+            .find(|r| r.action == "thread.close_abandoned" && r.target_id == Some(dep.0))
+            .expect("the close is audited");
+        assert_eq!(
+            row.metadata["repointed_dependents"],
+            serde_json::json!([dependent.0.to_string()])
+        );
+        assert_eq!(row.metadata["kept_dependents"], serde_json::json!([]));
+
+        store
+            .transition_thread(covering, alice, maidan_fsm::ThreadAction::StartReview)
+            .await
+            .unwrap();
+        store
+            .transition_thread(covering, alice, maidan_fsm::ThreadAction::Close)
+            .await
+            .unwrap();
+        assert!(store
+            .thread_dependencies_satisfied(dependent)
+            .await
+            .unwrap());
+        let ready = store.newly_ready_dependents(covering).await.unwrap();
+        assert_eq!(
+            ready.iter().map(|t| t.id).collect::<Vec<_>>(),
+            vec![dependent]
+        );
     }
+
+    // A move that would close a cycle is refused: the replacement already
+    // waits on the dependent, so the dependent keeps its edge and waits.
+    let dep = task(store, open_a, alice, "will not land").await;
+    let dependent = task(store, open_a, alice, "waits on it").await;
+    let covering = task(store, open_a, alice, "covers it but waits on the dependent").await;
+    store.add_thread_dependency(dependent, dep).await.unwrap();
+    store
+        .add_thread_dependency(covering, dependent)
+        .await
+        .unwrap();
+    store
+        .close_abandoned_thread(
+            dep,
+            alice,
+            false,
+            &close(CloseReason::Duplicate, Some(covering)),
+            audit(ws_a, alice, dep),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deps_of(dependent).await, vec![dep]);
+    assert_eq!(deps_of(covering).await, vec![dependent]);
+    let rows = store.list_audit_for_workspace(ws_a, 100).await.unwrap();
+    let row = rows
+        .iter()
+        .find(|r| r.action == "thread.close_abandoned" && r.target_id == Some(dep.0))
+        .expect("the close is audited");
+    assert_eq!(
+        row.metadata["kept_dependents"],
+        serde_json::json!([dependent.0.to_string()])
+    );
+
+    // Nothing moves in workspace B.
+    let other = store.list_audit_for_workspace(ws_b, 100).await.unwrap();
+    assert!(other.iter().all(|r| r.action != "thread.close_abandoned"));
 
     // The usual close in workspace B still frees its dependent.
     let landed = task(store, open_b, bob, "lands").await;
@@ -387,7 +480,7 @@ async fn only_its_producer_holder_or_a_maintainer_closes_an_abandoned_thread_on_
 }
 
 #[tokio::test]
-async fn a_dependent_of_a_thread_closed_without_landing_stays_waiting_on_sqlite() {
+async fn a_dependent_waits_or_moves_to_the_replacement_on_sqlite() {
     let pool = SqlitePoolOptions::new()
         .connect("sqlite::memory:")
         .await
@@ -402,7 +495,7 @@ async fn a_dependent_of_a_thread_closed_without_landing_stays_waiting_on_sqlite(
 }
 
 #[tokio::test]
-async fn a_dependent_of_a_thread_closed_without_landing_stays_waiting_on_postgres() {
+async fn a_dependent_waits_or_moves_to_the_replacement_on_postgres() {
     let container = match Postgres::default()
         .with_name("pgvector/pgvector")
         .with_tag("pg17")
