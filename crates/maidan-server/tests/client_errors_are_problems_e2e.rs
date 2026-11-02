@@ -97,7 +97,7 @@ async fn assert_problem(request: RequestBuilder, status: StatusCode) -> HeaderMa
     assert!(
         problem["type"]
             .as_str()
-            .is_some_and(|t| t.starts_with("https://maidan.dev/problems/")),
+            .is_some_and(|t| t.starts_with("https://maidan.world/problems/")),
         "{url}: {problem}"
     );
     assert!(

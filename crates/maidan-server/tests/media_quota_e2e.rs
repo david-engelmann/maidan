@@ -153,7 +153,7 @@ async fn refused(response: reqwest::Response) -> (i64, i64, i64) {
     );
     let problem: Value = response.json().await.unwrap();
     assert_eq!(
-        problem["type"], "https://maidan.dev/problems/media-quota-exceeded",
+        problem["type"], "https://maidan.world/problems/media-quota-exceeded",
         "{problem}"
     );
     assert_eq!(problem["status"], 409);

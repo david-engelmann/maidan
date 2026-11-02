@@ -20,6 +20,7 @@ fn pending(state: &str, target: OidcPendingTarget) -> NewOidcPendingAuth {
         return_to: Some("/ui/".into()),
         expires_at: Utc::now() + Duration::minutes(10),
         invite_entry_id: None,
+        workspace_invite_id: None,
     }
 }
 

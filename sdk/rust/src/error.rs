@@ -5,7 +5,7 @@ use std::fmt;
 use serde_json::Value;
 
 /// The URI prefix of every problem type the server emits.
-pub const PROBLEM_BASE: &str = "https://maidan.dev/problems/";
+pub const PROBLEM_BASE: &str = "https://maidan.world/problems/";
 
 /// The problem a failed response carried.
 #[derive(Debug, Clone, PartialEq)]

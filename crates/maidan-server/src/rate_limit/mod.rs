@@ -183,6 +183,10 @@ pub(crate) enum DomainCharge {
     Invite,
     /// A sign-up finishing at the callback with a verified email.
     Signup,
+    /// A workspace admin minting a human invite for an email.
+    WorkspaceInviteMint,
+    /// A human accepting a workspace invite at the OIDC callback.
+    WorkspaceInviteAccept,
 }
 
 /// The bucket key for `email`'s domain (`None` when it has none):
@@ -221,6 +225,10 @@ pub(crate) async fn charge_email_domain(
     let key = match charge {
         DomainCharge::Invite => format!("invite-domain:{domain}"),
         DomainCharge::Signup => format!("signup-domain:{domain}"),
+        DomainCharge::WorkspaceInviteMint => format!("workspace-invite-domain:{domain}"),
+        DomainCharge::WorkspaceInviteAccept => {
+            format!("workspace-invite-accept-domain:{domain}")
+        }
     };
     if try_acquire(&key, cfg.into(), state.rate_limit_redis.as_ref()).await {
         Ok(())

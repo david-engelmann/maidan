@@ -614,6 +614,9 @@ mod workspace_handles;
 #[path = "../workspace_import.rs"]
 mod workspace_import;
 
+#[path = "../workspace_invites.rs"]
+mod workspace_invites;
+
 #[path = "../workspace_purge.rs"]
 mod workspace_purge;
 

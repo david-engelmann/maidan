@@ -29,13 +29,13 @@ pub const WORKSPACE_SIGNUP: &str = "workspace.signup";
 /// The audit action of signing out.
 pub const SESSION_DELETE: &str = "session.delete";
 
-fn random_token() -> String {
+pub(super) fn random_token() -> String {
     let mut bytes = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);
     base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, bytes)
 }
 
-fn safe_return_to(return_to: Option<&str>) -> String {
+pub(super) fn safe_return_to(return_to: Option<&str>) -> String {
     match return_to {
         Some(path) if is_same_origin_path(path) => path.to_string(),
         _ => "/ui/".to_string(),
@@ -76,6 +76,12 @@ pub async fn login(
         .oidc
         .as_ref()
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
+    // An invite link signs in (or up) into the invite's workspace. Unlike a
+    // bare workspace id it is looked up first: a dead invite is refused
+    // before the provider round trip, and the callback checks it again.
+    if let Some(invite) = q.invite.as_deref() {
+        return crate::oidc::invite::start(&state, oidc, invite, q.return_to.clone()).await;
+    }
     // No lookup here: a workspace id that doesn't exist redirects exactly
     // like one that does, and the callback refuses it with the words a
     // workspace the person isn't a member of gets (Hosted Console, open
@@ -101,6 +107,7 @@ pub async fn login(
             return_to: q.return_to.clone(),
             expires_at,
             invite_entry_id: None,
+            workspace_invite_id: None,
         })
         .await?;
 
@@ -109,7 +116,7 @@ pub async fn login(
 
 /// The provider round trip both flows share: in mock mode a bounce
 /// straight to the callback, otherwise the authorize URL with PKCE.
-fn authorize_redirect(
+pub(super) fn authorize_redirect(
     oidc: &crate::oidc::OidcRuntime,
     state_token: String,
     nonce: String,
@@ -195,7 +202,13 @@ async fn start_signup(
         .oidc
         .as_ref()
         .ok_or_else(|| ApiError::Forbidden("OIDC is not enabled".into()))?;
-    if !oidc.settings.signup {
+    // A workspace invite joins an existing workspace, so it needs no
+    // sign-up switch; it still passes the Turnstile check below.
+    let workspace_invite = q
+        .invite
+        .as_deref()
+        .is_some_and(|t| t.starts_with(maidan_types::WORKSPACE_INVITE_SECRET_PREFIX));
+    if !oidc.settings.signup && !workspace_invite {
         return Err(ApiError::NotFound);
     }
 
@@ -210,6 +223,11 @@ async fn start_signup(
             return Ok(Redirect::to(&signup_check_path(&q)).into_response());
         }
         crate::turnstile::verify(turnstile, Some(token), crate::turnstile::Action::Signup).await?;
+    }
+
+    if workspace_invite {
+        let token = q.invite.as_deref().unwrap_or_default();
+        return crate::oidc::invite::start(state, oidc, token, q.return_to.clone()).await;
     }
 
     let invite_entry_id = match q.invite.as_deref() {
@@ -262,6 +280,7 @@ async fn start_signup(
             return_to: q.return_to.clone(),
             expires_at,
             invite_entry_id,
+            workspace_invite_id: None,
         })
         .await?;
 
@@ -436,8 +455,26 @@ async fn complete_signup(
             }
             other => other.into(),
         })?;
-    let session = outcome.session;
+    finish_with_session(
+        state,
+        oidc,
+        headers_in,
+        &outcome.session,
+        pending.return_to.as_deref(),
+    )
+    .await
+}
 
+/// End this browser's previous session, set the new session's cookie and
+/// redirect to the pending return path. Shared by sign-up and invite
+/// acceptance, which both create their session inside the store.
+pub(super) async fn finish_with_session(
+    state: &AppState,
+    oidc: &crate::oidc::OidcRuntime,
+    headers_in: &HeaderMap,
+    session: &maidan_types::MaidanSession,
+    return_to: Option<&str>,
+) -> Result<Response, ApiError> {
     // This browser's previous session, if any, ends now that the new one
     // exists, as at sign-in; a failed end is reported, not hidden.
     if let Some(previous) = parse_session_cookie(headers_in, oidc.session_secret.as_ref())
@@ -476,7 +513,7 @@ async fn complete_signup(
     )
     .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    let location = safe_return_to(pending.return_to.as_deref());
+    let location = safe_return_to(return_to);
     let mut response = Redirect::temporary(&location).into_response();
     response.headers_mut().extend(headers);
     Ok(response)
@@ -547,6 +584,24 @@ pub async fn callback(
     // A sign-up creates its workspace instead of landing in one. The
     // pending kind decides, so a sign-in `state` can never reach this
     // branch or a sign-up `state` the member resolution below.
+    // An invite pending joins the invite's workspace as a new member, so it
+    // never reaches the member resolution below either.
+    if let Some(invite_id) = pending.workspace_invite_id {
+        return crate::oidc::invite::complete(
+            &state,
+            oidc,
+            &pending,
+            invite_id,
+            crate::oidc::invite::Verified {
+                issuer,
+                subject,
+                email,
+                email_verified,
+            },
+            &headers_in,
+        )
+        .await;
+    }
     if pending.target == OidcPendingTarget::SignUp {
         return complete_signup(
             &state,

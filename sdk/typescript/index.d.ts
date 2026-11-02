@@ -52,7 +52,7 @@ export interface Problem {
 }
 
 /** URI prefix of every problem `type` the server emits. */
-export declare const PROBLEM_BASE: "https://maidan.dev/problems/";
+export declare const PROBLEM_BASE: "https://maidan.world/problems/";
 
 /** The most rows the server returns for one page; the paging helpers ask for no more. */
 export declare const MAX_PAGE_SIZE: 500;

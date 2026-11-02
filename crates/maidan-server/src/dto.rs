@@ -1892,6 +1892,29 @@ pub struct MintShareTicketResponse {
     pub secret: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CreateWorkspaceInvite {
+    /// The address the invite is bound to. The identity that accepts it must
+    /// present this email, verified by the identity provider.
+    pub email: String,
+    /// `viewer` or `member`. Never above the inviter's own role.
+    pub role: maidan_types::WorkspaceInviteRole,
+    /// Defaults to seven days from now; at most thirty.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MintWorkspaceInviteResponse {
+    pub invite: maidan_types::WorkspaceInvite,
+    /// Returned once. Only its SHA-256 hash is persisted.
+    pub secret: String,
+    /// The path to send the invitee: sign in (or up) with the identity
+    /// provider and join this workspace. Shown once, like `secret`.
+    pub accept_path: String,
+}
+
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcLoginQuery {
@@ -1901,6 +1924,10 @@ pub struct OidcLoginQuery {
     /// real one and is refused at the callback.
     pub workspace_id: Option<uuid::Uuid>,
     pub return_to: Option<String>,
+    /// A workspace invite secret (`maid_inv_…`). The callback joins the
+    /// identity to the invite's workspace when its verified email matches.
+    /// Takes the place of `workspace_id`.
+    pub invite: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -1915,8 +1942,10 @@ pub struct OidcCallbackQuery {
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct OidcSignupQuery {
-    /// The invite token from the operator's invite link. Optional: an
-    /// address in the instance's sign-up domain list needs none.
+    /// The invite token from the operator's invite link, or a workspace
+    /// invite secret (`maid_inv_…`), which joins an existing workspace
+    /// instead of creating one. Optional: an address in the instance's
+    /// sign-up domain list needs none.
     pub invite: Option<String>,
     pub return_to: Option<String>,
 }

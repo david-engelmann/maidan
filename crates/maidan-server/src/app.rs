@@ -963,6 +963,16 @@ pub fn router(state: AppState) -> Router {
             "/workspaces/{wid}/share-tickets/{tid}",
             delete(routes::revoke_share_ticket),
         )
+        .route(
+            "/workspaces/{wid}/invites",
+            no_store(
+                post(routes::create_workspace_invite).merge(get(routes::list_workspace_invites)),
+            ),
+        )
+        .route(
+            "/workspaces/{wid}/invites/{iid}",
+            delete(routes::revoke_workspace_invite),
+        )
         .route("/capability-sets", get(routes::list_capability_sets))
         .route("/workspaces/{id}/room", get(routes::get_workspace_room))
         .route(

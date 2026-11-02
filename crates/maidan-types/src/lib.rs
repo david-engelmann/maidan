@@ -57,6 +57,7 @@ pub mod usage_meter;
 pub mod waiter;
 pub mod wasi;
 pub mod workspace_import;
+pub mod workspace_invite;
 
 pub use cancel::*;
 pub use change_metrics::*;
@@ -115,3 +116,4 @@ pub use usage_meter::{
 pub use waiter::*;
 pub use wasi::*;
 pub use workspace_import::*;
+pub use workspace_invite::*;

@@ -115,6 +115,7 @@ mod web_push_outbox;
 mod webhooks;
 mod wip;
 mod workspace_handles;
+mod workspace_invites;
 mod workspaces;
 
 use chrono::{DateTime, Utc};
@@ -224,6 +225,7 @@ store_delegations!(SqliteStore, OAuthAsStore);
 store_delegations!(SqliteStore, ReindexStore);
 store_delegations!(SqliteStore, TokenStore);
 store_delegations!(SqliteStore, ShareTicketStore);
+store_delegations!(SqliteStore, WorkspaceInviteStore);
 store_delegations!(SqliteStore, DelegationGrantStore);
 store_delegations!(SqliteStore, PeerStore);
 store_delegations!(SqliteStore, DeliveryCursorStore);

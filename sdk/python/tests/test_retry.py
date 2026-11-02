@@ -9,7 +9,7 @@ import pytest
 
 from maidan import MAX_PAGE_SIZE, Client, MaidanError, retry_delay
 
-IN_FLIGHT = "https://maidan.dev/problems/idempotency-key-in-flight"
+IN_FLIGHT = "https://maidan.world/problems/idempotency-key-in-flight"
 TS = "2026-09-29T00:00:00Z"
 
 
@@ -113,7 +113,7 @@ def test_in_flight_409_retried_plain_409_not():
     c, calls, _ = fake([(409, {"type": IN_FLIGHT}), (201, channel("c"))])
     assert c.channels.create("w", "n").id == "c"
     assert len(calls) == 2
-    c, calls, _ = fake([(409, {"type": "https://maidan.dev/problems/conflict"})])
+    c, calls, _ = fake([(409, {"type": "https://maidan.world/problems/conflict"})])
     with pytest.raises(MaidanError):
         c.channels.create("w", "n")
     assert len(calls) == 1

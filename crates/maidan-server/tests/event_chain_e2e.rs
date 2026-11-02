@@ -141,7 +141,7 @@ async fn verify_ok_then_tamper_is_409() {
     let problem: serde_json::Value = broken.json().await.unwrap();
     assert_eq!(
         problem["type"],
-        "https://maidan.dev/problems/event-log-broken"
+        "https://maidan.world/problems/event-log-broken"
     );
     assert!(problem["detail"]
         .as_str()

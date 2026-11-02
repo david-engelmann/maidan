@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Type
 
-PROBLEM_BASE = "https://maidan.dev/problems/"
+PROBLEM_BASE = "https://maidan.world/problems/"
 
 
 def _str(value: Any) -> Optional[str]:

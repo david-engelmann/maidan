@@ -2552,6 +2552,32 @@
         ],
         "type": "object"
       },
+      "CreateWorkspaceInvite": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The address the invite is bound to. The identity that accepts it must\npresent this email, verified by the identity provider.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Defaults to seven days from now; at most thirty.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/WorkspaceInviteRole",
+            "description": "`viewer` or `member`. Never above the inviter's own role."
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "type": "object"
+      },
       "CreatedAgentResponse": {
         "description": "`POST /workspaces/{wid}/agents` response. `token.secret` is shown once.",
         "properties": {
@@ -5834,6 +5860,27 @@
         ],
         "type": "object"
       },
+      "MintWorkspaceInviteResponse": {
+        "properties": {
+          "accept_path": {
+            "description": "The path to send the invitee: sign in (or up) with the identity\nprovider and join this workspace. Shown once, like `secret`.",
+            "type": "string"
+          },
+          "invite": {
+            "$ref": "#/components/schemas/WorkspaceInvite"
+          },
+          "secret": {
+            "description": "Returned once. Only its SHA-256 hash is persisted.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invite",
+          "secret",
+          "accept_path"
+        ],
+        "type": "object"
+      },
       "ModelEffortOutcome": {
         "description": "One model and effort inside a task class.",
         "properties": {
@@ -7081,7 +7128,7 @@
             "type": "string"
           },
           "type": {
-            "example": "https://maidan.dev/problems/not-found",
+            "example": "https://maidan.world/problems/not-found",
             "type": "string"
           },
           "upload_bytes": {
@@ -13082,6 +13129,81 @@
         "format": "uuid",
         "type": "string"
       },
+      "WorkspaceInvite": {
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accepted_member_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberId",
+                "description": "The member the accepting sign-in created."
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "email": {
+            "description": "The email the invite is bound to, lowercased.",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/WorkspaceInviteId"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/WorkspaceInviteRole"
+          },
+          "workspace_id": {
+            "$ref": "#/components/schemas/WorkspaceId"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "email",
+          "role",
+          "created_by",
+          "expires_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "WorkspaceInviteId": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "WorkspaceInviteRole": {
+        "description": "What an accepted invite lets the person do. Ordered: `Viewer < Member`,\nso \"no higher than the inviter\" is a plain comparison.",
+        "enum": [
+          "viewer",
+          "member"
+        ],
+        "type": "string"
+      },
       "WorkspacePurgeResult": {
         "properties": {
           "api_tokens_revoked": {
@@ -14459,7 +14581,7 @@
     },
     "/auth/oidc/login": {
       "get": {
-        "description": "With `workspace_id`, signs in to that workspace. The id is not looked up\nbefore the redirect: an unknown id redirects like a real one and the\ncallback refuses it with the same 403 as a workspace the person has no\nmember in. Without it (the front door), the callback signs in to the\nidentity's most recently used workspace, adds `choose_workspace=1` to the\nreturn path when there are more, and creates no session (adding\n`no_workspace=1`) when there are none.",
+        "description": "With `invite`, a workspace invite, signs in (or up) into the invite's\nworkspace; the invite is looked up first, and a dead one is refused. With\n`workspace_id`, signs in to that workspace. The id is not looked up\nbefore the redirect: an unknown id redirects like a real one and the\ncallback refuses it with the same 403 as a workspace the person has no\nmember in. With neither (the front door), the callback signs in to the\nidentity's most recently used workspace, adds `choose_workspace=1` to the\nreturn path when there are more, and creates no session (adding\n`no_workspace=1`) when there are none.",
         "operationId": "oidc_login",
         "parameters": [
           {
@@ -14475,6 +14597,15 @@
           {
             "in": "query",
             "name": "return_to",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A workspace invite secret (`maid_inv_…`). The callback joins the\nidentity to the invite's workspace when its verified email matches.\nTakes the place of `workspace_id`.",
+            "in": "query",
+            "name": "invite",
             "required": false,
             "schema": {
               "type": "string"
@@ -14519,11 +14650,11 @@
     },
     "/auth/oidc/signup": {
       "get": {
-        "description": "Creates a workspace for someone who is not a member anywhere yet. The\n`invite` names the waitlist invite the operator minted; without one, the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. 404 unless sign-up is enabled on the instance.",
+        "description": "Two kinds of `invite`. A workspace invite (`maid_inv_…`) joins the\nidentity to the invite's existing workspace, creates no workspace, and\nworks whether or not sign-up is enabled. Otherwise this creates a\nworkspace for someone who is not a member anywhere yet: the `invite`\nnames the waitlist invite the operator minted, and without one the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. Without a workspace invite, 404 unless sign-up is\nenabled on the instance.",
         "operationId": "oidc_signup",
         "parameters": [
           {
-            "description": "The invite token from the operator's invite link. Optional: an\naddress in the instance's sign-up domain list needs none.",
+            "description": "The invite token from the operator's invite link, or a workspace\ninvite secret (`maid_inv_…`), which joins an existing workspace\ninstead of creating one. Optional: an address in the instance's\nsign-up domain list needs none.",
             "in": "query",
             "name": "invite",
             "required": false,
@@ -40979,6 +41110,259 @@
           }
         ],
         "summary": "Accept or reject a proposed intake item",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{wid}/invites": {
+      "get": {
+        "operationId": "list_workspace_invites",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceInvite"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "summary": "List a workspace's invites",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Mints a single-use invite bound to an email and a role (`viewer` or\n`member`, never above the caller's own). The secret and `accept_path` are\nreturned once; only the secret's SHA-256 hash is stored.",
+        "operationId": "create_workspace_invite",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceInvite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MintWorkspaceInviteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Invalid email or expiry"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too many invites for this email domain"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "summary": "Invite a person into the workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/workspaces/{wid}/invites/{iid}": {
+      "delete": {
+        "operationId": "revoke_workspace_invite",
+        "parameters": [
+          {
+            "description": "Workspace id",
+            "in": "path",
+            "name": "wid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Invite id",
+            "in": "path",
+            "name": "iid",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1 to 255 visible ASCII characters, scoped to the caller. A retry with the same key and request gets the first response back with `Idempotent-Replayed: true` instead of running again; kept 24 hours.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "No unused invite with this id in this workspace"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/IdempotencyKeyReused"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "503": {
+            "$ref": "#/components/responses/Overloaded"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": [
+              "workspace:admin"
+            ]
+          }
+        ],
+        "summary": "Revoke an unused workspace invite",
         "tags": [
           "workspaces"
         ]
