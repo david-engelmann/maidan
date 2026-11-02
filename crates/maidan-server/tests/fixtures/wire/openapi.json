@@ -14538,7 +14538,7 @@
     },
     "/auth/oidc/login": {
       "get": {
-        "description": "With `workspace_id`, signs in to that workspace. The id is not looked up\nbefore the redirect: an unknown id redirects like a real one and the\ncallback refuses it with the same 403 as a workspace the person has no\nmember in. Without it (the front door), the callback signs in to the\nidentity's most recently used workspace, adds `choose_workspace=1` to the\nreturn path when there are more, and creates no session (adding\n`no_workspace=1`) when there are none.",
+        "description": "With `invite`, a workspace invite, signs in (or up) into the invite's\nworkspace; the invite is looked up first, and a dead one is refused. With\n`workspace_id`, signs in to that workspace. The id is not looked up\nbefore the redirect: an unknown id redirects like a real one and the\ncallback refuses it with the same 403 as a workspace the person has no\nmember in. With neither (the front door), the callback signs in to the\nidentity's most recently used workspace, adds `choose_workspace=1` to the\nreturn path when there are more, and creates no session (adding\n`no_workspace=1`) when there are none.",
         "operationId": "oidc_login",
         "parameters": [
           {
@@ -14607,7 +14607,7 @@
     },
     "/auth/oidc/signup": {
       "get": {
-        "description": "Creates a workspace for someone who is not a member anywhere yet. The\n`invite` names the waitlist invite the operator minted; without one, the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. 404 unless sign-up is enabled on the instance.",
+        "description": "Two kinds of `invite`. A workspace invite (`maid_inv_…`) joins the\nidentity to the invite's existing workspace, creates no workspace, and\nworks whether or not sign-up is enabled. Otherwise this creates a\nworkspace for someone who is not a member anywhere yet: the `invite`\nnames the waitlist invite the operator minted, and without one the\naddress the identity provider later verifies must sit in the instance's\nsign-up domain list. The callback consumes the pending sign-up and\ncreates the workspace, its first member, the identity and the session in\none transaction. Without a workspace invite, 404 unless sign-up is\nenabled on the instance.",
         "operationId": "oidc_signup",
         "parameters": [
           {

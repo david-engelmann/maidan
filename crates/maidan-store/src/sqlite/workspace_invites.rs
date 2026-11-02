@@ -178,9 +178,11 @@ pub async fn accept(
     invite_audit: crate::AuditFor<WorkspaceInviteAcceptance>,
     session_audit: crate::AuditFor<MaidanSession>,
 ) -> Result<WorkspaceInviteAcceptance, StoreError> {
-    let now = Utc::now();
     let email_lower = accept.email.trim().to_lowercase();
     let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
+    // Read after the write lock: an invite that expired while this waited
+    // must not be consumed.
+    let now = Utc::now();
 
     let already: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM maidan_oidc_identities

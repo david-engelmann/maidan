@@ -53,16 +53,17 @@ fn is_hex_sha256(s: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-/// One `@` with something on both sides, no whitespace, at most 320 bytes.
-/// The provider's verified email is the real check; this keeps junk out.
+/// One `@` with something on both sides, no empty domain label, no
+/// whitespace, at most 320 bytes. A single-label domain passes. The
+/// provider's verified email is the real check; this keeps junk out.
 pub fn is_plausible_email(email: &str) -> bool {
     let Some((local, domain)) = email.split_once('@') else {
         return false;
     };
     email.len() <= 320
         && !local.is_empty()
-        && !domain.is_empty()
         && !domain.contains('@')
+        && domain.split('.').all(|label| !label.is_empty())
         && !email.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
@@ -112,6 +113,22 @@ mod tests {
         assert!(validate_new(&n, now).is_err());
         let (n, now) = new("ann@example.com", Duration::days(1), "ABC");
         assert!(validate_new(&n, now).is_err());
+    }
+
+    #[test]
+    fn an_address_needs_every_domain_label_but_not_a_dot() {
+        assert!(is_plausible_email("ann@example.com"));
+        assert!(is_plausible_email("ann@localhost"));
+        for junk in [
+            "a@.",
+            "a@",
+            "a@example.",
+            "a@.example.com",
+            "a@example..com",
+            "@example.com",
+        ] {
+            assert!(!is_plausible_email(junk), "{junk} passed");
+        }
     }
 
     #[test]

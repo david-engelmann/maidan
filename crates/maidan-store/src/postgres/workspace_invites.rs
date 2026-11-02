@@ -178,7 +178,6 @@ pub async fn accept(
     invite_audit: crate::AuditFor<WorkspaceInviteAcceptance>,
     session_audit: crate::AuditFor<MaidanSession>,
 ) -> Result<WorkspaceInviteAcceptance, StoreError> {
-    let now = Utc::now();
     let email_lower = accept.email.trim().to_lowercase();
     let mut tx = pool.begin().await?;
     // Two callbacks for one identity serialize here, as at sign-up; the
@@ -190,6 +189,9 @@ pub async fn accept(
     .bind(&accept.subject)
     .execute(&mut *tx)
     .await?;
+    // Read after the lock wait: an invite that expired while this waited must
+    // not be consumed.
+    let now = Utc::now();
 
     let already: bool = sqlx::query_scalar(
         "SELECT EXISTS (SELECT 1 FROM maidan_oidc_identities
@@ -204,6 +206,13 @@ pub async fn accept(
         return Err(StoreError::Conflict(INVITE_ALREADY_MEMBER.into()));
     }
 
+    // Two identities accepting different invites with one base handle would
+    // both see it free and the second insert would fail on the unique index;
+    // choosing under a workspace lock gives the second the next number.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('maidan.invite-handle:' || $1, 0))")
+        .bind(accept.workspace_id.0.to_string())
+        .execute(&mut *tx)
+        .await?;
     let mut handle = None;
     for n in 1..=HANDLE_ATTEMPTS {
         let candidate = nth_handle(&accept.handle, n);

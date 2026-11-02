@@ -174,11 +174,22 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
   );
 }
 
+// The clock a screen compares expiries and leases against, moved on every
+// 15 s so a token or invite that lapses while the page is open says so.
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
+}
+
 function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
   const { session, store } = useSession();
   const [version, setVersion] = useState(0);
   const tokens = useTokens(session, api, row.person.id, version);
-  const [now] = useState(() => Date.now());
+  const now = useNow();
   // A secret the server just sent. It lives here only: the panel closing,
   // another member opening, or "I have it" drops it. It is never logged.
   const [secret, setSecret] = useState<{ title: string; value: string } | null>(null);
@@ -312,7 +323,7 @@ function Invites({ api }: { api: PeopleApi }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ title: string; value: string } | null>(null);
-  const [now] = useState(() => Date.now());
+  const now = useNow();
   useEffect(() => {
     if (!canWrite || !workspace) return;
     let live = true;
@@ -392,11 +403,7 @@ function Swarm({ rows, people, api, workspace, presence }: { rows: RosterRow[]; 
   const { data, pause, resume } = useSwarm(session, api);
   const names = useMemo(() => new Map(people.map((p) => [p.id, p.name])), [people]);
   const name = (id: string) => names.get(id) ?? `member ${id.slice(0, 8)}`;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 15000);
-    return () => clearInterval(t);
-  }, []);
+  const now = useNow();
   return (
     <div className="swarm">
       <Builder rows={rows} people={people} workspace={workspace} presence={presence} />
