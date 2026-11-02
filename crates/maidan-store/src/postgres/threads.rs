@@ -80,10 +80,39 @@ pub async fn create_with_footprint(
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
         .filter(|footprint| !footprint.items.is_empty());
+    precheck(pool, &new).await?;
+    let mut tx = pool.begin().await?;
+    let created = insert_on(
+        &mut tx,
+        &new,
+        footprint.as_ref(),
+        attributes.as_ref(),
+        priority_by,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(created)
+}
+
+/// The reads a thread create checks before its transaction: the parent is
+/// in the channel and the spawn budget allows one more thread.
+pub(crate) async fn precheck(pool: &PgPool, new: &NewThread) -> Result<(), StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
+    Ok(())
+}
+
+/// Insert a validated thread, its footprint, attributes and priority, and
+/// its `ThreadCreated` event inside `tx`, so a caller can make the thread
+/// part of a larger transaction. Run [`precheck`] first, outside `tx`.
+pub(crate) async fn insert_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    new: &NewThread,
+    footprint: Option<&maidan_types::Footprint>,
+    attributes: Option<&maidan_types::TaskAttributes>,
+    priority_by: Option<(i64, maidan_types::MemberId)>,
+) -> Result<(Thread, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
-    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_by)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -95,13 +124,13 @@ pub async fn create_with_footprint(
     .bind(new.title.as_deref())
     .bind(new.description.as_deref())
     .bind(new.created_by.map(|m| m.0))
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let thread = row_to_thread(&row)?;
     let workspace_id: Uuid =
         sqlx::query_scalar("SELECT workspace_id FROM maidan_channels WHERE id = $1")
             .bind(new.channel_id.0)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await?;
     let event = Event::ThreadCreated {
         occurred_at: Utc::now(),
@@ -110,15 +139,15 @@ pub async fn create_with_footprint(
         thread: thread.clone(),
     };
     if let Some(footprint) = &footprint {
-        super::footprints::insert_items_on(&mut tx, thread.id, workspace_id, footprint).await?;
+        super::footprints::insert_items_on(tx, thread.id, workspace_id, footprint).await?;
     }
     if let Some(attributes) = &attributes {
-        super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
+        super::thread_attributes::insert_on(tx, thread.id, attributes).await?;
     }
-    super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    super::thread_attributes::apply_default_engine_on(tx, thread.id).await?;
     // The fingerprint covers the attributes as given: a workspace default
     // engine applies to identical briefs alike.
-    super::task_fingerprints::record_on(&mut tx, &thread, &attributes.clone().unwrap_or_default())
+    super::task_fingerprints::record_on(tx, &thread, &attributes.cloned().unwrap_or_default())
         .await?;
     if let Some((priority, by)) = priority_by {
         sqlx::query(
@@ -127,11 +156,10 @@ pub async fn create_with_footprint(
         .bind(thread.id.0)
         .bind(priority)
         .bind(by.0)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
-    let stored = events::append_in_tx(&mut tx, &event).await?;
-    tx.commit().await?;
+    let stored = events::append_in_tx(tx, &event).await?;
     Ok((thread, stored))
 }
 
@@ -170,20 +198,18 @@ fn worked_secs(started: Option<DateTime<Utc>>, ended: DateTime<Utc>) -> Option<i
 }
 
 /// Charge the claim this thread still holds, from its acknowledgement to the
-/// database clock, before a write clears that claim. Locks the row. An
+/// app clock (the same clock that stamps acknowledgement and deadlines), before a write clears that claim. Locks the row. An
 /// unacknowledged claim is charged nothing. `NotFound` when the thread is gone.
 pub(crate) async fn charge_open_claim_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     thread_id: ThreadId,
 ) -> Result<(), StoreError> {
-    let row = sqlx::query(
-        "SELECT work_started_at, NOW() AS ended_at FROM maidan_threads WHERE id = $1 FOR UPDATE",
-    )
-    .bind(thread_id.0)
-    .fetch_optional(&mut **tx)
-    .await?
-    .ok_or(StoreError::NotFound)?;
-    let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
+    let row = sqlx::query("SELECT work_started_at FROM maidan_threads WHERE id = $1 FOR UPDATE")
+        .bind(thread_id.0)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(StoreError::NotFound)?;
+    let worked = worked_secs(row.get("work_started_at"), crate::clock::db_now());
     budget::charge_wall_in_tx(tx, thread_id, worked).await?;
     Ok(())
 }
@@ -197,7 +223,7 @@ pub(crate) async fn release_member_claims_in_tx(
     member_id: MemberId,
 ) -> Result<u64, StoreError> {
     let rows = sqlx::query(
-        "SELECT id, work_started_at, NOW() AS ended_at
+        "SELECT id, work_started_at
          FROM maidan_threads
          WHERE assignee_id = $1 AND tombstoned_at IS NULL
            AND state NOT IN ('closed', 'archived')
@@ -206,8 +232,9 @@ pub(crate) async fn release_member_claims_in_tx(
     .bind(member_id.0)
     .fetch_all(&mut **tx)
     .await?;
+    let ended = crate::clock::db_now();
     for row in &rows {
-        let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
+        let worked = worked_secs(row.get("work_started_at"), ended);
         budget::charge_wall_in_tx(tx, ThreadId(row.get("id")), worked).await?;
     }
     let released = sqlx::query(
@@ -252,7 +279,7 @@ async fn release_fenced_in_tx(
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "SELECT work_started_at, NOW() AS ended_at FROM maidan_threads
+        "SELECT work_started_at FROM maidan_threads
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          FOR UPDATE",
     )
@@ -262,7 +289,7 @@ async fn release_fenced_in_tx(
     .fetch_optional(&mut **tx)
     .await?
     .ok_or(StoreError::NotFound)?;
-    let worked = worked_secs(row.get("work_started_at"), row.get("ended_at"));
+    let worked = worked_secs(row.get("work_started_at"), crate::clock::db_now());
     budget::charge_wall_in_tx(tx, thread_id, worked).await?;
     let row = sqlx::query(
         "UPDATE maidan_threads SET assignee_id = NULL, assignment_expires_at = NULL, claim_lease_id = NULL, claimed_at = NULL, work_started_at = NULL, updated_at = $4
@@ -1300,13 +1327,14 @@ pub async fn acknowledge_claim(
     lease_id: ClaimLeaseId,
 ) -> Result<Thread, StoreError> {
     let row = sqlx::query(
-        "UPDATE maidan_threads SET work_started_at = COALESCE(work_started_at, NOW()), updated_at = NOW()
+        "UPDATE maidan_threads SET work_started_at = COALESCE(work_started_at, $4), updated_at = $4
          WHERE id = $1 AND assignee_id = $2 AND claim_lease_id = $3 AND tombstoned_at IS NULL
          RETURNING id, channel_id, parent_thread_id, title, description, state, created_at, updated_at, tombstoned_at, assignee_id, assignment_expires_at, claim_lease_id, work_started_at, owner_id, created_by",
     )
     .bind(thread_id.0)
     .bind(member_id.0)
     .bind(lease_id.0)
+    .bind(crate::clock::db_now())
     .fetch_optional(pool)
     .await?
     .ok_or(StoreError::NotFound)?;

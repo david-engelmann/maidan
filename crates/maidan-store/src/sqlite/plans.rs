@@ -679,7 +679,7 @@ async fn unlanded_in_tx(
 }
 
 /// Post a system message on `thread_id`, sealed like any other message.
-async fn post_notice_in_tx(
+pub(crate) async fn post_notice_in_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     keys: &ContentKeyring,
     thread_id: ThreadId,

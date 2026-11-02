@@ -256,9 +256,14 @@ async fn submit_review_on(
     let head_sha = match named_head {
         None => tracked,
         Some(named) => {
-            if let Some(tracked) = tracked.as_deref()
-                && !tracked.eq_ignore_ascii_case(named)
-            {
+            // A head nothing tracks can't be checked, so it isn't stored: a
+            // verdict would otherwise name a head nobody verified (#1744).
+            let Some(tracked) = tracked.as_deref() else {
+                return Err(StoreError::Conflict(format!(
+                    "unverified head: you named {named} but this change has no tracked pull request head to check it against; omit head_sha or register the pull request first"
+                )));
+            };
+            if !tracked.eq_ignore_ascii_case(named) {
                 return Err(StoreError::Conflict(format!(
                     "stale head: you reviewed {named} but the change's head is now {tracked}; re-read the change and review again"
                 )));
@@ -443,7 +448,7 @@ pub async fn review_status(
     // Positional binds: thread_id is used three times (the row filter + the two
     // named-set EXISTS subqueries).
     let approvals: i64 = sqlx::query(
-        "SELECT COUNT(*) AS approvals FROM maidan_thread_reviews r
+        "SELECT COUNT(DISTINCT COALESCE(r.actor_id, r.reviewer_id)) AS approvals FROM maidan_thread_reviews r
          JOIN maidan_threads t ON t.id = r.thread_id
          WHERE r.thread_id = ?
            AND r.decision = 'approve'

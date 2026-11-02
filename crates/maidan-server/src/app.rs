@@ -429,6 +429,18 @@ pub fn router(state: AppState) -> Router {
                 .merge(get(routes::get_glossary_term))
                 .merge(delete(routes::delete_glossary_term)),
         )
+        .route(
+            "/workspaces/{wid}/intake",
+            post(routes::create_intake_item).merge(get(routes::list_intake_items)),
+        )
+        .route(
+            "/workspaces/{wid}/intake/{id}",
+            get(routes::get_intake_item),
+        )
+        .route(
+            "/workspaces/{wid}/intake/{id}/triage",
+            post(routes::triage_intake_item),
+        )
         .route("/workspaces/{wid}/events", get(routes::list_events))
         .route(
             "/workspaces/{wid}/events/verify",
@@ -830,6 +842,10 @@ pub fn router(state: AppState) -> Router {
             get(routes::get_review_packet),
         )
         .route("/threads/{id}/evidence", get(routes::get_evidence_timeline))
+        .route(
+            "/threads/{id}/evidence-records",
+            post(routes::add_evidence_record).merge(get(routes::list_evidence_records)),
+        )
         .route(
             "/threads/{id}/artifacts",
             get(routes::list_thread_artifacts),

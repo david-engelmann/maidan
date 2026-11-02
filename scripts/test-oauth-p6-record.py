@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""Tests for oauth-p6-record.py. Run: python3 scripts/test-oauth-p6-record.py
+
+The checks run against the documents in scripts/fixtures/oauth-p6, which copy
+the shape Maidan serves (crates/maidan-server/src/oauth/metadata.rs) and the
+first P6 attempt's failure (2026-10-28: no client metadata documents, so the
+client fell back to dynamic registration)."""
+
+import contextlib
+import importlib.util
+import io
+import json
+import sys
+import unittest
+from pathlib import Path
+
+_SPEC = importlib.util.spec_from_file_location(
+    "oauth_p6_record", Path(__file__).with_name("oauth-p6-record.py")
+)
+p6 = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = p6
+_SPEC.loader.exec_module(p6)
+
+FIXTURES = Path(__file__).with_name("fixtures") / "oauth-p6"
+ORIGIN = "https://maidan.example.com"
+
+
+def fixture(name):
+    return json.loads((FIXTURES / name).read_text())
+
+
+def quiet_report():
+    return p6.Report()
+
+
+class Quiet(unittest.TestCase):
+    def setUp(self):
+        self._out = contextlib.redirect_stdout(io.StringIO())
+        self._out.__enter__()
+
+    def tearDown(self):
+        self._out.__exit__(None, None, None)
+
+
+class Discovery(Quiet):
+    def test_the_challenge_names_the_resource_document(self):
+        r = quiet_report()
+        url = p6.check_challenge(
+            r, ORIGIN, 401,
+            f'Bearer resource_metadata="{ORIGIN}/.well-known/oauth-protected-resource/mcp/streamable"',
+        )
+        self.assertTrue(r.ok)
+        self.assertEqual(url, f"{ORIGIN}/.well-known/oauth-protected-resource/mcp/streamable")
+
+    def test_a_200_or_a_bare_challenge_fails(self):
+        r = quiet_report()
+        p6.check_challenge(r, ORIGIN, 200, "Bearer")
+        self.assertFalse(r.ok)
+        self.assertEqual(sum(not c.ok for c in r.checks), 2)
+
+    def test_the_documents_maidan_serves_pass(self):
+        r = quiet_report()
+        issuer = p6.check_resource_metadata(r, ORIGIN, fixture("resource-metadata.json"))
+        self.assertEqual(issuer, ORIGIN)
+        self.assertTrue(p6.check_server_metadata(r, issuer, fixture("server-metadata.json")))
+        self.assertTrue(r.ok)
+
+    def test_a_resource_document_for_another_resource_fails(self):
+        r = quiet_report()
+        doc = fixture("resource-metadata.json") | {"resource": f"{ORIGIN}/mcp"}
+        p6.check_resource_metadata(r, ORIGIN, doc)
+        self.assertFalse(r.ok)
+
+    def test_the_first_p6_attempts_metadata_fails_on_each_gap(self):
+        r = quiet_report()
+        self.assertFalse(p6.check_server_metadata(r, ORIGIN, fixture("server-metadata-no-cimd.json")))
+        failed = {c.name for c in r.checks if not c.ok}
+        self.assertEqual(
+            failed,
+            {
+                "PKCE S256 only",
+                "client metadata documents advertised",
+                "no dynamic registration endpoint",
+            },
+        )
+
+    def test_the_server_metadata_url_puts_well_known_before_the_path(self):
+        self.assertEqual(p6.as_metadata_url(ORIGIN), f"{ORIGIN}/.well-known/oauth-authorization-server")
+        self.assertEqual(
+            p6.as_metadata_url(f"{ORIGIN}/tenant/"),
+            f"{ORIGIN}/.well-known/oauth-authorization-server/tenant",
+        )
+
+
+class Consent(Quiet):
+    def test_a_redirect_with_state_iss_and_code_passes(self):
+        r = quiet_report()
+        code = p6.check_callback(r, {"code": "c", "state": "s", "iss": ORIGIN}, "s", ORIGIN)
+        self.assertEqual(code, "c")
+
+    def test_a_wrong_state_or_missing_iss_fails(self):
+        for query in ({"code": "c", "state": "x", "iss": ORIGIN}, {"code": "c", "state": "s"}):
+            r = quiet_report()
+            self.assertIsNone(p6.check_callback(r, query, "s", ORIGIN))
+
+    def test_an_error_redirect_fails(self):
+        r = quiet_report()
+        self.assertIsNone(p6.check_callback(r, {"error": "access_denied", "state": "s"}, "s", ORIGIN))
+        self.assertFalse(r.ok)
+
+
+class Token(Quiet):
+    def test_the_token_response_passes(self):
+        r = quiet_report()
+        self.assertIsNotNone(p6.check_token_response(r, 200, "no-store", fixture("token-response.json")))
+
+    def test_a_cacheable_response_or_no_refresh_token_fails(self):
+        r = quiet_report()
+        self.assertIsNone(p6.check_token_response(r, 200, "max-age=60", fixture("token-response.json")))
+        r = quiet_report()
+        body = fixture("token-response.json")
+        del body["refresh_token"]
+        self.assertIsNone(p6.check_token_response(r, 200, "no-store", body))
+
+    def test_a_fingerprint_is_not_the_token(self):
+        fp = p6.fingerprint("mdn_fixture_access")
+        self.assertEqual(len(fp), 12)
+        self.assertNotIn("mdn", fp)
+
+
+class ToolsList(Quiet):
+    def test_an_sse_tools_list_is_read(self):
+        message = p6.jsonrpc_result("text/event-stream", (FIXTURES / "tools-list.sse").read_text())
+        r = quiet_report()
+        self.assertEqual(p6.check_tools_list(r, message), ["claim_next_thread", "post_message"])
+
+    def test_an_empty_list_or_an_error_fails(self):
+        for message in ({"jsonrpc": "2.0", "id": 2, "result": {"tools": []}}, {"jsonrpc": "2.0", "id": 2, "error": {"code": -32601}}, None):
+            r = quiet_report()
+            self.assertEqual(p6.check_tools_list(r, message), [])
+            self.assertFalse(r.ok)
+
+
+class Arguments(Quiet):
+    def test_a_non_https_origin_or_a_non_loopback_redirect_is_refused(self):
+        for argv in (
+            ["--origin", "http://maidan.example.com", "--client-id", "x"],
+            ["--origin", ORIGIN, "--client-id", "x", "--redirect-uri", "https://evil.example/cb"],
+        ):
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                p6.main(argv)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)
