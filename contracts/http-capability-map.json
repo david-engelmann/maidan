@@ -1177,6 +1177,12 @@
   },
   {
     "method": "GET",
+    "path": "/ui/api/tools",
+    "capability": "workspace:read",
+    "surface": "http"
+  },
+  {
+    "method": "GET",
     "path": "/ui/api/threads/{tid}/transitions",
     "capability": "workspace:read",
     "surface": "http"

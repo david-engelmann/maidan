@@ -1536,6 +1536,9 @@ pub fn router(state: AppState) -> Router {
         .route("/ui/api/channels/{cid}/threads", get(routes::list_threads))
         .route("/ui/api/threads/{tid}/messages", get(routes::list_messages))
         .route("/ui/api/threads/{tid}", get(routes::get_thread))
+        // The tool catalog: the same handler and the same `workspace:read`
+        // check as `GET /tools`, so a signed-in session sees one list.
+        .route("/ui/api/tools", get(server_card::tool_catalog))
         .route(
             "/ui/api/workspaces/{wid}/usage-meters",
             get(routes::get_workspace_usage_meters),
