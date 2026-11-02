@@ -496,3 +496,56 @@ mod open_signup_tests {
         assert!(check_open_signup(false, false, true).is_ok());
     }
 }
+
+#[cfg(test)]
+mod emails_verified_env_tests {
+    use super::*;
+
+    /// The only unit test in this crate that reads `OidcSettings::from_env`,
+    /// so setting these variables races no other reader in the process.
+    fn emails_verified_with(value: Option<&str>) -> Option<bool> {
+        // SAFETY: no other test in this binary reads these variables.
+        unsafe {
+            std::env::set_var("MAIDAN_OIDC_ENABLED", "1");
+            std::env::set_var("MAIDAN_OIDC_MOCK", "1");
+            std::env::set_var(
+                "MAIDAN_OIDC_REDIRECT_URI",
+                "http://127.0.0.1/auth/oidc/callback",
+            );
+            std::env::set_var(
+                "MAIDAN_SESSION_SECRET",
+                "a-test-secret-that-is-long-enough-0123456789",
+            );
+            match value {
+                Some(v) => std::env::set_var("MAIDAN_OIDC_EMAILS_VERIFIED", v),
+                None => std::env::remove_var("MAIDAN_OIDC_EMAILS_VERIFIED"),
+            }
+        }
+        match OidcSettings::from_env() {
+            Ok(Some(s)) => Some(s.emails_verified),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn emails_verified_is_read_from_the_environment_and_off_by_default() {
+        assert_eq!(emails_verified_with(None), Some(false));
+        for on in ["1", "true", "TRUE"] {
+            assert_eq!(emails_verified_with(Some(on)), Some(true), "{on}");
+        }
+        for off in ["0", "false", "yes", ""] {
+            assert_eq!(emails_verified_with(Some(off)), Some(false), "{off}");
+        }
+        unsafe {
+            for name in [
+                "MAIDAN_OIDC_ENABLED",
+                "MAIDAN_OIDC_MOCK",
+                "MAIDAN_OIDC_REDIRECT_URI",
+                "MAIDAN_SESSION_SECRET",
+                "MAIDAN_OIDC_EMAILS_VERIFIED",
+            ] {
+                std::env::remove_var(name);
+            }
+        }
+    }
+}

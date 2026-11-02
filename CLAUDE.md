@@ -78,7 +78,8 @@ change.
   (coverage, `mdbook`, the A2A TCK, the MCP Inspector, SDK interop, the PITR
   drill, `ui tests (playwright)`, `loom`, `tla`, the OSV scan, `cargo vet`,
   `open work`, `changelog (released sections)`, the SQLite backup drill) are
-  not required.
+  not required, and the report-only ones run on the push to `dev` after a
+  merge rather than on PRs, so required jobs never queue behind them.
 
 ## Current state (2026-10-27)
 

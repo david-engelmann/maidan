@@ -1,0 +1,55 @@
+{
+  "about": "Example prompts per listing, for the validation record's 'Example prompts through the platform's own model' table. scripts/listing-prompts.py --check keeps every expected tool in the MCP catalog; --listing <id> --run '<cmd>' runs them through a platform's model.",
+  "prompts": {
+    "whoami": {
+      "prompt": "Which Maidan workspace am I connected to, and what can this token do?",
+      "expect": ["whoami"]
+    },
+    "open-work": {
+      "prompt": "What tasks are open in the #build channel that nobody has claimed yet?",
+      "expect": ["list_channels", "list_threads"]
+    },
+    "claim-next": {
+      "prompt": "Claim the next task in the queue that I'm able to work on and tell me what it asks for.",
+      "expect": ["claim_next_thread"]
+    },
+    "post-result": {
+      "prompt": "I've finished the task I claimed. Post this as its result: 'Fixed the login redirect; tests added in auth_redirect.rs.'",
+      "expect": ["set_thread_result"]
+    },
+    "create-task": {
+      "prompt": "Create a task in #build titled 'Upgrade the TLS library' asking for a reviewer before it closes.",
+      "expect": ["create_thread"]
+    },
+    "needs-me": {
+      "prompt": "Is anything waiting on me in Maidan right now: a review, an approval or a question?",
+      "expect": ["get_waiting_inbox"]
+    },
+    "review-packet": {
+      "prompt": "Show me what's waiting for review on the 'Upgrade the TLS library' task: the result, the evidence and who did the work.",
+      "expect": ["find_threads", "get_review_packet"]
+    },
+    "ask-approval": {
+      "prompt": "Before you deploy, ask a person in Maidan to approve the deploy of v2 to production.",
+      "expect": ["request_approval"]
+    },
+    "catch-up": {
+      "prompt": "Catch me up on what happened in #build since yesterday.",
+      "expect": ["list_channels", "catch_up_events"]
+    },
+    "search": {
+      "prompt": "Find the Maidan messages that mention the rate limiter.",
+      "expect": ["search_messages"]
+    }
+  },
+  "listings": {
+    "claude": ["whoami", "open-work", "needs-me", "review-packet", "ask-approval", "catch-up"],
+    "chatgpt": ["whoami", "open-work", "needs-me", "review-packet", "catch-up", "search"],
+    "cursor": ["whoami", "claim-next", "post-result", "ask-approval", "needs-me", "search"],
+    "gemini-cli": ["whoami", "claim-next", "post-result", "create-task", "needs-me"],
+    "copilot-cli": ["whoami", "claim-next", "post-result", "create-task", "needs-me"],
+    "muse": ["whoami", "open-work", "create-task", "needs-me", "catch-up"],
+    "docker": ["whoami", "open-work", "claim-next", "post-result", "create-task", "needs-me"],
+    "registry": ["whoami", "open-work", "claim-next", "post-result", "create-task", "needs-me"]
+  }
+}

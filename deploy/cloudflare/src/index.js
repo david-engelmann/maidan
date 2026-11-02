@@ -10,6 +10,7 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";
 import { edgeRedirect, isSitePage, SITE_CSP, withSecurityHeaders } from "./edge.js";
+import { isStatusRequest, statusResponse } from "./status.js";
 
 // Worker secrets and vars the server reads. Anything else in `env` (the
 // Durable Object binding) stays in the Worker.
@@ -74,6 +75,13 @@ export default {
       return withSecurityHeaders(await env.ASSETS.fetch(request), {
         "content-security-policy": SITE_CSP,
       });
+    }
+    // The public status page, drawn here from the container's `/health` so it
+    // can say plainly when the container does not answer.
+    if (isStatusRequest(request)) {
+      return withSecurityHeaders(
+        await statusResponse(request, () => getContainer(env.MAIDAN).fetch("http://maidan/health")),
+      );
     }
     // A probe would wake a sleeping container only to be told 404.
     if (isScannerProbe(new URL(request.url).pathname)) {
