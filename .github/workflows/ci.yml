@@ -156,6 +156,8 @@ jobs:
         run: python3 scripts/check-agent-skills.py
       - name: HOL Guard contributions match the tool tiers
         run: python3 scripts/gen-hol-guard.py --check
+      - name: listing example prompts name real tools
+        run: python3 scripts/listing-prompts.py --check
       - name: sqlite pools load sqlite-vec
         run: ./scripts/check-sqlite-pools.sh
 
