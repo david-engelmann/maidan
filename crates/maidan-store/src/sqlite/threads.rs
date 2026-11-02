@@ -84,11 +84,40 @@ pub async fn create_with_footprint(
         .map(|footprint| footprint.validated().map_err(StoreError::InvalidInput))
         .transpose()?
         .filter(|footprint| !footprint.items.is_empty());
+    precheck(pool, &new).await?;
+    let mut tx = pool.begin().await?;
+    let created = insert_on(
+        &mut tx,
+        &new,
+        footprint.as_ref(),
+        attributes.as_ref(),
+        priority_by,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(created)
+}
+
+/// The reads a thread create checks before its transaction: the parent is
+/// in the channel and the spawn budget allows one more thread.
+pub(crate) async fn precheck(pool: &SqlitePool, new: &NewThread) -> Result<(), StoreError> {
     validate_parent(pool, new.channel_id, new.parent_thread_id).await?;
     enforce_spawn_budget(pool, new.channel_id, new.parent_thread_id).await?;
+    Ok(())
+}
+
+/// Insert a validated thread, its footprint, attributes and priority, and
+/// its `ThreadCreated` event inside `tx`, so a caller can make the thread
+/// part of a larger transaction. Run [`precheck`] first, outside `tx`.
+pub(crate) async fn insert_on(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    new: &NewThread,
+    footprint: Option<&maidan_types::Footprint>,
+    attributes: Option<&maidan_types::TaskAttributes>,
+    priority_by: Option<(i64, maidan_types::MemberId)>,
+) -> Result<(Thread, StoredEvent), StoreError> {
     let id = Uuid::now_v7();
     let now = Utc::now();
-    let mut tx = pool.begin().await?;
     let row = sqlx::query(
         "INSERT INTO maidan_threads (id, channel_id, parent_thread_id, title, description, created_at, updated_at, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -102,13 +131,13 @@ pub async fn create_with_footprint(
     .bind(now.to_rfc3339())
     .bind(now.to_rfc3339())
     .bind(new.created_by.map(|m| m.0))
-    .fetch_one(&mut *tx)
+    .fetch_one(&mut **tx)
     .await?;
     let thread = row_to_thread(&row)?;
     let workspace_id: Uuid =
         sqlx::query_scalar("SELECT workspace_id FROM maidan_channels WHERE id = ?")
             .bind(new.channel_id.0)
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await?;
     let event = Event::ThreadCreated {
         occurred_at: Utc::now(),
@@ -117,15 +146,15 @@ pub async fn create_with_footprint(
         thread: thread.clone(),
     };
     if let Some(footprint) = &footprint {
-        super::footprints::insert_items_on(&mut tx, thread.id, workspace_id, footprint).await?;
+        super::footprints::insert_items_on(tx, thread.id, workspace_id, footprint).await?;
     }
     if let Some(attributes) = &attributes {
-        super::thread_attributes::insert_on(&mut tx, thread.id, attributes).await?;
+        super::thread_attributes::insert_on(tx, thread.id, attributes).await?;
     }
-    super::thread_attributes::apply_default_engine_on(&mut tx, thread.id).await?;
+    super::thread_attributes::apply_default_engine_on(tx, thread.id).await?;
     // The fingerprint covers the attributes as given: a workspace default
     // engine applies to identical briefs alike.
-    super::task_fingerprints::record_on(&mut tx, &thread, &attributes.clone().unwrap_or_default())
+    super::task_fingerprints::record_on(tx, &thread, &attributes.cloned().unwrap_or_default())
         .await?;
     if let Some((priority, by)) = priority_by {
         sqlx::query(
@@ -135,11 +164,10 @@ pub async fn create_with_footprint(
         .bind(priority)
         .bind(by.0)
             .bind(Utc::now().to_rfc3339())
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
     }
-    let stored = events::append_in_tx(&mut tx, &event).await?;
-    tx.commit().await?;
+    let stored = events::append_in_tx(tx, &event).await?;
     Ok((thread, stored))
 }
 

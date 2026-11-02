@@ -109,6 +109,9 @@ To turn a message into a task, `seed_from_message` with its `message_id` and a
 - **Stop:** `cancel_thread` with a reason ends it unfinished and ends any live
   claim. `close_abandoned_thread` closes one that will not land as
   `duplicate` (with `duplicate_of`), `superseded` or `abandoned`.
+  A duplicate or superseded close moves the closed thread's open dependents
+  onto `duplicate_of`, each with a notice; an abandoned one leaves them
+  waiting, so re-plan or unlink them.
 
 Cancelling, closing and unlinking are not undone by another call: confirm
 with the person first.
