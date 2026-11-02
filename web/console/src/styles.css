@@ -887,7 +887,7 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 :root { --focus: var(--signal); }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .composer-row:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 22%, transparent); }
-.sign-in-token input:focus-visible, .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 2px; }
+.sign-in-token input:focus-visible, .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible { border-color: var(--focus); outline: 3px solid var(--focus); outline-offset: 2px; }
 .need-card:focus-visible, .person-row:focus-visible, .lane .task:focus-visible, .conv:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .conv-state { flex: none; display: grid; place-items: center; width: 32px; height: 32px; }
 .conv-state .state-dot { width: 9px; height: 9px; }
@@ -1025,3 +1025,47 @@ h1, h2, h3, strong, b { font-weight: 600; }
   .need.selected .need-actions .btn { min-width: 112px; }
   .top { max-width: var(--content-max); width: 100%; }
 }
+
+/* Review pane: the result, files and recent messages inline. */
+.review-context { display: grid; }
+.rc-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); min-width: 0; }
+.rc-head { margin: 0 0 6px; font-size: var(--text-sm); font-weight: 500; color: var(--muted); }
+.rc-body { max-height: 260px; overflow: auto; }
+.rc-file-list, .rc-msgs { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.rc-file { min-width: 0; }
+.rc-file-name { margin: 0 0 4px; font-size: var(--text-sm); font-weight: 500; overflow-wrap: anywhere; }
+.rc-thumb { display: block; max-width: min(100%, 360px); max-height: 220px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: var(--hover); }
+.rc-log { max-height: 15em; font-size: 12px; }
+.rc-msg-head { display: flex; gap: 8px; align-items: baseline; margin: 0 0 2px; font-size: var(--text-sm); color: var(--muted); }
+.rc-author { color: var(--ink); font-weight: 500; }
+.rc-msg-body { font-size: var(--text-base); }
+.need-card > .ev-open { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); font-size: var(--text-sm); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.need-card > .ev-open:hover { color: var(--ink); }
+
+/* All caught up. */
+.needs-empty.caught-up { display: grid; justify-items: center; gap: 4px; padding: 72px 16px; border: 0; }
+.caught-mark { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 12px; border-radius: 50%; color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); animation: caught-pop .42s cubic-bezier(.2, .9, .3, 1.3) both; }
+.caught-mark .icon { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24; stroke-dashoffset: 24; animation: caught-draw .36s .18s ease-out forwards; }
+.caught-title { margin: 0; font-size: var(--text-xl); font-weight: 600; color: var(--ink); }
+@keyframes caught-pop { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+@keyframes caught-draw { to { stroke-dashoffset: 0; } }
+@keyframes pane-in { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+
+@media (min-width: 1440px) {
+  .needs > .needs-empty { grid-column: 1 / -1; }
+  .need.selected > .need-card { height: calc(100dvh - 100px); overflow-y: auto; display: flex; flex-direction: column; padding-bottom: 0; animation: pane-in .2s ease-out; }
+  .need.selected > .need-card > .need-actions { position: sticky; bottom: 0; z-index: 1; margin-top: auto; padding: 12px 0 18px; background: var(--card); }
+  .need.selected > .need-card > .need-state:empty { display: none; }
+  .need.selected .rc-body { max-height: none; }
+  .need-pick { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: start; }
+  .need-pick-title { grid-column: 1; grid-row: 1; }
+  .need-pick-age { grid-column: 2; grid-row: 1; justify-self: end; padding-top: 2px; white-space: nowrap; font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .need-pick-age.overdue { color: var(--danger); }
+  .need-pick-kind { grid-column: 1; grid-row: 2; font-size: var(--text-xs); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .caught-mark, .need.selected > .need-card { animation: none; }
+  .caught-mark .icon { animation: none; stroke-dashoffset: 0; }
+}
+@media (max-width: 599px) { .need-actions .btn, .seg a { min-height: 44px; } .seg a { display: inline-flex; align-items: center; } }
+@media (min-width: 1440px) { .content, .top { margin-inline: auto; } }
