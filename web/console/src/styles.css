@@ -1069,3 +1069,44 @@ h1, h2, h3, strong, b { font-weight: 600; }
 }
 @media (max-width: 599px) { .need-actions .btn, .seg a { min-height: 44px; } .seg a { display: inline-flex; align-items: center; } }
 @media (min-width: 1440px) { .content, .top { margin-inline: auto; } }
+
+/* Board: filters, a quick composer, and a task drawer with its evidence. */
+.board-bar .new-task { min-height: 40px; padding: 0 12px; gap: 8px; font-size: var(--text-sm); margin-left: auto; }
+.board-bar .new-task kbd { font: 500 var(--text-2xs)/1 var(--mono, ui-monospace, monospace); padding: 2px 5px; border-radius: 5px; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); opacity: .7; }
+.board-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 14px; }
+.filter-q { position: relative; display: flex; align-items: center; flex: 1 1 260px; max-width: 420px; }
+.filter-q .icon { position: absolute; left: 12px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+.filter-q input { width: 100%; min-height: 40px; padding: 0 12px 0 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; font-size: var(--text-sm); }
+.filter-pick { position: relative; display: flex; align-items: center; }
+.filter-pick select { appearance: none; min-height: 40px; padding: 0 32px 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); font: inherit; font-size: var(--text-sm); }
+.filter-pick .icon { position: absolute; right: 10px; width: 14px; height: 14px; color: var(--muted); pointer-events: none; }
+.filter-count { font-size: var(--text-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.filter-clear { min-height: 40px; padding: 0 10px; font-size: var(--text-sm); }
+.lane-none { margin: 6px 4px; }
+.lanes.wide.one { grid-template-columns: minmax(0, 560px); }
+.composer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--paper-2); animation: pane-in .16s ease-out; }
+.composer-field { flex: 1 1 240px; display: flex; }
+.composer-field input { width: 100%; min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--text-md); }
+.composer-field input:focus-visible { outline: none; }
+.composer:focus-within { border-color: var(--focus); }
+.composer .btn { min-height: 44px; }
+.composer-error { flex-basis: 100%; margin: 0 4px; color: var(--danger); font-size: var(--text-sm); }
+.sheet-context { margin-top: 12px; border-top: 1px solid var(--line); }
+.sheet .ev-open { display: inline-block; margin-top: 10px; }
+@media (min-width: 900px) { .sheet { width: 480px; overflow-y: auto; } }
+@media (max-width: 599px) {
+  .board-bar .new-task { min-height: 44px; }
+  .filter-q { flex-basis: 100%; max-width: none; }
+  .filter-q input, .filter-pick select, .filter-clear { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .composer { animation: none; } }
+.board-filters .filter-pick { flex: 0 0 auto; max-width: 240px; }
+.board-filters .filter-pick select { flex: none; width: auto; min-width: 14ch; max-width: 240px; text-overflow: ellipsis; }
+.sheet-chips { list-style: none; }
+.sheet-chips:empty { display: none; }
+.sheet-chips .chip { display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); font-size: var(--text-xs); color: var(--muted); }
+@media (max-width: 599px) {
+  .board-filters .filter-pick { flex: 1 1 0; max-width: none; }
+  .board-filters .filter-pick select { width: 100%; min-width: 0; max-width: none; }
+  .board-bar .new-task kbd { display: none; }
+}

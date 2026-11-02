@@ -1,12 +1,38 @@
 // The board, iPhone first: a lane picker over one lane of cards on a phone,
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from "react";
 import { BoardApi, LANES, ago, cardAriaLabel, chips, leaseLeft, toLanes, type Card, type LaneKey, type Member, type Thread } from "../core/board.ts";
 import { Icon } from "../shell/icons.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { TaskSheet } from "./TaskSheet.tsx";
+import { EMPTY_QUERY, filtering, matches, readQuery, writeQuery, type BoardQuery } from "../core/boardQuery.ts";
+import { isTyping } from "../shell/commands.ts";
+import { useToolsApi } from "../hooks/useTools.ts";
+
+const QUERY_EVENT = "maidan:board-query";
+function useQuery(): [BoardQuery, (q: BoardQuery) => void] {
+  const hash = useSyncExternalStore(
+    (fn) => {
+      window.addEventListener("hashchange", fn);
+      window.addEventListener(QUERY_EVENT, fn);
+      return () => {
+        window.removeEventListener("hashchange", fn);
+        window.removeEventListener(QUERY_EVENT, fn);
+      };
+    },
+    () => window.location.hash,
+  );
+  const q = useMemo(() => readQuery(hash), [hash]);
+  const set = (next: BoardQuery) => {
+    const h = writeQuery(next);
+    if (h === window.location.hash) return;
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${h}`);
+    window.dispatchEvent(new Event(QUERY_EVENT));
+  };
+  return [q, set];
+}
 
 const WIDE = "(min-width: 900px)";
 function useWide(): boolean {
@@ -47,13 +73,40 @@ export function Board() {
   const now = useNow();
   const reduce = Boolean(useReducedMotion());
   const [lane, setLane] = useState<LaneKey>("open");
-  const [openId, setOpenId] = useState<string | null>(null);
-  const lanes = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
+  const [query, setQuery] = useQuery();
+  const openId = query.task;
+  const setOpenId = (task: string | null) => setQuery({ ...readQuery(window.location.hash), task });
+  const [composing, setComposing] = useState(false);
+  const all = useMemo(() => toLanes(data.threads, data.gates), [data.threads, data.gates]);
+  const lanes = useMemo(() => {
+    const out = { ...all };
+    for (const l of LANES) out[l.key] = all[l.key].filter((c) => matches(c, { ...query, state: null }));
+    return out;
+  }, [all, query]);
   const opened = data.threads.find((t) => t.id === openId) ?? null;
+  const agents = useMemo(() => {
+    const held = new Set(data.threads.map((t) => t.assignee_id).filter(Boolean));
+    return [...data.members.values()].filter((m) => held.has(m.id) || (m.kind && m.kind !== "human")).sort((a, b) => a.name.localeCompare(b.name));
+  }, [data.threads, data.members]);
+
+  // c starts a new task, as long as nothing else has the keyboard.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "c" || e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTyping(e.target) || document.querySelector("[aria-modal='true']")) return;
+      if (!data.channelId) return;
+      e.preventDefault();
+      setComposing(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [data.channelId]);
 
   if (session.status === "loading") return <p className="muted">Checking your sign-in…</p>;
 
-  const shown = wide ? LANES : LANES.filter((l) => l.key === lane);
+  const activeLane = query.state ?? lane;
+  const shown = wide ? LANES.filter((l) => !query.state || l.key === query.state) : LANES.filter((l) => l.key === activeLane);
+  const total = LANES.reduce((n, l) => n + all[l.key].length, 0);
+  const visible = (query.state ? [query.state] : LANES.map((l) => l.key)).reduce((n, k) => n + lanes[k].length, 0);
   return (
     <div className="board">
       <div className="board-bar">
@@ -68,9 +121,28 @@ export function Board() {
           <Icon name="chevron" />
         </label>
         <p className="board-summary" role="status" aria-live="polite">
-          {data.status === "loading" ? "Loading…" : data.error ?? summary(lanes)}
+          {data.status === "loading" ? "Loading…" : data.error ?? summary(all)}
         </p>
+        <button type="button" className="btn go new-task" onClick={() => setComposing(true)} disabled={!data.channelId} aria-keyshortcuts="c">
+          <span>New task</span>
+          <kbd aria-hidden="true">C</kbd>
+        </button>
       </div>
+
+      {composing && data.channelId && (
+        <Composer
+          channelId={data.channelId}
+          onDone={(id) => {
+            setComposing(false);
+            if (id) {
+              void refresh();
+              setOpenId(id);
+            }
+          }}
+        />
+      )}
+
+      <FilterBar query={query} agents={agents} onChange={(q) => setQuery({ ...q, task: query.task })} total={total} visible={visible} />
 
       {!wide && (
         <div className="lane-pick" role="tablist" aria-label="Lanes">
@@ -79,21 +151,25 @@ export function Board() {
               key={l.key}
               role="tab"
               id={`tab-${l.key}`}
-              aria-selected={lane === l.key}
+              aria-selected={activeLane === l.key}
               aria-controls={`lane-${l.key}`}
-              tabIndex={lane === l.key ? 0 : -1}
-              onClick={() => setLane(l.key)}
+              tabIndex={activeLane === l.key ? 0 : -1}
+              onClick={() => {
+                setLane(l.key);
+                if (query.state) setQuery({ ...query, state: null });
+              }}
               onKeyDown={(e) => {
-                const i = LANES.findIndex((x) => x.key === lane);
+                const i = LANES.findIndex((x) => x.key === activeLane);
                 const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
                 if (!step) return;
                 e.preventDefault();
                 const next = LANES[(i + step + LANES.length) % LANES.length].key;
                 setLane(next);
+                if (query.state) setQuery({ ...query, state: null });
                 document.getElementById(`tab-${next}`)?.focus();
               }}
             >
-              {lane === l.key && <motion.span className="seg steel" layoutId="lane-seg" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }} />}
+              {activeLane === l.key && <motion.span className="seg steel" layoutId="lane-seg" transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 500, damping: 40 }} />}
               <span className="seg-label" aria-hidden="true">{l.short}</span>
               <span className="count" aria-hidden="true">{lanes[l.key].length}</span>
               <span className="visually-hidden">{`${l.title}, ${lanes[l.key].length}`}</span>
@@ -108,7 +184,7 @@ export function Board() {
           <button className="button steel" onClick={() => void refresh()}>Try again</button>
         </div>
       ) : (
-        <div className={wide ? "lanes wide" : "lanes"}>
+        <div className={wide ? `lanes wide${query.state ? " one" : ""}` : "lanes"}>
           {shown.map((l) => (
             <section
               key={l.key}
@@ -148,7 +224,7 @@ export function Board() {
                     </motion.li>
                   ))}
                 </AnimatePresence>
-                {!lanes[l.key].length && data.status === "ready" && <li className="empty"><EmptyLane k={l.key} /></li>}
+                {!lanes[l.key].length && data.status === "ready" && <li className="empty">{filtering(query) && all[l.key].length ? <p className="muted small lane-none">Nothing here matches.</p> : <EmptyLane k={l.key} />}</li>}
               </ul>
             </section>
           ))}
@@ -252,3 +328,71 @@ function EmptyLane({ k }: { k: LaneKey }) {
   );
 }
 
+
+function FilterBar({ query, agents, onChange, total, visible }: { query: BoardQuery; agents: Member[]; onChange: (q: BoardQuery) => void; total: number; visible: number }) {
+  const on = filtering(query);
+  return (
+    <div className="board-filters" role="search" aria-label="Filter tasks">
+      <label className="filter-q">
+        <span className="visually-hidden">Search tasks</span>
+        <Icon name="search" />
+        <input type="search" placeholder="Search tasks" value={query.q} onChange={(e) => onChange({ ...query, q: e.target.value })} spellCheck={false} />
+      </label>
+      <label className="filter-pick">
+        <span className="visually-hidden">Agent</span>
+        <select value={query.agent ?? ""} onChange={(e) => onChange({ ...query, agent: e.target.value || null })}>
+          <option value="">Anyone</option>
+          {agents.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <Icon name="chevron" />
+      </label>
+      <label className="filter-pick">
+        <span className="visually-hidden">State</span>
+        <select value={query.state ?? ""} onChange={(e) => onChange({ ...query, state: (e.target.value || null) as BoardQuery["state"] })}>
+          <option value="">Any state</option>
+          {LANES.map((l) => <option key={l.key} value={l.key}>{l.title}</option>)}
+        </select>
+        <Icon name="chevron" />
+      </label>
+      {on && (
+        <>
+          <span className="filter-count" role="status">{`${visible} of ${total}`}</span>
+          <button type="button" className="btn text filter-clear" onClick={() => onChange(EMPTY_QUERY)}>Clear</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Composer({ channelId, onDone }: { channelId: string; onDone: (id: string | null) => void }) {
+  const tools = useToolsApi();
+  const input = useRef<HTMLInputElement>(null);
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => input.current?.focus(), []);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const made = await tools.createThread(channelId, title);
+      onDone(made?.id ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create the task");
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="composer" onSubmit={(e) => void submit(e)} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); onDone(null); } }} aria-label="New task">
+      <label className="composer-field">
+        <span className="visually-hidden">Task title</span>
+        <input ref={input} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing?" maxLength={200} disabled={busy} />
+      </label>
+      <button type="submit" className="btn go" disabled={busy || !title.trim()}>{busy ? "Creating…" : "Create"}</button>
+      <button type="button" className="btn text" onClick={() => onDone(null)} disabled={busy}>Cancel</button>
+      {error && <p className="composer-error" role="alert">{error}</p>}
+    </form>
+  );
+}

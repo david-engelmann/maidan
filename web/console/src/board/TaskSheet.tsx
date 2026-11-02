@@ -6,6 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, type TransitionAction, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
 import { hasToken } from "../core/api.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { useToolsApi } from "../hooks/useTools.ts";
+import { ReviewContext } from "../needs/ReviewContext.tsx";
+import { convHash } from "../core/threads.ts";
 
 type Props = {
   thread: Thread | null;
@@ -160,6 +163,9 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
       )}
       {th.status?.note && <p className="muted">{th.status.note}</p>}
 
+      <SheetContext tid={th.id} />
+      <a className="ev-open" href={convHash({ kind: "task", id: th.id })}>Open full thread</a>
+
       <div className="sheet-actions">
         {can.claim !== false && (
           <button className="button steel" disabled={busy !== null || claimWhy !== null} aria-describedby={claimWhy ? "claim-why" : undefined} onClick={() => void act("claim")}>
@@ -247,4 +253,21 @@ function MoreActions({ th, api, onChanged, setNote }: { th: Thread; api: BoardAp
       )}
     </details>
   );
+}
+
+/** The task's evidence and latest messages, as the review pane shows them. */
+function SheetContext({ tid }: { tid: string }) {
+  const tools = useToolsApi();
+  const [shas, setShas] = useState<{ tid: string; list: string[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    tools.linked(tid).then(
+      (list) => live && setShas({ tid, list }),
+      () => live && setShas({ tid, list: [] }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [tools, tid]);
+  return <div className="sheet-context"><ReviewContext tid={tid} shas={shas?.tid === tid ? shas.list : []} /></div>;
 }
