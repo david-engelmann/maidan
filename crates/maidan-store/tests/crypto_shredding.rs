@@ -2261,7 +2261,7 @@ mod blob_reap {
         // busy_timeout and foreign_keys are per connection. Applying them once
         // on the pool leaves the other three connections fail-fast, so a write
         // that overlaps a reap's lock returns "database is locked" at once.
-        let pool = super::maidan_search::sqlite_pool_options()
+        let pool = maidan_search::sqlite_pool_options()
             .max_connections(4)
             .after_connect(|conn, _| {
                 Box::pin(async move {
