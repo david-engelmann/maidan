@@ -32,7 +32,7 @@ export type Thread = {
 
 export type Gate = { hasSchema: boolean };
 export type Channel = { id: string; name: string };
-export type Member = { id: string; name: string; kind?: string };
+export type Member = { id: string; name: string; kind?: string; handle?: string };
 export type Transition = { actor_id?: string | null; to_state?: string; from_state?: string; at?: string; created_at?: string };
 
 export type Chrome = { label: string; hint: string; lane: LaneKey };
@@ -257,7 +257,7 @@ export class BoardApi {
 
   async members(workspaceId: string): Promise<Member[]> {
     const rows = await this.get<Array<{ id: string; display_name?: string | null; handle?: string; kind?: string }>>(`/workspaces/${workspaceId}/members`);
-    return rows.map((m) => ({ id: m.id, name: m.display_name || m.handle || m.id.slice(0, 8), kind: m.kind }));
+    return rows.map((m) => ({ id: m.id, name: m.display_name || m.handle || m.id.slice(0, 8), kind: m.kind, handle: m.handle }));
   }
 
   /** Every task in the channel: pages until a short page or a stuck cursor. */

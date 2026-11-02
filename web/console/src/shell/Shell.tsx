@@ -76,6 +76,18 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
   return (
     <div className="shell">
+      {/* Routes live in the hash, so the skip link moves focus itself rather than
+          setting #main, which would read as a route. */}
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById("main")?.focus();
+        }}
+      >
+        Skip to content
+      </a>
       <nav className="rail" aria-label="Places">
         <a className="brand" href="#/board" aria-label="Maidan console">
           <Mark className="mark" />
@@ -100,7 +112,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         </div>
       </header>
 
-      <main className="content" id="main">
+      <main className="content" id="main" tabIndex={-1}>
         <motion.section
           key={route}
           initial={reduce ? false : { opacity: 0, y: 8 }}
