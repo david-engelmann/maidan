@@ -2,7 +2,8 @@
 // all four lanes side by side on a wide screen. A card opens the task sheet.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { ANIMATE_UP_TO, BoardApi, LANE_PAGE, LANES, windowed, boardHealth, byAgent, presenceStrip, cardAriaLabel, cardWhen, chips, healthMatch, staleBanner, badgeTargets, hasVotes, voteWords, type VoteBadge, toLanes, type Card, type HealthKey, type LaneKey, type Member } from "../core/board.ts";
+import { useCardVotes } from "../hooks/useCardVotes.ts";
 import { liveStatus } from "../core/bus.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePresence } from "../hooks/usePeople.ts";
@@ -64,6 +65,8 @@ export function Board() {
     [data.threads, active, now],
   );
   const lanes = useMemo(() => toLanes(shownThreads, data.gates), [shownThreads, data.gates]);
+  const voteIds = useMemo(() => badgeTargets(lanes), [lanes]);
+  const votes = useCardVotes(api, voteIds);
   // How many cards each lane or group renders; a channel switch starts over.
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [limitsFor, setLimitsFor] = useState(data.channelId);
@@ -193,7 +196,7 @@ export function Board() {
               <ul className="cards">
                 {windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).shown.map((c) => (
                   <li key={c.thread.id}>
-                    <TaskCard card={c} now={now} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
+                    <TaskCard card={c} now={now} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} votes={votes.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
                   </li>
                 ))}
               </ul>
@@ -229,7 +232,7 @@ export function Board() {
                       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97 }}
                       transition={{ duration: 0.18 }}
                     >
-                      <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
+                      <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} votes={votes.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
                     </motion.li>
                   ))}
                 </AnimatePresence>
@@ -254,10 +257,10 @@ export function Board() {
   );
 }
 
-function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; refusal?: string; onOpen: () => void }) {
+function TaskCard({ card, now, member, fresh, refusal, votes, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; refusal?: string; votes?: VoteBadge; onOpen: () => void }) {
   const th = card.thread;
   return (
-    <button type="button" className={`task ${fresh ? "fresh" : ""}`} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}`} aria-haspopup="dialog" onClick={onOpen}>
+    <button type="button" className={`task ${fresh ? "fresh" : ""}`} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}${hasVotes(votes) ? `, votes: ${voteWords(votes)}` : ""}`} aria-haspopup="dialog" onClick={onOpen}>
       <span className="task-title">{card.title}</span>
       <span className="task-foot">
         <span className={`state state-${card.chrome.lane}`}>{card.label}</span>
@@ -265,6 +268,13 @@ function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; n
           <span key={ch.kind} className={`chip chip-${ch.kind}`} title={ch.title}>{ch.text}</span>
         ))}
         {refusal !== undefined && <span className="chip chip-refused" title={refusal || "The server refused this close"}>Close refused</span>}
+        {hasVotes(votes) && (
+          <span className="chip chip-votes" title={voteWords(votes)} aria-hidden="true">
+            {votes.approve ? <span className="vote-n approve">✓{votes.approve}</span> : null}
+            {votes.request_changes ? <span className="vote-n changes">✗{votes.request_changes}</span> : null}
+            {votes.ack ? <span className="vote-n ack">ack {votes.ack}</span> : null}
+          </span>
+        )}
         {member && <span className="who">{member.name}</span>}
         <span className="when">{cardWhen(card, now)}</span>
       </span>

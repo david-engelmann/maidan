@@ -368,6 +368,39 @@ export class BoardApi {
     return (await res.json()) as T;
   }
 
+  /** Set once GET /threads/{id}/votes answers 404: this server predates it. */
+  private threadVotesMissing = false;
+
+  private async getOr404<T>(path: string): Promise<T | null> {
+    const c = this.creds();
+    const res = await this.fetchFn(apiPath(c, path), { headers: headers(c), credentials: "include" });
+    if (res.status === 404) return null;
+    if (!res.ok) return fail(res, this.mode());
+    return (await res.json()) as T;
+  }
+
+  /**
+   * A card's vote counts. One call to GET /threads/{id}/votes; on a server
+   * without it (404), the thread's messages and their per-message votes.
+   * Null when neither read is there.
+   */
+  async cardVotes(threadId: string): Promise<VoteBadge | null> {
+    if (!this.threadVotesMissing) {
+      const tv = await this.getOr404<ThreadVotesBody>(`/threads/${threadId}/votes`);
+      if (tv) return badgeFromThread(tv);
+      this.threadVotesMissing = true;
+    }
+    const messages = await this.getOr404<Array<{ id: string }>>(`/threads/${threadId}/messages?limit=50`);
+    if (!messages) return null;
+    const rows: VoteKindRow[] = [];
+    for (const m of messages) {
+      const votes = await this.getOr404<VoteKindRow[]>(`/messages/${m.id}/votes`);
+      if (!votes) return null;
+      rows.push(...votes);
+    }
+    return badgeFromRows(rows);
+  }
+
   async channels(workspaceId: string): Promise<Channel[]> {
     const rows = await this.get<Array<{ id: string; name: string; kind?: string }>>(`/workspaces/${workspaceId}/channels`);
     return rows.map((r) => ({ id: r.id, name: r.name }));
@@ -453,4 +486,44 @@ export class BoardApi {
     if (!res.ok) return fail(res, this.mode());
     return (await res.json()) as Thread;
   }
+}
+
+// ---- Card vote badges ------------------------------------------------------
+
+export type VoteBadge = { approve: number; request_changes: number; ack: number };
+export type VoteKindRow = { kind: string };
+export type ThreadVotesBody = { thread_id: string; messages: Array<{ message_id: string; approve: number; request_changes: number; ack: number }> };
+
+const NO_VOTES: VoteBadge = { approve: 0, request_changes: 0, ack: 0 };
+
+export function badgeFromThread(body: ThreadVotesBody): VoteBadge {
+  return body.messages.reduce(
+    (b, m) => ({ approve: b.approve + (m.approve || 0), request_changes: b.request_changes + (m.request_changes || 0), ack: b.ack + (m.ack || 0) }),
+    NO_VOTES,
+  );
+}
+
+export function badgeFromRows(rows: VoteKindRow[]): VoteBadge {
+  const b = { ...NO_VOTES };
+  for (const r of rows) if (r.kind === "approve" || r.kind === "request_changes" || r.kind === "ack") b[r.kind] += 1;
+  return b;
+}
+
+export function hasVotes(b: VoteBadge | null | undefined): b is VoteBadge {
+  return !!b && b.approve + b.request_changes + b.ack > 0;
+}
+
+/** "2 approve, 1 changes requested": the badge's words for a screen reader. */
+export function voteWords(b: VoteBadge): string {
+  const parts: string[] = [];
+  if (b.approve) parts.push(`${b.approve} approve`);
+  if (b.request_changes) parts.push(`${b.request_changes} changes requested`);
+  if (b.ack) parts.push(`${b.ack} ack`);
+  return parts.join(", ");
+}
+
+/** Which cards get a badge: review-lane cards first, at most `cap` reads. */
+export const VOTE_BADGE_CAP = 40;
+export function badgeTargets(lanes: Record<LaneKey, Card[]>, cap = VOTE_BADGE_CAP): string[] {
+  return [...lanes.review, ...lanes.working].slice(0, cap).map((c) => c.thread.id);
 }
