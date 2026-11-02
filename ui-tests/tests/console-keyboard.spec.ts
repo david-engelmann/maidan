@@ -50,7 +50,7 @@ for (const hash of SCREENS) {
 test("a live refresh keeps focus on the card it was on", async ({ page, request }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/board");
-  const card = page.locator(".task").first();
+  const card = page.locator("button.task").first();
   await expect(card).toBeVisible();
   const name = await card.getAttribute("aria-label");
   await card.focus();
