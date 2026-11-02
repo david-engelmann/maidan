@@ -59,8 +59,7 @@ async fn set_get_delete_member_email_postgres() {
         return;
     };
     let store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pool.clone()));
-    let search: Arc<dyn maidan_search::Search> =
-        Arc::new(maidan_search::PostgresSearch::new(pool));
+    let search: Arc<dyn maidan_search::Search> = Arc::new(maidan_search::PostgresSearch::new(pool));
     email_lifecycle(store, search).await;
 }
 
