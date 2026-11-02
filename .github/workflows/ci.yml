@@ -212,6 +212,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: install nextest
         uses: taiki-e/install-action@v2
         with:
@@ -258,6 +260,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: set up python
         uses: actions/setup-python@v5
         with:
@@ -289,6 +293,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: loom
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: bus models
         run: cargo test -p maidan-bus --features loom --release --lib loom
       - name: presence models
@@ -321,6 +326,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           # The Inspector requires Node >= 22.19.
@@ -355,6 +362,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -469,6 +478,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -510,6 +521,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -642,6 +655,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       # Reading the dependency graph is enough to prove the default build
       # leaves sqlite-vec out. The unit and lint jobs already compile the
       # default build; compiling it here too took ten of the old fifteen minutes.
@@ -679,6 +694,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: release build and e2e without bootstrap feature
         run: |
           cargo build -p maidan-server --release --no-default-features
@@ -746,6 +763,8 @@ jobs:
           components: llvm-tools-preview
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: install nextest + cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
@@ -1143,6 +1162,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: bring up a primary + streaming standby
         run: |
           eval "$(scripts/replica-harness.sh up)"
@@ -1180,6 +1201,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - name: build the capture harness
         run: cargo build --example capture_server -p maidan-server
       - name: install node deps
@@ -1222,6 +1245,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
