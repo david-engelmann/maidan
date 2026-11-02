@@ -377,12 +377,50 @@ if claim:
     # Approved by ${reviewer},
     # never by the worker itself`;
 }
+// The Clipboard API exists only in secure contexts, so a self-hosted page on
+// plain http (a LAN address) has none: fall back to a selected textarea, and
+// say so when both fail instead of doing nothing.
+async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to the textarea path
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.className = "copy-buffer";
+  document.body.appendChild(area);
+  area.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  area.remove();
+  return ok;
+}
 function Copy({ text, label }: { text: string; label: string }) {
-  const [done, setDone] = useState(false);
+  const [state, setState] = useState<"idle" | "done" | "failed">("idle");
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  async function copy() {
+    const ok = await writeClipboard(text);
+    setState(ok ? "done" : "failed");
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState("idle"), ok ? 1400 : 4000);
+  }
   return (
-    <button type="button" className="copy" aria-label={`Copy ${label}`} onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); window.setTimeout(() => setDone(false), 1400); }); }}>
-      {done ? "Copied" : "Copy"}
-    </button>
+    <>
+      <button type="button" className={state === "failed" ? "copy failed" : "copy"} aria-label={`Copy ${label}`} onClick={() => { void copy(); }}>
+        {state === "done" ? "Copied" : state === "failed" ? "Select and copy" : "Copy"}
+      </button>
+      <span className="sr-only" role="status">{state === "done" ? `Copied ${label}.` : state === "failed" ? `Couldn’t copy ${label}. Select the text and copy it.` : ""}</span>
+    </>
   );
 }
 function Run({ wells, onJoin }: { wells: Wells; onJoin: () => void }) {
