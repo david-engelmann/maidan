@@ -437,7 +437,7 @@ pub async fn review_status(pool: &PgPool, thread_id: ThreadId) -> Result<ReviewS
     .get::<i64, _>("required_count");
 
     let approvals: i64 = sqlx::query(
-        "SELECT COUNT(*) AS approvals FROM maidan_thread_reviews r
+        "SELECT COUNT(DISTINCT COALESCE(r.actor_id, r.reviewer_id)) AS approvals FROM maidan_thread_reviews r
          JOIN maidan_threads t ON t.id = r.thread_id
          WHERE r.thread_id = $1
            AND r.decision = 'approve'
