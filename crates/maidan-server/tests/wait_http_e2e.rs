@@ -14,7 +14,7 @@ use maidan_bus::{EventBus, InMemoryBus, PostgresBus};
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use serde_json::{json, Value};
-use sqlx::sqlite::PgPool;
+use sqlx::PgPool;
 
 struct Harness {
     addr: SocketAddr,
