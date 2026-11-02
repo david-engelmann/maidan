@@ -163,6 +163,13 @@ pub async fn mint_first_admin_token(
             "a session made from a token cannot mint the first admin token".into(),
         ));
     }
+    // Nor for a person an admin invited: the workspace already has an
+    // admin, and an invite caps its role at viewer or member.
+    if ctx.invite_role.is_some() {
+        return Err(ApiError::Forbidden(
+            "a member who joined by invite cannot mint the first admin token".into(),
+        ));
+    }
     if !oidc.settings.first_admin_mint {
         return Err(ApiError::Forbidden(
             "first-admin session mint is disabled (MAIDAN_OIDC_FIRST_ADMIN)".into(),

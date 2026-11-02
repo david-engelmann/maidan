@@ -311,6 +311,47 @@ pub fn list_share_tickets() {}
     ))]
 pub fn revoke_share_ticket() {}
 
+/// Invite a person into the workspace
+///
+/// Mints a single-use invite bound to an email and a role (`viewer` or
+/// `member`, never above the caller's own). The secret and `accept_path` are
+/// returned once; only the secret's SHA-256 hash is stored.
+#[utoipa::path(post, path = "/workspaces/{wid}/invites", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    request_body = CreateWorkspaceInvite,
+    security(("bearerAuth" = ["workspace:admin"])),
+    responses(
+        (status = 201, body = MintWorkspaceInviteResponse),
+        (status = 400, description = "Invalid email or expiry", body = ProblemDetails, content_type = "application/problem+json"),
+        (status = 403, response = Forbidden),
+        (status = 429, description = "Too many invites for this email domain", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn create_workspace_invite() {}
+
+/// List a workspace's invites
+#[utoipa::path(get, path = "/workspaces/{wid}/invites", tag = "workspaces",
+    params(("wid" = Uuid, Path, description = "Workspace id")),
+    security(("bearerAuth" = ["workspace:admin"])),
+    responses(
+        (status = 200, body = Vec<WorkspaceInvite>),
+        (status = 403, response = Forbidden),
+    ))]
+pub fn list_workspace_invites() {}
+
+/// Revoke an unused workspace invite
+#[utoipa::path(delete, path = "/workspaces/{wid}/invites/{iid}", tag = "workspaces",
+    params(
+        ("wid" = Uuid, Path, description = "Workspace id"),
+        ("iid" = Uuid, Path, description = "Invite id"),
+    ),
+    security(("bearerAuth" = ["workspace:admin"])),
+    responses(
+        (status = 204, description = "Revoked"),
+        (status = 403, response = Forbidden),
+        (status = 404, description = "No unused invite with this id in this workspace", body = ProblemDetails, content_type = "application/problem+json"),
+    ))]
+pub fn revoke_workspace_invite() {}
+
 /// Get a share ticket's manifest
 #[utoipa::path(get, path = "/share/manifest", tag = "share",
     security(("shareTicketAuth" = [])),
