@@ -4,8 +4,8 @@
 use chrono::{Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
-    EmailDeliveryMode, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewNotification,
-    NewWorkspace, WorkspaceId,
+    EmailDeliveryMode, EventKind, MemberId, MemberKind, NewAuditEvent, NewChannel, NewMember,
+    NewNotification, NewWorkspace, WorkspaceId,
 };
 use sqlx::sqlite::SqlitePoolOptions;
 
@@ -228,10 +228,74 @@ async fn run_suite(store: &dyn Store) {
     assert_eq!((beta.results, beta.gates, beta.stuck), (1, 0, 0));
 }
 
+/// A due member in a suspended workspace is left out of the due page, while
+/// a due member in another workspace stays in it; lifting the suspension
+/// brings the first back with its unread count intact (#1720).
+async fn suspended_workspaces_are_not_due(store: &dyn Store) {
+    let mut due_in = Vec::new();
+    for name in ["suspended-ws", "open-ws"] {
+        let ws = store
+            .create_workspace(NewWorkspace { name: name.into() })
+            .await
+            .expect("ws")
+            .id;
+        let m = add_member(store, ws, &format!("{name}-m")).await;
+        store
+            .set_member_email(m, &format!("{name}@example.com"))
+            .await
+            .unwrap();
+        store
+            .set_delivery_mode(m, EmailDeliveryMode::Digest)
+            .await
+            .unwrap();
+        add_unread(store, ws, m, 900).await;
+        due_in.push((ws, m));
+    }
+    let [(suspended_ws, suspended_m), (_, open_m)] = due_in[..] else {
+        unreachable!()
+    };
+    let audit = |action: &str| NewAuditEvent {
+        scope: maidan_types::AuditScope::Workspace(suspended_ws),
+        actor_id: None,
+        action: action.into(),
+        target_kind: Some("workspace".into()),
+        target_id: Some(suspended_ws.0),
+        metadata: serde_json::json!({}),
+    };
+    let due_ids = |due: Vec<maidan_types::DigestDue>| {
+        due.into_iter().map(|d| d.member_id).collect::<Vec<_>>()
+    };
+    let due = due_ids(store.members_due_for_digest(100, &[]).await.unwrap());
+    assert!(due.contains(&suspended_m) && due.contains(&open_m));
+
+    store
+        .suspend_workspace(suspended_ws, "abuse", None, audit("workspace.suspend"))
+        .await
+        .unwrap();
+    let due = due_ids(store.members_due_for_digest(100, &[]).await.unwrap());
+    assert!(
+        !due.contains(&suspended_m),
+        "a suspended workspace is not due"
+    );
+    assert!(due.contains(&open_m), "another workspace stays due");
+
+    assert!(store
+        .lift_workspace_suspension(suspended_ws, audit("workspace.suspension_lift"))
+        .await
+        .unwrap());
+    let due = store.members_due_for_digest(100, &[]).await.unwrap();
+    let back = due
+        .iter()
+        .find(|d| d.member_id == suspended_m)
+        .expect("lifting the suspension makes the member due again");
+    assert_eq!(back.unread_count, 1);
+}
+
 #[tokio::test]
 async fn email_digest_model_sqlite() {
     let store = sqlite().await;
     run_suite(&store).await;
+    suspended_workspaces_are_not_due(&store).await;
 }
 
 #[tokio::test]
@@ -266,4 +330,5 @@ async fn email_digest_model_postgres() {
     run_postgres_migrations(&pool).await.expect("migrate");
     let store = PostgresStore::for_tests(pool);
     run_suite(&store).await;
+    suspended_workspaces_are_not_due(&store).await;
 }
