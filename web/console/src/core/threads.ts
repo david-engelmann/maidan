@@ -1,7 +1,7 @@
 // Threads and DMs: a task's conversation, one-to-one DMs and group DMs. A
 // port of the classic board's thread.js and dm.js with the DOM taken out.
 // Fetch is passed in, so it is tested.
-import { apiPath, bearerRefusal, headers, humanError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Member, Thread } from "./board.ts";
 
 export type Message = {
@@ -50,8 +50,10 @@ export function dmOther(dm: Dm, me: string): string {
   return dm.member_low_id === me ? dm.member_high_id : dm.member_low_id;
 }
 
+/** A member's name. Until the member list has loaded this is "", so screens
+ * show a placeholder rather than flashing a raw id. */
 export function nameOf(members: Map<string, Member>, id: string): string {
-  return members.get(id)?.name ?? id.slice(0, 8);
+  return members.get(id)?.name ?? (members.size === 0 ? "" : id.slice(0, 8));
 }
 
 export function dmConversation(dm: Dm, me: string, members: Map<string, Member>): Conversation {
@@ -61,7 +63,7 @@ export function dmConversation(dm: Dm, me: string, members: Map<string, Member>)
 
 export function groupConversation(g: GroupDm, me: string, members: Map<string, Member>): Conversation {
   const others = g.member_ids.filter((id) => id !== me).map((id) => nameOf(members, id));
-  return { ref: { kind: "group", id: g.id }, threadId: g.thread_id, label: g.title || "(untitled)", detail: `${g.member_ids.length} members · ${others.join(", ")}`, updatedAt: g.updated_at ?? null };
+  return { ref: { kind: "group", id: g.id }, threadId: g.thread_id, label: g.title || "(untitled)", detail: others.every(Boolean) ? `${g.member_ids.length} members · ${others.join(", ")}` : `${g.member_ids.length} members`, updatedAt: g.updated_at ?? null };
 }
 
 export function taskConversation(t: Thread): Conversation {
@@ -79,9 +81,58 @@ export function visibleMessages(rows: Message[]): Message[] {
 }
 
 /** Consecutive messages from one author within five minutes share a header. */
+/** One header per run: a new author or a new day starts a group. */
 export function startsGroup(prev: Message | undefined, m: Message): boolean {
   if (!prev || prev.author_id !== m.author_id) return true;
-  return Date.parse(m.posted_at) - Date.parse(prev.posted_at) > 5 * 60 * 1000;
+  return dayKey(prev.posted_at) !== dayKey(m.posted_at);
+}
+
+/** The local calendar day a timestamp falls on, as YYYY-MM-DD. */
+export function dayKey(ts: string): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** "Today", "Yesterday", or a short date for a day separator. */
+export function dayLabel(ts: string, now: number): string {
+  const key = dayKey(ts);
+  if (key === dayKey(new Date(now).toISOString())) return "Today";
+  // The calendar day before, not 24 hours before: a DST day is 23 or 25 hours.
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (key === dayKey(yesterday.toISOString())) return "Yesterday";
+  const d = new Date(ts);
+  const sameYear = d.getFullYear() === new Date(now).getFullYear();
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
+}
+
+/** Last-opened times per thread, kept on this device. A first visit sets
+ *  the baseline, so nothing older than that reads as unread. */
+export type SeenState = { baseline: string; opened: Record<string, string> };
+
+export function isUnread(c: Conversation, seen: SeenState): boolean {
+  if (!c.updatedAt) return false;
+  const mark = seen.opened[c.threadId] ?? seen.baseline;
+  // As instants: the server's fractional digits differ from the browser's,
+  // so string order is not time order within a second.
+  const at = Date.parse(c.updatedAt);
+  const seenAt = Date.parse(mark);
+  if (Number.isNaN(at) || Number.isNaN(seenAt)) return c.updatedAt > mark;
+  return at > seenAt;
+}
+
+export function markOpened(seen: SeenState, threadId: string, at: string): SeenState {
+  return { ...seen, opened: { ...seen.opened, [threadId]: at } };
+}
+
+/** Reactions with one toggled, the way the server will count it. */
+export function toggleReaction(cur: Reaction[], emoji: string, on: boolean): Reaction[] {
+  const found = cur.find((r) => r.emoji === emoji);
+  if (found) {
+    if (found.mine === on) return cur;
+    return cur.map((r) => (r.emoji === emoji ? { ...r, count: r.count + (on ? 1 : -1), mine: on } : r)).filter((r) => r.count > 0);
+  }
+  return on ? [...cur, { emoji, count: 1, mine: true }] : cur;
 }
 
 export function clockTime(ts: string): string {
@@ -327,7 +378,7 @@ export function evidenceLine(e: EvidenceEntry, name: (id: string | undefined) =>
     case "result_recorded":
       return `Result ${short(e.sha256)} recorded by ${name(e.produced_by)}`.replace("Result  ", "Result ");
     case "land_gate_verdict":
-      return `Land gate: ${e.verdict?.status ?? "unknown"}`;
+      return `Automated check: ${e.verdict?.status ?? "unknown"}`;
     case "review_requested":
       return `Handed to review by ${name(e.packet?.requested_by)} at version ${e.packet?.thread_version ?? "?"}, evidence root ${short(e.packet?.evidence_root)}${e.packet?.self_reported_only ? " (self-reported only)" : ""}`;
     case "review_verdict":
@@ -337,19 +388,10 @@ export function evidenceLine(e: EvidenceEntry, name: (id: string | undefined) =>
   }
 }
 
-export class ThreadsError extends Error {}
+export class ThreadsError extends ApiError {}
 
-async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
-  let detail: string | null = null;
-  try {
-    const body = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = body.message ?? body.detail ?? body.error ?? null;
-  } catch {
-    detail = null;
-  }
-  if ((res.status === 400 || res.status === 409 || res.status === 422) && detail) throw new ThreadsError(detail);
-  throw new ThreadsError(humanError(res.status, detail, mode));
-}
+const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
+  failure(res, mode, ThreadsError, (status, detail) => ((status === 400 || status === 409 || status === 422) && detail ? detail : null));
 
 /** The files on a paste, if any. A paste of text alone returns none, so it stays text. */
 export function pastedFiles(data: Pick<DataTransfer, "items"> | null | undefined): File[] {
@@ -382,7 +424,7 @@ export class ThreadsApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    this.fetchFn = guarded(fetchFn, ThreadsError);
     this.creds = creds;
     this.mode = mode;
   }

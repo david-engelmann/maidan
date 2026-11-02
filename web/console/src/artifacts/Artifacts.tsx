@@ -35,6 +35,7 @@ export function Artifacts() {
     }
   };
   const erase = async (s: string) => {
+    if (busy) return;
     setBusy(true);
     try {
       await api.eraseArtifact(s);
@@ -72,7 +73,7 @@ export function Artifacts() {
           <input type="file" className="visually-hidden" disabled={busy} onChange={(e) => void upload(e.target.files?.[0])} />
         </label>
         {looked ? (
-          meta.status === "loading" ? <p className="muted">Looking up…</p> : meta.value ? <ArtifactCard api={api} sha={looked} meta={meta.value} onLink={threadOn ? () => void linkOp("link", looked) : null} onErase={() => void erase(looked)} /> : meta.error ? <p className="err" role="alert">{meta.error}</p> : <p className="muted">Not found, or not in this workspace.</p>
+          meta.status === "loading" ? <p className="muted">Looking up…</p> : meta.value ? <ArtifactCard api={api} sha={looked} meta={meta.value} onLink={threadOn ? () => void linkOp("link", looked) : null} onErase={() => void erase(looked)} busy={busy} /> : meta.error ? <p className="err" role="alert">{meta.error}</p> : <p className="muted">Not found, or not in this workspace.</p>
         ) : null}
       </section>
       <section className="card tool-panel">
@@ -100,7 +101,7 @@ export function Artifacts() {
   );
 }
 
-function ArtifactCard({ api, sha, meta, onLink, onErase }: { api: ToolsApi; sha: string; meta: ArtifactMeta; onLink: (() => void) | null; onErase: () => void }) {
+function ArtifactCard({ api, sha, meta, onLink, onErase, busy }: { api: ToolsApi; sha: string; meta: ArtifactMeta; onLink: (() => void) | null; onErase: () => void; busy: boolean }) {
   const [armed, setArmed] = useState<string | null>(null);
   const [url, setUrl] = useState<{ sha: string; url: string } | null>(null);
   const show = previewable(meta.mime_type);
@@ -144,14 +145,14 @@ function ArtifactCard({ api, sha, meta, onLink, onErase }: { api: ToolsApi; sha:
       {url && url.sha === sha ? <img className="artifact-img" src={url.url} alt={meta.filename || "Image file"} /> : null}
       <div className="row-form">
         <button type="button" className="button steel" onClick={() => void download()}>Download</button>
-        {onLink ? <button type="button" className="button ghost" onClick={onLink}>Link to the open task</button> : null}
+        {onLink ? <button type="button" className="button ghost" disabled={busy} onClick={onLink}>Link to the open task</button> : null}
         {armed === sha ? (
           <>
-            <button type="button" className="button danger" onClick={() => { setArmed(null); onErase(); }}>Erase for good</button>
+            <button type="button" className="button danger" disabled={busy} onClick={() => { setArmed(null); onErase(); }}>Erase for good</button>
             <button type="button" className="button ghost" onClick={() => setArmed(null)}>Keep it</button>
           </>
         ) : (
-          <button type="button" className="button ghost" onClick={() => setArmed(sha)}>Erase…</button>
+          <button type="button" className="button ghost" disabled={busy} onClick={() => setArmed(sha)}>Erase…</button>
         )}
       </div>
       {armed === sha ? <p className="muted small" role="status">Erasing removes the bytes for every task that links them. It needs an admin token and cannot be undone.</p> : null}

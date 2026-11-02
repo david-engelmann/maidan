@@ -39,11 +39,12 @@ test("a token's session card shows its real grant, and the badge says bearer", a
   await request.delete(`/tokens/${t.id}`, { headers: { Authorization: `Bearer ${fx.admin_token}` } });
 });
 
-test("a person's sign-in says session on the badge and the card", async ({ page }) => {
+test("a person's sign-in shows no badge and says session on the card", async ({ page }) => {
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.board_channel_id, "#/tools/prefs");
-  await expect(page.locator(".mode-chip:visible").first()).toHaveAttribute("data-mode", "session");
-  await expect(page.locator(".mode-chip:visible").first()).toHaveText("Session");
+  await expect(page.locator(".session-credential")).toBeVisible();
+  // A person's own sign-in is the quiet default: only a token or delegation earns a badge.
+  await expect(page.locator(".mode-chip")).toHaveCount(0);
   await expect(page.locator(".session-credential")).toHaveText("Session: your own sign-in, acting as you");
   await expect(page.locator(".session-member")).toHaveText(fx.member_id);
 });

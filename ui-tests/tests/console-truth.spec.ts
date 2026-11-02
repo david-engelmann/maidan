@@ -57,10 +57,10 @@ test("a refused close is visible on its card, with the server's sentence", async
 
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.desk_channel_id);
-  const card = page.locator("button.task", { has: page.locator(".chip-refused") });
+  const card = page.locator("button.task", { has: page.locator(".flag-refused") });
   await expect(card).toHaveCount(1);
-  await expect(card.locator(".chip-refused")).toHaveText("Close refused");
-  await expect(card.locator(".chip-refused")).toHaveAttribute("title", note.body);
+  await expect(card.locator(".flag-refused")).toHaveText("Close refused");
+  await expect(card.locator(".flag-refused")).toHaveAttribute("title", note.body);
   await expect(card).toHaveAttribute("aria-label", /close refused$/);
   const after = await (await request.get(`/threads/${fx.desk_waiting_thread_id}`, { headers: bearer(fx.review_token) })).json();
   expect(after.state).toBe("in_review");
@@ -74,13 +74,13 @@ test("Needs you keeps its rows and says it is stale when the server stops answer
   const before = await rows.count();
   await page.route("**/waiting*", (route) => route.abort("connectionrefused"));
   const done = await pokeUntil(request, page.locator(".needs-stale"));
-  await expect(page.locator(".needs-stale")).toContainText(/Stale since .*Reconnecting/);
+  await expect(page.locator(".needs-stale")).toContainText(/Could not reach the server\. Showing what was loaded at .*Reconnecting/);
   expect(await rows.count(), "the rows stay while it reconnects").toBe(before);
   await page.unroute("**/waiting*");
   await done();
 });
 
-test("a revoked token keeps the rows and names the fix", async ({ page, request }) => {
+test("a revoked token sends the page back to sign-in and says why", async ({ page, request }) => {
   const minted = await (await request.post(`/workspaces/${fx.workspace_id}/members/${fx.member_id}/tokens`, {
     headers: bearer(fx.admin_token),
     data: { label: "needs-truth", capabilities: ["workspace:read", "thread:transition"] },
@@ -88,15 +88,14 @@ test("a revoked token keeps the rows and names the fix", async ({ page, request 
   await page.goto("/ui/#/needs");
   await page.getByLabel(/paste a token/i).fill(minted.secret);
   await page.getByRole("button", { name: "Sign in with token" }).click();
-  const rows = page.locator("li.need");
-  await expect(rows.first()).toBeVisible();
-  const before = await rows.count();
+  await expect(page.locator("li.need").first()).toBeVisible();
   expect((await request.delete(`/tokens/${minted.id}`, { headers: bearer(fx.admin_token) })).ok()).toBeTruthy();
-  const stale = page.locator(".needs-stale");
-  const done = await pokeUntil(request, stale);
-  await expect(stale).not.toHaveText(/^Stale since/);
-  await expect(stale).toContainText(/token|sign in/i);
-  expect(await rows.count()).toBe(before);
+  // A 401 on any request ends the page's sign-in; it does not keep showing
+  // rows the token can no longer read.
+  const field = page.getByLabel(/paste a token/i);
+  const done = await pokeUntil(request, field);
+  await expect(page.getByText(/sign-in ended or was revoked/i)).toBeVisible();
+  await expect(page.locator("li.need")).toHaveCount(0);
   await done();
 });
 
@@ -123,7 +122,8 @@ test("the owner closes a review nobody was named for, and the board says closed 
   expect(thread.closed_without_review).toBe(true);
   await page.goto("/ui/#/board");
   const card = page.locator("button.task", { has: page.locator(".task-title", { hasText: thread.title }) });
-  await expect(card.locator(".state")).toHaveText("closed without review");
+  await expect(card.locator(".state-text")).toHaveText("Unreviewed");
+  await expect(card.locator(".state")).toHaveAttribute("title", "Closed without review");
   await card.click();
   await expect(page.getByRole("dialog")).toContainText("Closed by");
   await expect(page.getByRole("dialog")).not.toContainText("Completed by");
@@ -170,7 +170,7 @@ test("evidence shows each item's tier, and warns when it is all self-reported", 
   await expect(attached.locator(".ev-warn")).toHaveCount(0);
 
   const verified = needRow(page, fx.tiers_verified_thread_id).locator(".need-evidence");
-  await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-kind')).toHaveText("land-gate pass");
+  await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-kind')).toHaveText("Automated check");
   await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-tier')).toHaveAttribute("data-tier", "verified");
 
   const self = needRow(page, fx.tiers_self_thread_id).locator(".need-evidence");
@@ -183,7 +183,7 @@ test("evidence shows each item's tier, and warns when it is all self-reported", 
   const row = needRow(page, fx.tiers_attached_thread_id);
   const order = await row.evaluate((li) => {
     const ev = li.querySelector(".need-evidence");
-    const ok = [...li.querySelectorAll("button")].find((b) => b.textContent === "Approve");
+    const ok = [...li.querySelectorAll("button")].find((b) => b.firstChild?.textContent === "Approve");
     return ev && ok ? ev.compareDocumentPosition(ok) & Node.DOCUMENT_POSITION_FOLLOWING : 0;
   });
   expect(order).toBeTruthy();

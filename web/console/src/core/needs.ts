@@ -1,7 +1,7 @@
 // Needs you: the reviews, approval gates, blocks and questions waiting on the
 // signed-in member. A port of the classic board's needs.js and the gate half
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
-import { apiPath, headers, humanError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
+import { guarded, apiPath, headers, failure, keepAuth, noteAuthLost, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
 
 export type NeedKind = "review_request" | "unassigned_review" | "open_gate" | "blocked" | "question";
@@ -58,7 +58,7 @@ export type EvidenceItem = {
 };
 
 const TIER_TEXT: Record<string, [string, string]> = {
-  verified: ["verified", "A land-gate pass the close gate accepts"],
+  verified: ["verified", "An automated check the server accepts when the task closes"],
   attached: ["attached", "Linked by a member who never worked the task"],
   self_reported: ["self-reported", "The work's own account: from a member who worked the task"],
 };
@@ -104,7 +104,7 @@ export function evidenceItems(packet: ReviewPacket, metas: Map<string, ArtifactM
       unlinked: links !== null && !link,
     });
   });
-  for (const g of of("land_gate")) out.push({ kind: "land_gate", label: "land-gate pass", sha: g.sha256 ?? null, by: g.attested_by, tier: tierOf(g), unlinked: false });
+  for (const g of of("land_gate")) out.push({ kind: "land_gate", label: "automated check", sha: g.sha256 ?? null, by: g.attested_by, tier: tierOf(g), unlinked: false });
   return out;
 }
 
@@ -232,7 +232,7 @@ export type RowState =
   | { phase: "confirm"; ask: Ask }
   | { phase: "note"; ask: "approve_note" | "request_changes" | "decline" }
   | { phase: "sending"; ask: Ask }
-  | { phase: "done"; text: string; tone: "ok" | "no"; closable: boolean }
+  | { phase: "done"; text: string; tone: "ok" | "no"; closable: boolean; pending?: boolean }
   | { phase: "error"; message: string };
 
 /** Which asks need words, and whether the words are required. */
@@ -242,19 +242,10 @@ export const NOTE_ASK: Record<"approve_note" | "request_changes" | "decline", { 
   decline: { prompt: "Why decline? Optional. The agent reads this.", required: false, send: "Decline" },
 };
 
-export class NeedsError extends Error {}
+export class NeedsError extends ApiError {}
 
-async function fail(res: Response, mode: CredentialMode | null): Promise<never> {
-  let detail: string | null = null;
-  try {
-    const b = (await res.json()) as { error?: string; message?: string; detail?: string };
-    detail = b.message ?? b.detail ?? b.error ?? null;
-  } catch {
-    detail = null;
-  }
-  if (res.status === 409) throw new NeedsError(detail ? `Refused: ${detail}` : "Someone already answered this");
-  throw new NeedsError(humanError(res.status, detail, mode));
-}
+const fail = (res: Response, mode: CredentialMode | null): Promise<never> =>
+  failure(res, mode, NeedsError, (status, detail) => (status === 409 ? (detail ? `Refused: ${detail}` : "Someone already answered this") : null));
 
 /** The reads and writes behind Needs you. */
 export class NeedsApi {
@@ -263,7 +254,7 @@ export class NeedsApi {
   private readonly mode: () => CredentialMode | null;
 
   constructor(fetchFn: Fetch, creds: () => Credentials, mode: () => CredentialMode | null) {
-    this.fetchFn = fetchFn;
+    this.fetchFn = guarded(fetchFn, NeedsError);
     this.creds = creds;
     this.mode = mode;
   }
@@ -309,6 +300,7 @@ export class NeedsApi {
       return { state: "error", why: "Could not load the evidence: the server did not answer" };
     }
     if (res.status === 404) return { state: "none" };
+    noteAuthLost(res);
     if (!res.ok) return { state: "error", why: `Could not load the evidence (${res.status})` };
     try {
       return { state: "ready", packet: (await res.json()) as ReviewPacket };
@@ -379,6 +371,7 @@ export class NeedsApi {
       body: JSON.stringify({ gate_id: link.gateId, token: link.token }),
     });
     const res = await this.fetchFn(`${c.base}/auth/approval-confirmations/confirm`, init);
+    if (res.status === 401 && c.pastedToken.trim() && !c.tokenSession) keepAuth(res);
     if (!res.ok) await fail(res, this.mode());
   }
 

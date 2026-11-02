@@ -139,7 +139,7 @@ test("evidence lists the result, artifacts and land-gate passes with their tiers
     ["result", "result", "self-reported", "w1", false],
     ["artifact", "log.txt · 2.0 KB", "attached", "m2", false],
     ["artifact", "artifact (details unavailable)", "mystery", null, true],
-    ["land_gate", "land-gate pass", "verified", "ci", false],
+    ["land_gate", "automated check", "verified", "ci", false],
   ]);
   // A failed links read flags nothing.
   assert.equal(evidenceItems(packet, metas, null).some((i) => i.unlinked), false);
