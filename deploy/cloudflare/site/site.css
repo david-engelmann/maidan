@@ -154,8 +154,10 @@ th {
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.88em;
-  overflow-wrap: anywhere;
 }
+/* A long inline value breaks anywhere in prose; a problem type in its table
+   cell breaks only at its hyphens. */
+p code { overflow-wrap: anywhere; }
 /* A problem type's link lands on its row. */
 tr[id] { scroll-margin-top: 1.5rem; }
 tr:target td { background: rgba(232, 80, 28, 0.1); }
