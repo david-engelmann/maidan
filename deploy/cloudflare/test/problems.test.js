@@ -44,3 +44,10 @@ test("only a browser opening a page counts as a page navigation", () => {
   assert.ok(!nav({}));
   assert.ok(!nav({ accept: "text/html" }, "POST"));
 });
+
+test("only a read of a problem type's URI is redirected", () => {
+  const post = new Request("https://maidan.world/problems/not-found", { method: "POST" });
+  assert.equal(edgeRedirect(post, { hasSite: true }), null);
+  const head = new Request("https://maidan.world/problems/not-found", { method: "HEAD" });
+  assert.equal(edgeRedirect(head, { hasSite: true }).status, 302);
+});

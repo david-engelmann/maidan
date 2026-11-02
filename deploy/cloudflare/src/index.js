@@ -104,9 +104,11 @@ export default {
     // bad link should not be shown.
     if (hasSite && response.status === 404 && isPageNavigation(request)) {
       const page = await env.ASSETS.fetch(new Request(new URL(NOT_FOUND_PAGE, request.url)));
-      return withSecurityHeaders(new Response(page.body, { status: 404, headers: page.headers }), {
-        "content-security-policy": SITE_CSP,
-      });
+      if (page.ok) {
+        return withSecurityHeaders(new Response(page.body, { status: 404, headers: page.headers }), {
+          "content-security-policy": SITE_CSP,
+        });
+      }
     }
     return withSecurityHeaders(response);
   },

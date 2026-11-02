@@ -86,7 +86,8 @@ export function edgeRedirect(request, { hasSite = false } = {}) {
     return Response.redirect(url.toString(), 301);
   }
   const problem = url.pathname.match(/^\/problems\/([a-z-]+)$/);
-  if (hasSite && problem && PROBLEM_TYPES.has(problem[1])) {
+  const read = request.method === "GET" || request.method === "HEAD";
+  if (hasSite && read && problem && PROBLEM_TYPES.has(problem[1])) {
     return Response.redirect(new URL(`/problems#${problem[1]}`, url).toString(), 302);
   }
   // The server answers `/` for API clients; only a browser asking for a page
