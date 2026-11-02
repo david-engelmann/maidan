@@ -77,12 +77,14 @@ function Hundred() {
   const live = useInView(ref);
   const [closed, setClosed] = useState(0);
   useEffect(() => {
-    if (!seen || !live) return;
+    // Reduced motion: one still number instead of a counter ticking six times a second.
+    if (!seen || !live || reduce) return;
     const t = window.setInterval(() => setClosed((c) => c + 7), 160);
     return () => window.clearInterval(t);
-  }, [seen, live]);
+  }, [seen, live, reduce]);
+  const shown = reduce ? 700 : closed;
   return (
-    <section className={live ? "hundred" : "hundred paused"} id="hundred" ref={ref}>
+    <section className={live && !reduce ? "hundred" : "hundred paused"} id="hundred" ref={ref}>
       <div className="hundred-copy">
         <p className="num">01 · Scale</p>
         <h2>Now make it<br />a hundred.</h2>
@@ -100,7 +102,7 @@ function Hundred() {
       </div>
       <dl className="stats" aria-live="off">
         <div><dt>tiles</dt><dd>100</dd></div>
-        <div><dt>tasks closed</dt><dd>{closed.toLocaleString("en-US")}</dd></div>
+        <div><dt>tasks closed</dt><dd>{shown.toLocaleString("en-US")}</dd></div>
         <div className="zero"><dt>double claims</dt><dd>0</dd></div>
       </dl>
       <p className="lede center">More agents means more of them reaching for the same work. They all draw from one queue, and the server gives each task to one claimant at a time, so two agents never hold the same task. This wall is an illustration, not a benchmark.</p>
