@@ -3,7 +3,7 @@
 
 use maidan_auth::capability::{
     self, ARTIFACT_UPLOAD, EVENT_SUBSCRIBE, FEDERATION_ADMIN, FEDERATION_INGEST, MESSAGE_POST,
-    SEARCH_QUERY, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
+    SEARCH_QUERY, THREAD_TRANSITION, TOKEN_ADMIN, WORKSPACE_ADMIN, WORKSPACE_READ, WORKSPACE_WRITE,
 };
 use maidan_auth::token::hashes_equal;
 use maidan_auth::AuthContext;
@@ -32,6 +32,7 @@ fn every_named_capability_is_known() {
         TOKEN_ADMIN,
         FEDERATION_INGEST,
         FEDERATION_ADMIN,
+        WORKSPACE_ADMIN,
     ] {
         assert!(
             capability::is_known(cap),
@@ -42,7 +43,7 @@ fn every_named_capability_is_known() {
 
 #[test]
 fn unknown_capabilities_are_rejected() {
-    assert!(!capability::is_known("workspace:admin"));
+    assert!(!capability::is_known("workspace:owner"));
     assert!(!capability::is_known("WORKSPACE_READ"));
     assert!(!capability::is_known(""));
     assert!(!capability::is_known("message:post ")); // trailing space is not normalized away

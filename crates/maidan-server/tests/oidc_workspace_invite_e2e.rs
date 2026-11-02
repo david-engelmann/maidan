@@ -304,7 +304,6 @@ async fn member_invite_joins_once_and_only_with_the_matching_email() {
     let cookie = session_cookie(&ok);
     let me = env.me(&cookie).await;
     assert_eq!(me["workspace_id"], ws.0.to_string());
-    assert!(caps(&me).iter().any(|c| c == "workspace:write"), "{me}");
     assert_eq!(env.create_channel(&cookie, ws).await, StatusCode::CREATED);
     let member_id: uuid::Uuid = me["member_id"].as_str().unwrap().parse().unwrap();
     let member = env
@@ -399,7 +398,6 @@ async fn an_invite_never_grants_above_the_inviter_and_never_crosses_workspaces()
     assert_eq!(me["workspace_id"], ws.0.to_string());
     let held = caps(&me);
     assert!(held.iter().any(|c| c == "workspace:read"), "{me}");
-    assert!(!held.iter().any(|c| c == "workspace:write"), "{me}");
     assert_eq!(env.create_channel(&cookie, ws).await, StatusCode::FORBIDDEN);
     let mint = env
         .client

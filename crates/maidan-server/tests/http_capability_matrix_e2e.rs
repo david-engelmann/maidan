@@ -178,6 +178,12 @@ fn http_deny_caps(required: &str) -> Vec<String> {
         ],
         capability::SECRET_READ => vec![capability::WORKSPACE_READ.into()],
         capability::SECRET_ADMIN => vec![capability::WORKSPACE_READ.into()],
+        // Hold read and write, so the refusal is for the admin capability
+        // itself and not for the role ceiling.
+        capability::WORKSPACE_ADMIN => vec![
+            capability::WORKSPACE_READ.into(),
+            capability::WORKSPACE_WRITE.into(),
+        ],
         other => panic!("unsupported capability in http map: {other}"),
     }
 }
