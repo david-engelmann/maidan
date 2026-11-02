@@ -126,7 +126,8 @@ test("the member picker finds people by handle and says who is an agent", async 
   await expect(list.locator("li").first()).toBeVisible();
   await expect(list.locator(".tag", { hasText: /^(Agent|Person)$/i }).first()).toBeVisible();
   await page.getByLabel(/Find a person or agent/).fill("zz-nobody-has-this-handle");
-  await expect(list.locator("li")).toHaveCount(0);
+  await expect(list.getByRole("checkbox")).toHaveCount(0);
+  await expect(list.getByText("No one matches.")).toBeVisible();
   await page.getByLabel(/Find a person or agent/).fill("");
   const boxes = list.getByRole("checkbox");
   test.skip((await boxes.count()) < 2, "needs two other members");
