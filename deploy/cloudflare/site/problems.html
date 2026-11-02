@@ -44,7 +44,7 @@
       <tr id="overloaded"><td><code>overloaded</code></td><td>503</td><td>Refused before it ran, so a retry is safe.</td><td>Wait for the <code>Retry-After</code> seconds, then retry.</td></tr>
     </tbody>
   </table>
-  <p>The <a href="https://docs.maidan.world/">docs</a> cover the API in full, and the SDKs raise a dedicated error for most types. A type without one arrives as the SDK's unknown-problem error, carrying the same <code>type</code>.</p>
+  <p>The <a href="https://docs.maidan.world/">docs</a> cover the API in full, and each SDK raises its own error for every type. A type added after an SDK was published arrives as its unknown-problem error, carrying the same <code>type</code>.</p>
 </main>
 <footer class="foot">
   <span>&copy; 2026 David Engelmann</span>

@@ -365,6 +365,9 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
     if (!selected || (!keyYes && !keyNo)) return;
     const onKey = (e: KeyboardEvent) => {
       if (notShortcut(e)) return;
+      // Focus inside another row means that row is being worked, not this one.
+      const row = e.target instanceof Element ? e.target.closest(".need") : null;
+      if (row && !row.classList.contains("selected")) return;
       const ask = e.key === "a" ? keyYes : e.key === "r" ? keyNo : null;
       if (!ask) return;
       e.preventDefault();

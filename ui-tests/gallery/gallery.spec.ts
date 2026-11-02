@@ -130,6 +130,8 @@ for (const vp of VIEWPORTS) {
     test(`needs you, waiting, ${vp.tag}`, async ({ page }) => {
       await signIn(page, fx.waiting, "#/needs");
       await expect(page.locator(".needs-count")).toHaveText("1 waiting on you");
+      // The reviewer reads the evidence file before Approve.
+      await expect(page.getByText("ws_deactivated_member_e2e: 3 passed")).toBeVisible();
       await shoot(page, `needs-waiting-${vp.tag}`, vp.width, errors);
     });
 

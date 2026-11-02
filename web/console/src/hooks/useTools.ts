@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { liveBus } from "../core/bus.ts";
 import { ToolsApi } from "../core/tools.ts";
 import type { Loaded } from "./usePeople.ts";
 import { useSession } from "./useSession.ts";
@@ -36,6 +37,11 @@ export function useLoad<T>(key: string | null, read: () => Promise<T>): Loaded<T
     const t = setTimeout(() => void load(), 0);
     return () => clearTimeout(t);
   }, [load]);
+  // "Refresh this screen" and a reconnect resync every screen, Tools and
+  // Files included.
+  useEffect(() => liveBus.listen((m) => {
+    if (m.type === "resync") void load();
+  }), [load]);
   const value: Loaded<T> = state.key === key ? state.value : { status: "loading", value: null, error: null };
   return { ...value, reload: load };
 }
