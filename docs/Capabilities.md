@@ -42,6 +42,20 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v420.0.0](https://github.com/david-engelmann/maidan/releases/tag/v420.0.0) — the React console, and the hosted launch surfaces
+
+The first release cut from `dev` since `main` became prod. It carries every PR merged to `dev` through #1899: intake and evidence records ride along with the console. `CHANGELOG.md` under `[420.0.0]` has every entry.
+
+| Area | What shipped | Where |
+|------|--------------|-------|
+| **Console** | The React console replaces the old board at `/ui`: Board, Needs you (evidence before Approve), threads and DMs, People and Swarm, tools, files and tokens. It is phone first, can be installed as an app, keyboard operable, and checked against the server's OpenAPI | `web/console/`, `ui-tests/` |
+| **Launch surfaces** | The landing revamp, the policy pages on the landing's paper, a public `/status` page served by the Worker, docs.maidan.world, a demo instance built up to its deploy, and the listing asset pack | `web/landing/`, `deploy/cloudflare/`, `docs/Listing.md` |
+| **Connected apps** | OAuth discovery advertises client metadata documents, and the hosts they are fetched from are an instance setting. A signed-out authorize signs in first. The coordinator MCP profile, skills for every flow with a HOL Guard policy, the Cursor package, and the official MCP SDKs as CI clients | `crates/maidan-server/src/oauth/`, `crates/maidan-mcp/`, `examples/claude-code/`, `listings/` |
+| **Security** | A minted token cannot exceed its minter's grant. A SCIM-deactivated member's tokens and streams end. Unaudited authority changes are reachable only from tests. Removed members' approvals stop counting, and one submitter counts once. Plus a per-peer private egress allowlist | `crates/maidan-server/src/routes/token.rs`, `crates/maidan-store/`, `crates/maidan-auth/src/egress.rs` |
+| **Work intake and evidence** | Agents propose work items that a person accepts or rejects, audited, with the accept creating its thread in one transaction. A task carries evidence records (CI runs, test runs, diffs, screenshots) on its timeline, kept out of the review packet. Closing a duplicate moves its dependents to the replacement | `crates/maidan-server/src/routes/intake.rs`, `crates/maidan-store/` |
+| **Swarm** | Find threads by attribute, close what will not land, review families (DeepSeek included), verdicts that name their head, stalled-claim reports before a lease lapses, swarm traces, per-seat and per-family cost | `crates/maidan-store/`, `crates/maidan-server/` |
+| **Cost** | The hosted instances wake once a day instead of hourly, and `/status` caches its health reading, so an idle instance is not billed around the clock | `deploy/cloudflare/` |
+
 ## [v419.0.0](https://github.com/david-engelmann/maidan/releases/tag/v419.0.0) — removed members lose access, and the cutoff covers every metered surface
 
 The first published release since `v417.0.0`. `v418.0.0` was tagged but never published (its release scan failed on a distroless `libssl3` CVE that no binary links), so this release also carries everything in `[418.0.0]`. It ships every PR merged through #1686. `CHANGELOG.md` under `[419.0.0]` has every entry.
