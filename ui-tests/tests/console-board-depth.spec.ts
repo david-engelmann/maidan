@@ -110,3 +110,20 @@ test("a task in review offers Approve and Send back, with Close behind the menu"
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
 });
+
+test("on a wide screen the drawer sits beside the board, which does not scroll", async ({ page }) => {
+  await openOnChannel(page, (fx as unknown as Record<string, string>).board_channel_id);
+  const card = page.locator(".lane .task", { hasText: "Review:" });
+  await card.click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+  await expect(page.getByRole("search", { name: "Filter tasks" })).toBeInViewport();
+  const c = await card.boundingBox();
+  const s = await sheet.boundingBox();
+  expect(c && s && c.x + c.width <= s.x).toBeTruthy();
+  // Cards behind stay clickable and switch the drawer.
+  await page.locator(".lane .task", { hasText: "Open:" }).click();
+  await expect(sheet.locator("#sheet-title")).toContainText("Open:");
+});

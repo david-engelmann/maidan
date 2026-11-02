@@ -84,6 +84,21 @@ export function Board() {
     return out;
   }, [all, query]);
   const opened = data.threads.find((t) => t.id === openId) ?? null;
+  // The board narrows beside the drawer; keep the chosen card in view.
+  useEffect(() => {
+    if (!openId) return;
+    // Only the lanes scroll sideways; the page itself never moves.
+    const t = window.setTimeout(() => {
+      const card = document.querySelector<HTMLElement>(".task.selected");
+      const lanes = card?.closest<HTMLElement>(".lanes");
+      if (!card || !lanes) return;
+      const c = card.getBoundingClientRect();
+      const l = lanes.getBoundingClientRect();
+      if (c.right > l.right) lanes.scrollLeft += c.right - l.right + 12;
+      else if (c.left < l.left) lanes.scrollLeft -= l.left - c.left + 12;
+    }, 220);
+    return () => window.clearTimeout(t);
+  }, [openId]);
   const agents = useMemo(() => {
     const held = new Set(data.threads.map((t) => t.assignee_id).filter(Boolean));
     return [...data.members.values()].filter((m) => held.has(m.id) || (m.kind && m.kind !== "human")).sort((a, b) => a.name.localeCompare(b.name));
@@ -108,7 +123,7 @@ export function Board() {
   const total = LANES.reduce((n, l) => n + all[l.key].length, 0);
   const visible = (query.state ? [query.state] : LANES.map((l) => l.key)).reduce((n, k) => n + lanes[k].length, 0);
   return (
-    <div className="board">
+    <div className={opened ? "board drawer-open" : "board"}>
       <div className="board-bar">
         <label className="channel-pick">
           <span className="visually-hidden">Channel</span>

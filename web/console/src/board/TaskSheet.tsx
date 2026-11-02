@@ -3,6 +3,7 @@
 // scrim, and gives focus back to the card that opened it.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { NeedsApi } from "../core/needs.ts";
 import { BoardApi, TRANSITION_WORDS, actionsFor, parseResult, transitionsFor, ago, bearerRefusal, chips, chromeFor, closeFacts, leaseLeft, stateLabel, type CloseFacts, type Gate, type Member, type Thread } from "../core/board.ts";
 import { hasToken } from "../core/api.ts";
@@ -25,7 +26,9 @@ export function TaskSheet(props: Props) {
   const reduce = Boolean(useReducedMotion());
   const wide = typeof window !== "undefined" && window.matchMedia("(min-width: 900px)").matches;
   const off = reduce ? { opacity: 0 } : wide ? { x: 32, opacity: 0 } : { y: 40, opacity: 0 };
-  return (
+  // On the body, so no transformed ancestor turns the fixed panel into part
+  // of the page (which made focusing it scroll the board).
+  return createPortal(
     <AnimatePresence>
       {props.thread && (
         <motion.div
@@ -40,7 +43,7 @@ export function TaskSheet(props: Props) {
           <motion.div
             className="sheet"
             role="dialog"
-            aria-modal="true"
+            aria-modal={!wide}
             aria-labelledby="sheet-title"
             initial={off}
             animate={{ x: 0, y: 0, opacity: 1 }}
@@ -52,7 +55,8 @@ export function TaskSheet(props: Props) {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 
@@ -70,7 +74,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   // Focus moves in, Tab stays in, Escape closes, focus goes back on close.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    box.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
+    box.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -93,7 +97,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      opener?.focus();
+      opener?.focus({ preventScroll: true });
     };
   }, [onClose]);
 

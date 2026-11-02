@@ -692,7 +692,7 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .board-summary { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 @media (min-width: 720px) { .channel-pick { flex: none; } }
 
-.lanes.wide { grid-template-columns: repeat(4, minmax(220px, 1fr)); align-items: stretch; gap: var(--space-3); min-height: calc(100dvh - 150px); overflow-x: auto; padding-bottom: var(--space-2); }
+.lanes.wide { grid-template-columns: repeat(4, minmax(220px, 1fr)); align-items: stretch; gap: var(--space-3); min-height: calc(100dvh - 290px); overflow-x: auto; padding-bottom: var(--space-2); }
 .lanes.wide .lane { display: flex; flex-direction: column; background: color-mix(in srgb, var(--ink) 3%, transparent); border: 1px solid color-mix(in srgb, var(--line) 60%, transparent); border-radius: var(--r-lg); padding: var(--space-2); }
 .lane-head { align-items: center; margin: 4px 6px 10px; font-size: var(--text-sm); font-weight: 600; letter-spacing: 0; }
 .lane-head .count { min-width: 20px; padding: 0 6px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--ink) 7%, transparent); font-size: var(--text-xs); font-weight: 500; text-align: center; }
@@ -1134,3 +1134,14 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .sheet-actions .button.steel:hover:not([disabled]) { background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .sheet .sheet-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0 0 10px; }
 .sheet-actions .button.ink[disabled] { background: var(--ink); color: var(--paper); border-color: var(--ink); opacity: .38; cursor: not-allowed; }
+
+/* Wide: the drawer sits beside the board, which narrows to make room,
+   and the cards behind stay clickable. */
+@media (min-width: 900px) {
+  .sheet-scrim { background: transparent; pointer-events: none; }
+  .sheet { pointer-events: auto; }
+  .board { transition: margin-right .2s var(--ease, ease); }
+  .board.drawer-open { margin-right: 496px; }
+  .board.drawer-open .lanes.wide { grid-template-columns: repeat(4, minmax(168px, 1fr)); }
+}
+@media (min-width: 900px) and (prefers-reduced-motion: reduce) { .board { transition: none; } }
