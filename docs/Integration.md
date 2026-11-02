@@ -1131,10 +1131,8 @@ on [maidan.world/problems](https://maidan.world/problems):
 The SDKs under `sdk/` raise a dedicated error for each row (for example
 `NotFoundError` in TypeScript and Python, `*maidan.NotFoundError` in Go,
 `MaidanError::NotFound` in Rust), each carrying the status, `type`,
-`title`, `detail` and the body as sent. Five rows have no dedicated error
-yet: `unprocessable-entity`, `media-quota-exceeded`, `footprint-conflict`,
-`plan-conflict` and `claim-lost` arrive as the unknown-problem error, with
-their `type`, as does a type added after the SDK was published. The SDKs return typed
+`title`, `detail` and the body as sent. A type added after the SDK was
+published arrives as its unknown-problem error, with its `type`. The SDKs return typed
 models for every response they wrap; see
 [Client Contract](Client%20Contract.md) §2 and §4. The per-problem
 errors and the typed models are on `main` and not yet published: the

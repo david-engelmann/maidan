@@ -40,6 +40,11 @@ SERVER_TYPES = [
     "idempotency-key-in-flight",
     "cursor-too-old",
     "event-log-broken",
+    "unprocessable-entity",
+    "media-quota-exceeded",
+    "footprint-conflict",
+    "plan-conflict",
+    "claim-lost",
 ]
 
 
