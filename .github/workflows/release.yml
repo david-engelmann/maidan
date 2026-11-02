@@ -145,7 +145,7 @@ jobs:
           retention-days: 1
 
   docker-server:
-    name: docker push maidan-server (${{ matrix.arch }})
+    name: docker push maidan-server${{ matrix.suffix }} (${{ matrix.arch }})
     needs: [release-record]
     # Each arch builds on its OWN native runner — the arm64 image
     # previously cross-built under QEMU emulation, which turned the Rust release
@@ -157,12 +157,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The stock image: no bootstrap routes. scripts/check-deploy-contract.sh
+          # fails if a stock leg stops passing MAIDAN_ENABLE_BOOTSTRAP=0.
           - platform: linux/amd64
             arch: amd64
             runner: ubuntu-latest
+            bootstrap: "0"
+            suffix: ""
           - platform: linux/arm64
             arch: arm64
             runner: ubuntu-24.04-arm
+            bootstrap: "0"
+            suffix: ""
+          # The try.maidan.world image only (deploy-demo.yml): the bootstrap
+          # routes its seed needs. Tagged <tag>-demo, never latest, amd64 only.
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-latest
+            bootstrap: "1"
+            suffix: "-demo"
     permissions:
       contents: read
       packages: write
@@ -196,9 +209,10 @@ jobs:
           push: true
           build-args: |
             MAIDAN_VERSION=${{ steps.tag.outputs.tag }}
-          tags: ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}-${{ matrix.arch }}
-          cache-from: type=gha,scope=maidan-server-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=maidan-server-${{ matrix.arch }}
+            MAIDAN_ENABLE_BOOTSTRAP=${{ matrix.bootstrap }}
+          tags: ghcr.io/${{ github.repository_owner }}/maidan-server:${{ steps.tag.outputs.tag }}${{ matrix.suffix }}-${{ matrix.arch }}
+          cache-from: type=gha,scope=maidan-server${{ matrix.suffix }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=maidan-server${{ matrix.suffix }}-${{ matrix.arch }}
 
   docker-server-manifest:
     name: docker manifest maidan-server
@@ -236,6 +250,11 @@ jobs:
             -t "${IMAGE}:latest" \
             "${IMAGE}:${TAG}-amd64" \
             "${IMAGE}:${TAG}-arm64"
+          # The demo image gets its own tag and never latest: nothing that
+          # pulls maidan-server:latest or :<tag> can get the bootstrap routes.
+          docker buildx imagetools create \
+            -t "${IMAGE}:${TAG}-demo" \
+            "${IMAGE}:${TAG}-demo-amd64"
 
   docker-cli:
     name: docker push maidan-cli (${{ matrix.arch }})
@@ -335,7 +354,7 @@ jobs:
             "${IMAGE}:${TAG}-arm64"
 
   trivy-scan:
-    name: trivy image scan (${{ matrix.image }})
+    name: trivy image scan (${{ matrix.image }}${{ matrix.suffix }})
     needs: [docker-server-manifest, docker-cli-manifest, docker-postgres]
     if: needs.docker-server-manifest.result == 'success' && needs.docker-cli-manifest.result == 'success' && needs.docker-postgres.result == 'success'
     runs-on: ubuntu-latest
@@ -345,6 +364,9 @@ jobs:
       matrix:
         include:
           - image: maidan-server
+            skip-files: ""
+          - image: maidan-server
+            suffix: "-demo"
             skip-files: ""
           - image: maidan-cli
             skip-files: ""
@@ -391,7 +413,7 @@ jobs:
         # `setup-trivy@v0.2.1` and failed to resolve on the v170.0.0 release run.
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:${{ steps.tag.outputs.tag }}${{ matrix.suffix }}
           format: table
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true
@@ -483,6 +505,9 @@ jobs:
           mkdir -p sbom
           cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --override-filename sbom -q
           mv crates/maidan-cli/sbom.json sbom/maidan-cli.cdx.json
+          # The demo image builds the server with default features (bootstrap
+          # and otel), which is this run's.
+          mv crates/maidan-server/sbom.json sbom/maidan-server-demo.cdx.json
           cargo cyclonedx --format json --target x86_64-unknown-linux-gnu --no-default-features --features maidan-server/otel --override-filename sbom -q
           mv crates/maidan-server/sbom.json sbom/maidan-server.cdx.json
       - name: set up buildx
@@ -529,7 +554,7 @@ jobs:
           output: sbom/maidan-postgres.linux-arm64.cdx.json
       - name: check every SBOM is CycloneDX
         run: |
-          for name in maidan-server maidan-cli maidan-postgres.linux-amd64 maidan-postgres.linux-arm64; do
+          for name in maidan-server maidan-server-demo maidan-cli maidan-postgres.linux-amd64 maidan-postgres.linux-arm64; do
             jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0' "sbom/${name}.cdx.json" >/dev/null
           done
           ls -la sbom
@@ -612,6 +637,13 @@ jobs:
             cosign attest --yes --replace --type cyclonedx \
               --predicate "sbom/maidan-postgres.$1.cdx.json" "ghcr.io/${OWNER}/maidan-postgres@$2"
           }
+          # The demo image: signed and attested the same way, under its own tag.
+          IMAGE="ghcr.io/${OWNER}/maidan-server"
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE}:${TAG}-demo" --format '{{.Manifest.Digest}}')"
+          echo "signing ${IMAGE}@${DIGEST} (${TAG}-demo)"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          cosign attest --yes --replace --type cyclonedx \
+            --predicate sbom/maidan-server-demo.cdx.json "${IMAGE}@${DIGEST}"
           attest_postgres linux-amd64 "$POSTGRES_AMD64"
           attest_postgres linux-arm64 "$POSTGRES_ARM64"
 

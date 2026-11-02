@@ -1,6 +1,6 @@
 // The Worker for try.maidan.world, the public demo directory reviewers
-// connect to. See docs/Demo.md for the runbook; the deploy is the
-// maintainer's.
+// connect to. The runbook is docs/Deploy.md "try.maidan.world"; the
+// deploy-demo workflow deploys it.
 
 import { Container, getContainer } from "@cloudflare/containers";
 import { isScannerProbe } from "./scanner.js";

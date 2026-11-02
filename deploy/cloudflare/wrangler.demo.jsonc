@@ -1,7 +1,8 @@
 // try.maidan.world: the public demo directory reviewers connect to. A seeded
 // workspace in SQLite inside one container, destroyed and reseeded on the cron.
-// The runbook is docs/Demo.md. Not deployed by any workflow: the deploy is the
-// maintainer's, with `npx wrangler deploy -c wrangler.demo.jsonc`.
+// The runbook is docs/Deploy.md "try.maidan.world". .github/workflows/deploy-demo.yml
+// deploys each release: it builds demo/Dockerfile on the release's signed
+// maidan-server:<tag>-demo and maidan-cli:<tag> images and swaps in the image.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maidan-demo",
@@ -12,8 +13,8 @@
   "containers": [
     {
       "class_name": "MaidanDemo",
-      "image": "./demo/Dockerfile",
-      "image_build_context": "../..",
+      // deploy-demo.yml replaces this with the pushed registry image.
+      "image": "registry.cloudflare.com/ACCOUNT/maidan-demo:RELEASE",
       "instance_type": "basic",
       // One instance: the demo's state is the one SQLite file inside it.
       "max_instances": 1
@@ -27,6 +28,6 @@
   },
   "vars": { "MAIDAN_PUBLIC_ORIGIN": "https://try.maidan.world" },
   // Keep in step with DEMO_RESET_CRON in src/demo-config.js.
-  "triggers": { "crons": ["0 */6 * * *"] },
+  "triggers": { "crons": ["0 4 * * *"] },
   "observability": { "enabled": true }
 }

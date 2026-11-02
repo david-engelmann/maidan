@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 // David's cost rule for try.maidan.world: one basic instance, asleep after 15
-// idle minutes, and a cron that only destroys a running container, never wakes one.
+// idle minutes, and a once-a-day cron that only destroys a running container,
+// never wakes one.
 
 const wrangler = JSON.parse(
   readFileSync(new URL("../wrangler.demo.jsonc", import.meta.url), "utf8")
@@ -33,11 +34,11 @@ test("the cron only destroys: it never fetches, starts or wakes the container", 
   assert.doesNotMatch(reset, /\.(fetch|start|startAndWaitForPorts|containerFetch)\(/);
 });
 
-test("the only timer is the reset cron, and it fires at most every 6 hours", () => {
+test("the only timer is the reset cron, and it fires once a day", () => {
   assert.equal(wrangler.triggers.crons.length, 1);
   const [min, hour, dom, mon, dow] = wrangler.triggers.crons[0].split(" ");
   assert.match(min, /^\d+$/);
-  assert.ok(/^\*\/(\d+)$/.test(hour) ? Number(hour.slice(2)) >= 6 : /^[\d,]+$/.test(hour));
+  assert.match(hour, /^\d+$/);
   assert.deepEqual([dom, mon, dow], ["*", "*", "*"]);
   assert.doesNotMatch(worker, /setInterval|setAlarm|storage\.setAlarm/);
 });

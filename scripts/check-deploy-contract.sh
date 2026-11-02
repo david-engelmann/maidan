@@ -58,6 +58,32 @@ for line in $(grep -n -- '--no-default-features' crates/maidan-server/Dockerfile
   fi
 done
 
+# Bootstrap stays off in every non-demo image. The Dockerfile defaults it off;
+# release.yml passes it explicitly per leg: 0 for every stock leg, 1 only for
+# the -demo leg, whose tag is never latest.
+grep -q '^ARG MAIDAN_ENABLE_BOOTSTRAP=0$' crates/maidan-server/Dockerfile \
+  || { echo "crates/maidan-server/Dockerfile must default MAIDAN_ENABLE_BOOTSTRAP to 0" >&2; exit 1; }
+python3 - <<'PY' || exit 1
+import sys, yaml
+wf = yaml.safe_load(open(".github/workflows/release.yml"))
+job = wf["jobs"]["docker-server"]
+legs = job["strategy"]["matrix"]["include"]
+def fail(msg):
+    print(f"release.yml docker-server: {msg}", file=sys.stderr); sys.exit(1)
+stock = [l for l in legs if l.get("suffix", "") == ""]
+if not stock or any(str(l.get("bootstrap")) != "0" for l in stock):
+    fail("every stock leg must set bootstrap: \"0\"")
+if any(str(l.get("bootstrap")) != "0" and l.get("suffix") != "-demo" for l in legs):
+    fail("only the -demo leg may build with bootstrap")
+step = next(s for s in job["steps"] if s.get("name") == "build + push maidan-server")
+if "MAIDAN_ENABLE_BOOTSTRAP=${{ matrix.bootstrap }}" not in step["with"]["build-args"]:
+    fail("the build must pass MAIDAN_ENABLE_BOOTSTRAP=${{ matrix.bootstrap }}")
+manifest = "\n".join(s.get("run", "") for s in wf["jobs"]["docker-server-manifest"]["steps"])
+for cmd in manifest.split("docker buildx imagetools create")[1:]:
+    if "-demo" in cmd and ":latest" in cmd:
+        fail("the -demo image must never be tagged latest")
+PY
+
 # The registry manifest and the image label must name the same server.
 name=$(python3 -c 'import json;print(json.load(open("listings/registry/server.json"))["name"])')
 grep -q "io.modelcontextprotocol.server.name=\"$name\"" crates/maidan-server/Dockerfile \
