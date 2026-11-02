@@ -55,6 +55,19 @@ while read -r version; do
 done < <(grep -oE '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 [[ -n "$best" ]] || die "no CHANGELOG section has its tag here (fetch the tags: fetch-depth: 0)"
 expected="v${best}"
+# The release record (scripts/check-release-records.sh) moves README's server
+# image and MAIDAN_TAG to the release it records before that release is
+# tagged, so the record commit itself can pass CI and be promoted. Those two
+# README pins may name the record's version while its tag does not exist yet:
+# the Capabilities head, when it is newer than every tagged section and has a
+# CHANGELOG section of its own.
+record="$(grep -m 1 -oE '^## \[v[0-9]+\.[0-9]+\.[0-9]+\]' docs/Capabilities.md | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+record_ok=""
+if [[ -n "$record" ]] && version_gt "$record" "$best" \
+  && ! git rev-parse -q --verify "refs/tags/v${record}" >/dev/null \
+  && grep -qE "^## \[${record//./\\.}\]" CHANGELOG.md; then
+  record_ok="v${record}"
+fi
 
 failures=()
 checked=()
@@ -63,14 +76,15 @@ checked=()
 # exactly <count> such pins (none moved out of the pattern's reach), each at
 # the expected version. <count> 0 means "one or more".
 pin() {
-  local file="$1" count="$2" pattern="$3" found=0 line text version
+  local file="$1" count="$2" pattern="$3" alt="${4:-}" found=0 line text version
   [[ -f "$file" ]] || die "$file is missing"
   while IFS=: read -r line text; do
     [[ -n "$line" ]] || continue
     found=$((found + 1))
     version="$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"$text" | head -n 1)"
     checked+=("${file}:${line}")
-    [[ "$version" == "$expected" ]] || failures+=("${file}:${line} pins ${version}: ${text}")
+    [[ "$version" == "$expected" || ( -n "$alt" && "$version" == "$alt" ) ]] ||
+      failures+=("${file}:${line} pins ${version}: ${text}")
   done < <(grep -noE "$pattern" "$file" || true)
   if [[ "$count" -eq 0 ]]; then
     [[ "$found" -gt 0 ]] || die "$file: no pin matches ${pattern}; if it moved, update this script"
@@ -89,8 +103,8 @@ pin helm/maidan-stack/values-prod.yaml 2 "^    tag: ${v}$"
 pin docker/Dockerfile.quickstart 1 "^ARG MAIDAN_VERSION=${v}$"
 pin compose.quickstart.yaml 1 "MAIDAN_VERSION: \\$\\{MAIDAN_VERSION:-${v}\\}"
 pin k8s/overlays/prod/kustomization.yaml 2 "^    newTag: ${v}$"
-pin README.md 0 "${image}"
-pin README.md 1 "^MAIDAN_TAG=${v}$"
+pin README.md 0 "${image}" "$record_ok"
+pin README.md 1 "^MAIDAN_TAG=${v}$" "$record_ok"
 pin README.md 1 "pins \(\`${v}\`\)"
 pin docs/Production.md 1 "^MAIDAN_TAG=${v}$"
 # The catalog listings under listings/ name the published image too: the
