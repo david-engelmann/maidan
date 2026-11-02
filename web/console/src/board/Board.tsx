@@ -220,7 +220,7 @@ export function Board() {
                       exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, scale: 0.97 }}
                       transition={{ duration: 0.18 }}
                     >
-                      <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} onOpen={() => setOpenId(c.thread.id)} />
+                      <TaskCard card={c} now={now} member={c.thread.assignee_id ? data.members.get(c.thread.assignee_id) : undefined} fresh={data.fresh.has(c.thread.id)} refusal={data.refusals.get(c.thread.id)} selected={openId === c.thread.id} onOpen={() => setOpenId(c.thread.id)} />
                     </motion.li>
                   ))}
                 </AnimatePresence>
@@ -244,13 +244,13 @@ export function Board() {
   );
 }
 
-function TaskCard({ card, now, member, fresh, refusal, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; refusal?: string; onOpen: () => void }) {
+function TaskCard({ card, now, member, fresh, refusal, selected, onOpen }: { card: Card; now: number; member?: Member; fresh: boolean; refusal?: string; selected: boolean; onOpen: () => void }) {
   const th = card.thread;
   const flag = cardFlag(th, card.chrome.lane, refusal);
   const lease = card.chrome.lane === "working" ? leaseView(th.assignment_expires_at, now) : null;
   const tone = th.closed_without_review ? "unreviewed" : card.chrome.lane;
   return (
-    <button type="button" className={`task ${fresh ? "fresh" : ""}`} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}`} aria-haspopup="dialog" onClick={onOpen}>
+    <button type="button" className={`task ${fresh ? "fresh" : ""} ${selected ? "selected" : ""}`} aria-current={selected ? "true" : undefined} data-chrome={card.chrome.label} aria-label={`${cardAriaLabel(card)}${refusal !== undefined ? ", close refused" : ""}`} aria-haspopup="dialog" onClick={onOpen}>
       <span className="task-title">{card.title}</span>
       <span className="task-meta">
         <span className={`state state-${tone}`} title={th.closed_without_review ? "Closed without review" : th.status?.note || undefined}>

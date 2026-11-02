@@ -89,3 +89,24 @@ test("c opens the composer and a new task opens in the drawer", async ({ page })
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`task=${id}`));
 });
+
+test("a task in review offers Approve and Send back, with Close behind the menu", async ({ page }) => {
+  await openOnChannel(page, (fx as unknown as Record<string, string>).board_channel_id);
+  const card = page.locator(".lane .task", { hasText: "Review:" });
+  await card.click();
+  await expect(card).toHaveAttribute("aria-current", "true");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator(".facts .state-dot")).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Approve" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Send back" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Close task" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "More actions" }).click();
+  const menu = sheet.getByRole("menu");
+  await expect(menu.getByRole("menuitem", { name: "Close task" })).toBeVisible();
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+});

@@ -595,8 +595,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 .empty-state p { margin: 0; }
 
 /* Task sheet extras and Connect. */
-.sheet-more { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
-.sheet-more summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; font-weight: 600; }
 .result-form { display: grid; gap: 8px; margin-top: 8px; }
 .result-form textarea, .result-form input { width: 100%; font: inherit; font-size: var(--text-input); padding: 8px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
 .snippet { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
@@ -1110,3 +1108,29 @@ h1, h2, h3, strong, b { font-weight: 600; }
   .board-filters .filter-pick select { width: 100%; min-width: 0; max-width: none; }
   .board-bar .new-task kbd { display: none; }
 }
+
+/* Task drawer: a side panel that keeps the board readable on a wide screen. */
+.sheet-head h2 { margin: 2px 0 14px; }
+.facts > div:last-child { border-bottom: 0; }
+.facts dd .state { display: inline-flex; align-items: center; gap: 6px; }
+.facts dd.who { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.sheet-actions { align-items: center; margin-top: 14px; }
+.sheet-menu { position: relative; margin-left: auto; }
+.sheet-menu-btn { width: 44px; height: 44px; border-radius: var(--r-md); }
+.sheet-menu-btn .icon { fill: currentColor; stroke: none; }
+.menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 2; min-width: 200px; display: grid; padding: 4px; background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-3); }
+.menu-item { min-height: 40px; padding: 0 12px; text-align: left; border: 0; border-radius: 8px; background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.menu-item:hover, .menu-item:focus-visible { background: color-mix(in srgb, var(--ink) 7%, transparent); outline: none; }
+.menu-item.danger { color: var(--danger); }
+.task.selected { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink), var(--shadow-2); }
+@media (min-width: 900px) {
+  .sheet-scrim { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .sheet { margin: 8px; border: 1px solid var(--line-strong); border-radius: var(--r-lg); box-shadow: -1px 0 0 var(--line), -16px 0 40px -12px rgba(0, 0, 0, .28); }
+}
+@media (max-width: 599px) { .menu-item { min-height: 44px; } }
+.sheet .sheet-context { margin-top: 0; border-top: 0; }
+.sheet .facts { margin-bottom: 0; }
+.sheet-actions .button.steel { background: transparent; border: 1px solid var(--line-strong); color: var(--ink); }
+.sheet-actions .button.steel:hover:not([disabled]) { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.sheet .sheet-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0 0 10px; }
+.sheet-actions .button.ink[disabled] { background: var(--ink); color: var(--paper); border-color: var(--ink); opacity: .38; cursor: not-allowed; }
