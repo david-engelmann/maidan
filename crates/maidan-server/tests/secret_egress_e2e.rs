@@ -23,7 +23,7 @@ use maidan_server::{router, AppState, FederationRuntime, SlashRuntime, WebhookRu
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewChannel, NewMember, NewThread, NewWorkspace};
 use serde_json::{json, Value};
-use sqlx::{sqlite::Row, SqlitePool};
+use sqlx::{Row, SqlitePool};
 
 /// A value that needs JSON escaping, around a marker that does not, so a scan
 /// finds it whether it was stored raw or escaped.

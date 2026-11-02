@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use maidan_store::{run_postgres_migrations, run_sqlite_migrations};
-use sqlx::{postgres::PgPoolOptions, sqlite::PgPool, Row, SqlitePool};
+use sqlx::{postgres::PgPoolOptions, PgPool, Row, SqlitePool};
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
