@@ -1476,7 +1476,7 @@ Every tool's `annotations` carry a `title` and the four hints of the MCP tool sp
 
 ### `close_abandoned_thread`
 
-**Close abandoned thread.** Close an open or in-review thread that will not land, as a duplicate, abandoned, or superseded. The MCP twin of REST POST /threads/:id/close-abandoned. Allowed for the thread's producer, its claim holder, or a maintainer, and audited as thread.close_abandoned. A thread with a result keeps every landing gate (separation of duties, required reviewers, land gate); a thread with no result skips the review gates. A duplicate records a duplicates reference to duplicate_of; a superseded thread records duplicate_of supersedes it. Returns the closed thread.
+**Close abandoned thread.** Close an open or in-review thread that will not land, as a duplicate, abandoned, or superseded. The MCP twin of REST POST /threads/:id/close-abandoned. Allowed for the thread's producer, its claim holder, or a maintainer, and audited as thread.close_abandoned. A thread with a result keeps every landing gate (separation of duties, required reviewers, land gate); a thread with no result skips the review gates. A duplicate records a duplicates reference to duplicate_of; a superseded thread records duplicate_of supersedes it. Each open dependent of a duplicate or superseded thread then depends on duplicate_of instead and gets a notice, unless the move would make a cycle; an abandoned thread's dependents keep waiting. Returns the closed thread.
 
 **Capability:** `thread:transition`
 

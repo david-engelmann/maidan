@@ -24701,7 +24701,7 @@
     },
     "/threads/{id}/close-abandoned": {
       "post": {
-        "description": "Closes an open or in-review thread as a duplicate, abandoned, or\nsuperseded. Allowed for the thread's producer, its claim holder, or a\nmaintainer. A thread with a result keeps every landing gate; a thread\nwith no result skips the review gates. A duplicate records a\n`duplicates` reference to `duplicate_of`; a superseded thread records\n`duplicate_of supersedes` it. Audited as `thread.close_abandoned`.",
+        "description": "Closes an open or in-review thread as a duplicate, abandoned, or\nsuperseded. Allowed for the thread's producer, its claim holder, or a\nmaintainer. A thread with a result keeps every landing gate; a thread\nwith no result skips the review gates. A duplicate records a\n`duplicates` reference to `duplicate_of`; a superseded thread records\n`duplicate_of supersedes` it. Each open dependent of a duplicate or\nsuperseded thread then depends on `duplicate_of` instead and gets a\nnotice, unless the move would make a cycle; an abandoned thread's\ndependents keep waiting. Audited as `thread.close_abandoned`.",
         "operationId": "close_abandoned_thread",
         "parameters": [
           {
