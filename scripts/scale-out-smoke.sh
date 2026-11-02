@@ -39,8 +39,11 @@ fail() {
 }
 
 echo "=== building images ==="
-docker build --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
-  -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+# CI builds maidan-server:dev beforehand through a cached buildx step.
+if [ "${MAIDAN_SMOKE_PREBUILT:-}" != "1" ]; then
+  docker build --build-arg MAIDAN_ENABLE_BOOTSTRAP=1 \
+    -t maidan-server:dev -f crates/maidan-server/Dockerfile .
+fi
 docker build -t maidan-postgres:dev -f docker/Dockerfile.db .
 
 echo "=== bringing up two replicas + LB ==="
