@@ -9,10 +9,13 @@ use maidan_types::*;
 use sqlx::sqlite::SqlitePoolOptions;
 
 fn verify(url: &str) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_maidan"))
-        .args(["verify-shredding", "--database-url", url])
-        .output()
-        .expect("run maidan verify-shredding")
+    Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan")
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into()),
+    )
+    .args(["verify-shredding", "--database-url", url])
+    .output()
+    .expect("run maidan verify-shredding")
 }
 
 #[tokio::test]

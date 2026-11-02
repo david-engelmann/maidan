@@ -27,11 +27,14 @@ fn cleanup(db: &std::path::Path) {
 }
 
 fn maidan(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_maidan"))
-        .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
-        .args(args)
-        .output()
-        .expect("run maidan")
+    Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan")
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into()),
+    )
+    .env("MAIDAN_ALLOW_INSECURE_DEV_KEK", "1")
+    .args(args)
+    .output()
+    .expect("run maidan")
 }
 
 /// The id in parentheses on the `label:` line `maidan init` prints.
