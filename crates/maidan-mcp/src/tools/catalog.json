@@ -2030,6 +2030,81 @@
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Add evidence record"
+    },
+    "description": "Record evidence on a thread: a test_run, ci_run, diff, review_verdict, screenshot (by URL) or note, with where it came from. Give at least one of url, sha256 or note; a screenshot needs a url and a note needs a note. Publishes evidence_added. Does not move the thread's version. Requires workspace:write.",
+    "inputSchema": {
+      "properties": {
+        "kind": {
+          "enum": [
+            "test_run",
+            "ci_run",
+            "diff",
+            "review_verdict",
+            "screenshot",
+            "note"
+          ],
+          "type": "string"
+        },
+        "note": {
+          "description": "at most 4000 characters",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "a sha256, 64 hex characters",
+          "type": "string"
+        },
+        "source": {
+          "description": "where the evidence came from, 1 to 200 characters",
+          "type": "string"
+        },
+        "thread_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "url": {
+          "description": "an http or https URL",
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread_id",
+        "kind",
+        "source"
+      ],
+      "type": "object"
+    },
+    "name": "add_evidence_record"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List evidence records"
+    },
+    "description": "The evidence recorded on the thread, oldest first, each with its kind, source, who recorded it and when. Requires workspace:read.",
+    "inputSchema": {
+      "properties": {
+        "thread_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "thread_id"
+      ],
+      "type": "object"
+    },
+    "name": "list_evidence_records"
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,

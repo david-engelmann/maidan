@@ -762,6 +762,8 @@ jobs:
           tool: cargo-nextest,cargo-llvm-cov
       - name: test the floor check
         run: python3 scripts/test-coverage-floors.py
+      - name: test the P6 record checks
+        run: python3 scripts/test-oauth-p6-record.py
       - name: drop instrumented binaries from the restored cache
         # The report reads every test binary under the target dir. One
         # restored from an older commit's cache adds that commit's lines again,

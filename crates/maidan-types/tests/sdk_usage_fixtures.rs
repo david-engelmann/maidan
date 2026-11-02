@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use maidan_types::{token_usage_from_genai, PriceSnapshot, TokenUsage};
+use maidan_types::{token_usage_from_genai, PriceSnapshot, TokenUsage, UsageEvidence};
 use serde_json::{Map, Value};
 
 const PROVIDERS: [&str; 9] = [
@@ -98,6 +98,27 @@ fn ledger_reads(fixture: &Value) -> Result<TokenUsage, String> {
     token_usage_from_genai(&attrs).map(|(tokens, _, _)| tokens)
 }
 
+/// The evidence the server would get for a fixture whose options carry lane
+/// evidence (`batch`, `standard_price`): the response's service tier plus
+/// those options, checked by the same `validate` as `report_usage`.
+fn lane_evidence(fixture: &Value) -> Option<Result<(), String>> {
+    let options = fixture.get("options")?;
+    if options.get("standard_price").is_none() && options.get("batch").is_none() {
+        return None;
+    }
+    let mut evidence = Map::new();
+    if let Some(tier) = fixture.pointer("/response/service_tier") {
+        evidence.insert("service_tier".into(), tier.clone());
+    }
+    for key in ["batch", "standard_price"] {
+        if let Some(value) = options.get(key) {
+            evidence.insert(key.into(), value.clone());
+        }
+    }
+    let evidence: UsageEvidence = serde_json::from_value(Value::Object(evidence)).unwrap();
+    Some(evidence.validate())
+}
+
 fn assert_reads_as_expected(fixture: &Value) {
     let name = fixture["name"].as_str().unwrap();
     assert!(
@@ -152,6 +173,9 @@ fn the_ledger_reads_every_constructed_case_as_the_sdks_must() {
         let name = fixture["name"].as_str().unwrap();
         assert_eq!(fixture["recorded"], "constructed", "{name}");
         assert_reads_as_expected(&fixture);
+        if let Some(lane) = lane_evidence(&fixture) {
+            lane.unwrap_or_else(|err| panic!("{name}: the server refuses its evidence: {err}"));
+        }
     }
 }
 
@@ -160,7 +184,10 @@ fn the_ledger_refuses_every_invalid_fixture_as_the_sdks_must() {
     for fixture in read_dir(&fixtures_dir().join("invalid")) {
         let name = fixture["name"].as_str().unwrap();
         let needle = fixture["expected_error"].as_str().unwrap();
-        let err = ledger_reads(&fixture).expect_err(name);
+        let err = match lane_evidence(&fixture) {
+            Some(lane) => lane.expect_err(name),
+            None => ledger_reads(&fixture).expect_err(name),
+        };
         assert!(err.contains(needle), "{name}: {err}");
     }
 }

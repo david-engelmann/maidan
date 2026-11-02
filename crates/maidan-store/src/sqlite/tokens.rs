@@ -196,6 +196,10 @@ pub async fn get_active_by_hash(
                    SELECT 1 FROM maidan_members d
                    WHERE d.id = g.delegate_id AND d.workspace_id = g.workspace_id
                      AND d.tombstoned_at IS NULL
+                     AND NOT EXISTS (
+                       SELECT 1 FROM maidan_scim_users du
+                       WHERE du.member_id = d.id AND NOT du.active
+                     )
                  )
              )
            )
@@ -212,6 +216,10 @@ pub async fn get_active_by_hash(
              WHERE m.id = maidan_api_tokens.member_id
                AND m.workspace_id = maidan_api_tokens.workspace_id
                AND m.tombstoned_at IS NULL
+               AND NOT EXISTS (
+                 SELECT 1 FROM maidan_scim_users u
+                 WHERE u.member_id = m.id AND NOT u.active
+               )
            )
            AND (
              app_installation_id IS NULL
