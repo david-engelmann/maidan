@@ -63,15 +63,23 @@ test("j and k walk the thread list in order", async ({ page }) => {
 });
 
 test("someone else's message shows an unread dot, and reading it clears the dot", async ({ page, request }) => {
+  // Another member posts first, so the thread has a message to read whatever
+  // the seed holds.
+  const post = (body: string) =>
+    request.post(`/threads/${fx.thread_id}/messages`, { headers: bearer(fx.requester_token), data: { body } });
+  const seed = `read probe ${Date.now()}`;
+  const first = await post(seed);
+  expect(first.ok(), `seed post: ${first.status()}`).toBeTruthy();
   await signInWithCookie(page, fx);
   await openOnChannel(page, fx.channel_id, `#/threads/t/${fx.thread_id}`);
-  await expect(page.locator(".msg").first()).toBeVisible();
+  await expect(page.locator(".msg").filter({ hasText: seed })).toBeVisible();
   // Read now; leave for the list with nothing open.
   await page.goto("/ui/#/threads");
   const row = convRow(page, fx.thread_id);
   await expect(row).toBeVisible();
   await expect(row.locator(".unread-dot")).toHaveCount(0);
-  const res = await request.post(`/threads/${fx.thread_id}/messages`, { headers: bearer(fx.requester_token), data: { body: `unread probe ${Date.now()}` } });
+  const probe = `unread probe ${Date.now()}`;
+  const res = await post(probe);
   expect(res.ok(), `post: ${res.status()}`).toBeTruthy();
   // The list hears it live; a reload is the fallback the dot must also survive.
   await expect(row.locator(".unread-dot")).toBeVisible({ timeout: 15_000 }).catch(async () => {
@@ -79,7 +87,7 @@ test("someone else's message shows an unread dot, and reading it clears the dot"
     await expect(convRow(page, fx.thread_id).locator(".unread-dot")).toBeVisible();
   });
   await convRow(page, fx.thread_id).click();
-  await expect(page.locator(".msg").filter({ hasText: "unread probe" })).toBeVisible();
+  await expect(page.locator(".msg").filter({ hasText: probe })).toBeVisible();
   await expect(convRow(page, fx.thread_id).locator(".unread-dot")).toHaveCount(0);
 });
 
