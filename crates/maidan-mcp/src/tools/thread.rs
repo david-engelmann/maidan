@@ -1054,6 +1054,60 @@ pub(super) async fn unlink_thread_artifact(
     Ok(content_json(&json!({ "removed": removed })))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AddEvidenceRecordArgs {
+    thread_id: uuid::Uuid,
+    kind: EvidenceRecordKind,
+    source: String,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+/// Record a piece of evidence on a thread: a test run, a CI run, a diff, a
+/// review verdict, a screenshot by URL, or a note. Twin of
+/// `POST /threads/{id}/evidence-records`. `workspace:write`; thread access
+/// enforced. Appends and publishes `evidence_added`; the thread version does
+/// not move.
+pub(super) async fn add_evidence_record(
+    server: &crate::server::McpServer,
+    auth: &AuthContext,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: AddEvidenceRecordArgs = crate::tools::parse_args(args)?;
+    let new = NewEvidenceRecord {
+        kind: a.kind,
+        source: a.source,
+        url: a.url,
+        sha256: a.sha256,
+        note: a.note,
+    }
+    .normalized()
+    .map_err(McpError::InvalidParams)?;
+    let (record, stored) = server
+        .store
+        .add_evidence_record_with_event(ThreadId(a.thread_id), &new, auth.member_id)
+        .await?;
+    server.publish_stored(&stored).await;
+    Ok(content_json(&record))
+}
+
+/// A thread's evidence records, oldest first. Twin of
+/// `GET /threads/{id}/evidence-records`. `workspace:read`; thread access
+/// enforced.
+pub(super) async fn list_evidence_records(
+    store: &Arc<dyn Store>,
+    args: &Value,
+) -> Result<Value, McpError> {
+    let a: ThreadIdArg = crate::tools::parse_args(args)?;
+    let records = store.list_evidence_records(ThreadId(a.thread_id)).await?;
+    Ok(content_json(&records))
+}
+
 /// The thread's active status declaration, or null. `workspace:read`; thread
 /// access enforced.
 pub(super) async fn get_thread_status(
