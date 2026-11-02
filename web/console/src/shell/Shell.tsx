@@ -3,7 +3,7 @@
 // screen. Safe-area insets come from viewport-fit=cover in index.html.
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { controlBus, liveBus } from "../core/bus.ts";
+import { controlBus, liveBus, liveStatus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -31,6 +31,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const live = useLive(session, NO_FILTER, TO_BUS);
   // A refused socket (a revoked or narrowed token) sends no more events, so
   // ask every screen to read once more: each then shows the refusal it gets.
+  useEffect(() => liveStatus.set(live), [live]);
   const refused = live.kind === "refused";
   useEffect(() => {
     if (refused) liveBus.emit({ type: "resync" });
@@ -76,6 +77,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
   return (
     <div className="shell">
+      <a className="skip-link" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>Skip to content</a>
       <nav className="rail" aria-label="Places">
         <a className="brand" href="#/board" aria-label="Maidan console">
           <Mark className="mark" />
@@ -90,7 +92,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           {session.status === "signed-in" && session.mode ? (
             <span className="mode-chip" data-mode={session.mode} title="What this page acts with">{MODE_WORD[session.mode]}</span>
           ) : null}
-          <span className={`live live-${live.kind}`} title={who ? `Signed in as ${who}` : "Not signed in"}>
+          <span className={`live live-${live.kind}`} role="status" title={who ? `Signed in as ${who}` : "Not signed in"}>
             <span className="dot" aria-hidden="true" />
             {liveWord}
           </span>
@@ -100,7 +102,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         </div>
       </header>
 
-      <main className="content" id="main">
+      <main className="content" id="main" tabIndex={-1}>
         <motion.section
           key={route}
           initial={reduce ? false : { opacity: 0, y: 8 }}

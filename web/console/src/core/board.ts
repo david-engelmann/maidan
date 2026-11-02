@@ -114,6 +114,124 @@ export function chips(th: Thread, lane: LaneKey): Array<{ kind: string; text: st
   return out;
 }
 
+/** A board-health signal: a live task that may need a person to look. */
+export type HealthKey = "stalled" | "ending" | "blocked" | "waiting" | "unclaimed";
+
+/** How soon a claim's lease must end to count as "lease ending". */
+export const LEASE_WARN_MS = 10 * 60 * 1000;
+
+export const HEALTH: ReadonlyArray<{ key: HealthKey; one: string; many: string; title: string }> = [
+  { key: "stalled", one: "stalled", many: "stalled", title: "Claimed, with no recent progress from its agent" },
+  { key: "ending", one: "lease ending", many: "leases ending", title: "The claim runs out within 10 minutes" },
+  { key: "blocked", one: "blocked", many: "blocked", title: "Its agent reported it blocked" },
+  { key: "waiting", one: "waiting on a person", many: "waiting on a person", title: "Waiting on, or overdue on, a human answer" },
+  { key: "unclaimed", one: "unclaimed", many: "unclaimed", title: "Open with nobody on it" },
+];
+
+/** Whether a task shows a health signal. Done tasks never do. */
+export function healthMatch(th: Thread, key: HealthKey, now: number): boolean {
+  if (th.state === "closed" || th.state === "archived") return false;
+  switch (key) {
+    case "stalled":
+      return Boolean(th.stalled);
+    case "ending": {
+      if (!th.assignee_id || !th.assignment_expires_at) return false;
+      const at = Date.parse(th.assignment_expires_at);
+      return Number.isFinite(at) && at - now <= LEASE_WARN_MS;
+    }
+    case "blocked":
+      return Boolean(th.block);
+    case "waiting":
+      return th.human_wait?.state === "waiting" || th.human_wait?.state === "overdue";
+    case "unclaimed":
+      return !th.assignee_id && th.state !== "in_review";
+  }
+}
+
+/** The non-zero health signals across the board, in strip order. */
+export function boardHealth(threads: Thread[], now: number): Array<{ key: HealthKey; count: number; text: string; title: string }> {
+  const out: Array<{ key: HealthKey; count: number; text: string; title: string }> = [];
+  for (const h of HEALTH) {
+    const count = threads.filter((t) => healthMatch(t, h.key, now)).length;
+    if (count) out.push({ key: h.key, count, text: `${count} ${count === 1 ? h.one : h.many}`, title: h.title });
+  }
+  return out;
+}
+
+/** Past this, data on a board with no live connection is called old. */
+export const STALE_AFTER_MS = 2 * 60 * 1000;
+
+function hhmm(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * The stale-data banner's sentence, or null when the board is current. It
+ * shows when the last refresh failed, or when live updates are down
+ * (reconnecting, refused or closed) so the board no longer follows changes.
+ */
+export function staleBanner(live: { kind: string }, loadedAt: number | null, failedSince: number | null, now: number): string | null {
+  if (loadedAt === null) return null;
+  const at = hhmm(loadedAt);
+  if (failedSince !== null) return `Refresh failing. Showing the board as of ${at}.`;
+  const down = live.kind === "reconnecting" || live.kind === "refused" || live.kind === "closed";
+  if (!down) return null;
+  if (live.kind === "refused") return `Live updates were refused. Showing the board as of ${at}.`;
+  return now - loadedAt > STALE_AFTER_MS
+    ? `Live updates are down and this board is from ${at}. It may be out of date.`
+    : `Live updates are down. Reconnecting; the board is from ${at}.`;
+}
+
+export type AgentGroup = { id: string | null; name: string; cards: Card[] };
+
+/**
+ * Live tasks grouped by who holds them: named holders A to Z, then the
+ * unclaimed. Done tasks are left out; the lane view still has them.
+ */
+export function byAgent(threads: Thread[], gates: Record<string, Gate>, members: ReadonlyMap<string, Member>): AgentGroup[] {
+  const lanes = toLanes(threads, gates);
+  const groups = new Map<string | null, AgentGroup>();
+  for (const key of ["review", "working", "open"] as const) {
+    for (const card of lanes[key]) {
+      const id = card.thread.assignee_id ?? null;
+      let g = groups.get(id);
+      if (!g) {
+        g = { id, name: id ? (members.get(id)?.name ?? id.slice(0, 8)) : "Unclaimed", cards: [] };
+        groups.set(id, g);
+      }
+      g.cards.push(card);
+    }
+  }
+  return [...groups.values()].sort((a, b) => (a.id === null ? 1 : b.id === null ? -1 : a.name.localeCompare(b.name)));
+}
+
+export type PresenceWord = "online" | "away" | "offline";
+export type PresenceEntry = { id: string; name: string; status: "online" | "away"; agent: boolean; holding: number };
+
+/** Who is here now: online before away, agents before people, then by name. Offline members are left out. */
+export function presenceStrip(members: ReadonlyMap<string, Member>, presence: ReadonlyMap<string, PresenceWord>, threads: Thread[]): PresenceEntry[] {
+  const held = new Map<string, number>();
+  for (const t of threads) if (t.assignee_id && t.state !== "closed" && t.state !== "archived") held.set(t.assignee_id, (held.get(t.assignee_id) ?? 0) + 1);
+  const out: PresenceEntry[] = [];
+  for (const [id, status] of presence) {
+    if (status === "offline") continue;
+    const m = members.get(id);
+    out.push({ id, name: m?.name ?? id.slice(0, 8), status, agent: m?.kind === "agent", holding: held.get(id) ?? 0 });
+  }
+  return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "online" ? -1 : 1) || (a.agent === b.agent ? 0 : a.agent ? -1 : 1) || a.name.localeCompare(b.name));
+}
+
+/** Cards a lane renders before "Show more"; each step adds this many again. */
+export const LANE_PAGE = 60;
+/** Past this many cards in a lane, cards skip layout animation. */
+export const ANIMATE_UP_TO = 40;
+
+/** The first `limit` cards and how many wait behind them. */
+export function windowed<T>(cards: T[], limit: number): { shown: T[]; hidden: number } {
+  const n = Math.max(0, Math.floor(limit));
+  return cards.length <= n ? { shown: cards, hidden: 0 } : { shown: cards.slice(0, n), hidden: cards.length - n };
+}
+
 type NoticeMessage = { thread_id?: string; body?: string; created_at?: string; metadata?: { notice?: string } | null };
 export type MessageEvent = { thread_id?: string; occurred_at?: string; payload?: { message?: NoticeMessage; thread_id?: string; occurred_at?: string } };
 
@@ -250,6 +368,39 @@ export class BoardApi {
     return (await res.json()) as T;
   }
 
+  /** Set once GET /threads/{id}/votes answers 404: this server predates it. */
+  private threadVotesMissing = false;
+
+  private async getOr404<T>(path: string): Promise<T | null> {
+    const c = this.creds();
+    const res = await this.fetchFn(apiPath(c, path), { headers: headers(c), credentials: "include" });
+    if (res.status === 404) return null;
+    if (!res.ok) return fail(res, this.mode());
+    return (await res.json()) as T;
+  }
+
+  /**
+   * A card's vote counts. One call to GET /threads/{id}/votes; on a server
+   * without it (404), the thread's messages and their per-message votes.
+   * Null when neither read is there.
+   */
+  async cardVotes(threadId: string): Promise<VoteBadge | null> {
+    if (!this.threadVotesMissing) {
+      const tv = await this.getOr404<ThreadVotesBody>(`/threads/${threadId}/votes`);
+      if (tv) return badgeFromThread(tv);
+      this.threadVotesMissing = true;
+    }
+    const messages = await this.getOr404<Array<{ id: string }>>(`/threads/${threadId}/messages?limit=50`);
+    if (!messages) return null;
+    const rows: VoteKindRow[] = [];
+    for (const m of messages) {
+      const votes = await this.getOr404<VoteKindRow[]>(`/messages/${m.id}/votes`);
+      if (!votes) return null;
+      rows.push(...votes);
+    }
+    return badgeFromRows(rows);
+  }
+
   async channels(workspaceId: string): Promise<Channel[]> {
     const rows = await this.get<Array<{ id: string; name: string; kind?: string }>>(`/workspaces/${workspaceId}/channels`);
     return rows.map((r) => ({ id: r.id, name: r.name }));
@@ -335,4 +486,44 @@ export class BoardApi {
     if (!res.ok) return fail(res, this.mode());
     return (await res.json()) as Thread;
   }
+}
+
+// ---- Card vote badges ------------------------------------------------------
+
+export type VoteBadge = { approve: number; request_changes: number; ack: number };
+export type VoteKindRow = { kind: string };
+export type ThreadVotesBody = { thread_id: string; messages: Array<{ message_id: string; approve: number; request_changes: number; ack: number }> };
+
+const NO_VOTES: VoteBadge = { approve: 0, request_changes: 0, ack: 0 };
+
+export function badgeFromThread(body: ThreadVotesBody): VoteBadge {
+  return body.messages.reduce(
+    (b, m) => ({ approve: b.approve + (m.approve || 0), request_changes: b.request_changes + (m.request_changes || 0), ack: b.ack + (m.ack || 0) }),
+    NO_VOTES,
+  );
+}
+
+export function badgeFromRows(rows: VoteKindRow[]): VoteBadge {
+  const b = { ...NO_VOTES };
+  for (const r of rows) if (r.kind === "approve" || r.kind === "request_changes" || r.kind === "ack") b[r.kind] += 1;
+  return b;
+}
+
+export function hasVotes(b: VoteBadge | null | undefined): b is VoteBadge {
+  return !!b && b.approve + b.request_changes + b.ack > 0;
+}
+
+/** "2 approve, 1 changes requested": the badge's words for a screen reader. */
+export function voteWords(b: VoteBadge): string {
+  const parts: string[] = [];
+  if (b.approve) parts.push(`${b.approve} approve`);
+  if (b.request_changes) parts.push(`${b.request_changes} changes requested`);
+  if (b.ack) parts.push(`${b.ack} ack`);
+  return parts.join(", ");
+}
+
+/** Which cards get a badge: review-lane cards first, at most `cap` reads. */
+export const VOTE_BADGE_CAP = 40;
+export function badgeTargets(lanes: Record<LaneKey, Card[]>, cap = VOTE_BADGE_CAP): string[] {
+  return [...lanes.review, ...lanes.working].slice(0, cap).map((c) => c.thread.id);
 }

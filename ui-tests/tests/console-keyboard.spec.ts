@@ -22,9 +22,27 @@ async function walk(page: Page, steps: number): Promise<string[]> {
   return stops;
 }
 
-/** Body stops that are not the walk wrapping past the last control to the first. */
-function holes(stops: string[]): number[] {
-  return stops.flatMap((s, i) => (s === "NONE" || (s === "BODY" && stops[i + 1] !== stops[0] && i + 1 < stops.length) ? [i] : []));
+/**
+ * Body stops that are not the walk wrapping past the last control back to the
+ * top. A wrap lands on the page's first control (the skip link) or on one
+ * already seen. That need not be stops[0]: the click that starts the walk sets
+ * the navigation start point past the skip link, so only the wrap reaches it.
+ */
+function holes(stops: string[], top: string): number[] {
+  return stops.flatMap((s, i) => {
+    if (s === "NONE") return [i];
+    if (s !== "BODY" || i + 1 >= stops.length) return [];
+    const next = stops[i + 1];
+    return next === top || stops.slice(0, i).includes(next) ? [] : [i];
+  });
+}
+
+/** The fingerprint of the first control in document order, as walk() writes it. */
+async function firstControl(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const el = document.querySelector("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex='0']");
+    return el ? `${el.tagName}:${el.outerHTML.slice(0, 60)}` : "NONE";
+  });
 }
 
 for (const hash of SCREENS) {
@@ -40,7 +58,7 @@ for (const hash of SCREENS) {
     expect(unnamed, "buttons with no name").toEqual([]);
     await page.locator("body").click({ position: { x: 1, y: 1 } });
     const stops = await walk(page, 40);
-    expect(holes(stops), `stops: ${stops.map((s) => s.split(":")[0]).join(" ")}`).toEqual([]);
+    expect(holes(stops, await firstControl(page)), `stops: ${stops.map((s) => s.split(":")[0]).join(" ")}`).toEqual([]);
   });
 }
 

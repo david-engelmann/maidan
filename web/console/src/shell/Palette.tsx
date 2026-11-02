@@ -2,7 +2,8 @@
 // keys move, Enter runs, Escape closes. Commands are plain data, so screens
 // can add their own later.
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useDialogFocus } from "./focus.ts";
 
 export type Command = { id: string; title: string; hint?: string; run: () => void };
 
@@ -41,7 +42,9 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => input.current?.focus(), []);
+  const box = useRef<HTMLDivElement>(null);
+  // Focus starts in the search field, stays in the palette, and goes back on close.
+  useDialogFocus(box, onClose, { autofocus: ".palette-input" });
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? commands.filter((c) => `${c.title} ${c.hint ?? ""}`.toLowerCase().includes(q)) : commands;
@@ -53,7 +56,7 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
     c.run();
   };
   return (
-    <>
+    <div ref={box} className="palette-body">
       <input
         ref={input}
         className="palette-input"
@@ -76,8 +79,6 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
           } else if (e.key === "Enter") {
             e.preventDefault();
             run(shown[at]);
-          } else if (e.key === "Escape") {
-            onClose();
           }
         }}
       />
@@ -98,6 +99,6 @@ function PaletteBody({ commands, onClose }: { commands: Command[]; onClose: () =
         ))}
         {!shown.length && <li className="empty">Nothing matches</li>}
       </ul>
-    </>
+    </div>
   );
 }

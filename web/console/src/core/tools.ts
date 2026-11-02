@@ -342,6 +342,10 @@ export class ToolsApi {
   schedules(workspace: string): Promise<Schedule[]> {
     return this.get(`/workspaces/${workspace}/task-schedules`);
   }
+  /** The newest workspace events, raw rows, oldest first (the Activity screen). */
+  recentEvents(workspace: string): Promise<Array<Record<string, unknown>>> {
+    return this.get(`/workspaces/${workspace}/events?limit=200`);
+  }
   async events(workspace: string, kind: string): Promise<WorkEvent[]> {
     const rows = await this.get<WorkEvent[]>(`/workspaces/${workspace}/events?limit=200`);
     return rows.filter((e) => !kind || e.kind === kind).slice(-50).reverse();

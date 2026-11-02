@@ -6,6 +6,7 @@ const PATHS: Record<RouteId | "search", string> = {
   threads: "M4 5h16v10H9l-5 4z",
   people: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 19c0-3 3-5 6-5s6 2 6 5M17 11a2.5 2.5 0 1 0 0-5M17 14c2 0 4 1.5 4 4",
   tools: "M14 6a4 4 0 0 0-5 5l-5 5 3 3 5-5a4 4 0 0 0 5-5l-2 2-2-1-1-2z",
+  activity: "M3 12h4l3-7 4 14 3-7h4",
   artifacts: "M7 3h7l5 5v13H7zM14 3v5h5",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
 };
