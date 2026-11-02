@@ -36,7 +36,6 @@ use maidan_types::{
     NewEgressTarget, NewMember, NewWorkspace,
 };
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 // ---------------------------------------------------------------- fake GitHub
 
@@ -404,7 +403,7 @@ async fn install_app(
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

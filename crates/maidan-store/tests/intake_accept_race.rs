@@ -12,7 +12,7 @@ use maidan_types::{
     NewIntakeItem, NewMember, NewThread, NewWorkspace,
 };
 use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode};
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -113,7 +113,7 @@ async fn concurrent_accepts_leave_one_thread_sqlite() {
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(Duration::from_secs(30))
         .foreign_keys(true);
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(RACERS as u32)
         .connect_with(options)
         .await

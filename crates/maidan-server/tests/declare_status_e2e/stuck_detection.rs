@@ -23,7 +23,6 @@ use maidan_types::{
 };
 use reqwest::StatusCode;
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// Short enough to wait out in a test, long enough that a thread whose agent
 /// posted just before the read is not stalled on a slow runner.
@@ -130,7 +129,7 @@ fn stalled(thread: &Value) -> bool {
 
 #[tokio::test]
 async fn a_quiet_agent_reads_back_stalled_and_only_in_its_own_workspace() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

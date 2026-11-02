@@ -6,11 +6,10 @@ use std::sync::Arc;
 
 use maidan_search::SqliteSearch;
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn sqlite_faceted_search_filters_hits() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

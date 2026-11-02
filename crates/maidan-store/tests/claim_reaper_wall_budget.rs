@@ -24,7 +24,6 @@ use maidan_types::{
     BudgetLimits, BudgetPatch, ChannelId, Event, EventKind, MemberId, MemberKind, NewChannel,
     NewMember, NewThread, NewWorkspace, StoredEvent, Thread, ThreadId, UsageDelta,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct Queue {
     channel: ChannelId,
@@ -479,7 +478,7 @@ async fn run_suite(store: Arc<dyn Store>) {
 
 #[tokio::test]
 async fn reaper_charges_wall_budget_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

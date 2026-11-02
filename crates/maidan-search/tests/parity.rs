@@ -7,7 +7,7 @@ use std::{sync::Arc, time::Duration};
 
 use maidan_search::{PostgresSearch, Search, SearchFilters, SqliteSearch};
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 
@@ -38,7 +38,7 @@ async fn rust_query_returns_same_ids() {
     let pg_store: Arc<dyn Store> = Arc::new(PostgresStore::for_tests(pg_pool.clone()));
     let pg_search = PostgresSearch::new(pg_pool);
 
-    let sqlite_pool = SqlitePoolOptions::new()
+    let sqlite_pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

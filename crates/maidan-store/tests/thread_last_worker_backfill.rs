@@ -5,7 +5,6 @@
 use chrono::{DateTime, Duration, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId};
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 const SQLITE_0124: &str = include_str!("../../../migrations/sqlite/0124_thread_last_worker.sql");
@@ -126,7 +125,7 @@ fn assert_order(s: &Seeded, seqs: &[(Uuid, Uuid, i64)]) {
 
 #[tokio::test]
 async fn the_0124_backfill_orders_workers_by_first_hold_and_puts_the_holder_last_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

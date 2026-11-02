@@ -14,7 +14,6 @@ use maidan_types::{
     ChannelId, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
     ThreadId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 const LEASE_SECS: i64 = 1;
 
@@ -144,7 +143,7 @@ async fn run_all(store: &dyn Store) {
 
 #[tokio::test]
 async fn a_new_holder_never_inherits_a_lease_deadline_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

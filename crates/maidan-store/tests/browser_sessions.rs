@@ -8,7 +8,6 @@ use maidan_types::{
     AuditScope, MaidanSession, MemberKind, NewApiToken, NewAuditEvent, NewMaidanSession, NewMember,
     NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 enum Pool {
     Sqlite(sqlx::SqlitePool),
@@ -117,7 +116,7 @@ async fn run_suite(store: &dyn Store, pool: Pool, break_audit: &str) {
 
 #[tokio::test]
 async fn a_tokens_session_keeps_its_id_and_is_recorded_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

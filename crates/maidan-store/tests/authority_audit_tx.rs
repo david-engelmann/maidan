@@ -13,7 +13,6 @@ use maidan_types::{
     MemberKind, NewApiToken, NewAuditEvent, NewChannel, NewDelegationGrant, NewMaidanSession,
     NewMember, NewShareTicket, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn event(ws: maidan_types::WorkspaceId, action: &str) -> NewAuditEvent {
     NewAuditEvent {
@@ -281,7 +280,7 @@ where
 
 #[tokio::test]
 async fn an_authority_change_needs_its_record_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

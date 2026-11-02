@@ -11,10 +11,9 @@ use std::sync::Arc;
 use maidan_server::chain_verify;
 use maidan_store::{prelude::*, run_sqlite_migrations, SqliteStore};
 use maidan_types::{MemberKind, NewMember, NewWorkspace};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn store() -> (Arc<dyn Store>, sqlx::SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

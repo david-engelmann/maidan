@@ -38,7 +38,7 @@ fn a_borrowed_context_drops_authority_capabilities() {
 /// the cascade ran.
 #[tokio::test]
 async fn a_borrowed_token_is_refused_once_its_grant_is_dead() {
-    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

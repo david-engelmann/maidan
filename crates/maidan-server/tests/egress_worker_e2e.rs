@@ -22,7 +22,7 @@ use maidan_types::{
     NewEgressOutbox, NewMember, NewMessage, NewSlackChannelLink, NewThread, NewWorkspace, ThreadId,
     WorkspaceId,
 };
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::SqlitePool;
 
 struct CountingSlack {
     attempts: AtomicUsize,
@@ -76,7 +76,7 @@ fn slack_sender(fail_with: Option<SlackError>) -> Arc<CountingSlack> {
 /// `None` sender is a deployment with the projector turned off. The pool comes
 /// back too, so one test can write a row `EgressTarget` cannot construct.
 async fn state_with(sender: Option<Arc<CountingSlack>>) -> (AppState, Arc<dyn Store>, SqlitePool) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

@@ -9,7 +9,6 @@ use maidan_store::prelude::*;
 use maidan_types::{
     ContentKeyring, Event, MemberId, NewChannel, NewMessage, NewThread, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn temp_db_url() -> (std::path::PathBuf, String) {
     let db = std::env::temp_dir().join(format!("maidan-rotate-it-{}.db", std::process::id()));
@@ -45,7 +44,7 @@ fn printed_id(stdout: &str, label: &str) -> uuid::Uuid {
 }
 
 async fn open(url: &str) -> (sqlx::SqlitePool, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect(url)
         .await

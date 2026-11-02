@@ -31,6 +31,7 @@ uuid.workspace = true
 
 [dev-dependencies]
 maidan-store = { path = "../maidan-store", features = ["test-support"] }
+maidan-search = { path = "../maidan-search", default-features = false }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 sqlx.workspace = true
 chrono.workspace = true

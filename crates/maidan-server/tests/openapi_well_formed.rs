@@ -10,10 +10,9 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use maidan_artifacts::LocalFsStore;
 use maidan_server::{router, AppState};
 use maidan_store::{prelude::*, run_sqlite_migrations};
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn spawn() -> (SocketAddr, tokio::task::JoinHandle<()>, tempfile::TempDir) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

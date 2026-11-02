@@ -17,7 +17,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
 use reqwest::redirect::Policy;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -33,7 +32,7 @@ struct Harness {
 }
 
 async fn spawn_oidc() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

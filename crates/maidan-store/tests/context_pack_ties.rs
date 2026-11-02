@@ -3,7 +3,6 @@
 use chrono::{DateTime, Utc};
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewChannel, NewThread, NewWorkspace, RefSide};
-use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 async fn assert_tied_refs(
@@ -52,7 +51,7 @@ async fn assert_tied_refs(
 
 #[tokio::test]
 async fn tied_references_sort_by_id_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

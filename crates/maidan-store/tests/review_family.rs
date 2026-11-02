@@ -10,7 +10,7 @@ use maidan_fsm::ThreadAction;
 use maidan_store::{prelude::*, run_postgres_migrations, run_sqlite_migrations};
 use maidan_types::*;
 use serde_json::json;
-use sqlx::{postgres::PgPoolOptions, sqlite::SqlitePoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use testcontainers::{runners::AsyncRunner, ImageExt};
 use testcontainers_modules::postgres::Postgres;
 use uuid::Uuid;
@@ -526,7 +526,7 @@ const INSERT_POSTGRES: &str = "INSERT INTO maidan_usage_ledger
 
 #[tokio::test]
 async fn a_review_is_routed_away_from_its_authors_family_on_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
