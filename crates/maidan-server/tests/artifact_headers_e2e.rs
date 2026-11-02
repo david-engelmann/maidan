@@ -17,7 +17,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::Value;
-use sqlx::sqlite::SqlitePoolOptions;
 
 const CSP: &str = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox";
 
@@ -30,7 +29,7 @@ struct Ctx {
 }
 
 async fn spawn() -> Ctx {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(8)
         .connect("sqlite::memory:")
         .await

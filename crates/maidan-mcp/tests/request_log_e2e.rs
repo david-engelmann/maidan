@@ -11,7 +11,6 @@ use maidan_mcp::{JsonRpcRequest, McpServer};
 use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Clone, Default)]
@@ -37,7 +36,7 @@ impl<'a> MakeWriter<'a> for Captured {
 }
 
 async fn mk_server() -> McpServer {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

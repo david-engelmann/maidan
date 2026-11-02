@@ -24,7 +24,8 @@ async fn mcp_stdio_postgres_initialize_roundtrip() {
     let port = container.get_host_port_ipv4(5432).await.unwrap();
     let database_url = format!("postgres://postgres:postgres@127.0.0.1:{port}/postgres");
 
-    let bin = env!("CARGO_BIN_EXE_maidan");
+    let bin = &std::env::var_os("NEXTEST_BIN_EXE_maidan")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into());
     let mut child = Command::new(bin)
         .arg("mcp-stdio")
         // No token here, so the unrestricted context has to be asked for.

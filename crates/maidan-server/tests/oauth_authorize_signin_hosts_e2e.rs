@@ -39,7 +39,6 @@ use maidan_types::{
 };
 use reqwest::{header, redirect::Policy, StatusCode};
 use sha2::{Digest, Sha256};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const ORIGIN: &str = "https://maidan.example.com";
 const RESOURCE: &str = "https://maidan.example.com/mcp/streamable";
@@ -103,7 +102,7 @@ async fn document_server(fetches: Arc<AtomicUsize>) -> String {
 }
 
 async fn spawn() -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

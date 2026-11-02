@@ -7,11 +7,12 @@
 
 // How often the cron destroys the container. The next request boots a fresh
 // one, which reseeds. Keep this and wrangler.demo.jsonc's cron in step.
-export const DEMO_RESET_CRON = "0 */6 * * *";
+// Once a day: nothing in the demo runs on a timer more often than that.
+export const DEMO_RESET_CRON = "0 4 * * *";
 
 // Seeded tokens expire a little after the next reset would have wiped them, so
 // a missed reset still leaves no live token older than this.
-export const DEMO_TOKEN_TTL_SECS = 7 * 60 * 60;
+export const DEMO_TOKEN_TTL_SECS = 30 * 60 * 60;
 
 // Sign-up stays off (MAIDAN_SIGNUP unset), and bootstrap is never on for the
 // public listener: demo/entrypoint.sh turns it on only for the seed, on a

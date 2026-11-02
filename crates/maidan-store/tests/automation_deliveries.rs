@@ -5,11 +5,10 @@ use maidan_types::{
     AutomationSourceKind, NewAutomationDelivery, NewFsmHook, NewWorkspace, SlashHandlerKind,
     ThreadState,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn automation_delivery_pending_and_quarantine_round_trip() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

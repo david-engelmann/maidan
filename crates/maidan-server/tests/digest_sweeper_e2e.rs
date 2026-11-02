@@ -14,7 +14,6 @@ use maidan_types::{
     EmailDeliveryMode, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewNotification,
     NewThread, NewWorkspace, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct RecordingMailer {
     sent: std::sync::Mutex<Vec<(String, String)>>,
@@ -37,7 +36,7 @@ impl maidan_server::mail::MailTransport for RecordingMailer {
 }
 
 async fn state_with_mailer() -> (AppState, Arc<RecordingMailer>, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

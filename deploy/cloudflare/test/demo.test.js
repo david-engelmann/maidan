@@ -33,7 +33,7 @@ test("the reset cron in wrangler matches the one the config names", () => {
 
 test("seeded tokens expire within a reset and a half", () => {
   assert.equal(DEMO_SERVER_ENV.DEMO_TOKEN_TTL_SECS, String(DEMO_TOKEN_TTL_SECS));
-  const hours = Number(DEMO_RESET_CRON.split(" ")[1].replace("*/", ""));
+  const hours = 24; // DEMO_RESET_CRON runs once a day; cost.test.js holds that.
   assert.ok(DEMO_TOKEN_TTL_SECS > hours * 3600);
   assert.ok(DEMO_TOKEN_TTL_SECS <= hours * 3600 * 1.5);
 });

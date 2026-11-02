@@ -33,7 +33,7 @@ use maidan_types::{
     NewThread, NewWorkspace, ThreadId, WorkspaceId,
 };
 use serde_json::{json, Value};
-use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::sqlite::SqlitePool;
 
 const CARD_URI: &str = "ui://maidan/approval-card.html";
 const CARD_MIME: &str = "text/html;profile=mcp-app";
@@ -48,7 +48,7 @@ struct Env {
 }
 
 async fn spawn() -> Env {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

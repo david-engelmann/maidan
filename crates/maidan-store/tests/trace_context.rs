@@ -8,7 +8,6 @@ use maidan_types::{
     EgressKind, EgressTarget, NewChannel, NewEgressOutbox, NewThread, NewWebhookSubscription,
     NewWorkspace, TraceContext, Workspace, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn parent() -> TraceContext {
     TraceContext::parse(
@@ -32,7 +31,7 @@ fn workspace_created(name: &str) -> maidan_types::Event {
 }
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

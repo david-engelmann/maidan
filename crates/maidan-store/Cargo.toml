@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Storage abstraction + Postgres/SQLite implementations for Maidan."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [dependencies]
 maidan-fsm = { path = "../maidan-fsm" }
@@ -53,3 +56,7 @@ http = "1"
 [[bench]]
 name = "store_hot"
 harness = false
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

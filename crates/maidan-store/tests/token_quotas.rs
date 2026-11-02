@@ -3,11 +3,10 @@
 use maidan_auth::hash_secret;
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace, TokenQuota};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn replace_and_list_token_quotas() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

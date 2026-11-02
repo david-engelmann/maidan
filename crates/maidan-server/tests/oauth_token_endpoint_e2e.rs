@@ -20,7 +20,6 @@ use maidan_types::{
 use reqwest::{header, StatusCode};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 
 const ORIGIN: &str = "https://maidan.example.com";
@@ -39,7 +38,7 @@ struct Harness {
 }
 
 async fn spawn(public_origin: Option<&str>) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

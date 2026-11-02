@@ -17,11 +17,10 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewApiToken, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn a_push_endpoint_must_be_a_public_https_url() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

@@ -6,7 +6,10 @@
 use std::process::Command;
 
 fn maidan() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_maidan"));
+    let mut cmd = Command::new(
+        std::env::var_os("NEXTEST_BIN_EXE_maidan")
+            .unwrap_or_else(|| env!("CARGO_BIN_EXE_maidan").into()),
+    );
     for (name, _) in std::env::vars() {
         if name.starts_with("MAIDAN_") {
             cmd.env_remove(name);

@@ -4,11 +4,10 @@ use maidan_store::{configure_sqlite_pool, prelude::*};
 use maidan_types::{
     EditMessage, MemberKind, NewChannel, NewMember, NewMessage, NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn edit_message_sets_body_and_edited_at() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -89,7 +88,7 @@ async fn edit_message_sets_body_and_edited_at() {
 
 #[tokio::test]
 async fn edit_message_rejects_tombstoned() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

@@ -14,7 +14,6 @@ use maidan_server::{
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{NewMember, NewWorkspace, WorkspaceId};
 use reqwest::{redirect::Policy, StatusCode};
-use sqlx::sqlite::SqlitePoolOptions;
 
 const TEST_SESSION_SECRET: &[u8] = b"test-session-secret-32-bytes-min!";
 
@@ -61,7 +60,7 @@ fn mock_oidc_settings(auto_mint: bool) -> OidcSettings {
 }
 
 async fn spawn_with_settings(settings: OidcSettings) -> Harness {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

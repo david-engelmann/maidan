@@ -261,8 +261,9 @@ pub(crate) fn sibling_warming(
 fn shares_prefix(sib: &str) -> String {
     format!(
         "(EXISTS (
-              SELECT 1 FROM maidan_recipe_runs rr
-              WHERE rr.root_thread_id = cand.parent_thread_id
+              SELECT 1 FROM maidan_recipe_run_children rc
+              JOIN maidan_recipe_run_children rs ON rs.run_id = rc.run_id
+              WHERE rc.thread_id = cand.id AND rs.thread_id = {sib}.id
           )
           OR EXISTS (
               SELECT 1 FROM maidan_task_fingerprints fc

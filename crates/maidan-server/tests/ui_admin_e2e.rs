@@ -9,7 +9,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{MemberKind, NewAuditEvent, NewMember, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 fn federation_test_key() -> Option<Arc<[u8; 32]>> {
     Some(Arc::new([0x42; 32]))
@@ -21,7 +20,7 @@ async fn spawn() -> (
     Arc<dyn Store>,
     tokio::task::JoinHandle<()>,
 ) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .unwrap();

@@ -8,7 +8,6 @@ use maidan_types::{
     MemberId, MemberKind, NewMember, NewOidcIdentity, NewOidcPendingAuth, NewWorkspace,
     OidcPendingTarget, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 const ISSUER: &str = "https://idp.example";
 
@@ -154,7 +153,7 @@ async fn run_suite(store: &dyn Store) {
 
 #[tokio::test]
 async fn front_door_store_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

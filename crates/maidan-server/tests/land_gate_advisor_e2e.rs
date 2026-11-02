@@ -15,7 +15,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{LandColor, NewChannel, NewThread, NewWorkspace};
 use reqwest::StatusCode;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 
 struct MockAdvisor;
 struct FailingAdvisor;
@@ -62,7 +61,7 @@ impl LandGateAdvisor for FailingAdvisor {
 }
 
 async fn spawn(advisor: Option<Arc<dyn LandGateAdvisor>>) -> (SocketAddr, Arc<dyn Store>) {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(4)
         .connect("sqlite::memory:")
         .await

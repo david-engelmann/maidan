@@ -16,7 +16,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations, StoreError};
 use maidan_types::{
     ChannelId, EventKind, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// Long enough to be clearly held, short enough to lapse in a test.
 const LEASE_SECS: i64 = 1;
@@ -208,7 +207,7 @@ async fn crashing_claimers_never_double_hold_a_thread(store: Arc<dyn Store>) {
 
 #[tokio::test]
 async fn a_crashed_claimer_is_recovered_and_fenced_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await

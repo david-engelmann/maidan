@@ -5,10 +5,9 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ApiToken, AuditScope, Member, MemberKind, NewAuditEvent, NewMember, NewWorkspace,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 async fn sqlite() -> SqliteStore {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

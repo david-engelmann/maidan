@@ -9,7 +9,6 @@ use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{
     ChannelId, MemberId, MemberKind, NewChannel, NewMember, NewThread, NewWorkspace, ThreadId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 
 /// The aging window (must match the `/ 3600` divisor inlined in the claim_next
 /// ORDER BY in both backends): one effective-rank boost per hour a thread waits.
@@ -140,7 +139,7 @@ where
 
 #[tokio::test]
 async fn fair_dispatch_orders_by_aged_priority_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

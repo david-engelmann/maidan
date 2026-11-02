@@ -11,11 +11,10 @@ use maidan_search::HashV1Provider;
 use maidan_store::{run_sqlite_migrations, SqliteStore, Store};
 use maidan_types::*;
 use serde_json::json;
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn removing_a_member_from_another_workspace_is_not_found_and_unaudited() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await

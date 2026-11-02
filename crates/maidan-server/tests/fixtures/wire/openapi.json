@@ -952,6 +952,10 @@
           "authorization_endpoint": {
             "type": "string"
           },
+          "authorization_response_iss_parameter_supported": {
+            "description": "Responses carry the RFC 9207 `iss` parameter (`issuer_param`), and a\nclient that does not see this flag may ignore it.",
+            "type": "boolean"
+          },
           "client_id_metadata_document_supported": {
             "description": "A client may name itself by the HTTPS URL of its metadata document\n(draft-ietf-oauth-client-id-metadata-document), which `registry`\nresolves from the hosts in `MAIDAN_OAUTH_CLIENT_METADATA_HOSTS`. Without this flag\na client such as claude.ai assumes it must register dynamically,\nwhich this server never offers, and stops.",
             "type": "boolean"
@@ -1016,7 +1020,8 @@
           "token_endpoint_auth_methods_supported",
           "revocation_endpoint_auth_methods_supported",
           "code_challenge_methods_supported",
-          "client_id_metadata_document_supported"
+          "client_id_metadata_document_supported",
+          "authorization_response_iss_parameter_supported"
         ],
         "type": "object"
       },
@@ -11457,6 +11462,44 @@
         ],
         "type": "object"
       },
+      "ThreadResultView": {
+        "description": "A thread's stored result and where it went (#1719): `GET /threads/{id}/result`.\nThe result fields are the stored [`ThreadResult`]; `delivery_state` and\n`deliveries` say whether it reached its `deliver_to` targets, so a claimant\nsees a result that is stored but not delivered without a second request.",
+        "properties": {
+          "deliveries": {
+            "description": "Each target's row, as `GET /threads/{id}/deliveries` lists them.",
+            "items": {
+              "$ref": "#/components/schemas/ResultDelivery"
+            },
+            "type": "array"
+          },
+          "delivery_state": {
+            "description": "One word for every target together: `failed` when any target failed,\nelse `pending` when any is still armed, else `delivered` when any\narrived, else `skipped` when every target was refused, and\n`not_routable` when the result names no target at all.",
+            "type": "string"
+          },
+          "produced_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "produced_by": {
+            "$ref": "#/components/schemas/MemberId"
+          },
+          "result": {
+            "type": "object"
+          },
+          "thread_id": {
+            "$ref": "#/components/schemas/ThreadId"
+          }
+        },
+        "required": [
+          "thread_id",
+          "result",
+          "produced_by",
+          "produced_at",
+          "delivery_state",
+          "deliveries"
+        ],
+        "type": "object"
+      },
       "ThreadReview": {
         "description": "A reviewer's decision record (one per `(thread, reviewer)` — re-submitting\nchanges it).",
         "properties": {
@@ -17494,7 +17537,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemberEmail"
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MemberEmail"
+                    }
+                  ]
                 }
               }
             },
@@ -28791,7 +28841,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ThreadResult"
+                  "$ref": "#/components/schemas/ThreadResultView"
                 }
               }
             },

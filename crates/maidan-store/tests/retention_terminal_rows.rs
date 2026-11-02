@@ -14,7 +14,6 @@ use maidan_types::{
     NewAutomationDelivery, NewChannel, NewDlqEntry, NewEgressOutbox, NewMailOutbox, NewMember,
     NewThread, NewWebhookSubscription, NewWorkspace, ThreadId, WorkspaceId,
 };
-use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::Row;
 
 struct Room {
@@ -269,7 +268,7 @@ where
 
 #[tokio::test]
 async fn delivery_retention_prunes_finished_rows_and_keeps_dead_letters_pending_and_held_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");
@@ -603,7 +602,7 @@ where
 
 #[tokio::test]
 async fn instance_sweep_skips_a_held_workspaces_webhook_automation_and_outbox_sqlite() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .connect("sqlite::memory:")
         .await
         .expect("connect");

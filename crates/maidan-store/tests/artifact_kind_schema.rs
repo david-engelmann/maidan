@@ -2,11 +2,10 @@
 
 use maidan_store::{prelude::*, run_sqlite_migrations};
 use maidan_types::{ArtifactKind, NewArtifact};
-use sqlx::sqlite::SqlitePoolOptions;
 
 #[tokio::test]
 async fn sqlite_migration_0007_rejects_unknown_artifact_kind() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
@@ -38,7 +37,7 @@ async fn sqlite_migration_0007_rejects_unknown_artifact_kind() {
 
 #[tokio::test]
 async fn sqlite_upsert_artifact_roundtrips_all_kinds() {
-    let pool = SqlitePoolOptions::new()
+    let pool = maidan_search::sqlite_pool_options()
         .max_connections(2)
         .connect("sqlite::memory:")
         .await
