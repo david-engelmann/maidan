@@ -786,12 +786,14 @@ fn remap_event_workspace(event: Event, workspace_id: WorkspaceId) -> ApiResult<E
             workspace_id: _,
             intake_id,
             thread_id,
+            channel_id,
             triaged_by,
         } => IntakeAccepted {
             occurred_at,
             workspace_id,
             intake_id,
             thread_id,
+            channel_id,
             triaged_by,
         },
         IntakeRejected {
