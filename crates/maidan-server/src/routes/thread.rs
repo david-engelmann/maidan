@@ -1530,8 +1530,8 @@ pub async fn add_evidence_record(
 ) -> ApiResult<(StatusCode, Json<maidan_types::EvidenceRecord>)> {
     let thread_id = ThreadId(id);
     cap(&auth, WORKSPACE_WRITE)?;
-    let record = body.normalized().map_err(ApiError::BadRequest)?;
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
+    let record = body.normalized().map_err(ApiError::BadRequest)?;
     let (record, stored) = state
         .store
         .add_evidence_record_with_event(thread_id, &record, auth.member_id)

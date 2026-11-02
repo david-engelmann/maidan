@@ -151,7 +151,7 @@ pub async fn add_record_with_event(
     let mut tx = pool.begin().await?;
     let (workspace_id, channel_id) = events::thread_scope_in_tx(&mut tx, thread_id).await?;
     let stored = EvidenceRecord {
-        id: Uuid::new_v4(),
+        id: Uuid::now_v7(),
         thread_id,
         kind: record.kind,
         source: record.source.clone(),
