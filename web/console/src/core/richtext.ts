@@ -38,6 +38,14 @@ export function parseBlocks(body: string): Block[] {
 // A link ends before trailing punctuation a sentence would put after it.
 const TOKEN = /(\x60[^\x60\n]+\x60)|(\*\*[^*\n]+\*\*)|(https?:\/\/[^\s<>\x22\x27\x60]+[^\s<>\x22\x27\x60.,;:!?)\]])/g;
 
+/** A link the pattern stopped before a `)` keeps that `)` when the link opens
+ * one it has not closed, as in `…/Function_(mathematics)`. */
+function balanceParen(link: string, after: string): string {
+  const open = (link.match(/\(/g) ?? []).length;
+  const close = (link.match(/\)/g) ?? []).length;
+  return open > close && after.startsWith(")") ? `${link})` : link;
+}
+
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
   let last = 0;
@@ -46,7 +54,12 @@ export function parseInline(text: string): Inline[] {
     if (at > last) out.push({ kind: "text", text: text.slice(last, at) });
     if (m[1]) out.push({ kind: "code", text: m[1].slice(1, -1) });
     else if (m[2]) out.push({ kind: "bold", text: m[2].slice(2, -2) });
-    else out.push({ kind: "link", href: m[3], text: m[3] });
+    else {
+      const href = balanceParen(m[3], text.slice(at + m[0].length));
+      out.push({ kind: "link", href, text: href });
+      last = at + href.length;
+      continue;
+    }
     last = at + m[0].length;
   }
   if (last < text.length) out.push({ kind: "text", text: text.slice(last) });
