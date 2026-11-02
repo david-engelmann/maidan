@@ -124,8 +124,14 @@ export MAIDAN_ALLOW_INSECURE_DEV_KEK=1   # dev only; production sets MAIDAN_CONT
 export DATABASE_URL="sqlite://maidan.db?mode=rwc"
 MAIDAN_SESSION_SECRET=dev-session-secret-change-me-0123456789 MAIDAN_BOOTSTRAP=1 \
   cargo run --bin maidan-server &
+server=$!
 
-until curl -fsS http://127.0.0.1:8080/health >/dev/null; do sleep 2; done   # wait for the first build
+# Wait up to ten minutes for the first build; stop early if the server exits.
+for _ in $(seq 300); do
+  curl -fsS http://127.0.0.1:8080/health >/dev/null && break
+  kill -0 "$server" 2>/dev/null || { echo "maidan-server exited; see its output above"; break; }
+  sleep 2
+done
 cargo run --bin maidan -- init --workspace demo    # prints a token + workspace id
 export MAIDAN_TOKEN=<token> MAIDAN_WORKSPACE=<workspace id>
 ./scripts/demo-handoff.sh                          # the recording above
