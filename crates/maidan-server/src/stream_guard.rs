@@ -40,14 +40,8 @@ pub enum StreamCredential {
     Open,
     /// An API token (sent as a bearer, or behind a session made from it).
     /// It must still pass the bearer test, and the members it speaks for must
-    /// not be deactivated. `members` are the ones it spoke for when the stream
-    /// opened, checked before the token: a deactivation also makes the token
-    /// fail the bearer test (#1871), and the stream should end with the reason
-    /// that caused it, not a vaguer one.
-    Token {
-        token_id: ApiTokenId,
-        members: Vec<MemberId>,
-    },
+    /// not be deactivated.
+    Token(ApiTokenId),
     /// No token behind the context (e.g. the dev anonymous reader, an OIDC
     /// session): the workspace must not be suspended and the members must
     /// not be deactivated.
@@ -63,10 +57,7 @@ impl StreamCredential {
             return Self::Open;
         }
         match auth.token_id {
-            Some(token_id) => Self::Token {
-                token_id,
-                members: members_of(auth),
-            },
+            Some(token_id) => Self::Token(token_id),
             None => Self::Members {
                 workspace_id: auth.workspace_id,
                 members: members_of(auth),
@@ -80,8 +71,7 @@ impl StreamCredential {
     pub async fn recheck(&self, store: &dyn Store) -> Result<(), &'static str> {
         let members = match self {
             Self::Open => return Ok(()),
-            Self::Token { token_id, members } => {
-                not_deactivated(store, members).await?;
+            Self::Token(token_id) => {
                 let ctx = match maidan_auth::resolve_token_id(store, *token_id).await {
                     Ok(ctx) => ctx,
                     Err(maidan_auth::AuthError::Forbidden(_)) => {
@@ -105,20 +95,15 @@ impl StreamCredential {
                 members.clone()
             }
         };
-        not_deactivated(store, &members).await
-    }
-}
-
-/// `Err("member deactivated")` when SCIM deactivated any of `members`.
-async fn not_deactivated(store: &dyn Store, members: &[MemberId]) -> Result<(), &'static str> {
-    for member in members {
-        match store.get_scim_user(*member).await {
-            Ok(Some(user)) if !user.active => return Err("member deactivated"),
-            Ok(_) => {}
-            Err(_) => return Err("credential check failed"),
+        for member in members {
+            match store.get_scim_user(member).await {
+                Ok(Some(user)) if !user.active => return Err("member deactivated"),
+                Ok(_) => {}
+                Err(_) => return Err("credential check failed"),
+            }
         }
+        Ok(())
     }
-    Ok(())
 }
 
 /// The member actions are attributed to, and the delegate presenting them if
@@ -268,19 +253,15 @@ mod tests {
     #[test]
     fn token_context_keeps_the_token() {
         let token = ApiTokenId(uuid::Uuid::new_v4());
-        let member = MemberId(uuid::Uuid::new_v4());
         let auth = AuthContext::from_token(
             token,
-            member,
+            MemberId(uuid::Uuid::new_v4()),
             maidan_types::WorkspaceId(uuid::Uuid::new_v4()),
             Vec::new(),
         );
         assert_eq!(
             StreamCredential::from_auth(&auth),
-            StreamCredential::Token {
-                token_id: token,
-                members: vec![member],
-            }
+            StreamCredential::Token(token)
         );
     }
 
