@@ -27,3 +27,11 @@ test("message text: never links a non-http scheme", () => {
     assert.deepEqual(parseInline("javascript:alert(1)"), [{ kind: "text", text: "javascript:alert(1)" }]);
   });
 
+
+test("message text: a URL keeps a closing parenthesis that balances one inside it", () => {
+  assert.deepEqual(parseInline("(see https://en.wikipedia.org/wiki/Function_(mathematics))"), [
+    { kind: "text", text: "(see " },
+    { kind: "link", href: "https://en.wikipedia.org/wiki/Function_(mathematics)", text: "https://en.wikipedia.org/wiki/Function_(mathematics)" },
+    { kind: "text", text: ")" },
+  ]);
+});

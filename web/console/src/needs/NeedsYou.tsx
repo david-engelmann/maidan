@@ -365,6 +365,9 @@ function NeedRow({ item, primary, selected, onSelect, onAdvance, gate, me, api, 
     if (!selected || (!keyYes && !keyNo)) return;
     const onKey = (e: KeyboardEvent) => {
       if (notShortcut(e)) return;
+      // Focus on another row or control means the key is not for this row.
+      const at = document.activeElement;
+      if (at && at !== document.body && !rowRef.current?.contains(at)) return;
       const ask = e.key === "a" ? keyYes : e.key === "r" ? keyNo : null;
       if (!ask) return;
       e.preventDefault();

@@ -38,6 +38,10 @@ export function parseBlocks(body: string): Block[] {
 // A link ends before trailing punctuation a sentence would put after it.
 const TOKEN = /(\x60[^\x60\n]+\x60)|(\*\*[^*\n]+\*\*)|(https?:\/\/[^\s<>\x22\x27\x60]+[^\s<>\x22\x27\x60.,;:!?)\]])/g;
 
+function count(s: string, c: string): number {
+  return s.split(c).length - 1;
+}
+
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
   let last = 0;
@@ -46,7 +50,15 @@ export function parseInline(text: string): Inline[] {
     if (at > last) out.push({ kind: "text", text: text.slice(last, at) });
     if (m[1]) out.push({ kind: "code", text: m[1].slice(1, -1) });
     else if (m[2]) out.push({ kind: "bold", text: m[2].slice(2, -2) });
-    else out.push({ kind: "link", href: m[3], text: m[3] });
+    else {
+      // A closing parenthesis right after the URL belongs to it when it
+      // balances one inside, as in a wiki link to Function_(mathematics).
+      let url = m[3];
+      while (text[at + url.length] === ")" && count(url, "(") > count(url, ")")) url += ")";
+      out.push({ kind: "link", href: url, text: url });
+      last = at + url.length;
+      continue;
+    }
     last = at + m[0].length;
   }
   if (last < text.length) out.push({ kind: "text", text: text.slice(last) });
