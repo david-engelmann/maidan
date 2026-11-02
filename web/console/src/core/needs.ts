@@ -58,7 +58,7 @@ export type EvidenceItem = {
 };
 
 const TIER_TEXT: Record<string, [string, string]> = {
-  verified: ["verified", "A land-gate pass the close gate accepts"],
+  verified: ["verified", "An automated check the server accepts when the task closes"],
   attached: ["attached", "Linked by a member who never worked the task"],
   self_reported: ["self-reported", "The work's own account: from a member who worked the task"],
 };
@@ -104,7 +104,7 @@ export function evidenceItems(packet: ReviewPacket, metas: Map<string, ArtifactM
       unlinked: links !== null && !link,
     });
   });
-  for (const g of of("land_gate")) out.push({ kind: "land_gate", label: "land-gate pass", sha: g.sha256 ?? null, by: g.attested_by, tier: tierOf(g), unlinked: false });
+  for (const g of of("land_gate")) out.push({ kind: "land_gate", label: "automated check", sha: g.sha256 ?? null, by: g.attested_by, tier: tierOf(g), unlinked: false });
   return out;
 }
 

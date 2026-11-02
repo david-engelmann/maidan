@@ -97,6 +97,9 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   );
 
   const current = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
+  useEffect(() => {
+    document.title = signedIn ? `${current.title} · Maidan` : "Sign in · Maidan";
+  }, [current.title, signedIn]);
   const who = session.status === "signed-in" ? (session.displayName ?? session.memberId) : null;
   const liveWord =
     live.kind === "connected" ? "Live" : live.kind === "reconnecting" ? "Reconnecting" : live.kind === "refused" ? "Refused" : "Offline";

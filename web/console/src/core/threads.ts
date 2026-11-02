@@ -50,8 +50,10 @@ export function dmOther(dm: Dm, me: string): string {
   return dm.member_low_id === me ? dm.member_high_id : dm.member_low_id;
 }
 
+/** A member's name. Until the member list has loaded this is "", so screens
+ * show a placeholder rather than flashing a raw id. */
 export function nameOf(members: Map<string, Member>, id: string): string {
-  return members.get(id)?.name ?? id.slice(0, 8);
+  return members.get(id)?.name ?? (members.size === 0 ? "" : id.slice(0, 8));
 }
 
 export function dmConversation(dm: Dm, me: string, members: Map<string, Member>): Conversation {
@@ -61,7 +63,7 @@ export function dmConversation(dm: Dm, me: string, members: Map<string, Member>)
 
 export function groupConversation(g: GroupDm, me: string, members: Map<string, Member>): Conversation {
   const others = g.member_ids.filter((id) => id !== me).map((id) => nameOf(members, id));
-  return { ref: { kind: "group", id: g.id }, threadId: g.thread_id, label: g.title || "(untitled)", detail: `${g.member_ids.length} members · ${others.join(", ")}`, updatedAt: g.updated_at ?? null };
+  return { ref: { kind: "group", id: g.id }, threadId: g.thread_id, label: g.title || "(untitled)", detail: others.every(Boolean) ? `${g.member_ids.length} members · ${others.join(", ")}` : `${g.member_ids.length} members`, updatedAt: g.updated_at ?? null };
 }
 
 export function taskConversation(t: Thread): Conversation {

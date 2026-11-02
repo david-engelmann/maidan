@@ -238,7 +238,7 @@ export function Threads() {
                       <span className={`avatar kind-${c.ref.kind}${c.ref.kind === "dm" && c.detail !== "Agent" ? " human" : ""}`} aria-hidden="true">{initials(c.label)}</span>
                     )}
                     <span className="conv-text">
-                      <span className="conv-label">{c.label}{unread && <span className="visually-hidden">, unread</span>}</span>
+                      <span className={c.label ? "conv-label" : "conv-label name-pending"}>{c.label}{unread && <span className="visually-hidden">, unread</span>}</span>
                       {tone ? (
                         <span className={`conv-detail state state-${tone.tone}`}>
                           <span className="state-text">{tone.word}</span>
@@ -489,7 +489,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                   className="link-btn"
                   onClick={() => scroller.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(m.id)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })}
                 >
-                  <b>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
+                  <b className={members.size ? undefined : "name-pending"}>{nameOf(members, m.author_id)}</b>: {m.body.length > 90 ? `${m.body.slice(0, 90)}…` : m.body}
                 </button>
               </li>
             ))}
@@ -590,7 +590,7 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
       <div className="msg-main">
         {head && (
           <p className="msg-meta">
-            <strong>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
+            <strong className={who ? undefined : "name-pending"}>{who}</strong> <time dateTime={m.posted_at}>{clockTime(m.posted_at)}</time>
             {m.edited_at && <span className="edited"> edited</span>}
             {pinned && <span className="edited"> pinned</span>}
           </p>
@@ -811,7 +811,7 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
     };
   }, [api, threadId, open, facts?.thread]);
   const f = facts?.thread === threadId ? facts.value : null;
-  const name = (id: string | undefined) => (id ? members.get(id)?.name || id : "someone");
+  const name = (id: string | undefined) => (id ? members.get(id)?.name || (members.size ? id : "…") : "someone");
   const deps = f?.deps?.dependencies ?? [];
   const entries = f?.evidence?.entries ?? [];
   return (

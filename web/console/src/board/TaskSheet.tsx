@@ -57,7 +57,7 @@ function SheetBody({ thread: th, gate, members, api, now, onClose, onChanged }: 
   const [note, setNote] = useState<string | null>(null);
   const [facts, setFacts] = useState<CloseFacts | null>(null);
   const chrome = chromeFor(th, gate);
-  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? id.slice(0, 8)) : "");
+  const name = (id: string | null | undefined) => (id ? (members.get(id)?.name ?? (members.size ? id.slice(0, 8) : "…")) : "");
   const terminal = th.state === "closed" || th.state === "archived";
   const can = actionsFor(th, session.memberId, hasToken(session.credentials));
 

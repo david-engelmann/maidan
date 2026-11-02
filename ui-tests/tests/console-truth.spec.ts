@@ -169,7 +169,7 @@ test("evidence shows each item's tier, and warns when it is all self-reported", 
   await expect(attached.locator(".ev-warn")).toHaveCount(0);
 
   const verified = needRow(page, fx.tiers_verified_thread_id).locator(".need-evidence");
-  await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-kind')).toHaveText("land-gate pass");
+  await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-kind')).toHaveText("automated check");
   await expect(verified.locator('.ev-item[data-ev="land_gate"] .ev-tier')).toHaveAttribute("data-tier", "verified");
 
   const self = needRow(page, fx.tiers_self_thread_id).locator(".need-evidence");
