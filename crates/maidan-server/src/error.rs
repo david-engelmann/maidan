@@ -201,28 +201,30 @@ impl ApiError {
 
     fn problem_type(&self) -> &'static str {
         match self {
-            Self::NotFound => "https://maidan.dev/problems/not-found",
-            Self::MethodNotAllowed => "https://maidan.dev/problems/method-not-allowed",
-            Self::Conflict(_) => "https://maidan.dev/problems/conflict",
-            Self::BadRequest(_) => "https://maidan.dev/problems/bad-request",
-            Self::Unauthorized => "https://maidan.dev/problems/unauthorized",
-            Self::SignatureInvalid => "https://maidan.dev/problems/invalid-signature",
-            Self::Forbidden(_) => "https://maidan.dev/problems/forbidden",
-            Self::PayloadTooLarge(_) => "https://maidan.dev/problems/payload-too-large",
-            Self::UnsupportedMediaType(_) => "https://maidan.dev/problems/unsupported-media-type",
-            Self::TooManyRequests(_) => "https://maidan.dev/problems/rate-limited",
-            Self::BadGateway(_) => "https://maidan.dev/problems/bad-gateway",
-            Self::Internal(_) => "https://maidan.dev/problems/internal",
-            Self::Overloaded(_) => "https://maidan.dev/problems/overloaded",
-            Self::IdempotencyKeyReused => "https://maidan.dev/problems/idempotency-key-reused",
-            Self::UnprocessableEntity(_) => "https://maidan.dev/problems/unprocessable-entity",
-            Self::IdempotencyKeyInFlight => "https://maidan.dev/problems/idempotency-key-in-flight",
-            Self::CursorTooOld { .. } => "https://maidan.dev/problems/cursor-too-old",
-            Self::EventLogBroken { .. } => "https://maidan.dev/problems/event-log-broken",
-            Self::MediaQuotaExceeded { .. } => "https://maidan.dev/problems/media-quota-exceeded",
-            Self::FootprintConflict(_) => "https://maidan.dev/problems/footprint-conflict",
-            Self::PlanConflict(_) => "https://maidan.dev/problems/plan-conflict",
-            Self::ClaimLost(_) => "https://maidan.dev/problems/claim-lost",
+            Self::NotFound => "https://maidan.world/problems/not-found",
+            Self::MethodNotAllowed => "https://maidan.world/problems/method-not-allowed",
+            Self::Conflict(_) => "https://maidan.world/problems/conflict",
+            Self::BadRequest(_) => "https://maidan.world/problems/bad-request",
+            Self::Unauthorized => "https://maidan.world/problems/unauthorized",
+            Self::SignatureInvalid => "https://maidan.world/problems/invalid-signature",
+            Self::Forbidden(_) => "https://maidan.world/problems/forbidden",
+            Self::PayloadTooLarge(_) => "https://maidan.world/problems/payload-too-large",
+            Self::UnsupportedMediaType(_) => "https://maidan.world/problems/unsupported-media-type",
+            Self::TooManyRequests(_) => "https://maidan.world/problems/rate-limited",
+            Self::BadGateway(_) => "https://maidan.world/problems/bad-gateway",
+            Self::Internal(_) => "https://maidan.world/problems/internal",
+            Self::Overloaded(_) => "https://maidan.world/problems/overloaded",
+            Self::IdempotencyKeyReused => "https://maidan.world/problems/idempotency-key-reused",
+            Self::UnprocessableEntity(_) => "https://maidan.world/problems/unprocessable-entity",
+            Self::IdempotencyKeyInFlight => {
+                "https://maidan.world/problems/idempotency-key-in-flight"
+            }
+            Self::CursorTooOld { .. } => "https://maidan.world/problems/cursor-too-old",
+            Self::EventLogBroken { .. } => "https://maidan.world/problems/event-log-broken",
+            Self::MediaQuotaExceeded { .. } => "https://maidan.world/problems/media-quota-exceeded",
+            Self::FootprintConflict(_) => "https://maidan.world/problems/footprint-conflict",
+            Self::PlanConflict(_) => "https://maidan.world/problems/plan-conflict",
+            Self::ClaimLost(_) => "https://maidan.world/problems/claim-lost",
         }
     }
 
@@ -267,7 +269,7 @@ impl From<maidan_auth::AuthError> for ApiError {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ProblemDetails {
     #[serde(rename = "type")]
-    #[schema(example = "https://maidan.dev/problems/not-found")]
+    #[schema(example = "https://maidan.world/problems/not-found")]
     pub type_: String,
     pub title: String,
     pub status: u16,
@@ -465,7 +467,7 @@ mod tests {
         assert_eq!(err.status(), StatusCode::CONFLICT);
         assert_eq!(
             err.problem_type(),
-            "https://maidan.dev/problems/cursor-too-old"
+            "https://maidan.world/problems/cursor-too-old"
         );
         assert!(err.detail().contains("must refetch"));
         let response = err.into_response();
@@ -495,7 +497,7 @@ mod tests {
         assert_eq!(err.status(), StatusCode::CONFLICT);
         assert_eq!(
             err.problem_type(),
-            "https://maidan.dev/problems/event-log-broken"
+            "https://maidan.world/problems/event-log-broken"
         );
         assert!(err.detail().contains("id=4"));
         assert!(err.detail().contains("content_hash_mismatch"));

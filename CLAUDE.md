@@ -46,6 +46,7 @@ suite takes several minutes: run it in the background, don't sleep and poll.
 bash scripts/check-agent-contract.sh     # golden JSON under contracts/
 bash scripts/check-release-records.sh    # Capabilities, CHANGELOG, this file and the README agree on the release
 bash scripts/check-deploy-pins.sh        # every deploy pin names the newest tagged release
+bash scripts/check-our-domains.sh        # no link to the old problem-type domain outside history (types are maidan.world)
 bash scripts/osv-scan.sh                 # advisories in the lockfiles cargo-deny does not read (fuzz/, ui-tests/, sdk/, deploy/)
 cargo vet --locked                       # every crate in Cargo.lock audited or exempted (supply-chain/)
 ```

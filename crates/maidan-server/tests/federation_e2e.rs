@@ -640,7 +640,7 @@ async fn federation_ingest_rejects_payload_rewrite() {
     let problem: serde_json::Value = ingest.json().await.unwrap();
     assert_eq!(
         problem["type"],
-        "https://maidan.dev/problems/event-log-broken"
+        "https://maidan.world/problems/event-log-broken"
     );
     h.shutdown().await;
 }

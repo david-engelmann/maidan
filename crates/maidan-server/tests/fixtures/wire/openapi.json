@@ -7081,7 +7081,7 @@
             "type": "string"
           },
           "type": {
-            "example": "https://maidan.dev/problems/not-found",
+            "example": "https://maidan.world/problems/not-found",
             "type": "string"
           },
           "upload_bytes": {

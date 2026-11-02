@@ -1972,7 +1972,7 @@ needs to free room:
 
 ```json
 {
-  "type": "https://maidan.dev/problems/media-quota-exceeded",
+  "type": "https://maidan.world/problems/media-quota-exceeded",
   "title": "Media Quota Exceeded",
   "status": 409,
   "detail": "this upload of 60 bytes would take the workspace's media to 120 bytes, past its quota of 100 (60 used). Erase media it no longer needs, or raise the quota.",
