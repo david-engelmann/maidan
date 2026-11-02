@@ -122,7 +122,7 @@ async fn list_events_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(
         body["type"].as_str(),
-        Some("https://maidan.dev/problems/cursor-too-old")
+        Some("https://maidan.world/problems/cursor-too-old")
     );
     assert_eq!(body["must_refetch"], json!(true));
     assert_eq!(
@@ -339,7 +339,7 @@ async fn mcp_stream_returns_409_must_refetch_when_cursor_is_in_pruned_gap() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(
         body["type"].as_str(),
-        Some("https://maidan.dev/problems/cursor-too-old")
+        Some("https://maidan.world/problems/cursor-too-old")
     );
     assert_eq!(body["must_refetch"], json!(true));
     assert_eq!(

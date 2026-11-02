@@ -11,11 +11,43 @@ export const SECURITY_HEADERS = {
   "referrer-policy": "strict-origin-when-cross-origin",
 };
 
-// The hosted site's policy pages (privacy, terms, support), served from the
-// Worker's static assets where an instance has them. Nothing else in the
-// container lives at these paths. The front page is the server's own waitlist
-// page, which links the first two (`MAIDAN_SIGNUP_PRIVACY_URL`, `_TERMS_URL`).
-export const SITE_PATHS = new Set(["/privacy", "/terms", "/support", "/site.css"]);
+// The hosted site's pages (privacy, terms, support, and the API's problem
+// types), served from the Worker's static assets where an instance has them.
+// Nothing else in the container lives at these paths. The front page is the
+// server's own waitlist page, which links the first two
+// (`MAIDAN_SIGNUP_PRIVACY_URL`, `_TERMS_URL`).
+export const SITE_PATHS = new Set(["/privacy", "/terms", "/support", "/problems", "/site.css"]);
+
+// Every problem `type` the server sends is `https://maidan.world/problems/`
+// plus one of these, and each has a row on the problems page.
+// `test/problems.test.js` holds this list to the server's.
+export const PROBLEM_TYPES = new Set([
+  "bad-request",
+  "unauthorized",
+  "invalid-signature",
+  "forbidden",
+  "not-found",
+  "method-not-allowed",
+  "conflict",
+  "idempotency-key-in-flight",
+  "cursor-too-old",
+  "event-log-broken",
+  "media-quota-exceeded",
+  "footprint-conflict",
+  "plan-conflict",
+  "claim-lost",
+  "payload-too-large",
+  "unsupported-media-type",
+  "idempotency-key-reused",
+  "unprocessable-entity",
+  "rate-limited",
+  "internal",
+  "bad-gateway",
+  "overloaded",
+]);
+
+// The site page a browser is shown when the container has no page at a path.
+export const NOT_FOUND_PAGE = "/not-found";
 
 // The site's pages run no script and load only their own stylesheet.
 export const SITE_CSP =
@@ -30,14 +62,32 @@ export function isSitePage(request) {
   return SITE_PATHS.has(new URL(request.url).pathname);
 }
 
+// Whether a request is a browser opening a page, rather than a script or an
+// API client asking for data.
+export function isPageNavigation(request) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return false;
+  }
+  const dest = request.headers.get("sec-fetch-dest");
+  if (dest !== null) {
+    return dest === "document";
+  }
+  return (request.headers.get("accept") ?? "").includes("text/html");
+}
+
 // The redirect a request gets before it reaches the container, or null. An
 // instance with a site lets the server's waitlist page answer `/` instead of
-// sending it to the console.
+// sending it to the console, and sends a problem type's URI to its row on the
+// problems page.
 export function edgeRedirect(request, { hasSite = false } = {}) {
   const url = new URL(request.url);
   if (url.protocol === "http:") {
     url.protocol = "https:";
     return Response.redirect(url.toString(), 301);
+  }
+  const problem = url.pathname.match(/^\/problems\/([a-z-]+)$/);
+  if (hasSite && problem && PROBLEM_TYPES.has(problem[1])) {
+    return Response.redirect(new URL(`/problems#${problem[1]}`, url).toString(), 302);
   }
   // The server answers `/` for API clients; only a browser asking for a page
   // is sent to the console.

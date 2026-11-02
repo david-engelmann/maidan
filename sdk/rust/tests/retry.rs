@@ -151,7 +151,7 @@ fn a_409_in_flight_is_retried_and_a_plain_409_is_not() {
     let (base, seen) = serve(vec![
         ok(
             409,
-            json!({"type": "https://maidan.dev/problems/idempotency-key-in-flight"}),
+            json!({"type": "https://maidan.world/problems/idempotency-key-in-flight"}),
         ),
         ok(201, channel("c")),
     ]);
@@ -161,7 +161,7 @@ fn a_409_in_flight_is_retried_and_a_plain_409_is_not() {
 
     let (base, seen) = serve(vec![ok(
         409,
-        json!({"type": "https://maidan.dev/problems/conflict"}),
+        json!({"type": "https://maidan.world/problems/conflict"}),
     )]);
     let (c, _) = client(&base);
     assert!(matches!(

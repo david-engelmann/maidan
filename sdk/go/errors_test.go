@@ -63,7 +63,7 @@ func TestEveryProblemTypeTheServerDocumentsHasItsOwnError(t *testing.T) {
 }
 
 func TestAnErrorCarriesStatusTypeTitleDetailAndTheRawProblem(t *testing.T) {
-	c := answering(t, 404, `{"type":"https://maidan.dev/problems/not-found","title":"Not Found","status":404,"detail":"gone","trace":"added later"}`, nil)
+	c := answering(t, 404, `{"type":"https://maidan.world/problems/not-found","title":"Not Found","status":404,"detail":"gone","trace":"added later"}`, nil)
 	_, err := c.Threads.Get("t1")
 	var nf *NotFoundError
 	if !errors.As(err, &nf) {
@@ -78,7 +78,7 @@ func TestAnErrorCarriesStatusTypeTitleDetailAndTheRawProblem(t *testing.T) {
 }
 
 func TestAnUnknownProblemTypeFallsBackToUnknownProblemError(t *testing.T) {
-	c := answering(t, 409, `{"type":"https://maidan.dev/problems/added-next-year","title":"New","status":409,"detail":"d"}`, nil)
+	c := answering(t, 409, `{"type":"https://maidan.world/problems/added-next-year","title":"New","status":409,"detail":"d"}`, nil)
 	_, err := c.Threads.Get("t1")
 	var unknown *UnknownProblemError
 	if !errors.As(err, &unknown) || !unknown.IsConflict() || unknown.Type != ProblemBase+"added-next-year" {
@@ -96,13 +96,13 @@ func TestABodyThatIsNotAProblemIsUnknownWithItsTextAsDetail(t *testing.T) {
 }
 
 func TestCursorTooOldCarriesTheSnapshotAndRetryAfterIsKept(t *testing.T) {
-	c := answering(t, 409, `{"type":"https://maidan.dev/problems/cursor-too-old","title":"Cursor Too Old","status":409,"detail":"refetch","must_refetch":true,"snapshot":"/workspaces/w/snapshot"}`, nil)
+	c := answering(t, 409, `{"type":"https://maidan.world/problems/cursor-too-old","title":"Cursor Too Old","status":409,"detail":"refetch","must_refetch":true,"snapshot":"/workspaces/w/snapshot"}`, nil)
 	_, err := c.Workspaces.ListEvents("w", nil)
 	var old *CursorTooOldError
 	if !errors.As(err, &old) || !old.IsCursorTooOld() || old.Snapshot() != "/workspaces/w/snapshot" {
 		t.Fatalf("got %T %v", err, err)
 	}
-	c = answering(t, 503, `{"type":"https://maidan.dev/problems/overloaded","title":"Service Unavailable","status":503,"detail":"busy"}`, map[string]string{"Retry-After": "7"})
+	c = answering(t, 503, `{"type":"https://maidan.world/problems/overloaded","title":"Service Unavailable","status":503,"detail":"busy"}`, map[string]string{"Retry-After": "7"})
 	_, err = c.Threads.Get("t1")
 	var busy *OverloadedError
 	if !errors.As(err, &busy) || busy.RetryAfter != 7 {

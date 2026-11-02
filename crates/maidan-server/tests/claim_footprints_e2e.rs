@@ -204,7 +204,7 @@ async fn a_second_agent_on_held_work_is_told_who_holds_it_and_until_when() {
     let problem: Value = refused.json().await.unwrap();
     assert_eq!(
         problem["type"],
-        "https://maidan.dev/problems/footprint-conflict"
+        "https://maidan.world/problems/footprint-conflict"
     );
     let conflict = &problem["conflicts"][0];
     assert_eq!(conflict["thread_id"], held.0.to_string());

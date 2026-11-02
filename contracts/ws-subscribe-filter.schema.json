@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://maidan.dev/schemas/ws-subscribe-filter.json",
+  "$id": "https://maidan.world/schemas/ws-subscribe-filter.json",
   "title": "Maidan WebSocket subscribe filter",
   "description": "Filter accepted by GET /ws/subscribe. The caller must hold the event:subscribe capability.",
   "x-maidan-required-capability": "event:subscribe",

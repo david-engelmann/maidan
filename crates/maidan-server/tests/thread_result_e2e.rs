@@ -311,7 +311,7 @@ async fn a_seat_whose_claim_lapsed_and_was_taken_over_gets_claim_lost_and_the_ne
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{problem}");
     assert_eq!(
-        problem["type"], "https://maidan.dev/problems/claim-lost",
+        problem["type"], "https://maidan.world/problems/claim-lost",
         "{problem}"
     );
     assert!(store.get_thread_result(thread).await.unwrap().is_none());
