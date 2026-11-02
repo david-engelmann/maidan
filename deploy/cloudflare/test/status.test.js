@@ -1,10 +1,12 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { isStatusRequest, statusResponse, summarize, STATUS_CSP } from "../src/status.js";
+import { isStatusRequest, resetStatusCache, statusResponse, summarize, STATUS_CSP } from "../src/status.js";
 
 const req = (path, method = "GET") => new Request(`https://maidan.world${path}`, { method });
 const healthy = { status: "ok", db: "ok", storage: "ok", indexer: "ok", bus: "ok", version: "1.2.3" };
 const json = (body, status = 200) => async () => new Response(JSON.stringify(body), { status });
+
+beforeEach(() => resetStatusCache());
 
 test("only GET and HEAD of /status and its stylesheet are the status page", () => {
   assert.equal(isStatusRequest(req("/status")), true);
@@ -19,7 +21,7 @@ test("a healthy instance says all systems are working, with each part", async ()
   const res = await statusResponse(req("/status"), json(healthy));
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("content-security-policy"), STATUS_CSP);
-  assert.equal(res.headers.get("cache-control"), "no-store");
+  assert.equal(res.headers.get("cache-control"), "public, max-age=60");
   const html = await res.text();
   assert.match(html, /All systems working\./);
   for (const label of ["Database", "Artifact storage", "Live updates", "Search index"]) assert.match(html, new RegExp(label));
@@ -55,4 +57,19 @@ test("summarize drops anything it does not know and escapes the version", () => 
   const s = summarize({ status: "ok", db: "ok", secret: "x", version: "<b>" });
   assert.deepEqual(s.parts, [{ label: "Database", ok: true }]);
   assert.equal(s.version, "<b>");
+});
+
+test("one reading of /health answers the page for a minute, so a crawler cannot keep the container awake", async () => {
+  let calls = 0;
+  const fetchHealth = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ status: "ok", db: "ok" }));
+  };
+  const t0 = new Date("2026-11-02T00:00:00Z");
+  await statusResponse(req("/status"), fetchHealth, { now: t0 });
+  const again = await statusResponse(req("/status"), fetchHealth, { now: new Date(t0.getTime() + 59_000) });
+  assert.equal(calls, 1);
+  assert.match(await again.text(), /Checked 2026-11-02T00:00:00Z/);
+  await statusResponse(req("/status"), fetchHealth, { now: new Date(t0.getTime() + 60_000) });
+  assert.equal(calls, 2);
 });

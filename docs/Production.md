@@ -16,7 +16,9 @@ Guidance for running Maidan at `v1.0.0` and later. Security overview:
 On Cloudflare, the Worker serves `/status` to anyone: whether the database,
 artifact storage, live updates and search index are working, read from the
 container's `/health`, or a plain "not answering" when the container does not
-reply within eight seconds. It never shows the server's error text.
+reply within eight seconds. It never shows the server's error text. One
+reading answers the page for a minute, so a crawler cannot keep a sleeping
+container awake.
 
 ### Operator status
 

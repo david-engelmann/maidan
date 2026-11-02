@@ -12,6 +12,19 @@ export const STATUS_CSP =
 // How long the page waits on a waking container before it says so.
 export const HEALTH_TIMEOUT_MS = 8000;
 
+// How long one reading of `/health` answers the page. The page is public and
+// every reading wakes a sleeping container, so without this a crawler hitting
+// `/status` would keep the instance awake (and billed) around the clock.
+export const STATUS_TTL_MS = 60_000;
+
+// The last reading, per isolate: { at, summary }.
+let lastReading = null;
+
+// For tests: forget the last reading.
+export function resetStatusCache() {
+  lastReading = null;
+}
+
 const PARTS = [
   ["db", "Database"],
   ["storage", "Artifact storage"],
@@ -79,12 +92,20 @@ ${rows ? `<ul>${rows}</ul>` : ""}
 
 // The answer for `/status` or `/status.css`. `fetchHealth` returns the
 // container's `/health` Response (or throws).
-export async function statusResponse(request, fetchHealth, { timeoutMs = HEALTH_TIMEOUT_MS, now } = {}) {
+export async function statusResponse(
+  request,
+  fetchHealth,
+  { timeoutMs = HEALTH_TIMEOUT_MS, ttlMs = STATUS_TTL_MS, now } = {},
+) {
   const path = new URL(request.url).pathname;
   if (path === "/status.css") {
     return new Response(STATUS_CSS, {
       headers: { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=3600" },
     });
+  }
+  const at = (now ?? new Date()).getTime();
+  if (lastReading && at - lastReading.at < ttlMs) {
+    return page(request, lastReading.summary, new Date(lastReading.at));
   }
   let health = null;
   let timer;
@@ -103,11 +124,16 @@ export async function statusResponse(request, fetchHealth, { timeoutMs = HEALTH_
     clearTimeout(timer);
   }
   const summary = summarize(health);
-  return new Response(request.method === "HEAD" ? null : renderStatus(summary, now), {
+  lastReading = { at, summary };
+  return page(request, summary, new Date(at));
+}
+
+function page(request, summary, checkedAt) {
+  return new Response(request.method === "HEAD" ? null : renderStatus(summary, checkedAt), {
     status: 200,
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
+      "cache-control": "public, max-age=60",
       "content-security-policy": STATUS_CSP,
     },
   });
