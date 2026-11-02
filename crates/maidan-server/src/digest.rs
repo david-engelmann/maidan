@@ -6,10 +6,13 @@
 //! digest — and emails each an unread-count rollup, then advances their digest
 //! watermark ([`Store::set_last_digest_at`]).
 //!
-//! **At-least-once, self-healing:** the watermark is advanced only after a
-//! successful send, so a transient SMTP failure simply retries on the next tick
-//! rather than dropping the digest. A crash between send and advance re-sends
-//! (a duplicate digest, not a lost one) — the right trade for a rollup email.
+//! **Advance, send, restore on failure:** the watermark is advanced before the
+//! send, and put back when the send fails, so a transient SMTP failure retries
+//! on the next tick rather than dropping the digest. A failed advance sends
+//! nothing. A sent digest is always metered and never re-sent because a save
+//! failed (#1721). Only a failed send whose restore also fails, or a crash
+//! between advance and send, drops that digest; a rollup of unread counts is
+//! the right thing to lose rather than duplicate and leave unmetered.
 //!
 //! **Multi-replica note:** the claim (`members_due_for_digest`) and the advance
 //! (`set_last_digest_at`) are not a single atomic step, so two replicas both
@@ -214,18 +217,20 @@ pub async fn sweep_once_with_batch(state: &AppState, batch: i64) -> u32 {
         } else {
             decisions_body(&decisions, member.unread_count)
         };
+        // Advance the watermark before sending, so a send can't succeed and
+        // then leave the member due (a re-send) and the delivery unmetered
+        // because the save failed (#1721). A failed save sends nothing; the
+        // member stays due for the next tick.
+        if let Err(err) = state.store.set_last_digest_at(member.member_id, now).await {
+            tracing::warn!(
+                error = %err,
+                member = %member.member_id,
+                "digest sweeper: watermark advance failed; not sending (will retry next tick)"
+            );
+            continue;
+        }
         match mail.send(&member.email, &subject, &body).await {
             Ok(()) => {
-                // Advance the watermark only on success, so a failed send retries
-                // next tick rather than silently dropping the digest.
-                if let Err(err) = state.store.set_last_digest_at(member.member_id, now).await {
-                    tracing::warn!(
-                        error = %err,
-                        member = %member.member_id,
-                        "digest sweeper: watermark advance failed (will re-send next tick)"
-                    );
-                    continue;
-                }
                 crate::metrics::record_email_delivered("digest");
                 state
                     .usage_meters
@@ -235,6 +240,20 @@ pub async fn sweep_once_with_batch(state: &AppState, batch: i64) -> u32 {
             Err(err) => {
                 tracing::warn!(error = %err, member = %member.member_id, "digest send failed");
                 crate::metrics::record_email_delivered("digest_failed");
+                // Put the watermark back, so the digest retries next tick
+                // rather than being dropped.
+                let previous = member.last_digest_at.unwrap_or(epoch);
+                if let Err(err) = state
+                    .store
+                    .set_last_digest_at(member.member_id, previous)
+                    .await
+                {
+                    tracing::warn!(
+                        error = %err,
+                        member = %member.member_id,
+                        "digest sweeper: watermark restore failed after a failed send; this digest is skipped"
+                    );
+                }
             }
         }
     }
