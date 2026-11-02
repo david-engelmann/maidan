@@ -1649,7 +1649,7 @@ Deferred as documented decisions: broad MCP arg-defaulting (declined), cross-cra
 
 | Change | Where |
 |--------|-------|
-| `PUT`/`GET`/`DELETE /members/:id/email` — set (opt-in) / read (`404` unset) / clear (opt-out), `workspace:read` + self-only. Makes email opt-in usable over HTTP; light `@` check at the edge, full validation at the transport | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
+| `PUT`/`GET`/`DELETE /members/:id/email` — set (opt-in) / read (`200` with `null` when unset) / clear (opt-out), `workspace:read` + self-only. Makes email opt-in usable over HTTP; light `@` check at the edge, full validation at the transport | `routes/member.rs`, `app.rs`, `dto.rs`, `openapi/*`, `contracts/http-capability-map.json` |
 
 ## [v249.0.0](https://github.com/david-engelmann/maidan/releases/tag/v249.0.0) — Program C (Arc I): email delivery wired into the router
 

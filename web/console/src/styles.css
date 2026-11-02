@@ -308,6 +308,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px
 
 @media (min-width: 900px) {
   .threads { display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 18px; height: calc(100dvh - 120px); }
+  /* The split view sizes itself to the window, so the reading screens' 3rem
+     bottom padding would push the page past it and scroll the whole shell. */
+  .content:has(.threads) { padding-bottom: 1rem; }
   .conv-list { overflow-y: auto; min-height: 0; }
   .threads.has-open .conv-list { visibility: visible; }
   .conv-open { position: relative; inset: auto; top: auto; height: auto; min-height: 0; z-index: auto; border: 1px solid var(--line); border-radius: 20px; background: var(--card); overflow: hidden; }

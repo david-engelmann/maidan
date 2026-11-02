@@ -967,7 +967,7 @@ pub fn set_member_email() {}
     params(("id" = Uuid, Path, description = "Member id")),
     security(("bearerAuth" = [])),
     responses(
-        (status = 200, body = MemberEmail),
+        (status = 200, body = Option<MemberEmail>),
         (status = 403, response = Forbidden),
         (status = 404, response = NotFound),
     ))]
