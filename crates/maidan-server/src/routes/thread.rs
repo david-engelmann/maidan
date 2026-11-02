@@ -773,17 +773,18 @@ pub async fn get_thread_result(
     State(state): State<AppState>,
     Extension(auth): Extension<AuthContext>,
     ApiPath(id): ApiPath<uuid::Uuid>,
-) -> ApiResult<Json<ThreadResult>> {
+) -> ApiResult<Json<ThreadResultView>> {
     cap(&auth, WORKSPACE_READ)?;
     let thread_id = ThreadId(id);
     // `ensure_thread_access` already resolves + workspace-checks the thread;
     // the prior `resolve_thread_context` + `ensure_workspace` was a redundant
     // second fetch (this handler doesn't use the resolved context).
     maidan_auth::ensure_thread_access(state.store.as_ref(), &auth, thread_id).await?;
-    match state.store.get_thread_result(thread_id).await? {
-        Some(result) => Ok(Json(result)),
-        None => Err(ApiError::NotFound),
-    }
+    let Some(result) = state.store.get_thread_result(thread_id).await? else {
+        return Err(ApiError::NotFound);
+    };
+    let deliveries = state.store.list_result_deliveries(thread_id).await?;
+    Ok(Json(ThreadResultView::new(result, deliveries)))
 }
 
 /// Per-target delivery status for this thread's result. `workspace:read` +

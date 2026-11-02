@@ -255,6 +255,19 @@ async fn list(h: &Harness) -> (StatusCode, Value) {
     (status, body)
 }
 
+async fn get_result(h: &Harness) -> (StatusCode, Value) {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{}/threads/{}/result", h.base, h.thread_id.0))
+        .header("Authorization", &h.bearer)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    let body = resp.json().await.unwrap_or(json!(null));
+    (status, body)
+}
+
 async fn replay(h: &Harness, did: ResultDeliveryId) -> (StatusCode, Value) {
     let client = reqwest::Client::new();
     let resp = client
@@ -305,6 +318,12 @@ async fn list_replay_and_audit_over_http() {
     assert_eq!(rows[0].surface, "github");
     let did = rows[0].id;
 
+    let (code, body) = get_result(&h).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(body["delivery_state"], json!("pending"));
+    assert_eq!(body["deliveries"][0]["status"], json!("pending"));
+    assert_eq!(body["result"]["summary"], json!("3 findings"));
+
     let stats = egress_worker::sweep_once(&h.state).await;
     assert_eq!(stats.sent, 1);
     let (code, body) = list(&h).await;
@@ -312,6 +331,13 @@ async fn list_replay_and_audit_over_http() {
     let rows: Vec<ResultDelivery> = serde_json::from_value(body).unwrap();
     assert_eq!(rows[0].status, status::DELIVERED);
     assert!(rows[0].external_ref.is_some());
+    let (code, body) = get_result(&h).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(
+        body["delivery_state"],
+        json!("delivered"),
+        "the result read says it arrived: {body}"
+    );
 
     let audit = h.store.list_audit(20).await.unwrap();
     assert!(
@@ -382,6 +408,10 @@ async fn unblessed_replay_stays_skipped_and_unroutable_is_400() {
     let discord = rows.iter().find(|r| r.surface == "discord").unwrap();
     assert_eq!(github.status, status::SKIPPED);
     assert_eq!(discord.status, status::SKIPPED);
+    let (code, body) = get_result(&h).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(body["delivery_state"], json!("skipped"));
+    assert_eq!(body["deliveries"].as_array().map(Vec::len), Some(2));
 
     let (code, body) = replay(&h, github.id).await;
     assert_eq!(code, StatusCode::OK);
@@ -405,4 +435,18 @@ async fn unblessed_replay_stays_skipped_and_unroutable_is_400() {
 
     let (code, _) = replay(&h, ResultDeliveryId::new()).await;
     assert_eq!(code, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_result_read_says_when_nothing_routes_it() {
+    let h = harness("unrouted").await;
+    let (code, _) = get_result(&h).await;
+    assert_eq!(code, StatusCode::NOT_FOUND, "no result yet");
+
+    route(&h, &json!({ "summary": "done" }), 1).await;
+    let (code, body) = get_result(&h).await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(body["result"]["summary"], json!("done"));
+    assert_eq!(body["delivery_state"], json!("not_routable"));
+    assert_eq!(body["deliveries"], json!([]));
 }

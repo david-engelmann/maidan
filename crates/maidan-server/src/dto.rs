@@ -14,6 +14,7 @@ use maidan_types::{
     TaskEngine, ThreadDependency, ThreadId, TokenPolicy, TokenQuota, VoteKind, WaitlistEntry,
     WaitlistEntryId, WebhookSubscriptionId, Workspace, WorkspaceId,
 };
+use maidan_types::{ResultDelivery, ThreadResult};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -2053,5 +2054,55 @@ impl MessageVotes {
             ack: count(VoteKind::Ack),
             votes,
         }
+    }
+}
+
+/// A thread's stored result and where it went (#1719): `GET /threads/{id}/result`.
+/// The result fields are the stored [`ThreadResult`]; `delivery_state` and
+/// `deliveries` say whether it reached its `deliver_to` targets, so a claimant
+/// sees a result that is stored but not delivered without a second request.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ThreadResultView {
+    pub thread_id: ThreadId,
+    #[schema(value_type = Object)]
+    pub result: serde_json::Value,
+    pub produced_by: MemberId,
+    pub produced_at: DateTime<Utc>,
+    /// One word for every target together: `failed` when any target failed,
+    /// else `pending` when any is still armed, else `delivered` when any
+    /// arrived, else `skipped` when every target was refused, and
+    /// `not_routable` when the result names no target at all.
+    pub delivery_state: String,
+    /// Each target's row, as `GET /threads/{id}/deliveries` lists them.
+    pub deliveries: Vec<ResultDelivery>,
+}
+
+impl ThreadResultView {
+    pub fn new(result: ThreadResult, deliveries: Vec<ResultDelivery>) -> Self {
+        Self {
+            thread_id: result.thread_id,
+            result: result.result,
+            produced_by: result.produced_by,
+            produced_at: result.produced_at,
+            delivery_state: delivery_state(&deliveries).to_string(),
+            deliveries,
+        }
+    }
+}
+
+/// The roll-up [`ThreadResultView::delivery_state`] documents.
+pub fn delivery_state(deliveries: &[ResultDelivery]) -> &'static str {
+    use maidan_types::status;
+    let any = |s: &str| deliveries.iter().any(|d| d.status == s);
+    if deliveries.is_empty() {
+        "not_routable"
+    } else if any(status::FAILED) {
+        "failed"
+    } else if any(status::PENDING) {
+        "pending"
+    } else if any(status::DELIVERED) {
+        "delivered"
+    } else {
+        "skipped"
     }
 }

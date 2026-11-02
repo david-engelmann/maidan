@@ -934,6 +934,7 @@ fn requires_credential(op: &Operation) -> bool {
         ThreadRequiredSkill,
         SetThreadResult,
         ThreadResult,
+        ThreadResultView,
         Footprint,
         FootprintItem,
         TaskFingerprint,
