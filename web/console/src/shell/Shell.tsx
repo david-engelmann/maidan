@@ -56,7 +56,10 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
         setPaletteOpen((o) => !o);
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTyping(e.target) || document.querySelector("[aria-modal='true']")) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || isTyping(e.target) || document.querySelector("[aria-modal='true']")) {
+        seq = null;
+        return;
+      }
       if (!seq && (e.key === "j" || e.key === "k")) {
         // j and k walk the rows of the list on screen, in reading order.
         const rows = [...document.querySelectorAll<HTMLElement>(LIST_ROWS)].filter((r) => r.offsetParent !== null);
@@ -89,7 +92,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
             { id: "new-message", title: "New message", hint: "Start a conversation with a person or agent", group: "Actions", run: () => { requestCompose(); navigate("threads"); } },
             { id: "upload", title: "Upload a file", hint: "Files: add an artifact and link it to a task", group: "Actions", run: () => navigate("artifacts") },
             { id: "refresh", title: "Refresh this screen", hint: "Read everything on this screen again", group: "Actions", run: () => liveBus.emit({ type: "resync" }) },
-            { id: "sign-out", title: "Sign out", hint: "Forget this page's sign-in", group: "Actions", run: () => store.signOut() },
+            { id: "sign-out", title: "Sign out", hint: "Forget this page's sign-in", group: "Actions", run: () => void store.logout() },
           ] satisfies Command[])
         : []),
     ],

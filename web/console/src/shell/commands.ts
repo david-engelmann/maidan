@@ -43,7 +43,8 @@ export function rank(commands: Command[], query: string): Command[] {
   commands.forEach((c, i) => {
     const title = score(c.title, query);
     const hint = c.hint ? score(c.hint, query) : null;
-    const s = Math.max(title ?? -Infinity, hint == null ? -Infinity : hint - 400);
+    // Two tiers: any title match outranks every hint-only match.
+    const s = title != null ? 10000 + title : hint != null ? hint : -Infinity;
     if (s > -Infinity) scored.push({ c, s, i });
   });
   return scored.sort((a, b) => b.s - a.s || a.i - b.i).map((x) => x.c);

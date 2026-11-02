@@ -63,3 +63,9 @@ test("j and k step through a list and stop at the ends", async () => {
   assert.equal(listStep(0, 0, "j"), null);
   assert.equal(listStep(0, 3, "x"), null);
 });
+
+test("a scattered title match still outranks an exact hint-only match", () => {
+  const cmds = [cmd("a", "Refresh", "upload a file"), cmd("b", "Upload a file again")];
+  assert.deepEqual(rank([cmd("h", "Something", "fil"), cmd("t", "Final list")], "fil").map((c) => c.id), ["t", "h"]);
+  assert.deepEqual(rank(cmds, "upload").map((c) => c.id), ["b", "a"]);
+});

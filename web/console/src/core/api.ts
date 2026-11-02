@@ -191,6 +191,16 @@ function waitWords(secs: number): string {
 
 /** Heard when the server says this tab's credential no longer works (any 401). */
 const authLost = new Set<() => void>();
+/** Bumped whenever this tab's credential changes, so a 401 for an older one is ignored. */
+let authEpoch = 0;
+const sentUnder = new WeakMap<Response, number>();
+export function bumpAuthEpoch(): void {
+  authEpoch++;
+}
+/** A 401 on this response says nothing about the tab's credential (a cookie-only route). */
+export function keepAuth(res: Response): void {
+  sentUnder.set(res, -1);
+}
 export function onAuthLost(fn: () => void): () => void {
   authLost.add(fn);
   return () => authLost.delete(fn);
@@ -215,7 +225,7 @@ export async function failure(
   } catch {
     detail = null;
   }
-  if (res.status === 401) authLost.forEach((fn) => fn());
+  if (res.status === 401 && (sentUnder.get(res) ?? authEpoch) === authEpoch) authLost.forEach((fn) => fn());
   const retry = res.status === 429 || res.status === 503 ? retryAfterSeconds(res.headers.get("Retry-After")) : null;
   const mine = own(res.status, typeof detail === "string" ? detail : null);
   let text = mine ?? humanError(res.status, detail, mode);
@@ -226,8 +236,11 @@ export async function failure(
 /** A fetch that never rejects with a raw TypeError: an unreachable server reads as OFFLINE. */
 export function guarded(fetchFn: (url: string, init?: RequestInit) => Promise<Response>, Err: new (message: string, status?: number) => ApiError = ApiError) {
   return async (url: string, init?: RequestInit): Promise<Response> => {
+    const epoch = authEpoch;
     try {
-      return await fetchFn(url, init);
+      const res = await fetchFn(url, init);
+      if (res && typeof res === "object" && !sentUnder.has(res)) sentUnder.set(res, epoch);
+      return res;
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") throw e;
       throw new Err(OFFLINE, 0);
