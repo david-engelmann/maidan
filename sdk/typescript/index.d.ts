@@ -686,6 +686,10 @@ export interface UsageEvidence {
   provider: string;
   service_tier?: string;
   cache_miss_reason?: string;
+  /** Set when the call went through a provider's batch API. */
+  batch?: boolean;
+  /** Standard-tier rates for a call in a cheaper lane (batch or flex). */
+  standard_price?: PriceSnapshot;
 }
 
 /** The economic part of a `report_usage` body. */
@@ -719,7 +723,19 @@ export const USAGE_PROVIDERS: readonly UsageProvider[];
 export function normalizeUsage(
   provider: UsageProvider,
   response: Record<string, unknown>,
-  options?: { model?: string; provider?: string },
+  options?: {
+    model?: string;
+    provider?: string;
+    /** The call went through a provider's batch API. */
+    batch?: boolean;
+    /**
+     * Standard-tier rates, sent so the ledger can report what a cheaper lane
+     * saved. Refused unless `batch` is set or the response's service tier is
+     * `batch` or `flex`. `standard_price` is accepted as an alias.
+     */
+    standardPrice?: PriceSnapshot;
+    standard_price?: PriceSnapshot;
+  },
 ): NormalizedUsage;
 
 /** `ceil(sum(tokens x rate) / 1_000_000)`, as the ledger checks it. */

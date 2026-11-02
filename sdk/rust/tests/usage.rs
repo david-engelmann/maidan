@@ -37,6 +37,13 @@ fn options(fixture: &Value) -> UsageOptions {
     UsageOptions {
         model: get("model"),
         provider: get("provider"),
+        batch: fixture
+            .pointer("/options/batch")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        standard_price: fixture
+            .pointer("/options/standard_price")
+            .map(|p| serde_json::from_value(p.clone()).unwrap()),
     }
 }
 

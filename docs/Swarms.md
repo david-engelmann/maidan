@@ -408,6 +408,20 @@ may set attributes, the change's author included, can lift or move it. A
 member that has reported no usage in the workspace has no known family and
 is not refused.
 
+What the rule does not cover (#1703):
+
+- **A seat's family comes only from its past usage.** It is read when the
+  thread is handed out. A seat with no usage yet, or whose first usage under
+  the author's family arrives after it claims, passes the check, and nothing
+  re-checks the holder afterwards. Give review seats a usage history (or a
+  dedicated member per family) before they take reviews.
+- **Workspace import does not apply it.** An admin importing a bundle can
+  restore a review already held by a member of the author's family; import
+  checks only that the holder belongs to the imported workspace.
+
+Releasing a review at usage-report time, when the reporter's family matches
+the review's `author_family`, is the proposed fix and is not built yet.
+
 ### Claim and release comments on Linear
 
 A task's attributes may name the Linear issue it is for
