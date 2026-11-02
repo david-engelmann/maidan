@@ -177,7 +177,7 @@ function FilePreview({ api, sha }: { api: ToolsApi; sha: string }) {
   return (
     <li className="rc-file" data-sha={sha}>
       <p className="rc-file-name">{meta === undefined ? "Loading…" : name}</p>
-      {img && <img className="rc-thumb" src={img} alt={name} loading="lazy" />}
+      {img && <img className="rc-thumb" src={img} alt={name} />}
       {missing && <p className="muted small">The file's contents could not be loaded.</p>}
       {head !== null && <pre className="rc-log msg-pre" tabIndex={0}><code>{head}</code></pre>}
     </li>

@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fixtures } from "./_fixtures";
 import { openOnChannel, signInWithCookie } from "./_console";
 
@@ -78,4 +80,18 @@ test("j and k walk the queue, and an answer moves on to the next item", async ({
   await pane.locator("button[type=submit]").click();
   await expect(page.locator(".need.selected .need-card .need-title")).toHaveText(second);
   await expect(page.locator(".need-pick[aria-current='true'] .need-pick-title")).not.toHaveText(first);
+});
+
+test("a screenshot in the evidence shows as a thumbnail in the pane", async ({ page }) => {
+  // The seeded screenshot's bytes are filler, so serve a small real PNG in its place.
+  const png = readFileSync(join(__dirname, "assets", "login-after.png"));
+  await page.route(/\/artifacts\/e4fd[0-9a-f]{60}$/, (r) => r.fulfill({ status: 200, contentType: "image/png", body: png }));
+  await page.setViewportSize({ width: 1680, height: 1000 });
+  await signInWithCookie(page, fx);
+  await openOnChannel(page, fx.tiers_channel_id, "#/needs");
+  await page.locator(".need-pick", { hasText: "screenshot and a log" }).click();
+  const thumb = page.locator(".need.selected .rc-files img.rc-thumb");
+  await expect(thumb).toBeVisible();
+  await expect(thumb).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(160);
 });
