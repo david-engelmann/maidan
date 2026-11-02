@@ -272,7 +272,7 @@ export function evidenceLine(e: EvidenceEntry, name: (id: string | undefined) =>
     case "result_recorded":
       return `Result ${short(e.sha256)} recorded by ${name(e.produced_by)}`.replace("Result  ", "Result ");
     case "land_gate_verdict":
-      return `Land gate: ${e.verdict?.status ?? "unknown"}`;
+      return `Automated check: ${e.verdict?.status ?? "unknown"}`;
     case "review_requested":
       return `Handed to review by ${name(e.packet?.requested_by)} at version ${e.packet?.thread_version ?? "?"}, evidence root ${short(e.packet?.evidence_root)}${e.packet?.self_reported_only ? " (self-reported only)" : ""}`;
     case "review_verdict":

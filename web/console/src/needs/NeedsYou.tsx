@@ -500,7 +500,7 @@ function EvidenceBlock({ read, items, retry, taskHref }: { read: PacketRead | nu
       </p>
       {p.self_reported_only && (
         <p className="ev-warn" role="note">
-          Self-reported only: all of this evidence comes from the task's own workers. Nothing was attached by anyone else or verified by a land gate.
+          Self-reported only: all of this evidence comes from the task's own workers. Nobody else attached anything, and no automated check has verified it.
         </p>
       )}
       {items && items.length ? (

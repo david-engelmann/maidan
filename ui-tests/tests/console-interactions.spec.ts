@@ -82,3 +82,47 @@ test("someone else's message shows an unread dot, and reading it clears the dot"
   await expect(page.locator(".msg").filter({ hasText: "unread probe" })).toBeVisible();
   await expect(convRow(page, fx.thread_id).locator(".unread-dot")).toHaveCount(0);
 });
+
+test("a slow board shows placeholder rows, then the real ones", async ({ page }) => {
+  await signInWithCookie(page, fx);
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/threads**", async (route) => {
+    if (route.request().method() === "GET" && route.request().resourceType() === "fetch") await held;
+    await route.fallback();
+  });
+  await openOnChannel(page, fx.desk_channel_id, "#/board");
+  await expect(page.locator(".skeleton").first()).toBeVisible();
+  release();
+  await expect(page.locator(".skeleton")).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText("Loading");
+});
+
+test("losing the connection says so in the top bar and clears once back", async ({ page, context }) => {
+  // Browsers keep an open localhost socket through setOffline, so the socket is
+  // dropped here by hand and refused until the network comes back.
+  let down = false;
+  const open = new Set<{ close: (o?: { code?: number; reason?: string }) => Promise<void> }>();
+  await page.routeWebSocket(/\/ws\/subscribe/, (ws) => {
+    if (down) return void ws.close({ code: 1011, reason: "offline" });
+    ws.connectToServer();
+    open.add(ws);
+  });
+  await signInWithCookie(page, fx);
+  await openOnChannel(page, fx.desk_channel_id, "#/needs");
+  await expect(page.locator("li.need").first()).toBeVisible();
+  const status = page.locator("span.live[role=status]");
+  await expect(status).toHaveCount(0);
+  down = true;
+  await context.setOffline(true);
+  for (const ws of open) await ws.close({ code: 1011, reason: "offline" });
+  open.clear();
+  await expect(status).toBeVisible();
+  await expect(status).toHaveAttribute("title", /Reconnecting|Offline/);
+  // The rows already on screen stay put while the connection is down.
+  await expect(page.locator("li.need").first()).toBeVisible();
+  down = false;
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(status).toHaveCount(0, { timeout: 20_000 });
+});
