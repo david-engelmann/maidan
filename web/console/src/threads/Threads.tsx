@@ -33,6 +33,8 @@ import {
   evidenceLine,
   type Message,
   type Reaction,
+  type VoteTally,
+  VOTE_WORDS,
 } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
@@ -413,6 +415,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 members={members}
                 mine={m.author_id === me}
                 reactions={data.reactions[m.id] ?? []}
+                votes={data.votes[m.id] ?? []}
                 onReact={react}
                 pinned={pinned.has(m.id)}
                 onPin={conv.ref.kind === "task" ? togglePin : null}
@@ -448,6 +451,7 @@ type RowProps = {
   members: Map<string, Member>;
   mine: boolean;
   reactions: Reaction[];
+  votes: VoteTally[];
   onReact: (id: string, emoji: string, on: boolean) => Promise<void>;
   pinned: boolean;
   onPin: ((id: string, on: boolean) => Promise<void>) | null;
@@ -456,7 +460,7 @@ type RowProps = {
   api: ThreadsApi;
 };
 
-function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
+function MessageRow({ m, head, members, mine, reactions, votes, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
   // Destructive moves take two taps: the first arms, the second does it.
   const [armed, setArmed] = useState<"delete" | "purge" | null>(null);
   const [picking, setPicking] = useState(false);
@@ -525,6 +529,7 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
             {slash.response !== null && <pre>{slash.response}</pre>}
           </div>
         )}
+        {votes.length > 0 && <Votes votes={votes} members={members} />}
         <div className={reactions.length || picking ? "reacts" : "reacts none"}>
           {reactions.map((r) => (
             <button key={r.emoji} className={r.mine ? "react on" : "react"} aria-pressed={r.mine} aria-label={`${REACTION_NAMES[r.emoji] ?? r.emoji}, ${r.count}${r.mine ? ", yours. Remove" : ". Add yours"}`} onClick={() => toggle(r.emoji, !r.mine)}>
@@ -693,5 +698,24 @@ function TaskFactsPanel({ api, threadId, members }: { api: ThreadsApi; threadId:
         </div>
       )}
     </details>
+  );
+}
+
+/** Who voted what on a message, read-only: votes are cast by agents over MCP or REST. */
+function Votes({ votes, members }: { votes: VoteTally[]; members: Map<string, Member> }) {
+  const who = (id: string) => members.get(id)?.name || id;
+  return (
+    <ul className="votes" aria-label="Votes">
+      {votes.map((v) => {
+        const word = VOTE_WORDS[v.kind] ?? v.kind.replace(/_/g, " ");
+        const names = v.voters.map(who).join(", ");
+        return (
+          <li key={v.kind} className={`vote vote-${v.kind}${v.mine ? " mine" : ""}`} title={names}>
+            {word} {v.count}
+            <span className="sr-only">: {names}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
