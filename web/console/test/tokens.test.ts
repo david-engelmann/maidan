@@ -76,3 +76,9 @@ test("one button style: .button and .btn share the height and the pill shape", (
     assert.match(rule(sel), /border-radius: var\(--r-pill\)/, sel);
   }
 });
+
+test("dark mode sets its tokens in one :root block, not two that disagree", () => {
+  const blocks = [...css.matchAll(/@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/g)];
+  assert.equal(blocks.length, 1);
+  assert.match(blocks[0][1], /--elev-1:/);
+});
