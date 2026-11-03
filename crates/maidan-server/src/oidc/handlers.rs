@@ -6,7 +6,8 @@ use axum::{
 use chrono::{Duration, Utc};
 use maidan_auth::TOKEN_ADMIN;
 use maidan_types::{
-    AuditScope, NewAuditEvent, NewMaidanSession, NewOidcPendingAuth, OidcPendingTarget, WorkspaceId,
+    AuditScope, NewAuditEvent, NewChannel, NewMaidanSession, NewOidcPendingAuth, OidcPendingTarget,
+    WorkspaceId,
 };
 use openidconnect::{
     core::CoreAuthenticationFlow, AuthorizationCode, IssuerUrl, LogoutRequest, Nonce,
@@ -26,6 +27,8 @@ use crate::state::AppState;
 pub const SESSION_CREATE: &str = "session.create";
 /// The audit action of a sign-up creating its workspace.
 pub const WORKSPACE_SIGNUP: &str = "workspace.signup";
+/// The channel a workspace made by sign-up opens on.
+pub const FIRST_CHANNEL: &str = "general";
 /// The audit action of signing out.
 pub const SESSION_DELETE: &str = "session.delete";
 
@@ -455,6 +458,22 @@ async fn complete_signup(
             }
             other => other.into(),
         })?;
+    // A new workspace opens on a channel, so its board can take a task at
+    // once instead of sending the person to Tools to make one first. The
+    // sign-up already stands; a failure here only leaves that step to them.
+    match state
+        .store
+        .create_channel_with_event(NewChannel {
+            workspace_id: outcome.workspace.id,
+            name: FIRST_CHANNEL.into(),
+            topic: None,
+            private: false,
+        })
+        .await
+    {
+        Ok((_, stored)) => crate::routes::publish_stored(state, stored).await,
+        Err(err) => tracing::warn!(error = %err, "sign-up: the first channel was not created"),
+    }
     finish_with_session(
         state,
         oidc,
