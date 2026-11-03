@@ -101,25 +101,38 @@ test("a rotation that lands after the page signed out does not sign it back in",
   await pasteIn(page, own.secret, `#/people/m/${fx.member_id}`);
   let release: () => void = () => {};
   const held = new Promise<void>((r) => (release = r));
+  // The outcome comes from the route handler itself, never from page
+  // request events: signing out navigates the page, and Chromium drops a
+  // paused intercepted request without always emitting requestfailed, which
+  // left the test waiting on an event that never came. route.fetch() sends
+  // the held rotation from the test side, so the server answers whether or
+  // not the page still wants it, and the handler always settles.
+  let settle: (o: "done" | "dropped") => void = () => {};
+  const settled = new Promise<"done" | "dropped">((r) => (settle = r));
+  let caught: () => void = () => {};
+  const routed = new Promise<void>((r) => (caught = r));
   await page.route("**/tokens/*/rotate", async (route) => {
+    caught();
     await held;
-    await route.continue();
+    let outcome: "done" | "dropped" = "dropped";
+    try {
+      const res = await route.fetch();
+      outcome = res.ok() ? "done" : "dropped";
+      await route.fulfill({ response: res }).catch(() => {});
+    } catch {
+      await route.abort().catch(() => {});
+    }
+    settle(outcome);
   });
   const trades: string[] = [];
   page.on("request", (r) => {
     if (r.url().endsWith("/auth/session/from-token")) trades.push(r.url());
   });
-  // Signing out may cancel the held request, or the server may refuse it
-  // once the credential is gone; either way the page must stay signed out.
-  const settled = new Promise<"done" | "dropped">((r) => {
-    page.on("requestfinished", (q) => {
-      if (q.url().includes("/rotate")) void q.response().then((res) => { r(res && res.ok() ? "done" : "dropped"); });
-    });
-    page.on("requestfailed", (q) => { if (q.url().includes("/rotate")) r("dropped"); });
-  });
   const row = page.locator("li.token", { has: page.locator(".state-chip", { hasText: "This page" }) });
   await row.getByRole("button", { name: "Rotate" }).click();
   await row.getByRole("button", { name: "Rotate: sure?" }).click();
+  // The rotation is held before the page signs out, not merely clicked.
+  await routed;
   // Sign out in another view while the rotation is in flight.
   await page.goto("/ui/#/tools/prefs");
   await page.getByRole("button", { name: "Sign out" }).click();
