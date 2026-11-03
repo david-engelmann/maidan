@@ -5,6 +5,8 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { CATALOG_FORBIDDEN, CatalogApi, annotationBadges, filterTools, openTool, schemaParams, summary, toolTitle, type CatalogTool } from "../core/catalog.ts";
 import { useLoad } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { EmptyState } from "../shell/EmptyState.tsx";
+import { LoadError } from "../shell/LoadError.tsx";
 
 function subscribeHash(fn: () => void): () => void {
   window.addEventListener("hashchange", fn);
@@ -96,19 +98,23 @@ export function Catalog() {
         ) : null}
         {forbidden && !loaded.value ? (
           <div className="empty-state" role="alert">
-            <b>No access to the catalog</b>
-            <p className="muted small">{CATALOG_FORBIDDEN} Ask an admin for a token that holds it.</p>
+            <strong>No access to the catalog</strong>
+            <p className="muted">{CATALOG_FORBIDDEN} Ask an admin for a token that holds it.</p>
+          </div>
+        ) : loaded.error && loaded.value ? (
+          <div className="stale" role="alert">
+            <p>{loaded.error}</p>
+            <button type="button" className="button steel" onClick={() => void loaded.reload()}>Try again</button>
           </div>
         ) : loaded.error ? (
-          <div className={loaded.value ? "stale" : "empty-state"} role="alert">
-            <p className={loaded.value ? "" : "err"}>{loaded.error}</p>
-            <button type="button" className="chip-btn" onClick={() => void loaded.reload()}>Try again</button>
-          </div>
+          <LoadError message={loaded.error} onRetry={() => void loaded.reload()} />
         ) : null}
         {loaded.status === "ready" && !shown.length ? (
-          <div className="empty-state">
-            <p className="muted">{query ? `No tool matches “${query}”.` : "This access lists no tools."}</p>
-          </div>
+          query ? (
+            <EmptyState title="No matching tools" body={`No tool matches “${query}”.`} />
+          ) : (
+            <EmptyState title="No tools yet" body="This access lists no tools." />
+          )
         ) : null}
         <ul className="tool-rows">
           {shown.map((t) => (

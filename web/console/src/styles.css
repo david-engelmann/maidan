@@ -1195,7 +1195,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .param-opt { color: var(--muted); }
 .param dd { margin: 4px 0 0; color: var(--ink); line-height: 1.5; }
 .param-choices { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.param-choices code { font-family: var(--mono); font-size: var(--text-xs); padding: 1px 6px; border-radius: 6px; background: var(--paper-2); }
+.param-choices code { font-family: var(--mono); font-size: var(--text-xs); padding: 1px 6px; border-radius: var(--r-xs); background: var(--paper-2); }
 @media (min-width: 900px) {
   .catalog-grid { grid-template-columns: minmax(0, 1fr) minmax(340px, 460px); align-items: start; }
   .catalog-grid .wide-only { display: block; }
