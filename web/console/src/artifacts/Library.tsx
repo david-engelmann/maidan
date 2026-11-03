@@ -7,6 +7,7 @@ import { convHash } from "../core/threads.ts";
 import { formatBytes, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { EmptyState } from "../shell/EmptyState";
 
 const VIEW_KEY = "maidan_console_files_view";
 
@@ -60,7 +61,7 @@ export function Library() {
       ) : files.status === "error" ? (
         <div className="files-empty" role="alert"><p>Could not load the files.</p><p className="muted small">{files.error}</p><button type="button" className="button steel" onClick={() => void files.reload()}>Try again</button></div>
       ) : !files.value?.length ? (
-        <div className="files-empty"><p>No files yet.</p><p className="muted small">Files show here once an agent or a person links one to a task as evidence.</p></div>
+        <EmptyState title="No files yet" body="Files show here once an agent or a person links one to a task as evidence." />
       ) : !rows.length ? (
         <div className="files-empty"><p>No files match “{q.trim()}”.</p><button type="button" className="button ghost" onClick={() => setQ("")}>Clear search</button></div>
       ) : (

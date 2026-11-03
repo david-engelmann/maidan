@@ -58,6 +58,7 @@ import { useSession } from "../hooks/useSession.ts";
 import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
 import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 type Tab = "tasks" | "direct";
 
@@ -232,11 +233,11 @@ export function Threads() {
             <span className="skeleton row-sk" />
           </div>
         ) : !list.length ? (
-          <p className="muted conv-empty">
-            {tab === "tasks" ? (
-              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
-            ) : "No conversations yet. Start one with New message."}
-          </p>
+          tab === "tasks" ? (
+            <EmptyState title="No task threads" body={emptyChannelText(board.channels.length)} action={<a className="button ghost" href={NEW_WORK_HREF}>Start a task</a>} />
+          ) : (
+            <EmptyState title="No conversations yet" body="Start one with New message." />
+          )
         ) : (
           <ul className="convs">
             {list.map((c) => {
