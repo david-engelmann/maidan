@@ -1171,13 +1171,13 @@ h1, h2, h3, strong, b { font-weight: 600; }
 
 /* Board health strip: live tasks that may need a look, each a filter. */
 .health { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
-.health-chip { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.health-chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
 .health-chip[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
 .health-stalled, .health-blocked, .health-ending { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 .health-clear { color: var(--muted); }
 
 /* Stale-data banner: the board stopped following live changes. */
-.stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: 14px; }
+.stale-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 4px; padding: 10px 14px; border-radius: var(--r-md); border: 1px solid color-mix(in srgb, var(--signal) 45%, var(--line)); background: color-mix(in srgb, var(--signal) 8%, var(--card)); font-size: 14px; }
 .stale-banner .chip-btn { min-height: 44px; }
 
 /* Board view toggle and the by-agent view. */
@@ -1190,7 +1190,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 /* Presence strip: who is online or away, and how many tasks each holds. */
 .presence-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 4px; }
 .presence-strip ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.here { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; }
+.here { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--r-pill); border: 1px solid var(--line); font-size: 13px; }
 .here .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .here-online .dot { background: var(--ok); }
 .here-away { color: var(--muted); }
@@ -1201,7 +1201,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 
 /* Votes on a message (console-19). */
 .votes { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 4px 0 0; padding: 0; }
-.vote { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line, #ccc); }
+.vote { font-size: 12px; padding: 1px 8px; border-radius: var(--r-pill); border: 1px solid var(--line, #ccc); }
 .vote-approve { border-color: #2e7d32; color: #2e7d32; }
 .vote-request_changes { border-color: #c62828; color: #c62828; }
 .vote.mine { font-weight: 600; }
@@ -1280,4 +1280,4 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .work-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .work-list li { display: grid; gap: 2px; }
 .work-list a { color: var(--ink); text-underline-offset: 2px; }
-.ghost-line { height: 14px; border-radius: 6px; background: var(--line); }
+.ghost-line { height: 14px; border-radius: var(--r-sm); background: var(--line); }
