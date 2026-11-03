@@ -546,6 +546,8 @@ async fn notify_merge(
             reasons: Vec::new(),
             environment: None,
             deploy_url: None,
+            reviewer: None,
+            review_state: None,
             created_at: Utc::now(),
         };
         let key = format!("rebase_needed:{repo}#{pull_number}");
@@ -582,6 +584,8 @@ pub async fn add_stale_base_notice(
         reasons: Vec::new(),
         environment: None,
         deploy_url: None,
+        reviewer: None,
+        review_state: None,
         created_at: Utc::now(),
     };
     let mut tx = pool.begin().await?;
@@ -680,6 +684,8 @@ pub async fn record_deploy(
             reasons: Vec::new(),
             environment: Some(deploy.environment.clone()),
             deploy_url: deploy.url.clone(),
+            reviewer: None,
+            review_state: None,
             created_at: Utc::now(),
         };
         if let Some(one) = insert_notice_in_tx(&mut tx, thread_id, notice, &key).await? {
@@ -737,8 +743,9 @@ pub(super) async fn insert_notice_in_tx(
         "INSERT INTO maidan_thread_notices
              (id, workspace_id, thread_id, kind, repo, pull_number, paths, base_branch,
               base_behind, dedupe_key, created_at, head_sha, status, failing_jobs, reasons,
-              environment, deploy_url)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+              environment, deploy_url, reviewer, review_state)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
+                 $18, $19)
          ON CONFLICT (thread_id, dedupe_key) DO NOTHING",
     )
     .bind(Uuid::now_v7())
@@ -758,6 +765,8 @@ pub(super) async fn insert_notice_in_tx(
     .bind(Json(&notice.reasons))
     .bind(&notice.environment)
     .bind(&notice.deploy_url)
+    .bind(&notice.reviewer)
+    .bind(notice.review_state.map(|state| state.as_str()))
     .execute(&mut **tx)
     .await?
     .rows_affected();
@@ -783,6 +792,8 @@ pub(super) async fn insert_notice_in_tx(
             reasons: notice.reasons.clone(),
             environment: notice.environment.clone(),
             deploy_url: notice.deploy_url.clone(),
+            reviewer: notice.reviewer.clone(),
+            review_state: notice.review_state,
         },
     )
     .await?;
@@ -813,7 +824,8 @@ pub async fn list_notices(
 ) -> Result<Vec<ThreadNotice>, StoreError> {
     let rows = sqlx::query(
         "SELECT kind, repo, pull_number, paths, base_branch, base_behind, created_at,
-                head_sha, status, failing_jobs, reasons, environment, deploy_url
+                head_sha, status, failing_jobs, reasons, environment, deploy_url,
+                reviewer, review_state
          FROM maidan_thread_notices WHERE thread_id = $1
          ORDER BY created_at DESC, id DESC LIMIT $2",
     )
@@ -841,6 +853,10 @@ pub async fn list_notices(
                 reasons: row.get::<Json<Vec<String>>, _>("reasons").0,
                 environment: row.get("environment"),
                 deploy_url: row.get("deploy_url"),
+                reviewer: row.get("reviewer"),
+                review_state: row
+                    .get::<Option<String>, _>("review_state")
+                    .and_then(|state| maidan_types::ReviewState::parse(&state)),
                 created_at: row.get::<DateTime<Utc>, _>("created_at"),
             })
         })
