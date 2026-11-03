@@ -7,3 +7,4 @@
 - **Changed:** The empty Threads and People detail panes show a centred empty state, a small steel mark with a title and one line of help, instead of a lone muted sentence or a dashed box.
 - **Fixed:** At a 1024px window the board shows all four lanes. Each lane could not shrink below 220px, so the Done lane was cut off and needed a sideways scroll; the floor is now 168px.
 - **Fixed:** In a narrow board lane a card's state, flag, avatar and time wrap onto a second line instead of being clipped at the card edge.
+- **Fixed:** Keyboard focus on a fold-out row, such as **Result and evidence** in a thread, draws a rounded ring that matches the rest of the console instead of a square box.

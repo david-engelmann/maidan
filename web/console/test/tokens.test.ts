@@ -59,3 +59,7 @@ test("four board lanes fit a 1024px window", () => {
 test("card meta wraps instead of clipping in a narrow lane", () => {
   assert.match(css, /\.task-meta \{[^}]*flex-wrap: wrap/);
 });
+
+test("disclosure summaries get a rounded focus ring", () => {
+  assert.match(css, /summary:focus-visible \{ border-radius: var\(--r-xs\); \}/);
+});

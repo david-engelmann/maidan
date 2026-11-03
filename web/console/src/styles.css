@@ -772,6 +772,7 @@ time, .when, .count, .pill { font-variant-numeric: tabular-nums; }
 .pins.facts-panel summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-right: 4px; }
 .pins.facts-panel[open] summary::before { transform: rotate(45deg); }
 .pins.facts-panel summary:hover { color: var(--ink); }
+summary:focus-visible { border-radius: var(--r-xs); }
 .pins.facts-panel[open] { padding-bottom: var(--space-2); }
 
 /* Files: one button family. */
