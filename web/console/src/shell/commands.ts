@@ -5,7 +5,7 @@ import { ROUTES, type RouteId } from "./router.ts";
 export type Command = { id: string; title: string; hint?: string; group: "Go to" | "Actions"; keys?: string[]; run: () => void };
 
 /** The letter after "g" that jumps to each place. */
-export const GO_KEYS: Record<string, RouteId> = { b: "board", n: "needs", t: "threads", p: "people", a: "activity", o: "tools", f: "artifacts" };
+export const GO_KEYS: Record<string, RouteId> = { b: "board", n: "needs", t: "threads", p: "people", a: "activity", o: "tools", c: "catalog", f: "artifacts" };
 const KEY_OF = Object.fromEntries(Object.entries(GO_KEYS).map(([k, r]) => [r, k])) as Record<RouteId, string>;
 
 export function routeCommands(go: (id: RouteId) => void): Command[] {
@@ -90,4 +90,4 @@ export function listStep(current: number, length: number, key: string): number |
 }
 
 /** The rows j and k move between, in screen order. */
-export const LIST_ROWS = ".convs .conv, .person-row, .need-pick, .need-card, .lane .task:not(.task-sk)";
+export const LIST_ROWS = ".convs .conv, .person-row, .tool-row, .need-pick, .need-card, .lane .task:not(.task-sk)";

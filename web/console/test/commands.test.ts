@@ -7,7 +7,7 @@ const cmd = (id: string, title: string, hint?: string): Command => ({ id, title,
 test("every place is in the palette with its G-letter jump", () => {
   const went: string[] = [];
   const cmds = routeCommands((id) => went.push(id));
-  assert.deepEqual(cmds.map((c) => c.title), ["Board", "Needs you", "Threads", "People", "Activity", "Tools", "Files"]);
+  assert.deepEqual(cmds.map((c) => c.title), ["Board", "Needs you", "Threads", "People", "Activity", "Tools", "Catalog", "Files"]);
   assert.deepEqual(cmds.find((c) => c.title === "Activity")?.keys, ["G", "A"]);
   assert.deepEqual(cmds.find((c) => c.title === "Tools")?.keys, ["G", "O"]);
   cmds[2].run();
