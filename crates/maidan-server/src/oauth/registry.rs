@@ -294,15 +294,7 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
                 name: doc.client_name.unwrap_or_else(|| client_id.to_string()),
                 redirect_uris: doc.redirect_uris,
                 client_secret_hash: None, // CIMD clients are public (PKCE only)
-                allowed_scopes: doc
-                    .scope
-                    .map(|s| {
-                        s.split(' ')
-                            .filter(|c| !c.is_empty())
-                            .map(str::to_string)
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                allowed_scopes: document_scopes(doc.scope.as_deref()),
             },
             client_id,
         )
@@ -311,12 +303,42 @@ pub async fn resolve_client(state: &AppState, client_id: &str) -> ApiResult<OAut
     Ok(client)
 }
 
+/// The scopes a metadata-document client may ask for. A document that names
+/// none (claude.ai's connector document has no `scope`) may ask for any
+/// delegatable capability; without this it could ask for nothing, and every
+/// authorize from it was refused as "scope is empty". What it gets is still
+/// cut to what the member holds and consents to.
+fn document_scopes(scope: Option<&str>) -> Vec<String> {
+    let named: Vec<String> = scope
+        .unwrap_or("")
+        .split(' ')
+        .filter(|c| !c.is_empty())
+        .map(str::to_string)
+        .collect();
+    if named.is_empty() {
+        maidan_auth::capability::delegatable()
+    } else {
+        named
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn url(s: &str) -> Url {
         Url::parse(s).unwrap_or_else(|e| panic!("{s}: {e}"))
+    }
+
+    #[test]
+    fn a_document_without_a_scope_may_ask_for_any_delegatable_capability() {
+        let all = maidan_auth::capability::delegatable();
+        assert_eq!(document_scopes(None), all);
+        assert_eq!(document_scopes(Some("  ")), all);
+        assert_eq!(
+            document_scopes(Some("workspace:read  message:post")),
+            vec!["workspace:read".to_string(), "message:post".to_string()]
+        );
     }
 
     #[test]
