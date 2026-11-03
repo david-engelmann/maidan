@@ -294,6 +294,33 @@ export interface ThreadResult {
   result: unknown;
   produced_by: MemberId;
   produced_at: string;
+  /**
+   * On `getResult`: one word for every `deliver_to` target together
+   * (`failed`, `pending`, `delivered`, `skipped` or `not_routable`).
+   */
+  delivery_state?: string;
+  /** On `getResult`: each target's delivery row. */
+  deliveries?: ResultDelivery[];
+}
+
+/** One `deliver_to` target's delivery of a result. */
+export interface ResultDelivery {
+  id: string;
+  thread_id: ThreadId;
+  surface: string;
+  selector: string;
+  status: string;
+  armed_revision: string;
+  delivered_revision?: string | null;
+  attempts: number;
+  last_error?: string | null;
+  external_ref?: string | null;
+  head_sha?: string | null;
+  pr_number?: number | null;
+  pr_url?: string | null;
+  template_warnings?: unknown[];
+  created_at: string;
+  updated_at: string;
 }
 
 /** A structured message block, discriminated by `type`. */

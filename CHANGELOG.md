@@ -7,6 +7,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [422.0.0] — 2026-11-03
+
+The first published release since 419.0.0. `v420.0.0` (no npm in the aarch64
+`cross` build) and `v421.0.0` (the release scan refused the distroless base's
+`libssl3`) were tagged but never published. This release carries everything in
+420.0.0 and 421.0.0, the React console at `/ui` and the hosted launch surfaces,
+plus the fixes, and runs on a Chainguard base.
+
+### The SDKs read a result's delivery state
+
+- **Added:** the four SDKs model `delivery_state` and `deliveries` on `getResult` / `get_result` / `GetResult` (from #1909), so a claimant sees whether its result reached its `deliver_to` targets without a second request. The SDK interop check failed on dev because the server sent fields the SDKs did not declare.
+- **Fixed:** the deploy pins check skips releases that were tagged but never published (`scripts/unpublished-releases`: 418.0.0 and 420.0.0), which have no images to pin; before, an unpublished tag demanded pins on images that do not exist.
+
+### The server and CLI images run on Chainguard's glibc-dynamic
+
+- **Changed:** the server and `maidan` CLI images run on `cgr.dev/chainguard/glibc-dynamic`, pinned by digest, instead of `gcr.io/distroless/cc-debian12`. Distroless carried a `libssl3` (CVE-2026-84782) that the release scan refused for weeks after Debian's fix, so `v421.0.0` never published. The new base has glibc, libgcc, CA certificates and a `nonroot` user, and no shell and no OpenSSL. No Maidan binary links OpenSSL. The `.trivyignore` exception for it is gone.
+
+## [421.0.0] — 2026-11-03
+
+The first published release since 419.0.0. `v420.0.0` was tagged on `05549018` but
+never published: its aarch64 Linux release build runs under `cross`, whose
+container has no Node, and `build.rs` builds the landing and the console with npm.
+This release carries everything in 420.0.0, the React console at `/ui` and the
+hosted launch surfaces, plus the release fix below.
+
+### The aarch64 release build has its web assets
+
+- **Fixed:** `v420.0.0` was tagged but never published. Its aarch64 Linux release build runs under `cross`, whose container has no Node, and `build.rs` now builds the landing and the console with npm. The release now builds both on the host first, and `Cross.toml` passes `MAIDAN_SKIP_LANDING_BUILD` into the container so `build.rs` uses them.
+
 ## [420.0.0] — 2026-11-02
 
 ### A closed task names who closed it

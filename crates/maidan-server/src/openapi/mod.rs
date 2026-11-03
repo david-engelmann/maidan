@@ -1005,6 +1005,7 @@ fn requires_credential(op: &Operation) -> bool {
         WatchedPull,
         PullCi,
         CiStatus,
+        ReviewState,
         SetThreadLineage,
         ThreadLineage,
         RunOccupancy,

@@ -8,6 +8,9 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 description = "Model Context Protocol server surface for Maidan."
+# One integration-test binary (tests/it/main.rs, from scripts/gen-integration-main.py)
+# instead of one per tests/*.rs, so the crate links once.
+autotests = false
 
 [features]
 # Log every MCP request and response in full, with secret-shaped keys
@@ -49,3 +52,7 @@ tracing-subscriber.workspace = true
 [[bin]]
 name = "gen-mcp-reference"
 path = "src/bin/gen_mcp_reference.rs"
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"

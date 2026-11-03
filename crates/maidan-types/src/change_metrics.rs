@@ -100,6 +100,10 @@ pub enum ThreadNoticeKind {
     /// The pull request left the merge queue without merging; `reasons`
     /// holds GitHub's reason (`MERGE_CONFLICT`, `FAILED_CHECKS`, ...).
     MergeDequeued,
+    /// A review was submitted on the pull request, by a person or a bot;
+    /// `reviewer`, `review_state` and `head_sha` say who, how and on which
+    /// head. Said once per review.
+    ReviewSubmitted,
     /// A deploy hook reported the pull request's merge commit deployed to
     /// `environment`; `status` says whether it succeeded.
     Deployed,
@@ -117,6 +121,7 @@ impl ThreadNoticeKind {
             Self::GateClear => "gate_clear",
             Self::MergeQueued => "merge_queued",
             Self::MergeDequeued => "merge_dequeued",
+            Self::ReviewSubmitted => "review_submitted",
             Self::Deployed => "deployed",
         }
     }
@@ -132,6 +137,7 @@ impl ThreadNoticeKind {
             "gate_clear" => Some(Self::GateClear),
             "merge_queued" => Some(Self::MergeQueued),
             "merge_dequeued" => Some(Self::MergeDequeued),
+            "review_submitted" => Some(Self::ReviewSubmitted),
             "deployed" => Some(Self::Deployed),
             _ => None,
         }
@@ -180,6 +186,12 @@ pub struct ThreadNotice {
     /// The deploy's own page, as the hook sent it (`deployed`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deploy_url: Option<String>,
+    /// The login of who submitted a review (`review_submitted`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewer: Option<String>,
+    /// How the review came out (`review_submitted`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_state: Option<crate::pull_ci::ReviewState>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -236,6 +248,14 @@ impl ThreadNotice {
                 self.repo,
                 self.pull_number,
                 self.reasons.join(", ")
+            ),
+            ThreadNoticeKind::ReviewSubmitted => format!(
+                "{} reviewed {}#{}{}: {}.",
+                self.reviewer.as_deref().unwrap_or("someone"),
+                self.repo,
+                self.pull_number,
+                self.at_head(),
+                self.review_state.map_or("commented", |state| state.sentence())
             ),
             ThreadNoticeKind::GateClear => format!(
                 "{}#{} is no longer held back.",

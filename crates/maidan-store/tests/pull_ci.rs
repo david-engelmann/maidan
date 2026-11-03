@@ -95,6 +95,7 @@ fn read(
         gate_reasons: None,
         merge_queue: None,
         head_ahead: false,
+        reviews: Vec::new(),
     }
 }
 
@@ -416,6 +417,82 @@ async fn a_ci_read_says_each_notice_once_per_head(store: Arc<dyn Store>) {
     assert_eq!(failed.failing_jobs, vec!["unit tests".to_string()]);
     assert_eq!(notices[0].kind, ThreadNoticeKind::ChecksDone);
     assert_eq!(notices[0].status, Some(CiStatus::Success));
+}
+
+/// A submitted review is said once, by its id, naming who reviewed, how it
+/// came out and the head it was on; it reads back the same, and the next
+/// read carrying it says nothing (#1935).
+async fn a_review_is_said_once_with_who_how_and_which_head(store: Arc<dyn Store>) {
+    let room = room(store.as_ref(), "review").await;
+    let thread = task(store.as_ref(), &room).await;
+    let s = store.as_ref();
+    s.register_change_pull(room.ws, thread, REPO, 7, None)
+        .await
+        .unwrap();
+    let changes = SubmittedReview {
+        id: "PRR_1".into(),
+        reviewer: Some("review-bot[bot]".into()),
+        state: ReviewState::ChangesRequested,
+        head_sha: "aaa1".into(),
+    };
+    let with = |reviews: Vec<SubmittedReview>| NewPullCi {
+        reviews,
+        ..read(room.ws, "bbb2", CiStatus::Pending, &[], false)
+    };
+    let first = s.record_pull_ci(with(vec![changes.clone()])).await.unwrap();
+    let said: Vec<_> = first
+        .iter()
+        .filter(|p| p.notice.kind == ThreadNoticeKind::ReviewSubmitted)
+        .collect();
+    assert_eq!(said.len(), 1);
+    assert_eq!(said[0].notice.reviewer.as_deref(), Some("review-bot[bot]"));
+    assert_eq!(
+        said[0].notice.review_state,
+        Some(ReviewState::ChangesRequested)
+    );
+    assert_eq!(
+        said[0].notice.head_sha.as_deref(),
+        Some("aaa1"),
+        "the head it reviewed"
+    );
+    assert_eq!(said[0].event.payload["notice"], "review_submitted");
+    assert_eq!(said[0].event.payload["reviewer"], "review-bot[bot]");
+    assert_eq!(said[0].event.payload["review_state"], "changes_requested");
+
+    let approval = SubmittedReview {
+        id: "PRR_2".into(),
+        reviewer: Some("octocat".into()),
+        state: ReviewState::Approved,
+        head_sha: "bbb2".into(),
+    };
+    let next = s
+        .record_pull_ci(with(vec![changes, approval]))
+        .await
+        .unwrap();
+    assert_eq!(
+        kinds(&next),
+        vec![ThreadNoticeKind::ReviewSubmitted],
+        "only the new review is news"
+    );
+    assert_eq!(next[0].notice.reviewer.as_deref(), Some("octocat"));
+
+    let notices = s.list_thread_notices(thread, 10).await.unwrap();
+    let reviews: Vec<_> = notices
+        .iter()
+        .filter(|n| n.kind == ThreadNoticeKind::ReviewSubmitted)
+        .map(|n| (n.reviewer.as_deref(), n.review_state, n.head_sha.as_deref()))
+        .collect();
+    assert_eq!(
+        reviews,
+        vec![
+            (Some("octocat"), Some(ReviewState::Approved), Some("bbb2")),
+            (
+                Some("review-bot[bot]"),
+                Some(ReviewState::ChangesRequested),
+                Some("aaa1")
+            ),
+        ]
+    );
 }
 
 /// Watching gives a pull request a thread in the workspace's public
@@ -1008,6 +1085,7 @@ on_both_backends!(
     a_verdict_naming_a_moved_head_is_refused,
     a_named_head_without_a_tracked_pull_is_refused,
     a_ci_read_says_each_notice_once_per_head,
+    a_review_is_said_once_with_who_how_and_which_head,
     watching_makes_one_thread_and_stays_out_of_the_metrics,
     two_workspaces_track_the_same_pull_request_apart,
     a_gate_change_is_said_once,
