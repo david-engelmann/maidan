@@ -3,6 +3,7 @@
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
 import { guarded, apiPath, headers, failure, keepAuth, noteAuthLost, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
+import { formatBytes } from "./tools.ts";
 
 export type NeedKind = "review_request" | "unassigned_review" | "open_gate" | "blocked" | "question";
 const KINDS: ReadonlySet<string> = new Set<NeedKind>(["review_request", "unassigned_review", "open_gate", "blocked", "question"]);
@@ -69,19 +70,6 @@ function tierOf(a: Attestation | undefined): EvidenceItem["tier"] {
   return { word, title, wire: String(a.tier) };
 }
 
-export function formatBytes(n: number | null | undefined): string {
-  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
-  if (n < 1024) return `${Math.round(n)} B`;
-  // Step up a unit when rounding would print 1024.0, so 1048575 bytes reads 1.0 MB.
-  const units = ["KB", "MB", "GB", "TB"];
-  let v = n / 1024;
-  let i = 0;
-  while (i < units.length - 1 && Number(v.toFixed(1)) >= 1024) {
-    v /= 1024;
-    i += 1;
-  }
-  return `${v.toFixed(1)} ${units[i]}`;
-}
 
 /**
  * The evidence a review row shows before Approve: the result, each linked

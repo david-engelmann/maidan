@@ -31,3 +31,8 @@ test("the live status store notifies on change only", () => {
   assert.equal(n, 1);
   assert.equal(s.getSnapshot(), st);
 });
+
+test("a socket stuck connecting warns once the board is past the stale threshold", () => {
+  assert.equal(staleBanner({ kind: "connecting" }, NOW - 1000, null, NOW), null);
+  assert.match(staleBanner({ kind: "connecting" }, NOW - 2 * STALE_AFTER_MS, null, NOW) ?? "", /have not connected/);
+});

@@ -68,3 +68,37 @@ test("the palette's search field has no clipped outline of its own", () => {
   // The global input ring ran past the palette's top edge; the open dialog and caret already show focus.
   assert.match(css, /\.palette-input:focus-visible \{ outline: none; \}/);
 });
+
+test("one button style: .button and .btn share the height and the pill shape", () => {
+  const rule = (sel: string) => css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`))?.[1] ?? "";
+  for (const sel of [".button", ".btn"]) {
+    assert.match(rule(sel), /min-height: var\(--btn-h\)/, sel);
+    assert.match(rule(sel), /border-radius: var\(--r-pill\)/, sel);
+  }
+});
+
+test("dark mode sets its tokens in one :root block, not two that disagree", () => {
+  const blocks = [...css.matchAll(/@media \(prefers-color-scheme: dark\) \{\s*:root \{([^}]*)\}/g)];
+  assert.equal(blocks.length, 1);
+  assert.match(blocks[0][1], /--elev-1:/);
+});
+
+test("Activity's Pause and Resume use the shared button style", () => {
+  const act = readFileSync(new URL("../src/activity/Activity.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(act, /<button onClick=/);
+});
+
+test("Board controls share one height: filters match the lane and view pills", () => {
+  const rule = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+  assert.match(css, /--control-h: 44px;/);
+  for (const sel of [".filter-q input", ".filter-pick select", ".filter-clear", ".lane-pick button", ".view-pick .chip-btn"]) {
+    assert.match(rule(sel), /min-height: var\(--control-h\)/, sel);
+  }
+});
+
+test("the Board health strip sizes its text from the type scale", () => {
+  for (const sel of [".health-chip", ".stale-banner"]) {
+    const rule = css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`))?.[1] ?? "";
+    assert.match(rule, /font-size: var\(--text-base\)/, sel);
+  }
+});

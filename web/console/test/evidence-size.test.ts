@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatBytes } from "../src/core/needs.ts";
+import { formatBytes } from "../src/core/tools.ts";
 
 test("an evidence size never prints 1024.0 of a unit", () => {
   assert.equal(formatBytes(1024 * 1024 - 1), "1.0 MB");

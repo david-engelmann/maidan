@@ -88,7 +88,7 @@ export function Artifacts() {
           linked.status === "loading" ? <p className="muted">Loading this task's files…</p> : linked.value === null ? <p className="err" role="alert">{linked.error}</p> : linked.value.length ? (
             <ul className="tool-list">
               {linked.value.map((s) => (
-                <li key={s} className="tool-row">
+                <li key={s} tabIndex={-1} className="tool-row">
                   <button type="button" className="link-btn mono-id grow" onClick={() => { setSha(s); setLooked(s); }}>{s.slice(0, 16)}…</button>
                   <button type="button" className="chip-btn" disabled={busy} onClick={() => void linkOp("unlink", s)}>Unlink</button>
                 </li>

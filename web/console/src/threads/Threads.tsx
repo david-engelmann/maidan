@@ -57,6 +57,8 @@ import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
+import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 type Tab = "tasks" | "direct";
 
@@ -124,7 +126,7 @@ export function Threads() {
     const f = (url: string, init?: RequestInit) => fetch(url, init);
     return { threads: new ThreadsApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
-  const { data: board, selectChannel } = useBoard(session, deps.board);
+  const { data: board, selectChannel, refresh: refreshBoard } = useBoard(session, deps.board);
   const { data: direct, refresh: refreshDirect } = useDirect(session, deps.threads);
   const open = useOpenRef();
   const [composing, setComposing] = useState(takeCompose);
@@ -223,7 +225,7 @@ export function Threads() {
             }}
           />
         )}
-        {listError && <p className="conv-error" role="alert">{listError}</p>}
+        {listError && !list.length ? <LoadError message={listError} onRetry={() => void (tab === "tasks" ? refreshBoard() : refreshDirect())} /> : listError ? <p className="conv-error" role="alert">{listError}</p> : null}
         {listLoading && !list.length ? (
           <div role="status" aria-label="Loading">
             <span className="skeleton row-sk" />
@@ -231,11 +233,11 @@ export function Threads() {
             <span className="skeleton row-sk" />
           </div>
         ) : !list.length ? (
-          <p className="muted conv-empty">
-            {tab === "tasks" ? (
-              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
-            ) : "No conversations yet. Start one with New message."}
-          </p>
+          listError ? null : tab === "tasks" ? (
+            <EmptyState title="No task threads" body={emptyChannelText(board.channels.length)} action={<a className="button ghost" href={NEW_WORK_HREF}>Start a task</a>} />
+          ) : (
+            <EmptyState title="No conversations yet" body="Start one with New message." />
+          )
         ) : (
           <ul className="convs">
             {list.map((c) => {
@@ -520,7 +522,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
         {data.status === "loading" || data.status === "idle" ? (
           <p className="muted pad">Loading messages…</p>
         ) : data.status === "error" ? (
-          <p className="conv-error pad" role="alert">{data.error}</p>
+          <LoadError className="pad" message={data.error ?? "Could not load the messages."} onRetry={() => void refresh()} />
         ) : !messages.length ? (
           <p className="muted pad">{conv.ref.kind === "task" ? "No messages yet. Start the conversation below." : "No messages"}</p>
         ) : (

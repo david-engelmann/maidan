@@ -14,6 +14,8 @@ import { TaskSheet } from "./TaskSheet.tsx";
 import { EMPTY_QUERY, filtering, matches, readQuery, writeQuery, type BoardQuery } from "../core/boardQuery.ts";
 import { isTyping } from "../shell/commands.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
+import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 const QUERY_EVENT = "maidan:board-query";
 function useQuery(): [BoardQuery, (q: BoardQuery) => void] {
@@ -203,7 +205,7 @@ export function Board() {
           <button type="button" className="chip-btn" aria-pressed={view === "agents"} onClick={() => setView("agents")}>By agent</button>
         </div>
         <p className="board-summary" role="status" aria-live="polite">
-          {data.status === "loading" ? "Loading…" : data.error ?? summary(all, data.channels.length)}
+          {data.status === "loading" ? "Loading…" : data.status === "error" && !data.threads.length ? "" : data.error ?? summary(all, data.channels.length)}
         </p>
         <button type="button" className="btn go new-task" onClick={() => setComposing(true)} disabled={!data.channelId} aria-keyshortcuts="c">
           <span>New task</span>
@@ -305,10 +307,7 @@ export function Board() {
       )}
 
       {data.status === "error" && !data.threads.length ? (
-        <div className="card">
-          <p>{data.error}</p>
-          <button className="button steel" onClick={() => void refresh()}>Try again</button>
-        </div>
+        <LoadError message={data.error ?? "Could not load the board."} onRetry={() => void refresh()} />
       ) : view === "agents" ? (
         <div className="agents">
           {groups.map((g) => (
@@ -327,7 +326,7 @@ export function Board() {
               <MoreCards hidden={windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).hidden} onMore={() => more(`ag-${g.id ?? ""}`)} />
             </section>
           ))}
-          {!groups.length && data.status === "ready" && <p className="muted">No live tasks in this channel.</p>}
+          {!groups.length && data.status === "ready" && <p className="muted">{(filtering(query) || active) && LANES.some((l) => all[l.key].length) ? "Nothing here matches." : "No live tasks in this channel."}</p>}
         </div>
       ) : (
         <div className={wide ? `lanes wide${query.state ? " one" : ""}` : "lanes"}>
@@ -370,7 +369,7 @@ export function Board() {
                     </motion.li>
                   ))}
                 </AnimatePresence>
-                {!lanes[l.key].length && data.status === "ready" && <li className="empty">{filtering(query) && all[l.key].length ? <p className="muted small lane-none">Nothing here matches.</p> : <EmptyLane k={l.key} />}</li>}
+                {!lanes[l.key].length && data.status === "ready" && <li className="empty">{(filtering(query) || active) && all[l.key].length ? <p className="muted small lane-none">Nothing here matches.</p> : <EmptyLane k={l.key} />}</li>}
               </ul>
               <MoreCards hidden={windowed(lanes[l.key], limitOf(l.key)).hidden} onMore={() => more(l.key)} />
             </section>
@@ -498,11 +497,7 @@ const EMPTY: Record<LaneKey, { head: string; body: string; action?: { href: stri
 function EmptyLane({ k }: { k: LaneKey }) {
   const e = EMPTY[k];
   return (
-    <div className="empty-state">
-      <strong>{e.head}</strong>
-      <p className="muted">{e.body}</p>
-      {e.action ? <a className="button ink" href={e.action.href}>{e.action.text}</a> : null}
-    </div>
+    <EmptyState title={e.head} body={e.body} action={e.action ? <a className="button ink" href={e.action.href}>{e.action.text}</a> : undefined} />
   );
 }
 

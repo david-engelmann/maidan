@@ -27,7 +27,8 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 
 function actorOf(o: Record<string, unknown>): string | null {
   const p = (o.payload && typeof o.payload === "object" ? (o.payload as Record<string, unknown>) : {}) as Record<string, unknown>;
-  for (const k of ["actor_id", "member_id", "author_id", "by"]) {
+  // A freeze names the frozen member in member_id; who did it is frozen_by.
+  for (const k of ["actor_id", "frozen_by", "unfrozen_by", "member_id", "author_id", "by"]) {
     const v = str(o[k]) ?? str(p[k]);
     if (v) return v;
   }

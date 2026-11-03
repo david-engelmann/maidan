@@ -7,6 +7,7 @@ import { convHash } from "../core/threads.ts";
 import { formatBytes, previewable, type ArtifactMeta, type ToolsApi } from "../core/tools.ts";
 import { useLoad, useToolsApi } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { EmptyState } from "../shell/EmptyState";
 
 const VIEW_KEY = "maidan_console_files_view";
 
@@ -28,7 +29,7 @@ export function Library() {
     const channels = await board.channels(ws ?? "");
     const tasks = (await eachLimited(channels, 4, (c) => board.threads(c.id))).flat();
     const linked = new Map<string, string[]>();
-    await eachLimited(tasks, 6, async (t) => { linked.set(t.id, await api.linked(t.id).catch(() => [])); });
+    await eachLimited(tasks, 6, async (t) => { linked.set(t.id, await api.linked(t.id)); });
     const shas = [...new Set([...linked.values()].flat())];
     const metas = new Map<string, ArtifactMeta | null>();
     await eachLimited(shas, 6, async (s) => { metas.set(s, await api.artifact(s).catch(() => null)); });
@@ -60,7 +61,7 @@ export function Library() {
       ) : files.status === "error" ? (
         <div className="files-empty" role="alert"><p>Could not load the files.</p><p className="muted small">{files.error}</p><button type="button" className="button steel" onClick={() => void files.reload()}>Try again</button></div>
       ) : !files.value?.length ? (
-        <div className="files-empty"><p>No files yet.</p><p className="muted small">Files show here once an agent or a person links one to a task as evidence.</p></div>
+        <EmptyState title="No files yet" body="Files show here once an agent or a person links one to a task as evidence." />
       ) : !rows.length ? (
         <div className="files-empty"><p>No files match “{q.trim()}”.</p><button type="button" className="button ghost" onClick={() => setQ("")}>Clear search</button></div>
       ) : (
@@ -73,27 +74,33 @@ export function Library() {
   );
 }
 
-function useBlobUrl(api: ToolsApi, sha: string, on: boolean): string | null {
-  const [url, setUrl] = useState<{ sha: string; url: string } | null>(null);
+// The URL is dropped with its revoke, so a tile back in Grid reads the bytes
+// again instead of loading a dead URL; a failed read says so.
+function useBlobUrl(api: ToolsApi, sha: string, on: boolean): { url: string | null; failed: boolean } {
+  const [got, setGot] = useState<{ sha: string; url: string | null } | null>(null);
   useEffect(() => {
     if (!on) return;
     let live = true;
     let made: string | null = null;
-    api.artifactBlob(sha).then((b) => { if (!live) return; made = URL.createObjectURL(b); setUrl({ sha, url: made }); }, () => undefined);
-    return () => { live = false; if (made) URL.revokeObjectURL(made); };
+    api.artifactBlob(sha).then(
+      (b) => { if (!live) return; made = URL.createObjectURL(b); setGot({ sha, url: made }); },
+      () => { if (live) setGot({ sha, url: null }); },
+    );
+    return () => { live = false; if (made) URL.revokeObjectURL(made); setGot(null); };
   }, [api, sha, on]);
-  return url && url.sha === sha ? url.url : null;
+  const mine = on && got?.sha === sha ? got : null;
+  return { url: mine?.url ?? null, failed: mine !== null && mine.url === null };
 }
 
 function FileTile({ api, file, list, on, onOpen }: { api: ToolsApi; file: FileRow; list: boolean; on: boolean; onOpen: () => void }) {
   const kind = fileKind(mediaType(file.meta));
-  const img = useBlobUrl(api, file.sha, !list && previewable(mediaType(file.meta)));
-  const [broken, setBroken] = useState(false);
+  const { url: img } = useBlobUrl(api, file.sha, !list && previewable(mediaType(file.meta)));
+  const [broken, setBroken] = useState<string | null>(null);
   const from = file.sources.length === 1 ? file.sources[0].title : `${file.sources.length} tasks`;
   return (
     <li className={on ? "file-tile on" : "file-tile"}>
       <button type="button" className="file-open" aria-expanded={on} onClick={onOpen}>
-        {list ? null : <span className="file-thumb">{img && !broken ? <img src={img} alt="" onError={() => setBroken(true)} /> : <span className="file-glyph">{KIND_LABEL[kind]}</span>}</span>}
+        {list ? null : <span className="file-thumb">{img && broken !== img ? <img src={img} alt="" onError={() => setBroken(img)} /> : <span className="file-glyph">{KIND_LABEL[kind]}</span>}</span>}
         <span className="file-text">
           <b className="file-name">{fileName(file)}</b>
           <small className="muted">{[KIND_LABEL[kind], formatBytes(file.meta?.size_bytes)].filter(Boolean).join(" · ")}</small>
@@ -105,7 +112,7 @@ function FileTile({ api, file, list, on, onOpen }: { api: ToolsApi; file: FileRo
 }
 
 function FileDetail({ api, file, onClose }: { api: ToolsApi; file: FileRow; onClose: () => void }) {
-  const img = useBlobUrl(api, file.sha, previewable(mediaType(file.meta)));
+  const { url: img, failed } = useBlobUrl(api, file.sha, previewable(mediaType(file.meta)));
   const [broken, setBroken] = useState<string | null>(null);
   const text = useLoad(textPreviewable(file.meta) ? file.sha : null, async () => (await api.artifactBlob(file.sha)).text());
   const when = file.meta?.created_at ? new Date(file.meta.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : null;
@@ -117,7 +124,7 @@ function FileDetail({ api, file, onClose }: { api: ToolsApi; file: FileRow; onCl
       </div>
       {img && broken !== file.sha ? <img className="artifact-img" src={img} alt={fileName(file)} onError={() => setBroken(file.sha)} /> : null}
       {text.value ? <pre className="file-pre">{text.value}</pre> : null}
-      {text.status === "error" || (broken === file.sha) ? <p className="muted small" role="status">No preview: the store does not have this file's bytes any more.</p> : null}
+      {text.status === "error" || failed || broken === file.sha ? <p className="muted small" role="status">No preview: the store does not have this file's bytes any more.</p> : null}
       <dl className="facts">
         <div><dt>Type</dt><dd>{mediaType(file.meta) || "Unknown"}</dd></div>
         <div><dt>Size</dt><dd>{formatBytes(file.meta?.size_bytes) || "Unknown"}</dd></div>

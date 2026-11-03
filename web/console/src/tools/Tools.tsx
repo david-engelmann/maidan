@@ -170,7 +170,7 @@ function Inbox({ api, me }: { api: ToolsApi; me: string | null }) {
           rows.length ? (
             <ul className="tool-list">
               {rows.map((n) => (
-                <li key={n.id} className={`tool-row${n.read_at ? " read" : ""}`}>
+                <li key={n.id} tabIndex={-1} className={`tool-row${n.read_at ? " read" : ""}`}>
                   <div>
                     <b>{n.kind.replace(/_/g, " ")}</b>
                     <p className="muted small">{n.thread_id ? <a href={`#/threads/t/${encodeURIComponent(n.thread_id)}`}>Open the thread</a> : "Workspace"}{n.created_at ? ` · ${ago(n.created_at, Date.now())}` : ""}{n.read_at ? " · read" : ""}</p>
@@ -251,7 +251,7 @@ function Prefs({ api, me }: { api: ToolsApi; me: string | null }) {
                     {rows.map((f) => {
                       const id = (what === "channel" ? f.channel_id : f.thread_id) ?? "";
                       return (
-                        <li key={id} className="tool-row">
+                        <li key={id} tabIndex={-1} className="tool-row">
                           <code className="mono-id">{id}</code>
                           <button type="button" className="chip-btn" disabled={busy !== null} onClick={() => void act(id, async () => { await api.unfollow(me, what, id); await loaded.reload(); }, "Unfollowed", "Could not unfollow")}>Unfollow</button>
                         </li>
@@ -298,7 +298,7 @@ function Deliveries({ api, ws }: { api: ToolsApi; ws: string | null }) {
               {rows.map((d) => {
                 const st = deliveryState(d);
                 return (
-                  <li key={`${d.kind}-${d.id}`} className="tool-row">
+                  <li key={`${d.kind}-${d.id}`} tabIndex={-1} className="tool-row">
                     <div className="grow">
                       <div className="token-head"><b>{d.kind} #{d.id}</b><span className={`state-chip ${st === "dlq" ? "revoked" : st === "delivered" ? "active" : ""}`}>{st === "dlq" ? "Dead letter" : st === "delivered" ? "Delivered" : "Pending"}</span></div>
                       <p className="small break">{d.target_url}</p>
@@ -343,7 +343,7 @@ function Commands({ api, ws }: { api: ToolsApi; ws: string | null }) {
             rows.length ? (
               <ul className="tool-list">
                 {rows.map((c) => (
-                  <li key={c.id} className={`tool-row${c.enabled ? "" : " read"}`}>
+                  <li key={c.id} tabIndex={-1} className={`tool-row${c.enabled ? "" : " read"}`}>
                     <div className="grow">
                       <div className="token-head"><b>/{c.name}</b><span className={`state-chip ${c.enabled ? "active" : "revoked"}`}>{c.enabled ? c.handler_kind : "Revoked"}</span></div>
                       {c.description ? <p className="small">{c.description}</p> : null}
@@ -413,7 +413,7 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
             rows.length ? (
               <ul className="tool-list">
                 {rows.map((s, i) => (
-                  <li key={s.id ?? i} className={`tool-row${s.active ? "" : " read"}`}>
+                  <li key={s.id ?? i} tabIndex={-1} className={`tool-row${s.active ? "" : " read"}`}>
                     <div className="grow"><b>{s.title}</b><p className="muted small">{scheduleCadence(s)} · {s.active ? `next ${new Date(s.next_run_at).toLocaleString()}` : "paused"}</p></div>
                   </li>
                 ))}
@@ -431,7 +431,7 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
             rows.length ? (
               <ul className="tool-list">
                 {rows.map((e) => (
-                  <li key={e.id} className="tool-row"><span className="mono-id">#{e.id}</span><span className="grow small">{e.thread_id ? <a href={`#/threads/t/${encodeURIComponent(e.thread_id)}`}>thread {e.thread_id.slice(0, 8)}</a> : e.channel_id ? `channel ${e.channel_id.slice(0, 8)}` : "workspace"}</span></li>
+                  <li key={e.id} tabIndex={-1} className="tool-row"><span className="mono-id">#{e.id}</span><span className="grow small">{e.thread_id ? <a href={`#/threads/t/${encodeURIComponent(e.thread_id)}`}>thread {e.thread_id.slice(0, 8)}</a> : e.channel_id ? `channel ${e.channel_id.slice(0, 8)}` : "workspace"}</span></li>
                 ))}
               </ul>
             ) : (
@@ -442,7 +442,7 @@ function Explore({ api, ws }: { api: ToolsApi; ws: string | null }) {
       </Panel>
       <Panel title="Peers">
         <State loaded={peers}>
-          {(rows) => (rows.length ? <ul className="tool-list">{rows.map((p) => <li key={p.id} className="tool-row"><b>{p.name ?? p.id}</b><span className="muted small break">{p.base_url ?? ""}</span></li>)}</ul> : <p className="muted">No peers.</p>)}
+          {(rows) => (rows.length ? <ul className="tool-list">{rows.map((p) => <li key={p.id} tabIndex={-1} className="tool-row"><b>{p.name ?? p.id}</b><span className="muted small break">{p.base_url ?? ""}</span></li>)}</ul> : <p className="muted">No peers.</p>)}
         </State>
       </Panel>
     </div>
@@ -496,7 +496,7 @@ function Operator({ api, ws }: { api: ToolsApi; ws: string | null }) {
               rows.length ? (
                 <ul className="tool-list">
                   {rows.map((e, i) => (
-                    <li key={i} className="tool-row">
+                    <li key={i} tabIndex={-1} className="tool-row">
                       <div className="grow"><b>{e.action}</b><p className="muted small">{new Date(e.occurred_at).toLocaleString()} · {e.actor_id ? `by ${e.actor_id.slice(0, 8)}` : "system"}{e.target_kind ? ` · ${e.target_kind}${e.target_id ? ` ${e.target_id.slice(0, 8)}` : ""}` : ""}</p></div>
                     </li>
                   ))}
@@ -521,7 +521,7 @@ function Recent() {
       {list.length ? (
         <ul className="tool-list">
           {list.map((n) => (
-            <li key={n.id} className={`tool-row notice ${n.tone}`}>
+            <li key={n.id} tabIndex={-1} className={`tool-row notice ${n.tone}`}>
               <span className="grow">{n.text}</span>
               <span className="muted small">{new Date(n.at).toLocaleTimeString()}</span>
             </li>
@@ -558,7 +558,7 @@ function Search({ api, ws }: { api: ToolsApi; ws: string | null }) {
               rows.length ? (
                 <ul className="tool-list">
                   {rows.map((h, i) => (
-                    <li key={h.message_id ?? h.id ?? i} className="tool-row">
+                    <li key={h.message_id ?? h.id ?? i} tabIndex={-1} className="tool-row">
                       <div className="grow">
                         <p>{h.snippet || h.body || "(no text)"}</p>
                         {h.thread_id ? <a className="muted small" href={convHash({ kind: "task", id: h.thread_id })}>Open the thread</a> : null}
@@ -609,7 +609,7 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
             <h3 className="small">Switch workspace</h3>
             <ul className="tool-list">
               {spaces.value.map((w) => (
-                <li key={w.workspace_id} className="tool-row">
+                <li key={w.workspace_id} tabIndex={-1} className="tool-row">
                   <div className="grow"><b>{w.name}</b></div>
                   {w.current ? <span className="state-chip">Current</span> : <a className="chip-btn" href={switchHref(base, w.workspace_id)}>Switch</a>}
                 </li>
@@ -644,7 +644,7 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
             rows.length ? (
               <ul className="tool-list">
                 {rows.map((p) => (
-                  <li key={p.id} className="tool-row">
+                  <li key={p.id} tabIndex={-1} className="tool-row">
                     <div className="grow"><b>{p.name || p.id}</b><p className="muted small">{p.base_url}</p></div>
                     {dropping === p.id ? (
                       <>
@@ -670,7 +670,7 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
             rows.length ? (
               <ul className="tool-list">
                 {rows.map((r) => (
-                  <li key={r.id} className={`tool-row${r.revoked_at ? " read" : ""}`}>
+                  <li key={r.id} tabIndex={-1} className={`tool-row${r.revoked_at ? " read" : ""}`}>
                     <div className="grow"><b>{r.app_id}</b><p className="muted small">Install {r.id}{r.revoked_at ? " · revoked" : ""}</p></div>
                   </li>
                 ))}
@@ -687,7 +687,7 @@ function Workspace({ api, ws }: { api: ToolsApi; ws: string | null }) {
               rows.length ? (
                 <ul className="tool-list">
                   {rows.map((a, i) => (
-                    <li key={i} className="tool-row">
+                    <li key={i} tabIndex={-1} className="tool-row">
                       <div className="grow"><b>{a.action}</b><p className="muted small">{new Date(a.occurred_at).toLocaleString()}{a.target_kind ? ` · ${a.target_kind}` : ""}</p></div>
                     </li>
                   ))}

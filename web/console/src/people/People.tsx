@@ -3,7 +3,7 @@
 // a steel tile that seats members in the four roles that close the loop,
 // and the footprint lists the workers share.
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { BoardApi, ago, chromeFor, leaseLeft, stateLabel, type Thread } from "../core/board.ts";
+import { BoardApi, ago, chromeFor, leaseLeft, stateLabel, type Gate, type Thread } from "../core/board.ts";
 import { liveActions } from "../core/bus.ts";
 import {
   METER_LABELS,
@@ -44,6 +44,8 @@ import { SecretOnce } from "../tools/SecretOnce.tsx";
 import { useBoard } from "../hooks/useBoard.ts";
 import { usePeople, usePresence, useSwarm, useTokens, type Loaded } from "../hooks/usePeople.ts";
 import { useSession } from "../hooks/useSession.ts";
+import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 type Tab = "people" | "swarm";
 
@@ -80,7 +82,7 @@ export function People() {
     return { people: new PeopleApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
   const { tab, member } = useSub();
-  const { data: people } = usePeople(session, deps.people);
+  const { data: people, reload: reloadPeople } = usePeople(session, deps.people);
   const { data: board } = useBoard(session, deps.board);
   const presence = usePresence();
   const me = session.status === "signed-in" ? session.memberId : null;
@@ -95,7 +97,7 @@ export function People() {
         <a role="tab" aria-selected={tab === "swarm"} href="#/people/swarm">Swarm</a>
       </div>
       {tab === "people" ? (
-        <Roster loaded={people} rows={rows} open={member} api={deps.people} board={board} />
+        <Roster loaded={people} onRetry={() => void reloadPeople()} rows={rows} open={member} api={deps.people} board={board} />
       ) : (
         <Swarm rows={rows} people={people.value ?? []} api={deps.people} workspace={session.status === "signed-in" ? session.workspaceId : null} presence={presence} />
       )}
@@ -103,7 +105,7 @@ export function People() {
   );
 }
 
-type BoardView = { status: string; error: string | null; threads: Thread[] };
+type BoardView = { status: string; error: string | null; threads: Thread[]; gates: Record<string, Gate> };
 
 const DONE = new Set(["closed", "archived"]);
 const stamp = (th: Thread) => th.last_progress_at ?? th.updated_at ?? th.work_started_at ?? "";
@@ -114,15 +116,15 @@ function workOf(id: string, threads: Thread[]): { now: Thread[]; recent: Thread[
   return { now: mine.filter((t) => !DONE.has(t.state)), recent: mine.filter((t) => DONE.has(t.state)).slice(0, 5) };
 }
 
-function WorkList({ rows, empty }: { rows: Thread[]; empty: string }) {
-  const [now] = useState(() => Date.now());
+function WorkList({ rows, empty, gates }: { rows: Thread[]; empty: string; gates: Record<string, Gate> }) {
+  const now = useNow();
   if (!rows.length) return <p className="muted small">{empty}</p>;
   return (
     <ul className="work-list">
       {rows.map((t) => (
         <li key={t.id}>
           <a href={convHash({ kind: "task", id: t.id })}>{t.title || "Untitled task"}</a>
-          <span className="muted small">{stateLabel(t, chromeFor(t))}{stamp(t) ? ` · ${ago(stamp(t), now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}</span>
+          <span className="muted small">{stateLabel(t, chromeFor(t, gates[t.id]))}{stamp(t) ? ` · ${ago(stamp(t), now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}</span>
         </li>
       ))}
     </ul>
@@ -138,9 +140,9 @@ function Work({ id, board }: { id: string; board: BoardView }) {
     <section className="work" aria-label="Work">
       {head}
       <h4 className="work-sub">Now</h4>
-      <WorkList rows={now} empty="Nothing claimed right now." />
+      <WorkList rows={now} empty="Nothing claimed right now." gates={board.gates} />
       <h4 className="work-sub">Recent results</h4>
-      <WorkList rows={recent} empty="Nothing finished yet." />
+      <WorkList rows={recent} empty="Nothing finished yet." gates={board.gates} />
     </section>
   );
 }
@@ -156,7 +158,7 @@ function Avatar({ person, presence, large }: { person: Person; presence?: Presen
   );
 }
 
-function Roster({ loaded, rows, open, api, board }: { loaded: Loaded<Person[]>; rows: RosterRow[]; open: string | null; api: PeopleApi; board: BoardView }) {
+function Roster({ loaded, onRetry, rows, open, api, board }: { loaded: Loaded<Person[]>; onRetry: () => void; rows: RosterRow[]; open: string | null; api: PeopleApi; board: BoardView }) {
   const [query, setQuery] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const shown = filterRoster(rows, query);
@@ -181,8 +183,16 @@ function Roster({ loaded, rows, open, api, board }: { loaded: Loaded<Person[]>; 
           {loaded.status === "ready" ? `${rows.length} members · ${live} live` : loaded.status === "loading" ? "Loading members" : ""}
           {note ? <span className="note"> · {note}</span> : null}
         </p>
-        {loaded.error ? <p className={loaded.value ? "stale" : "err"} role="alert">{loaded.error}</p> : null}
-        {loaded.status === "ready" && !shown.length ? <p className="muted">{query ? `No member matches “${query}”.` : "No members yet."}</p> : null}
+        {loaded.error && loaded.value ? <p className="stale" role="alert">{loaded.error}</p> : loaded.error ? <LoadError message={loaded.error} onRetry={onRetry} /> : null}
+        {loaded.status === "ready" && !shown.length ? (query ? <EmptyState title={`No member matches “${query}”`} body="Try a name, an email or an agent's handle." /> : <EmptyState title="No members yet" body="Invite a person from Swarm, or start an agent; they show here once they join." action={<a className="button ghost" href="#/people/swarm">Open Swarm</a>} />) : null}
+        {loaded.status === "loading" ? (
+          <div className="roster-sk" role="status" aria-label="Loading members">
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+            <span className="skeleton row-sk" />
+          </div>
+        ) : null}
         <ul className="roster-list">
           {shown.map((r) => (
             <li key={r.person.id}>
