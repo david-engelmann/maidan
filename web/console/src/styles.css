@@ -1236,3 +1236,47 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .pane-empty strong { font-size: var(--text-md); font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
 .pane-empty p { margin: 0; font-size: var(--text-sm); line-height: 1.5; }
 .pane-empty-mark { width: 40px; height: 40px; margin-bottom: var(--space-1); border-radius: var(--r-md); background: linear-gradient(145deg, var(--steel-1), var(--steel-2) 60%, var(--steel-3)); box-shadow: inset 0 1px 0 var(--hi), 0 6px 14px -8px rgba(21, 20, 17, 0.45); }
+
+/* Files: every linked file, as a grid or a list, with a detail below. */
+.files-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.files-bar h2 { margin: 0; }
+.files-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-left: auto; }
+.files-search { min-width: min(280px, 100%); }
+.files-grid { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+.files-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; border-top: 1px solid var(--line); }
+.file-tile { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--card); overflow: hidden; }
+.files-list .file-tile { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; }
+.file-tile.on { outline: 2px solid var(--ink); outline-offset: -1px; }
+.file-ghost { min-height: 168px; background: color-mix(in srgb, var(--line) 45%, transparent); }
+.files-list .file-ghost { min-height: 56px; }
+.file-open { display: grid; width: 100%; text-align: left; color: inherit; gap: 0; }
+.files-list .file-open { min-height: 56px; padding: 8px 4px; }
+.file-thumb { display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--paper-2); border-bottom: 1px solid var(--line); overflow: hidden; }
+.file-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.file-glyph { font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.file-text { display: grid; gap: 2px; padding: 10px 12px; min-width: 0; }
+.files-list .file-text { padding: 0 8px; }
+.file-name, .file-from { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files-empty { display: grid; justify-items: start; gap: var(--space-2); padding: var(--space-4) 0; }
+.files-empty p { margin: 0; }
+.file-detail { margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--line); display: grid; gap: var(--space-3); }
+.file-detail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.file-detail-head h3 { margin: 0; font-size: var(--text-lg); overflow-wrap: anywhere; }
+.file-pre { margin: 0; max-height: 320px; overflow: auto; padding: 12px; border-radius: var(--r-md); background: var(--paper-2); border: 1px solid var(--line); font-size: var(--text-sm); white-space: pre-wrap; }
+.file-sources { margin: 0; padding-left: 1.1rem; display: grid; gap: 4px; }
+.tool-grid > .files { grid-column: 1 / -1; }
+.file-open { padding: 0; border: 0; background: none; border-radius: 0; min-height: 0; }
+.files-tools { flex-wrap: nowrap; }
+.files-tools .seg button { min-height: 36px; }
+@media (max-width: 640px) { .files-tools { flex-wrap: wrap; margin-left: 0; width: 100%; } .files-search { flex: 1 1 100%; } .files-tools .seg button { min-height: 44px; } }
+.files-search { flex: 0 1 280px; min-width: 0; }
+.files-search input { width: 100%; }
+.files-tools .seg { flex: none; }
+@media (max-width: 640px) { .files-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .files-search { flex: 1 1 100%; } }
+.work { display: grid; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line); }
+.work-h { margin: 0; font-size: var(--text-sm); }
+.work-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+.work-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.work-list li { display: grid; gap: 2px; }
+.work-list a { color: var(--ink); text-underline-offset: 2px; }
+.ghost-line { height: 14px; border-radius: 6px; background: var(--line); }
