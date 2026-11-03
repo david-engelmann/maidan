@@ -209,7 +209,11 @@ function Roster({ loaded, rows, open, api, board }: { loaded: Loaded<Person[]>; 
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
-          <p className="muted">Pick a member to see their details and tokens.</p>
+          <div className="pane-empty">
+            <span className="pane-empty-mark" />
+            <strong>No member selected</strong>
+            <p className="muted">Pick a member to see their details and tokens.</p>
+          </div>
         </section>
       )}
     </div>
