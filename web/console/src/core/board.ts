@@ -175,6 +175,8 @@ export function staleBanner(live: { kind: string }, loadedAt: number | null, fai
   if (loadedAt === null) return null;
   const at = hhmm(loadedAt);
   if (failedSince !== null) return `Refresh failing. Showing the board as of ${at}.`;
+  // A socket that never acknowledges stays "connecting" and never starts polling.
+  if (live.kind === "connecting") return now - loadedAt > STALE_AFTER_MS ? `Live updates have not connected and this board is from ${at}. It may be out of date.` : null;
   const down = live.kind === "reconnecting" || live.kind === "refused" || live.kind === "closed";
   if (!down) return null;
   if (live.kind === "refused") return `Live updates were refused. Showing the board as of ${at}.`;

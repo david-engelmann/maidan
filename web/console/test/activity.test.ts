@@ -32,3 +32,8 @@ test("activity is a route", () => {
   assert.ok(ROUTES.some((r) => r.id === "activity"));
   assert.equal(parseRoute("#/activity"), "activity");
 });
+
+test("a freeze row names who froze, not the frozen member", () => {
+  assert.equal(toActivity({ id: 9, kind: "member_frozen", member_id: "frozen", payload: { frozen_by: "admin" } })?.actorId, "admin");
+  assert.equal(toActivity({ id: 10, kind: "member_unfrozen", member_id: "frozen", unfrozen_by: "admin" })?.actorId, "admin");
+});

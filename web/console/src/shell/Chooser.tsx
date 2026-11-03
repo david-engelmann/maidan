@@ -38,7 +38,7 @@ export function Chooser({ onClose }: { onClose: () => void }) {
         <p className="muted small chooser-note">You are in your most recent workspace. You belong to {spaces.length}.</p>
         <ul className="tool-list">
           {spaces.map((w) => (
-            <li key={w.workspace_id} className="tool-row" data-id={w.workspace_id}>
+            <li key={w.workspace_id} tabIndex={-1} className="tool-row" data-id={w.workspace_id}>
               <div className="grow"><b>{w.name}</b></div>
               {w.current ? (
                 <button type="button" className="button steel" onClick={onClose}>Continue here</button>

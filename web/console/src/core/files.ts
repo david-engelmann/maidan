@@ -40,8 +40,8 @@ export function mediaType(meta: { mime_type?: string | null; filename?: string |
 export function fileKind(type: string | null | undefined): FileKind {
   const t = String(type ?? "").split(";")[0].trim().toLowerCase();
   if (t.startsWith("image/")) return "image";
-  if (t.startsWith("text/") || t === "application/markdown") return "text";
   if (t === "application/json" || t.endsWith("+json") || t === "application/xml" || t === "text/csv") return "data";
+  if (t.startsWith("text/") || t === "application/markdown") return "text";
   if (/zip|tar|gzip|x-7z|compressed/.test(t)) return "archive";
   return "other";
 }

@@ -3,7 +3,7 @@
 // a steel tile that seats members in the four roles that close the loop,
 // and the footprint lists the workers share.
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { BoardApi, ago, chromeFor, leaseLeft, stateLabel, type Thread } from "../core/board.ts";
+import { BoardApi, ago, chromeFor, leaseLeft, stateLabel, type Gate, type Thread } from "../core/board.ts";
 import { liveActions } from "../core/bus.ts";
 import {
   METER_LABELS,
@@ -105,7 +105,7 @@ export function People() {
   );
 }
 
-type BoardView = { status: string; error: string | null; threads: Thread[] };
+type BoardView = { status: string; error: string | null; threads: Thread[]; gates: Record<string, Gate> };
 
 const DONE = new Set(["closed", "archived"]);
 const stamp = (th: Thread) => th.last_progress_at ?? th.updated_at ?? th.work_started_at ?? "";
@@ -116,15 +116,15 @@ function workOf(id: string, threads: Thread[]): { now: Thread[]; recent: Thread[
   return { now: mine.filter((t) => !DONE.has(t.state)), recent: mine.filter((t) => DONE.has(t.state)).slice(0, 5) };
 }
 
-function WorkList({ rows, empty }: { rows: Thread[]; empty: string }) {
-  const [now] = useState(() => Date.now());
+function WorkList({ rows, empty, gates }: { rows: Thread[]; empty: string; gates: Record<string, Gate> }) {
+  const now = useNow();
   if (!rows.length) return <p className="muted small">{empty}</p>;
   return (
     <ul className="work-list">
       {rows.map((t) => (
         <li key={t.id}>
           <a href={convHash({ kind: "task", id: t.id })}>{t.title || "Untitled task"}</a>
-          <span className="muted small">{stateLabel(t, chromeFor(t))}{stamp(t) ? ` · ${ago(stamp(t), now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}</span>
+          <span className="muted small">{stateLabel(t, chromeFor(t, gates[t.id]))}{stamp(t) ? ` · ${ago(stamp(t), now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}</span>
         </li>
       ))}
     </ul>
@@ -140,9 +140,9 @@ function Work({ id, board }: { id: string; board: BoardView }) {
     <section className="work" aria-label="Work">
       {head}
       <h4 className="work-sub">Now</h4>
-      <WorkList rows={now} empty="Nothing claimed right now." />
+      <WorkList rows={now} empty="Nothing claimed right now." gates={board.gates} />
       <h4 className="work-sub">Recent results</h4>
-      <WorkList rows={recent} empty="Nothing finished yet." />
+      <WorkList rows={recent} empty="Nothing finished yet." gates={board.gates} />
     </section>
   );
 }

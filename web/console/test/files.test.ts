@@ -46,3 +46,8 @@ test("a file stored with no media type is read by its extension", async () => {
   assert.equal(mediaType({ mime_type: null, filename: "shot.PNG" }), "image/png");
   assert.equal(mediaType({ mime_type: "text/csv", filename: "x.png" }), "text/csv");
 });
+
+test("a CSV file is data, not text", () => {
+  assert.equal(fileKind("text/csv"), "data");
+  assert.equal(fileKind("text/csv; charset=utf-8"), "data");
+});

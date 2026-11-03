@@ -6,6 +6,7 @@ import { ACTIVITY_GROUPS, describeKind, filterActivity, mergeActivity, toActivit
 import { useToolsApi } from "../hooks/useTools.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { EmptyState } from "../shell/EmptyState";
+import { LoadError } from "../shell/LoadError.tsx";
 
 const NONE: ActivityRow[] = [];
 
@@ -19,6 +20,8 @@ export function Activity() {
   const [paused, setPaused] = useState(false);
   const [held, setHeld] = useState<ActivityRow[]>(NONE);
   const [now, setNow] = useState(() => Date.now());
+  // Try again re-runs the read; a healthy socket sends no resync to do it.
+  const [tries, setTries] = useState(0);
 
   useEffect(() => {
     if (!ws) return;
@@ -45,7 +48,7 @@ export function Activity() {
       live = false;
       off();
     };
-  }, [api, ws, paused]);
+  }, [api, ws, paused, tries]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30_000);
@@ -76,8 +79,12 @@ export function Activity() {
           <button type="button" className="button ghost" onClick={() => setPaused(true)}>Pause</button>
         )}
       </header>
-      {error && <p className="muted" role="alert">{error}</p>}
-      {shown.length === 0 ? (
+      {error && rows.length === 0 ? (
+        <LoadError message={error} onRetry={() => setTries((n) => n + 1)} />
+      ) : error ? (
+        <p className="muted" role="alert">{error}</p>
+      ) : null}
+      {error && rows.length === 0 ? null : shown.length === 0 ? (
         <EmptyState title={ws ? "No events yet" : "Not signed in"} body={ws ? "Tasks, messages and reviews show here as they happen." : "Sign in to see activity."} />
       ) : (
         <ol className="activity-list" aria-live={paused ? "off" : "polite"}>

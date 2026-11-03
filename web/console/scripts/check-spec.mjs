@@ -15,7 +15,7 @@ const SRC = resolve(here, "../src");
 /** Routes the console calls before the spec documents them, each with the PR that adds it. */
 export const PENDING = new Map();
 
-const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me)(\/|$|\?)/;
+const API_ROOTS = /^\/(threads|messages|members|workspaces|channels|artifacts|dm|group-dms|approval-gates|operator|me|tools|ui\/api)(\/|$|\?)/;
 const METHOD = /["'](GET|POST|PUT|PATCH|DELETE)["']/g;
 
 export function callsIn(text) {
@@ -29,8 +29,8 @@ export function callsIn(text) {
     const named = [...line.matchAll(METHOD)].map((m) => m[1]);
     const methods = named.length ? named : [...next.matchAll(METHOD)].map((m) => m[1]);
     if (!methods.length) methods.push("GET");
-    for (const m of line.matchAll(/`([^`]*)`|"([^"]*)"/g)) {
-      const raw = m[1] ?? m[2];
+    for (const m of line.matchAll(/`([^`]*)`|"([^"]*)"|'([^']*)'/g)) {
+      const raw = m[1] ?? m[2] ?? m[3];
       if (!API_ROOTS.test(raw)) continue;
       const path = raw.split("?")[0].replace(/\$\{[^}]*\}/g, "{}");
       for (const method of new Set(methods)) out.push({ line: i + 1, method, path });

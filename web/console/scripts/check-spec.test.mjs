@@ -41,3 +41,9 @@ test("schemas become TypeScript types", () => {
   assert.match(out, /export type Row = \{ id: Id; note\?: string \| null; \};/);
   assert.match(out, /\| "POST \/members\/\{member_id\}\/channel-follows"/);
 });
+
+test("single-quoted paths and the /tools and /ui/api roots are checked too", () => {
+  assert.deepEqual(callsIn("return this.get('/threads/nope');"), [{ line: 1, method: "GET", path: "/threads/nope" }]);
+  assert.deepEqual(callsIn("return this.get(`/tools`);"), [{ line: 1, method: "GET", path: "/tools" }]);
+  assert.deepEqual(callsIn("return this.get(`/ui/api/messages/${m}/votes`);"), [{ line: 1, method: "GET", path: "/ui/api/messages/{}/votes" }]);
+});

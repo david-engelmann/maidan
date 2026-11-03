@@ -326,7 +326,7 @@ export function Board() {
               <MoreCards hidden={windowed(g.cards, limitOf(`ag-${g.id ?? ""}`)).hidden} onMore={() => more(`ag-${g.id ?? ""}`)} />
             </section>
           ))}
-          {!groups.length && data.status === "ready" && <p className="muted">No live tasks in this channel.</p>}
+          {!groups.length && data.status === "ready" && <p className="muted">{(filtering(query) || active) && LANES.some((l) => all[l.key].length) ? "Nothing here matches." : "No live tasks in this channel."}</p>}
         </div>
       ) : (
         <div className={wide ? `lanes wide${query.state ? " one" : ""}` : "lanes"}>
@@ -369,7 +369,7 @@ export function Board() {
                     </motion.li>
                   ))}
                 </AnimatePresence>
-                {!lanes[l.key].length && data.status === "ready" && <li className="empty">{filtering(query) && all[l.key].length ? <p className="muted small lane-none">Nothing here matches.</p> : <EmptyLane k={l.key} />}</li>}
+                {!lanes[l.key].length && data.status === "ready" && <li className="empty">{(filtering(query) || active) && all[l.key].length ? <p className="muted small lane-none">Nothing here matches.</p> : <EmptyLane k={l.key} />}</li>}
               </ul>
               <MoreCards hidden={windowed(lanes[l.key], limitOf(l.key)).hidden} onMore={() => more(l.key)} />
             </section>

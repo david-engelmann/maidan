@@ -133,7 +133,7 @@ export function Catalog() {
       {open ? (
         <section className="member-detail card" aria-label="Tool details">
           <a className="back" href="#/catalog">Catalog</a>
-          {selected ? <ToolDetail key={selected.name} tool={selected} /> : loaded.status === "ready" ? <p className="muted">No tool called {open} is listed for you.</p> : <p className="muted">Loading…</p>}
+          {selected ? <ToolDetail key={selected.name} tool={selected} /> : loaded.status === "ready" ? <p className="muted">No tool called {open} is listed for you.</p> : loaded.error ? <LoadError message={loaded.error} onRetry={() => void loaded.reload()} /> : <p className="muted">Loading…</p>}
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">

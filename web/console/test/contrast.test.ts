@@ -66,6 +66,18 @@ for (const scheme of ["light", "dark"] as const) {
   });
 }
 
+for (const scheme of ["light", "dark"] as const) {
+  test(`${scheme}: vote ink reaches 4.5:1 on every surface a vote sits on`, () => {
+    const t = tokens(scheme);
+    for (const fg of ["--vote-yes", "--vote-no"]) {
+      for (const bg of ["--paper", "--paper-2", "--card", "--elev-2", "--elev-3"]) {
+        const r = ratio(hex(t, fg), hex(t, bg));
+        assert.ok(r >= 4.5, `${fg} on ${bg} is ${r.toFixed(2)}:1`);
+      }
+    }
+  });
+}
+
 test("the offline pip, the open state dot and the live dot use --idle", () => {
   for (const sel of [".live .dot", ".pip", ".state-dot"]) {
     const rule = css.match(new RegExp(`(^|\\n)${sel.replace(/\./g, "\\.")}\\s*\\{([^}]*)\\}`));
