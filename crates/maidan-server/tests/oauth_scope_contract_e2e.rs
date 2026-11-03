@@ -209,16 +209,20 @@ async fn authorize(
 }
 
 /// An authorization code through authorize and consent, requesting
-/// exactly `scope`, plus its PKCE verifier.
+/// exactly `scope` (none when it is empty), plus its PKCE verifier.
 async fn code_for(h: &Harness, t: &Tenant, client_id: &str, scope: &str) -> (String, String) {
     let (verifier, challenge) = pkce();
+    let scope_part = if scope.is_empty() {
+        String::new()
+    } else {
+        format!("&scope={}", urlencoding::encode(scope))
+    };
     let url = format!(
-        "{}/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&code_challenge={challenge}&code_challenge_method=S256&state=xyz&resource={}&scope={}",
+        "{}/oauth/authorize?response_type=code&client_id={}&redirect_uri={}&code_challenge={challenge}&code_challenge_method=S256&state=xyz&resource={}{scope_part}",
         h.base,
         urlencoding::encode(client_id),
         urlencoding::encode(REDIRECT),
         urlencoding::encode(RESOURCE),
-        urlencoding::encode(scope),
     );
     let resp = h
         .no_redirect
@@ -308,9 +312,22 @@ async fn authorize_refuses_a_scope_beyond_the_member() {
     )
     .await;
     assert_eq!(wide.status(), StatusCode::FORBIDDEN);
-    // And the default — the client's whole list — is bounded the same way.
-    let defaulted = authorize(&h, &t, "scope-contract-client", None).await;
-    assert_eq!(defaulted.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn a_request_naming_no_scope_is_cut_to_what_the_member_holds() {
+    let h = spawn().await;
+    // The member holds read only; the client allows read and write.
+    let t = tenant(&h, "narrow", &["workspace:read"]).await;
+    register(&h, "scope-contract-client").await;
+
+    // A client that names no scope (claude.ai's connector names none) asks
+    // for what it may have, and gets only what the member can lend: the
+    // grant is never wider than the member, and the request is not refused
+    // for the part the member lacks.
+    let (code, verifier) = code_for(&h, &t, "scope-contract-client", "").await;
+    let (scope, _) = issued(exchange(&h, &code, &verifier).await).await;
+    assert_eq!(scope, "workspace:read");
 }
 
 #[tokio::test]
