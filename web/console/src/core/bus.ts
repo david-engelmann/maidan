@@ -1,6 +1,6 @@
 // One live connection feeds every screen: the shell owns it and passes each
 // frame here, and a screen listens for the kinds it cares about.
-import type { ControlFrame, EventFrame } from "./live.ts";
+import type { ControlFrame, EventFrame, LiveStatus } from "./live.ts";
 
 export type BusMessage = { type: "event"; frame: EventFrame } | { type: "resync" };
 type Listener = (m: BusMessage) => void;
@@ -39,3 +39,21 @@ export const controlBus = new ControlBus();
 
 /** Set by the shell's connection: send my presence, false when not connected. */
 export const liveActions: { setPresence: (status: "online" | "away") => boolean } = { setPresence: () => false };
+
+/** The shell's live-connection status, for screens that warn when it is down. */
+export class LiveStatusStore {
+  private status: LiveStatus = { kind: "idle" };
+  private readonly listeners = new Set<() => void>();
+  subscribe = (fn: () => void): (() => void) => {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  };
+  getSnapshot = (): LiveStatus => this.status;
+  set(status: LiveStatus): void {
+    if (status === this.status) return;
+    this.status = status;
+    for (const fn of this.listeners) fn();
+  }
+}
+
+export const liveStatus = new LiveStatusStore();

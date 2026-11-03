@@ -8,12 +8,20 @@ export const ROUTES = [
   { id: "needs", title: "Needs you", hint: "Reviews, gates and blocks waiting on you" },
   { id: "threads", title: "Threads", hint: "Conversations and their results" },
   { id: "people", title: "People", hint: "Members and agents, and who is live" },
+  { id: "activity", title: "Activity", hint: "Everything happening in the workspace, live" },
   { id: "tools", title: "Tools", hint: "Inbox, preferences, deliveries, commands and the operator's desk" },
   { id: "catalog", title: "Catalog", hint: "The MCP tools agents can call here, and what each one takes" },
   { id: "artifacts", title: "Files", hint: "Artifacts: look one up, upload, link to a task" },
 ] as const;
 
 export type RouteId = (typeof ROUTES)[number]["id"];
+
+/** The phone tab bar holds five places; the rest sit behind More. */
+export const PHONE_TABS: readonly RouteId[] = ["board", "needs", "threads", "people", "activity"];
+
+export function phoneTabs(): { tabs: (typeof ROUTES)[number][]; more: (typeof ROUTES)[number][] } {
+  return { tabs: ROUTES.filter((r) => PHONE_TABS.includes(r.id)), more: ROUTES.filter((r) => !PHONE_TABS.includes(r.id)) };
+}
 
 export function parseRoute(hash: string): RouteId {
   if (/^#\/?confirm-approval=/.test(hash)) return "needs";

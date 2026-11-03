@@ -3,7 +3,7 @@
 // screen. Safe-area insets come from viewport-fit=cover in index.html.
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { controlBus, liveBus } from "../core/bus.ts";
+import { controlBus, liveBus, liveStatus } from "../core/bus.ts";
 import type { ControlFrame, EventFrame } from "../core/live.ts";
 import { useLive } from "../hooks/useLive.ts";
 import { useSession } from "../hooks/useSession.ts";
@@ -16,7 +16,7 @@ import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { Palette } from "./Palette.tsx";
 import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommands, type Command } from "./commands.ts";
-import { ROUTES, navigate, useRoute, type RouteId } from "./router.ts";
+import { ROUTES, navigate, phoneTabs, useRoute, type RouteId } from "./router.ts";
 
 // The shell owns the one live connection; screens hear it on the bus.
 const NO_FILTER = {};
@@ -34,6 +34,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   const live = useLive(session, NO_FILTER, TO_BUS);
   // A refused socket (a revoked or narrowed token) sends no more events, so
   // ask every screen to read once more: each then shows the refusal it gets.
+  useEffect(() => liveStatus.set(live), [live]);
   const refused = live.kind === "refused";
   useEffect(() => {
     if (refused) liveBus.emit({ type: "resync" });
@@ -164,7 +165,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
 
       {signedOut ? null : (
         <nav className="tabbar" aria-label="Places">
-          <Tabs route={route} reduce={Boolean(reduce)} layoutId="tab-pill" />
+          <PhoneTabs route={route} reduce={Boolean(reduce)} />
         </nav>
       )}
 
@@ -177,10 +178,37 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   );
 }
 
-function Tabs({ route, reduce, layoutId }: { route: RouteId; reduce: boolean; layoutId: string }) {
+// Five places and a More that opens the rest, so labels stay readable at 390px.
+function PhoneTabs({ route, reduce }: { route: RouteId; reduce: boolean }) {
+  const { tabs, more } = phoneTabs();
+  const inMore = more.some((r) => r.id === route);
+  return (
+    <div className="tabbar-row">
+      <Tabs route={route} reduce={reduce} layoutId="tab-pill" routes={tabs} />
+      <details className="tab-more" key={route}>
+        <summary aria-current={inMore ? "page" : undefined}>
+          <Icon name="more" />
+          <span className="label">More</span>
+        </summary>
+        <ul className="tab-more-list">
+          {more.map((r) => (
+            <li key={r.id}>
+              <a href={`#/${r.id}`} aria-current={r.id === route ? "page" : undefined}>
+                <Icon name={r.id} />
+                <span>{r.title}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
+function Tabs({ route, reduce, layoutId, routes = ROUTES }: { route: RouteId; reduce: boolean; layoutId: string; routes?: readonly (typeof ROUTES)[number][] }) {
   return (
     <ul className="tabs">
-      {ROUTES.map((r) => (
+      {routes.map((r) => (
         <li key={r.id}>
           <a href={`#/${r.id}`} aria-current={r.id === route ? "page" : undefined}>
             {r.id === route && (

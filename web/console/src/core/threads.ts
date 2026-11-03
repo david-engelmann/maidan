@@ -3,6 +3,7 @@
 // Fetch is passed in, so it is tested.
 import { guarded, apiPath, bearerRefusal, headers, failure, ApiError, trimBase, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import type { Fetch, Member, Thread } from "./board.ts";
+import { stateWord } from "./board.ts";
 
 export type Message = {
   id: string;
@@ -79,7 +80,7 @@ export function groupConversation(g: GroupDm, me: string, members: Map<string, M
 }
 
 export function taskConversation(t: Thread): Conversation {
-  return { ref: { kind: "task", id: t.id }, threadId: t.id, label: t.title || "(untitled task)", detail: t.state.replace(/_/g, " "), updatedAt: t.updated_at ?? null };
+  return { ref: { kind: "task", id: t.id }, threadId: t.id, label: t.title || "(untitled task)", detail: stateWord(t), updatedAt: t.updated_at ?? null };
 }
 
 /** Most recently active first. */
@@ -205,6 +206,8 @@ export const THREAD_CONTENT_KINDS = new Set([
   "reaction_removed",
   "message_pinned",
   "message_unpinned",
+  "vote_cast",
+  "vote_retracted",
 ]);
 
 /** Frames that change the list of conversations. */
@@ -525,6 +528,11 @@ export class ThreadsApi {
     return this.get<Message[]>(`/threads/${threadId}/messages?limit=50`);
   }
 
+  /** Votes on a message, tallied by kind (GET /messages/{id}/votes). */
+  async votes(messageId: string, me: string | null): Promise<VoteTally[]> {
+    return tallyVotes(await this.get<VoteRow[]>(`/messages/${messageId}/votes`), me);
+  }
+
   async reactions(messageId: string, me: string | null): Promise<Reaction[]> {
     return aggregateReactions(await this.get<Array<{ member_id: string; emoji: string }>>(`/messages/${messageId}/reactions`), me);
   }
@@ -595,4 +603,26 @@ export class ThreadsApi {
     if (!g) throw new ThreadsError("The server did not return the conversation");
     return g;
   }
+}
+
+export type VoteRow = { message_id?: string; member_id: string; kind: string; confidence?: number | null; created_at?: string };
+export type VoteTally = { kind: string; count: number; voters: string[]; mine: boolean };
+
+/** What each vote kind is called on a message. */
+export const VOTE_WORDS: Record<string, string> = { approve: "approve", request_changes: "changes requested", ack: "ack" };
+const VOTE_ORDER = ["approve", "request_changes", "ack"];
+
+/** Votes grouped by kind, approve first, voters in the order they voted. */
+export function tallyVotes(rows: VoteRow[], me: string | null): VoteTally[] {
+  const by = new Map<string, VoteTally>();
+  const sorted = [...rows].sort((a, b) => (Date.parse(a.created_at ?? "") || 0) - (Date.parse(b.created_at ?? "") || 0));
+  for (const r of sorted) {
+    const t = by.get(r.kind) ?? { kind: r.kind, count: 0, voters: [], mine: false };
+    t.count += 1;
+    t.voters.push(r.member_id);
+    if (me && r.member_id === me) t.mine = true;
+    by.set(r.kind, t);
+  }
+  const rank = (k: string) => (VOTE_ORDER.indexOf(k) + 1 || 99);
+  return [...by.values()].sort((a, b) => rank(a.kind) - rank(b.kind) || a.kind.localeCompare(b.kind));
 }

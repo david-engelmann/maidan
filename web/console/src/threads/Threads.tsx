@@ -5,7 +5,7 @@ import { MessageBody } from "./MessageBody.tsx";
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
-import { BoardApi, chromeFor, stateLabel, type Gate, type Member, type Thread } from "../core/board.ts";
+import { BoardApi, chromeFor, stateWord, type Gate, type Member, type Thread } from "../core/board.ts";
 import { membersPending,
   QUICK_REACTIONS,
   REACTION_NAMES,
@@ -49,12 +49,16 @@ import { membersPending,
   type EvidenceKind,
   type Message,
   type Reaction,
+  type VoteTally,
+  VOTE_WORDS,
 } from "../core/threads.ts";
 import { say, sayError } from "../core/notices.ts";
 import { useBoard } from "../hooks/useBoard.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { NEW_WORK_HREF, emptyChannelText } from "../core/firstRun.ts";
 import { useConversation, useDirect, useVisualViewport } from "../hooks/useThreads.ts";
+import { LoadError } from "../shell/LoadError";
+import { EmptyState } from "../shell/EmptyState";
 
 type Tab = "tasks" | "direct";
 
@@ -111,7 +115,7 @@ function saveSeen(key: string | null, v: SeenState): void {
 function taskTone(th: Thread | undefined, gate?: Gate | null): { tone: string; word: string } | null {
   if (!th) return null;
   const chrome = chromeFor(th, gate);
-  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
+  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: stateWord(th, gate) };
 }
 
 export function Threads() {
@@ -122,7 +126,7 @@ export function Threads() {
     const f = (url: string, init?: RequestInit) => fetch(url, init);
     return { threads: new ThreadsApi(f, creds, mode), board: new BoardApi(f, creds, mode) };
   }, [store]);
-  const { data: board, selectChannel } = useBoard(session, deps.board);
+  const { data: board, selectChannel, refresh: refreshBoard } = useBoard(session, deps.board);
   const { data: direct, refresh: refreshDirect } = useDirect(session, deps.threads);
   const open = useOpenRef();
   const [composing, setComposing] = useState(takeCompose);
@@ -221,7 +225,7 @@ export function Threads() {
             }}
           />
         )}
-        {listError && <p className="conv-error" role="alert">{listError}</p>}
+        {listError && !list.length ? <LoadError message={listError} onRetry={() => void (tab === "tasks" ? refreshBoard() : refreshDirect())} /> : listError ? <p className="conv-error" role="alert">{listError}</p> : null}
         {listLoading && !list.length ? (
           <div role="status" aria-label="Loading">
             <span className="skeleton row-sk" />
@@ -229,11 +233,11 @@ export function Threads() {
             <span className="skeleton row-sk" />
           </div>
         ) : !list.length ? (
-          <p className="muted conv-empty">
-            {tab === "tasks" ? (
-              <>{emptyChannelText(board.channels.length)} <a href={NEW_WORK_HREF}>Start a task</a></>
-            ) : "No conversations yet. Start one with New message."}
-          </p>
+          listError ? null : tab === "tasks" ? (
+            <EmptyState title="No task threads" body={emptyChannelText(board.channels.length)} action={<a className="button ghost" href={NEW_WORK_HREF}>Start a task</a>} />
+          ) : (
+            <EmptyState title="No conversations yet" body="Start one with New message." />
+          )
         ) : (
           <ul className="convs">
             {list.map((c) => {
@@ -287,7 +291,11 @@ export function Threads() {
         )
       ) : (
         <section className="conv-open conv-none" aria-hidden="true">
-          <p className="muted">Pick a conversation.</p>
+          <div className="pane-empty">
+            <span className="pane-empty-mark" />
+            <strong>No conversation open</strong>
+            <p className="muted">Pick a task or a direct message from the list.</p>
+          </div>
         </section>
       )}
     </div>
@@ -514,7 +522,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
         {data.status === "loading" || data.status === "idle" ? (
           <p className="muted pad">Loading messages…</p>
         ) : data.status === "error" ? (
-          <p className="conv-error pad" role="alert">{data.error}</p>
+          <LoadError className="pad" message={data.error ?? "Could not load the messages."} onRetry={() => void refresh()} />
         ) : !messages.length ? (
           <p className="muted pad">{conv.ref.kind === "task" ? "No messages yet. Start the conversation below." : "No messages"}</p>
         ) : (
@@ -529,6 +537,7 @@ function ConversationView({ api, conv, me, members }: { api: ThreadsApi; conv: C
                 members={members}
                 mine={m.author_id === me}
                 reactions={data.reactions[m.id] ?? []}
+                votes={data.votes[m.id] ?? []}
                 onReact={react}
                 pinned={pinned.has(m.id)}
                 onPin={conv.ref.kind === "task" ? togglePin : null}
@@ -569,6 +578,7 @@ type RowProps = {
   members: Map<string, Member>;
   mine: boolean;
   reactions: Reaction[];
+  votes: VoteTally[];
   onReact: (id: string, emoji: string, on: boolean) => Promise<void>;
   pinned: boolean;
   onPin: ((id: string, on: boolean) => Promise<void>) | null;
@@ -577,7 +587,7 @@ type RowProps = {
   api: ThreadsApi;
 };
 
-function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
+function MessageRow({ m, head, members, mine, reactions, votes, onReact, pinned, onPin, onEdit, onRemove, api }: RowProps) {
   // Destructive moves take two taps: the first arms, the second does it.
   const [armed, setArmed] = useState<"delete" | "purge" | null>(null);
   const [picking, setPicking] = useState(false);
@@ -646,6 +656,7 @@ function MessageRow({ m, head, members, mine, reactions, onReact, pinned, onPin,
             {slash.response !== null && <pre>{slash.response}</pre>}
           </div>
         )}
+        {votes.length > 0 && <Votes votes={votes} members={members} />}
         <div className={reactions.length || picking ? "reacts" : "reacts none"}>
           {reactions.map((r) => (
             <button key={r.emoji} className={r.mine ? "react on" : "react"} aria-pressed={r.mine} aria-label={`${REACTION_NAMES[r.emoji] ?? r.emoji}, ${r.count}${r.mine ? ", yours. Remove" : ". Add yours"}`} onClick={() => toggle(r.emoji, !r.mine)}>
@@ -912,5 +923,24 @@ function AddEvidence({ api, threadId, onAdded }: { api: ThreadsApi; threadId: st
         <p className="muted">Records are kept as written; they cannot be edited or removed. Adding one needs a bearer token.</p>
       </form>
     </details>
+  );
+}
+
+/** Who voted what on a message, read-only: votes are cast by agents over MCP or REST. */
+function Votes({ votes, members }: { votes: VoteTally[]; members: Map<string, Member> }) {
+  const who = (id: string) => members.get(id)?.name || id;
+  return (
+    <ul className="votes" aria-label="Votes">
+      {votes.map((v) => {
+        const word = VOTE_WORDS[v.kind] ?? v.kind.replace(/_/g, " ");
+        const names = v.voters.map(who).join(", ");
+        return (
+          <li key={v.kind} className={`vote vote-${v.kind}${v.mine ? " mine" : ""}`} title={names}>
+            {word} {v.count}
+            <span className="sr-only">: {names}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
