@@ -32,6 +32,7 @@ import { useNeeds } from "../hooks/useNeeds.ts";
 import { useSession } from "../hooks/useSession.ts";
 import { Icon } from "../shell/icons.tsx";
 import { ReviewContext } from "./ReviewContext.tsx";
+import { LoadError } from "../shell/LoadError";
 
 /** Keys typed into a field, or with a modifier, are not shortcuts. */
 function notShortcut(e: KeyboardEvent): boolean {
@@ -132,10 +133,7 @@ export function NeedsYou() {
       )}
       {data.status === "loading" && <p className="muted">Loading what needs you…</p>}
       {data.status === "error" && (
-        <div className="card" role="alert">
-          <p>{data.error}</p>
-          <button type="button" className="btn" onClick={() => void refresh()}>Try again</button>
-        </div>
+        <LoadError message={data.error ?? "Could not load what needs you."} onRetry={() => void refresh()} />
       )}
       {data.status === "ready" && !shown.length && (
         <div className="needs-empty caught-up" role="status">

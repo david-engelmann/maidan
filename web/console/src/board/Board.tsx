@@ -14,6 +14,7 @@ import { TaskSheet } from "./TaskSheet.tsx";
 import { EMPTY_QUERY, filtering, matches, readQuery, writeQuery, type BoardQuery } from "../core/boardQuery.ts";
 import { isTyping } from "../shell/commands.ts";
 import { useToolsApi } from "../hooks/useTools.ts";
+import { LoadError } from "../shell/LoadError";
 
 const QUERY_EVENT = "maidan:board-query";
 function useQuery(): [BoardQuery, (q: BoardQuery) => void] {
@@ -196,7 +197,7 @@ export function Board() {
           <button type="button" className="chip-btn" aria-pressed={view === "agents"} onClick={() => setView("agents")}>By agent</button>
         </div>
         <p className="board-summary" role="status" aria-live="polite">
-          {data.status === "loading" ? "Loading…" : data.error ?? summary(all, data.channels.length)}
+          {data.status === "loading" ? "Loading…" : data.status === "error" && !data.threads.length ? "" : data.error ?? summary(all, data.channels.length)}
         </p>
         <button type="button" className="btn go new-task" onClick={() => setComposing(true)} disabled={!data.channelId} aria-keyshortcuts="c">
           <span>New task</span>
@@ -298,10 +299,7 @@ export function Board() {
       )}
 
       {data.status === "error" && !data.threads.length ? (
-        <div className="card">
-          <p>{data.error}</p>
-          <button className="button steel" onClick={() => void refresh()}>Try again</button>
-        </div>
+        <LoadError message={data.error ?? "Could not load the board."} onRetry={() => void refresh()} />
       ) : view === "agents" ? (
         <div className="agents">
           {groups.map((g) => (
