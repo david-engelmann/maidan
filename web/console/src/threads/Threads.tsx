@@ -5,7 +5,7 @@ import { MessageBody } from "./MessageBody.tsx";
 import { takeCompose } from "../shell/commands.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "../shell/icons.tsx";
-import { BoardApi, chromeFor, stateLabel, type Gate, type Member, type Thread } from "../core/board.ts";
+import { BoardApi, chromeFor, stateWord, type Gate, type Member, type Thread } from "../core/board.ts";
 import {
   QUICK_REACTIONS,
   REACTION_NAMES,
@@ -111,7 +111,7 @@ function saveSeen(key: string | null, v: SeenState): void {
 function taskTone(th: Thread | undefined, gate?: Gate | null): { tone: string; word: string } | null {
   if (!th) return null;
   const chrome = chromeFor(th, gate);
-  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: th.closed_without_review ? "Unreviewed" : stateLabel(th, chrome) };
+  return { tone: th.closed_without_review ? "unreviewed" : chrome.lane, word: stateWord(th, gate) };
 }
 
 export function Threads() {
