@@ -66,16 +66,17 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --dur-1: 120ms;
   --dur-2: 200ms;
+  --elev-1: var(--card); --elev-2: var(--card); --elev-3: var(--card); --hairline: var(--line); --content-max: 1280px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #131210;
-    --paper-2: #1a1916;
-    --card: #1f1d1a;
-    --ink: #ece8df;
-    --muted: #a39e94;
-    --line: rgba(236, 232, 223, 0.12);
-    --line-strong: rgba(236, 232, 223, 0.24);
+    --paper: #121110;
+    --paper-2: #171614;
+    --card: var(--elev-1);
+    --ink: #e9e5dc;
+    --muted: #9d988e;
+    --line: rgba(233, 229, 220, 0.08);
+    --line-strong: rgba(233, 229, 220, 0.14);
     --hover: rgba(236, 232, 223, 0.06);
     --signal: #f06a35;
     --signal-ink: #f59a72;
@@ -87,14 +88,18 @@
     --steel-3: #262522;
     --idle: #77736a;
     --hi: rgba(236, 232, 223, 0.06);
-    --glass: rgba(19, 18, 16, 0.72);
-    --glass-bar: rgba(26, 25, 22, 0.82);
+    --glass: rgba(18, 17, 16, 0.78);
+    --glass-bar: rgba(23, 22, 20, 0.86);
     --scrim: rgba(8, 7, 6, 0.6);
     --avatar-agent: #3a3934;
     --avatar-human: #2a2925; --avatar-human-ink: #ece8df;
     --shadow-1: 0 1px 0 var(--hi) inset, 0 1px 2px rgba(8, 7, 6, 0.4);
     --shadow-2: 0 1px 0 var(--hi) inset, 0 16px 36px -22px rgba(8, 7, 6, 0.8);
     --shadow-3: 0 30px 80px -30px rgba(8, 7, 6, 0.85);
+    --elev-1: #1b1a17;
+    --elev-2: #22201d;
+    --elev-3: #2a2824;
+    --hairline: rgba(233, 229, 220, 0.07);
   }
 }
 * { box-sizing: border-box; }
@@ -932,17 +937,7 @@ summary:focus-visible { border-radius: var(--r-xs); }
 /* ---- Finish ------------------------------------------------------------- */
 /* Three surfaces above the page. Light keeps its paper; dark lifts each step
    a little warmer and lighter, with hairlines that sit back instead of glaring. */
-:root { --elev-1: var(--card); --elev-2: var(--card); --elev-3: var(--card); --hairline: var(--line); --content-max: 1280px; }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #121110; --paper-2: #171614;
-    --elev-1: #1b1a17; --elev-2: #22201d; --elev-3: #2a2824;
-    --card: var(--elev-1);
-    --ink: #e9e5dc; --muted: #9d988e;
-    --line: rgba(233, 229, 220, 0.08); --line-strong: rgba(233, 229, 220, 0.14);
-    --hairline: rgba(233, 229, 220, 0.07);
-    --glass: rgba(18, 17, 16, 0.78); --glass-bar: rgba(23, 22, 20, 0.86);
-  }
   .need, .tool-panel, .content .card { background: var(--elev-1); border-color: var(--hairline); }
   .sheet, .toast { background: var(--elev-2); border-color: var(--hairline); }
   .toast:not(.error) { color: var(--ink); }
