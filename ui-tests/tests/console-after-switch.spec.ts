@@ -101,7 +101,16 @@ test("Tab reaches a Needs you row's actions", async ({ page }) => {
   // time have no fixed order.
   const first = page.locator(".need-actions button:not([disabled]):visible").first();
   test.skip((await first.count()) === 0, "nothing waiting in this seed");
-  await first.focus();
+  // Reach it with Tab, as a keyboard user does. A script `focus()` with no
+  // keyboard input before it does not match `:focus-visible` in Chromium, so
+  // the ring never drew and the check failed on every run.
+  const handle = await first.elementHandle();
+  let reached = false;
+  for (let presses = 0; presses < 200 && !reached; presses++) {
+    await page.keyboard.press("Tab");
+    reached = await page.evaluate((el) => document.activeElement === el, handle);
+  }
+  expect(reached, "Tab never reached the row's first action").toBe(true);
   await expect(first).toBeFocused();
   await expect(first).toHaveCSS("outline-style", "solid");
 });
