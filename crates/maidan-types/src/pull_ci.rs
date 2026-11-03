@@ -114,6 +114,71 @@ pub struct PullCi {
     pub updated_at: DateTime<Utc>,
 }
 
+/// How a submitted review came out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub enum ReviewState {
+    Approved,
+    ChangesRequested,
+    Commented,
+}
+
+impl ReviewState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::ChangesRequested => "changes_requested",
+            Self::Commented => "commented",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "approved" => Some(Self::Approved),
+            "changes_requested" => Some(Self::ChangesRequested),
+            "commented" => Some(Self::Commented),
+            _ => None,
+        }
+    }
+
+    /// GitHub's GraphQL `PullRequestReviewState`. `PENDING` (a draft) and
+    /// `DISMISSED` are no submitted review, so they map to nothing.
+    pub fn from_github(state: &str) -> Option<Self> {
+        match state {
+            "APPROVED" => Some(Self::Approved),
+            "CHANGES_REQUESTED" => Some(Self::ChangesRequested),
+            "COMMENTED" => Some(Self::Commented),
+            _ => None,
+        }
+    }
+
+    /// How a notice's sentence says it.
+    pub fn sentence(self) -> &'static str {
+        match self {
+            Self::Approved => "approved",
+            Self::ChangesRequested => "changes requested",
+            Self::Commented => "commented",
+        }
+    }
+}
+
+/// A review submitted on a tracked pull request, as the sweep's read found
+/// it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmittedReview {
+    /// GitHub's id for the review, which says it once.
+    pub id: String,
+    /// The reviewer's login, a bot's included; `None` for a deleted account.
+    pub reviewer: Option<String>,
+    pub state: ReviewState,
+    /// The head commit the review was on.
+    pub head_sha: String,
+}
+
+/// Reviews a read carries, at most: the newest ones.
+pub const REVIEW_LIMIT: usize = 20;
+
 /// Where a pull request stands with the merge queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -231,6 +296,9 @@ pub struct NewPullCi {
     /// Whether the head has commits its base lacks. Kept once seen for the
     /// same head, so a head the base caught up with still counts as ahead.
     pub head_ahead: bool,
+    /// The newest reviews submitted on the pull request, at most
+    /// [`REVIEW_LIMIT`]; empty when the read did not carry them.
+    pub reviews: Vec<SubmittedReview>,
 }
 
 /// The notices a read owes its thread, each with the key that says it once:
@@ -247,6 +315,9 @@ pub struct NewPullCi {
 /// `merge_queued` and `merge_dequeued` are said, the same way, when the
 /// pull request enters the merge queue or leaves it (or leaves it again for
 /// another reason).
+///
+/// `review_submitted` is said once per review, keyed by the review's id,
+/// naming the reviewer, how it came out and the head it was on.
 pub fn ci_notices(
     new: &NewPullCi,
     previous: &PreviousRead,
@@ -269,6 +340,8 @@ pub fn ci_notices(
         reasons,
         environment: None,
         deploy_url: None,
+        reviewer: None,
+        review_state: None,
         created_at: now,
     };
     let mut owed = vec![(
@@ -327,6 +400,18 @@ pub fn ci_notices(
             _ => {}
         }
     }
+    for review in &new.reviews {
+        let mut said = notice(
+            ThreadNoticeKind::ReviewSubmitted,
+            None,
+            Vec::new(),
+            Vec::new(),
+        );
+        said.head_sha = Some(review.head_sha.to_ascii_lowercase());
+        said.reviewer = review.reviewer.clone();
+        said.review_state = Some(review.state);
+        owed.push((said, format!("review:{at}:{}", review.id)));
+    }
     owed
 }
 
@@ -382,6 +467,7 @@ mod tests {
             gate_reasons: None,
             merge_queue: None,
             head_ahead: false,
+            reviews: Vec::new(),
         }
     }
 
@@ -571,6 +657,74 @@ mod tests {
                 "gate:example/app#7:k2".to_string()
             )]
         );
+    }
+
+    #[test]
+    fn each_review_is_said_once_by_its_id_with_who_how_and_which_head() {
+        let mut new = read(CiStatus::Pending, &[], false);
+        new.reviews = vec![
+            SubmittedReview {
+                id: "PRR_1".into(),
+                reviewer: Some("review-bot[bot]".into()),
+                state: ReviewState::ChangesRequested,
+                head_sha: "OLD999".into(),
+            },
+            SubmittedReview {
+                id: "PRR_2".into(),
+                reviewer: Some("octocat".into()),
+                state: ReviewState::Approved,
+                head_sha: "ABC123".into(),
+            },
+        ];
+        let owed = ci_notices_at(&new, Utc::now());
+        let reviews: Vec<_> = owed
+            .iter()
+            .filter(|(n, _)| n.kind == ThreadNoticeKind::ReviewSubmitted)
+            .collect();
+        assert_eq!(
+            reviews
+                .iter()
+                .map(|(_, key)| key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["review:example/app#7:PRR_1", "review:example/app#7:PRR_2"]
+        );
+        let first = &reviews[0].0;
+        assert_eq!(first.reviewer.as_deref(), Some("review-bot[bot]"));
+        assert_eq!(first.review_state, Some(ReviewState::ChangesRequested));
+        assert_eq!(first.head_sha.as_deref(), Some("old999"));
+        assert_eq!(
+            first.sentence(),
+            "review-bot[bot] reviewed example/app#7 at old999: changes requested."
+        );
+        assert_eq!(
+            reviews[1].0.sentence(),
+            "octocat reviewed example/app#7 at abc123: approved."
+        );
+    }
+
+    #[test]
+    fn only_submitted_review_states_map_from_github() {
+        assert_eq!(
+            ReviewState::from_github("APPROVED"),
+            Some(ReviewState::Approved)
+        );
+        assert_eq!(
+            ReviewState::from_github("CHANGES_REQUESTED"),
+            Some(ReviewState::ChangesRequested)
+        );
+        assert_eq!(
+            ReviewState::from_github("COMMENTED"),
+            Some(ReviewState::Commented)
+        );
+        assert_eq!(ReviewState::from_github("PENDING"), None);
+        assert_eq!(ReviewState::from_github("DISMISSED"), None);
+        for state in [
+            ReviewState::Approved,
+            ReviewState::ChangesRequested,
+            ReviewState::Commented,
+        ] {
+            assert_eq!(ReviewState::parse(state.as_str()), Some(state));
+        }
     }
 
     fn kinds(owed: &[(ThreadNotice, String)]) -> Vec<(&'static str, &str)> {
