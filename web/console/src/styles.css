@@ -1204,3 +1204,11 @@ h1, h2, h3, strong, b { font-weight: 600; }
 .chip-votes { display: inline-flex; gap: 6px; }
 .vote-n.approve { color: #2e7d32; }
 .vote-n.changes { color: #c62828; }
+
+/* Wide board: the lanes fill what the strips above them leave, so a health,
+   presence or stale strip never pushes the page past the viewport. */
+@media (min-width: 900px) {
+  .content:has(.lanes.wide) { display: flex; flex-direction: column; }
+  .content > :has(.lanes.wide), .board:has(> .lanes.wide) { flex: 1 0 auto; display: flex; flex-direction: column; }
+  .board > .lanes.wide { flex: 1 0 auto; min-height: 240px; }
+}
