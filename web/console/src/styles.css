@@ -1212,3 +1212,9 @@ h1, h2, h3, strong, b { font-weight: 600; }
   .content > :has(.lanes.wide), .board:has(> .lanes.wide) { flex: 1 0 auto; display: flex; flex-direction: column; }
   .board > .lanes.wide { flex: 1 0 auto; min-height: 240px; }
 }
+
+/* ---- Lanes that fit ------------------------------------------------------ */
+/* All four lanes fit the content column from 1024px up instead of pushing
+   Done past the edge; below 220px a lane's card foot wraps, never clips. */
+.lanes.wide { grid-template-columns: repeat(4, minmax(min(220px, calc((100% - 3 * var(--space-3)) / 4)), 1fr)); }
+.lanes.wide .task-meta { flex-wrap: wrap; row-gap: 4px; }
