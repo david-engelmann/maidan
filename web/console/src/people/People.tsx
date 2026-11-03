@@ -3,7 +3,7 @@
 // a steel tile that seats members in the four roles that close the loop,
 // and the footprint lists the workers share.
 import { type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { BoardApi, ago, leaseLeft } from "../core/board.ts";
+import { BoardApi, ago, chromeFor, leaseLeft, stateLabel, type Thread } from "../core/board.ts";
 import { liveActions } from "../core/bus.ts";
 import {
   METER_LABELS,
@@ -95,11 +95,53 @@ export function People() {
         <a role="tab" aria-selected={tab === "swarm"} href="#/people/swarm">Swarm</a>
       </div>
       {tab === "people" ? (
-        <Roster loaded={people} rows={rows} open={member} api={deps.people} />
+        <Roster loaded={people} rows={rows} open={member} api={deps.people} board={board} />
       ) : (
         <Swarm rows={rows} people={people.value ?? []} api={deps.people} workspace={session.status === "signed-in" ? session.workspaceId : null} presence={presence} />
       )}
     </div>
+  );
+}
+
+type BoardView = { status: string; error: string | null; threads: Thread[] };
+
+const DONE = new Set(["closed", "archived"]);
+const stamp = (th: Thread) => th.last_progress_at ?? th.updated_at ?? th.work_started_at ?? "";
+
+/** What a member is on now and what they closed lately, from the open channel's threads. */
+function workOf(id: string, threads: Thread[]): { now: Thread[]; recent: Thread[] } {
+  const mine = threads.filter((t) => t.assignee_id === id).sort((a, b) => stamp(b).localeCompare(stamp(a)));
+  return { now: mine.filter((t) => !DONE.has(t.state)), recent: mine.filter((t) => DONE.has(t.state)).slice(0, 5) };
+}
+
+function WorkList({ rows, empty }: { rows: Thread[]; empty: string }) {
+  const [now] = useState(() => Date.now());
+  if (!rows.length) return <p className="muted small">{empty}</p>;
+  return (
+    <ul className="work-list">
+      {rows.map((t) => (
+        <li key={t.id}>
+          <a href={convHash({ kind: "task", id: t.id })}>{t.title || "Untitled task"}</a>
+          <span className="muted small">{stateLabel(t, chromeFor(t))}{stamp(t) ? ` · ${ago(stamp(t), now)}` : ""}{t.status?.note ? ` · ${t.status.note}` : ""}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Work({ id, board }: { id: string; board: BoardView }) {
+  const head = <h3 className="work-h">Work in this channel</h3>;
+  if (board.status === "error") return <section className="work" aria-label="Work">{head}<p className="muted small" role="alert">Could not load the board: {board.error ?? "try again"}</p></section>;
+  if (board.status !== "ready") return <section className="work" aria-label="Work" aria-busy="true">{head}<div className="ghost-line" /><div className="ghost-line" /></section>;
+  const { now, recent } = workOf(id, board.threads);
+  return (
+    <section className="work" aria-label="Work">
+      {head}
+      <h4 className="work-sub">Now</h4>
+      <WorkList rows={now} empty="Nothing claimed right now." />
+      <h4 className="work-sub">Recent results</h4>
+      <WorkList rows={recent} empty="Nothing finished yet." />
+    </section>
   );
 }
 
@@ -114,7 +156,7 @@ function Avatar({ person, presence, large }: { person: Person; presence?: Presen
   );
 }
 
-function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: RosterRow[]; open: string | null; api: PeopleApi }) {
+function Roster({ loaded, rows, open, api, board }: { loaded: Loaded<Person[]>; rows: RosterRow[]; open: string | null; api: PeopleApi; board: BoardView }) {
   const [query, setQuery] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const shown = filterRoster(rows, query);
@@ -163,11 +205,15 @@ function Roster({ loaded, rows, open, api }: { loaded: Loaded<Person[]>; rows: R
       {open ? (
         <section className="member-detail card" aria-label="Member details">
           <a className="back" href="#/people">People</a>
-          {selected ? <MemberDetail key={selected.person.id} row={selected} api={api} /> : loaded.status === "ready" ? <p className="muted">That member is not in this workspace.</p> : <p className="muted">Loading…</p>}
+          {selected ? <MemberDetail key={selected.person.id} row={selected} api={api} board={board} /> : loaded.status === "ready" ? <p className="muted">That member is not in this workspace.</p> : <p className="muted">Loading…</p>}
         </section>
       ) : (
         <section className="member-detail card wide-only" aria-hidden="true">
-          <p className="muted">Pick a member to see their details and tokens.</p>
+          <div className="pane-empty">
+            <span className="pane-empty-mark" />
+            <strong>No member selected</strong>
+            <p className="muted">Pick a member to see their details and tokens.</p>
+          </div>
         </section>
       )}
     </div>
@@ -185,7 +231,7 @@ function useNow(): number {
   return now;
 }
 
-function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
+function MemberDetail({ row, api, board }: { row: RosterRow; api: PeopleApi; board: BoardView }) {
   const { session, store } = useSession();
   const [version, setVersion] = useState(0);
   const tokens = useTokens(session, api, row.person.id, version);
@@ -236,6 +282,7 @@ function MemberDetail({ row, api }: { row: RosterRow; api: PeopleApi }) {
           <p className="muted">{p.handle ? `@${p.handle} · ` : ""}{p.kind === "human" ? "Human" : "Agent"} · {PRESENCE_WORD[row.presence]}</p>
         </div>
       </div>
+      <Work id={p.id} board={board} />
       <dl className="facts">
         <div><dt>Member id</dt><dd className="mono-id">{p.id}</dd></div>
         {p.createdAt ? <div><dt>Joined</dt><dd>{ago(p.createdAt, now)}</dd></div> : null}

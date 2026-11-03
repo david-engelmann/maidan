@@ -8343,6 +8343,15 @@
         ],
         "type": "object"
       },
+      "ReviewState": {
+        "description": "How a submitted review came out.",
+        "enum": [
+          "approved",
+          "changes_requested",
+          "commented"
+        ],
+        "type": "string"
+      },
       "ReviewStatus": {
         "description": "The computed review standing of a thread — what the close-gate reads for the\n**approval** side (the `refutes`-edge block is checked separately at the gate).",
         "properties": {
@@ -11354,6 +11363,24 @@
             "description": "Lowercase `owner/name`.",
             "type": "string"
           },
+          "review_state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewState",
+                "description": "How the review came out (`review_submitted`)."
+              }
+            ]
+          },
+          "reviewer": {
+            "description": "The login of who submitted a review (`review_submitted`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "status": {
             "oneOf": [
               {
@@ -11386,6 +11413,7 @@
           "gate_clear",
           "merge_queued",
           "merge_dequeued",
+          "review_submitted",
           "deployed"
         ],
         "type": "string"
