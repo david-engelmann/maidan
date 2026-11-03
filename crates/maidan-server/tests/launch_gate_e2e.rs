@@ -488,6 +488,26 @@ async fn launch_gate_e2e() {
     let ada = env.sign_up(&operator, "ada").await;
     let grace = env.sign_up(&operator, "grace").await;
     assert_ne!(ada.ws, grace.ws);
+    // A workspace made by sign-up opens on #general, so its board can take
+    // a task before anyone visits Tools.
+    let channels: Value = env
+        .ui(
+            &ada,
+            reqwest::Method::GET,
+            &format!("/workspaces/{}/channels", ada.ws.0),
+            None,
+        )
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        channels
+            .as_array()
+            .map(|c| c.iter().map(|c| c["name"].clone()).collect::<Vec<_>>()),
+        Some(vec![json!("general")]),
+        "a new workspace's channels: {channels}"
+    );
 
     // 2. A channel for the work.
     let channel = env
