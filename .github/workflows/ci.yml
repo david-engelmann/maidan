@@ -802,6 +802,43 @@ jobs:
           test "$(docker image inspect maidan-cli:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "ci"
           test "$(docker run --rm maidan-cli:ci --version)" = "maidan ci"
 
+  # The release's aarch64 Linux build runs under `cross`, whose container has
+  # no node; v420.0.0 never published because build.rs needed npm there and no
+  # CI job built that way before a tag. Same steps as release.yml, as a debug
+  # build, on every batch and dev push.
+  release-cross:
+    name: release build (aarch64 cross)
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/landing/package-lock.json
+            web/console/package-lock.json
+      - name: install rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - name: install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      - name: build the web assets for the cross container
+        run: |
+          for app in landing console; do
+            (cd "web/$app" && npm ci && npm run build)
+          done
+      - name: cross build
+        run: |
+          export MAIDAN_SKIP_LANDING_BUILD=1
+          cross build --bin maidan-server --bin maidan --target aarch64-unknown-linux-gnu
+
   coverage:
     name: coverage (llvm-cov)
     needs: changes

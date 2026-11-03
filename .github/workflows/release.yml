@@ -88,6 +88,19 @@ jobs:
             TAG="${{ inputs.tag }}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+      # build.rs builds web/landing and web/console with npm, and the cross
+      # container has no node: build both here, on the host, into the dist
+      # directories the container sees, and tell build.rs to use them.
+      - uses: actions/setup-node@v4
+        if: matrix.cross
+        with:
+          node-version: "22"
+      - name: build the web assets for the cross container
+        if: matrix.cross
+        run: |
+          for app in landing console; do
+            (cd "web/$app" && npm ci && npm run build)
+          done
       - name: build
         env:
           # Baked into the binary's reported version (see version() in
@@ -95,6 +108,9 @@ jobs:
           MAIDAN_VERSION: ${{ steps.tag.outputs.tag }}
         run: |
           if [ "${{ matrix.cross }}" = "true" ]; then
+            # Cross.toml passes this into the container, where build.rs
+            # then uses the dist the step above built.
+            export MAIDAN_SKIP_LANDING_BUILD=1
             cross build --release --bin maidan-server --bin maidan --target ${{ matrix.target }}
           else
             cargo build --release --bin maidan-server --bin maidan --target ${{ matrix.target }}
