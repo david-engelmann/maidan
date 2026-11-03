@@ -42,6 +42,10 @@ duplicating their release notes:
 Each cluster retro prepends its source record here. `CHANGELOG.md` keeps the
 detailed change log; cluster plans and retros explain how the work was built.
 
+## [v422.0.0](https://github.com/david-engelmann/maidan/releases/tag/v422.0.0) — v420, published
+
+`v420.0.0` and `v421.0.0` were tagged but never published: there was no npm in the aarch64 cross build, and then the release scan refused the distroless base's `libssl3`. v422.0.0 carries all of v420.0.0 (the record below) and both fixes. The server and CLI images run on Chainguard's `glibc-dynamic`, and the SDKs model a result's delivery state. `CHANGELOG.md` under `[422.0.0]`, `[421.0.0]` and `[420.0.0]` has every entry.
+
 ## [v421.0.0](https://github.com/david-engelmann/maidan/releases/tag/v421.0.0) — v420, published
 
 `v420.0.0` was tagged but never published: the aarch64 release build had no npm inside `cross`. v421.0.0 carries all of v420.0.0 (the record below) and the fix: the release builds the web assets on the host and passes `MAIDAN_SKIP_LANDING_BUILD` into the container. `CHANGELOG.md` under `[421.0.0]` and `[420.0.0]` has every entry.
