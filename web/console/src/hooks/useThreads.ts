@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { liveBus } from "../core/bus.ts";
-import { ThreadsApi, ThreadsError, movesList, toggleReaction, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction } from "../core/threads.ts";
+import { ThreadsApi, ThreadsError, movesList, toggleReaction, touchesThread, type ConvRef, type Dm, type GroupDm, type Message, type Reaction, type VoteTally } from "../core/threads.ts";
 import type { SessionState } from "../core/session.ts";
 import { backoff } from "./useNeeds.ts";
 import { sayError } from "../core/notices.ts";
@@ -53,12 +53,14 @@ export type ConversationData = {
   status: "idle" | "loading" | "ready" | "error";
   messages: Message[];
   reactions: Record<string, Reaction[]>;
+  /** Votes on each message, by kind; live through vote_cast / vote_retracted. */
+  votes: Record<string, VoteTally[]>;
   /** The last read failed: what is shown is from this time. */
   staleSince: number | null;
   error: string | null;
 };
 
-const EMPTY: ConversationData = { status: "idle", messages: [], reactions: {}, staleSince: null, error: null };
+const EMPTY: ConversationData = { status: "idle", messages: [], reactions: {}, votes: {}, staleSince: null, error: null };
 
 /** One conversation's messages and reactions, refreshed when its thread moves. */
 export function useConversation(api: ThreadsApi, threadId: string | null, me: string | null) {
@@ -74,7 +76,8 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
     if (retry.current) clearTimeout(retry.current);
     try {
       const messages = await api.messages(threadId);
-      const pairs = await Promise.all(
+      // Reactions and votes read side by side, so votes add no extra wait.
+      const [pairs, votePairs] = await Promise.all([Promise.all(
         messages.map(async (m) => {
           try {
             return [m.id, await api.reactions(m.id, me)] as const;
@@ -82,10 +85,18 @@ export function useConversation(api: ThreadsApi, threadId: string | null, me: st
             return [m.id, [] as Reaction[]] as const;
           }
         }),
-      );
+      ), Promise.all(
+        messages.map(async (m) => {
+          try {
+            return [m.id, await withinVoteWait(api.votes(m.id, me))] as const;
+          } catch {
+            return [m.id, [] as VoteTally[]] as const;
+          }
+        }),
+      )]);
       if (mine !== gen.current) return;
       failures.current = 0;
-      setData({ status: "ready", messages, reactions: Object.fromEntries(pairs), staleSince: null, error: null });
+      setData({ status: "ready", messages, reactions: Object.fromEntries(pairs), votes: Object.fromEntries(votePairs), staleSince: null, error: null });
     } catch (e) {
       if (mine !== gen.current) return;
       failures.current += 1;
@@ -177,4 +188,13 @@ export function useVisualViewport(inset: (innerHeight: number, vv: VisualViewpor
       for (const k of ["--vv-top", "--vv-h", "--kb"]) root.style.removeProperty(k);
     };
   }, [inset]);
+}
+
+/** A vote read that hangs must not hold the conversation on "Loading messages…": give up after 5s and show no tally. */
+function withinVoteWait<T>(p: Promise<T>, ms = 5000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("vote read timed out")), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
