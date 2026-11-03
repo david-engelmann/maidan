@@ -1162,7 +1162,7 @@ h1, h2, h3, strong, b { font-weight: 600; }
 }
 @media (min-width: 900px) and (prefers-reduced-motion: reduce) { .board { transition: none; } }
 
-.chip-refused { color: var(--signal); border-color: var(--signal); }
+.chip-refused { color: var(--signal-ink); border-color: var(--signal); }
 
 /* Board health strip: live tasks that may need a look, each a filter. */
 .health { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
