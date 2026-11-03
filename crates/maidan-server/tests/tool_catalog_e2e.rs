@@ -9,7 +9,6 @@ mod seeded_workspace;
 use std::collections::BTreeMap;
 
 use maidan_auth::capability;
-use maidan_store::prelude::*;
 use maidan_types::{MemberKind, NewMaidanSession, NewWorkspace};
 use reqwest::{Method, StatusCode};
 use seeded_workspace::{member, spawn, spawn_with, token};
