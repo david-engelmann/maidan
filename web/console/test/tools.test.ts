@@ -5,6 +5,7 @@ import { KEEP, Notices, redact } from "../src/core/notices.ts";
 import { CAPS_REQUIRED, PeopleApi, WORKER_PRESET } from "../src/core/people.ts";
 import {
   NAME_REQUIRED,
+  PEERS_NEED,
   TARGET_REQUIRED,
   ToolsApi,
   capsExceeding,
@@ -186,4 +187,13 @@ test("rotate and revoke hit the token tree; a session cannot", async () => {
   assert.equal(s.calls.length, 0);
   const bad = people([{ body: { id: "t1" } }]);
   await assert.rejects(bad.api.rotate("t1"));
+});
+
+test("a credential without federation:admin reads peers as not allowed, and a real failure still fails", async () => {
+  const refused = tools([{ status: 403, body: { error: "needs capability federation:admin" } }]);
+  assert.deepEqual(await refused.api.peers("w"), { allowed: false });
+  const ok = tools([{ body: [{ id: "p1", name: "east", base_url: "https://e.example" }] }]);
+  assert.deepEqual(await ok.api.peers("w"), { allowed: true, value: [{ id: "p1", name: "east", base_url: "https://e.example" }] });
+  await assert.rejects(tools([{ status: 500 }]).api.peers("w"));
+  assert.match(PEERS_NEED, /federation:admin/);
 });

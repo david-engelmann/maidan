@@ -224,6 +224,11 @@ export function presenceStrip(members: ReadonlyMap<string, Member>, presence: Re
   return out.sort((a, b) => (a.status === b.status ? 0 : a.status === "online" ? -1 : 1) || (a.agent === b.agent ? 0 : a.agent ? -1 : 1) || a.name.localeCompare(b.name));
 }
 
+/** What a presence chip says after the name, for its tooltip and a screen reader. */
+export function presenceWords(p: Pick<PresenceEntry, "status" | "holding">): string {
+  return `${p.status}, ${p.holding ? `holding ${p.holding} task${p.holding === 1 ? "" : "s"}` : "free"}`;
+}
+
 /** Cards a lane renders before "Show more"; each step adds this many again. */
 export const LANE_PAGE = 60;
 /** Past this many cards in a lane, cards skip layout animation. */

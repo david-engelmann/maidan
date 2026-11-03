@@ -247,19 +247,24 @@ export function Join({
         <div className="sheet-grab" onPointerDown={startDrag}>
           <span className="grabber" aria-hidden="true" />
           <p className="kicker">The list</p>
-          <h2 id="join-title">Take a place on the board.</h2>
-          <p className="lede">We invite people in batches. One email when your place comes up.</p>
+          {/* The confirmation takes the heading's place: under the invitation it read as a second, unanswered ask. */}
+          {done ? (
+            <div className="done" tabIndex={-1} ref={thanks} role="status">
+              <h2 id="join-title">You&apos;re on the list.</h2>
+              <p className="lede">We&apos;ll email you when your invite is ready. Nothing else, ever.</p>
+            </div>
+          ) : (
+            <>
+              <h2 id="join-title">Take a place on the board.</h2>
+              <p className="lede">We invite people in batches. One email when your place comes up.</p>
+            </>
+          )}
           <button type="button" className="sheet-close" onClick={() => onOpenChange(false)}>
             Close
           </button>
         </div>
-        <div className="card">
-          {done ? (
-            <div className="done" tabIndex={-1} ref={thanks} role="status">
-              <h2>You&apos;re on the list.</h2>
-              <p>We&apos;ll email you when your invite is ready. Nothing else, ever.</p>
-            </div>
-          ) : (
+        {done ? null : (
+          <div className="card">
             <form id="waitlist-form" noValidate onSubmit={onSubmit}>
               <div className="field">
                 <label htmlFor="wl-email">Work email</label>
@@ -341,8 +346,8 @@ export function Join({
               </p>
               <p className="fine">Your email is used only for your invite.</p>
             </form>
-          )}
-        </div>
+          </div>
+        )}
       </motion.section>
     </>
   );

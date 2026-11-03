@@ -937,7 +937,7 @@ function Votes({ votes, members }: { votes: VoteTally[]; members: Map<string, Me
         return (
           <li key={v.kind} className={`vote vote-${v.kind}${v.mine ? " mine" : ""}`} title={names}>
             {word} {v.count}
-            <span className="sr-only">: {names}</span>
+            <span className="visually-hidden">: {names}</span>
           </li>
         );
       })}

@@ -1265,6 +1265,12 @@ auto-provisioning): the waitlist form is public, an operator invites from
 `/operator/waitlist`, and only an invited address finishes sign-up. The Zero
 Trust free plan counts each person who signs in as a seat.
 
+The Zero Trust account also needs an Access App Launcher application, with a
+policy that allows everyone and the one-time PIN login method. A SaaS app
+signs people in at the team domain, and without an App Launcher that login
+stops on Cloudflare's "enable the App Launcher" page and never returns to
+maidan.world (found 2026-11-03).
+
 The front page is the server's own waitlist page. The Worker serves only the
 site's policy pages (`/privacy`, `/terms`, `/support`) from its static assets
 (`deploy/cloudflare/site/`), and `MAIDAN_SIGNUP_PRIVACY_URL` and

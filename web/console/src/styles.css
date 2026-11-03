@@ -886,7 +886,9 @@ summary:focus-visible { border-radius: var(--r-xs); }
 .sign-in-token input { min-height: 40px; border-radius: var(--r-md); background: var(--paper); transition: border-color .15s, box-shadow .15s; }
 .sign-in-token input:focus { outline: none; border-color: var(--line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent); }
 .sign-in-token .button { justify-content: center; min-height: 40px; border-radius: var(--r-md); margin-top: 4px; }
-.sign-in .edit-actions { display: grid; gap: 8px; }
+/* The base .edit-actions packs to the end; left on a grid, that sizes the one
+   column to its widest button and pushes it right, off the card's left edge. */
+.sign-in .edit-actions { display: grid; gap: 8px; justify-content: stretch; }
 .sign-in .edit-actions .button { justify-content: center; border-radius: var(--r-md); min-height: 40px; }
 .sign-in-help { margin: 0; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-sm); }
 @media (prefers-reduced-motion: reduce) { .need-card, .conv, .msg, .composer-row, .react, .person-row { transition: none; } }

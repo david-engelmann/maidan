@@ -16,7 +16,8 @@ import { SignIn } from "./SignIn.tsx";
 import { Toasts } from "./Toasts.tsx";
 import { Palette } from "./Palette.tsx";
 import { LIST_ROWS, goSequence, isTyping, listStep, requestCompose, routeCommands, type Command } from "./commands.ts";
-import { ROUTES, navigate, phoneTabs, useRoute, type RouteId } from "./router.ts";
+import { ROUTES, navigate, phoneTabs, usePlace, useRoute, type Route, type RouteId } from "./router.ts";
+import { EmptyState } from "./EmptyState.tsx";
 
 // The shell owns the one live connection; screens hear it on the bus.
 const NO_FILTER = {};
@@ -101,7 +102,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
     [signedIn, store],
   );
 
-  const current = ROUTES.find((r) => r.id === route) ?? ROUTES[0];
+  const current = route === "not-found" ? NOT_FOUND : (ROUTES.find((r) => r.id === route) ?? ROUTES[0]);
   useEffect(() => {
     document.title = signedIn ? `${current.title} · Maidan` : "Sign in · Maidan";
   }, [current.title, signedIn]);
@@ -159,7 +160,7 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
           transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1] }}
           aria-label={shellTitle(signedOut, current.title)}
         >
-          {session.status === "signed-out" ? <SignIn noWorkspace={hint === "no-workspace"} /> : screens[route]}
+          {session.status === "signed-out" ? <SignIn noWorkspace={hint === "no-workspace"} /> : route === "not-found" ? <NotFound /> : screens[route]}
         </motion.section>
       </main>
 
@@ -178,8 +179,21 @@ export function Shell({ screens }: { screens: Record<RouteId, ReactNode> }) {
   );
 }
 
+const NOT_FOUND = { title: "Not found" };
+
+function NotFound() {
+  const place = usePlace();
+  return (
+    <EmptyState
+      title="Nothing here"
+      body={`The console has no place called “${place}”. The link may be old or mistyped.`}
+      action={<a className="button ghost" href="#/board">Go to the board</a>}
+    />
+  );
+}
+
 // Five places and a More that opens the rest, so labels stay readable at 390px.
-function PhoneTabs({ route, reduce }: { route: RouteId; reduce: boolean }) {
+function PhoneTabs({ route, reduce }: { route: Route; reduce: boolean }) {
   const { tabs, more } = phoneTabs();
   const inMore = more.some((r) => r.id === route);
   return (
@@ -205,7 +219,7 @@ function PhoneTabs({ route, reduce }: { route: RouteId; reduce: boolean }) {
   );
 }
 
-function Tabs({ route, reduce, layoutId, routes = ROUTES }: { route: RouteId; reduce: boolean; layoutId: string; routes?: readonly (typeof ROUTES)[number][] }) {
+function Tabs({ route, reduce, layoutId, routes = ROUTES }: { route: Route; reduce: boolean; layoutId: string; routes?: readonly (typeof ROUTES)[number][] }) {
   return (
     <ul className="tabs">
       {routes.map((r) => (
