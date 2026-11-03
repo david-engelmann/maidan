@@ -95,3 +95,10 @@ test("Board controls share one height: filters match the lane and view pills", (
     assert.match(rule(sel), /min-height: var\(--control-h\)/, sel);
   }
 });
+
+test("the Board health strip sizes its text from the type scale", () => {
+  for (const sel of [".health-chip", ".stale-banner"]) {
+    const rule = css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`))?.[1] ?? "";
+    assert.match(rule, /font-size: var\(--text-base\)/, sel);
+  }
+});
