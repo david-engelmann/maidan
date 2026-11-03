@@ -70,6 +70,8 @@ test("pure helpers", () => {
   assert.deepEqual(capsExceeding(["a"], null), []);
   assert.equal(formatBytes(2048), "2.0 KB");
   assert.equal(formatBytes(null), "");
+  assert.equal(formatBytes(-1), "");
+  assert.equal(formatBytes(3 * 1024 * 1024), "3.0 MB");
   assert.equal(previewable("image/PNG; x=1"), true);
   assert.equal(previewable("image/svg+xml"), false);
   assert.equal(isSha(SHA), true);

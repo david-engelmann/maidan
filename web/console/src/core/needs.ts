@@ -3,6 +3,7 @@
 // of tools.js, with the DOM taken out. Fetch is passed in, so it is tested.
 import { guarded, apiPath, headers, failure, keepAuth, noteAuthLost, ApiError, uiPath, writeInit, type CredentialMode, type Credentials } from "./api.ts";
 import { BOARD_KINDS, type Fetch } from "./board.ts";
+import { formatBytes } from "./tools.ts";
 
 export type NeedKind = "review_request" | "unassigned_review" | "open_gate" | "blocked" | "question";
 const KINDS: ReadonlySet<string> = new Set<NeedKind>(["review_request", "unassigned_review", "open_gate", "blocked", "question"]);
@@ -69,12 +70,6 @@ function tierOf(a: Attestation | undefined): EvidenceItem["tier"] {
   return { word, title, wire: String(a.tier) };
 }
 
-export function formatBytes(n: number | null | undefined): string {
-  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
-}
 
 /**
  * The evidence a review row shows before Approve: the result, each linked

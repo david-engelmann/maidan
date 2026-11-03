@@ -114,8 +114,9 @@ export function capsExceeding(asked: string[], held: string[] | null): string[] 
   return asked.filter((c) => !have.has(c));
 }
 
+/** A file size for people: B, KB or MB. Empty for a missing or nonsense size. */
 export function formatBytes(n: number | undefined | null): string {
-  if (n == null || !Number.isFinite(n)) return "";
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
